@@ -285,7 +285,8 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
         blobs.emplace_back(
             req.BlobId,
             std::move(blocks),
-            std::move(req.Checksums));
+            std::move(req.Checksums),
+            0);   // unknown blob alignment
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -500,7 +501,7 @@ bool TPartitionActor::WriteMixedBlocks(
         return false;
     }
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
     bool checksumsEnabled = false;

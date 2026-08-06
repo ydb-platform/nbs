@@ -1,6 +1,7 @@
 #include "command.h"
 
 #include <cloud/filestore/libs/client/durable.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -35,14 +36,20 @@ public:
                 Timer,
                 Scheduler,
                 CreateRetryPolicy(ClientConfig),
-                CreateFileStoreClient(ClientConfig, Logging));
+                CreateFileStoreClient(
+                    ClientConfig,
+                    Logging,
+                    CertificateProvider));
         } else {
             EndpointClient = CreateDurableClient(
                 Logging,
                 Timer,
                 Scheduler,
                 CreateRetryPolicy(ClientConfig),
-                CreateEndpointManagerClient(ClientConfig, Logging));
+                CreateEndpointManagerClient(
+                    ClientConfig,
+                    Logging,
+                    CertificateProvider));
         }
     }
 

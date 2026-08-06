@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 
 SRCS(
     config_ut.cpp
+    cpu_timer_ut.cpp
     helpers_ut.cpp
     model_ut.cpp
 )

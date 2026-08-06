@@ -1,10 +1,20 @@
 import json
 import os
-import time
 
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.common import flush_logs
+from cloud.filestore.tests.python.lib.fs import (
+    FsItem,
+    fill_fs,
+    DIR,
+    FILE,
+    SYMLINK,
+    fetch_dir_viewer_entries,
+    fetch_locks,
+)
+
 import cloud.filestore.tools.testing.profile_log.common as profile
 
 BLOCK_SIZE = 4 * 1024
@@ -50,41 +60,6 @@ def __exec_ls(client, *args):
     return json.dumps(nodes, indent=4).encode('utf-8')
 
 
-def __write_some_data(client, fs_id, path, data):
-    data_file = os.path.join(common.output_path(), "data.txt")
-    with open(data_file, "w") as f:
-        f.write("data for %s" % path)
-        f.write(":: actual data: %s" % data)
-
-    client.write(fs_id, path, "--data", data_file)
-
-
-_DIR = 1
-_FILE = 2
-_SYMLINK = 3
-
-
-class FsItem:
-
-    def __init__(self, path, node_type, data):
-        self.path = path
-        self.node_type = node_type
-        self.data = data
-
-
-def __fill_fs(client, fs_id, items):
-    for item in items:
-        if item.node_type == _DIR:
-            client.mkdir(fs_id, item.path)
-        elif item.node_type == _FILE:
-            if item.data is not None:
-                __write_some_data(client, fs_id, item.path, item.data)
-            else:
-                client.touch(fs_id, item.path)
-        else:
-            client.ln(fs_id, item.path, "--symlink", item.data)
-
-
 def test_nonsharded_vs_sharded_fs():
     client, client_nocheck, results_path = __init_test()
     client.create(
@@ -101,13 +76,13 @@ def test_nonsharded_vs_sharded_fs():
         3 * int(SHARD_SIZE / BLOCK_SIZE))
 
     def _d(path):
-        return FsItem(path, _DIR, None)
+        return FsItem(path, DIR, None)
 
     def _f(path, data=None):
-        return FsItem(path, _FILE, data)
+        return FsItem(path, FILE, data)
 
     def _l(path, symlink):
-        return FsItem(path, _SYMLINK, symlink)
+        return FsItem(path, SYMLINK, symlink)
 
     items = [
         _d("/a0"),
@@ -145,10 +120,13 @@ def test_nonsharded_vs_sharded_fs():
         _d("/a1/b5"),
         _d("/a1/b6"),
         _f("/a1/b6/f20.txt", "yyyyy"),
+        _f("/.something"),
+        _f("/another.something"),
+        _f("/file.txt"),
     ]
 
-    __fill_fs(client, "fs0", items)
-    __fill_fs(client, "fs1", items)
+    fill_fs(client, "fs0", items)
+    fill_fs(client, "fs1", items)
 
     # checking that mv, rm and ln work properly
     client.mv("fs0", "/a0/b0/c0/d0/f9.txt", "/a0/b0/c0/d0/f9_moved.txt")
@@ -183,21 +161,10 @@ def test_nonsharded_vs_sharded_fs():
     out += __exec_ls(client, "fs1", "/", "--disable-multitablet-forwarding")
     out += client.diff("fs0", "fs1")
 
-    client.destroy("fs0")
-    client.destroy("fs1")
-
     with open(results_path, "wb") as results_file:
         results_file.write(out)
 
-    #
-    # Sleep for a while to ensure that the profile log is flushed
-    # before we start analyzing it
-    # The default value of ProfileLogTimeThreshold for tests is 100ms
-    # TODO(#568) - here and in other similar places - introduce and use a
-    # private api method which would force profile-log flush
-    #
-
-    time.sleep(2)
+    flush_logs()
 
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool")
@@ -207,6 +174,52 @@ def test_nonsharded_vs_sharded_fs():
                              "fs1",
                              "filestore-server profile log",
                              results_path)
+
+    #
+    # Querying dirViewer for the root node, dumping the result w/o unstable
+    # fields.
+    #
+
+    tablet_id = json.loads(client.describe("fs1"))["FileStore"]["MainTabletId"]
+    root_node_id = 1
+    entries = fetch_dir_viewer_entries(tablet_id, root_node_id)
+    result = json.dumps(entries, indent=4)
+    with open(results_path, 'a') as results:
+        results.write('dirViewer(1):\n')
+        results.write('{}\n'.format(result))
+
+    #
+    # Enabling file name hashing and querying dirViewer for the root node once
+    # again, dumping the result w/o unstable fields.
+    #
+
+    client.change_storage_service_config(
+        "fs1",
+        {"HideFileNamesInTabletDirectoryViewer": True})
+    root_node_id = 1
+    entries = fetch_dir_viewer_entries(tablet_id, root_node_id)
+    result = json.dumps(entries, indent=4)
+    with open(results_path, 'a') as results:
+        results.write('dirViewer(1):\n')
+        results.write('{}\n'.format(result))
+
+    #
+    # And let's do the same thing for locks viewer - there should be no locks
+    # so this is just a smoke test.
+    #
+
+    locks = fetch_locks(tablet_id)
+    result = json.dumps(locks, indent=4)
+    with open(results_path, 'a') as results:
+        results.write('locks():\n')
+        results.write('{}\n'.format(result))
+
+    #
+    # Destroying the filesystems - important to do it after querying dirViewer.
+    #
+
+    client.destroy("fs0")
+    client.destroy("fs1")
 
     ret = common.canonical_file(results_path, local=True)
     return ret

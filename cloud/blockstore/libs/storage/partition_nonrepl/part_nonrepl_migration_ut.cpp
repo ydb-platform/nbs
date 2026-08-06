@@ -88,7 +88,7 @@ struct TTestEnv
     TActorId VolumeActorId;
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
 
     static void InitDevice(
         ui32 nodeId,

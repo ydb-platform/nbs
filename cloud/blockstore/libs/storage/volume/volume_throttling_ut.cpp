@@ -341,4 +341,276 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TVolumeActorShapingThrottlingTest)
+{
+    Y_UNIT_TEST(ShouldAddShapingDelayAndScheduleResponseOnSuccess)
+    {
+        NProto::TStorageServiceConfig storageConfig;
+        storageConfig.SetThrottlingEnabled(true);
+        {
+            auto* quota = storageConfig.MutableShapingThrottlerConfig()
+                              ->MutableHddQuota();
+            quota->MutableWrite()->SetIops(1);
+            quota->MutableWrite()->SetBandwidth(1_MB);
+            quota->SetExpectedIoParallelism(1);
+            quota->SetMaxBudget(1);
+            quota->SetBudgetRefillTime(1000);
+            quota->SetBudgetSpendRate(1.0);
+        }
+
+        auto runtime = PrepareTestActorRuntime(storageConfig);
+        TVolumeClient volume = CreateVolume(*runtime);
+        volume.UpdateVolumeConfig(
+            1_GB,      // maxBandwidth
+            100'000,   // maxIops
+            100,       // burstPercentage
+            1000_MB,   // maxPostponedWeight
+            true,      // throttlingEnabled
+            2,         // version
+            NProto::STORAGE_MEDIA_HDD,
+            2048,       // block count per partition
+            diskId,     // diskId
+            cloudId,    // cloudId
+            folderId,   // folderId
+            2,          // partitions count
+            2           // blocksPerStripe
+        );
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        bool firstWriteRequest = true;
+        TDuration scheduledDelay;
+        TAutoPtr<IEventHandle> scheduledResponse;
+
+        runtime->SetScheduledEventFilter(
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event,
+                TDuration delay,
+                TInstant& deadline)
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvWriteBlocksResponse &&
+                    delay != TDuration::Zero())
+                {
+                    scheduledDelay = delay;
+                    scheduledResponse = event.Release();
+                    deadline = runtime.GetCurrentTime();
+                    return true;
+                }
+
+                return false;
+            });
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvWriteBlocksRequest) {
+                    if (firstWriteRequest) {
+                        firstWriteRequest = false;
+                        return false;
+                    }
+
+                    runtime.SendAsync(new IEventHandle(
+                        /*recipient=*/event->Sender,   // volume actor
+                        /*sender=*/event->Recipient,   // partition actor
+                        new TEvService::TEvWriteBlocksResponse(MakeError(S_OK)),
+                        0,   // flags
+                        event->Cookie,
+                        nullptr));
+                    return true;
+                }
+
+                return false;
+            });
+
+        volume.SendWriteBlocksRequest(
+            TBlockRange64::WithLength(0, 1000),
+            clientInfo.GetClientId(),
+            1);
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT(scheduledResponse);
+        UNIT_ASSERT_UNEQUAL(TDuration::Zero(), scheduledDelay);
+
+        runtime->Send(scheduledResponse.Release());
+        auto response = volume.RecvWriteBlocksResponse();
+        UNIT_ASSERT(response);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        const auto& throttler = response->Record.GetHeaders().GetThrottler();
+        UNIT_ASSERT_VALUES_EQUAL(
+            scheduledDelay.MicroSeconds(),
+            throttler.GetShapingDelay());
+    }
+
+    Y_UNIT_TEST(ShouldNotApplyShapingDelayOnFailure)
+    {
+        NProto::TStorageServiceConfig storageConfig;
+        storageConfig.SetThrottlingEnabled(true);
+        {
+            auto* quota = storageConfig.MutableShapingThrottlerConfig()
+                              ->MutableHddQuota();
+            quota->MutableWrite()->SetIops(10);
+            quota->MutableWrite()->SetBandwidth(10_MB);
+            quota->SetExpectedIoParallelism(1);
+            quota->SetMaxBudget(1);
+            quota->SetBudgetRefillTime(1000);
+            quota->SetBudgetSpendRate(1.0);
+        }
+
+        auto runtime = PrepareTestActorRuntime(storageConfig);
+        TVolumeClient volume = CreateVolume(*runtime);
+        volume.UpdateVolumeConfig(
+            1_GB,      // maxBandwidth
+            100'000,   // maxIops
+            100,       // burstPercentage
+            1000_MB,   // maxPostponedWeight
+            true,      // throttlingEnabled
+            2,         // version
+            NProto::STORAGE_MEDIA_HDD,
+            2048,       // block count per partition
+            diskId,     // diskId
+            cloudId,    // cloudId
+            folderId,   // folderId
+            2,          // partitions count
+            2           // blocksPerStripe
+        );
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        bool firstWriteResponse = true;
+        bool scheduled = false;
+
+        runtime->SetScheduledEventFilter(
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event,
+                TDuration delay,
+                TInstant& deadline)
+            {
+                Y_UNUSED(runtime);
+                Y_UNUSED(delay);
+                Y_UNUSED(deadline);
+
+                if (event->GetTypeRewrite() ==
+                    TEvService::TEvWriteBlocksResponse::EventType)
+                {
+                    scheduled = true;
+                }
+                return false;
+            });
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) -> bool
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvWriteBlocksResponse) {
+                    if (firstWriteResponse) {
+                        auto* response =
+                            event->Get<TEvService::TEvWriteBlocksResponse>();
+                        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+                        *response->Record.MutableError() =
+                            MakeError(E_REJECTED);
+                        firstWriteResponse = false;
+                    }
+                }
+
+                return false;
+            });
+
+        volume.SendWriteBlocksRequest(
+            TBlockRange64::WithLength(0, 1000),
+            clientInfo.GetClientId(),
+            1);
+
+        auto response = volume.RecvWriteBlocksResponse();
+        UNIT_ASSERT(response);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_C(!scheduled, "Failure response should not be scheduled");
+
+        const auto& throttler = response->Record.GetHeaders().GetThrottler();
+        UNIT_ASSERT_VALUES_EQUAL(0, throttler.GetShapingDelay());
+    }
+
+    Y_UNIT_TEST(ShouldNotApplyShapingDelayWhenThrottlingIsDisabled)
+    {
+        NProto::TStorageServiceConfig storageConfig;
+        storageConfig.SetThrottlingEnabled(false);
+        {
+            auto* quota = storageConfig.MutableShapingThrottlerConfig()
+                              ->MutableHddQuota();
+            quota->MutableWrite()->SetIops(10);
+            quota->MutableWrite()->SetBandwidth(10_MB);
+            quota->SetExpectedIoParallelism(1);
+            quota->SetMaxBudget(1);
+            quota->SetBudgetRefillTime(1000);
+            quota->SetBudgetSpendRate(1.0);
+        }
+
+        auto runtime = PrepareTestActorRuntime(storageConfig);
+        TVolumeClient volume = CreateVolume(*runtime);
+        volume.UpdateVolumeConfig(
+            1_GB,      // maxBandwidth
+            100'000,   // maxIops
+            100,       // burstPercentage
+            1000_MB,   // maxPostponedWeight
+            true,      // throttlingEnabled
+            2,         // version
+            NProto::STORAGE_MEDIA_HDD,
+            2048,       // block count per partition
+            diskId,     // diskId
+            cloudId,    // cloudId
+            folderId,   // folderId
+            2,          // partitions count
+            2           // blocksPerStripe
+        );
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        bool scheduled = false;
+        runtime->SetScheduledEventFilter(
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event,
+                TDuration delay,
+                TInstant& deadline)
+            {
+                Y_UNUSED(runtime);
+                Y_UNUSED(delay);
+                Y_UNUSED(deadline);
+
+                if (event->GetTypeRewrite() ==
+                    TEvService::TEvWriteBlocksResponse::EventType)
+                {
+                    scheduled = true;
+                }
+                return false;
+            });
+
+        auto response = volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 1000),
+            clientInfo.GetClientId(),
+            1);
+
+        UNIT_ASSERT_C(!scheduled, "Failure response should not be scheduled");
+        const auto& throttler = response->Record.GetHeaders().GetThrottler();
+        UNIT_ASSERT_VALUES_EQUAL(0, throttler.GetShapingDelay());
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

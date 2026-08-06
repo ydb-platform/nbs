@@ -137,6 +137,7 @@ private:
     TMutex Lock;
 
     THashMap<TString, TString> PathToSerial;
+    THashMap<TString, TString> PathToModel;
 
 public:
     TInitializer(
@@ -183,6 +184,9 @@ private:
 
     TString GetSerialNumber(const TString& path);
     void SetupSerialNumbers(TVector<NProto::TFileDeviceArgs>& fileDevices);
+
+    TString GetDeviceModel(const TString& path);
+    void SetupDeviceModels(TVector<NProto::TFileDeviceArgs>& fileDevices);
 
     auto ProcessConfigCache(const THashSet<TString>& allowedPaths = {})
         -> TResultOrError<TVector<NProto::TFileDeviceArgs>>;
@@ -343,7 +347,6 @@ TString TInitializer::GetSerialNumber(const TString& path)
     auto it = PathToSerial.find(path);
     if (it == PathToSerial.end()) {
         auto [sn, error] = NvmeManager->GetSerialNumber(path);
-        it = PathToSerial.emplace(path, sn).first;
         if (HasError(error)) {
             with_lock (Lock) {
                 Errors.push_back(
@@ -351,7 +354,9 @@ TString TInitializer::GetSerialNumber(const TString& path)
                     << "Can't get serial number for " << path.Quote() << ": "
                     << FormatError(error));
             }
+            return sn;
         }
+        it = PathToSerial.emplace(path, sn).first;
     }
 
     return it->second;
@@ -362,6 +367,34 @@ void TInitializer::SetupSerialNumbers(
 {
     for (auto& file: fileDevices) {
         file.SetSerialNumber(GetSerialNumber(file.GetPath()));
+    }
+}
+
+TString TInitializer::GetDeviceModel(const TString& path)
+{
+    auto it = PathToModel.find(path);
+    if (it == PathToModel.end()) {
+        auto [model, error] = NvmeManager->GetDeviceModel(path);
+        if (HasError(error)) {
+            with_lock (Lock) {
+                Errors.push_back(
+                    TStringBuilder()
+                    << "Can't get model for " << path.Quote() << ": "
+                    << FormatError(error));
+            }
+            return model;
+        }
+        it = PathToModel.emplace(path, model).first;
+    }
+
+    return it->second;
+}
+
+void TInitializer::SetupDeviceModels(
+    TVector<NProto::TFileDeviceArgs>& fileDevices)
+{
+    for (auto& file: fileDevices) {
+        file.SetDeviceModel(GetDeviceModel(file.GetPath()));
     }
 }
 
@@ -376,6 +409,9 @@ void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
     for (auto& file: FileDevices) {
         if (file.GetSerialNumber().empty()) {
             file.SetSerialNumber(GetSerialNumber(file.GetPath()));
+        }
+        if (file.GetDeviceModel().empty()) {
+            file.SetDeviceModel(GetDeviceModel(file.GetPath()));
         }
     }
 
@@ -399,6 +435,7 @@ void TInitializer::ScanFileDevices(const THashSet<TString>& allowedPaths)
 
     SortBy(files, GetDeviceId);
     SetupSerialNumbers(files);
+    SetupDeviceModels(files);
 
     if (!ValidateGeneratedConfigs(files)) {
         ReportDiskAgentConfigMismatchEvent("Bad generated config");
@@ -508,6 +545,7 @@ bool TInitializer::TryToAcceptCurrentConfigs(
     STORAGE_WARN("Current config is broken, fallback to the cached one.");
     FileDevices = cachedDevices;
     SetupSerialNumbers(FileDevices);
+    SetupDeviceModels(FileDevices);
 
     Errors.push_back(TStringBuilder()
         << "broken config: " << FormatError(error));
@@ -715,6 +753,7 @@ NProto::TDeviceConfig TInitializer::CreateConfig(
     config.SetPoolName(device.GetPoolName());
     config.SetSerialNumber(device.GetSerialNumber());
     config.SetPhysicalOffset(device.GetOffset());
+    config.SetDeviceModel(device.GetDeviceModel());
 
     return config;
 }

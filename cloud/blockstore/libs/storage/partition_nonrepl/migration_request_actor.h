@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/storage/core/protos/error.pb.h>
 
@@ -42,6 +43,7 @@ private:
     const TString DiskId;
     const NActors::TActorId ParentActorId;
     const ui64 NonreplicatedRequestCounter;
+    const TChildLogTitle LogTitle;
 
     typename TMethod::TRequest::ProtoRecordType Request;
 
@@ -58,7 +60,8 @@ public:
         typename TMethod::TRequest::ProtoRecordType request,
         TString diskId,
         NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter);
+        ui64 nonreplicatedRequestCounter,
+        const TChildLogTitle& logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -104,13 +107,17 @@ TMigrationRequestActor<TMethod>::TMigrationRequestActor(
         typename TMethod::TRequest::ProtoRecordType request,
         TString diskId,
         NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter)
+        ui64 nonreplicatedRequestCounter,
+        const TChildLogTitle& logTitle)
     : RequestInfo(std::move(requestInfo))
     , LeaderPartition(leaderPartition)
     , FollowerPartition(followerPartition)
     , DiskId(std::move(diskId))
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
+    , LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"TMigrationRequestActor", std::monostate{}}}))
     , Request(std::move(request))
 {
     Y_DEBUG_ABORT_UNLESS(FollowerPartition);
@@ -252,8 +259,8 @@ void TMigrationRequestActor<TMethod>::HandleUndelivery(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION_WORKER,
-        "[%s] %s",
-        DiskId.c_str(),
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
         FormatError(error).c_str());
 
     TResponseProto response;
@@ -281,8 +288,8 @@ void TMigrationRequestActor<TMethod>::HandleResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] %s got error from nonreplicated partition: %s",
-            DiskId.c_str(),
+            "%s %s got error from nonreplicated partition: %s",
+            LogTitle.GetWithTime().c_str(),
             TMethod::Name,
             FormatError(msg->Record.GetError()).c_str());
     }

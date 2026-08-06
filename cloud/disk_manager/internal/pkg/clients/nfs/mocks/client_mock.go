@@ -54,6 +54,15 @@ func (c *ClientMock) Resize(
 	return args.Error(0)
 }
 
+func (c *ClientMock) EnableDirectoryCreationInShards(
+	ctx context.Context,
+	filesystemID string,
+	shardCount uint32,
+) error {
+	args := c.Called(ctx, filesystemID, shardCount)
+	return args.Error(0)
+}
+
 func (c *ClientMock) DescribeModel(
 	ctx context.Context,
 	blocksCount uint64,
@@ -87,6 +96,89 @@ func (c *ClientMock) CreateSession(
 	args := c.Called(ctx, fileSystemID, checkpointID, readonly)
 	res, _ := args.Get(0).(nfs.Session)
 	return res, args.Error(1)
+}
+
+func (c *ClientMock) CreateSessionWithClientID(
+	ctx context.Context,
+	fileSystemID string,
+	clientID string,
+	checkpointID string,
+	readonly bool,
+) (nfs.Session, error) {
+
+	args := c.Called(ctx, fileSystemID, clientID, checkpointID, readonly)
+	res, _ := args.Get(0).(nfs.Session)
+	return res, args.Error(1)
+}
+
+func (c *ClientMock) FreezeTablet(
+	ctx context.Context,
+	filesystemID string,
+) error {
+
+	args := c.Called(ctx, filesystemID)
+	return args.Error(0)
+}
+
+func (c *ClientMock) UnfreezeTablet(
+	ctx context.Context,
+	filesystemID string,
+) error {
+
+	args := c.Called(ctx, filesystemID)
+	return args.Error(0)
+}
+
+func (c *ClientMock) UnsafeCreateNode(
+	ctx context.Context,
+	filesystemID string,
+	node nfs.Node,
+) error {
+
+	args := c.Called(ctx, filesystemID, node)
+	return args.Error(0)
+}
+
+func (c *ClientMock) UnsafeCreateNodeRef(
+	ctx context.Context,
+	filesystemID string,
+	parentNodeID uint64,
+	name string,
+	childID uint64,
+	shardID string,
+	shardNodeName string,
+) error {
+
+	args := c.Called(
+		ctx,
+		filesystemID,
+		parentNodeID,
+		name,
+		childID,
+		shardID,
+		shardNodeName,
+	)
+	return args.Error(0)
+}
+
+func (c *ClientMock) ConfigureAsShard(
+	ctx context.Context,
+	filesystemID string,
+	params nfs.ConfigureAsShardParams,
+) error {
+
+	args := c.Called(ctx, filesystemID, params)
+	return args.Error(0)
+}
+
+func (c *ClientMock) ConfigureShards(
+	ctx context.Context,
+	filesystemID string,
+	params nfs.ConfigureShardsParams,
+) error {
+
+	args := c.Called(ctx, filesystemID, params)
+	return args.Error(0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

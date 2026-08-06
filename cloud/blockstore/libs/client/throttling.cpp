@@ -51,12 +51,16 @@ class TThrottlerPolicy final
     : public IThrottlerPolicy
 {
 private:
+    const double BurstRate;
     TBoostedTimeBucket Bucket;
     NProto::TClientPerformanceProfile Profile;
 
+    THashMap<NProto::EStorageMediaKind, TDuration> UsedQuota;
+
 public:
     explicit TThrottlerPolicy(const NProto::TClientPerformanceProfile& pp)
-        : Bucket(SecondsToDuration(pp.GetBurstTime() / 1'000.))
+        : BurstRate(pp.GetBurstTime() / 1'000.)
+        , Bucket(SecondsToDuration(BurstRate))
         , Profile(pp)
     {
     }
@@ -140,18 +144,28 @@ public:
             return TDuration::Zero();
         }
 
-        return Bucket.Register(
-            now,
-            CostPerIO(
-                CalculateThrottlerC1(maxIops, maxBandwidth),
-                CalculateThrottlerC2(maxIops, maxBandwidth),
-                byteCount)
-        );
+        TDuration update = CostPerIO(
+            CalculateThrottlerC1(maxIops, maxBandwidth),
+            CalculateThrottlerC2(maxIops, maxBandwidth),
+            byteCount);
+
+        TDuration delay = Bucket.Register(now, update);
+        if (delay.GetValue() == 0) {
+            UsedQuota[mediaKind] += update;
+        }
+        return delay;
     }
 
     double CalculateCurrentSpentBudgetShare(TInstant ts) const override
     {
         return Bucket.CalculateCurrentSpentBudgetShare(ts);
+    }
+
+    TUsedQuota TakeUsedQuota() override
+    {
+        TUsedQuota result(UsedQuota, BurstRate);
+        UsedQuota.clear();
+        return result;
     }
 };
 
@@ -230,8 +244,6 @@ public:
 
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
     void LogPostponedRequest(                                                  \
-        ui64 nowCycles,                                                        \
-        TCallContext& callContext,                                             \
         IVolumeInfo* volumeInfo,                                               \
         const NProto::T##name##Request& request,                               \
         TDuration postponeDelay) override                                      \
@@ -251,13 +263,9 @@ public:
             << GetRequestDetails(request)                                      \
             << " request postponed"                                            \
             << " (delay: " << FormatDuration(postponeDelay) << ")");           \
-                                                                               \
-        callContext.Postpone(nowCycles);                                       \
     }                                                                          \
                                                                                \
     void LogAdvancedRequest(                                                   \
-        ui64 nowCycles,                                                        \
-        TCallContext& callContext,                                             \
         IVolumeInfo* volumeInfo,                                               \
         const NProto::T##name##Request& request) override                      \
     {                                                                          \
@@ -275,8 +283,6 @@ public:
                 GetClientId(request))                                          \
             << GetRequestDetails(request)                                      \
             << " request advanced");                                           \
-                                                                               \
-        callContext.Advance(nowCycles);                                        \
     }                                                                          \
                                                                                \
     void LogError(                                                             \
@@ -368,6 +374,7 @@ private:
     const NMonitoring::TDynamicCountersPtr RootGroup;
     const IRequestStatsPtr RequestStats;
     const IVolumeStatsPtr VolumeStats;
+    const IThrottlerMetricsPtr ThrottlerMetrics;
 
     TMutex ThrottlerLock;
     THashMap<TString, TThrottlerInfo> Throttlers;
@@ -388,6 +395,7 @@ public:
         , RootGroup(std::move(rootGroup))
         , RequestStats(std::move(requestStats))
         , VolumeStats(std::move(volumeStats))
+        , ThrottlerMetrics(CreateThrottlerMetrics(Timer, RootGroup, "server"))
     {}
 
     IThrottlerPtr GetThrottler(
@@ -485,15 +493,11 @@ private:
         auto throttlerLogger = CreateClientThrottlerLogger(
             RequestStats,
             Logging);
-        auto throttlerMetrics = CreateThrottlerMetrics(
-            Timer,
-            RootGroup,
-            "server");
         auto throttlerTracker = CreateClientThrottlerTracker();
 
         return CreateThrottler(
             std::move(throttlerLogger),
-            std::move(throttlerMetrics),
+            ThrottlerMetrics,
             std::move(throttlerPolicy),
             std::move(throttlerTracker),
             Timer,

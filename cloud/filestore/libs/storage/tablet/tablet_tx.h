@@ -20,6 +20,7 @@
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -104,6 +105,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
     xxx(DeleteCheckpoint,                   __VA_ARGS__)                       \
                                                                                \
+    xxx(SetQuota,                           __VA_ARGS__)                       \
+    xxx(DeleteQuota,                        __VA_ARGS__)                       \
+                                                                               \
     xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
     xxx(CompleteUnlinkNode,                 __VA_ARGS__)                       \
@@ -133,7 +137,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(AddData,                            __VA_ARGS__)                       \
     xxx(AddDataUnconfirmed,                 __VA_ARGS__)                       \
     xxx(DeleteUnconfirmedData,              __VA_ARGS__)                       \
-    xxx(WriteBatch,                         __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
                                                                                \
     xxx(AddBlob,                            __VA_ARGS__)                       \
@@ -154,6 +157,7 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
     xxx(GetOpLogEntry,                      __VA_ARGS__)                       \
+    xxx(ListOpLogEntries,                   __VA_ARGS__)                       \
     xxx(WriteOpLogEntry,                    __VA_ARGS__)                       \
     xxx(CommitNodeCreationInShard,          __VA_ARGS__)                       \
                                                                                \
@@ -164,6 +168,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(UnsafeDeleteNodeRef,                __VA_ARGS__)                       \
     xxx(UnsafeUpdateNodeRef,                __VA_ARGS__)                       \
     xxx(UnsafeCreateHandle,                 __VA_ARGS__)                       \
+    xxx(UnsafeChangeTabletState,            __VA_ARGS__)                       \
 // FILESTORE_TABLET_RW_TRANSACTIONS
 
 #define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
@@ -226,7 +231,7 @@ struct TSessionAware
  */
 struct TIndexStateNodeUpdates
 {
-    TVector<TInMemoryIndexState::TIndexStateRequest> NodeUpdates;
+    TVector<IInMemoryIndexState::TIndexStateRequest> NodeUpdates;
 
     void Clear()
     {
@@ -274,35 +279,6 @@ struct TTxIndexTabletBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteRequest
-    : TIntrusiveListItem<TWriteRequest>
-    , TErrorAware
-    , TSessionAware
-{
-    const TRequestInfoPtr RequestInfo;
-    const ui64 Handle;
-    const TByteRange ByteRange;
-    const IBlockBufferPtr Buffer;
-
-    ui64 NodeId = InvalidNodeId;
-
-    TWriteRequest(
-            TRequestInfoPtr requestInfo,
-            const NProto::TWriteDataRequest& request,
-            TByteRange byteRange,
-            IBlockBufferPtr buffer)
-        : TSessionAware(request)
-        , RequestInfo(std::move(requestInfo))
-        , Handle(request.GetHandle())
-        , ByteRange(byteRange)
-        , Buffer(std::move(buffer))
-    {}
-};
-
-using TWriteRequestList = TIntrusiveListWithAutoDelete<TWriteRequest, TDelete>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TNodeOps
 {
     template <typename T>
@@ -311,7 +287,7 @@ struct TNodeOps
         return value;
     }
 
-    static auto GetNodeId(const IIndexTabletDatabase::TNode& node)
+    static auto GetNodeId(const INodeIndexTabletDatabase::TNode& node)
     {
         return node.NodeId;
     }
@@ -336,7 +312,7 @@ struct TNodeOps
 };
 
 using TNodeSet = THashSet<
-    IIndexTabletDatabase::TNode,
+    INodeIndexTabletDatabase::TNode,
     TNodeOps::TNodeSetHash,
     TNodeOps::TNodeSetEqual>;
 
@@ -375,7 +351,7 @@ struct TTxIndexTablet
         NProto::TFileSystem FileSystem;
         NProto::TFileSystemStats FileSystemStats;
         NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
-        TMaybe<IIndexTabletDatabase::TNode> RootNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> RootNode;
         TVector<NProto::TSession> Sessions;
         TVector<NProto::TSessionHandle> Handles;
         TVector<NProto::TSessionLock> Locks;
@@ -384,6 +360,7 @@ struct TTxIndexTablet
         TVector<TPartialBlobId> NewBlobs;
         TVector<TPartialBlobId> GarbageBlobs;
         TVector<NProto::TCheckpoint> Checkpoints;
+        TVector<NProto::TQuota> Quotas;
         TVector<NProto::TDupCacheEntry> DupCache;
         TVector<NProto::TTruncateEntry> TruncateQueue;
         TMaybe<NProto::TStorageConfig> StorageConfig;
@@ -410,6 +387,7 @@ struct TTxIndexTablet
             NewBlobs.clear();
             GarbageBlobs.clear();
             Checkpoints.clear();
+            Quotas.clear();
             DupCache.clear();
             TruncateQueue.clear();
             StorageConfig.Clear();
@@ -506,12 +484,15 @@ struct TTxIndexTablet
     struct TConfigureAsShard: TTxIndexTabletBase
     {
         const TRequestInfoPtr RequestInfo;
+        const bool IsFastShard;
         NProtoPrivate::TConfigureAsShardRequest Request;
 
         TConfigureAsShard(
                 TRequestInfoPtr requestInfo,
+                bool isFastShard,
                 NProtoPrivate::TConfigureAsShardRequest request)
             : RequestInfo(std::move(requestInfo))
+            , IsFastShard(isFastShard)
             , Request(std::move(request))
         {}
 
@@ -533,6 +514,7 @@ struct TTxIndexTablet
 
         TString SessionId;
         bool SessionInterrupted = false;
+        ui64 OwnerGeneration = 0;
 
         TCreateSession(
                 TRequestInfoPtr requestInfo,
@@ -549,6 +531,7 @@ struct TTxIndexTablet
 
             SessionId.clear();
             SessionInterrupted = false;
+            OwnerGeneration = 0;
         }
     };
 
@@ -564,18 +547,25 @@ struct TTxIndexTablet
         /* const */ TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 SessionSeqNo;
+        const ui32 MaxHandlesPerTx;
+        const bool IsContinuation;
         /* const */ NProto::TResetSessionRequest Request;
 
         TNodeSet Nodes;
+        bool Completed = false;
 
         TResetSession(
                 TRequestInfoPtr requestInfo,
                 TString sessionId,
                 ui64 sessionSeqNo,
+                ui32 maxHandlesPerTx,
+                bool isContinuation,
                 NProto::TResetSessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , SessionSeqNo(sessionSeqNo)
+            , MaxHandlesPerTx(maxHandlesPerTx)
+            , IsContinuation(isContinuation)
             , Request(std::move(request))
         {}
 
@@ -585,6 +575,7 @@ struct TTxIndexTablet
             TIndexStateNodeUpdates::Clear();
 
             Nodes.clear();
+            Completed = false;
         }
     };
 
@@ -600,19 +591,26 @@ struct TTxIndexTablet
         /* const */ TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 SessionSeqNo;
+        const ui32 MaxHandlesPerTx;
+        const bool IsContinuation;
         /* const */ NProtoPrivate::TDestroySessionRequest Request;
 
         TNodeSet Nodes;
         ui64 CommitId = InvalidCommitId;
+        bool Completed = false;
 
         TDestroySession(
                 TRequestInfoPtr requestInfo,
                 TString sessionId,
                 ui64 sessionSeqNo,
+                ui32 maxHandlesPerTx,
+                bool isContinuation,
                 NProtoPrivate::TDestroySessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , SessionSeqNo(sessionSeqNo)
+            , MaxHandlesPerTx(maxHandlesPerTx)
+            , IsContinuation(isContinuation)
             , Request(std::move(request))
         {}
 
@@ -622,6 +620,7 @@ struct TTxIndexTablet
             TIndexStateNodeUpdates::Clear();
 
             Nodes.clear();
+            Completed = false;
         }
     };
 
@@ -675,12 +674,12 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
 
         TVector<ui64> NodeIds;
-        TVector<IIndexTabletDatabase::TNode> Nodes;
+        TVector<INodeIndexTabletDatabase::TNode> Nodes;
         TVector<TIndexTabletDatabase::TNodeAttr> NodeAttrs;
-        TVector<IIndexTabletDatabase::TNodeRef> NodeRefs;
+        TVector<INodeIndexTabletDatabase::TNodeRef> NodeRefs;
 
         TVector<TIndexTabletDatabase::TCheckpointBlob> Blobs;
-        TVector<TIndexTabletDatabase::IIndexTabletDatabase::TMixedBlob> MixedBlobs;
+        TVector<INodeIndexTabletDatabase::TMixedBlob> MixedBlobs;
 
         // NOTE: should persist state across tx restarts
         TSet<ui32> MixedBlocksRanges;
@@ -710,6 +709,64 @@ struct TTxIndexTablet
 
             Blobs.clear();
             MixedBlobs.clear();
+        }
+    };
+
+    //
+    // SetQuota
+    //
+
+    struct TSetQuota
+        : TTxIndexTabletBase
+        , TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui32 QuotaId;
+        const ui64 MaxBytes;
+        const ui64 MaxNodes;
+
+        NProto::TQuota Quota;
+
+        TSetQuota(
+                TRequestInfoPtr requestInfo,
+                ui32 quotaId,
+                ui64 maxBytes,
+                ui64 maxNodes)
+            : RequestInfo(std::move(requestInfo))
+            , QuotaId(quotaId)
+            , MaxBytes(maxBytes)
+            , MaxNodes(maxNodes)
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+
+            Quota.Clear();
+        }
+    };
+
+    //
+    // DeleteQuota
+    //
+
+    struct TDeleteQuota
+        : TTxIndexTabletBase
+        , TErrorAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui32 QuotaId;
+
+        TDeleteQuota(
+                TRequestInfoPtr requestInfo,
+                ui32 quotaId)
+            : RequestInfo(std::move(requestInfo))
+            , QuotaId(quotaId)
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
         }
     };
 
@@ -769,9 +826,9 @@ struct TTxIndexTablet
         NProto::TCreateNodeRequest Request;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
         ui64 ChildNodeId = InvalidNodeId;
-        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> ChildNode;
 
         NProto::TOpLogEntry OpLogEntry;
 
@@ -832,9 +889,9 @@ struct TTxIndexTablet
         const TString Name;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
-        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
-        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
+        TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> ChildRef;
 
         NProto::TOpLogEntry OpLogEntry;
 
@@ -885,9 +942,9 @@ struct TTxIndexTablet
         const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
-        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
-        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
+        TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> ChildRef;
 
         NProto::TOpLogEntry OpLogEntry;
 
@@ -941,7 +998,7 @@ struct TTxIndexTablet
         NProtoPrivate::TPrepareUnlinkDirectoryNodeInShardResponse Response;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TPrepareUnlinkDirectoryNode(
                 TRequestInfoPtr requestInfo,
@@ -982,7 +1039,7 @@ struct TTxIndexTablet
         NProtoPrivate::TAbortUnlinkDirectoryNodeInShardResponse Response;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TAbortUnlinkDirectoryNode(
                 TRequestInfoPtr requestInfo,
@@ -1030,13 +1087,13 @@ struct TTxIndexTablet
         const ui64 AbortUnlinkOpLogEntryId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
-        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
-        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
+        TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> ChildRef;
 
-        TMaybe<IIndexTabletDatabase::TNode> NewParentNode;
-        TMaybe<IIndexTabletDatabase::TNode> NewChildNode;
-        TMaybe<IIndexTabletDatabase::TNodeRef> NewChildRef;
+        TMaybe<INodeIndexTabletDatabase::TNode> NewParentNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> NewChildNode;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> NewChildRef;
 
         NProto::TOpLogEntry OpLogEntry;
 
@@ -1131,9 +1188,9 @@ struct TTxIndexTablet
         const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
-        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
-        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
+        TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> ChildRef;
 
         NProto::TOpLogEntry OpLogEntry;
 
@@ -1191,8 +1248,8 @@ struct TTxIndexTablet
         const ui64 AbortUnlinkOpLogEntryId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> NewParentNode;
-        TMaybe<IIndexTabletDatabase::TNodeRef> NewChildRef;
+        TMaybe<INodeIndexTabletDatabase::TNode> NewParentNode;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> NewChildRef;
 
         NProto::TOpLogEntry OpLogEntry;
         NProtoPrivate::TResponseLogEntry ResponseLogEntry;
@@ -1282,7 +1339,7 @@ struct TTxIndexTablet
         const bool IsExplicitRequest;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> ChildRef;
 
         TCommitRenameNodeInSource(
                 TRequestInfoPtr requestInfo,
@@ -1400,7 +1457,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TAccessNode(
                 TRequestInfoPtr requestInfo,
@@ -1436,7 +1493,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TReadLink(
                 TRequestInfoPtr requestInfo,
@@ -1472,11 +1529,12 @@ struct TTxIndexTablet
         const TString Cookie;
         const ui32 MaxBytes;
         const ui32 MaxBytesMultiplier;
+        const bool ReplyInternal;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
-        TVector<IIndexTabletDatabase::TNodeRef> ChildRefs;
-        TVector<IIndexTabletDatabase::TNode> ChildNodes;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
+        TVector<INodeIndexTabletDatabase::TNodeRef> ChildRefs;
+        TVector<INodeIndexTabletDatabase::TNode> ChildNodes;
         TString Next;
 
         ui32 BytesToPrecharge = 0;
@@ -1486,7 +1544,8 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 const NProto::TListNodesRequest& request,
                 ui32 maxBytes,
-                ui32 maxBytesMultiplier)
+                ui32 maxBytesMultiplier,
+                bool replyInternal)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1494,6 +1553,7 @@ struct TTxIndexTablet
             , Cookie(request.GetCookie())
             , MaxBytes(maxBytes)
             , MaxBytesMultiplier(maxBytesMultiplier)
+            , ReplyInternal(replyInternal)
             , BytesToPrecharge(MaxBytes)
         {}
 
@@ -1534,7 +1594,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TSetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -1572,9 +1632,9 @@ struct TTxIndexTablet
         TTabletRequestMetrics& RequestMetrics;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
         ui64 TargetNodeId = InvalidNodeId;
-        TMaybe<IIndexTabletDatabase::TNode> TargetNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> TargetNode;
         TString ShardId;
         TString ShardNodeName;
 
@@ -1624,7 +1684,7 @@ struct TTxIndexTablet
         NProtoPrivate::TGetNodeAttrBatchResponse Response;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
 
         TGetNodeAttrBatch(
                 TRequestInfoPtr requestInfo,
@@ -1669,7 +1729,7 @@ struct TTxIndexTablet
 
         ui64 Version = 0;
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
         TSetNodeXAttr(
@@ -1711,7 +1771,7 @@ struct TTxIndexTablet
         const TString Name;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
         TGetNodeXAttr(
@@ -1750,7 +1810,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
         TVector<TIndexTabletDatabase::TNodeAttr> Attrs;
 
         TListNodeXAttr(
@@ -1789,7 +1849,7 @@ struct TTxIndexTablet
         const TString Name;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
         TRemoveNodeXAttr(
@@ -1870,18 +1930,21 @@ struct TTxIndexTablet
         TString ShardId;
         TString ShardNodeName;
         bool IsNewShardNode = false;
-        TMaybe<IIndexTabletDatabase::TNode> TargetNode;
-        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        const bool IsNodeRefLocked;
+        TMaybe<INodeIndexTabletDatabase::TNode> TargetNode;
+        TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
         TVector<ui64> UpdatedNodes;
 
         NProto::TOpLogEntry OpLogEntry;
 
         NProto::TCreateHandleResponse Response;
+        bool Completed = false;
 
         TCreateHandle(
                 TRequestInfoPtr requestInfo,
                 NProto::TCreateHandleRequest request,
-                NProto::TProfileLogRequestInfo profileLogRequest)
+                NProto::TProfileLogRequestInfo profileLogRequest,
+                bool isNodeRefLocked)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
@@ -1893,6 +1956,7 @@ struct TTxIndexTablet
             , Gid(request.GetGid())
             , RequestShardId(request.GetShardFileSystemId())
             , Request(std::move(request))
+            , IsNodeRefLocked(isNodeRefLocked)
         {
         }
 
@@ -1914,6 +1978,7 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+            Completed = false;
 
             // deliberately not calling TProfileAware::Clear()
         }
@@ -1927,17 +1992,21 @@ struct TTxIndexTablet
         : TTxIndexTabletBase
         , TErrorAware
         , TSessionAware
+        , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
         const NProto::TDestroyHandleRequest Request;
 
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
+        bool Completed = false;
 
         TDestroyHandle(
                 TRequestInfoPtr requestInfo,
-                const NProto::TDestroyHandleRequest& request)
+                const NProto::TDestroyHandleRequest& request,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , Request(request)
         {}
@@ -1948,6 +2017,9 @@ struct TTxIndexTablet
             TIndexStateNodeUpdates::Clear();
 
             Node.Clear();
+            Completed = false;
+
+            // deliberately not calling TProfileAware::Clear()
         }
     };
 
@@ -2061,7 +2133,7 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
         TMaybe<TByteRange> ReadAheadRange;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
         TVector<TBlockDataRef> Blocks;
         TVector<TBlockBytes> Bytes;
 
@@ -2136,7 +2208,7 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TWriteData(
                 TRequestInfoPtr requestInfo,
@@ -2193,7 +2265,7 @@ struct TTxIndexTablet
         const ui64 ExplicitNodeId = InvalidNodeId;
 
         ui64 NodeId = InvalidNodeId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         template <typename TRequest>
         TAddDataBase(
@@ -2296,43 +2368,6 @@ struct TTxIndexTablet
     };
 
     //
-    // WriteBatch
-    //
-
-    struct TWriteBatch
-        : TTxIndexTabletBase
-        , TErrorAware
-        , TIndexStateNodeUpdates
-    {
-        const TRequestInfoPtr RequestInfo;
-        const bool SkipFresh;
-        /*const*/ TWriteRequestList WriteBatch;
-
-        ui64 CommitId = InvalidCommitId;
-        TMap<ui64, ui64> WriteRanges;
-        TNodeSet Nodes;
-
-        TWriteBatch(
-                TRequestInfoPtr requestInfo,
-                bool skipFresh,
-                TWriteRequestList writeBatch)
-            : RequestInfo(std::move(requestInfo))
-            , SkipFresh(skipFresh)
-            , WriteBatch(std::move(writeBatch))
-        {}
-
-        void Clear() override
-        {
-            TErrorAware::Clear();
-            TIndexStateNodeUpdates::Clear();
-
-            CommitId = InvalidCommitId;
-            WriteRanges.clear();
-            Nodes.clear();
-        }
-    };
-
-    //
     // AllocateData
     //
 
@@ -2350,7 +2385,7 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TAllocateData(
                 TRequestInfoPtr requestInfo,
@@ -2840,7 +2875,7 @@ struct TTxIndexTablet
         const ui64 EntryId;
         TMaybe<NProto::TOpLogEntry> Entry;
 
-        explicit TGetOpLogEntry(TRequestInfoPtr requestInfo, ui64 entryId)
+        TGetOpLogEntry(TRequestInfoPtr requestInfo, ui64 entryId)
             : RequestInfo(std::move(requestInfo))
             , EntryId(entryId)
         {}
@@ -2848,6 +2883,25 @@ struct TTxIndexTablet
         void Clear() override
         {
             Entry.Clear();
+        }
+    };
+
+    //
+    // ListOpLogEntries
+    //
+
+    struct TListOpLogEntries: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        TVector<NProto::TOpLogEntry> Entries;
+
+        explicit TListOpLogEntries(TRequestInfoPtr requestInfo)
+            : RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear() override
+        {
+            Entries.clear();
         }
     };
 
@@ -2917,7 +2971,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeCreateNodeRequest Request;
 
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TUnsafeCreateNode(
                 TRequestInfoPtr requestInfo,
@@ -2942,7 +2996,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeDeleteNodeRequest Request;
 
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TUnsafeDeleteNode(
                 TRequestInfoPtr requestInfo,
@@ -2968,7 +3022,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeUpdateNodeRequest Request;
 
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TUnsafeUpdateNode(
                 TRequestInfoPtr requestInfo,
@@ -2992,7 +3046,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeGetNodeRequest Request;
 
-        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
         TUnsafeGetNode(
                 TRequestInfoPtr requestInfo,
@@ -3016,7 +3070,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeCreateNodeRefRequest Request;
 
-        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> NodeRef;
 
         TUnsafeCreateNodeRef(
                 TRequestInfoPtr requestInfo,
@@ -3042,7 +3096,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeDeleteNodeRefRequest Request;
 
-        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> NodeRef;
 
         TUnsafeDeleteNodeRef(
                 TRequestInfoPtr requestInfo,
@@ -3068,7 +3122,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeUpdateNodeRefRequest Request;
 
-        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> NodeRef;
 
         TUnsafeUpdateNodeRef(
                 TRequestInfoPtr requestInfo,
@@ -3093,7 +3147,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProtoPrivate::TUnsafeGetNodeRefRequest Request;
 
-        TMaybe<IIndexTabletDatabase::TNodeRef> NodeRef;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> NodeRef;
 
         TUnsafeGetNodeRef(
                 TRequestInfoPtr requestInfo,
@@ -3118,8 +3172,25 @@ struct TTxIndexTablet
         NProto::TError Error;
 
         TUnsafeCreateHandle(
-            TRequestInfoPtr requestInfo,
-            NProtoPrivate::TUnsafeCreateHandleRequest request)
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeCreateHandleRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {}
+    };
+
+    struct TUnsafeChangeTabletState: TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TUnsafeChangeTabletStateRequest Request;
+        NProtoPrivate::TUnsafeChangeTabletStateResponse Response;
+
+        TUnsafeChangeTabletState(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TUnsafeChangeTabletStateRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -3218,7 +3289,7 @@ struct TTxIndexTablet
         const TString Cookie;
         const ui64 Limit;
 
-        TVector<IIndexTabletDatabase::TNodeRef> Refs;
+        TVector<INodeIndexTabletDatabase::TNodeRef> Refs;
         ui64 NextNodeId = 0;
         TString NextCookie;
 

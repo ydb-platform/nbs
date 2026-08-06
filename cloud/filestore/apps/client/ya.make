@@ -1,6 +1,6 @@
 PROGRAM(filestore-client)
 
-ALLOCATOR(TCMALLOC_TC)
+ALLOCATOR(TCMALLOC_256K)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
 
@@ -17,8 +17,8 @@ SRCS(
 PEERDIR(
     cloud/filestore/apps/client/lib
     cloud/storage/core/libs/iam/iface
+    cloud/storage/core/libs/terminate_handler
     library/cpp/getopt
-    library/cpp/terminate_handler
 )
 
 END()

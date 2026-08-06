@@ -16,7 +16,7 @@ bool TTestStorage::Empty() const
 void TTestStorage::Visit(const TVisitor& visitor)
 {
     for (const auto& it: List) {
-        visitor(it.Data);
+        visitor(it.Tag, it.Data);
     }
 }
 
@@ -38,15 +38,13 @@ TResultOrError<char*> TTestStorage::Alloc(size_t size)
 
     Data[res] = std::move(item);
 
-    UpdateStats();
+    SetStats();
 
     return res;
 }
 
-bool TTestStorage::Commit()
-{
-    return true;
-}
+void TTestStorage::Commit()
+{}
 
 void TTestStorage::Free(const void* ptr)
 {
@@ -55,27 +53,44 @@ void TTestStorage::Free(const void* ptr)
 
     Data.erase(it);
 
-    UpdateStats();
+    SetStats();
 }
+
+void TTestStorage::SetTag(const void* ptr, ui32 tag)
+{
+    auto it = Data.find(ptr);
+    Y_ENSURE(it != Data.end(), "Entry not found");
+
+    it->second->Tag = tag;
+}
+
+void TTestStorage::UpdateStats() const
+{}
 
 void TTestStorage::SetCapacity(size_t capacity)
 {
     Capacity = capacity;
-    UpdateStats();
+    SetStats();
 }
 
-TPersistentStorageStats TTestStorage::GetStats() const
+void TTestStorage::SetStats()
 {
-    return {
-        .RawCapacityByteCount = Capacity,
-        .RawUsedByteCount = Data.size(),
+    Stats->SetPersistentStorageCounters({
+        .RawCapacityBytesCount = Capacity,
+        .RawUsedBytesCount = Data.size(),
         .EntryCount = Data.size(),
-        .IsCorrupted = false};
+        .MaxObservedEntryByteCount = 0,
+        .Version = 1,
+        .IsCorrupted = false,
+    });
 }
 
-void TTestStorage::UpdateStats()
+////////////////////////////////////////////////////////////////////////////////
+
+std::shared_ptr<TTestStorage> CreateTestStorage(
+    const IWriteBackCacheStatsPtr& stats)
 {
-    Stats->UpdatePersistentStorageStats(GetStats());
+    return std::make_shared<TTestStorage>(stats->GetPersistentStorageStats());
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

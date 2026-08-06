@@ -1,8 +1,0 @@
-pytest
-pytest-html
-flake8
-black[jupyter]
-flake8-docstrings
-flake8-simplify
-flake8-unused-arguments
-flake8-quotes

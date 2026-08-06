@@ -20,8 +20,10 @@ namespace NCloud::NBlockStore::NTesting {
 TTestScenarioBase::TTestScenarioBase(
         const TTestScenarioBaseConfig& baseConfig,
         IConfigHolderPtr configHolder,
+        const TString& logTag,
         const TLog& log)
     : ConfigHolder(std::move(configHolder))
+    , LogTag(logTag)
     , Log(log)
     , TestStartTime(Now())
     , MinReadByteCount(baseConfig.DefaultMinReadByteCount)
@@ -44,6 +46,8 @@ TTestScenarioBase::TTestScenarioBase(
     INIT_CONFIG_PARAMS_HELPER(fileTestConfig, ReadByteCount);
     INIT_CONFIG_PARAMS_HELPER(fileTestConfig, WriteByteCount);
     INIT_CONFIG_PARAMS_HELPER(fileTestConfig, RegionByteCount);
+
+    DisableParallelReadWrite = fileTestConfig.GetDisableParallelReadWrite();
 }
 
 ui32 TTestScenarioBase::GetWorkerCount() const

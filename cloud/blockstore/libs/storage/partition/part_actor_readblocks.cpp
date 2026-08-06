@@ -730,6 +730,7 @@ STFUNC(TReadBlocksActor::StateWork)
 class TReadBlocksVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -810,6 +811,18 @@ public:
         }
 
         return true;
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        Y_UNUSED(compactionRangeCount);
+
+        return Visit(blockIndex, commitId, blobId, blobOffset);
     }
 };
 
@@ -1069,11 +1082,19 @@ bool TPartitionActor::PrepareReadBlocks(
         args
     );
     State->FindFreshBlocks(visitor, args.ReadRange, commitId);
-    auto ready = db.FindMixedBlocks(
-        visitor,
-        args.ReadRange,
-        false,   // precharge
-        commitId);
+
+    bool ready = true;
+
+    const auto* filter = State->GetMixedBlocksFilter();
+    if (!filter || filter->MayHaveBlocksInMixedIndex(args.ReadRange, commitId))
+    {
+        ready &= db.FindMixedBlocks(
+            visitor,
+            args.ReadRange,
+            false,   // precharge
+            commitId);
+    }
+
     ready &= db.FindMergedBlocks(
         visitor,
         args.ReadRange,

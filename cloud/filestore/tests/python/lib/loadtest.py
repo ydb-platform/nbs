@@ -1,12 +1,30 @@
 import json
 import logging
 import requests
+import tempfile
 
 import yatest.common as common
 
 from cloud.filestore.config.client_pb2 import TClientConfig
+from cloud.storage.core.tests.common import expand_placeholders
 
 logger = logging.getLogger(__name__)
+
+
+def _expand_placeholders(config_path):
+    with open(config_path, "r") as f:
+        content = f.read()
+
+    expanded = expand_placeholders(content)
+    if expanded == content:
+        return config_path
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False, dir=common.output_path()
+    )
+    tmp.write(expanded)
+    tmp.close()
+    return tmp.name
 
 
 def run_load_test(
@@ -16,7 +34,10 @@ def run_load_test(
     auth=False,
     auth_token=None,
     mon_port=None,
+    use_fast_shard_runtime=False,
 ):
+    config = _expand_placeholders(config)
+
     cmd = [
         common.binary_path("cloud/filestore/tools/testing/loadtest/bin/filestore-loadtest"),
         "--secure-port" if auth else "--port",
@@ -24,6 +45,9 @@ def run_load_test(
         "--tests-config",
         config,
     ]
+
+    if use_fast_shard_runtime:
+        cmd.append("--use-fast-shard-runtime")
 
     if auth and auth_token is not None:
         client_config_path = common.output_path() + "/client.txt"

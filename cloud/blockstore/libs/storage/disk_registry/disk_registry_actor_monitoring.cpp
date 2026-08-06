@@ -7,6 +7,7 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/generic/set.h>
 #include <util/stream/str.h>
 #include <util/string/join.h>
 
@@ -24,14 +25,17 @@ namespace {
 
 EDeviceStateFlags GetDeviceStateFlags(
     const TDiskRegistryState& state,
-    const TString& deviceUUID)
+    const NProto::TDeviceConfig& device)
 {
     EDeviceStateFlags deviceStateFlags = EDeviceStateFlags::NONE;
-    if (state.IsDirtyDevice(deviceUUID)) {
+    if (state.IsDirtyDevice(device.GetDeviceUUID())) {
         deviceStateFlags |= EDeviceStateFlags::DIRTY;
     }
-    if (state.IsSuspendedDevice(deviceUUID)) {
+    if (state.IsSuspendedDevice(device.GetDeviceUUID())) {
         deviceStateFlags |= EDeviceStateFlags::SUSPENDED;
+    }
+    if (state.IsDeviceDetached(device)) {
+        deviceStateFlags |= EDeviceStateFlags::DETACHED;
     }
     return deviceStateFlags;
 }
@@ -108,8 +112,16 @@ void BuildChangeDeviceStateButton(
     ui64 tabletId,
     const TString& deviceUUID)
 {
+    HTML(out) {
+        TAG(TH4) {
+            BuildMenuButton(out, "device-state-change");
+            out << "Change Device State";
+        }
+    }
+
     out << Sprintf(
-        R"(<form name="devtSateChange%s" method="post">
+        R"(<div class='collapse form-group' id='%s'>
+            <form name="devtSateChange%s" method="post">
             <br>
             <label for="NewState">Change device state to:</label>
             <select name="NewState">
@@ -128,7 +140,9 @@ void BuildChangeDeviceStateButton(
             <input type='hidden' name='action' value='changeDeviceState'/>
             <input type='hidden' name='DeviceUUID' value='%s'/>
             <input type='hidden' name='TabletID' value='%lu'/>
-            </form>)",
+            </form>
+        </div>)",
+        "device-state-change",
         deviceUUID.c_str(),
         EDeviceState_Name(NProto::DEVICE_STATE_ONLINE).c_str(),
         EDeviceState_Name(NProto::DEVICE_STATE_WARNING).c_str(),
@@ -141,8 +155,16 @@ void BuildChangeAgentStateButton(
     ui64 tabletId,
     const TString& agentId)
 {
+    HTML(out) {
+        TAG(TH4) {
+            BuildMenuButton(out, "agent-state-change");
+            out << "Change Agent State";
+        }
+    }
+
     out << Sprintf(
-        R"(<form name="agentStateChange%s" method="post">
+        R"(<div class='collapse form-group' id='%s'>
+            <form name="agentStateChange%s" method="post">
             <br>
             <label for="NewState">Change agent state to:</label>
             <select name="NewState">
@@ -161,10 +183,121 @@ void BuildChangeAgentStateButton(
             <input type='hidden' name='action' value='changeAgentState'/>
             <input type='hidden' name='AgentID' value='%s'/>
             <input type='hidden' name='TabletID' value='%lu'/>
-            </form>)",
+            </form>
+            <hr>
+        </div>)",
+        "agent-state-change",
         agentId.c_str(),
         EAgentState_Name(NProto::AGENT_STATE_ONLINE).c_str(),
         EAgentState_Name(NProto::AGENT_STATE_WARNING).c_str(),
+        agentId.c_str(),
+        tabletId);
+}
+
+void BuildSendCmsAgentRequestMenu(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& agentId)
+{
+    HTML(out) {
+        TAG(TH4) {
+            BuildMenuButton(out, "agent-cms-request");
+            out << "Agent CMS Requests";
+        }
+    }
+
+    out << Sprintf(
+        R"(<div class='collapse form-group' id='%s'>
+            <form name="agentCmsRequest" method="post">
+            <br>
+            <label for="CmsAction">CMS request:</label>
+            <select name="CmsAction">
+                <option value="%u">ADD_HOST</option>
+                <option value="%u">REMOVE_HOST</option>
+                <option value="%u">PURGE_HOST</option>
+            </select>
+            <br>
+            <label>
+                <input type="checkbox" name="DryRun" value="1" checked>
+                Dry run
+            </label>
+            <br>
+            <input type="submit" value="Send request">
+            <input type='hidden' name='action' value='sendCmsHostRequest'/>
+            <input type='hidden' name='AgentID' value='%s'/>
+            <input type='hidden' name='TabletID' value='%lu'/>
+            </form>
+            <hr>
+        </div>)",
+        "agent-cms-request",
+        static_cast<ui32>(NProto::TAction::ADD_HOST),
+        static_cast<ui32>(NProto::TAction::REMOVE_HOST),
+        static_cast<ui32>(NProto::TAction::PURGE_HOST),
+        agentId.c_str(),
+        tabletId);
+}
+
+void BuildSendCmsDeviceRequestMenu(
+    IOutputStream& out,
+    ui64 tabletId,
+    const TString& agentId,
+    const TSet<TString>& deviceNames)
+{
+    if (deviceNames.empty()) {
+        return;
+    }
+
+    HTML(out) {
+        TAG(TH4) {
+            BuildMenuButton(out, "device-cms-request");
+            out << "Device CMS Requests";
+        }
+    }
+
+    auto constructDeviceNameOptions = [&deviceNames]() -> TString
+    {
+        TStringBuilder result;
+        for (const auto& deviceName: deviceNames) {
+            result << Sprintf(
+                          R"(<option value="%s">%s</option>)",
+                          deviceName.c_str(),
+                          deviceName.c_str())
+                   << Endl;
+        }
+        return result;
+    };
+
+    out << Sprintf(
+        R"(<div class='collapse form-group' id='%s'>
+            <form name="deviceCmsRequest" method="post">
+            <br>
+            <label for="CmsAction">CMS request:</label>
+            <select name="CmsAction">
+                <option value="%u">ADD_DEVICE</option>
+                <option value="%u">REMOVE_DEVICE</option>
+            </select>
+            <br>
+            <label for="DeviceName">Device path (Name):</label>
+            <select name="DeviceName">
+                %s
+            </select>
+            <br>
+            <label>
+                <input type="checkbox" name="DryRun" value="1" checked>
+                Dry run
+            </label>
+            <br>
+            <input type="submit" value="Send request">
+            <input type='hidden' name='action' value='sendCmsDeviceRequest'/>
+            <input type='hidden' name='AgentID' value='%s'/>
+            <input type='hidden' name='TabletID' value='%lu'/>
+            </form>
+            <hr>
+        </div>)",
+        "device-cms-request",
+        static_cast<ui32>(NProto::TAction::ADD_DEVICE),
+        static_cast<ui32>(NProto::TAction::REMOVE_DEVICE),
+        constructDeviceNameOptions().c_str(),
         agentId.c_str(),
         tabletId);
 }
@@ -256,6 +389,17 @@ void DumpDeviceLink(IOutputStream& out, ui64 tabletId, TStringBuf uuid)
         << "</a>";
 }
 
+void DumpAgentLink(IOutputStream& out, ui64 tabletId, const TString& agentId)
+{
+    out << "<a href='?action=agent&TabletID="
+        << tabletId
+        << "&AgentID="
+        << agentId
+        << "'>"
+        << agentId
+        << "</a>";
+}
+
 void DumpSquare(IOutputStream& out, const TStringBuf& color)
 {
     const char* utfBlackSquare = "&#9632";
@@ -295,6 +439,88 @@ auto GetSortedDisksView(
     return diskIndices;
 }
 
+// Holds the display data for a single dirty device row.
+struct TDirtyDeviceEntry
+{
+    TString Uuid;
+    TInstant StateTs;
+    TInstant EraseStartedAt;
+    TString AgentId;
+    TString PoolName;
+    TString StateMessage;
+};
+
+struct TReplicaHistoryEntry
+{
+    TString ReplicaId;
+    NProto::TDiskHistoryItem HistoryItem;
+};
+
+TVector<TReplicaHistoryEntry> MergeMirrorDiskHistory(
+    const TDiskRegistryState& state,
+    const TString& diskId,
+    const TDiskInfo& info)
+{
+    TVector<TReplicaHistoryEntry> result;
+
+    if (info.Replicas.empty()) {
+        for (const auto& hi: info.History) {
+            result.push_back({.ReplicaId = {}, .HistoryItem = hi});
+        }
+        return result;
+    }
+
+    for (ui32 i = 0; i <= info.Replicas.size(); ++i) {
+        const TString replicaId = diskId + "/" + ToString(i);
+        TDiskInfo replicaInfo;
+        if (const auto error = state.GetDiskInfo(replicaId, replicaInfo);
+            HasError(error))
+        {
+            NProto::TDiskHistoryItem errorItem;
+            errorItem.SetTimestamp(TInstant::Now().MicroSeconds());
+            errorItem.SetMessage(
+                TStringBuilder() << "Failed to read history for replica "
+                                 << replicaId << ": " << FormatError(error));
+            result.push_back(
+                {.ReplicaId = replicaId, .HistoryItem = std::move(errorItem)});
+            continue;
+        }
+        for (auto& hi: replicaInfo.History) {
+            result.push_back(
+                {.ReplicaId = replicaId, .HistoryItem = std::move(hi)});
+        }
+    }
+
+    for (const auto& hi: info.History) {
+        result.push_back({.ReplicaId = {}, .HistoryItem = hi});
+    }
+
+    // Deduplicate by (timestamp, message): if the same event was recorded in
+    // both a mirror disk replica (e.g. mrr1/0) and the master disk (mrr1),
+    // keep the replica entry (has non-empty ReplicaId) and drop the master one.
+    StableSortUniqueBy(
+        result,
+        [](const auto& e)
+        {
+            return std::make_pair(
+                e.HistoryItem.GetTimestamp(),
+                e.HistoryItem.GetMessage());
+        });
+
+    return result;
+}
+
+TString RenderTime(TInstant ts, TInstant now, bool duration)
+{
+    if (!ts) {
+        return "N/A";
+    }
+    if (duration) {
+        return FormatDuration(now - ts);
+    }
+    return ts.FormatGmTime("%Y-%m-%d %H:%M:%S UTC");
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -317,6 +543,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     TABLEH() { out << "UUID"; }
                     TABLEH() { out << "Name"; }
                     TABLEH() { out << "S/N"; }
+                    TABLEH() { out << "Model"; }
                     TABLEH() { out << "State"; }
                     TABLEH() { out << "State Ts"; }
                     TABLEH() { out << "State Message"; }
@@ -337,20 +564,19 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
             for (size_t index = 0; index < static_cast<size_t>(devices.size());
                  ++index)
             {
-                const auto& device = devices[index];
+                const NProto::TDeviceConfig& device = devices[index];
                 TABLER() {
                     TABLED() {
                         DumpDeviceLink(out, TabletID(), device.GetDeviceUUID());
                     }
                     TABLED() { out << device.GetDeviceName(); }
                     TABLED() { out << device.GetSerialNumber(); }
+                    TABLED() { out << device.GetDeviceModel(); }
                     TABLED() {
                         DumpDeviceState(
                             out,
                             device.GetState(),
-                            GetDeviceStateFlags(
-                                *State,
-                                device.GetDeviceUUID()));
+                            GetDeviceStateFlags(*State, device));
                     }
                     TABLED() {
                         out << TInstant::MicroSeconds(device.GetStateTs());
@@ -468,6 +694,7 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
 
         DIV() { out << "Name: " << device.GetDeviceName(); }
         DIV() { out << "S/N: " << device.GetSerialNumber(); }
+        DIV() { out << "Model: " << device.GetDeviceModel(); }
         DIV() { out << "Block size: " << device.GetBlockSize(); }
         DIV() {
             const auto bytes = device.GetBlocksCount() * device.GetBlockSize();
@@ -520,7 +747,7 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
             DumpDeviceState(
                 out,
                 device.GetState(),
-                GetDeviceStateFlags(*State, id));
+                GetDeviceStateFlags(*State, device));
         }
         DIV() {
             out << "State Timestamp: "
@@ -612,19 +839,6 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
             out << "State Timestamp: "
                 << TInstant::MicroSeconds(agent->GetStateTs());
         }
-        DIV() {
-            if (Config->GetEnableToChangeStatesFromDiskRegistryMonpage()) {
-                if (agent->GetState() !=
-                    NProto::EAgentState::AGENT_STATE_UNAVAILABLE)
-                {
-                    BuildChangeAgentStateButton(
-                        out,
-                        TabletID(),
-                        agent->GetAgentId());
-                }
-            }
-
-        }
         DIV() { out << "State Message: " << agent->GetStateMessage(); }
         DIV() {
             out << "CMS Timestamp: "
@@ -633,6 +847,35 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
         DIV() {
             out << "Work Timestamp: "
                 << TInstant::Seconds(agent->GetWorkTs());
+        }
+        DIV () {
+            if (Config->GetEnableToChangeStatesFromDiskRegistryMonpage() &&
+                agent->GetState() !=
+                    NProto::EAgentState::AGENT_STATE_UNAVAILABLE)
+            {
+                BuildChangeAgentStateButton(
+                    out,
+                    TabletID(),
+                    agent->GetAgentId());
+
+                BuildSendCmsAgentRequestMenu(
+                    out,
+                    TabletID(),
+                    agent->GetAgentId());
+
+                TSet<TString> deviceNames;
+                for (const auto& device: agent->GetDevices()) {
+                    deviceNames.insert(device.GetDeviceName());
+                }
+                for (const auto& device: agent->GetUnknownDevices()) {
+                    deviceNames.insert(device.GetDeviceName());
+                }
+                BuildSendCmsDeviceRequestMenu(
+                    out,
+                    TabletID(),
+                    agent->GetAgentId(),
+                    deviceNames);
+            }
         }
 
         auto dcomp = [] (const auto& d) {
@@ -647,10 +890,7 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
         if (agent->UnknownDevicesSize()) {
             auto unknownDevices = agent->GetUnknownDevices();
             SortBy(unknownDevices, dcomp);
-            RenderDevicesWithDetails(
-                out,
-                unknownDevices,
-                "Unknown devices");
+            RenderDevicesWithDetails(out, unknownDevices, "Unknown devices");
         }
     }
 }
@@ -811,8 +1051,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 dumpAgent(device.GetNodeId());
             }
             TABLED() {
-                EDeviceStateFlags flags =
-                    GetDeviceStateFlags(*State, device.GetDeviceUUID());
+                EDeviceStateFlags flags = GetDeviceStateFlags(*State, device);
                 if (FindPtr(
                         info.MasterDiskId ? masterDiskInfo.DeviceReplacementIds
                                           : info.DeviceReplacementIds,
@@ -988,23 +1227,37 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             out << "History";
         }
 
+        const bool isMirrorDisk = !info.Replicas.empty();
+        const auto allHistory = MergeMirrorDiskHistory(*State, id, info);
+
         TABLE_SORTABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "Timestamp"; }
+                    if (isMirrorDisk) {
+                        TABLEH() { out << "Replica"; }
+                    }
                     TABLEH() { out << "Message"; }
                 }
             }
 
-            for (const auto& hi: info.History) {
+            for (const auto& entry: allHistory) {
                 TABLER() {
                     TABLED() {
-                        out << TInstant::MicroSeconds(hi.GetTimestamp())
-                            << " (" << hi.GetTimestamp() << ")";
+                        out << TInstant::MicroSeconds(
+                                   entry.HistoryItem.GetTimestamp())
+                            << " (" << entry.HistoryItem.GetTimestamp() << ")";
+                    }
+                    if (isMirrorDisk) {
+                        TABLED() {
+                            if (!entry.ReplicaId.empty()) {
+                                DumpDiskLink(out, TabletID(), entry.ReplicaId);
+                            }
+                        }
                     }
                     TABLED() {
                         PRE() {
-                            out << hi.GetMessage();
+                            out << entry.HistoryItem.GetMessage();
                         }
                     }
                 }
@@ -2213,6 +2466,144 @@ void TDiskRegistryActor::RenderDirtyDeviceListDetailed(IOutputStream& out) const
         additionalColumns);
 }
 
+void TDiskRegistryActor::HandleHttpInfo_RenderDirtyDevicesCleanupOverview(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    TStringStream out;
+    RenderDirtyDevicesCleanupOverviewDetailed(out);
+    SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
+}
+
+void TDiskRegistryActor::RenderDirtyDevicesCleanupOverview(IOutputStream& out) const
+{
+    auto dirtyDevices = State->GetDirtyDevices();
+    if (dirtyDevices.empty()) {
+        return;
+    }
+    DumpActionLink(
+        out,
+        TabletID(),
+        "RenderDirtyDevicesCleanupOverview",
+        "Dirty devices cleanup overview",
+        dirtyDevices.size());
+}
+
+void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
+    IOutputStream& out) const
+{
+    auto dirtyDevices = State->GetDirtyDevices();
+    TMap<ESecureEraseReadiness, TVector<TDirtyDeviceEntry>> classified;
+    TVector<TDirtyDeviceEntry> eraseInProgress;
+
+    for (const auto& device: dirtyDevices) {
+        TDirtyDeviceEntry entry{
+            .Uuid = device.GetDeviceUUID(),
+            .StateTs = TInstant::MicroSeconds(device.GetStateTs()),
+            .PoolName = device.GetPoolName(),
+            .StateMessage = device.GetStateMessage(),
+        };
+
+        if (const TInstant* ts =
+                DeviceEraseStartTs.FindPtr(device.GetDeviceUUID()))
+        {
+            entry.EraseStartedAt = *ts;
+        }
+        if (const NProto::TAgentConfig* agent =
+                State->FindAgent(device.GetNodeId()))
+        {
+            entry.AgentId = agent->GetAgentId();
+        }
+
+        const ESecureEraseReadiness readiness =
+            State->GetSecureEraseReadiness(device);
+        if (readiness == ESecureEraseReadiness::ReadyToErase &&
+            entry.EraseStartedAt)
+        {
+            eraseInProgress.push_back(std::move(entry));
+        } else {
+            classified[readiness].push_back(std::move(entry));
+        }
+    }
+
+    HTML (out) {
+        const auto now = TInstant::Now();
+        auto renderTable = [&](const TString& title,
+                               const TVector<TDirtyDeviceEntry>& rows,
+                               bool showCleanupTime)
+        {
+            TAG (TH3) {
+                out << title << " (" << rows.size() << ")";
+            }
+            if (rows.empty()) {
+                out << "<p>No devices</p>";
+                return;
+            }
+            TABLE_SORTABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "UUID";
+                        }
+                        TABLEH () {
+                            out << "Agent";
+                        }
+                        TABLEH () {
+                            out << "Pool";
+                        }
+                        TABLEH () {
+                            out << "State message";
+                        }
+                        TABLEH () {
+                            out << "In state since";
+                        }
+                        TABLEH () {
+                            out
+                                << (showCleanupTime ? "Time in cleanup"
+                                                    : "Time in state");
+                        }
+                    }
+                }
+                for (const auto& e: rows) {
+                    TABLER () {
+                        TABLED () {
+                            DumpDeviceLink(out, TabletID(), e.Uuid);
+                        }
+                        TABLED () {
+                            if (e.AgentId) {
+                                DumpAgentLink(out, TabletID(), e.AgentId);
+                            }
+                        }
+                        TABLED () {
+                            out << e.PoolName;
+                        }
+                        TABLED () {
+                            out << e.StateMessage;
+                        }
+                        TABLED () {
+                            out << RenderTime(e.StateTs, now, false);
+                        }
+                        TABLED () {
+                            out << RenderTime(
+                                showCleanupTime ? e.EraseStartedAt : e.StateTs,
+                                now,
+                                true);
+                        }
+                    }
+                }
+            }
+        };
+
+        renderTable("Cleanup in progress", eraseInProgress, true);
+        for (const auto& [ability, devices]: classified) {
+            renderTable(ToString(ability), devices, false);
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList(
@@ -2382,6 +2773,8 @@ void TDiskRegistryActor::RenderHtmlInfo(IOutputStream& out) const
 
             RenderDirtyDeviceList(out);
 
+            RenderDirtyDevicesCleanupOverview(out);
+
             RenderBrokenDeviceList(out);
 
             RenderSuspendedDeviceList(out);
@@ -2443,6 +2836,10 @@ void TDiskRegistryActor::HandleHttpInfo(
          &TDiskRegistryActor::HandleHttpInfo_ChangeDeviseState},
         {"changeAgentState",
          &TDiskRegistryActor::HandleHttpInfo_ChangeAgentState},
+        {"sendCmsHostRequest",
+         &TDiskRegistryActor::HandleHttpInfo_SendCmsHostRequest},
+        {"sendCmsDeviceRequest",
+         &TDiskRegistryActor::HandleHttpInfo_SendCmsDeviceRequest},
         {"resetTransactionLatencyStats",
          &TDiskRegistryActor::HandleHttpInfo_ResetTransactionLatencyStats},
     }};
@@ -2465,6 +2862,8 @@ void TDiskRegistryActor::HandleHttpInfo(
         {"RenderConfig", &TDiskRegistryActor::HandleHttpInfo_RenderConfig},
         {"RenderDirtyDeviceList",
          &TDiskRegistryActor::HandleHttpInfo_RenderDirtyDeviceList},
+        {"RenderDirtyDevicesCleanupOverview",
+         &TDiskRegistryActor::HandleHttpInfo_RenderDirtyDevicesCleanupOverview},
         {"RenderSuspendedDeviceList",
          &TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList},
         {"RenderTransactionsLatency",

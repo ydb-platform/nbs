@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/server/config.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/vhost-server/options.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -1105,7 +1106,7 @@ private:
                 });
         }
 
-        if (request.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_READ_ONLY) {
+        if (!IsReadWriteMode(request.GetVolumeAccessMode())) {
             args.emplace_back("--read-only");
         }
 
@@ -1128,11 +1129,15 @@ private:
             }
         }
 
+        if (ServerConfig->GetExternalVhostServerThreadPoolSize()) {
+            args.emplace_back("--thread-pool-size");
+            args.emplace_back(
+                ToString(ServerConfig->GetExternalVhostServerThreadPoolSize()));
+        }
+
         TVector<TString> cgroups(
             request.GetClientCGroups().begin(),
-            request.GetClientCGroups().end()
-        );
-
+            request.GetClientCGroups().end());
 
         auto ep = EndpointFactory(
             clientId,

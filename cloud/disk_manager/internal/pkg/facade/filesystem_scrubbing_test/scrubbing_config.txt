@@ -1,0 +1,41 @@
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-0"
+}
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-1"
+}
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-2"
+}
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-3"
+}
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-4"
+}
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-5"
+}
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-6"
+}
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-7"
+}
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-8"
+}
+FilesystemsWithRegularScrubbingEnabled: {
+    ZoneId: "zone-a"
+    FilesystemId: "regular-scrub-fs-9"
+}
+RegularFilesystemScrubbingSchedulingInterval: "5s"

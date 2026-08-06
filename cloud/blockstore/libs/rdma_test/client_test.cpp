@@ -1,12 +1,12 @@
 #include "client_test.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/storage/core/libs/common/sglist.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/map.h>
@@ -20,13 +20,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequest: public NRdma::TClientRequest
+class TRequest: public NCloud::NStorage::NRdma::TClientRequest
 {
 public:
     TRequest(
-            NRdma::IClientHandlerPtr handler,
-            std::unique_ptr<NRdma::TNullContext> context)
-        : NRdma::TClientRequest(std::move(handler), std::move(context))
+        NCloud::NStorage::NRdma::IClientHandlerPtr handler,
+        std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context)
+        : NCloud::NStorage::NRdma::TClientRequest(
+              std::move(handler),
+              std::move(context))
     {}
 
     ~TRequest() override
@@ -48,7 +50,7 @@ TString MakeKey(const TString& host, ui32 port)
 }   // namespace
 
 struct TRdmaClientTest::TRdmaEndpointImpl
-    : NRdma::IClientEndpoint
+    : NCloud::NStorage::NRdma::IClientEndpoint
 {
     using TDeviceBlocks = TDeque<TString>;
     TMap<TString, TDeviceBlocks> Devices;
@@ -60,16 +62,16 @@ struct TRdmaClientTest::TRdmaEndpointImpl
     TStopObserver StopObserver;
 
     ui64 NextRequestId = 0;
-    THashMap<ui64, NRdma::TClientRequestPtr> Requests;
+    THashMap<ui64, NCloud::NStorage::NRdma::TClientRequestPtr> Requests;
 
     TFuture<void> FutureToWaitBeforeRequestProcessing;
 
     TRdmaEndpointImpl() : FutureToWaitBeforeRequestProcessing(MakeFuture())
     {}
 
-    TResultOrError<NRdma::TClientRequestPtr> AllocateRequest(
-        NRdma::IClientHandlerPtr handler,
-        std::unique_ptr<NRdma::TNullContext> context,
+    TResultOrError<NCloud::NStorage::NRdma::TClientRequestPtr> AllocateRequest(
+        NCloud::NStorage::NRdma::IClientHandlerPtr handler,
+        std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) override
     {
@@ -83,12 +85,12 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         req->RequestBuffer = {new char[requestBytes], requestBytes};
         req->ResponseBuffer = {new char[responseBytes], responseBytes};
 
-        return NRdma::TClientRequestPtr(std::move(req));
+        return NCloud::NStorage::NRdma::TClientRequestPtr(std::move(req));
     }
 
     ui64 SendRequest(
-        NRdma::TClientRequestPtr req,
-        TCallContextPtr callContext) override
+        NCloud::NStorage::NRdma::TClientRequestPtr req,
+        TCallContextBasePtr callContext) override
     {
         Y_UNUSED(callContext);
 
@@ -114,7 +116,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         return reqId;
     }
 
-    void ContinueRequestSending(NRdma::TClientRequestPtr req)
+    void ContinueRequestSending(NCloud::NStorage::NRdma::TClientRequestPtr req)
     {
         auto* serializer = TBlockStoreProtocol::Serializer();
         auto [result, err] = serializer->Parse(req->RequestBuffer);
@@ -125,7 +127,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         }
 
         if (HasError(RdmaResponseError)) {
-            auto len = NRdma::SerializeError(
+            auto len = NCloud::NStorage::NRdma::SerializeError(
                 RdmaResponseError.GetCode(),
                 RdmaResponseError.GetMessage(),
                 req->ResponseBuffer);
@@ -133,7 +135,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             auto* handler = req->Handler.get();
             handler->HandleResponse(
                 std::move(req),
-                NRdma::RDMA_PROTO_FAIL,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FAIL,
                 len);
 
             return;
@@ -163,8 +165,8 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     }
                 }
 
-                responseBytes =
-                    NRdma::TProtoMessageSerializer::SerializeWithData(
+                responseBytes = NCloud::NStorage::NRdma::
+                    TProtoMessageSerializer::SerializeWithData(
                         req->ResponseBuffer,
                         TBlockStoreProtocol::ReadDeviceBlocksResponse,
                         0,   // flags
@@ -205,11 +207,12 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     }
                 }
 
-                responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                    req->ResponseBuffer,
-                    TBlockStoreProtocol::WriteDeviceBlocksResponse,
-                    0,   // flags
-                    response);
+                responseBytes =
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        req->ResponseBuffer,
+                        TBlockStoreProtocol::WriteDeviceBlocksResponse,
+                        0,   // flags
+                        response);
 
                 break;
             }
@@ -235,11 +238,12 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     }
                 }
 
-                responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                    req->ResponseBuffer,
-                    TBlockStoreProtocol::ZeroDeviceBlocksResponse,
-                    0,   // flags
-                    response);
+                responseBytes =
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        req->ResponseBuffer,
+                        TBlockStoreProtocol::ZeroDeviceBlocksResponse,
+                        0,   // flags
+                        response);
 
                 break;
             }
@@ -268,11 +272,12 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     response.SetChecksum(checksum.GetValue());
                 }
 
-                responseBytes = NRdma::TProtoMessageSerializer::Serialize(
-                    req->ResponseBuffer,
-                    TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
-                    0,   // flags
-                    response);
+                responseBytes =
+                    NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+                        req->ResponseBuffer,
+                        TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
+                        0,   // flags
+                        response);
 
                 break;
             }
@@ -285,7 +290,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         auto* handler = req->Handler.get();
         handler->HandleResponse(
             std::move(req),
-            NRdma::RDMA_PROTO_OK,
+            NCloud::NStorage::NRdma::RDMA_PROTO_OK,
             responseBytes);
     }
 
@@ -299,13 +304,16 @@ struct TRdmaClientTest::TRdmaEndpointImpl
         auto req = std::move(it->second);
         Requests.erase(it);
 
-        auto len = NRdma::SerializeError(
+        auto len = NCloud::NStorage::NRdma::SerializeError(
             E_CANCELLED,
             "cancelled",
             req->ResponseBuffer);
 
         auto* handler = req->Handler.get();
-        handler->HandleResponse(std::move(req), NRdma::RDMA_PROTO_FAIL, len);
+        handler->HandleResponse(
+            std::move(req),
+            NCloud::NStorage::NRdma::RDMA_PROTO_FAIL,
+            len);
     }
 
     TFuture<void> Stop() override
@@ -357,14 +365,13 @@ struct TRdmaClientTest::TRdmaEndpointImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFuture<NRdma::IClientEndpointPtr> TRdmaClientTest::StartEndpoint(
-    TString host,
-    ui32 port)
+TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>
+TRdmaClientTest::StartEndpoint(TString host, ui32 port)
 {
     auto& ep = Endpoints[MakeKey(host, port)];
     if (!ep.Endpoint) {
         ep.Endpoint = std::make_shared<TRdmaEndpointImpl>();
-        ep.Promise = NewPromise<NRdma::IClientEndpointPtr>();
+        ep.Promise = NewPromise<NCloud::NStorage::NRdma::IClientEndpointPtr>();
     }
     return ep.Promise;
 }

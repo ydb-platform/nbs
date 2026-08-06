@@ -621,7 +621,10 @@ void TVolumeDatabase::WriteThrottlerState(const TThrottlerStateInfo& stateInfo)
 
     Table<TTable>()
         .Key(THROTTLER_STATE_KEY)
-        .Update(NIceDb::TUpdate<TTable::Budget>(stateInfo.Budget));
+        .Update(
+            NIceDb::TUpdate<TTable::Budget>(stateInfo.BoostBudget),
+            NIceDb::TUpdate<TTable::SpentShapingBudgetShare>(
+                stateInfo.SpentShapingBudgetShare));
 }
 
 bool TVolumeDatabase::ReadThrottlerState(TMaybe<TThrottlerStateInfo>& stateInfo)
@@ -638,8 +641,9 @@ bool TVolumeDatabase::ReadThrottlerState(TMaybe<TThrottlerStateInfo>& stateInfo)
 
     if (it.IsValid()) {
         stateInfo = {
-            it.GetValue<TTable::Budget>()
-        };
+            .BoostBudget = it.GetValue<TTable::Budget>(),
+            .SpentShapingBudgetShare =
+                it.GetValue<TTable::SpentShapingBudgetShare>()};
     }
 
     return true;
@@ -833,6 +837,50 @@ bool TVolumeDatabase::ReadLeaders(TLeaderDisks& leaders)
             .State = static_cast<TLeaderDiskInfo::EState>(
                 it.GetValue<TTable::State>()),
             .ErrorMessage = it.GetValue<TTable::ErrorMessage>()});
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeDatabase::WriteBrokenDevice(
+    const TString& deviceUUID,
+    TInstant brokenTs)
+{
+    using TTable = TVolumeSchema::BrokenDevices;
+
+    Table<TTable>()
+        .Key(deviceUUID)
+        .Update(NIceDb::TUpdate<TTable::BrokenTs>(brokenTs.MicroSeconds()));
+}
+
+void TVolumeDatabase::DeleteBrokenDevice(const TString& deviceUUID)
+{
+    using TTable = TVolumeSchema::BrokenDevices;
+
+    Table<TTable>().Key(deviceUUID).Delete();
+}
+
+bool TVolumeDatabase::ReadBrokenDevices(TVector<TBrokenDeviceInfo>& devices)
+{
+    using TTable = TVolumeSchema::BrokenDevices;
+
+    auto it = Table<TTable>().Range().Select<TTable::TColumns>();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        devices.push_back(
+            TBrokenDeviceInfo{
+                .DeviceUUID = it.GetValue<TTable::DeviceUUID>(),
+                .BrokenTs =
+                    TInstant::MicroSeconds(it.GetValue<TTable::BrokenTs>())});
         if (!it.Next()) {
             return false;   // not ready
         }

@@ -19,4 +19,9 @@ message TGrpcClientConfig
 
     // SSL target name override.
     optional string SslTargetNameOverride = 4;
+
+    // GRPC KeepAlive parameters.
+    optional uint32 GrpcKeepAliveTime = 5; // ms
+    optional uint32 GrpcKeepAliveTimeout = 6; // ms
+    optional bool GrpcKeepAlivePermitWithoutCalls = 7;
 }

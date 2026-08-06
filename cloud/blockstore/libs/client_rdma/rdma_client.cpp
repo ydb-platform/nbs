@@ -2,19 +2,21 @@
 
 #include "protocol.h"
 
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/buffer.h>
@@ -24,6 +26,7 @@
 namespace NCloud::NBlockStore::NClient {
 
 using namespace NThreading;
+using namespace NCloud::NStorage;
 
 namespace {
 
@@ -32,6 +35,11 @@ namespace {
 constexpr TDuration WAIT_TIMEOUT = TDuration::Seconds(10);
 
 constexpr size_t MAX_PROTO_SIZE = 4*1024;
+
+///////////////////////////////////////////////////////////////////////////////
+
+// Size of the serialized message or error if unable to serialize
+using TPrepareResult = TResultOrError<size_t>;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -98,14 +106,15 @@ public:
 
 private:
     const TCallContextPtr CallContext;
-    const std::shared_ptr<TRequest> Request;
+    std::shared_ptr<TRequest> Request;
     const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TReadBlocksHandler(
@@ -118,6 +127,10 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
+
     }
 
     size_t GetRequestSize() const
@@ -127,8 +140,8 @@ public:
 
     size_t GetResponseSize() const
     {
-        return MAX_PROTO_SIZE +
-            (static_cast<size_t>(Request->BlockSize) * Request->GetBlocksCount());
+        return MAX_PROTO_SIZE + (static_cast<size_t>(Request->GetBlockSize()) *
+                                 Request->GetBlocksCount());
     }
 
     TFuture<TResponse> GetResponse() const
@@ -136,16 +149,13 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        TraceSerializer->BuildTraceRequest(
-            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-            CallContext->LWOrbit);
         StartTime = GetCycleCount();
 
         return NRdma::TProtoMessageSerializer::Serialize(
@@ -172,7 +182,12 @@ public:
         localResponse.CopyFrom(responseMsg);
 
         if (!HasError(responseMsg.GetError())) {
-            CopyData(Request->Sglist, response.Data);
+            auto result = CopyData(Request->Sglist, response.Data);
+            if (HasError(result)) {
+                *localResponse.MutableError() = std::move(result);
+                Response.SetValue(std::move(localResponse));
+                return;
+            }
         }
 
         if (CallContext->LWOrbit.HasShuttles()) {
@@ -198,24 +213,47 @@ public:
     }
 
 private:
-    static void CopyData(TGuardedSgList& guardedSgList, TStringBuf data)
+    NProto::TError CopyData(
+        TGuardedSgList& guardedSgList,
+        TStringBuf data)
     {
         auto guard = guardedSgList.Acquire();
-        Y_ENSURE(guard);
-
-        const char* ptr = data.data();
-        size_t bytesLeft = data.length();
-
-        for (auto buffer: guard.Get()) {
-            size_t len = Min(bytesLeft, buffer.Size());
-            Y_ENSURE(len);
-
-            memcpy((char*)buffer.Data(), ptr, len);
-            ptr += len;
-            bytesLeft -= len;
+        if (!guard) {
+            return MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in Rdma ReadBlocks handler");
         }
 
-        Y_ENSURE(bytesLeft == 0);
+        size_t expectedSize =
+            static_cast<size_t>(Request->GetBlocksCount())
+            * Request->GetBlockSize();
+        size_t srcSize = data.length();
+
+        if (srcSize != expectedSize) {
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "invalid response size (expected: " << expectedSize
+                << ", actual: " << srcSize << ")");
+        }
+
+        const auto& dst = guard.Get();
+        auto dstSize = SgListGetSize(dst);
+
+        if (dstSize < srcSize) {
+            return TErrorResponse(E_ARGUMENT, TStringBuilder()
+                << "invalid buffer size (expected: " << srcSize
+                << ", actual: " << dstSize << ")");
+        }
+
+        auto bytesRead = SgListCopy(
+            TBlockDataRef{data.data(), data.length()},
+            dst);
+
+        STORAGE_VERIFY(
+            bytesRead == dstSize,
+            TWellKnownEntityTypes::DISK,
+            GetDiskId(Request->GetDiskId()));
+
+        return {};
     }
 };
 
@@ -230,14 +268,15 @@ public:
 
 private:
     const TCallContextPtr CallContext;
-    const std::shared_ptr<TRequest> Request;
+    std::shared_ptr<TRequest> Request;
     const ITraceSerializerPtr TraceSerializer;
     const bool IsAlignedDataEnabled;
 
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TWriteBlocksHandler(
@@ -249,13 +288,18 @@ public:
         , Request(std::move(request))
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
-    {}
+    {
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
+    }
 
     size_t GetRequestSize() const
     {
         return NRdma::TProtoMessageSerializer::MessageByteSize(
             *Request,
-            static_cast<size_t>(Request->BlockSize) * Request->BlocksCount);
+            static_cast<size_t>(Request->GetBlockSize()) *
+                Request->BlocksCount);
     }
 
     size_t GetResponseSize() const
@@ -268,32 +312,46 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         auto guard = Request->Sglist.Acquire();
-        Y_ENSURE(guard);
+        if (!guard) {
+            return TErrorResponse(
+                E_CANCELLED,
+                "failed to acquire sglist in Rdma WriteBlock handler");
+        }
 
-        const auto& sglist = guard.Get();
+        const auto& src = guard.Get();
+        auto srcSize = SgListGetSize(src);
+
+        size_t expectedSize =
+            static_cast<size_t>(Request->BlocksCount) * Request->GetBlockSize();
+        if (srcSize != expectedSize) {
+            return TErrorResponse(E_ARGUMENT, TStringBuilder()
+                << "invalid buffer size (expected: " << expectedSize
+                << ", actual: " << srcSize << ")");
+        }
 
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        if (TraceSerializer) {
-            TraceSerializer->BuildTraceRequest(
-                *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-                CallContext->LWOrbit);
+        StartTime = GetCycleCount();
 
-            StartTime = GetCycleCount();
-        }
-
-        return NRdma::TProtoMessageSerializer::SerializeWithData(
+        auto msgSize = NRdma::TProtoMessageSerializer::SerializeWithData(
             buffer,
             TBlockStoreProtocol::WriteBlocksRequest,
             flags,
             *Request,
-            sglist);
+            src);
+
+        STORAGE_VERIFY(
+            msgSize <= buffer.length(),
+            TWellKnownEntityTypes::DISK,
+            GetDiskId(Request));
+
+        return msgSize;
     }
 
     void HandleResponse(TStringBuf buffer) override
@@ -351,7 +409,8 @@ private:
     ui64 StartTime = 0;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TZeroBlocksHandler(
@@ -364,6 +423,9 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        TraceSerializer->BuildTraceRequest(
+            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
+            CallContext->LWOrbit);
     }
 
     size_t GetRequestSize() const
@@ -381,16 +443,13 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
         if (IsAlignedDataEnabled) {
             SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        TraceSerializer->BuildTraceRequest(
-            *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
-            CallContext->LWOrbit);
         StartTime = GetCycleCount();
 
         return NRdma::TProtoMessageSerializer::Serialize(
@@ -439,6 +498,8 @@ public:
 
 struct TPingMethod
 {
+    static constexpr TBlockStoreProtocol::EMessageType RequestType =
+        TBlockStoreProtocol::EMessageType::PingRequest;
     static constexpr TBlockStoreProtocol::EMessageType ResponseType =
         TBlockStoreProtocol::EMessageType::PingResponse;
 
@@ -448,6 +509,8 @@ struct TPingMethod
 
 struct TMountVolumeMethod
 {
+    static constexpr TBlockStoreProtocol::EMessageType RequestType =
+        TBlockStoreProtocol::EMessageType::MountVolumeRequest;
     static constexpr TBlockStoreProtocol::EMessageType ResponseType =
         TBlockStoreProtocol::EMessageType::MountVolumeResponse;
 
@@ -457,6 +520,8 @@ struct TMountVolumeMethod
 
 struct TUnmountVolumeMethod
 {
+    static constexpr TBlockStoreProtocol::EMessageType RequestType =
+        TBlockStoreProtocol::EMessageType::UnmountVolumeRequest;
     static constexpr TBlockStoreProtocol::EMessageType ResponseType =
         TBlockStoreProtocol::EMessageType::UnmountVolumeResponse;
 
@@ -480,7 +545,8 @@ private:
     const ITraceSerializerPtr TraceSerializer;
 
     TPromise<TResponse> Response = NewPromise<TResponse>();
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TProtoMessageHandler(
@@ -510,13 +576,13 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    TPrepareResult PrepareRequest(TStringBuf buffer)
     {
         ui32 flags = 0;
 
         return NRdma::TProtoMessageSerializer::Serialize(
             buffer,
-            TBlockStoreProtocol::PingRequest,
+            TMethod::RequestType,
             flags,   // flags
             *Request);
     }
@@ -748,7 +814,12 @@ TFuture<typename T::TResponse> TRdmaDataEndpoint::HandleRequest(
         return MakeFuture<typename T::TResponse>(TErrorResponse(err));
     }
 
-    handler->PrepareRequest(req->RequestBuffer);
+    auto result = handler->PrepareRequest(req->RequestBuffer);
+    if (HasError(result.GetError())) {
+        return MakeFuture<typename T::TResponse>(
+            TErrorResponse(std::move(result.GetError())));
+    }
+
     auto response = handler->GetResponse();
     req->Context = std::move(handler);
     Endpoint->SendRequest(std::move(req), std::move(callContext));
@@ -816,13 +887,12 @@ IBlockStorePtr CreateRdmaEndpointClient(
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)
 {
-    auto endpoint =
-        TRdmaEndpoint::Create(
-            std::move(logging),
-            std::move(volumeClient),
-            std::move(traceSerializer),
-            std::move(taskQueue),
-            client->IsAlignedDataEnabled());
+    auto endpoint = TRdmaEndpoint::Create(
+        std::move(logging),
+        std::move(volumeClient),
+        std::move(traceSerializer),
+        std::move(taskQueue),
+        client->IsAlignedDataEnabled());
 
     auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
 
@@ -830,7 +900,8 @@ IBlockStorePtr CreateRdmaEndpointClient(
     return endpoint;
 }
 
-NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsync(
+NThreading::TFuture<TResultOrError<IBlockStorePtr>>
+CreateRdmaEndpointClientAsync(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
@@ -838,13 +909,12 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config)
 {
-    auto endpoint =
-        TRdmaEndpoint::Create(
-            std::move(logging),
-            std::move(volumeClient),
-            std::move(traceSerializer),
-            std::move(taskQueue),
-            client->IsAlignedDataEnabled());
+    auto endpoint = TRdmaEndpoint::Create(
+        std::move(logging),
+        std::move(volumeClient),
+        std::move(traceSerializer),
+        std::move(taskQueue),
+        client->IsAlignedDataEnabled());
 
     auto future = client->StartEndpoint(config.Address, config.Port);
     return future.Apply([endpoint = std::move(endpoint)] (const auto& future) mutable {

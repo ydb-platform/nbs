@@ -1,6 +1,7 @@
 import json
 import os
 import pytest
+import time
 
 from google.protobuf.text_format import MessageToString
 
@@ -9,6 +10,7 @@ from cloud.blockstore.config.local_nvme_pb2 import TLocalNVMeConfig
 from cloud.blockstore.libs.local_nvme.protos.local_nvme_pb2 import \
     TNVMeDevice, TNVMeDeviceList, TLocalNVMeServiceState
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
+from cloud.blockstore.tests.python.lib.test_base import get_free_socket_path
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
 from contrib.ydb.tests.library.harness.kikimr_runner import \
@@ -26,6 +28,7 @@ LOCAL_NVME_DEVICES = [
         VendorId=0x100,
         DeviceId=0x200,
         Model="Test NVMe 1",
+        FirmwareRev="FW4242",
     ),
     TNVMeDevice(
         SerialNumber="NVME_1",
@@ -34,6 +37,7 @@ LOCAL_NVME_DEVICES = [
         VendorId=0x100,
         DeviceId=0x300,
         Model="Test NVMe 2",
+        FirmwareRev="FW4243",
     ),
     TNVMeDevice(
         SerialNumber="NVME_2",
@@ -42,6 +46,7 @@ LOCAL_NVME_DEVICES = [
         VendorId=0x100,
         DeviceId=0x300,
         Model="Test NVMe 2",
+        FirmwareRev="FW4243",
     ),
     TNVMeDevice(
         SerialNumber="NVME_3",
@@ -50,6 +55,7 @@ LOCAL_NVME_DEVICES = [
         VendorId=0x100,
         DeviceId=0x200,
         Model="Test NVMe 1",
+        FirmwareRev="FW4242",
     ),
 ]
 
@@ -85,15 +91,24 @@ def create_local_nvme_config():
 
     return TLocalNVMeConfig(
         DevicesSourceUri=f"file://{devicesPath}",
-        StateCacheFilePath=cacheFilePath)
+        StateCacheFilePath=cacheFilePath,
+        UpdateCountersInterval=1000,    # 1s
+    )
+
+
+@pytest.fixture(name='nbs_socket')
+def get_nbs_socket_path():
+    return get_free_socket_path("nbs_socket")
 
 
 @pytest.fixture(name='nbs')
-def start_nbs_daemon(ydb, local_nvme_config):
+def start_nbs_daemon(ydb, local_nvme_config, nbs_socket):
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
     cfg.files["local-nvme"] = local_nvme_config
     cfg.files["disk-agent"] = TDiskAgentConfig(Enabled=True)
+    cfg.files["server"].ServerConfig.UnixSocketPath = nbs_socket
+    cfg.files["server"].ServerConfig.AllowAllRequestsViaUDS = True  # for ExecuteAction
 
     nbs = daemon.start_nbs(cfg)
 
@@ -102,8 +117,14 @@ def start_nbs_daemon(ydb, local_nvme_config):
     nbs.stop()
 
 
-def test_local_nvme(ydb, nbs):
-    client = CreateTestClient(f"localhost:{nbs.port}")
+@pytest.mark.parametrize("transport", ["http", "uds"])
+def test_list_nvme_devices(nbs, nbs_socket, local_nvme_config, transport):
+
+    endpoint = f"localhost:{nbs.port}"
+    if transport == "uds":
+        endpoint = f"unix://{nbs_socket}"
+
+    client = CreateTestClient(endpoint)
 
     response = json.loads(client.execute_ListNVMeDevices())
 
@@ -127,3 +148,21 @@ def test_local_nvme(ydb, nbs):
         assert lhs.SerialNumber == rhs['SerialNumber']
         assert lhs.PCIAddress == rhs['PCIAddress']
         assert lhs.IOMMUGroup == rhs['IOMMUGroup']
+
+    time.sleep(local_nvme_config.UpdateCountersInterval / 1000)
+
+    counters = {}
+    for c in nbs.counters.find_all({'component': 'local_nvme'}):
+        sn = c['labels'].get('device')
+        if not sn:
+            continue
+        counters[sn] = c
+
+    assert len(counters) == len(LOCAL_NVME_DEVICES)
+
+    for sn, c in counters.items():
+        d = next((d for d in LOCAL_NVME_DEVICES if d.SerialNumber == sn), None)
+
+        assert d, sn
+        assert c['labels']['firmware'] == d.FirmwareRev
+        assert c['value'] == 1

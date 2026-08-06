@@ -16,6 +16,7 @@ message TDescribeBlocksRequest
     uint32 BlocksCount = 3;
     string CheckpointId = 4;
     uint32 BlocksCountToRead = 5;
+    bool IndexOnly = 6;
 }
 
 message TFreshBlockRange
@@ -23,6 +24,7 @@ message TFreshBlockRange
     uint32 StartIndex = 1;
     uint32 BlocksCount = 2;
     bytes BlocksContent = 3;
+    TLogoBlobID BlobId = 4;
 }
 
 message TRangeInBlob
@@ -43,6 +45,28 @@ message TDescribeBlocksResponse
 {
     repeated TFreshBlockRange FreshBlockRanges = 1;
     repeated TBlobPiece BlobPieces = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeBlob request/response.
+
+message TDescribeBlobRequest
+{
+    string DiskId = 1;
+    TLogoBlobID BlobId = 2;
+}
+
+message TBlockInBlob
+{
+    uint32 BlockIndex = 1;
+    uint64 CommitId = 2;
+    uint32 BlobOffset = 3;
+    uint32 Checksum = 4;
+}
+
+message TDescribeBlobResponse
+{
+    repeated TBlockInBlob Blocks = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,6 +158,9 @@ message TRebindVolumesRequest
 {
     // EVolumeBinding, see libs/storage/service/service_state.h
     uint32 Binding = 1;
+
+    // If true, no direct volume kill happens during rebind
+    bool UseGentlePreemption = 2;
 };
 
 message TRebindVolumesResponse
@@ -296,9 +323,9 @@ message TFinishFillDiskResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// SetVhostDiscardEnabledFlag request/response.
+// SetVhostDiscardFlagAction request/response.
 
-message TSetVhostDiscardEnabledFlagRequest
+message TSetVhostDiscardFlagActionRequest
 {
     // Label of volume to turn on/off discards for.
     string DiskId = 1;
@@ -310,6 +337,6 @@ message TSetVhostDiscardEnabledFlagRequest
     bool VhostDiscardEnabled = 3;
 }
 
-message TSetVhostDiscardEnabledFlagResponse
+message TSetVhostDiscardFlagActionResponse
 {
 }

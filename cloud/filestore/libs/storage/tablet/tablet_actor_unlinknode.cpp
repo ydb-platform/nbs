@@ -173,29 +173,33 @@ void TUnlinkNodeInShardActor::HandleUnlinkNodeResponse(
         }
 
         const auto message = Sprintf(
-            "Shard node unlinking failed for %s, %s with error %s"
+            "%s Shard node unlinking failed for %s, %s with error %s"
             ", will not retry",
+            LogTag.c_str(),
             Request.GetFileSystemId().c_str(),
             Request.GetName().c_str(),
             FormatError(msg->GetError()).Quote().c_str());
 
-        if (ShouldUnlockUponCompletion &&
-            msg->GetError().GetCode() == E_FS_NOTEMPTY)
+        const ui32 code = msg->GetError().GetCode();
+        if (ShouldUnlockUponCompletion && (code == E_FS_NOTEMPTY
+            || Request.GetUnlinkDirectory() && code == E_FS_NOTDIR))
         {
-            // The response from shard E_FS_NOTEMPTY is expected for directories
-            // and should not be considered erroneous
-            LOG_DEBUG(
+            //
+            // These errors may happen during normal operation.
+            //
+
+            LOG_INFO(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
-                "%s %s",
-                LogTag.c_str(),
                 message.c_str());
         } else {
+            //
+            // Other non-retriable errors are not expected.
+            //
+
             LOG_ERROR(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
-                "%s %s",
-                LogTag.c_str(),
                 message.c_str());
             ReportReceivedNodeOpErrorFromShard(message);
         }
@@ -378,12 +382,12 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         FILESTORE_VALIDATE_DUPTX_SESSION(UnlinkNode, args);
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     // validate parent node exists
-    if (!ReadNode(db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
+    if (!ReadNode(*db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
         return false;   // not ready
     }
 
@@ -400,7 +404,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     if (!Config->GetParentlessFilesOnly()) {
         // validate target node exists
         if (!ReadNodeRef(
-                db,
+                *db,
                 args.ParentNodeId,
                 args.CommitId,
                 args.Name,
@@ -420,7 +424,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         childNodeId = args.ParentNodeId;
     }
 
-    if (!ReadNode(db, childNodeId, args.CommitId, args.ChildNode)) {
+    if (!ReadNode(*db, childNodeId, args.CommitId, args.ChildNode)) {
         return false;   // not ready
     }
 
@@ -438,9 +442,9 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     }
 
     if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
-        TVector<IIndexTabletDatabase::TNodeRef> refs;
+        TVector<INodeIndexTabletDatabase::TNodeRef> refs;
         // 1 entry is enough to prevent deletion
-        if (!ReadNodeRefs(db, childNodeId, args.CommitId, {}, refs, 1)) {
+        if (!ReadNodeRefs(*db, childNodeId, args.CommitId, {}, refs, 1)) {
             return false;
         }
 
@@ -470,7 +474,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 {
     FILESTORE_VALIDATE_TX_ERROR(UnlinkNode, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -490,7 +494,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 
         if (!GetFileSystem().GetDirectoryCreationInShardsEnabled()) {
             UnlinkExternalNode(
-                db,
+                *db,
                 args.ParentNodeId,
                 args.Name,
                 args.ChildRef->ShardId,
@@ -517,10 +521,10 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
                 << args.OpLogEntry.ShortUtf8DebugString().Quote());
         }
 
-        db.WriteOpLogEntry(args.OpLogEntry);
+        WriteOpLogEntry(*db, args.OpLogEntry);
     } else {
         auto e = UnlinkNode(
-            db,
+            *db,
             args.ParentNodeId,
             args.Name,
             *args.ChildNode,
@@ -544,7 +548,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         }
 
         AddDupCacheEntry(
-            db,
+            *db,
             session,
             args.RequestId,
             NProto::TUnlinkNodeResponse{},
@@ -586,6 +590,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     // reject the request. In this case the nodeRef will be unlocked afterwards.
     if (HasError(args.Error) ||
         (args.ChildRef && !args.ChildRef.GetOrElse({}).IsExternal()) ||
+        Config->GetParentlessFilesOnly() ||
         !GetFileSystem().GetDirectoryCreationInShardsEnabled())
     {
         UnlockNodeRef({args.ParentNodeId, args.Name});
@@ -632,7 +637,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
-        ? Metrics.UnlinkNodeInShard : Metrics.UnlinkNode;
+        ? Metrics->UnlinkNodeInShard : Metrics->UnlinkNode;
     requestMetrics.Update(
         1,
         0,
@@ -664,13 +669,13 @@ bool TIndexTabletActor::PrepareTx_CompleteUnlinkNode(
 {
     Y_UNUSED(ctx, tx, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     // TODO(2674): we should pass commitId from the request, not generate it
     args.CommitId = GetCurrentCommitId();
 
     // validate parent node exists
-    if (!ReadNode(db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
+    if (!ReadNode(*db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
         return false;   // not ready
     }
 
@@ -681,7 +686,7 @@ bool TIndexTabletActor::PrepareTx_CompleteUnlinkNode(
 
     // validate target node exists
     if (!ReadNodeRef(
-            db,
+            *db,
             args.ParentNodeId,
             args.CommitId,
             args.Name,
@@ -714,9 +719,9 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
     TTransactionContext& tx,
     TTxIndexTablet::TCompleteUnlinkNode& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    db.DeleteOpLogEntry(args.OpLogEntryId);
+    DeleteOpLogEntry(*db, args.OpLogEntryId);
 
     // If the original response was an error or prepare stage failed, we don't
     // need to do anything
@@ -746,7 +751,7 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
     }
 
     UnlinkExternalNode(
-        db,
+        *db,
         args.ParentNodeId,
         args.Name,
         args.ChildRef->ShardId,
@@ -815,7 +820,7 @@ void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
     }
 
     auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
-        ? Metrics.UnlinkNodeInShard : Metrics.UnlinkNode;
+        ? Metrics->UnlinkNodeInShard : Metrics->UnlinkNode;
     requestMetrics.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>(
@@ -862,7 +867,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
-            Metrics.RenameNode.Update(
+            Metrics->RenameNode.Update(
                 1,
                 0,
                 ctx.Now() - msg->RequestInfo->StartedTs);
@@ -880,7 +885,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                 msg->RequestInfo->CallContext,
                 ctx);
 
-            Metrics.RenameNode.Update(
+            Metrics->RenameNode.Update(
                 1,
                 0,
                 ctx.Now() - msg->RequestInfo->StartedTs);
@@ -901,7 +906,7 @@ void TIndexTabletActor::HandleNodeUnlinkedInShard(
                     ctx);
 
                 auto& requestMetrics = msg->ProfileLogRequest.GetBehaveAsShard()
-                    ? Metrics.UnlinkNodeInShard : Metrics.UnlinkNode;
+                    ? Metrics->UnlinkNodeInShard : Metrics->UnlinkNode;
                 requestMetrics.Update(
                     1,
                     0,

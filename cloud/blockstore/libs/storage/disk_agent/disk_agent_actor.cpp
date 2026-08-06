@@ -1,11 +1,13 @@
 #include "disk_agent_actor.h"
 
-#include "actors/device_health_check_actor.h"
+#include "actors/device_integrity_check_actor.h"
 #include "actors/session_cache_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+
+#include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -29,7 +31,7 @@ TDiskAgentActor::TDiskAgentActor(
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ILoggingServicePtr logging,
-        NRdma::IServerPtr rdmaServer,
+        NCloud::NStorage::NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         ITaskQueuePtr backgroundThreadPool,
         ILocalNVMeServicePtr localNVMeService)
@@ -175,12 +177,16 @@ void TDiskAgentActor::RestartDeviceHealthChecking(const TActorContext& ctx)
     }
 
     if (!AgentConfig->GetDeviceHealthCheckDisabled()) {
-        HealthCheckActor = NCloud::Register(
-            ctx,
-            NDiskAgent::CreateDeviceHealthCheckActor(
+        HealthCheckActor = ctx.Register(
+            NDiskAgent::CreateDeviceIntegrityCheckActor(
                 ctx.SelfID,
                 State->GetEnabledDevices(),
-                UpdateCountersInterval));
+                NDiskAgent::TDeviceIntegrityCheckParams{
+                    UpdateCountersInterval,
+                    NDiskAgent::DefaultSymlinkCheckInterval})
+                .release(),
+            TMailboxType::HTSwap,
+            NKikimr::AppData()->IOPoolId);
     }
 }
 
@@ -244,6 +250,14 @@ void TDiskAgentActor::HandlePoisonPill(
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
     IOParserActors.clear();
+
+    if (JournalledDeviceTcpServer) {
+        JournalledDeviceTcpServer->Stop();
+    }
+
+    if (Executor) {
+        Executor->Stop();
+    }
 
     Die(ctx);
 }

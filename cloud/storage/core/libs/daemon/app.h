@@ -45,6 +45,10 @@ int DoMain(TBootstrap& bootstrap, int argc, char** argv)
 
         try {
             bootstrap.Stop();
+        } catch (const TAppShouldExitWithoutShutdownException& ex) {
+            Cerr << "app is calling _exit(" << exitCode << ") immediately: "
+                 << CurrentExceptionMessage() << Endl;
+            _exit(exitCode);
         } catch (...) {
             Cerr << "main bootstrap stop: " << CurrentExceptionMessage() << Endl;
             return 1;

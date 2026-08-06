@@ -1,5 +1,4 @@
 import os
-import time
 
 from retrying import retry
 
@@ -7,6 +6,7 @@ import cloud.filestore.tools.testing.profile_log.common as profile
 import yatest.common as common
 
 from cloud.storage.core.tools.testing.qemu.lib.common import SshToGuest
+from cloud.filestore.tests.python.lib.common import flush_logs
 
 RETRY_COUNT = 3
 WAIT_TIMEOUT = 1000  # 1sec
@@ -44,10 +44,7 @@ def test():
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool"
     )
 
-    # Sleep for a while to ensure that the profile log is flushed
-    # before we start analyzing it
-    # The default value of ProfileLogTimeThreshold for tests is 100ms
-    time.sleep(2)
+    flush_logs()
 
     result = profile.analyze_profile_log(
         profile_tool_bin_path, common.output_path("vhost-profile.log"), fs_name

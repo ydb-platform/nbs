@@ -16,8 +16,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/nbd/client_handler.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
+#include <cloud/blockstore/libs/rdma/helper.h>
 #include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -32,8 +31,10 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 #include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
@@ -140,6 +141,21 @@ TRdmaEndpointConfig CreateRdmaEndpointConfig(const TClientAppConfig& config)
     };
 }
 
+ICertificateProviderPtr CreateCertificateProvider(
+    const TClientAppConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -231,6 +247,8 @@ void TBootstrap::Init()
         SpdkLog = Logging->CreateLog("BLOCKSTORE_SPDK");
         spdkParts.LogInitializer(SpdkLog);
     }
+
+    CertificateProvider = CreateCertificateProvider(ClientConfig);
 }
 
 IBlockStoreValidationClientPtr TBootstrap::CreateValidationClient(
@@ -290,7 +308,8 @@ IClientPtr TBootstrap::CreateAndStartGrpcClient(TString clientId)
         Scheduler,
         Logging,
         Monitoring,
-        std::move(clientStats));
+        std::move(clientStats),
+        CertificateProvider);
 
     Y_ABORT_UNLESS(!HasError(error));
 
@@ -346,7 +365,8 @@ NBD::IClientPtr TBootstrap::CreateAndStartNbdClient(TString clientId)
     return client;
 }
 
-NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(TString clientId)
+NCloud::NStorage::NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(
+    TString clientId)
 {
     auto config = CreateClientConfig(ClientConfig, std::move(clientId));
 
@@ -360,11 +380,11 @@ NRdma::IClientPtr TBootstrap::CreateAndStartRdmaClient(TString clientId)
     // TODO
     Y_UNUSED(clientStats);
 
-    auto rdmaConfig = std::make_shared<NRdma::TClientConfig>();
+    auto rdmaConfig =
+        std::make_shared<NCloud::NStorage::NRdma::TClientConfig>();
     // TODO
 
-    auto client = NRdma::CreateClient(
-        NRdma::NVerbs::CreateVerbs(),
+    auto client = NCloud::NBlockStore::NRdma::CreateRdmaClient(
         Logging,
         Monitoring,
         std::move(rdmaConfig));
@@ -589,6 +609,10 @@ void TBootstrap::Start()
         Scheduler->Start();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
+
     if (Spdk) {
         Spdk->Start();
     }
@@ -603,6 +627,10 @@ void TBootstrap::Stop()
 
     if (Spdk) {
         Spdk->Stop();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
     }
 
     if (Scheduler) {

@@ -79,6 +79,8 @@ void TPartitionActor::HandleStatPartition(
 
     response->Record.MutableStats()->SetCompactionGarbageScore(
         State->GetCompactionGarbageScore());
+    response->Record.MutableStats()->SetCompactionIgnoringZeroedScore(
+        State->GetCompactionIgnoringZeroedScore());
 
     response->Record.MutableStats()->SetNonEmptyRangeCount(
         State->GetCompactionMap().GetNonEmptyRangeCount());
@@ -102,6 +104,12 @@ void TPartitionActor::HandleStatPartition(
 
     response->Record.MutableStats()->SetTrimFreshLogToCommitId(
         State->GetTrimFreshLogToCommitId());
+
+    response->Record.MutableStats()->SetBlobsProcessedDuringCompaction(
+        State->GetBlobsProcessedDuringCompaction());
+
+    response->Record.MutableStats()->SetBlockMaskReadDuringCompaction(
+        State->GetBlockMaskReadDuringCompaction());
 
     LWTRACK(
         ResponseSent_Partition,

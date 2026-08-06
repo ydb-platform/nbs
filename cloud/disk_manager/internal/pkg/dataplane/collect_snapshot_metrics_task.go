@@ -8,7 +8,9 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,6 +18,7 @@ import (
 type collectSnapshotMetricsTask struct {
 	registry                  metrics.Registry
 	storage                   storage.Storage
+	storageQuotaReporter      snapshot.SnapshotStorageQuotaReporter
 	metricsCollectionInterval time.Duration
 }
 
@@ -38,6 +41,11 @@ func (c collectSnapshotMetricsTask) Run(
 	defer ticker.Stop()
 
 	for range ticker.C {
+		err := c.storageQuotaReporter.Report(ctx)
+		if err != nil {
+			logging.Warn(ctx, "Failed to report snapshot storage quota: %v", err)
+		}
+
 		deletingSnapshotCount, err := c.storage.GetDeletingSnapshotCount(ctx)
 		if err != nil {
 			return err
@@ -87,6 +95,11 @@ func (c collectSnapshotMetricsTask) GetResponse() proto.Message {
 ////////////////////////////////////////////////////////////////////////////////
 
 func (c collectSnapshotMetricsTask) clearMetrics() {
+	// We want to delete metrics from registry when the task is stopped.
+	// Otherwise the service can still report metrics,
+	// even if another instance is collecting metrics now.
+	// Setting metrics to 0 is acceptible, since we usually calculate sum across all instances.
 	// We'd like to delete it from registry completely, but there's no such option.
+	c.storageQuotaReporter.Clear()
 	c.registry.Gauge("snapshots/deletingCount").Set(0)
 }

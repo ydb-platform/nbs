@@ -66,6 +66,7 @@ func (t *createDiskFromImageTask) Run(
 		params,
 		t.cellSelector,
 		t.nbsFactory,
+		t.storage,
 	)
 	if err != nil {
 		return err

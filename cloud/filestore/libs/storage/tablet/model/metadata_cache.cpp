@@ -1,0 +1,7 @@
+#include "metadata_cache.h"
+
+namespace NCloud::NFileStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+}   // namespace NCloud::NFileStore::NStorage

@@ -9,13 +9,16 @@ RECURSE(
     diagnostics
     endpoints
     features
+    file_backed_containers
     grpc
     hive_proxy
     http
     io_uring
+    journalled_device_tcp_server
     kikimr
     netlink
     opentelemetry
+    rdma
     ss_proxy
     tablet
     throttling

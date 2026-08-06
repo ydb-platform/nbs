@@ -1,5 +1,7 @@
 #include "tablet.h"
 
+#include "subsessions.h"
+
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -40,6 +42,87 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
         auto id2 = CreateNode(tclient2, TCreateNodeArgs::File(RootNodeId, "xxx"));
         CreateHandle(tclient2, id2);
         tclient2.UnlinkNode(RootNodeId, "xxx", false);
+    }
+
+    Y_UNIT_TEST(ShouldReturnOwnerGeneration)
+    {
+        TTestEnvConfig envCfg;
+        envCfg.DynamicNodes = 2;
+        TTestEnv env(envCfg);
+
+        ui32 nodeIdx1 = env.AddDynamicNode();
+        ui32 nodeIdx2 = env.AddDynamicNode();
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx1);
+
+        TIndexTabletClient tclient1(env.GetRuntime(), nodeIdx1, tabletId);
+        TIndexTabletClient tclient2(env.GetRuntime(), nodeIdx2, tabletId);
+
+        auto response = tclient1.InitSession(
+            "client1",
+            "session",
+            "",
+            1,
+            true);
+        const auto initialOwnerGeneration =
+            response->Record.GetOwnerGeneration();
+        const auto tabletGeneration =
+            ExtractTabletGeneration(initialOwnerGeneration);
+        UNIT_ASSERT(tabletGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            ExtractSubSessionOwnerGeneration(initialOwnerGeneration));
+
+        response = tclient2.InitSession(
+            "client1",
+            "session",
+            "",
+            1,
+            false);
+        const auto recoveredOwnerGeneration =
+            response->Record.GetOwnerGeneration();
+        UNIT_ASSERT_VALUES_EQUAL(
+            tabletGeneration,
+            ExtractTabletGeneration(recoveredOwnerGeneration));
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            ExtractSubSessionOwnerGeneration(recoveredOwnerGeneration));
+
+        response = tclient2.InitSession(
+            "client1",
+            "session",
+            "",
+            1,
+            false);
+        const auto repeatedOwnerGeneration =
+            response->Record.GetOwnerGeneration();
+        UNIT_ASSERT_VALUES_EQUAL(
+            recoveredOwnerGeneration,
+            repeatedOwnerGeneration);
+
+        tclient2.RebootTablet();
+
+        response = tclient2.InitSession(
+            "client1",
+            "session",
+            "",
+            1,
+            false);
+        const auto ownerGenerationAfterReboot =
+            response->Record.GetOwnerGeneration();
+        UNIT_ASSERT_C(
+            ownerGenerationAfterReboot > repeatedOwnerGeneration,
+            "ownerGenerationAfterReboot=" << ownerGenerationAfterReboot
+                << ", repeatedOwnerGeneration=" << repeatedOwnerGeneration);
+        UNIT_ASSERT_C(
+            ExtractTabletGeneration(ownerGenerationAfterReboot) >
+                tabletGeneration,
+            "tabletGenerationAfterReboot="
+                << ExtractTabletGeneration(ownerGenerationAfterReboot)
+                << ", tabletGeneration=" << tabletGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            ExtractSubSessionOwnerGeneration(ownerGenerationAfterReboot));
     }
 
     Y_UNIT_TEST(ShouldKeepSubSessionsIfAnotherRemoved)
@@ -260,4 +343,3 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_SubSessions)
 }
 
 }   // namespace NCloud::NFileStore::NStorage
-

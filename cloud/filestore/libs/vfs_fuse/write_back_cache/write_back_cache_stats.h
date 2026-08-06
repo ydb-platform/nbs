@@ -1,39 +1,18 @@
 #pragma once
 
-#include "persistent_storage.h"
+#include "node_state_holder_stats.h"
+#include "persistent_storage_stats.h"
+#include "write_back_cache_state_stats.h"
+#include "write_data_request_manager_stats.h"
+
+#include <cloud/filestore/libs/diagnostics/metrics/public.h>
+#include <cloud/filestore/libs/diagnostics/public.h>
 
 #include <util/datetime/base.h>
-#include <util/system/types.h>
 
-#include <memory>
+#include <functional>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
-
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * WriteData request life cycle:
- * [Pending] -> Unflushed -> Flushed
- *
- * For each NodeId it is guaranteed that there are no requests with out-of-order
- * statuses: if two requests A and B have the same NodeId, and the request A was
- * added to the queue later than B, then A.Status <= B.Status.
- */
-
-enum class EWriteDataRequestStatus
-{
-    // Write request is waiting until there is enough space in the persistent
-    // storage to store the request.
-    Pending,
-
-    // Write request has been stored in the persistent storage and is waiting
-    // for flushing
-    Unflushed,
-
-    // Write request has been written to the session and can be removed from
-    // the persistent storage
-    Flushed
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -51,37 +30,96 @@ enum class EReadDataRequestCacheStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IWriteBackCacheStats: public IPersistentStorageStats
+struct TWriteBackCacheInternalMetrics
 {
-    ~IWriteBackCacheStats() override = default;
+    struct TReadDataMetrics
+    {
+        NMetrics::IMetricPtr CacheFullHitCount;
+        NMetrics::IMetricPtr CachePartialHitCount;
+        NMetrics::IMetricPtr CacheMissCount;
+    };
 
-    virtual void ResetNonDerivativeCounters() = 0;
+    TReadDataMetrics ReadData;
 
-    virtual void FlushStarted() = 0;
-    virtual void FlushCompleted() = 0;
-    virtual void FlushFailed() = 0;
+    void Register(
+        NMetrics::IMetricsRegistry& localMetricsRegistry,
+        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const;
+};
 
-    virtual void IncrementNodeCount() = 0;
-    virtual void DecrementNodeCount() = 0;
+////////////////////////////////////////////////////////////////////////////////
 
-    virtual void WriteDataRequestDropped() = 0;
-
-    virtual void WriteDataRequestEnteredStatus(
-        EWriteDataRequestStatus status) = 0;
-
-    virtual void WriteDataRequestExitedStatus(
-        EWriteDataRequestStatus status,
-        TDuration duration) = 0;
-
-    virtual void WriteDataRequestUpdateMinTime(
-        EWriteDataRequestStatus status,
-        TInstant minTime) = 0;
+struct IWriteBackCacheInternalStats
+{
+    virtual ~IWriteBackCacheInternalStats() = default;
 
     virtual void AddReadDataStats(EReadDataRequestCacheStatus status) = 0;
+
+    virtual TWriteBackCacheInternalMetrics CreateMetrics() const = 0;
+};
+
+using IWriteBackCacheInternalStatsPtr =
+    std::shared_ptr<IWriteBackCacheInternalStats>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TWriteBackCacheMetrics
+    : public TWriteBackCacheInternalMetrics
+    , public TWriteBackCacheStateMetrics
+    , public TNodeStateHolderMetrics
+    , public TWriteDataRequestManagerMetrics
+    , public TPersistentStorageMetrics
+{
+    TWriteBackCacheMetrics() = default;
+
+    TWriteBackCacheMetrics(
+        TWriteBackCacheInternalMetrics writeBackCacheInternalMetrics,
+        TWriteBackCacheStateMetrics writeBackCacheStateMetrics,
+        TNodeStateHolderMetrics nodeStateHolderMetrics,
+        TWriteDataRequestManagerMetrics writeDataRequestManagerMetrics,
+        TPersistentStorageMetrics persistentStorageMetrics)
+        : TWriteBackCacheInternalMetrics(
+              std::move(writeBackCacheInternalMetrics))
+        , TWriteBackCacheStateMetrics(std::move(writeBackCacheStateMetrics))
+        , TNodeStateHolderMetrics(std::move(nodeStateHolderMetrics))
+        , TWriteDataRequestManagerMetrics(
+              std::move(writeDataRequestManagerMetrics))
+        , TPersistentStorageMetrics(std::move(persistentStorageMetrics))
+    {}
+
+    void Register(
+        NMetrics::IMetricsRegistry& localMetricsRegistry,
+        NMetrics::IMetricsRegistry& aggregatableMetricsRegistry) const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IWriteBackCacheStats
+{
+    virtual ~IWriteBackCacheStats() = default;
+
+    virtual IWriteBackCacheInternalStatsPtr
+    GetWriteBackCacheInternalStats() = 0;
+
+    virtual IWriteBackCacheStateStatsPtr GetWriteBackCacheStateStats() = 0;
+
+    virtual INodeStateHolderStatsPtr GetNodeStateHolderStats() = 0;
+
+    virtual IWriteDataRequestManagerStatsPtr
+    GetWriteDataRequestManagerStats() = 0;
+
+    virtual IPersistentStorageStatsPtr GetPersistentStorageStats() = 0;
+
+    virtual TWriteBackCacheMetrics CreateMetrics() const = 0;
 };
 
 using IWriteBackCacheStatsPtr = std::shared_ptr<IWriteBackCacheStats>;
 
-IWriteBackCacheStatsPtr CreateDummyWriteBackCacheStats();
+////////////////////////////////////////////////////////////////////////////////
+
+IWriteBackCacheStatsPtr CreateWriteBackCacheStats();
+
+IModuleStatsPtr CreateWriteBackCacheModuleStats(
+    IWriteBackCacheStatsPtr stats,
+    std::function<void(TInstant now)> updateStatsFunc);
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -48,6 +48,8 @@ void FillFeatures(
     }
     features->SetAsyncDestroyHandleEnabled(
         config.GetAsyncDestroyHandleEnabled());
+    features->SetAsyncDestroyReadOnlyHandleEnabled(
+        config.GetAsyncDestroyReadOnlyHandleEnabled());
     features->SetAsyncHandleOperationPeriod(
         config.GetAsyncHandleOperationPeriod().MilliSeconds());
 
@@ -60,6 +62,8 @@ void FillFeatures(
 
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
+    features->SetServerWriteBackCacheFlushWritesInParallelEnabled(
+        config.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 
     features->SetParentlessFilesOnly(config.GetParentlessFilesOnly());
     features->SetAllowHandlelessIO(config.GetAllowHandlelessIO());
@@ -70,6 +74,8 @@ void FillFeatures(
     if (config.GetDirectoryHandlesStorageEnabled()) {
         features->SetDirectoryHandlesTableSize(
             config.GetDirectoryHandlesTableSize());
+        features->SetDirectoryHandlesPersistentHandleMaxSize(
+            config.GetDirectoryHandlesPersistentHandleMaxSize());
     }
 
     features->SetDirectoryCreationInShardsEnabled(
@@ -93,6 +99,12 @@ void FillFeatures(
     features->SetGuestHandleKillPrivV2Enabled(
         config.GetGuestHandleKillPrivV2Enabled());
 
+    features->SetTabletDirectRdmaEnabled(config.GetTabletDirectRdmaEnabled());
+
+    // TODO(#5670) posix acl is not yet fully supported in tablet based
+    // filestore
+    features->SetGuestPosixAclEnabled(false);
+
     features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
 
     features->SetBlockChecksumsInProfileLogEnabled(
@@ -103,12 +115,24 @@ void FillFeatures(
 
     features->SetUnconfirmedFlowEnabled(
         config.GetAddingUnconfirmedDataEnabled());
+
+    features->SetUseListNodesInternal(config.GetUseListNodesInternal());
+
+    features->SetUseCustomReadDataResponseParser(
+        config.GetUseCustomReadDataResponseParser());
+
+    features->SetStatFileStoreCacheTTL(
+        config.GetStatFileStoreCacheTTL().MilliSeconds());
+
+    features->SetExternalReadDataPayload(config.GetExternalReadDataPayload());
+    features->SetExternalWriteDataPayloadEnabled(
+        config.GetExternalWriteDataPayloadEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TActorId DoRecoverSession(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     TIndexTabletState& state,
     TSession* session,
     const TString& clientId,
@@ -174,11 +198,48 @@ void Convert(
     fileStore.SetShardNo(fileSystem.GetShardNo());
 }
 
+void ProcessAdapterModeFeatures(NProto::TFileStoreFeatures& f)
+{
+    //
+    // Adapter mode doesn't support multiple-stage IO yet. Disabling
+    // multiple-stage IO for the whole FS for simplicity if at least one shard
+    // is configured in adapter mode.
+    //
+
+    f.SetTwoStageReadEnabled(false);
+    f.SetThreeStageWriteEnabled(false);
+
+    // Adapter mode doesn't support external read/write data payloads yet.
+    // Disabling external read/write data payloads for the whole FS for
+    // simplicity if at least one shard is configured in adapter mode.
+    f.SetExternalReadDataPayload(false);
+    f.SetExternalWriteDataPayloadEnabled(false);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-using TCreateShardSessionsActor = TShardRequestActor<
+using TCreateShardSessionsActorBase = TShardRequestActor<
     TEvIndexTablet::TEvCreateSessionRequest,
     TEvIndexTablet::TEvCreateSessionResponse>;
+
+class TCreateShardSessionsActor: public TCreateShardSessionsActorBase
+{
+public:
+    using TCreateShardSessionsActorBase::TCreateShardSessionsActorBase;
+
+protected:
+    void OnResponse(const NProtoPrivate::TCreateSessionResponse& record)
+        override
+    {
+        if (record.GetAdapterModeEnabled()
+                && Response
+                && Response->Record.HasFileStore())
+        {
+            auto* f = Response->Record.MutableFileStore()->MutableFeatures();
+            ProcessAdapterModeFeatures(*f);
+        }
+    }
+};
 
 }   // namespace
 
@@ -193,7 +254,7 @@ void TIndexTabletActor::HandleCreateSession(
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s CreateSession: %s",
         LogTag.c_str(),
-        DumpMessage(msg->Record).c_str());
+        ProtoMessagePrinter.ToString(msg->Record).c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -201,8 +262,11 @@ void TIndexTabletActor::HandleCreateSession(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
+    // TODO(#6310): Replace with a proper check. We need to test whether
+    // filesystem create operation has completed, expected-shard-count
+    // heuristic is too fragile.
     const auto expectedShardCount =
-        CalculateExpectedShardCount(Config->GetMaxShardCount());
+        CalculateMinExpectedShardCount(Config->GetMaxShardCount());
     const auto actualShardCount = GetFileSystem().ShardFileSystemIdsSize();
     if (actualShardCount < expectedShardCount) {
         auto message = TStringBuilder() << "Shard count smaller than expected: "
@@ -265,7 +329,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
 
     const auto owner = args.RequestInfo->Sender;
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     // check if client reconnecting with known session id
     auto* session = FindSession(sessionId);
@@ -273,7 +337,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         if (session->GetClientId() == clientId) {
             args.SessionId = session->GetSessionId();
             auto toKill = DoRecoverSession(
-                db,
+                *db,
                 *this,
                 session,
                 clientId,
@@ -285,6 +349,19 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 ctx);
             args.SessionInterrupted = true;
             if (toKill != owner) {
+                const auto subSession =
+                    session->SubSessions.GetSubSessionBySeqNo(seqNo);
+                if (subSession) {
+                    args.OwnerGeneration = subSession->OwnerGeneration;
+                } else {
+                    LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+                        "%s CreateSession c:%s, s:%s, seqno:%lu recovered "
+                        "by session, but subsession was not found",
+                        LogTag.c_str(),
+                        clientId.c_str(),
+                        session->GetSessionId().c_str(),
+                        seqNo);
+                }
                 LOG_INFO(ctx, TFileStoreComponents::TABLET,
                     "%s CreateSession c:%s, s:%s, seqno:%lu recovered by session",
                     LogTag.c_str(),
@@ -320,7 +397,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
             args.SessionId = session->GetSessionId();
 
             DoRecoverSession(
-                db,
+                *db,
                 *this,
                 session,
                 clientId,
@@ -330,6 +407,19 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 readOnly,
                 owner,
                 ctx);
+            const auto subSession =
+                session->SubSessions.GetSubSessionBySeqNo(seqNo);
+            if (subSession) {
+                args.OwnerGeneration = subSession->OwnerGeneration;
+            } else {
+                LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+                    "%s CreateSession c:%s, s:%s, seqno:%lu recovered by "
+                    "client, but subsession was not found",
+                    LogTag.c_str(),
+                    clientId.c_str(),
+                    session->GetSessionId().c_str(),
+                    seqNo);
+            }
             args.SessionInterrupted = true;
 
             return;
@@ -356,8 +446,8 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
 
     auto sessionOptions = TSession::CreateSessionOptions(Config);
 
-    CreateSession(
-        db,
+    auto* newSession = CreateSession(
+        *db,
         clientId,
         args.SessionId,
         checkpointId,
@@ -366,6 +456,19 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         readOnly,
         owner,
         sessionOptions);
+    const auto subSession =
+        newSession->SubSessions.GetSubSessionBySeqNo(seqNo);
+    if (subSession) {
+        args.OwnerGeneration = subSession->OwnerGeneration;
+    } else {
+        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession c:%s, s:%s, seqno:%lu created new session, "
+            "but subsession was not found",
+            LogTag.c_str(),
+            clientId.c_str(),
+            newSession->GetSessionId().c_str(),
+            seqNo);
+    }
 }
 
 void TIndexTabletActor::CompleteTx_CreateSession(
@@ -412,16 +515,27 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     auto response = std::make_unique<TResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));
     response->Record.SetSessionState(session->GetSessionState());
-    auto& fileStore = *response->Record.MutableFileStore();
-    Convert(GetFileSystem(), fileStore);
-    FillFeatures(GetFileSystem(), GetFileSystemStats(), *Config, fileStore);
+    response->Record.SetOwnerGeneration(args.OwnerGeneration);
+    if (!args.Request.GetNoFileStoreInfo()) {
+        auto& fileStore = *response->Record.MutableFileStore();
+        Convert(GetFileSystem(), fileStore);
+        FillFeatures(GetFileSystem(), GetFileSystemStats(), *Config, fileStore);
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s New session TFileStoreFeatures '%s'",
-        LogTag.c_str(),
-        fileStore.GetFeatures().ShortDebugString().c_str());
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s New session TFileStoreFeatures '%s'",
+            LogTag.c_str(),
+            fileStore.GetFeatures().ShortDebugString().c_str());
+    }
+
+    if (FastShard) {
+        response->Record.SetAdapterModeEnabled(true);
+        if (!args.Request.GetNoFileStoreInfo()) {
+            auto* f = response->Record.MutableFileStore()->MutableFeatures();
+            ProcessAdapterModeFeatures(*f);
+        }
+    }
 
     TVector<TString> shardIds;
     // there's no point in returning shard list unless it's main filesystem
@@ -499,6 +613,15 @@ void TIndexTabletActor::CreateSessionsInShards(
         "%s Creating shard sessions (%s)",
         logTag.c_str(),
         JoinSeq(",", shardIds).c_str());
+
+    //
+    // The returned FileStore structure can be huge for filesystems with many
+    // shards. At the same time it's actually not used at all - it's only needed
+    // by the storage service layer, not by other tablets. And the storage
+    // service layer gets it from the main tablet.
+    //
+
+    request.SetNoFileStoreInfo(true);
 
     auto actor = std::make_unique<TCreateShardSessionsActor>(
         std::move(logTag),

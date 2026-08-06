@@ -36,6 +36,7 @@ struct TRangeStat
     ui16 ReadRequestCount = 0;
     ui16 ReadRequestBlobCount = 0;
     ui16 ReadRequestBlockCount = 0;
+    ui16 NewlyZeroedBlocks = 0; // In-memory only.
     bool Compacted = false;
     TCompactionScore CompactionScore;
 
@@ -66,11 +67,29 @@ struct TRangeStat
     ui16 GarbageBlockCount() const
     {
         if (UsedBlockCount > BlockCount) {
-            // it means that some of these used blocks are still in fresh index
+            // UsedBlockCount can temporarily exceed BlockCount. For example, we
+            // may write a mixed/merged blob and then add a zero blob covering
+            // the same blocks to fresh. After compaction, BlockCount drops but
+            // UsedBlockCount stays the same. This mismatch is corrected on the
+            // next flush.
             return 0;
         }
 
         return BlockCount - UsedBlockCount;
+    }
+
+    ui16 GarbageIgnoringZeroed() const
+    {
+        const auto garbageBlockCount = GarbageBlockCount();
+        if (garbageBlockCount < NewlyZeroedBlocks) {
+            return 0;
+        }
+        return garbageBlockCount - NewlyZeroedBlocks;
+    }
+
+    ui16 UsedBlocksIgnoringZeroed() const
+    {
+        return UsedBlockCount + NewlyZeroedBlocks;
     }
 };
 

@@ -16,7 +16,7 @@
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob_index.h>
 #include <cloud/blockstore/libs/storage/partition2/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition2/model/checkpoint.h>
@@ -48,7 +48,10 @@ struct IFreshBlockVisitor
 {
     virtual ~IFreshBlockVisitor() = default;
 
-    virtual void Visit(const TBlock& block, TStringBuf blockContent) = 0;
+    virtual void Visit(
+        const TBlock& block,
+        TStringBuf blockContent,
+        const TPartialBlobId& blobId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -394,7 +397,19 @@ public:
 
     void WriteFreshBlock(
         const TBlock& block,
-        TBlockDataRef blockContent);
+        TBlockDataRef blockContent,
+        TPartialBlobId blobId);
+
+    void WriteFreshBlock(
+        const TBlock& block,
+        TBlockDataRef blockContent)
+    {
+        WriteFreshBlock(
+            block,
+            blockContent,
+            {}  // blobId
+        );
+    }
 
     bool DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
 

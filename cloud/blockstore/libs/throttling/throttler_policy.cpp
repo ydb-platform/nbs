@@ -30,6 +30,11 @@ public:
 
         return 0.0;
     }
+
+    TUsedQuota TakeUsedQuota() override
+    {
+        return {};
+    }
 };
 
 }   // namespace

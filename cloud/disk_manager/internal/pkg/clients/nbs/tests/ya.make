@@ -6,6 +6,7 @@ SET_APPEND(RECIPE_ARGS --disk-agent-count 7)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 GO_XTEST_SRCS(
+    checkpoint_consistency_test.go
     client_test.go
 )
 

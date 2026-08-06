@@ -4,8 +4,10 @@
 
 #include "tablet_tx.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/histogram.h>
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
+
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/tablet_counters.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
@@ -120,7 +122,14 @@ TTabletCountersPtr CreateIndexTabletCounters();
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTabletMetrics
+/**
+ * This data structure holds index tablet actor-level metrics. Tracking new
+ * requests is thread-safe. Initialization/registration and complex functions
+ * that iterate various metrics are supposed to be called only by the tablet
+ * actor and are not thread-safe. So it's ok to pass a smart pointer to this
+ * structure to some other thread/actor for request completion tracking.
+ */
+struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
 {
     bool Initialized{false};
 
@@ -137,6 +146,10 @@ struct TTabletMetrics
     std::atomic<i64> UsedDirectHandlesCount{0};
     std::atomic<i64> SevenBytesHandlesCount{0};
     std::atomic<i64> UsedLocksCount{0};
+
+    std::atomic<i64> NodeExistsWhileCreatingInShardCount{0};
+    std::atomic<i64> CreateNodeInShardRetryCount{0};
+    std::atomic<i64> ReplayedCreateNodeInShardRequestsCount{0};
 
     std::atomic<i64> StrictFileSystemSizeEnforcementEnabled{0};
     std::atomic<i64> DirectoryCreationInShardsEnabled{0};
@@ -159,6 +172,8 @@ struct TTabletMetrics
 
     std::atomic<i64> ReadAheadCacheHitCount{0};
     std::atomic<i64> ReadAheadCacheNodeCount{0};
+    std::atomic<i64> ReadNodeCacheBypassCount{0};
+    std::atomic<i64> ReadAheadCacheBypassCount{0};
 
     // Read-only transactions that used fast path (in-memory index state)
     std::atomic<i64> InMemoryIndexStateROCacheHitCount{0};
@@ -195,6 +210,7 @@ struct TTabletMetrics
     std::atomic<i64> CMMixedBlobsCount{0};
     std::atomic<i64> CMDeletionMarkersCount{0};
     std::atomic<i64> CMGarbageBlocksCount{0};
+    std::atomic<i64> CollectCommitId{0};
 
     // Backpressure Write throttling
     std::atomic<i64> IsWriteAllowed{0};
@@ -202,10 +218,14 @@ struct TTabletMetrics
     std::atomic<i64> FlushBackpressureThreshold{0};
     std::atomic<i64> FlushBytesBackpressureValue{0};
     std::atomic<i64> FlushBytesBackpressureThreshold{0};
+    std::atomic<i64> FlushBytesItemCountBackpressureValue{0};
+    std::atomic<i64> FlushBytesItemCountBackpressureThreshold{0};
     std::atomic<i64> CompactionBackpressureValue{0};
     std::atomic<i64> CompactionBackpressureThreshold{0};
     std::atomic<i64> CleanupBackpressureValue{0};
     std::atomic<i64> CleanupBackpressureThreshold{0};
+    std::atomic<i64> CollectGarbageBackpressureValue{0};
+    std::atomic<i64> CollectGarbageBackpressureThreshold{0};
 
     // Throttling
     std::atomic<i64> MaxReadBandwidth{0};
@@ -224,10 +244,17 @@ struct TTabletMetrics
     // Tablet-specific stats
     std::atomic<i64> TabletStartTimestamp{0};
     std::atomic<i64> TabletId{0};
+    std::atomic<i64> TabletGeneration{0};
 
     // Blob compression stats
     std::atomic<i64> UncompressedBytesWritten{0};
     std::atomic<i64> CompressedBytesWritten{0};
+
+    // HandleStatsByNode size stats
+    std::atomic<i64> HandleStatsByNodeMaxSize{0};
+    std::atomic<i64> HandleStatsByNodeSumSize{0};
+    std::atomic<i64> HandleStatsByNodeMaxTotalSize{0};
+    std::atomic<i64> HandleStatsByNodeSumTotalSize{0};
 
     // Opened nodes stats
     std::atomic<i64> NodesOpenForWritingBySingleSession{0};
@@ -238,6 +265,9 @@ struct TTabletMetrics
     std::atomic<i64> OrphanNodesCount{0};
 
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
+
+    using TLatHistogram =
+        NMetrics::THistogram<NMetrics::EHistUnit::HU_TIME_MICROSECONDS>;
     TLatHistogram ReadDataPostponed;
     TLatHistogram WriteDataPostponed;
 
@@ -261,6 +291,11 @@ struct TTabletMetrics
         std::atomic<i64> ResponseNodeRefs{0};
     } ListNodesExtra;
 
+    struct TExtraCreateHandleMetrics
+    {
+        std::atomic<i64> GuestKeepCacheSet{0};
+    } CreateHandleExtra;
+
     struct TExtraConfirmAddDataMetrics
     {
         std::atomic<i64> DeferredCount{0};
@@ -279,10 +314,16 @@ struct TTabletMetrics
     std::atomic<i64> OverloadedCount{0};
 
     TInstant PrevCPUUsageMicrosTs;
+    i64 PrevCPUUsageMicros{0};
     std::atomic<i64> CPUUsageMicros{0};
-    i64 CPUUsageRate = 0;
+    std::atomic<i64> CPUUsageRate{0};
 
+    std::atomic<i64> OpLogEntryCount{0};
     std::atomic<i64> ResponseLogEntryCount{0};
+
+    std::atomic<i64> RenameNotSupportedErrorCount{0};
+
+    std::atomic<i64> ShardBalancerUpdateErrorCount{0};
 
     const NMetrics::IMetricsRegistryPtr StorageRegistry;
     const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
@@ -305,5 +346,7 @@ struct TTabletMetrics
 
     i64 CalculateNetworkRequestBytes(ui32 nonNetworkMetricsBalancingFactor);
 };
+
+using TTabletMetricsPtr = TIntrusivePtr<TTabletMetrics>;
 
 }   // namespace NCloud::NFileStore::NStorage

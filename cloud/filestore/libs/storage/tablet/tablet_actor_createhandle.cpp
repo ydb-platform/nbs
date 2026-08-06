@@ -149,6 +149,32 @@ void TIndexTabletActor::HandleCreateHandle(
         }
     }
 
+    // The NodeRef needs to be locked to prevent the node from being unlinked
+    // and to avoid races with other concurrent CreateHandle/CreateNode
+    // requests. It is important to lock the NodeRef even before it is created
+    // because an UnlinkNode transaction may have already deleted the NodeRef
+    // in the leader, while still holding the lock till a NodeRef is deleted
+    // in the shard.
+    bool isNodeRefLocked = false;
+    if (msg->Record.GetName() &&
+        HasFlag(msg->Record.GetFlags(), NProto::TCreateHandleRequest::E_CREATE))
+    {
+        isNodeRefLocked =
+            TryLockNodeRef({msg->Record.GetNodeId(), msg->Record.GetName()});
+        if (!isNodeRefLocked) {
+            auto error = MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "node ref " << msg->Record.GetNodeId() << " "
+                    << msg->Record.GetName() << " is locked for CreateHandle");
+
+            auto response = std::make_unique<TResponse>(error);
+            NCloud::Reply(ctx, *ev, std::move(response));
+            onReply(error);
+            return;
+        }
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -161,7 +187,8 @@ void TIndexTabletActor::HandleCreateHandle(
         ctx,
         std::move(requestInfo),
         std::move(msg->Record),
-        std::move(profileLogRequest));
+        std::move(profileLogRequest),
+        isNodeRefLocked);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -192,7 +219,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         return true;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     // There could be two cases:
     // * access by parentId/name
@@ -200,7 +227,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
     if (args.Name) {
         // check that parent exists and is the directory;
         // TODO: what if symlink?
-        if (!ReadNode(db, args.NodeId, args.ReadCommitId, args.ParentNode)) {
+        if (!ReadNode(*db, args.NodeId, args.ReadCommitId, args.ParentNode)) {
             return false;
         }
 
@@ -221,8 +248,8 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         }
 
         // check whether child node exists
-        TMaybe<IIndexTabletDatabase::TNodeRef> ref;
-        if (!ReadNodeRef(db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> ref;
+        if (!ReadNodeRef(*db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
             return false;   // not ready
         }
 
@@ -233,18 +260,23 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 return true;
             }
 
-            // validate there are enough free inodes
-            if (!HasNodesLeft()) {
+            const bool behaveAsShard = BehaveAsShard(args.Request.GetHeaders());
+
+            // Validate there are enough free inodes. The restriction is not
+            // enforced if the request comes from the main FS to the shard.
+            if (!HasNodesLeft() && !behaveAsShard) {
                 args.Error = ErrorNoSpaceLeft();
                 return true;
             }
 
             auto shardId = args.RequestShardId;
-            if (!BehaveAsShard(args.Request.GetHeaders())
-                    && !GetFileSystem().GetShardFileSystemIds().empty()
-                    && Config->GetShardIdSelectionInLeaderEnabled())
+            if (!behaveAsShard
+                    && !GetFileSystem().GetShardFileSystemIds().empty())
             {
-                args.Error = SelectShard(0 /*fileSize*/, &shardId);
+                args.Error = SelectShard(
+                    NProto::E_REGULAR_NODE,
+                    0 /*fileSize*/,
+                    &shardId);
                 if (HasError(args.Error)) {
                     return true;
                 }
@@ -279,7 +311,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
     }
 
     if (args.TargetNodeId != InvalidNodeId) {
-        if (!ReadNode(db, args.TargetNodeId, args.ReadCommitId, args.TargetNode)) {
+        if (!ReadNode(*db, args.TargetNodeId, args.ReadCommitId, args.TargetNode)) {
             return false;   // not ready
         }
 
@@ -324,7 +356,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     if (args.TargetNodeId == InvalidNodeId
             && (args.ShardId.empty() || args.IsNewShardNode))
@@ -347,11 +379,11 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             NProto::TNode attrs =
                 CreateRegularAttrs(args.Mode, args.Uid, args.Gid);
             args.TargetNodeId = CreateNode(
-                db,
+                *db,
                 args.WriteCommitId,
                 attrs);
 
-            args.TargetNode = IIndexTabletDatabase::TNode {
+            args.TargetNode = INodeIndexTabletDatabase::TNode {
                 args.TargetNodeId,
                 attrs,
                 args.WriteCommitId,
@@ -361,7 +393,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
         // TODO: support for O_TMPFILE
         CreateNodeRef(
-            db,
+            *db,
             args.NodeId,
             args.WriteCommitId,
             args.Name,
@@ -372,7 +404,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         // update parent cmtime as we created a new entry
         auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
         UpdateNode(
-            db,
+            *db,
             args.ParentNode->NodeId,
             args.ParentNode->MinCommitId,
             args.WriteCommitId,
@@ -384,7 +416,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
     {
         auto e = Truncate(
-            db,
+            *db,
             args.TargetNodeId,
             args.WriteCommitId,
             args.TargetNode->Attrs.GetSize(),
@@ -398,7 +430,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         attrs.SetSize(0);
 
         UpdateNode(
-            db,
+            *db,
             args.TargetNodeId,
             args.TargetNode->MinCommitId,
             args.WriteCommitId,
@@ -409,7 +441,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
     if (args.ShardId.empty()) {
         auto* handle = CreateHandle(
-            db,
+            *db,
             session,
             args.TargetNodeId,
             session->GetCheckpointId() ? args.ReadCommitId : InvalidCommitId,
@@ -432,11 +464,16 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         {
             // We set the GuestKeepCache to tell the client not to bother
             // invalidating the caches upon opening a read-only handle
-            args.Response.SetGuestKeepCache(
+            const bool keepCache =
                 session->HandleStatsByNode.IsAllowedToKeepCache(
                     *node,
                     // isFirstReadAllowed
-                    Config->GetGuestCachingType() == NProto::GCT_ANY_READ));
+                    Config->GetGuestCachingType() == NProto::GCT_ANY_READ);
+            args.Response.SetGuestKeepCache(keepCache);
+
+            Metrics->CreateHandleExtra.GuestKeepCacheSet.fetch_add(
+                keepCache,
+                std::memory_order_relaxed);
         }
 
         // We can remember the last time that the cache was invalidated by a
@@ -463,6 +500,8 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->SetNodeId(RootNodeId);
         shardRequest->SetName(args.ShardNodeName);
         shardRequest->ClearShardFileSystemId();
+        shardRequest->SetOriginalNodeId(args.NodeId);
+        shardRequest->SetOriginalName(args.Name);
         const bool serialized = args.ProfileLogRequest.SerializeToString(
             args.OpLogEntry.MutableProfileLogRequest());
         if (!serialized) {
@@ -471,23 +510,46 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                 << args.OpLogEntry.ShortUtf8DebugString().Quote());
         }
 
-        db.WriteOpLogEntry(args.OpLogEntry);
+        WriteOpLogEntry(*db, args.OpLogEntry);
     }
 
     AddDupCacheEntry(
-        db,
+        *db,
         session,
         args.RequestId,
         args.Response,
         Config->GetDupCacheEntryCount());
 
     EnqueueTruncateIfNeeded(ctx);
+
+    constexpr ui32 wflags = (ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
+         | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE)
+         | ProtoFlag(NProto::TCreateHandleRequest::E_APPEND)
+         | ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE));
+
+    const bool isReadOnly = (args.Flags & wflags) == 0;
+
+    if (Config->GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() && isReadOnly)
+    {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Async create handle: @%lu -> %lu",
+            LogTag.c_str(),
+            args.NodeId,
+            args.Response.GetHandle());
+        CompleteCreateHandle(ctx, args);
+    }
 }
 
-void TIndexTabletActor::CompleteTx_CreateHandle(
+void TIndexTabletActor::CompleteCreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
 {
+    Y_DEFER {
+        args.Completed = true;
+    };
+
     for (auto nodeId: args.UpdatedNodes) {
         InvalidateReadAheadCache(nodeId);
     }
@@ -523,6 +585,13 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
 
     RemoveInFlightRequest(*args.RequestInfo);
 
+    // If the node is to be created in the shard the NodeRef will be unlocked in
+    // TIndexTabletActor::HandleNodeCreatedInShard, otherwise it should be
+    // unlocked here.
+    if (args.IsNodeRefLocked) {
+        UnlockNodeRef({args.NodeId, args.Name});
+    }
+
     auto response =
         std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);
 
@@ -531,7 +600,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         response->Record = std::move(args.Response);
     }
     auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
-        ? Metrics.CreateHandleInShard : Metrics.CreateHandle;
+        ? Metrics->CreateHandleInShard : Metrics->CreateHandle;
     requestMetrics.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     CompleteResponse<TEvService::TCreateHandleMethod>(
@@ -547,6 +616,17 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         GetFileSystemId(),
         args.Error,
         ProfileLog);
+}
+
+void TIndexTabletActor::CompleteTx_CreateHandle(
+    const TActorContext& ctx,
+    TTxIndexTablet::TCreateHandle& args)
+{
+    if (args.Completed) {
+        return;
+    }
+
+    CompleteCreateHandle(ctx, args);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

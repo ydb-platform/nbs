@@ -51,7 +51,7 @@ TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blockCount);
-    request->BlockSize = blockSize;
+    request->SetBlockSize(blockSize);
     request->Sglist = std::move(sglist);
 
     return storage.ReadBlocksLocal(
@@ -70,8 +70,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
 
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
+    request->SetBlockSize(blockSize);
     request->BlocksCount = blockCount;
-    request->BlockSize = blockSize;
     request->Sglist = std::move(sglist);
 
     return storage.WriteBlocksLocal(

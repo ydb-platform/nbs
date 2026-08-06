@@ -60,8 +60,11 @@ private:
     const bool WaitForAddFreshBlocksResponseBeforeResponse;
     const ui64 TabletId;
 
+    TPartitionThreadSafeStatePtr SharedState;
+
     TString BlobContent;
     ui64 BlobSize = 0;
+    TPartialBlobId BlobId;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
@@ -80,8 +83,9 @@ public:
         TVector<TBlockRange32> blockRanges,
         TVector<IWriteBlocksHandlerPtr> writeHandlers,
         IBlockDigestGeneratorPtr blockDigestGenerator,
+        bool waitForAddFreshBlocksResponseBeforeResponse,
         ui64 tabletId,
-        bool waitForAddFreshBlocksResponseBeforeResponse);
+        TPartitionThreadSafeStatePtr sharedState);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
+#include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -75,6 +76,10 @@ struct TTestEnvConfig
     NActors::NLog::EPriority LogPriority_NFS = NActors::NLog::PRI_TRACE;
     NActors::NLog::EPriority LogPriority_KiKiMR = NActors::NLog::PRI_WARN;
     NActors::NLog::EPriority LogPriority_Others = NActors::NLog::PRI_WARN;
+
+    // This controls probability that read will be restarted
+    double FakePageFaultsProbability = 0.0;
+    std::optional<ui64> FakePageFaultsRandomSeed = std::nullopt;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -264,10 +269,17 @@ TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig);
 ////////////////////////////////////////////////////////////////////////////////
 
 #define TABLET_TEST_HEAD(name)                                                 \
-    void TestImpl##name(TFileSystemConfig tabletConfig);                       \
+    void TestImpl##name(                                                      \
+        TFileSystemConfig tabletConfig,                                        \
+        TTestEnvConfig testEnvConfig);                                         \
     Y_UNIT_TEST(name)                                                          \
     {                                                                          \
-        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB});                  \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB}, {});              \
+    }                                                                          \
+    Y_UNIT_TEST(name##WithEmulatedPageFaults)                                  \
+    {                                                                          \
+        TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB},                   \
+                       TTestEnvConfig{.FakePageFaultsProbability = 0.01});     \
     }                                                                          \
 // TABLET_TEST_HEAD
 
@@ -275,14 +287,18 @@ TStorageConfigPtr CreateTestStorageConfig(NProto::TStorageConfig storageConfig);
     TABLET_TEST_HEAD(name)                                                     \
     Y_UNIT_TEST(name##largeBS)                                                 \
     {                                                                          \
-        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS});               \
+        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS}, {});           \
     }                                                                          \
-    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
+    void TestImpl##name(                                                       \
+        TFileSystemConfig tabletConfig,                                        \
+        TTestEnvConfig testEnvConfig)                                          \
 // TABLET_TEST_IMPL
 
 #define TABLET_TEST_4K_ONLY(name)                                              \
     TABLET_TEST_HEAD(name)                                                     \
-    void TestImpl##name(TFileSystemConfig tabletConfig)                        \
+    void TestImpl##name(                                                       \
+        TFileSystemConfig tabletConfig,                                        \
+        TTestEnvConfig testEnvConfig)                                          \
 // TABLET_TEST_4K_ONLY
 
 #define TABLET_TEST(name)                                                      \

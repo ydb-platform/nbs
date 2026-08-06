@@ -67,6 +67,10 @@ message TServerConfig
     // Regions that have not been pinged within this timeout will be
     // invalidated and unmapped.
     optional uint32 SharedMemoryRegionTimeout = 23;
+
+    // Certificate refresh period (in milliseconds) for automatic TLS certificate
+    // reloading. Zero disables periodic certificate reloading.
+    optional uint32 RefreshCertsPeriod = 24;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -103,6 +107,9 @@ message TIoUringConfig
 
     // Propagate parent thread affinity to io_uring kernel threads.
     optional bool PropagateAffinityToKernelWorkers = 5;
+
+    // Poll submission queue from kernel thread (enables submit without system call)
+    optional bool SQKernelPollingEnabled = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -219,6 +226,14 @@ message TLocalServiceConfig
     // Refresh .snapshots entries every SnapshotsDirRefreshInterval ms.
     optional uint32 SnapshotsDirRefreshInterval = 39;
 
+    // Enable FUSE_POSIX_ACL on guest (FUSE client)
+    optional bool GuestPosixAclEnabled = 40;
+
+    // Maximum serialized size of one persistent handle.
+    optional uint64 DirectoryHandlesPersistentHandleMaxSize = 41;
+
+    // Async processing of destroy handle requests only for read only handles.
+    optional bool AsyncDestroyReadOnlyHandleEnabled = 42;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

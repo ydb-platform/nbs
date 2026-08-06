@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -263,7 +264,7 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
             TStringBuilder()
             << "tabletId: " << TabletID() << ", error: " << errorMessage);
 
-        BecomeAux(ctx, STATE_BROKEN);
+        Suicide(ctx);
         return;
     }
 
@@ -312,17 +313,54 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
             std::move(unrecoverableCommitIds));
     }
 
-    // Recovery must replay confirmations in commitId order to preserve write
-    // order for overlapping ranges.
-    Sort(recoverableCommitIds);
-
-    for (ui64 commitId: recoverableCommitIds) {
-        // TODO(#5353) Support out of order insertion to unblock here
-        // imeadeately
-        ConfirmData(commitId, ctx);
+    if (recoverableCommitIds.empty()) {
+        return BlobsConfirmed(ctx);
     }
 
-    BlobsConfirmed(ctx);
+    // Recovery replays confirmations one at a time in commitId order: each
+    // write's AddBlob is submitted only after the previous one reaches its safe
+    // point, so a single AddBlob is ever in flight and page faults cannot
+    // reorder the AddBlob TXes for overlapping ranges.
+    //
+    // NOTE: preserving this order is not actually required today. From the
+    // vhost perspective, a sequential workload over three-stage (unconfirmed)
+    // writes can never have two unconfirmed writes in progress at once, so
+    // overlapping unconfirmed writes simply don't occur. If we ever do observe
+    // overlapping unconfirmed writes, it means the client issued them in
+    // parallel, and concurrent writes to the same range have no defined order,
+    // they may be reordered anyway, so any confirmation order is correct. We
+    // keep the strict ordering for now, because penatly is insignificant and
+    // there is a possibility that we can reuse this property in the future.
+    Sort(recoverableCommitIds);
+
+    for (const ui64 commitId: recoverableCommitIds) {
+        auto it = UnconfirmedData.find(commitId);
+        TABLET_VERIFY(it != UnconfirmedData.end());
+        const auto& data = it->second.Data;
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        InitTabletProfileLogRequestInfo(
+            profileLogRequest,
+            EFileStoreSystemRequest::RecoverUnconfirmedData,
+            ctx.Now());
+        AddRange(
+            data.GetNodeId(),
+            data.GetOffset(),
+            data.GetLength(),
+            profileLogRequest);
+        profileLogRequest.SetCommitId(commitId);
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            {},
+            ProfileLog);
+    }
+
+    RecoveredDataToConfirm.assign(
+        recoverableCommitIds.begin(),
+        recoverableCommitIds.end());
+
+    ConfirmNextRecoveredData(ctx);
 }
 
 void TIndexTabletActor::BlobsConfirmed(const TActorContext& ctx)
@@ -333,7 +371,7 @@ void TIndexTabletActor::BlobsConfirmed(const TActorContext& ctx)
         "%s ConfirmBlobs: recovery confirmation completed",
         LogTag.c_str());
 
-    UnconfirmedRecoveryReady = true;
+    SetUnconfirmedRecoveryReady(true);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

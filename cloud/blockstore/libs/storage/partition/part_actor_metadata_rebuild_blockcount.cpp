@@ -296,7 +296,7 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (State->GetCommitQueue().GetMinCommitId() <= msg->BlobId.CommitId()) {
+    if (State->GetCommitQueue()->GetMinCommitId() <= msg->BlobId.CommitId()) {
         replyError(ctx, *requestInfo, E_REJECTED, "There are pending write commits");
         return;
     }
@@ -348,7 +348,8 @@ bool TPartitionActor::PrepareMetadataRebuildBlockCount(
         args.StartBlobId,
         args.FinalBlobId,
         args.BlobCountToRead);
-    auto ready = progress != TPartitionDatabase::EBlobIndexScanProgress::NotReady;
+    auto ready =
+        progress != TPartitionDatabase::EBlobIndexScanProgress::NotReady;
     if (ready) {
         visitor.UpdateTx();
     }

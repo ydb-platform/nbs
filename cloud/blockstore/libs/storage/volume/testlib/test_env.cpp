@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
@@ -430,9 +431,9 @@ TVolumeClient::CreateReadBlocksLocalRequest(
     request->Record.SetStartIndex(readRange.Start);
     request->Record.SetBlocksCount(readRange.Size());
     request->Record.MutableHeaders()->SetClientId(clientId);
+    request->Record.SetBlockSize(DefaultBlockSize);
 
     request->Record.Sglist = sglist;
-    request->Record.BlockSize = DefaultBlockSize;
     return request;
 }
 
@@ -476,9 +477,9 @@ TVolumeClient::CreateWriteBlocksLocalRequest(
     auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
     request->Record.SetStartIndex(writeRange.Start);
     request->Record.MutableHeaders()->SetClientId(clientId);
+    request->Record.SetBlockSize(DefaultBlockSize);
     request->Record.Sglist = TGuardedSgList(std::move(sglist));
     request->Record.BlocksCount = writeRange.Size();
-    request->Record.BlockSize = DefaultBlockSize;
     return request;
 }
 
@@ -793,9 +794,10 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     NProto::TStorageServiceConfig storageServiceConfig,
     TDiskRegistryStatePtr diskRegistryState,
     NProto::TFeaturesConfig featuresConfig,
-    NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TVector<TDiskAgentStatePtr> diskAgentStates,
-    bool debugActorRegistration)
+    bool debugActorRegistration,
+    IProfileLogPtr profileLog)
 {
     const ui32 agentCount = Max<ui32>(diskAgentStates.size(), 1);
     auto runtime = std::make_unique<TTestBasicRuntime>(agentCount);
@@ -965,6 +967,10 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     auto partitionBudgetManager =
         std::make_shared<TPartitionBudgetManager>(config);
 
+    if (!profileLog) {
+        profileLog = CreateProfileLogStub();
+    }
+
     auto createFunc = [=](const TActorId& owner, TTabletStorageInfo* info)
     {
         auto tablet = CreateVolumeTablet(
@@ -972,8 +978,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             info,
             config,
             diagConfig,
-            CreateProfileLogStub(),
-            CreateBlockDigestGeneratorStub(),
+            profileLog,
+            NStorage::CreateBlockDigestGeneratorFactory(),
             CreateTraceSerializer(
                 CreateLoggingService("console"),
                 "BLOCKSTORE_TRACE",

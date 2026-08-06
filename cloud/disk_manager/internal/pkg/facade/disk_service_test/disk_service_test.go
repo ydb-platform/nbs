@@ -83,6 +83,98 @@ func TestDiskServiceShouldFailToCreateSsdNonreplIfNotAllowed(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestDiskServiceStatReturnsUsedLogicalSpace(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	const (
+		blockSize   = 4096
+		writeSize   = 4 * 1024 * 1024
+		nrdDiskSize = 262144 * blockSize
+	)
+
+	for _, testCase := range []struct {
+		name                string
+		kind                disk_manager.DiskKind
+		diskSize            int64
+		writeBlock          bool
+		expectedStorageSize int64
+	}{
+		{
+			name:                "ssd",
+			kind:                disk_manager.DiskKind_DISK_KIND_SSD,
+			diskSize:            2 * writeSize,
+			writeBlock:          true,
+			expectedStorageSize: writeSize,
+		},
+		{
+			name:                "hdd",
+			kind:                disk_manager.DiskKind_DISK_KIND_HDD,
+			diskSize:            2 * blockSize,
+			writeBlock:          false,
+			expectedStorageSize: 0,
+		},
+		{
+			name:                "ssd_nonreplicated",
+			kind:                disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			diskSize:            nrdDiskSize,
+			writeBlock:          true,
+			expectedStorageSize: nrdDiskSize,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
+
+			reqCtx := testcommon.GetRequestContext(t, ctx)
+			operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+				Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+					SrcEmpty: &empty.Empty{},
+				},
+				Size: testCase.diskSize,
+				Kind: testCase.kind,
+				DiskId: &disk_manager.DiskId{
+					ZoneId: "zone-a",
+					DiskId: diskID,
+				},
+				FolderId: "folder",
+			})
+			require.NoError(t, err)
+			require.NotEmpty(t, operation)
+			err = internal_client.WaitOperation(ctx, client, operation.Id)
+			require.NoError(t, err)
+			defer testcommon.DeleteDisk(t, ctx, client, diskID)
+
+			if testCase.writeBlock {
+				nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+				block := make([]byte, writeSize)
+				block[0] = 1
+				err = nbsClient.Write(
+					diskID,
+					0, // startIndex
+					block,
+				)
+				require.NoError(t, err)
+			}
+
+			reqCtx = testcommon.GetRequestContext(t, ctx)
+			stats, err := client.StatDisk(reqCtx, &disk_manager.StatDiskRequest{
+				DiskId: &disk_manager.DiskId{
+					ZoneId: "zone-a",
+					DiskId: diskID,
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, stats)
+			require.Equal(t, testCase.expectedStorageSize, stats.StorageSize)
+		})
+	}
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 // NBS-3424: TODO: enable this test.
 func TestDiskServiceShouldFailCreateDiskFromNonExistingImage(t *testing.T) {
 	/*
@@ -239,9 +331,6 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 		true, // pooled
 	)
 
-	// Need to add some variance for better testing.
-	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
-
 	diskID := t.Name()
 	diskSize := 2 * imageSize
 
@@ -260,12 +349,20 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, createOp)
 
-	<-time.After(time.Second)
+	// Need to add some variance for better testing.
+	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
 
 	testcommon.DeleteDisk(t, ctx, client, diskID)
 
-	_ = internal_client.WaitOperation(ctx, client, createOp.Id)
+	tasksStorage, err := testcommon.NewTaskStorage(ctx)
+	require.NoError(t, err)
 
+	require.Eventually(t, func() bool {
+		ended, err := tasksStorage.IsTaskEnded(ctx, createOp.Id)
+		return err == nil && ended
+	}, 200*time.Second, 100*time.Millisecond)
+
+	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -917,7 +1014,10 @@ func TestDiskServiceDescribeDiskModel(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
+func testDiskServiceCreateEncryptedDiskFromSnapshot(
+	t *testing.T,
+	incremental bool,
+) {
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
@@ -937,6 +1037,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 		},
 	}
 
+	// Create original encrypted diskID1
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
@@ -969,6 +1070,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	encryptionDesc, err := disks.PrepareEncryptionDesc(encryption)
 	require.NoError(t, err)
 
+	// Fill diskID1 with random data.
 	diskContentInfo, err := nbsClient.FillEncryptedDisk(
 		ctx,
 		diskID1,
@@ -985,6 +1087,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, testcommon.DefaultKeyHash, diskKeyHash1)
 
+	// Create snapshot from diskID1
 	snapshotID := t.Name()
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
@@ -1001,6 +1104,47 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
+	lastSnapshotID := snapshotID
+
+	if incremental {
+		snapshotID2 := t.Name() + "2"
+		lastSnapshotID = snapshotID2
+
+		// Fill diskID1 with random data once again.
+		_, err = nbsClient.FillEncryptedDisk(
+			ctx,
+			diskID1,
+			diskSize,
+			encryptionDesc,
+		)
+		require.NoError(t, err)
+		// Since the source disk contains data from the old and new filling,
+		// re-calculate crc32 from the disk.
+		srcDiskContentInfo, err := nbsClient.CalculateCrc32WithEncryption(
+			diskID1,
+			diskSize,
+			encryptionDesc,
+		)
+		require.NoError(t, err)
+		diskContentInfo = srcDiskContentInfo
+
+		// Create second (incremental) snapshot from diskID1
+		reqCtx = testcommon.GetRequestContext(t, ctx)
+		operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+			Src: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: diskID1,
+			},
+			SnapshotId: snapshotID2,
+			FolderId:   "folder",
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, operation)
+		err = internal_client.WaitOperation(ctx, client, operation.Id)
+		require.NoError(t, err)
+	}
+
+	// Create diskID2 from snapshot with specified encryption.
 	snapshotMeta := disk_manager.CreateSnapshotMetadata{}
 	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &snapshotMeta)
 	require.NoError(t, err)
@@ -1011,7 +1155,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
-			SrcSnapshotId: snapshotID,
+			SrcSnapshotId: lastSnapshotID,
 		},
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
@@ -1041,12 +1185,14 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, float64(1), diskMeta.Progress)
 
+	// Try to create diskID3 from snapshot without specified encryption.
+	// Should get error "encryption mode should be the same".
 	diskID3 := t.Name() + "3"
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
-			SrcSnapshotId: snapshotID,
+			SrcSnapshotId: lastSnapshotID,
 		},
 		Size: int64(diskSize),
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
@@ -1061,6 +1207,7 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "encryption mode should be the same")
 
+	// Validate content equality of original diskID and created from snapshot diskID2.
 	err = nbsClient.ValidateCrc32WithEncryption(
 		ctx,
 		diskID1,
@@ -1077,6 +1224,14 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
+	testDiskServiceCreateEncryptedDiskFromSnapshot(t, false)
+}
+
+func TestDiskServiceCreateEncryptedDiskFromIncrementedSnapshot(t *testing.T) {
+	testDiskServiceCreateEncryptedDiskFromSnapshot(t, true)
 }
 
 func TestDiskServiceCreateEncryptedDiskFromImage(t *testing.T) {

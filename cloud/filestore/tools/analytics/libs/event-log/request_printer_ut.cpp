@@ -138,6 +138,49 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
             printer->DumpInfo(Request));
     }
 
+    Y_UNIT_TEST_F(ShouldPrintRequestInfoForListNodesRequestType, TEnv)
+    {
+        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::ListNodes));
+
+        auto printer = CreateRequestPrinter(Request.GetRequestType());
+        UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
+
+        auto* listNodesInfo = Request.MutableListNodesInfo();
+        listNodesInfo->SetNodeId(10);
+        listNodesInfo->SetMaxBytes(4096);
+        listNodesInfo->SetRequestCookie("from");
+        listNodesInfo->SetResponseCookie("to");
+        listNodesInfo->SetNameCount(3);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "{node_id=10, max_bytes=4096, request_cookie=from, "
+            "response_cookie=to, name_count=3}",
+            printer->DumpInfo(Request));
+
+        listNodesInfo->SetMaxBytes(0);
+        listNodesInfo->SetRequestCookie("");
+        listNodesInfo->SetResponseCookie("");
+        listNodesInfo->SetNameCount(0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "{node_id=10, name_count=0}",
+            printer->DumpInfo(Request));
+    }
+
+    Y_UNIT_TEST_F(ShouldPrintLegacyListNodesRequestInfo, TEnv)
+    {
+        Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::ListNodes));
+
+        auto* nodeInfo = Request.MutableNodeInfo();
+        nodeInfo->SetNodeId(10);
+        nodeInfo->SetSize(0);
+
+        auto printer = CreateRequestPrinter(Request.GetRequestType());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "{node_id=10, size=0}",
+            printer->DumpInfo(Request));
+    }
+
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForAccessNodeRequestType, TEnv)
     {
         Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::AccessNode));
@@ -388,6 +431,15 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
             "{commit_id=1, offset=32, bytes=32}, "
             "{commit_id=2, offset=64, bytes=32}]",
             printer->DumpInfo(Request));
+    }
+
+    Y_UNIT_TEST_F(ShouldPrintRequestFlags, TEnv)
+    {
+        auto printer = CreateRequestPrinter(Request.GetRequestType());
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::UnlinkNode));
+        Request.SetFlags(1);
+        UNIT_ASSERT_VALUES_EQUAL("request_flags=1", printer->DumpInfo(Request));
     }
 }
 

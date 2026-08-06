@@ -15,6 +15,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 #include <library/cpp/testing/unittest/env.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -42,6 +43,50 @@ TString GetTestFilePath(const TString& fileName)
 TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
 {
     return std::make_shared<TDiagnosticsConfig>();
+}
+
+ICertificateProviderPtr CreateServerCertificateProvider(
+    const TServerAppConfigPtr& config,
+    ILoggingServicePtr /*logging*/)
+{
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: config->GetCerts()) {
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
+
+    if (certPathList.empty()) {
+        certPathList.push_back({
+            config->GetCertPrivateKeyFile(),
+            config->GetCertFile()
+        });
+    }
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TClientAppConfigPtr& config,
+    ILoggingServicePtr /*logging*/)
+{
+    if (!config->GetSecurePort()) {
+        return CreateCertificateProviderStub();
+    }
+
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
 }
 
 }   // namespace
@@ -120,6 +165,9 @@ IServerPtr TTestServerBuilder::BuildServer(
         TestContext.ProfileLog,
         TestContext.RequestStats,
         TestContext.VolumeStats);
+    auto certificateProvider = CreateServerCertificateProvider(
+        serverConfig,
+        TestContext.Logging);
 
     auto server = CreateServer(
         std::move(serverConfig),
@@ -129,7 +177,8 @@ IServerPtr TTestServerBuilder::BuildServer(
         std::move(udsService),
         TServerOptions {
             .CellId = TestContext.CellId
-        });
+        },
+        std::move(certificateProvider));
     return server;
 }
 
@@ -205,6 +254,9 @@ IClientPtr TTestClientBuilder::BuildClient()
         TestContext.RequestStats,
         TestContext.VolumeStats,
         clientConfig->GetInstanceId());
+    auto certificateProvider = CreateClientCertificateProvider(
+        clientConfig,
+        TestContext.Logging);
 
     auto [client, error] = CreateClient(
         std::move(clientConfig),
@@ -212,7 +264,8 @@ IClientPtr TTestClientBuilder::BuildClient()
         TestContext.Scheduler,
         TestContext.Logging,
         TestContext.Monitoring,
-        std::move(clientStats));
+        std::move(clientStats),
+        std::move(certificateProvider));
 
     UNIT_ASSERT(!HasError(error));
     return client;

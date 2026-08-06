@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
@@ -602,6 +603,65 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         NPrivateProto::TRebindVolumesRequest request;
         request.SetBinding(2);  // REMOTE
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        service.ExecuteAction("rebindvolumes", buf);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, diskIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(diskIds.count("vol0"), 1);
+        UNIT_ASSERT_VALUES_EQUAL(diskIds.count("vol1"), 1);
+    }
+
+    Y_UNIT_TEST(ShouldRebindLocalVolumesWithGentlePreemption)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllowGentlePreemptionForRebindVolumesAction(true);
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume("vol0");   // local
+        service.CreateVolume("vol1");   // local
+        service.CreateVolume("vol2");   // remote
+        service.CreateVolume("vol3");   // not mounted
+
+        service.MountVolume("vol0");
+        service.MountVolume("vol1");
+        service.MountVolume(
+            "vol2",
+            TString(),   // instanceId
+            TString(),   // token
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+
+        TSet<TString> diskIds;
+
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvChangeVolumeBindingRequest: {
+                        auto* msg = event->Get<
+                            TEvService::TEvChangeVolumeBindingRequest>();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<ui32>(
+                                TEvService::TChangeVolumeBindingRequest::
+                                    EChangeBindingOp::RELEASE_TO_HIVE),
+                            static_cast<ui32>(msg->Action));
+                        UNIT_ASSERT(msg->UseGentlePreemption);
+
+                        diskIds.insert(msg->DiskId);
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        NPrivateProto::TRebindVolumesRequest request;
+        request.SetBinding(2);   // REMOTE
+        request.SetUseGentlePreemption(true);
 
         TString buf;
         google::protobuf::util::MessageToJsonString(request, &buf);
@@ -1904,7 +1964,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         auto setVhostDiscardEnabledFlagAndCheckResult = [&](bool discardEnabled)
         {
-            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            NPrivateProto::TSetVhostDiscardFlagActionRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetVhostDiscardEnabled(discardEnabled);
 
@@ -1936,7 +1996,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         {
             // Correct ConfigVersion.
-            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            NPrivateProto::TSetVhostDiscardFlagActionRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(1);
             request.SetVhostDiscardEnabled(false);
@@ -1953,7 +2013,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         {
             // Incorrect ConfigVersion.
-            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            NPrivateProto::TSetVhostDiscardFlagActionRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetConfigVersion(3);
             request.SetVhostDiscardEnabled(true);
@@ -1972,7 +2032,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         {
             // DiskId should be supplied.
-            NPrivateProto::TSetVhostDiscardEnabledFlagRequest request;
+            NPrivateProto::TSetVhostDiscardFlagActionRequest request;
             request.SetVhostDiscardEnabled(true);
 
             TString buf;
@@ -2135,6 +2195,275 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 &output)
                 .ok());
         UNIT_ASSERT_VALUES_UNEQUAL(0, output.GetCapacity().size());
+    }
+
+    Y_UNIT_TEST(ShouldDescribeDisk)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(100);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            100_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "",
+            "",
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+        auto* disk = drState->Disks.FindPtr(DefaultDiskId);
+        UNIT_ASSERT(disk);
+
+        TString buf;
+
+        {
+            NProto::TDescribeDiskRequest proto;
+            proto.SetDiskId(DefaultDiskId);
+            google::protobuf::util::MessageToJsonString(proto, &buf);
+        }
+
+        const auto response =
+            service.ExecuteAction("diskregistrydescribedisk", buf);
+
+        NProto::TDescribeDiskResponse proto;
+        UNIT_ASSERT(
+            google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &proto)
+                .ok());
+        UNIT_ASSERT_VALUES_EQUAL(disk->Devices.size(), proto.DevicesSize());
+    }
+
+    Y_UNIT_TEST(ShouldUseExactDiskIdMatchOnModifyTags)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        bool exactDiskIdMatch = false;
+        bool hasDiskIdInVolumeConfig = true;
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        auto& msg =
+                            *event->Get<TEvSSProxy::TEvDescribeVolumeRequest>();
+                        exactDiskIdMatch = msg.ExactDiskIdMatch;
+                        break;
+                    }
+                    case TEvSSProxy::EvModifySchemeRequest: {
+                        auto& msg =
+                            *event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        const auto& volumeConfig =
+                            msg.ModifyScheme.GetAlterBlockStoreVolume()
+                                .GetVolumeConfig();
+                        hasDiskIdInVolumeConfig = volumeConfig.HasDiskId();
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        {
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToAdd() = "a";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(true, exactDiskIdMatch);
+        UNIT_ASSERT_VALUES_EQUAL(false, hasDiskIdInVolumeConfig);
+    }
+
+    Y_UNIT_TEST(ShouldFailModifyTagsIfOnlySecondaryDiskExists)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume(GetSecondaryDiskId(DefaultDiskId));
+
+        {
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToAdd() = "source-disk-id=some-disk";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("ModifyTags", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseExactDiskIdMatchOnRebaseVolume)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume(DefaultDiskId);
+        service.CreateVolume("new-base-disk");
+
+        bool exactDiskIdMatch = false;
+        int describeCount = 0;
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        auto& msg =
+                            *event->Get<TEvSSProxy::TEvDescribeVolumeRequest>();
+                        ++describeCount;
+                        // Second describe is for the volume itself (first
+                        // is for base disk, which should not use
+                        // ExactDiskIdMatch).
+                        if (describeCount == 2) {
+                            exactDiskIdMatch = msg.ExactDiskIdMatch;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        {
+            NPrivateProto::TRebaseVolumeRequest rebaseReq;
+            rebaseReq.SetDiskId(DefaultDiskId);
+            rebaseReq.SetTargetBaseDiskId("new-base-disk");
+            rebaseReq.SetConfigVersion(1);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(rebaseReq, &buf);
+            service.ExecuteAction("rebasevolume", buf);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(true, exactDiskIdMatch);
+
+        auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("new-base-disk", volumeConfig.GetBaseDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldUseExactDiskIdMatchOnFinishFillDisk)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        auto request = service.CreateCreateVolumeRequest();
+        request->Record.SetFillGeneration(1);
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+        auto response = service.RecvCreateVolumeResponse();
+        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetStatus());
+
+        bool exactDiskIdMatch = false;
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        auto& msg =
+                            *event->Get<TEvSSProxy::TEvDescribeVolumeRequest>();
+                        exactDiskIdMatch = msg.ExactDiskIdMatch;
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        {
+            NPrivateProto::TFinishFillDiskRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
+            request.SetFillGeneration(1);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("finishfilldisk", buf);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(true, exactDiskIdMatch);
+    }
+
+    Y_UNIT_TEST(ShouldUseExactDiskIdMatchOnSetVhostDiscardFlag)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume(DefaultDiskId);
+
+        bool exactDiskIdMatch = false;
+        bool hasDiskIdInVolumeConfig = true;
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        auto& msg =
+                            *event->Get<TEvSSProxy::TEvDescribeVolumeRequest>();
+                        exactDiskIdMatch = msg.ExactDiskIdMatch;
+                        break;
+                    }
+                    case TEvSSProxy::EvModifySchemeRequest: {
+                        auto& msg =
+                            *event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        const auto& volumeConfig =
+                            msg.ModifyScheme.GetAlterBlockStoreVolume()
+                                .GetVolumeConfig();
+                        hasDiskIdInVolumeConfig = volumeConfig.HasDiskId();
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        {
+            NPrivateProto::TSetVhostDiscardFlagActionRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetVhostDiscardEnabled(true);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setvhostdiscardenabledflag", buf);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(true, exactDiskIdMatch);
+        UNIT_ASSERT_VALUES_EQUAL(false, hasDiskIdInVolumeConfig);
     }
 }
 

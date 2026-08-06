@@ -699,7 +699,7 @@ Y_UNIT_TEST_SUITE(TOverlappingRequestsGuardStorageWrapperTest)
         const auto& result1 = future1.GetValue(TDuration::MilliSeconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_REJECTED,
+            E_BS_INVALID_SESSION,
             result1.GetError().code(),
             FormatError(result1.GetError()));
     }

@@ -81,11 +81,11 @@ message TStorageConfig
     // Timeout for establishing session.
     optional uint32 EstablishSessionTimeout = 6;
 
-    // Write batching timeout.
-    optional bool WriteBatchEnabled = 7;
+    // Obsolete.
+    optional bool WriteBatchEnabled = 7 [deprecated = true];
 
-    // Write batching timeout.
-    optional uint32 WriteBatchTimeout = 8;
+    // Obsolete.
+    optional uint32 WriteBatchTimeout = 8 [deprecated = true];
 
     // Minimum write request size (in bytes) that lets us write the data
     // directly to blobstorage (as a mixed/merged blob).
@@ -321,10 +321,7 @@ message TStorageConfig
     // This numeric value is that x.
     optional uint32 PreferredBlockSizeMultiplier = 354;
 
-    // Enables request forwarding to shards in the StorageServiceActor.
-    // Forwarding is done based on the NodeId and Handle high bits.
-    // Disabling this thing shouldn't really be needed apart from tests.
-    optional bool MultiTabletForwardingEnabled = 355;
+    optional bool MultiTabletForwardingEnabled = 355 [deprecated = true];
 
     // Controls BlobIndexOps' priority over each other.
     optional EBlobIndexOpsPriority BlobIndexOpsPriority = 356;
@@ -514,7 +511,10 @@ message TStorageConfig
     // Enables ShardId selection in Leader for CreateNode and CreateHandle
     // requests. ShardIds selected in Leader have priority over ShardIds
     // selected at the StorageServiceActor level.
-    optional bool ShardIdSelectionInLeaderEnabled = 411;
+    //
+    // Obsolete.
+    // TODO(#5431): remove
+    optional bool ShardIdSelectionInLeaderEnabled = 411 [deprecated = true];
 
     // Shard balancer will prefer shards which have at least this amount of
     // free space in bytes.
@@ -735,11 +735,133 @@ message TStorageConfig
 
     // Allow to destroy filestore with active sessions
     // with size less than threshold(in bytes)
-    optional uint32 ForceDestroySizeThreshold = 487;
+    optional uint64 ForceDestroySizeThreshold = 487;
 
     // Enable adding unconfirmed data for write operations
     optional bool AddingUnconfirmedDataEnabled = 488;
 
     // Limits unconfirmed (and confirmed but not added to the index) data count.
     optional uint32 UnconfirmedDataCountHardLimit = 489;
+
+    // Reject writes when FlushBytesItemCount >= threshold
+    optional uint64 FlushBytesItemCountThresholdForBackpressure = 490;
+
+    // Set this to see file name hashes instead of the actual names in the
+    // tablet's directory viewer.
+    optional bool HideFileNamesInTabletDirectoryViewer = 491;
+
+    // Enable FUSE_POSIX_ACL on guest (FUSE client)
+    optional bool GuestPosixAclEnabled = 492;
+
+    // Shard balancer will round free space per shard to a multiple of this
+    // number in bytes.
+    optional uint64 ShardBalancerPrecisionBytes = 493;
+
+    // Use ListNodesInternal API for internal ListNodes calls.
+    optional bool UseListNodesInternal = 494;
+
+    // Thresholds which enable backpressure - part 2.
+    optional uint64 CollectGarbageThresholdForBackpressure = 495;
+
+    // These flags turn NodeRefs cache into a btree_map without capacity limits.
+    optional bool UseUnlimitedBTreeNodeRefsCacheInMainTablet = 496;
+    optional bool UseUnlimitedBTreeNodeRefsCacheInShards = 497;
+
+    // Use custom protobuf parser for TReadDataResponse
+    // to optimize TReadDataActor performance.
+    optional bool UseCustomReadDataResponseParser = 498 [deprecated = true];
+
+    // If true, describes will be done using SchemeCache instead of TxProxy.
+    optional bool UseSchemeCache = 499;
+
+    // Similar to `InMemoryIndexCacheLoadOnTabletStart`, but applies only to
+    // the node refs table in filesystem shards. If
+    // `InMemoryIndexCacheLoadOnTabletStart` is also set, it takes precedence.
+    optional bool InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards = 500;
+
+    // Restart index tablet on destroy with active sessions only if tablet
+    // uptime is greater than this threshold. Zero disables restarts.
+    optional uint32 RestartTabletUptimeThresholdDuringDestroy = 501;
+
+    // Maximum serialized size of one persistent handle.
+    optional uint64 DirectoryHandlesPersistentHandleMaxSize = 502;
+
+    // Enable the silk-based fastshard TCP server. When enabled, adapter-
+    // mode tablets register their IFileSystemShard with this server,
+    // allowing direct TCP access to shard operations.
+    optional uint32 FastShardServerPort = 503;
+
+    // If this flag is on, new filesystems are created with CompressNodeRef.
+    optional bool EnableNodeRefCompression = 504;
+
+    // Feature flag and soft thresholds for backpressure throttling.
+    optional bool SoftBackpressureEnabled = 505;
+    optional uint32 FlushThresholdForBackpressureSoft = 506;
+    optional uint32 CleanupThresholdForBackpressureSoft = 507;
+    optional uint32 CompactionThresholdForBackpressureSoft = 508;
+    optional uint64 FlushBytesThresholdForBackpressureSoft = 509;
+    optional uint64 FlushBytesItemCountThresholdForBackpressureSoft = 510;
+    optional uint64 CollectGarbageThresholdForBackpressureSoft = 511;
+
+    // Makes tablet's CreateHandle op handler reply before the tx is committed.
+    optional bool TabletUnsafeAsyncReadOnlyCreateHandleEnabled = 512;
+
+    // Makes tablet's DestroyHandle op handler reply before the tx is committed.
+    optional bool TabletUnsafeAsyncDestroyHandleEnabled = 513;
+
+    // Allows flushing WriteData requests to the underlying storage in parallel.
+    // This significantly improves flushing performance but an external reader
+    // may observe the effects of newer writes before older ones.
+    // With parallel writes off, only sequential writes will be optimized.
+    optional bool ServerWriteBackCacheFlushWritesInParallelEnabled = 514;
+
+    // Limit max number in-flight requests to create/configure/destroy shards.
+    // Zero means unlimited.
+    optional uint32 MaxShardManagementRequestsInFlight = 515;
+
+    // Cache TTL that is used by TStorageServiceActor::HandleStatFileStore.
+    optional uint32 StatFileStoreCacheTTL = 516; // in ms
+
+    // Pass data buffer from the tablet as a message payload
+    optional bool ExternalReadDataPayload = 517;
+
+    // Throttling configuration for backpressure usecase, when global throttler is disabled
+    optional uint32 SoftBackpressureMaxWriteBandwidth = 518;   // in MiB/s
+    optional uint32 SoftBackpressureMaxReadBandwidth = 519;    // in MiB/s
+    optional uint32 SoftBackpressureMaxWriteIops = 520;
+    optional uint32 SoftBackpressureMaxReadIops = 521;
+
+    // Sets the minimum shard count that each filesystem would have regardless
+    // of its size.
+    optional uint32 MinShardCount = 522;
+
+    // If enabled, tablet overload is ignored when deciding whether to use
+    // the unconfirmed data flow.
+    optional bool AllowTabletOverload = 523;
+
+    // Enables the RDMA side channel for tablet-proxied requests in
+    // filestore-server and filestore-vhost.
+    optional bool TabletDirectRdmaEnabled = 524;
+
+    // Async processing of destroy handle requests only for read only handles.
+    optional bool AsyncDestroyReadOnlyHandleEnabled = 525;
+
+    // Pass data buffer to the tablet as a message payload
+    optional bool ExternalWriteDataPayloadEnabled = 526;
+
+    // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
+    optional double FakeTxPageFaultsProbability = 527;
+
+    // When this flag is enabled, TAggregateStatsActor does not poll all shards.
+    // Instead, it requests aggregate statistics only from the main tablet.
+    optional bool FanoutStatsCollectionInShardsDisabled = 528;
+
+    // Enable silk regardless of other config parameters. Required for
+    // persistent fastshard to work.
+    optional bool FastShardRuntimeEnabled = 529;
+
+    // Limits the number of session handles destroyed by a single ResetSession
+    // or DestroySession transaction. Sessions with more handles are cleaned
+    // up by a chain of transactions. 0 means no limit.
+    optional uint32 MaxDeleteSessionHandlesPerTx = 530;
 }

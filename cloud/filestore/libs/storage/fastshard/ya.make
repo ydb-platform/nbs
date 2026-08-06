@@ -1,0 +1,10 @@
+RECURSE(
+    bootstrap
+    client
+    iface
+    impl
+    ipc
+    server
+    sn
+    testlib
+)

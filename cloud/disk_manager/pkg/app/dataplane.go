@@ -7,11 +7,17 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
+	filesystem_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
+	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
+	filesystem_snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage"
+	nodes_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage/nodes"
 	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
@@ -22,6 +28,8 @@ func initDataplane(
 	ctx context.Context,
 	config *server_config.ServerConfig,
 	mon *monitoring.Monitoring,
+	creds auth.Credentials,
+	newSnapshotStorageQuotaReporter snapshot.NewSnapshotStorageQuotaReporterFunc,
 	snapshotDB *persistence.YDBClient,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
@@ -40,6 +48,15 @@ func initDataplane(
 	}
 
 	snapshotMetricsRegistry := mon.NewRegistry("snapshot_storage")
+	urlMetricsRegistry := mon.NewRegistry("url_source")
+	snapshotStorageQuotaReporter, err := newSnapshotStorageQuotaReporter(
+		snapshotMetricsRegistry,
+		snapshotConfig,
+		creds,
+	)
+	if err != nil {
+		return err
+	}
 
 	snapshotStorage, err := snapshot_storage.NewStorage(
 		snapshotConfig,
@@ -84,6 +101,8 @@ func initDataplane(
 		snapshotStorage,
 		snapshotLegacyStorage,
 		snapshotMetricsRegistry,
+		snapshotStorageQuotaReporter,
+		urlMetricsRegistry,
 		migrationDstStorage,
 		useS3InSnapshotMigration,
 	)
@@ -93,6 +112,7 @@ func initFilesystemDataplane(
 	ctx context.Context,
 	config *server_config.ServerConfig,
 	taskRegistry *tasks.Registry,
+	taskScheduler tasks.Scheduler,
 	nfsFactory nfs.Factory,
 	filesystemDB *persistence.YDBClient,
 ) error {
@@ -102,10 +122,42 @@ func initFilesystemDataplane(
 		return nil
 	}
 
+	err := initFilesystemScrubbing(
+		ctx,
+		taskRegistry,
+		nfsFactory,
+		filesystemDB,
+		filesystemConfig,
+		taskScheduler,
+	)
+	if err != nil {
+		return err
+	}
+
+	return initFilesystemSnapshot(
+		ctx,
+		taskRegistry,
+		taskScheduler,
+		nfsFactory,
+		filesystemDB,
+		filesystemConfig,
+	)
+}
+
+func initFilesystemScrubbing(
+	ctx context.Context,
+	taskRegistry *tasks.Registry,
+	nfsFactory nfs.Factory,
+	filesystemDB *persistence.YDBClient,
+	filesystemConfig *filesystem_config.FilesystemDataplaneConfig,
+	taskScheduler tasks.Scheduler,
+) error {
+
 	scrubbingConfig := filesystemConfig.GetScrubbingConfig()
 	if scrubbingConfig == nil {
 		return nil
 	}
+
 	traversalConfig := scrubbingConfig.GetTraversalConfig()
 	if traversalConfig == nil {
 		return nil
@@ -114,12 +166,71 @@ func initFilesystemDataplane(
 	traversalStorage := traversal_storage.NewStorage(
 		filesystemDB,
 		traversalConfig.GetStorageFolder(),
+		traversalConfig.GetTraversalQueueDeletionLimit(),
 	)
 
-	return scrubbing.RegisterForExecution(
+	err := scrubbing.RegisterForExecution(
 		taskRegistry,
 		scrubbingConfig,
 		nfsFactory,
 		traversalStorage,
+		taskScheduler,
+	)
+	if err != nil {
+		return err
+	}
+
+	return scrubbing.ScheduleRegularScrubFilesystems(
+		ctx,
+		taskScheduler,
+		scrubbingConfig,
+	)
+}
+
+func initFilesystemSnapshot(
+	ctx context.Context,
+	taskRegistry *tasks.Registry,
+	taskScheduler tasks.Scheduler,
+	nfsFactory nfs.Factory,
+	filesystemDB *persistence.YDBClient,
+	filesystemConfig *filesystem_config.FilesystemDataplaneConfig,
+) error {
+
+	snapshotConfig := filesystemConfig.GetSnapshotConfig()
+	if snapshotConfig == nil {
+		return nil
+	}
+
+	traversalConfig := snapshotConfig.GetTraversalConfig()
+	if traversalConfig == nil {
+		return nil
+	}
+
+	traversalStorage := traversal_storage.NewStorage(
+		filesystemDB,
+		traversalConfig.GetStorageFolder(),
+		traversalConfig.GetTraversalQueueDeletionLimit(),
+	)
+
+	nodesStorage := nodes_storage.NewStorage(
+		filesystemDB,
+		snapshotConfig.GetNodesStorageFolder(),
+		snapshotConfig.GetSnapshotDataDeletionLimit(),
+	)
+
+	snapshotStorage := filesystem_snapshot_storage.NewStorage(
+		filesystemDB,
+		snapshotConfig.GetNodesStorageFolder(),
+	)
+
+	return filesystem_snapshot.RegisterForExecution(
+		ctx,
+		taskRegistry,
+		taskScheduler,
+		snapshotConfig,
+		nfsFactory,
+		snapshotStorage,
+		traversalStorage,
+		nodesStorage,
 	)
 }

@@ -1,16 +1,29 @@
 package nfs
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 
+	"github.com/gofrs/uuid"
+	"github.com/golang/protobuf/jsonpb"
+	"github.com/golang/protobuf/proto"
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
+	"github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func getClientID() string {
+	return fmt.Sprintf("disk-manager-%v", uuid.Must(uuid.NewV4()))
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,6 +59,17 @@ func wrapError(err error) error {
 	return err
 }
 
+func isSessionInvalidError(err error) bool {
+	var clientErr *nfs_client.ClientError
+	if errors.As(err, &clientErr) {
+		if clientErr.Code == nfs_client.E_FS_INVALID_SESSION {
+			return true
+		}
+	}
+
+	return false
+}
+
 func isAbortedError(err error) bool {
 	var clientErr *nfs_client.ClientError
 	if errors.As(err, &clientErr) {
@@ -66,6 +90,28 @@ func isNotFoundError(err error) bool {
 			return true
 		}
 		if clientErr.Code == nfs_client.E_NOT_FOUND {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsEnoEntError(err error) bool {
+	var clientErr *nfs_client.ClientError
+	if errors.As(err, &clientErr) {
+		if clientErr.Code == nfs_client.E_FS_NOENT {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isAlreadyExistsError(err error) bool {
+	var clientErr *nfs_client.ClientError
+	if errors.As(err, &clientErr) {
+		if clientErr.Code == nfs_client.E_FS_EXIST {
 			return true
 		}
 	}
@@ -104,6 +150,49 @@ func NewClient(
 	}
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *client) updateFilestore(
+	ctx context.Context,
+	filesystemID string,
+	updateFunc func(
+		filestore *protos.TFileStore,
+	) error,
+) error {
+
+	retries := 0
+	for {
+		filestore, err := c.nfs.GetFileStoreInfo(ctx, filesystemID)
+		if err != nil {
+			return wrapError(err)
+		}
+
+		if filestore.BlockSize == 0 {
+			return errors.NewNonRetriableErrorf(
+				"invalid filestore config %v",
+				filestore,
+			)
+		}
+
+		err = updateFunc(filestore)
+
+		if err != nil {
+			if !isAbortedError(err) {
+				return wrapError(err)
+			}
+
+			if retries == maxConsecutiveRetries {
+				return errors.NewRetriableError(err)
+			}
+
+			retries++
+			continue
+		}
+
+		return nil
+	}
+}
+
 func (c *client) ZoneID() string {
 	return c.zoneID
 }
@@ -134,6 +223,7 @@ func (c *client) Create(
 			BlockSize:        params.BlockSize,
 			BlocksCount:      params.BlocksCount,
 			StorageMediaKind: mediaKind,
+			ShardCount:       params.ShardCount,
 		},
 	)
 
@@ -160,20 +250,7 @@ func (c *client) Resize(
 
 	defer c.metrics.StatRequest("ResizeFileStore")(&err)
 
-	retries := 0
-	for {
-		filestore, err := c.nfs.GetFileStoreInfo(ctx, filesystemID)
-		if err != nil {
-			return wrapError(err)
-		}
-
-		if filestore.BlockSize == 0 {
-			return errors.NewNonRetriableErrorf(
-				"invalid filestore config %v",
-				filestore,
-			)
-		}
-
+	updateFunc := func(filestore *protos.TFileStore) error {
 		if size%uint64(filestore.BlockSize) != 0 {
 			return errors.NewNonRetriableErrorf(
 				"size %v should be divisible by filestore.BlockSize %v",
@@ -185,28 +262,35 @@ func (c *client) Resize(
 		newBlocksCount := size / uint64(filestore.BlockSize)
 
 		// so far no need in checkpoint; resize is race safe as we cannot reduce space
-		err = c.nfs.ResizeFileStore(
+		return c.nfs.ResizeFileStore(
 			ctx,
 			filesystemID,
 			newBlocksCount,
 			filestore.ConfigVersion,
 		)
-
-		if err != nil {
-			if !isAbortedError(err) {
-				return wrapError(err)
-			}
-
-			if retries == maxConsecutiveRetries {
-				return errors.NewRetriableError(err)
-			}
-
-			retries++
-			continue
-		}
-
-		return nil
 	}
+
+	return c.updateFilestore(ctx, filesystemID, updateFunc)
+}
+
+func (c *client) EnableDirectoryCreationInShards(
+	ctx context.Context,
+	filesystemID string,
+	shardCount uint32,
+) (err error) {
+
+	defer c.metrics.StatRequest("EnableDirectoryCreationInShards")(&err)
+	updateFunc := func(filestore *protos.TFileStore) error {
+		return c.nfs.EnableDirectoryCreationInShards(
+			ctx,
+			filesystemID,
+			filestore.BlocksCount,
+			filestore.ConfigVersion,
+			shardCount,
+		)
+	}
+
+	return c.updateFilestore(ctx, filesystemID, updateFunc)
 }
 
 func (c *client) DescribeModel(
@@ -269,24 +353,290 @@ func (c *client) CreateSession(
 	fileSystemID string,
 	checkpointID string,
 	readonly bool,
+) (Session, error) {
+
+	return c.CreateSessionWithClientID(
+		ctx,
+		fileSystemID,
+		getClientID(),
+		checkpointID,
+		readonly,
+	)
+}
+
+func (c *client) CreateSessionWithClientID(
+	ctx context.Context,
+	fileSystemID string,
+	clientID string,
+	checkpointID string,
+	readonly bool,
 ) (_ Session, err error) {
 
 	defer c.metrics.StatRequest("CreateSession")(&err)
 
-	s, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
+	s, err := c.nfs.CreateSession(
+		ctx,
+		fileSystemID,
+		clientID,
+		checkpointID,
+		readonly,
+	)
 	if err != nil {
 		return nil, wrapError(err)
 	}
 
-	return &session{
-		nfs:     c.nfs,
-		session: s,
-		metrics: client_metrics.NewSessionMetrics(
-			c.sessionMetricsRegistry,
-			map[string]string{
-				"filesystem": fileSystemID,
-				"checkpoint": checkpointID,
+	metrics := client_metrics.NewSessionMetrics(
+		c.sessionMetricsRegistry,
+		map[string]string{
+			"filesystem": fileSystemID,
+			"checkpoint": checkpointID,
+		},
+	)
+
+	return NewSessionWithReEstablish(
+		&sessionWithMetrics{
+			nfs:     c.nfs,
+			session: s,
+			metrics: metrics,
+		},
+		c.nfs,
+		fileSystemID,
+		clientID,
+		checkpointID,
+		readonly,
+	), nil
+}
+
+func (c *client) executeAction(
+	ctx context.Context,
+	action string,
+	request proto.Message,
+	response proto.Message,
+) error {
+
+	input, err := new(jsonpb.Marshaler).MarshalToString(request)
+	if err != nil {
+		return errors.NewNonRetriableErrorf(
+			"failed to marshal request: %v",
+			err,
+		)
+	}
+
+	output, err := c.nfs.ExecuteAction(ctx, action, []byte(input))
+	if err != nil {
+		return wrapError(err)
+	}
+
+	err = new(jsonpb.Unmarshaler).Unmarshal(
+		bytes.NewReader(output),
+		response,
+	)
+	if err != nil {
+		return errors.NewNonRetriableErrorf(
+			"failed to unmarshal response: %v",
+			err,
+		)
+	}
+
+	return nil
+}
+
+func checkActionError(errorProto *coreprotos.TError) error {
+	if errorProto != nil && errorProto.Code != 0 {
+		return wrapError(&nfs_client.ClientError{
+			Code:    uint32(errorProto.Code),
+			Message: errorProto.Message,
+		})
+	}
+
+	return nil
+}
+
+func (c *client) changeTabletState(
+	ctx context.Context,
+	filesystemID string,
+	frozen bool,
+) error {
+
+	response := &private_protos.TUnsafeChangeTabletStateResponse{}
+	err := c.executeAction(
+		ctx,
+		"unsafechangetabletstate",
+		&private_protos.TUnsafeChangeTabletStateRequest{
+			FileSystemId: filesystemID,
+			Frozen:       proto.Bool(frozen),
+		},
+		response,
+	)
+	if err != nil {
+		return err
+	}
+
+	return checkActionError(response.Error)
+}
+
+func (c *client) FreezeTablet(
+	ctx context.Context,
+	filesystemID string,
+) (err error) {
+
+	defer c.metrics.StatRequest("FreezeTablet")(&err)
+
+	return c.changeTabletState(ctx, filesystemID, true)
+}
+
+func (c *client) UnfreezeTablet(
+	ctx context.Context,
+	filesystemID string,
+) (err error) {
+
+	defer c.metrics.StatRequest("UnfreezeTablet")(&err)
+
+	return c.changeTabletState(ctx, filesystemID, false)
+}
+
+func getUnsafeCreateNodeType(nodeType nfs_client.NodeType) uint32 {
+	if nodeType == NODE_KIND_SYMLINK {
+		return uint32(NODE_KIND_LINK)
+	}
+
+	return uint32(nodeType)
+}
+
+func (c *client) UnsafeCreateNode(
+	ctx context.Context,
+	filesystemID string,
+	node Node,
+) (err error) {
+
+	defer c.metrics.StatRequest("UnsafeCreateNode")(&err)
+
+	response := &private_protos.TUnsafeCreateNodeResponse{}
+	err = c.executeAction(
+		ctx,
+		"unsafecreatenode",
+		&private_protos.TUnsafeCreateNodeRequest{
+			FileSystemId: filesystemID,
+			SymLink:      []byte(node.LinkTarget),
+			Node: &protos.TNodeAttr{
+				Id:    node.NodeID,
+				Type:  getUnsafeCreateNodeType(node.Type),
+				Mode:  node.Mode,
+				Uid:   node.UID,
+				Gid:   node.GID,
+				ATime: node.Atime,
+				MTime: node.Mtime,
+				CTime: node.Ctime,
+				Size:  node.Size,
+				Links: node.Links,
+				DevId: node.DevID,
 			},
-		),
-	}, nil
+		},
+		response,
+	)
+	if err != nil {
+		if isAlreadyExistsError(err) {
+			return nil
+		}
+
+		return err
+	}
+
+	return checkActionError(response.Error)
+}
+
+func (c *client) UnsafeCreateNodeRef(
+	ctx context.Context,
+	filesystemID string,
+	parentNodeID uint64,
+	name string,
+	childID uint64,
+	shardID string,
+	shardNodeName string,
+) (err error) {
+
+	defer c.metrics.StatRequest("UnsafeCreateNodeRef")(&err)
+
+	response := &private_protos.TUnsafeCreateNodeRefResponse{}
+	err = c.executeAction(
+		ctx,
+		"unsafecreatenoderef",
+		&private_protos.TUnsafeCreateNodeRefRequest{
+			FileSystemId:  filesystemID,
+			ParentId:      parentNodeID,
+			Name:          []byte(name),
+			ChildId:       childID,
+			ShardId:       shardID,
+			ShardNodeName: shardNodeName,
+		},
+		response,
+	)
+	if err != nil {
+		if isAlreadyExistsError(err) {
+			return nil
+		}
+
+		return err
+	}
+
+	return checkActionError(response.Error)
+}
+
+func (c *client) ConfigureAsShard(
+	ctx context.Context,
+	filesystemID string,
+	params ConfigureAsShardParams,
+) (err error) {
+
+	defer c.metrics.StatRequest("ConfigureAsShard")(&err)
+
+	response := &private_protos.TConfigureAsShardResponse{}
+	err = c.executeAction(
+		ctx,
+		"configureasshard",
+		&private_protos.TConfigureAsShardRequest{
+			FileSystemId:                           filesystemID,
+			ShardNo:                                params.ShardNo,
+			ShardFileSystemIds:                     params.ShardFileSystemIDs,
+			MainFileSystemId:                       params.MainFileSystemID,
+			DirectoryCreationInShardsEnabled:       params.DirectoryCreationInShardsEnabled,
+			StrictFileSystemSizeEnforcementEnabled: params.StrictFileSystemSizeEnforcementEnabled,
+			ForceDirectoryCreationInShards:         params.ForceDirectoryCreationInShards,
+		},
+		response,
+	)
+	if err != nil {
+		return err
+	}
+
+	return checkActionError(response.Error)
+}
+
+func (c *client) ConfigureShards(
+	ctx context.Context,
+	filesystemID string,
+	params ConfigureShardsParams,
+) (err error) {
+
+	defer c.metrics.StatRequest("ConfigureShards")(&err)
+
+	response := &private_protos.TConfigureShardsResponse{}
+	err = c.executeAction(
+		ctx,
+		"configureshards",
+		&private_protos.TConfigureShardsRequest{
+			FileSystemId:                           filesystemID,
+			ShardFileSystemIds:                     params.ShardFileSystemIDs,
+			Force:                                  params.Force,
+			DirectoryCreationInShardsEnabled:       params.DirectoryCreationInShardsEnabled,
+			StrictFileSystemSizeEnforcementEnabled: params.StrictFileSystemSizeEnforcementEnabled,
+			ForceDirectoryCreationInShards:         params.ForceDirectoryCreationInShards,
+		},
+		response,
+	)
+	if err != nil {
+		return err
+	}
+
+	return checkActionError(response.Error)
 }

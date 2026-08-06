@@ -6,6 +6,7 @@
 
 #include <library/cpp/eventlog/dumper/evlogdump.h>
 #include <library/cpp/eventlog/eventlog.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
@@ -50,7 +51,10 @@ TString NodeInfoToString(const NProto::TProfileLogNodeInfo& nodeInfo)
         << "," << nodeInfo.GetNodeId()
         << "," << nodeInfo.GetHandle()
         << "," << nodeInfo.GetSize()
-        << "," << nodeInfo.GetType();
+        << "," << nodeInfo.GetType()
+        << "," << nodeInfo.GetATime()
+        << "," << nodeInfo.GetMTime()
+        << "," << nodeInfo.GetCTime();
 }
 
 TString LockInfoToString(const NProto::TProfileLogLockInfo& lockInfo)
@@ -64,6 +68,16 @@ TString LockInfoToString(const NProto::TProfileLogLockInfo& lockInfo)
         << "," << lockInfo.GetConflictedOwner()
         << "," << lockInfo.GetConflictedOffset()
         << "," << lockInfo.GetConflictedLength();
+}
+
+TString ListNodesInfoToString(
+    const NProto::TProfileLogListNodesInfo& listNodesInfo)
+{
+    return TStringBuilder() << listNodesInfo.GetNodeId()
+        << "," << listNodesInfo.GetMaxBytes()
+        << "," << listNodesInfo.GetRequestCookie()
+        << "," << listNodesInfo.GetResponseCookie()
+        << "," << listNodesInfo.GetNameCount();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -86,7 +100,7 @@ struct TEventProcessor
     {
         Y_UNUSED(out);
 
-        auto message =
+        const auto* message =
             dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
         if (message) {
             DiscardedMessageCount += message->GetDiscardedRequestCount();
@@ -107,6 +121,10 @@ struct TEventProcessor
                     FlatMessages.back() += TStringBuilder() <<
                         "\t" << LockInfoToString(r.GetLockInfo());
                 }
+                if (r.HasListNodesInfo()) {
+                    FlatMessages.back() += TStringBuilder() <<
+                        "\t" << ListNodesInfoToString(r.GetListNodesInfo());
+                }
                 if (r.RangesSize() > 0) {
                     FlatMessages.back() += TStringBuilder() <<
                         "\t" << RangesToString(r.GetRanges());
@@ -120,6 +138,8 @@ struct TEventProcessor
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using namespace NMonitoring;
+
 struct TEnv
     : public NUnitTest::TBaseFixture
 {
@@ -130,6 +150,7 @@ struct TEnv
     std::shared_ptr<TTestScheduler> Scheduler;
     TProfileLogSettings Settings;
     IProfileLogPtr ProfileLog;
+    TDynamicCountersPtr Counters;
     TEventProcessor EventProcessor;
 
     TEnv()
@@ -137,7 +158,10 @@ struct TEnv
         , Scheduler(new TTestScheduler())
         , Settings{ProfilePath.c_str(), TDuration::Seconds(1), 0, 0}
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
-    {}
+        , Counters(MakeIntrusive<TDynamicCounters>())
+    {
+        ProfileLog->RegisterCounters(*Counters);
+    }
 
     TEnv(ui64 maxFlushRecords, ui64 maxFrameFlushRecords)
         : Timer(CreateWallClockTimer())
@@ -148,7 +172,10 @@ struct TEnv
               maxFlushRecords,
               maxFrameFlushRecords)
         , ProfileLog(CreateProfileLog(Settings, Timer, Scheduler))
-    {}
+        , Counters(MakeIntrusive<TDynamicCounters>())
+    {
+        ProfileLog->RegisterCounters(*Counters);
+    }
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -183,7 +210,7 @@ struct TEnvWithLimits
         ProfileLog->Start();
     }
 
-    ~TEnvWithLimits()
+    ~TEnvWithLimits() override
     {
         ProfileLog->Stop();
         ProfilePath.DeleteIfExists();
@@ -280,6 +307,22 @@ struct TRequestInfoBuilder
         return *this;
     }
 
+    auto& AddListNodesInfo(
+        ui64 nodeId,
+        ui32 maxBytes,
+        TString requestCookie,
+        TString responseCookie,
+        ui64 nameCount)
+    {
+        auto listNodesInfo = R.MutableListNodesInfo();
+        listNodesInfo->SetNodeId(nodeId);
+        listNodesInfo->SetMaxBytes(maxBytes);
+        listNodesInfo->SetRequestCookie(std::move(requestCookie));
+        listNodesInfo->SetResponseCookie(std::move(responseCookie));
+        listNodesInfo->SetNameCount(nameCount);
+        return *this;
+    }
+
     auto Build() const
     {
         return R;
@@ -368,7 +411,6 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                 .Build()
         });
 
-
         ProcessLog();
 
         UNIT_ASSERT_VALUES_EQUAL(5, EventProcessor.FlatMessages.size());
@@ -385,7 +427,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
             EventProcessor.FlatMessages[2]
         );
         UNIT_ASSERT_VALUES_EQUAL(
-            "fs2\t4000000\t11\t800000\t1\t1,node,2,new_node,3,7,12,123,32,2",
+            "fs2\t4000000\t11\t800000\t1\t1,node,2,new_node,3,7,12,123,32,2,0,0,0",
             EventProcessor.FlatMessages[3]
         );
         UNIT_ASSERT_VALUES_EQUAL(
@@ -428,6 +470,48 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "fs3\t9000000\t4\t100000\t0",
             EventProcessor.FlatMessages[6]);
+
+        // Testing counters
+        auto pg = Counters->GetSubgroup("counters", "profile_log");
+        auto requests = pg->FindCounter("Count");
+        auto bytes = pg->FindCounter("RequestBytes");
+        auto flushes = pg->FindCounter("FlushCount");
+        auto discards = pg->FindCounter("DiscardCount");
+        UNIT_ASSERT(requests);
+        UNIT_ASSERT_VALUES_EQUAL(7, requests->Val());
+        UNIT_ASSERT(bytes);
+        UNIT_ASSERT_VALUES_EQUAL(177, bytes->Val());
+        UNIT_ASSERT(flushes);
+        UNIT_ASSERT_VALUES_EQUAL(3, flushes->Val());
+        UNIT_ASSERT(discards);
+        UNIT_ASSERT_VALUES_EQUAL(0, discards->Val());
+    }
+
+    Y_UNIT_TEST_F(TestDumpListNodesInfo, TEnv)
+    {
+        ProfileLog->Write({
+            "fs-list",
+            TRequestInfoBuilder()
+                .SetTimestamp(TInstant::Seconds(7))
+                .SetDuration(TDuration::MilliSeconds(125))
+                .SetRequestType(27)
+                .SetError(0)
+                .AddListNodesInfo(
+                    42,
+                    4096,
+                    "request-cookie",
+                    "response-cookie",
+                    3)
+                .Build()
+        });
+
+        ProcessLog();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, EventProcessor.FlatMessages.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "fs-list\t7000000\t27\t125000\t0\t42,4096,request-cookie,response-"
+            "cookie,3",
+            EventProcessor.FlatMessages[0]);
     }
 
     Y_UNIT_TEST(TestRecordLimits)
@@ -473,6 +557,23 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                 maxFrameFlushRecords,
                 env.EventProcessor.MessageCountByRecord[i]);
         }
+
+        // Testing counters
+        auto pg = env.Counters->GetSubgroup("counters", "profile_log");
+        auto requests = pg->FindCounter("Count");
+        auto bytes = pg->FindCounter("RequestBytes");
+        auto flushes = pg->FindCounter("FlushCount");
+        auto discards = pg->FindCounter("DiscardCount");
+        UNIT_ASSERT(requests);
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxFlushRecords + extraDiscardedRecords,
+            requests->Val());
+        UNIT_ASSERT(bytes);
+        UNIT_ASSERT_VALUES_EQUAL(578, bytes->Val());
+        UNIT_ASSERT(flushes);
+        UNIT_ASSERT_VALUES_EQUAL(1, flushes->Val());
+        UNIT_ASSERT(discards);
+        UNIT_ASSERT_VALUES_EQUAL(extraDiscardedRecords, discards->Val());
     }
 }
 

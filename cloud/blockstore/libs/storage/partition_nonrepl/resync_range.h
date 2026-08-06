@@ -4,6 +4,7 @@
 #include "part_nonrepl_events_private.h"
 
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -24,7 +25,7 @@ class TResyncRangeActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TString DiskId;
+    const TChildLogTitle LogTitle;
     const ui32 BlockSize;
     const TBlockRange64 Range;
     const TVector<TReplicaDescriptor> Replicas;
@@ -50,7 +51,7 @@ private:
     ui64 VolumeRequestId = 0;
     int ReplicaIndexToReadFrom = 0;
 
-    TChecksumRangeActorCompanion ChecksumRangeActorCompanion{DiskId, Replicas};
+    TChecksumRangeActorCompanion ChecksumRangeActorCompanion{LogTitle, Replicas};
 
     bool ErrorFound = false;
     bool ErrorFixed = false;
@@ -58,7 +59,7 @@ private:
 public:
     TResyncRangeActor(
         TRequestInfoPtr requestInfo,
-        TString diskId,
+        const TChildLogTitle& logTitle,
         ui32 blockSize,
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,

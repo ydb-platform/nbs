@@ -1,15 +1,11 @@
 PROGRAM(filestore-server)
 
-ALLOCATOR(TCMALLOC_TC)
+ALLOCATOR(TCMALLOC_256K)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
 
 IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG")
     SPLIT_DWARF()
-ELSE()
-    PEERDIR(
-        library/cpp/terminate_handler
-    )
 ENDIF()
 
 IF (SANITIZER_TYPE)

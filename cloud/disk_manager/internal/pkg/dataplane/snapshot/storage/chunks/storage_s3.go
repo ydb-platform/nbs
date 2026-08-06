@@ -192,8 +192,9 @@ func (s *StorageS3) writeChunkData(
 		return err
 	}
 	object := persistence.S3Object{
-		Data:     compressedData,
-		Metadata: metadata.toMap(),
+		Data:         compressedData,
+		Metadata:     metadata.toMap(),
+		StorageClass: chunk.StorageClass,
 	}
 
 	return s.s3.PutObject(ctx, s.bucket, s.newS3Key(chunk.ID), object)

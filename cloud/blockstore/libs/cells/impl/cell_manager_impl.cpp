@@ -8,8 +8,6 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 
@@ -17,6 +15,9 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
+#include <cloud/storage/core/libs/rdma/impl/client.h>
+#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <library/cpp/monlib/service/pages/html_mon_page.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
@@ -69,6 +70,7 @@ TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
 
 void TCellManager::Start()
 {
+    Bootstrap.CertProvider->Start();
     Bootstrap.GrpcClient->Start();
 
     for (auto& cell: Cells) {
@@ -78,7 +80,12 @@ void TCellManager::Start()
 
 void TCellManager::Stop()
 {
+    for (auto& cell: Cells) {
+        cell.second->Stop();
+    }
+
     Bootstrap.GrpcClient->Stop();
+    Bootstrap.CertProvider->Stop();
 }
 
 TResultOrError<TCellHostEndpoint> TCellManager::GetCellEndpoint(
@@ -161,16 +168,20 @@ ICellManagerPtr CreateCellManager(
     IMonitoringServicePtr monitoring,
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
-    NRdma::IClientPtr rdmaClient)
+    ICertificateProviderPtr certificateProvider,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient)
 {
+    auto appConfig = std::make_shared<NClient::TClientAppConfig>(
+        config->GetGrpcClientConfig());
+
     auto result = NClient::CreateMultiHostClient(
-        std::make_shared<NClient::TClientAppConfig>(
-            config->GetGrpcClientConfig()),
+        std::move(appConfig),
         timer,
         scheduler,
         logging,
         monitoring,
-        std::move(serverStats));
+        std::move(serverStats),
+        certificateProvider);
 
     if (HasError(result)) {
         STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "unable to create gRPC client";
@@ -189,6 +200,7 @@ ICellManagerPtr CreateCellManager(
         .Logging = std::move(logging),
         .Monitoring = std::move(monitoring),
         .TraceSerializer = std::move(traceSerializer),
+        .CertProvider = std::move(certificateProvider),
         .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),

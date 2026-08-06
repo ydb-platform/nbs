@@ -1,12 +1,22 @@
 #include "handle_ops_queue.h"
 
+#include "handle_ops_queue_stats.h"
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
-    : RequestsToProcess(filePath, size)
-{}
+    : RequestsToProcess(filePath, size, 0, EFileRingBufferVersion::V5)
+    , Stats(CreateHandleOpsQueueStats(size))
+{
+    Stats->SetEntryCount(RequestsToProcess.Size());
+}
+
+IModuleStatsPtr THandleOpsQueue::GetModuleStats() const
+{
+    return Stats;
+}
 
 THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
     ui64 nodeId,
@@ -18,13 +28,16 @@ THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
 
     TString result;
     if (!request.SerializeToString(&result)) {
+        Stats->IncrementSerializationErrorCount();
         return THandleOpsQueue::EResult::SerializationError;
     }
 
     if (!RequestsToProcess.PushBack(result)) {
+        Stats->IncrementOverflowErrorCount();
         return THandleOpsQueue::EResult::QueueOverflow;
     }
 
+    Stats->SetEntryCount(RequestsToProcess.Size());
     return THandleOpsQueue::EResult::Ok;
 }
 
@@ -34,6 +47,7 @@ std::optional<NProto::TQueueEntry> THandleOpsQueue::Front()
 
     NProto::TQueueEntry entry;
     if (!entry.ParseFromArray(req.data(), req.size())) {
+        Stats->IncrementParseErrorCount();
         return std::nullopt;
     }
 
@@ -48,6 +62,7 @@ bool THandleOpsQueue::Empty() const
 void THandleOpsQueue::PopFront()
 {
     RequestsToProcess.PopFront();
+    Stats->SetEntryCount(RequestsToProcess.Size());
 }
 
 ui64 THandleOpsQueue::Size() const

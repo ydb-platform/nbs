@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob_index.h>
 #include <cloud/blockstore/libs/storage/partition2/model/block.h>
@@ -249,16 +249,19 @@ struct TEvPartitionPrivate
     struct TAddFreshBlocksRequest
     {
         const ui64 CommitId;
+        const TPartialBlobId BlobId;
         TVector<TBlockRange32> BlockRanges;
         TVector<IWriteBlocksHandlerPtr> WriteHandlers;
         const ui64 FirstRequestDeletionId;
 
         TAddFreshBlocksRequest(
                 ui64 commitId,
+                TPartialBlobId blobId,
                 TVector<TBlockRange32> blockRanges,
                 TVector<IWriteBlocksHandlerPtr> writeHandlers,
                 ui64 firstRequestDeletionId)
             : CommitId(commitId)
+            , BlobId(blobId)
             , BlockRanges(std::move(blockRanges))
             , WriteHandlers(std::move(writeHandlers))
             , FirstRequestDeletionId(firstRequestDeletionId)

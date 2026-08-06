@@ -1,41 +1,20 @@
-variable "FOLDER_ID" {
-  type    = string
-  default = "bjeuq5o166dq4ukv3eec"
-}
-
-variable "ZONE" {
-  type    = string
-  default = "eu-north1-c"
-}
-
-variable "SUBNET_ID" {
-  type    = string
-  default = "f8uh0ml4rhb45nde9p75"
-}
-
-variable "LSB_RELEASE" {
-  type    = string
-  default = "jammy"
-}
-
-variable "CCACHE_VERSION" {
-  type    = string
-  default = "4.8.1"
-}
-
-variable "OS_ARCH" {
-  type    = string
-  default = "x86_64"
+packer {
+  required_plugins {
+    nebius = {
+      version = ">= 0.0.4"
+      source  = "github.com/nebius/nebius"
+    }
+  }
 }
 
 variable "RUNNER_VERSION" {
   type    = string
-  default = "2.316.1"
+  default = "2.333.0"
 }
 
-variable "YA_ARCHIVE_URL" {
+variable "RUNNER_SHA256_X64" {
   type    = string
-  default = ""
+  default = env("RUNNER_SHA256_X64")
 }
 
 variable "USER_TO_CREATE" {
@@ -43,14 +22,9 @@ variable "USER_TO_CREATE" {
   default = "github"
 }
 
-variable "PASSWORD_HASH" {
+variable "DEBUG_USER" {
   type    = string
-  default = ""
-}
-
-variable "GITHUB_TOKEN" {
-  type    = string
-  default = ""
+  default = "debug"
 }
 
 variable "ORG" {
@@ -63,103 +37,216 @@ variable "TEAM" {
   default = "nbs"
 }
 
-variable "AWS_ACCESS_KEY_ID" {
-  type    = string
-  default = ""
+variable "TMPFS_SIZE" {
+  type        = string
+  default     = "70866960384"  # 66GiB
+  description = "tmpfs size (0 to disable). Can be a percentage of available RAM"
 }
 
-variable "AWS_SECRET_ACCESS_KEY" {
-  type    = string
-  default = ""
+variable "TMPFS_MOUNT_POINT" {
+  type        = string
+  default     = "/mnt/ya_make_tmpfs"
+  description = "Mount point path for the tmpfs filesystem"
 }
 
-variable "NIGHTLY_RUN_ID" {
+variable "PASSWORD_HASH" {
   type    = string
-  default = "0"
+  # we are using secret.VM_USER_PASSWD from GA
+  default = env("PASSWORD_HASH")
 }
 
-variable "BUILD_RUN_ID" {
+variable "GITHUB_TOKEN" {
   type    = string
-  default = "0"
+  default = env("GITHUB_TOKEN")
 }
 
-
-variable "REPOSITORY" {
+variable "NEBIUS_IAM_TOKEN" {
   type    = string
-  default = ""
+  default = env("NEBIUS_IAM_TOKEN")
 }
 
-variable "IMAGE_FAMILY_NAME" {
+variable "PARENT_ID" {
   type    = string
-  default = ""
+  # by default we are using vars.POOLED_HEAVY_PARENT_ID
+  default = env("PARENT_ID")
 }
 
-variable "IMAGE_PREFIX" {
+variable "SUBNET_ID" {
   type    = string
-  default = ""
+  # by default we are using vars.POOLED_HEAVY_SUBNET_ID
+  default = env("SUBNET_ID")
 }
 
+variable "GITHUB_RUN_ID" {
+  type    = string
+  default = env("GITHUB_RUN_ID")
+}
+
+variable "GITHUB_RUN_ATTEMPT" {
+  type    = string
+  default = env("GITHUB_RUN_ATTEMPT")
+}
+
+variable "GITHUB_EVENT_NAME" {
+  type    = string
+  default = env("GITHUB_EVENT_NAME")
+}
+
+variable "GITHUB_REF_NAME" {
+  type    = string
+  default = env("GITHUB_REF_NAME")
+}
+
+variable "GITHUB_REPOSITORY" {
+  type    = string
+  default = env("GITHUB_REPOSITORY")
+}
 
 locals {
-  current_date = formatdate("YYMMDD-hhmmss", timestamp())
+  image_family      = "ubuntu22.04-nbs-github-ci"
+  image_version     = "${formatdate("YYYYMMDDHHMM", timestamp())}-${timestamp()}"
+  tmp_directory     = "/tmp/packer"
+  github_owner      = var.GITHUB_REPOSITORY != "" ? split("/", var.GITHUB_REPOSITORY)[0] : "na"
+  github_repository = var.GITHUB_REPOSITORY != "" ? split("/", var.GITHUB_REPOSITORY)[1] : "na"
+  run_id            = var.GITHUB_RUN_ID != "" ? var.GITHUB_RUN_ID : "na"
+  run_attempt       = var.GITHUB_RUN_ATTEMPT != "" ? var.GITHUB_RUN_ATTEMPT : "0"
+  pr_number         = var.GITHUB_EVENT_NAME == "pull_request" && var.GITHUB_REF_NAME != "" ? split("/", var.GITHUB_REF_NAME)[0] : "na"
+  packer_build_name = "${local.github_owner}.${local.github_repository}.${local.pr_number}.${local.run_id}.${local.run_attempt}"
 }
 
-source "yandex" "github-runner" {
-  endpoint            = "api.nemax.nebius.cloud:443"
-  folder_id           = "${var.FOLDER_ID}"
-  zone                = "${var.ZONE}"
-  subnet_id           = "${var.SUBNET_ID}"
-  use_ipv4_nat        = "true"
-  state_timeout       = "60m"
-  ssh_username        = "ubuntu"
-  source_image_family = "ubuntu-2204-lts"
-  image_family        = "github-runner-${var.IMAGE_FAMILY_NAME}"
-  image_name          = (
-                          var.YA_ARCHIVE_URL != ""
-                            ? "${var.IMAGE_PREFIX}-${var.IMAGE_FAMILY_NAME}-${var.NIGHTLY_RUN_ID}"
-                            : "${var.IMAGE_PREFIX}-${var.IMAGE_FAMILY_NAME}-build-${var.BUILD_RUN_ID}"
-                        )
-  image_description   = (
-                          var.YA_ARCHIVE_URL != ""
-                            ? "repo:${var.REPOSITORY} run_id:${var.BUILD_RUN_ID} created_at:${local.current_date} nightly_run_id:${var.NIGHTLY_RUN_ID} "
-                            : "repo:${var.REPOSITORY} run_id:${var.BUILD_RUN_ID} created_at:${local.current_date}"
-                        )
-  image_pooled        = "true"
-
-  // labels don't work for some reason
-  labels = {
-    "nightly_run" = "${var.NIGHTLY_RUN_ID}"
-    "repository"  = "${var.REPOSITORY}"
+source "nebius-image" "ubuntu2204-nbs-github-ci" {
+  packer_build_name = local.packer_build_name
+  communicator = "ssh"
+  ssh_username = "ubuntu"
+  token      = var.NEBIUS_IAM_TOKEN
+  disk {
+    size_gibibytes = 16
   }
-
-  disk_type       = "network-ssd"
-  disk_size_gb    = var.YA_ARCHIVE_URL != "" ? 6*93 : 12
-  instance_cores  = 60
-  instance_mem_gb = 240
+  base_image {
+    family = "ubuntu22.04-driverless"
+  }
+  network {
+    subnet_id = var.SUBNET_ID
+  }
+  instance {
+    platform = "cpu-d3"
+    preset   = "16vcpu-64gb"
+  }
+  image {
+    name                        = "ubuntu22.04-nbs-github-ci-${local.image_version}"
+    version                     = local.image_version
+    image_family                = "ubuntu22.04-nbs-github-ci"
+    cpu_architecture            = "amd64"
+    image_family_human_readable = "Ubuntu 22.04 NBS GitHub CI Image"
+  }
+  parent_id = var.PARENT_ID
 }
+
 
 build {
-  sources = ["source.yandex.github-runner"]
+  name    = local.packer_build_name
+  sources = ["source.nebius-image.ubuntu2204-nbs-github-ci"]
+
+  provisioner "shell" {
+    inline = [
+      "mkdir -p ${local.tmp_directory}/etc/"
+    ]
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/requirements.txt"
+    destination = "${local.tmp_directory}/requirements.txt"
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/requirements_dev.txt"
+    destination = "${local.tmp_directory}/requirements_dev.txt"
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/actions-runner-job-completed-cleanup.sh"
+    destination = "${local.tmp_directory}/actions-runner-job-completed-cleanup.sh"
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/actions-runner-collect-system-logs.sh"
+    destination = "${local.tmp_directory}/actions-runner-collect-system-logs.sh"
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/install-github-release-tools.sh"
+    destination = "${local.tmp_directory}/install-github-release-tools.sh"
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/scripts/github-release-tools.txt"
+    destination = "${local.tmp_directory}/github-release-tools.txt"
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/../scripts/helpers.py"
+    destination = "${local.tmp_directory}/helpers.py"
+  }
+
+  provisioner "file" {
+    source      = "${path.cwd}/../scripts/github_team_public_keys.py"
+    destination = "${local.tmp_directory}/github_team_public_keys.py"
+  }
 
   provisioner "shell" {
     environment_vars = [
-      "CCACHE_VERSION=${var.CCACHE_VERSION}",
-      "LSB_RELEASE=${var.LSB_RELEASE}",
       "RUNNER_VERSION=${var.RUNNER_VERSION}",
-      "OS_ARCH=${var.OS_ARCH}",
+      "RUNNER_SHA256_X64=${var.RUNNER_SHA256_X64}",
       "USER_TO_CREATE=${var.USER_TO_CREATE}",
+      "DEBUG_USER=${var.DEBUG_USER}",
       "PASSWORD_HASH=${var.PASSWORD_HASH}",
-      "YA_ARCHIVE_URL=${var.YA_ARCHIVE_URL}",
       "GITHUB_TOKEN=${var.GITHUB_TOKEN}",
       "ORG=${var.ORG}",
       "TEAM=${var.TEAM}",
-      "AWS_ACCESS_KEY_ID=${var.AWS_ACCESS_KEY_ID}",
-      "AWS_SECRET_ACCESS_KEY=${var.AWS_SECRET_ACCESS_KEY}",
     ]
-    script = "./.github/scripts/github-runner.sh"
+    execute_command = "sudo {{ .Vars }} bash '{{ .Path }}'"
+    scripts         = ["scripts/github-runner.sh"]
+  }
+
+  # nvme-loop
+
+  provisioner "file" {
+    source      = "${path.cwd}/nvme-loop"
+    destination = "${local.tmp_directory}/etc/nvme-loop"
+  }
+
+  provisioner "shell" {
+    environment_vars = [
+      "USER_NAME=${var.USER_TO_CREATE}"
+    ]
+    execute_command = "sudo {{ .Vars }} bash '{{ .Path }}'"
+    inline          = ["${local.tmp_directory}/etc/nvme-loop/install.sh"]
+  }
+
+  # tmpfs for tests
+
+  provisioner "shell" {
+    environment_vars = [
+      "TMPFS_SIZE=${var.TMPFS_SIZE}",
+      "TMPFS_MOUNT_POINT=${var.TMPFS_MOUNT_POINT}",
+    ]
+    execute_command = "sudo {{ .Vars }} bash '{{ .Path }}'"
+    scripts         = ["scripts/tmpfs.sh"]
+  }
+
+  provisioner "shell-local" {
+    inline = ["mkdir -p reports"]
   }
 
   post-processor "manifest" {
-    output = "manifest.json"
+    output = "reports/manifest.json"
+    strip_path = true
+    custom_data = {
+      family = local.image_family
+      os_name = "Ubuntu"
+      os_version = "22.04"
+      linux_kernel = "6.2.0-39"
+      cpu_architecture = "amd64"
+    }
   }
 }

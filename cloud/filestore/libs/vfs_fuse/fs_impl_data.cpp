@@ -1,5 +1,6 @@
 #include "fs_impl.h"
 
+#include "fs_impl_data.h"
 #include "fuse.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -47,6 +48,75 @@ void InitNodeInfo(
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+// zero-copy iovec helpers
+
+NProto::TError FillReadDataIovecs(
+    const struct iovec* iov,
+    int count,
+    ui64 length,
+    google::protobuf::RepeatedPtrField<NProto::TIovec>* iovecs)
+{
+    iovecs->Reserve(count);
+
+    ui64 remainingSize = length;
+    for (int index = 0; index < count; index++) {
+        if (remainingSize == 0) {
+            break;
+        }
+        const auto dataSize = std::min<ui64>(remainingSize, iov[index].iov_len);
+        auto* iovec = iovecs->Add();
+        iovec->SetBase(reinterpret_cast<ui64>(iov[index].iov_base));
+        iovec->SetLength(dataSize);
+        remainingSize -= dataSize;
+    }
+
+    if (remainingSize != 0) {
+        return MakeError(
+            E_FS_INVAL,
+            "request length exceeds fuse buffer space");
+    }
+
+    return {};
+}
+
+NProto::TError FillReadDataIovecs(
+    fuse_req_t req,
+    ui64 length,
+    google::protobuf::RepeatedPtrField<NProto::TIovec>* iovecs)
+{
+    struct iovec* iov = nullptr;
+    int count = 0;
+    int ret = fuse_out_buf(req, &iov, &count);
+    if (ret == -1 || count <= 1) {
+        return MakeError(
+            E_FS_INVAL,
+            TStringBuilder() << "Invalid fuse out buffers, ret=" << ret
+                             << ", count=" << count);
+    }
+
+    // skip the first fuse out iovec where the headers are kept, the rest of the
+    // iovecs contain pointers to data buffers
+    return FillReadDataIovecs(iov + 1, count - 1, length, iovecs);
+}
+
+void FillWriteDataIovecs(
+    const fuse_bufvec* bufv,
+    google::protobuf::RepeatedPtrField<NProto::TIovec>* iovecs)
+{
+    iovecs->Reserve(bufv->count);
+    for (size_t index = 0; index < bufv->count; ++index) {
+        const auto* srcFuseBuf = &bufv->buf[index];
+        if (srcFuseBuf->size == 0) {
+            continue;
+        }
+
+        auto* iovec = iovecs->Add();
+        iovec->SetBase(reinterpret_cast<ui64>(srcFuseBuf->mem));
+        iovec->SetLength(srcFuseBuf->size);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // read & write files
 
 void TFileSystem::Create(
@@ -86,7 +156,7 @@ void TFileSystem::Create(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
-    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
     Session->CreateHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
@@ -106,7 +176,10 @@ void TFileSystem::Create(
                     req,
                     response.GetHandle(),
                     response.GetNodeAttr(),
-                    version);
+                    version,
+                    HasFlag(
+                        flags,
+                        NProto::TCreateHandleRequest::E_CREATE));
             }
         });
 }
@@ -200,6 +273,7 @@ void TFileSystem::ReleaseImpl(
     fuse_req_t req,
     fuse_ino_t ino,
     ui64 handle,
+    bool processAsynchronously,
     const NCloud::NProto::TError& writeBackCacheError)
 {
     // If WriteBackCache was used, Release() previously asked it to flush the
@@ -210,7 +284,7 @@ void TFileSystem::ReleaseImpl(
     // - DestroyHandle fails -> return DestroyHandle error;
     // - DestroyHandle succeeds -> return writeBackCacheError
 
-    if (Config->GetAsyncDestroyHandleEnabled()) {
+    if (processAsynchronously) {
         if (!ProcessAsyncRelease(
                 callContext,
                 req,
@@ -259,6 +333,11 @@ void TFileSystem::Release(
     fuse_file_info* fi)
 {
     auto handle = fi->fh;
+    const bool readOnly = (fi->flags & O_ACCMODE) == O_RDONLY;
+    const bool processAsynchronously =
+        HandleOpsQueue &&
+        (Config->GetAsyncDestroyHandleEnabled() ||
+         (Config->GetAsyncDestroyReadOnlyHandleEnabled() && readOnly));
 
     STORAGE_DEBUG("Release #" << ino << " @" << handle);
 
@@ -277,84 +356,25 @@ void TFileSystem::Release(
                 {
                     if (auto self = ptr.lock()) {
                         const NProto::TError& error = future.GetValue();
-                        self->ReleaseImpl(callContext, req, ino, handle, error);
+                        self->ReleaseImpl(
+                            callContext,
+                            req,
+                            ino,
+                            handle,
+                            processAsynchronously,
+                            error);
                     }
                 });
         return;
     }
 
-    ReleaseImpl(std::move(callContext), req, ino, handle, {});
-}
-
-void TFileSystem::ReadLocal(
-    TCallContextPtr callContext,
-    fuse_req_t req,
-    fuse_ino_t ino,
-    size_t size,
-    off_t offset,
-    fuse_file_info* fi)
-{
-    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
-        || !IsAligned(size, Config->GetBlockSize());
-
-    auto request = StartRequest<NProto::TReadDataLocalRequest>(ino);
-    request->SetHandle(fi->fh);
-    request->SetOffset(offset);
-    request->SetLength(size);
-
-    struct iovec *iov = NULL;
-    int count = 0;
-    int ret = fuse_out_buf(req, &iov, &count);
-    if (ret == -1  || count <= 1) {
-        STORAGE_ERROR("Invalid fuse out buffers, ret=%d, count=%d", ret, count);
-        ReplyError(
-            *callContext,
-            MakeError(E_FS_INVAL, "Invalid fuse out buffers"),
-            req,
-            EINVAL);
-        return;
-    }
-
-    request->Buffers.reserve(count);
-
-    size_t remainingSize = request->GetLength();
-    // skip first fuse out iovec where headers are kept rest of the iovecs
-    // contain pointers to data buffers
-    for (int index = 1; index < count; index++) {
-        if (remainingSize == 0) {
-            break;
-        }
-        auto dataSize = std::min(remainingSize, iov[index].iov_len);
-        request->Buffers.emplace_back(
-            static_cast<char*>(iov[index].iov_base),
-            dataSize);
-        remainingSize -= dataSize;
-    }
-
-    if (remainingSize != 0) {
-        STORAGE_WARN(
-            "Read request length exceeds fuse buffer space, remainingSize="
-            << remainingSize);
-        ReplyError(
-            *callContext,
-            MakeError(E_FS_INVAL, "request length exceeds fuse buffer space"),
-            req,
-            EINVAL);
-        return;
-    }
-
-    Session->ReadDataLocal(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyBuf(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    nullptr,
-                    response.BytesRead);
-            }
-        });
+    ReleaseImpl(
+        std::move(callContext),
+        req,
+        ino,
+        handle,
+        processAsynchronously,
+        {});
 }
 
 void TFileSystem::Read(
@@ -385,11 +405,6 @@ void TFileSystem::Read(
         return;
     }
 
-    if (Config->GetZeroCopyEnabled()) {
-        ReadLocal(callContext, req, ino, size, offset, fi);
-        return;
-    }
-
     callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
         || !IsAligned(size, Config->GetBlockSize());
 
@@ -398,64 +413,20 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
+    // Build iovecs for both local and Kikimr services - the data is read
+    // directly into the fuse output buffers (shared memory).
     if (Config->GetZeroCopyReadEnabled()) {
-        // TODO(issue-4800): Support ZeroCopyReadEnabled for local filestore
-        struct iovec* iov = nullptr;
-        int count = 0;
-        int ret = fuse_out_buf(req, &iov, &count);
-        if (ret == -1 || count <= 1) {
-            STORAGE_ERROR(
-                "Invalid fuse out buffers, ret=%d, count=%d",
-                ret,
-                count);
-            ReplyError(
-                *callContext,
-                MakeError(E_FS_INVAL, "Invalid fuse out buffers"),
-                req,
-                EINVAL);
-            return;
-        }
-
-        auto* iovecs = request->MutableIovecs();
-        iovecs->Reserve(count);
-
-        size_t remainingSize = request->GetLength();
-        // skip first fuse out iovec where headers are kept rest of the iovecs
-        // contain pointers to data buffers
-        for (int index = 1; index < count; index++) {
-            if (remainingSize == 0) {
-                break;
-            }
-            auto dataSize = std::min(remainingSize, iov[index].iov_len);
-            auto* iovec = iovecs->Add();
-            iovec->SetBase(reinterpret_cast<ui64>(iov[index].iov_base));
-            iovec->SetLength(dataSize);
-            remainingSize -= dataSize;
-        }
-
-        if (remainingSize != 0) {
-            STORAGE_WARN(
-                "Read request length exceeds fuse buffer space, remainingSize="
-                << remainingSize);
-            ReplyError(
-                *callContext,
-                MakeError(
-                    E_FS_INVAL,
-                    "request length exceeds fuse buffer space"),
-                req,
-                EINVAL);
+        auto error =
+            FillReadDataIovecs(req, request->GetLength(), request->MutableIovecs());
+        if (HasError(error)) {
+            STORAGE_ERROR("Read zero-copy setup failed: " << error.GetMessage());
+            ReplyError(*callContext, error, req, EINVAL);
             return;
         }
     }
 
-    TFuture<NProto::TReadDataResponse> future;
-    if (WriteBackCache) {
-        future = WriteBackCache.ReadData(callContext, std::move(request));
-    } else {
-        future = Session->ReadData(callContext, std::move(request));
-    }
-
-    future.Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    {
         auto self = ptr.lock();
         if (!self) {
             return;
@@ -484,7 +455,28 @@ void TFileSystem::Read(
                     buffer.size() - bufferOffset);
             }
         }
-    });
+    };
+
+    const auto strategy = GetWriteBackCacheRequestStrategy(fi);
+
+    switch (strategy) {
+        case EWriteBackCacheRequestStrategy::DoNotUse: {
+            Session->ReadData(callContext, std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+        case EWriteBackCacheRequestStrategy::UseDirect: {
+            WriteBackCache
+                .ReadDataDirect(std::move(callContext), std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+        case EWriteBackCacheRequestStrategy::UseNonDirect: {
+            WriteBackCache.ReadData(callContext, std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+    }
 }
 
 void TFileSystem::Write(
@@ -532,7 +524,7 @@ void TFileSystem::DoWrite(
     ui64 size,
     fuse_file_info* fi)
 {
-    const auto wbcState = GetServerWriteBackCacheState(fi);
+    const auto strategy = GetWriteBackCacheRequestStrategy(fi);
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
@@ -547,7 +539,7 @@ void TFileSystem::DoWrite(
         const auto& response = future.GetValue();
         const auto& error = response.GetError();
 
-        if (wbcState != EServerWriteBackCacheState::Enabled) {
+        if (strategy != EWriteBackCacheRequestStrategy::UseNonDirect) {
             self->FSyncQueue
                 ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
         }
@@ -558,119 +550,33 @@ void TFileSystem::DoWrite(
             // that read node attributes.
             //
 
-            InvalidateNodeInCache(ino);
+            self->InvalidateNodeInCache(ino);
             self->ReplyWrite(*callContext, error, req, size);
         }
     };
 
-    if (wbcState == EServerWriteBackCacheState::Enabled) {
-        WriteBackCache.WriteData(callContext, std::move(request))
-            .Subscribe(std::move(callback));
-        return;
+    if (strategy != EWriteBackCacheRequestStrategy::UseNonDirect) {
+        FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
     }
 
-    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
-
-    if (wbcState == EServerWriteBackCacheState::Disabled) {
-        Session->WriteData(callContext, std::move(request))
-            .Subscribe(std::move(callback));
-        return;
-    }
-
-    Y_ABORT_UNLESS(
-        wbcState == EServerWriteBackCacheState::Draining,
-        "Invalid EServerWriteBackCacheState value = %d",
-        wbcState);
-
-    // Sync writes must include all previously cached data for
-    // the same node, so flush the node cache first and only then submit
-    // this write directly to the session.
-    // For O_DIRECT same file can be opened without O_DIRECT so we try
-    // to flush here as well
-    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
-    flushFuture.Subscribe(
-        [ptr = weak_from_this(),
-         callback = std::move(callback),
-         callContext = std::move(callContext),
-         request = std::move(request)](const auto& f) mutable
-        {
-            const NProto::TError& error = f.GetValue();
-            if (HasError(error)) {
-                // Propagate flush error to the WriteData response
-                NProto::TWriteDataResponse response;
-                *response.MutableError() = error;
-                callback(MakeFuture(std::move(response)));
-            } else if (auto self = ptr.lock()) {
-                self->Session->WriteData(callContext, std::move(request))
-                    .Subscribe(std::move(callback));
-            }
-        });
-}
-
-void TFileSystem::WriteBufLocal(
-    TCallContextPtr callContext,
-    fuse_req_t req,
-    fuse_ino_t ino,
-    fuse_bufvec* bufv,
-    off_t offset,
-    fuse_file_info* fi)
-{
-    size_t size = fuse_buf_size(bufv);
-
-    STORAGE_DEBUG("WriteBufLocal #" << ino << " @" << fi->fh
-        << " offset:" << offset
-        << " size:" << size);
-
-    auto request = StartRequest<NProto::TWriteDataLocalRequest>(ino);
-    request->SetHandle(fi->fh);
-    request->SetOffset(offset);
-    request->SetFlags(GetWriteSyncFlags(fi->flags));
-    request->BytesToWrite = size;
-    request->Buffers.reserve(bufv->count);
-
-    for (size_t index = 0; index < bufv->count; ++index) {
-        const auto *srcFuseBuf = &bufv->buf[index];
-        if (srcFuseBuf->size == 0) {
-            continue;
+    switch (strategy) {
+        case EWriteBackCacheRequestStrategy::UseNonDirect: {
+            WriteBackCache.WriteData(callContext, std::move(request))
+                .Subscribe(std::move(callback));
+            break;
         }
-
-        request->Buffers.emplace_back(
-            static_cast<char*>(srcFuseBuf->mem),
-            srcFuseBuf->size);
+        case EWriteBackCacheRequestStrategy::DoNotUse: {
+            Session->WriteData(callContext, std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
+        case EWriteBackCacheRequestStrategy::UseDirect: {
+            WriteBackCache
+                .WriteDataDirect(std::move(callContext), std::move(request))
+                .Subscribe(std::move(callback));
+            break;
+        }
     }
-
-    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
-        || !IsAligned(size, Config->GetBlockSize());
-
-    const auto handle = fi->fh;
-    const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
-
-    Session->WriteDataLocal(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
-
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(
-                reqId,
-                error,
-                TNodeId {ino},
-                THandle {handle});
-
-            if (CheckResponse(self, *callContext, req, response)) {
-                //
-                // Disallow result caching for all concurrently running
-                // operations that read node attributes.
-                //
-
-                InvalidateNodeInCache(ino);
-                self->ReplyWrite(*callContext, error, req, size);
-            }
-        });
 }
 
 void TFileSystem::WriteBuf(
@@ -682,12 +588,6 @@ void TFileSystem::WriteBuf(
     fuse_file_info* fi)
 {
     if (!ValidateNodeId(*callContext, req, ino)) {
-        return;
-    }
-
-    // TODO(myagkov): Update service-local to use ZeroCopyWriteEnabled option
-    if (Config->GetZeroCopyEnabled()) {
-        WriteBufLocal(callContext, req, ino, bufv, offset, fi);
         return;
     }
 
@@ -724,17 +624,9 @@ void TFileSystem::WriteBuf(
         request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
         request->SetBuffer(alignedBuffer.TakeBuffer());
     } else {
-        request->MutableIovecs()->Reserve(bufv->count);
-        for (size_t index = 0; index < bufv->count; ++index) {
-            const auto* srcFuseBuf = &bufv->buf[index];
-            if (srcFuseBuf->size == 0) {
-                continue;
-            }
-
-            auto* iovec = request->MutableIovecs()->Add();
-            iovec->SetBase(reinterpret_cast<ui64>(srcFuseBuf->mem));
-            iovec->SetLength(srcFuseBuf->size);
-        }
+        // Zero-copy write for both local and Kikimr services - the data is
+        // written directly from the fuse input buffers (shared memory).
+        FillWriteDataIovecs(bufv, request->MutableIovecs());
     }
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
@@ -1099,23 +991,25 @@ void TFileSystem::FSyncDir(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EServerWriteBackCacheState TFileSystem::GetServerWriteBackCacheState(
+EWriteBackCacheRequestStrategy TFileSystem::GetWriteBackCacheRequestStrategy(
     const fuse_file_info* fi) const
 {
     if (!WriteBackCache) {
-        return EServerWriteBackCacheState::Disabled;
+        return EWriteBackCacheRequestStrategy::DoNotUse;
     }
 
-    if (!Config->GetServerWriteBackCacheEnabled()) {
-        return WriteBackCache.IsEmpty() ? EServerWriteBackCacheState::Disabled
-                                        : EServerWriteBackCacheState::Draining;
-    }
+    switch (WriteBackCache.GetMode()) {
+        case EWriteBackCacheMode::Normal:
+            return fi->flags & (O_DIRECT | O_SYNC | O_DSYNC)
+                       ? EWriteBackCacheRequestStrategy::UseDirect
+                       : EWriteBackCacheRequestStrategy::UseNonDirect;
 
-    if (fi->flags & (O_DIRECT | O_SYNC | O_DSYNC)) {
-        return EServerWriteBackCacheState::Draining;
-    }
+        case EWriteBackCacheMode::Draining:
+            return EWriteBackCacheRequestStrategy::UseDirect;
 
-    return EServerWriteBackCacheState::Enabled;
+        case EWriteBackCacheMode::Drained:
+            return EWriteBackCacheRequestStrategy::DoNotUse;
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

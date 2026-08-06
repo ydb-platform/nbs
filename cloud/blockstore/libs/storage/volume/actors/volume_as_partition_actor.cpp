@@ -405,13 +405,13 @@ void TVolumeAsPartitionActor::HandleWriteBlocksLocal(
     TSgList dst = ResizeIOVector(
         *msg->Record.MutableBlocks(),
         msg->Record.BlocksCount,
-        msg->Record.BlockSize);
+        msg->Record.GetBlockSize());
 
+    const size_t bytesToWrite = static_cast<size_t>(msg->Record.BlocksCount) *
+                                msg->Record.GetBlockSize();
     writeRequest->Record.Swap(&msg->Record);
     const size_t bytesWritten = SgListCopy(guard.Get(), dst);
-    Y_ABORT_UNLESS(
-        bytesWritten ==
-        static_cast<size_t>(msg->Record.BlocksCount) * msg->Record.BlockSize);
+    Y_ABORT_UNLESS(bytesWritten == bytesToWrite);
 
     NActors::TActorId nondeliveryActor = ev->GetForwardOnNondeliveryRecipient();
     TAutoPtr<::NActors::IEventHandle> newEv(new NActors::IEventHandle(

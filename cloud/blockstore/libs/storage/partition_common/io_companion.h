@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
@@ -23,15 +24,12 @@ namespace NCloud::NBlockStore::NStorage {
 class IIOCompanionClient: public IMortalActor
 {
 public:
-    virtual void ScheduleYellowStateUpdate(
-        const NActors::TActorContext& ctx) = 0;
-    virtual void UpdateYellowState(const NActors::TActorContext& ctx) = 0;
-    virtual void ReassignChannelsIfNeeded(
-        const NActors::TActorContext& ctx) = 0;
-    virtual void UpdateChannelPermissions(
+    virtual void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,
+        NKikimr::TStorageStatusFlags flags,
         ui32 channel,
-        EChannelPermissions permissions) = 0;
+        ui32 generation,
+        double approximateFreeSpaceShare) = 0;
 
     ~IIOCompanionClient() override = default;
 };
@@ -87,10 +85,6 @@ public:
         std::shared_ptr<NPartition::TGroupDowntimes> groupDowntimes,
         std::shared_ptr<NPartition::TThreadSafePartCounters> partCounters);
 
-    void HandleWriteBlob(
-        const TEvPartitionCommonPrivate::TEvWriteBlobRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleWriteBlobCompleted(
         const TEvPartitionCommonPrivate::TEvWriteBlobCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -99,16 +93,8 @@ public:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleReadBlob(
-        const TEvPartitionCommonPrivate::TEvReadBlobRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleReadBlobCompleted(
         const TEvPartitionCommonPrivate::TEvReadBlobCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandlePatchBlob(
-        const TEvPartitionCommonPrivate::TEvPatchBlobRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePatchBlobCompleted(
@@ -119,7 +105,13 @@ public:
 
     void KillActors(const NActors::TActorContext& ctx);
 
+    BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlob, TEvPartitionCommonPrivate)
+    BLOCKSTORE_IMPLEMENT_REQUEST(ReadBlob, TEvPartitionCommonPrivate)
+    BLOCKSTORE_IMPLEMENT_REQUEST(PatchBlob, TEvPartitionCommonPrivate)
+
     bool HandleRequests(STFUNC_SIG, const NActors::TActorContext& ctx);
+
+    bool RejectRequests(STFUNC_SIG, const NActors::TActorContext& ctx);
 
 private:
     auto Info()

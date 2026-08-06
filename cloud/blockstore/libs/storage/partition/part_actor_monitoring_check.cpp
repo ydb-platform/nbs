@@ -25,6 +25,7 @@ template <bool Index>
 class TCheckIndexVisitor final
     : public IBlocksIndexVisitor
     , public IExtendedBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     TTxPartition::TCheckIndex& Args;
@@ -57,6 +58,18 @@ public:
         ui32 checksum) override
     {
         Y_UNUSED(checksum);
+
+        return Visit(blockIndex, commitId, blobId, blobOffset);
+    }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        Y_UNUSED(compactionRangeCount);
 
         return Visit(blockIndex, commitId, blobId, blobOffset);
     }

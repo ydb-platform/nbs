@@ -6,7 +6,7 @@
 #include "persistent_storage.h"
 #include "queued_operations.h"
 #include "sequence_id_generator.h"
-#include "write_back_cache_stats.h"
+#include "write_back_cache_state_stats.h"
 #include "write_data_request.h"
 #include "write_data_request_manager.h"
 
@@ -19,6 +19,7 @@
 #include <util/generic/deque.h>
 #include <util/generic/function_ref.h>
 #include <util/generic/hash_set.h>
+#include <util/generic/intrlist.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -39,13 +40,22 @@ enum class EFlushRetryStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TNodeCachedDataPin
+{
+    const ui64 MaxEvictableSequenceId;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // The class is thread safe
 class TWriteBackCacheState
 {
 private:
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const ITimerPtr Timer;
-    const IWriteBackCacheStatsPtr Stats;
+    const IWriteBackCacheStateStatsPtr Stats;
+    const IWriteDataRequestManagerStatsPtr RequestManagerStats;
+    const TFlushBatchLimits FlushBatchLimits;
     const TString LogTag;
 
     TNodeStateHolder Nodes;
@@ -62,20 +72,39 @@ private:
     TWriteDataRequestManager RequestManager;
     TQueuedOperations QueuedOperations;
 
+    // The following lists hold references to objects owned by TNodeState for
+    // all nodes. They are used to track and report MaxTime.
+    TIntrusiveList<TBarrier> ActiveBarriers;
+    TIntrusiveList<TBarrier> PendingBarriers;
+    TIntrusiveList<TFlushRequest> FlushRequests;
+    TIntrusiveList<TReleaseHandleRequest> ReleaseHandleRequests;
+
+    bool DrainingMode = false;
+
 public:
-    using TEntryVisitor = TFunctionRef<bool(const TCachedWriteDataRequest*)>;
-    using TPin = ui64;
+    using TEntryVisitor = TFunctionRef<void(const TCachedWriteDataRequest*)>;
 
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
         ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats,
+        IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
+        IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
+        INodeStateHolderStatsPtr nodeStateHolderStats,
+        const TFlushBatchLimits& flushBatchLimits,
         TString logTag);
 
     // Read state from the persistent storage
     bool Init(IPersistentStoragePtr persistentStorage);
 
-    bool HasUnflushedRequests() const;
+    // Prevent new WriteData requests from being added to the cache - they
+    // will fail with E_REJECTED error.
+    // Note: exiting from draining mode is not possible.
+    void SetDrainingMode();
+
+    // Returns true if the cache is in draining mode and there are no more
+    // unflushed requests.
+    // Note: only transition from false to true is possible.
+    bool IsDrained() const;
 
     // Add a WriteData request to the pending queue and completes the future
     // when the request is stored in the persistent storage and becomes cached
@@ -92,35 +121,68 @@ public:
 
     void TriggerPeriodicFlushAll();
 
-    // Includes both flushed and unflushed data
-    TCachedData GetCachedData(ui64 nodeId, ui64 offset, ui64 byteCount) const;
+    // Includes both flushed and unflushed data.
+    // TCachedData::Parts is calculated over pinned data.
+    // TCachedData::ReadDataByteCount is calculated over all data.
+    TCachedData GetCachedData(
+        ui64 nodeId,
+        ui64 offset,
+        ui64 byteCount,
+        TNodeCachedDataPin pin) const;
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const;
-    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+    // Used to adjust node size according to cached data
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const;
+
+    // Used to clear max written offset in SetNodeAttr handler
+    // Note: a barrier should be acquired via AcquireBarrier
+    void ResetMaxWrittenOffset(ui64 nodeId);
 
     // Prevent WriteData requests from being evicted from cache after flush
-    TPin PinCachedData(ui64 nodeId);
-    void UnpinCachedData(ui64 nodeId, TPin pinId);
+    TNodeCachedDataPin PinCachedData(ui64 nodeId);
+    void UnpinCachedData(ui64 nodeId, TNodeCachedDataPin pin);
 
     // Keep NodeStates alive
     // Used to prevent data race and return correct node size
-    TPin PinNodeStates();
-    void UnpinNodeStates(TPin pinId);
+    TNodeStatePin PinNodeStates();
+    void UnpinNodeStates(TNodeStatePin pinId);
 
-    // Visit unflushed cached requests in the increasing order of SequenceId
-    void VisitUnflushedRequests(
+    // Returns empty batch if flush is not allowed due to barriers
+    // Forces completion of an incomplete flush batch if there are no completed
+    // flush batches
+    void VisitUnflushedRequestsFromFrontFlushBatch(
         ui64 nodeId,
-        const TEntryVisitor& visitor) const;
+        const TEntryVisitor& visitor);
+
+    // Returns a known live handle that should be used for flushing requests or
+    // NProto::E_INVALID_HANDLE if there are no unflushed requests with live
+    // handles
+    ui64 GetLiveHandle(ui64 nodeId) const;
 
     // Inform that the first |requestCount| unflushed changes requests have
     // been flushed
     void FlushSucceeded(ui64 nodeId, size_t requestCount);
 
     // Inform that the flush has failed - the error should be propagated to
-    // Flush, FlushAll and ReleaseHandle requests
+    // Flush, FlushAll and ReleaseHandle requests.
+    // In the case of E_FS_NOSPC, pending requests will also be failed.
     EFlushRetryStatus FlushFailed(
         ui64 nodeId,
         const NCloud::NProto::TError& error);
+
+    // Barriers enforce sequencing and allow execution of operations without
+    // interfering with cache (such as SetNodeAttr or ReadData/WriteData with
+    // O_DIRECT/O_SYNC/O_DSYNC)
+    // Successfully acquired barrier ensures that:
+    // - all prior WriteData requests are flushed and evicted;
+    // - no flush will take place until the barrier is released.
+    // Returns barrierId on success - it should be released by ReleaseBarrier
+    NThreading::TFuture<TResultOrError<ui64>> AcquireBarrier(ui64 nodeId);
+
+    // The barrier should be valid and previously acquired via AcquireBarrier
+    void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
+
+    // UpdateStats under lock
+    void UpdateStats() const;
 
 private:
     // Combines acquiring mutex and executing queued operations on mutex release
@@ -136,20 +198,53 @@ private:
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TCachedWriteDataRequest> request);
 
+    NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
+        std::unique_ptr<TCachedWriteDataRequest> request,
+        bool handleReleased);
+
     void TriggerFlushAll(bool includePendingRequests);
 
-    ENodeFlushStatus GetFlushStatus(const TNodeState& nodeState) const;
+    bool GetBackpressureStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
+    void TriggerFlushCompletions(TNodeState& nodeState);
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
+    void CheckAndAcquireBarriers(TNodeState& nodeState);
+    void ProcessPendingRequests();
 
-    void AddActiveRequestToHandleState(TNodeState& nodeState, ui64 handle);
-    void RemoveActiveRequestFromHandleState(TNodeState& nodeState, ui64 handle);
+    void EnqueueUnflushedRequest(
+        ui64 nodeId,
+        TNodeState& nodeState,
+        std::unique_ptr<TCachedWriteDataRequest> request);
+
+    void RemoveActiveRequestFromHandleState(
+        TNodeState& nodeState,
+        TPendingWriteDataRequest* request);
+
+    void RemoveActiveRequestFromHandleState(
+        TNodeState& nodeState,
+        TCachedWriteDataRequest* request);
+
+    void TriggerReleaseHandleCompletion(
+        TNodeState& nodeState,
+        ui64 handle,
+        THandleState& handleState);
 
     void DropCachedData(
         ui64 nodeId,
         TNodeState& nodeState,
         const NCloud::NProto::TError& error);
+
+    void FailPendingRequest(
+        TNodeState& nodeState,
+        TPendingWriteDataRequest* request,
+        const NCloud::NProto::TError& error);
+
+    void FailNodePendingRequests(
+        TNodeState& nodeState,
+        const NCloud::NProto::TError& error);
+
+    void FailAllPendingRequests(const NCloud::NProto::TError& error);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

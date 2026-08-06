@@ -13,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url"
+	metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -200,6 +201,7 @@ func TestImageReading(t *testing.T) {
 				defaultHTTPClientMaxRetries,
 				testCase.imageURL,
 				chunkSize,
+				metrics.NewEmptyRegistry(),
 			)
 			require.NoError(t, err)
 			defer source.Close(ctx)
@@ -238,6 +240,7 @@ func TestInvalidImageReading(t *testing.T) {
 		defaultHTTPClientMaxRetries,
 		imageURL,
 		chunkSize,
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 	defer source.Close(ctx)
@@ -252,13 +255,14 @@ func TestInvalidImageReading(t *testing.T) {
 	)
 
 	var chunkIndex uint32
-	more := true
+	moreChunks := true
+	moreErrors := true
 	var foundErrors []error
 
-	for more {
+	for moreChunks || moreErrors {
 		select {
-		case chunkIndex, more = <-chunkIndices:
-			if !more {
+		case chunkIndex, moreChunks = <-chunkIndices:
+			if !moreChunks {
 				break
 			}
 
@@ -271,7 +275,7 @@ func TestInvalidImageReading(t *testing.T) {
 			if err != nil {
 				foundErrors = append(foundErrors, err)
 			}
-		case err := <-chunkIndicesErrors:
+		case err, moreErrors = <-chunkIndicesErrors:
 			if err != nil {
 				foundErrors = append(foundErrors, err)
 			}

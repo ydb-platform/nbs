@@ -267,7 +267,7 @@ void TPartitionActor::WriteBlocks(
         return;
     }
 
-    ++WriteAndZeroRequestsInProgress;
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer{
         writeRange.Size(),
@@ -285,7 +285,7 @@ void TPartitionActor::WriteBlocks(
         PartitionConfig.GetStorageMediaKind(),
         requestSize);
 
-    if (!Config->GetFreshBlocksWriterEnabled() && isFreshRequest) {
+    if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
         if (Config->GetWriteRequestBatchingEnabled()) {
             // we will try to batch small writes and, if batching fails,
             // we will accumulate these writes in FreshBlocks table
@@ -416,6 +416,16 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
             TabletID());
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added or when obsolete blobs are deleted
+    } else if (writeBlocksCompleted.IsFreshBlocksRequest) {
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Releasing commit queue barrier, commit id @%lu",
+            LogTitle.GetWithTime().c_str(),
+            commitId);
+
+        SharedState
+            ->FinishFreshWrite(ctx, commitId, blocksCount, HasError(error));
     } else {
         LOG_TRACE(
             ctx,
@@ -424,15 +434,9 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
             LogTitle.GetWithTime().c_str(),
             commitId);
 
-        State->AccessCommitQueue().ReleaseBarrier(commitId);
+        State->AccessCommitQueue()->ReleaseBarrier(commitId);
         if (writeBlocksCompleted.CollectGarbageBarrierAcquired) {
             State->GetGarbageQueue().ReleaseBarrier(commitId);
-        }
-
-        if (writeBlocksCompleted.IsFreshBlocksRequest && HasError(error)) {
-            State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
-                commitId,
-                blocksCount);
         }
     }
 
@@ -442,10 +446,11 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
         ScheduleYellowStateUpdate(ctx);
     }
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
-    WriteAndZeroRequestsInProgress -= requestCount;
+    Y_DEBUG_ABORT_UNLESS(
+        SharedState->WriteAndZeroRequestsInProgress.load() >= requestCount);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(requestCount);
 
-    DrainActorCompanion.ProcessDrainRequests(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
     EnqueueFlushIfNeeded(ctx);
     EnqueueAddConfirmedBlobsIfNeeded(ctx);

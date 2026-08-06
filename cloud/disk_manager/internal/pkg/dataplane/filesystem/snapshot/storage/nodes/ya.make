@@ -1,6 +1,7 @@
 GO_LIBRARY()
 
 SRCS(
+    lister.go
     storage.go
     storage_ydb.go
 )

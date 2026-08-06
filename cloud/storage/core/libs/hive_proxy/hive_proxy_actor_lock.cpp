@@ -18,9 +18,8 @@ void THiveProxyActor::HandleLockTablet(
     const auto* msg = ev->Get();
 
     ui64 tabletId = msg->TabletId;
-    ui64 hive = GetHive(ctx, tabletId);
 
-    auto& tablets = HiveStates[hive].LockStates;
+    auto& tablets = HiveState.LockStates;
     auto& state = tablets[tabletId];
     if (state.Owner) {
         ReportHiveProxyConcurrentLockError();
@@ -37,7 +36,7 @@ void THiveProxyActor::HandleLockTablet(
     state.Phase = PHASE_LOCKING;
     state.LockRequest = {ev->Sender, ev->Cookie};
 
-    SendLockRequest(ctx, hive, tabletId);
+    SendLockRequest(ctx, tabletId);
 }
 
 void THiveProxyActor::HandleLockTabletExecutionResult(
@@ -47,23 +46,22 @@ void THiveProxyActor::HandleLockTabletExecutionResult(
     const auto* msg = ev->Get();
 
     ui64 tabletId = msg->Record.GetTabletID();
-    ui64 hive = GetHive(ctx, tabletId);
 
-    auto* states = HiveStates.FindPtr(hive);
-    auto* state = states ? states->LockStates.FindPtr(tabletId) : nullptr;
+    auto& states = HiveState;
+    auto* state = states.LockStates.FindPtr(tabletId);
     if (!state || state->Phase == PHASE_UNLOCKING) {
         // Unexpected lock reply, send an unlock request
         LOG_WARN_S(ctx, LogComponent,
-            "Unexpected lock reply from hive " << hive
+            "Unexpected lock reply from hive " << HiveTabletId
                 << " for tablet " << tabletId);
-        SendUnlockRequest(ctx, hive, tabletId);
+        SendUnlockRequest(ctx, tabletId);
         return;
     }
 
     if (state->Phase == PHASE_LOCKED) {
         // Already locked, ignore duplicate results
         LOG_WARN_S(ctx, LogComponent,
-            "Ignored duplicate lock reply from hive " << hive
+            "Ignored duplicate lock reply from hive " << HiveTabletId
                 << " for tablet " << tabletId);
         return;
     }
@@ -100,7 +98,7 @@ void THiveProxyActor::HandleLockTabletExecutionResult(
             }
         }
 
-        states->LockStates.erase(tabletId);
+        states.LockStates.erase(tabletId);
         return;
     }
 
@@ -124,7 +122,7 @@ void THiveProxyActor::HandleLockTabletExecutionResult(
 
     if (state->UnlockRequest) {
         state->Phase = PHASE_UNLOCKING;
-        SendUnlockRequest(ctx, hive, tabletId);
+        SendUnlockRequest(ctx, tabletId);
     }
 }
 

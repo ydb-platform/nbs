@@ -4,14 +4,15 @@
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
 #include <util/generic/string.h>
 
@@ -27,8 +28,8 @@ namespace {
 
 struct TDeviceRequestInfo
 {
-    NRdma::IClientEndpointPtr Endpoint;
-    NRdma::TClientRequestPtr ClientRequest;
+    NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+    NCloud::NStorage::NRdma::TClientRequestPtr ClientRequest;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,6 +48,7 @@ private:
 public:
     using TRequestContext = TDeviceRequestRdmaContext;
     using TResponseProto = NProto::TWriteDeviceBlocksResponse;
+    static constexpr ui32 ExpectedMsgId = TBlockStoreProtocol::WriteDeviceBlocksResponse;
 
     TRdmaMultiWriteBlocksResponseHandler(
             TActorSystem* actorSystem,
@@ -132,7 +134,7 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
 {
     NProto::TWriteDeviceBlocksRequest result;
     *result.MutableHeaders() = request.GetHeaders();
-    result.SetBlockSize(request.BlockSize);
+    result.SetBlockSize(request.GetBlockSize());
 
     for (const auto& deviceInfo: request.DevicesAndRanges) {
         auto* replicationTarget = result.AddReplicationTargets();
@@ -149,7 +151,8 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
     if (auto checksum = CombineChecksums(request.GetChecksums());
         checksum.GetByteCount() > 0)
     {
-        if (checksum.GetByteCount() == request.Range.Size() * request.BlockSize)
+        if (checksum.GetByteCount() ==
+            request.Range.Size() * request.GetBlockSize())
         {
             *result.MutableChecksum() = std::move(checksum);
         } else {
@@ -159,7 +162,7 @@ NProto::TWriteDeviceBlocksRequest MakeWriteDeviceBlocksRequest(
                 {{"range", request.Range.Print()},
                  {"request range length", request.Range.Size()},
                  {"checksum length",
-                  checksum.GetByteCount() / request.BlockSize},
+                  checksum.GetByteCount() / request.GetBlockSize()},
                  {"disk id", partConfig->GetName().Quote()}});
         }
     }
@@ -272,9 +275,9 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
     auto [req, err] = ep->AllocateRequest(
         requestResponseHandler,
         std::make_unique<TDeviceRequestRdmaContext>(deviceRequest.DeviceIdx),
-        NRdma::TProtoMessageSerializer::MessageByteSize(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
             writeDeviceBlocksRequest,
-            blockRange.Size() * msg->Record.BlockSize),
+            blockRange.Size() * msg->Record.GetBlockSize()),
         4_KB);
 
     if (HasError(err)) {
@@ -297,7 +300,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         return;
     }
 
-    NRdma::TProtoMessageSerializer::SerializeWithData(
+    NCloud::NStorage::NRdma::TProtoMessageSerializer::SerializeWithData(
         req->RequestBuffer,
         TBlockStoreProtocol::WriteDeviceBlocksRequest,
         GetFlags(),

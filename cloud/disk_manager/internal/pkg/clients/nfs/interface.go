@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -14,6 +15,7 @@ type CreateFilesystemParams struct {
 	BlockSize   uint32
 	BlocksCount uint64
 	Kind        types.FilesystemKind
+	ShardCount  uint32
 }
 
 type FilesystemPerformanceProfile struct {
@@ -29,6 +31,23 @@ type FilesystemModel struct {
 	ChannelsCount      uint32
 	Kind               types.FilesystemKind
 	PerformanceProfile FilesystemPerformanceProfile
+}
+
+type ConfigureAsShardParams struct {
+	ShardNo                                uint32
+	ShardFileSystemIDs                     []string
+	MainFileSystemID                       string
+	DirectoryCreationInShardsEnabled       bool
+	StrictFileSystemSizeEnforcementEnabled bool
+	ForceDirectoryCreationInShards         bool
+}
+
+type ConfigureShardsParams struct {
+	ShardFileSystemIDs                     []string
+	Force                                  bool
+	DirectoryCreationInShardsEnabled       bool
+	StrictFileSystemSizeEnforcementEnabled bool
+	ForceDirectoryCreationInShards         bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,6 +73,11 @@ type Session interface {
 		node Node,
 	) (uint64, error)
 
+	CreateNodeIdempotent(
+		ctx context.Context,
+		node Node,
+	) (uint64, error)
+
 	ReadLink(
 		ctx context.Context,
 		nodeID uint64,
@@ -64,6 +88,17 @@ type Session interface {
 		parentNodeID uint64,
 		name string,
 	) (Node, error)
+
+	UnlinkNode(
+		ctx context.Context,
+		parentNodeID uint64,
+		name string,
+		unlinkDirectory bool,
+	) error
+
+	SetSession(nfsSession nfs_client.Session)
+
+	GetID() string
 
 	Close(ctx context.Context) error
 }
@@ -85,6 +120,12 @@ type Client interface {
 
 	Resize(ctx context.Context, filesystemID string, size uint64) error
 
+	EnableDirectoryCreationInShards(
+		ctx context.Context,
+		filesystemID string,
+		shardCount uint32,
+	) error
+
 	DescribeModel(
 		ctx context.Context,
 		blocksCount uint64,
@@ -104,6 +145,46 @@ type Client interface {
 		checkpointID string,
 		readonly bool,
 	) (Session, error)
+
+	CreateSessionWithClientID(
+		ctx context.Context,
+		fileSystemID string,
+		clientID string,
+		checkpointID string,
+		readonly bool,
+	) (Session, error)
+
+	FreezeTablet(ctx context.Context, filesystemID string) error
+
+	UnfreezeTablet(ctx context.Context, filesystemID string) error
+
+	UnsafeCreateNode(
+		ctx context.Context,
+		filesystemID string,
+		node Node,
+	) error
+
+	UnsafeCreateNodeRef(
+		ctx context.Context,
+		filesystemID string,
+		parentNodeID uint64,
+		name string,
+		childID uint64,
+		shardID string,
+		shardNodeName string,
+	) error
+
+	ConfigureAsShard(
+		ctx context.Context,
+		filesystemID string,
+		params ConfigureAsShardParams,
+	) error
+
+	ConfigureShards(
+		ctx context.Context,
+		filesystemID string,
+		params ConfigureShardsParams,
+	) error
 }
 
 ////////////////////////////////////////////////////////////////////////////////

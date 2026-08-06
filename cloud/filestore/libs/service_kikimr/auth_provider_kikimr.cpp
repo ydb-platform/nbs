@@ -40,6 +40,7 @@ private:
     TCallContextPtr CallContext;
 
     const TDuration RequestTimeout;
+    const TString Peer;
 
     bool RequestCompleted = false;
 
@@ -49,12 +50,14 @@ public:
             TString authToken,
             TPromise<NProto::TError> response,
             TCallContextPtr callContext,
-            TDuration requestTimeout)
+            TDuration requestTimeout,
+            TString peer)
         : Permissions(permissions)
         , AuthToken(std::move(authToken))
         , Response(std::move(response))
         , CallContext(std::move(callContext))
         , RequestTimeout(requestTimeout)
+        , Peer(std::move(peer))
     {}
 
     ~TRequestActor() override
@@ -88,7 +91,8 @@ private:
 
         auto request = std::make_unique<TEvAuth::TEvAuthorizationRequest>(
             std::move(AuthToken),
-            std::move(Permissions));
+            std::move(Permissions),
+            Peer);
 
         FILESTORE_TRACK(
             AuthRequestSent_Proxy,
@@ -200,7 +204,8 @@ public:
         TCallContextPtr callContext,
         TPermissionList permissions,
         TString authToken,
-        TDuration requestTimeout) override
+        TDuration requestTimeout,
+        TString peer) override
     {
         auto response = NewPromise<NProto::TError>();
 
@@ -209,7 +214,8 @@ public:
             std::move(authToken),
             response,
             std::move(callContext),
-            requestTimeout));
+            requestTimeout,
+            std::move(peer)));
 
         return response.GetFuture();
     }

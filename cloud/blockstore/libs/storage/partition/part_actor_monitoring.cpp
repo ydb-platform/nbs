@@ -332,6 +332,7 @@ void DumpCompactionScoreHistory(
                     TABLED() { out << "Ts"; }
                     TABLED() { out << "Score"; }
                     TABLED() { out << "GarbageScore"; }
+                    TABLED() { out << "IgnoringZeroedScore"; }
                 }
             }
             TABLEBODY() {
@@ -342,6 +343,7 @@ void DumpCompactionScoreHistory(
                         TABLED() { out << s.Ts; }
                         TABLED() { out << s.Value.Score; }
                         TABLED() { out << s.Value.GarbageScore; }
+                        TABLED() { out << s.Value.IgnoringZeroedScore; }
                     }
                 }
             }
@@ -524,7 +526,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                             }
                             TABLER() {
                                 TABLED() { out << "Write and zero requests in progress"; }
-                                TABLED() { out << WriteAndZeroRequestsInProgress; }
+                                TABLED() { out << SharedState->WriteAndZeroRequestsInProgress.load(); }
                             }
                         }
                     }
@@ -665,7 +667,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                         *State,
                         *Info(),
                         *DiagnosticsConfig,
-                        *GroupDowntimes);
+                        SharedState->GroupDowntimes);
 
                     TAG(TH3) {
                         BuildMenuButton(out, "reassign-all");

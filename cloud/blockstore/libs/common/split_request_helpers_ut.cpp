@@ -103,7 +103,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         request.SetFlags(1234);   // just some random number
         request.SetCheckpointId("checkpoint-1");
         request.SetSessionId("session-1");
-        request.BlockSize = blockSize;
+        request.SetBlockSize(blockSize);
         request.CommitId = 12345;
 
         // SplitRequest function doesn't access memory, so it's must be safe to
@@ -160,19 +160,23 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 blockRangeSplittedByDeviceBorders[i].Size(),
                 partSplit.GetBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(request.BlockSize, partSplit.BlockSize);
+            UNIT_ASSERT_VALUES_EQUAL(
+                request.GetBlockSize(),
+                partSplit.GetBlockSize());
             UNIT_ASSERT_VALUES_EQUAL(request.CommitId, partSplit.CommitId);
 
             auto guard = partSplit.Sglist.Acquire();
             const auto& splitSglist = guard.Get();
             size_t overallSize = 0;
             for (auto buf: splitSglist) {
-                UNIT_ASSERT_VALUES_EQUAL(0, buf.Size() % request.BlockSize);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    buf.Size() % request.GetBlockSize());
                 overallSize += buf.Size();
                 overallSglist.emplace_back(buf);
             }
             UNIT_ASSERT_VALUES_EQUAL(
-                partSplit.BlockSize * partSplit.GetBlocksCount(),
+                partSplit.GetBlockSize() * partSplit.GetBlocksCount(),
                 overallSize);
         }
 
@@ -198,7 +202,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         request.SetFlags(1234);   // just some random number
         request.SetCheckpointId("checkpoint-1");
         request.SetSessionId("session-1");
-        request.BlockSize = blockSize;
+        request.SetBlockSize(blockSize);
         request.CommitId = 12345;
 
         // SplitRequest function doesn't access memory, so it's must be safe to
@@ -235,7 +239,7 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
         request.SetFlags(1234);   // just some random number
         request.SetCheckpointId("checkpoint-1");
         request.SetSessionId("session-1");
-        request.BlockSize = blockSize;
+        request.SetBlockSize(blockSize);
         request.CommitId = 12345;
 
         // SplitRequest function doesn't access memory, so it's must be safe to

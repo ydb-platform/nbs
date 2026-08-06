@@ -95,7 +95,7 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                 UNIT_ASSERT(state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(baseScore);
 
-                UNIT_ASSERT(!state.UpdatePermissions(
+                UNIT_ASSERT(state.UpdatePermissions(
                     channelId,
                     EChannelPermission::SystemWritesAllowed));
                 UNIT_ASSERT(state.IsCompactionAllowed());
@@ -107,7 +107,7 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                 UNIT_ASSERT(!state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(maxScore);
 
-                UNIT_ASSERT(!state.UpdatePermissions(channelId, {}));
+                UNIT_ASSERT(state.UpdatePermissions(channelId, {}));
                 UNIT_ASSERT(!state.IsCompactionAllowed());
                 CHECK_DISK_SPACE_SCORE(maxScore);
 

@@ -19,7 +19,7 @@ class NbsClient:
         self.__binary_path = yatest_common.binary_path(
             "cloud/blockstore/apps/client/blockstore-client")
 
-    def __execute_action(self, action, req, timeout_sec=300):
+    def execute_action(self, action, req, timeout_sec=300):
         p = subprocess.run([
             self.__binary_path,
             "ExecuteAction",
@@ -34,7 +34,7 @@ class NbsClient:
 
         return p.stdout
 
-    def __execute_action_async(self, action, req, timeout_sec=300):
+    def execute_action_async(self, action, req, timeout_sec=300):
         p = subprocess.Popen([
             self.__binary_path,
             "ExecuteAction",
@@ -139,12 +139,12 @@ class NbsClient:
     def disk_registry_set_writable_state(self, state=True):
         req = {"State": state}
 
-        return self.__execute_action('DiskRegistrySetWritableState', req)
+        return self.execute_action('DiskRegistrySetWritableState', req)
 
     def backup_disk_registry_state(self, source=EBackupDiskRegistryStateSource.BDRSS_LOCAL_DB):
         req = {"Source": source}
 
-        resp = self.__execute_action('BackupDiskRegistryState', req)
+        resp = self.execute_action('BackupDiskRegistryState', req)
 
         return json.loads(resp)
 
@@ -178,48 +178,48 @@ class NbsClient:
     def wait_dependent_disks_to_switch_node(self, agentd_id, old_node_id, timeout=300):
         req = {"AgentId": agentd_id, "OldNodeId": old_node_id}
 
-        return self.__execute_action('WaitDependentDisksToSwitchNode', req, timeout)
+        return self.execute_action('WaitDependentDisksToSwitchNode', req, timeout)
 
     def wait_dependent_disks_to_switch_node_async(self, agentd_id, old_node_id, timeout=300):
         req = {"AgentId": agentd_id, "OldNodeId": old_node_id}
 
-        return self.__execute_action_async('WaitDependentDisksToSwitchNode', req, timeout)
+        return self.execute_action_async('WaitDependentDisksToSwitchNode', req, timeout)
 
     def get_disk_agent_node_id(self, agentd_id):
         req = {"AgentId": agentd_id}
 
-        return self.__execute_action('GetDiskAgentNodeId', req)
+        return self.execute_action('GetDiskAgentNodeId', req)
 
     def partially_suspend_disk_agent(self, node_id, cancel_suspension_delay_ms=30000):
         req = {"NodeId": node_id,
                "CancelSuspensionDelay": cancel_suspension_delay_ms}
 
-        return self.__execute_action('PartiallySuspendDiskAgent', req)
+        return self.execute_action('PartiallySuspendDiskAgent', req)
 
     def get_storage_service_config(self, disk_id=None, timeout=300):
         req = {"DiskId": "" if disk_id is None else disk_id}
 
-        resp = self.__execute_action('getstorageconfig', req, timeout)
+        resp = self.execute_action('getstorageconfig', req, timeout)
 
         return json.loads(resp)
 
     def change_device_state(self, device_uuid, state, timeout=300):
         req = {"ChangeDeviceState": {"DeviceUUID": device_uuid, "State": state}, "Message": "XXX"}
 
-        resp = self.__execute_action("diskregistrychangestate", req, timeout)
+        resp = self.execute_action("diskregistrychangestate", req, timeout)
 
         return json.loads(resp)
 
     def change_agent_state(self, agent_id, state, timeout=300):
         req = {"ChangeAgentState": {"AgentId": agent_id, "State": state}, "Message": "XXX"}
 
-        resp = self.__execute_action("diskregistrychangestate", req, timeout)
+        resp = self.execute_action("diskregistrychangestate", req, timeout)
 
         return json.loads(resp)
 
     def ensure_disk_registry_state_integrity(self, timeout=300):
         req = {}
 
-        resp = self.__execute_action("ensurediskregistrystateintegrity", req, timeout)
+        resp = self.execute_action("ensurediskregistrystateintegrity", req, timeout)
 
         return resp

@@ -114,7 +114,6 @@ std::shared_ptr<NProto::TWriteBlocksLocalRequest> CreateWriteBlocksLocalRequest(
     request->SetDiskId(diskId);
     request->SetStartIndex(startIndex);
     request->SetBlockSize(blockSize);
-    request->BlockSize = blockSize;
     request->BlocksCount = blocksCount;
 
     TSgList sglist;
@@ -143,7 +142,6 @@ std::shared_ptr<NProto::TReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blocksCount);
     request->SetBlockSize(blockSize);
-    request->BlockSize = blockSize;
     request->Sglist = TGuardedSgList(std::move(sglist));
     return request;
 }

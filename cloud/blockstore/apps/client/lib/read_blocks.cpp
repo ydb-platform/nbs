@@ -459,7 +459,7 @@ private:
             request->SetStartIndex(readRange->StartIndex);
             request->SetBlocksCount(readRange->BlocksCount);
             request->SetCheckpointId(CheckpointId);
-            request->BlockSize = Volume.GetBlockSize();
+            request->SetBlockSize(Volume.GetBlockSize());
             request->Sglist = holder.GetGuardedSgList();
             PrepareHeaders(*request->MutableHeaders());
             request->MutableHeaders()->SetReplicaIndex(ReplicaIndex);

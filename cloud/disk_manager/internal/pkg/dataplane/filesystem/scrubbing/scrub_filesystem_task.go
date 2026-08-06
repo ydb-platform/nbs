@@ -11,7 +11,7 @@ import (
 	scrubbing_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config"
 	scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal"
-	filesystem_snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
+	filesystem_traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -25,7 +25,7 @@ type OnScrubbedCallback func([]nfs.Node)
 type scrubFilesystemTask struct {
 	config   *scrubbing_config.FilesystemScrubbingConfig
 	factory  nfs.Factory
-	storage  filesystem_snapshot_storage.Storage
+	storage  filesystem_traversal_storage.Storage
 	request  *scrubbing_protos.ScrubFilesystemRequest
 	state    *scrubbing_protos.ScrubFilesystemTaskState
 	callback OnScrubbedCallback
@@ -70,25 +70,11 @@ func (t *scrubFilesystemTask) Run(
 		t.config.GetListNodesMaxBytes(),
 		true, // readOnly
 		true, // unsafe
+		true, // ignoreNotFound
 	)
 
 	rootNodeAlreadyScheduled := t.state.GetRootNodeScheduled()
-	traverser := traversal.NewFilesystemTraverser(
-		t.getSnapshotID(execCtx),
-		filesystem.GetFilesystemId(),
-		t.request.GetFilesystemCheckpointId(),
-		filesystemListerFactory,
-		t.storage,
-		func(ctx context.Context) error {
-			t.state.RootNodeScheduled = true
-			return execCtx.SaveState(ctx)
-		},
-		t.config.GetTraversalConfig(),
-		rootNodeAlreadyScheduled,
-		nfs.RootNodeID,
-	)
-
-	return traverser.Traverse(ctx, func(
+	onListedNodes := func(
 		ctx context.Context,
 		nodes []nfs.Node,
 		_ listers.FilesystemLister,
@@ -100,7 +86,29 @@ func (t *scrubFilesystemTask) Run(
 		}
 
 		return nil
-	})
+	}
+
+	traverser, err := traversal.NewFilesystemTraverser(
+		t.getSnapshotID(execCtx),
+		filesystem.GetFilesystemId(),
+		t.request.GetFilesystemCheckpointId(),
+		filesystemListerFactory,
+		t.storage,
+		func(ctx context.Context) error {
+			t.state.RootNodeScheduled = true
+			return execCtx.SaveState(ctx)
+		},
+		onListedNodes,
+		nil,
+		t.config.GetTraversalConfig(),
+		rootNodeAlreadyScheduled,
+		nfs.RootNodeID,
+	)
+	if err != nil {
+		return err
+	}
+
+	return traverser.Traverse(ctx)
 }
 
 func (t *scrubFilesystemTask) Cancel(
@@ -111,7 +119,6 @@ func (t *scrubFilesystemTask) Cancel(
 	return t.storage.ClearDirectoryListingQueue(
 		ctx,
 		t.getSnapshotID(execCtx),
-		t.config.GetTraversalQueueDeletionLimit(),
 	)
 }
 

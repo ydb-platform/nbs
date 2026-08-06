@@ -7,9 +7,7 @@
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/notify/iface/config.h>
 #include <cloud/blockstore/libs/notify/impl/notify.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
+#include <cloud/blockstore/libs/rdma/helper.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
 #include <cloud/blockstore/libs/root_kms/impl/client.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -124,29 +122,11 @@ int main(int argc, char** argv)
         };
     };
 
-    serverModuleFactories->RdmaClientFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TClientConfigPtr config)
-    {
-        return NRdma::CreateClient(
-            NRdma::NVerbs::CreateVerbs(),
-            std::move(logging),
-            std::move(monitoring),
-            std::move(config));
-    };
+    serverModuleFactories->RdmaClientFactory =
+        NCloud::NBlockStore::NRdma::CreateRdmaClient;
 
-    serverModuleFactories->RdmaServerFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)
-    {
-        return NRdma::CreateServer(
-            NRdma::NVerbs::CreateVerbs(),
-            std::move(logging),
-            std::move(monitoring),
-            std::move(config));
-    };
+    serverModuleFactories->RdmaServerFactory =
+        NCloud::NBlockStore::NRdma::CreateRdmaServer;
 
     serverModuleFactories->NotifyServiceFactory =
         [](NNotify::TNotifyConfigPtr config,

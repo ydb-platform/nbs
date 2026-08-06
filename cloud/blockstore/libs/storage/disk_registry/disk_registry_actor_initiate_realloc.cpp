@@ -18,9 +18,11 @@ void TDiskRegistryActor::HandleInitiateDiskReallocation(
 {
     auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Initiate reallocation: volume %s",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Initiate reallocation: volume %s",
+        LogTitle.GetWithTime().c_str(),
         msg->DiskId.Quote().c_str());
 
     ExecuteTx<TAddNotifiedDisks>(

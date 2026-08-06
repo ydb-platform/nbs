@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <google/protobuf/text_format.h>
+
 #include <util/generic/string.h>
 #include <util/stream/output.h>
 
@@ -76,6 +78,12 @@ namespace NCloud::NFileStore {
     xxx(Fsync,                              __VA_ARGS__)                       \
     xxx(FsyncDir,                           __VA_ARGS__)                       \
 // FILESTORE_LOCAL_DATA_METHODS
+
+#define FILESTORE_SHARED_MEMORY_METHODS(xxx, ...)                              \
+    xxx(Mmap,                               __VA_ARGS__)                       \
+    xxx(Munmap,                             __VA_ARGS__)                       \
+    xxx(PingMmapRegion,                     __VA_ARGS__)                       \
+// FILESTORE_SHARED_MEMORY_METHODS
 
 #define FILESTORE_DATA_SERVICE(xxx, ...)                                       \
     FILESTORE_DATA_METHODS(xxx,            __VA_ARGS__)                        \
@@ -206,7 +214,18 @@ TRequestInfo GetRequestInfo(const T& request);
 template <typename T>
 consteval bool HasResponseHeaders();
 
-TString DumpMessage(const google::protobuf::Message& message);
+////////////////////////////////////////////////////////////////////////////////
+
+class TProtoMessagePrinter
+{
+public:
+    TProtoMessagePrinter();
+
+    virtual TString ToString(const google::protobuf::Message& message);
+
+private:
+    google::protobuf::TextFormat::Printer Printer;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

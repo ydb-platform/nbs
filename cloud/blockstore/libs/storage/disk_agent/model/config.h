@@ -77,6 +77,7 @@ public:
     TDuration GetDeviceIOTimeout() const;
     bool GetDeviceIOTimeoutsDisabled() const;
     TDuration GetShutdownTimeout() const;
+    TDuration GetNVMeAdminCmdTimeout() const;
 
     NProto::EDiskAgentBackendType GetBackend() const;
     NProto::EDeviceEraseMethod GetDeviceEraseMethod() const;
@@ -148,6 +149,8 @@ public:
 
     [[nodiscard]] bool HasChaosConfig() const;
     [[nodiscard]] const NProto::TChaosConfig& GetChaosConfig() const;
+
+    [[nodiscard]] TString GetJournalledDeviceTcpServerListenAddress() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

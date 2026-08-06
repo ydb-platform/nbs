@@ -33,11 +33,13 @@ public:
 
     ui32 GetXAttrCacheLimit() const;
     TDuration GetXAttrCacheTimeout() const;
+    bool GetXAttrCacheInvalidateOnCreateEnabled() const;
 
     ui32 GetMaxBufferSize() const;
     ui32 GetPreferredBlockSize() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetAsyncDestroyReadOnlyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     bool GetDirectIoEnabled() const;
@@ -51,10 +53,12 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+    bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetDirectoryHandlesStorageEnabled() const;
 
     ui64 GetDirectoryHandlesTableSize() const;
+    ui64 GetDirectoryHandlesPersistentHandleMaxSize() const;
 
     bool GetGuestKeepCacheAllowed() const;
 
@@ -68,6 +72,8 @@ public:
     bool GetFSyncQueueDisabled() const;
 
     bool GetGuestHandleKillPrivV2Enabled() const;
+
+    bool GetGuestPosixAclEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

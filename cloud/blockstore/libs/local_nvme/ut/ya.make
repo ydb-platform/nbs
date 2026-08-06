@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 SRCS(
     config_ut.cpp
     device_provider_ut.cpp
+    service_proxy_ut.cpp
     service_ut.cpp
 )
 
@@ -15,6 +16,8 @@ IF (OS_LINUX)
 ENDIF(OS_LINUX)
 
 PEERDIR(
+    cloud/blockstore/libs/service
+
     library/cpp/testing/unittest
 )
 

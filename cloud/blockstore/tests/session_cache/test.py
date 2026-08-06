@@ -43,10 +43,10 @@ def get_agent_id():
 
 
 @pytest.fixture(name='data_path')
-def create_data_path():
+def create_data_path(tmp_path):
 
     p = get_unique_path_for_current_test(
-        output_path=yatest_common.output_path(),
+        output_path=tmp_path,
         sub_folder="data")
 
     p = os.path.join(p, "dev", "disk", "by-partlabel")

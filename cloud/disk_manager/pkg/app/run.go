@@ -16,11 +16,13 @@ import (
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
+	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -35,6 +37,7 @@ func Run(
 	defaultConfigFilePath string,
 	newMetricsRegistry metrics.NewRegistryFunc,
 	newAuthorizer auth.NewAuthorizer,
+	newSnapshotStorageQuotaReporter snapshot.NewSnapshotStorageQuotaReporterFunc,
 ) {
 
 	var configFilePath string
@@ -47,7 +50,12 @@ func Run(
 			return util.ParseProto(configFilePath, config)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(config, newMetricsRegistry, newAuthorizer)
+			return run(
+				config,
+				newMetricsRegistry,
+				newAuthorizer,
+				newSnapshotStorageQuotaReporter,
+			)
 		},
 	}
 	rootCmd.Flags().StringVar(
@@ -68,6 +76,7 @@ func run(
 	config *server_config.ServerConfig,
 	newMetricsRegistry metrics.NewRegistryFunc,
 	newAuthorizer auth.NewAuthorizer,
+	newSnapshotStorageQuotaReporter snapshot.NewSnapshotStorageQuotaReporterFunc,
 ) error {
 
 	ignoreSigpipe()
@@ -195,6 +204,12 @@ func run(
 			logging.Error(ctx, "Failed to register scrubbing tasks: %v", err)
 			return err
 		}
+
+		err = filesystem_snapshot.Register(taskRegistry)
+		if err != nil {
+			logging.Error(ctx, "Failed to register filesystem snapshot transfer tasks: %v", err)
+			return err
+		}
 	} else {
 		logging.Info(ctx, "Initializing YDB client for snapshot database")
 		snapshotConfig := dataplaneConfig.GetSnapshotConfig()
@@ -236,6 +251,7 @@ func run(
 				availabilityMonitoringStorage,
 				availabilityMonitoringMetricsRegistry,
 			)
+			defer availabilityMonitoring.Close()
 
 			s3, err = persistence.NewS3ClientFromConfig(
 				s3Config,
@@ -281,6 +297,8 @@ func run(
 			ctx,
 			config,
 			mon,
+			creds,
+			newSnapshotStorageQuotaReporter,
 			snapshotDB,
 			taskRegistry,
 			taskScheduler,
@@ -328,6 +346,7 @@ func run(
 				ctx,
 				config,
 				taskRegistry,
+				taskScheduler,
 				nfsFactory,
 				filesystemDB,
 			)

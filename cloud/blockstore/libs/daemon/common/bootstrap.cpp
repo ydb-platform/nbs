@@ -49,9 +49,7 @@
 #include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/config.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -106,9 +104,12 @@
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_reader.h>
 #include <cloud/storage/core/libs/version/version.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/lwtrace/probes.h>
@@ -225,6 +226,7 @@ void TBootstrapBase::Init()
     BackgroundScheduler = CreateBackgroundScheduler(
         Scheduler,
         BackgroundThreadPool);
+    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("LongRunning");
 
     Executor = TExecutor::Create("SVC");
 
@@ -289,7 +291,7 @@ void TBootstrapBase::Init()
         STORAGE_INFO("TraceProcessor initialized");
     }
 
-    auto clientInactivityTimeout = Configs->GetInactiveClientsTimeout();
+    auto inactiveClientsTimeout = Configs->GetInactiveClientsTimeout();
 
     auto rootGroup = Monitoring->GetCounters()
         ->GetSubgroup("counters", "blockstore");
@@ -303,6 +305,38 @@ void TBootstrapBase::Init()
     *versionCounter = 1;
 
     InitCriticalEventsCounter(serverGroup);
+
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback())
+    {
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
+
+    if (!Configs->ServerConfig->GetSecurePort()) {
+        CertificateProvider = CreateCertificateProviderStub();
+    } else {
+        Y_ENSURE(
+            certPathList,
+            "Secure port is configured without certificates");
+
+        // Below we use explicit name "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER"
+        // because overwise it would break server_lightweight build.
+        // GetComponentName() depend on kikimr which is prohibited in
+        // server_lightweight.
+
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
+            Scheduler,
+            LongRunningTaskExecutor,
+            serverGroup,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
+    }
 
     for (auto& event: PostponedCriticalEvents) {
         ReportCriticalEvent(
@@ -322,7 +356,7 @@ void TBootstrapBase::Init()
         VolumeStats = CreateVolumeStats(
             Monitoring,
             Configs->DiagnosticsConfig,
-            clientInactivityTimeout,
+            inactiveClientsTimeout,
             EVolumeStatsType::EServerStats,
             Timer);
     }
@@ -476,7 +510,11 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
             checksumFlags,
-            Configs->ServerConfig->GetVhostDiscardEnabled(),
+            Configs->ServerConfig->GetVhostDiscardEnabled() ||
+                Configs->ServerConfig->GetVhostDiscardOnlyEnabled(),
+            Configs->ServerConfig->GetVhostDiscardEnabled() ||
+                Configs->ServerConfig->GetVhostWriteZeroesEnabled(),
+            Configs->ServerConfig->GetDropDiscardRequests(),
             Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             Configs->ServerConfig->GetVhostOptimalIoSize());
 
@@ -679,7 +717,7 @@ void TBootstrapBase::Init()
             Monitoring,
             std::move(Service),
             CreateCrcDigestCalculator(),
-            clientInactivityTimeout);
+            inactiveClientsTimeout);
 
         STORAGE_INFO("ValidationService initialized");
     }
@@ -687,6 +725,10 @@ void TBootstrapBase::Init()
     if (LocalNVMeService) {
         Service =
             CreateLocalNVMeServiceProxy(std::move(Service), LocalNVMeService);
+
+        udsService = CreateLocalNVMeServiceProxy(
+            std::move(udsService),
+            LocalNVMeService);
     }
 
     Server = CreateServer(
@@ -701,7 +743,8 @@ void TBootstrapBase::Init()
             .CellId = Configs->CellsConfig->GetCellsEnabled() ?
                 Configs->CellsConfig->GetCellId() :
                 ""
-        });
+        },
+        CertificateProvider);
 
     STORAGE_INFO("Server initialized");
 
@@ -802,7 +845,8 @@ void TBootstrapBase::InitLocalService()
 
     NvmeManager = CreateNvmeManager(
         Logging,
-        Configs->DiskAgentConfig->GetSecureEraseTimeout());
+        Configs->DiskAgentConfig->GetSecureEraseTimeout(),
+        Configs->DiskAgentConfig->GetNVMeAdminCmdTimeout());
 
     Service = CreateLocalService(
         config,
@@ -972,6 +1016,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
     START_COMMON_COMPONENT(NbdServer);
+    START_COMMON_COMPONENT(CertificateProvider);
     START_COMMON_COMPONENT(GrpcEndpointListener);
     START_COMMON_COMPONENT(Executor);
     START_COMMON_COMPONENT(Server);
@@ -982,6 +1027,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
     START_COMMON_COMPONENT(CellManager);
+    START_COMMON_COMPONENT(LongRunningTaskExecutor);
     START_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     START_COMMON_COMPONENT(LocalNVMeService);
 
@@ -1038,6 +1084,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(Scheduler);
     STOP_COMMON_COMPONENT(LocalNVMeService);
     STOP_COMMON_COMPONENT(LocalNVMeDeviceProvider);
+    STOP_COMMON_COMPONENT(LongRunningTaskExecutor);
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
@@ -1046,6 +1093,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
     STOP_COMMON_COMPONENT(Server);
+    STOP_COMMON_COMPONENT(CertificateProvider);
     STOP_COMMON_COMPONENT(Executor);
     STOP_COMMON_COMPONENT(GrpcEndpointListener);
     STOP_COMMON_COMPONENT(NbdServer);

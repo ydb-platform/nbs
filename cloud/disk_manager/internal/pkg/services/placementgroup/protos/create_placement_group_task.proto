@@ -17,5 +17,6 @@ message CreatePlacementGroupRequest {
     uint32 PlacementPartitionCount = 5;
 }
 
-message CreatePlacementGroupTaskState {}
-
+message CreatePlacementGroupTaskState {
+    string SelectedCellId = 1;
+}

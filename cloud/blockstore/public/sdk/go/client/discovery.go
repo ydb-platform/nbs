@@ -15,6 +15,7 @@ import (
 const (
 	defaultHardTimeout = 8 * time.Minute
 	defaultSoftTimeout = 15 * time.Second
+	defaultRetryDelay  = 200 * time.Millisecond
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -49,6 +50,7 @@ type DiscoveryClientOpts struct {
 	Limit       uint32
 	HardTimeout time.Duration
 	SoftTimeout time.Duration
+	RetryDelay  time.Duration
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -65,6 +67,7 @@ type discoveryClient struct {
 	secure        bool
 	cachedImpl    ClientIface
 	mtx           sync.Mutex
+	retryDelay    time.Duration
 }
 
 type shootResult struct {
@@ -300,6 +303,12 @@ func (client *discoveryClient) mainShoot(
 		}
 
 		instances = nil
+
+		select {
+		case <-ctx.Done():
+			return &shootResult{nil, nil, ctx.Err()}
+		case <-time.After(client.retryDelay):
+		}
 	}
 }
 
@@ -1062,6 +1071,12 @@ func newDiscoveryClient(
 		softTimeout = discoveryOpts.SoftTimeout
 	}
 
+	retryDelay := defaultRetryDelay
+
+	if discoveryOpts.RetryDelay != 0 {
+		retryDelay = discoveryOpts.RetryDelay
+	}
+
 	return &discoveryClient{
 		endpoints:     endpoints,
 		clientFactory: factory,
@@ -1070,6 +1085,7 @@ func newDiscoveryClient(
 		hardTimeout:   hardTimeout,
 		softTimeout:   softTimeout,
 		secure:        secure,
+		retryDelay:    retryDelay,
 	}
 }
 

@@ -1,16 +1,16 @@
 import os
-import logging
 import requests
 import zipfile
 import io
-from github import Github
 from typing import List, Optional
 import argparse
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s: %(levelname)s: %(message)s"
-)
-logger = logging.getLogger(__name__)
+try:
+    from .helpers import github_client, setup_logger
+except ImportError:
+    from helpers import github_client, setup_logger
+
+logger = setup_logger(name=__name__)
 
 
 def download_and_extract_artifact(
@@ -78,7 +78,7 @@ def main(
     files_to_extract: Optional[List[str]],
     github_output: str,
 ) -> None:
-    g = Github(github_token)
+    g = github_client(github_token)
     repo = g.get_repo(github_repository)
     if workflow_run_id != 0:
         workflow_runs = [repo.get_workflow_run(workflow_run_id)]

@@ -57,7 +57,6 @@ func Create(
 			persistence.WithColumn("parent_node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("name", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("child_node_id", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithColumn("node_type", persistence.Optional(persistence.TypeUint32)),
 			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "parent_node_id", "name"),
 		),
 		dropUnusedColumns,
@@ -67,6 +66,35 @@ func Create(
 	}
 
 	logging.Info(ctx, "Created node_refs table")
+
+	// This table is required for the restoration process.
+	err = db.CreateOrAlterTable(
+		ctx,
+		storageFolder,
+		"node_refs_by_shard",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("shard_filesystem_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("parent_node_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("name", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("node_id", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("store_as_child", persistence.Optional(persistence.TypeBool)),
+			persistence.WithPrimaryKeyColumn(
+				"filesystem_snapshot_id",
+				"shard_filesystem_id",
+				"parent_node_id",
+				"name",
+				"store_as_child",
+			),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(ctx, "Created node_refs_by_shard table")
+
 	err = db.CreateOrAlterTable(
 		ctx,
 		storageFolder,
@@ -75,14 +103,18 @@ func Create(
 			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("node_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("mode", persistence.Optional(persistence.TypeUint32)),
-			persistence.WithColumn("uid", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithColumn("gid", persistence.Optional(persistence.TypeUint64)),
+			persistence.WithColumn("uid", persistence.Optional(persistence.TypeUint32)),
+			persistence.WithColumn("gid", persistence.Optional(persistence.TypeUint32)),
 			persistence.WithColumn("atime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("mtime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("ctime", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithColumn("links", persistence.Optional(persistence.TypeUint32)),
+			persistence.WithColumn("node_type", persistence.Optional(persistence.TypeUint32)),
 			persistence.WithColumn("symlink_target", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("shard_node_name", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("dev_id", persistence.Optional(persistence.TypeUint64)),
 			persistence.WithPrimaryKeyColumn("filesystem_snapshot_id", "node_id"),
 		),
 		dropUnusedColumns,
@@ -161,6 +193,12 @@ func Drop(
 		return err
 	}
 	logging.Info(ctx, "Dropped node_refs table")
+
+	err = db.DropTable(ctx, storageFolder, "node_refs_by_shard")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped node_refs_by_shard table")
 
 	err = db.DropTable(ctx, storageFolder, "nodes")
 	if err != nil {

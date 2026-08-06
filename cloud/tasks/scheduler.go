@@ -45,6 +45,29 @@ type Scheduler interface {
 		request proto.Message,
 	) (string, error)
 
+	// Requires "idempotency-key" header in ctx metadata.
+	// Returns id of the task.
+	//
+	// Such task cannot be cancelled via CancelTask, it also ignores
+	// NonRetriableError and does not enforce a retry limit for RetriableError.
+	//
+	// A task can end in only two ways:
+	// * If it encounters a NonCancellableError, it finishes with a "cancelled"
+	//   status without invoking any cancel function.
+	// * Otherwise, it completes successfully.
+	//
+	// This behaviour is useful for cleanup tasks
+	// (e.g., DeleteDisk, DeleteFilesystem)
+	//
+	// If zoneID is empty, the task is not zonal
+	ScheduleNonCancellableTask(
+		ctx context.Context,
+		taskType string,
+		description string,
+		zoneID string,
+		request proto.Message,
+	) (string, error)
+
 	ScheduleRegularTasks(
 		ctx context.Context,
 		taskType string,
@@ -74,12 +97,23 @@ type Scheduler interface {
 	// Synchronously waits until task is finished successfully or cancelled.
 	WaitTaskEnded(ctx context.Context, taskID string) error
 
+	// Same as WaitTaskEnded but with adjustable timeout.
+	WaitTaskEndedWithTimeout(
+		ctx context.Context,
+		taskID string,
+		timeout time.Duration,
+	) error
+
 	GetTaskMetadata(ctx context.Context, taskID string) (proto.Message, error)
 
 	SendEvent(ctx context.Context, taskID string, event int64) error
 
 	// TODO: Does it belong here?
 	GetOperation(ctx context.Context, taskID string) (*operation.Operation, error)
+
+	// Used in tests.
+	// Returns task error if task has finished with error, nil otherwise.
+	GetTaskError(ctx context.Context, taskID string) error
 
 	// Used in tests.
 	// Synchronously waits for task response.

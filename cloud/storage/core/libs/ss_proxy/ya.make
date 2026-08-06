@@ -27,3 +27,11 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    model
+)
+
+RECURSE_FOR_TESTS(
+    ut
+)

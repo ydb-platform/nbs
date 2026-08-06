@@ -24,7 +24,6 @@ PEERDIR(
     cloud/blockstore/libs/local_nvme
     cloud/blockstore/libs/nbd
     cloud/blockstore/libs/nvme
-    cloud/blockstore/libs/rdma/iface
     cloud/blockstore/libs/server
     cloud/blockstore/libs/service
     cloud/blockstore/libs/service_local
@@ -49,6 +48,7 @@ PEERDIR(
     cloud/storage/core/libs/opentelemetry/iface
     cloud/storage/core/libs/opentelemetry/impl
     cloud/storage/core/libs/version
+    cloud/storage/core/libs/rdma/iface
 
     contrib/ydb/library/actors/util
     library/cpp/getopt/small

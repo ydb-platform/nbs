@@ -46,6 +46,17 @@ bool IsDiskRegistryLocalMediaKind(NProto::EStorageMediaKind mediaKind)
     }
 }
 
+bool IsNonReplicatedMediaKind(NProto::EStorageMediaKind mediaKind)
+{
+    switch (mediaKind) {
+        case NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+        case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool IsReliableMediaKind(NProto::EStorageMediaKind mediaKind)
 {
     return !IsDiskRegistryMediaKind(mediaKind) ||

@@ -5,7 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
 DEPENDS(
     cloud/storage/core/tools/testing/fio/bin
     cloud/storage/core/tools/testing/qemu/bin
-    cloud/storage/core/tools/testing/qemu/image
+    cloud/storage/core/tools/testing/qemu/image-noble
 )
 
 PEERDIR(
@@ -20,6 +20,7 @@ TEST_SRCS(
 )
 
 SET(QEMU_VIRTIO fs)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tools/testing/qemu/bin/qemu-params.inc)
 SET(VHOST_RESTART_INTERVAL 10)
 SET(VHOST_RESTART_FLAG 1)
 SET(

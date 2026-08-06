@@ -25,6 +25,16 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ESecureEraseReadiness {
+    ReadyToErase,
+    Suspended,
+    DeviceInErrorState,
+    AutomaticallyReplaced,
+    AgentAbsent,
+    AgentUnavailable,
+    DeviceDetached,
+};
+
 struct TAgentStorageInfo
 {
     ui64 ChunkSize = 0;
@@ -275,6 +285,9 @@ class TDiskRegistryState
         TVector<NProto::TDiskHistoryItem> History;
 
         TVector<TLaggingDevice> OutdatedLaggingDevices;
+
+        NProto::EVolumeHealth VolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
+        ui64 VolumeHealthSeqNo = 0;
     };
 
     struct TVolumeDeviceOverrides
@@ -624,6 +637,7 @@ public:
         TDiskRegistryDatabase& db,
         const TString& agentId,
         NProto::EAgentState state,
+        const TString& customMessage,
         TInstant now,
         bool dryRun,
         TVector<TDiskId>& affectedDisks,
@@ -632,6 +646,7 @@ public:
     NProto::TError PurgeHost(
         TDiskRegistryDatabase& db,
         const TString& agentId,
+        const TString& customMessage,
         TInstant now,
         bool dryRun,
         TVector<TDiskId>& affectedDisks);
@@ -659,6 +674,7 @@ public:
         const TAgentId& agentId,
         const TString& path,
         NProto::EDeviceState state,
+        const TString& customMessage,
         TInstant now,
         bool shouldResume,
         bool dryRun);
@@ -736,6 +752,8 @@ public:
 
     bool CanSecureErase(const TDeviceId& uuid) const;
     bool CanSecureErase(const NProto::TDeviceConfig& device) const;
+    ESecureEraseReadiness GetSecureEraseReadiness(
+        const NProto::TDeviceConfig& device) const;
 
     NProto::TError SetUserId(
         TDiskRegistryDatabase& db,
@@ -788,6 +806,13 @@ public:
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TVector<NProto::TLaggingDevice> outdatedDevices);
+
+    [[nodiscard]] NProto::TError UpdateVolumeHealth(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        TInstant now,
+        NProto::EVolumeHealth volumeHealth,
+        ui64 volumeHealthSeqNo);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
 
@@ -912,7 +937,9 @@ public:
     THashSet<TDeviceId> GetUnavailableDevicesForDisk(
         const TString& diskId) const;
 
-    bool HasDependentDisks(const TAgentId& agentId, const TString& path);
+    bool HasDependentDisks(
+        const NProto::TAgentConfig& agent,
+        const TString& path);
 
     [[nodiscard]] NProto::TError UpdatePathAttachState(
         TDiskRegistryDatabase& db,
@@ -927,6 +954,8 @@ public:
 
     TVector<TString> GetPathsToAttachOnRegistration(
         const TAgentId& agentId) const;
+
+    bool IsDeviceDetached(const NProto::TDeviceConfig& device) const;
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
@@ -1249,6 +1278,10 @@ private:
         const TString& diskId,
         TVector<TDeviceId> uuids);
 
+    void RemoveDeviceFromPendingCleanup(
+        TDiskRegistryDatabase& db,
+        const TDeviceId& deviceId);
+
     /// Try to update configuration of selected device and its agent
     /// in the disk registry database
     /// @return true if the device updates successfully; otherwise, return false
@@ -1336,6 +1369,7 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         NProto::TDeviceConfig& device,
+        const TString& customMessage,
         TInstant now,
         bool shouldResume,
         bool dryRun,
@@ -1345,6 +1379,7 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         const TString& path,
+        const TString& customMessage,
         TInstant now,
         bool shouldResume,
         bool dryRun);
@@ -1358,6 +1393,7 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent,
         NProto::TDeviceConfig& device,
+        const TString& customMessage,
         TInstant now,
         bool dryRun,
         TDiskId& affectedDisk,

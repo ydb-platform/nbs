@@ -202,6 +202,9 @@ public:
         const TBlockRange32& range,
         const TString& checkpointId = "");
 
+    std::unique_ptr<TEvVolume::TEvDescribeBlobRequest>
+    CreateDescribeBlobRequest(const NKikimr::TLogoBlobID& blobId);
+
     std::unique_ptr<TEvVolume::TEvGetUsedBlocksRequest>
     CreateGetUsedBlocksRequest();
 
@@ -260,6 +263,11 @@ public:
 
     std::unique_ptr<TEvVolume::TEvGetPartitionInfoRequest>
     CreateGetPartitionInfoRequest();
+
+    std::unique_ptr<TEvPartitionPrivate::TEvCompactionReadBlobInfoRequest>
+    CreateCompactionReadBlobInfoRequest(
+        TVector<TPartialBlobId> blobsToReadBlockMasks,
+        TVector<TPartialBlobId> blobsToReadBlobMetas);
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                    \

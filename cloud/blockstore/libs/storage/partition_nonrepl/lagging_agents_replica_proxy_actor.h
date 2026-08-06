@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
@@ -88,6 +89,7 @@ private:
         TGetDeviceForRangeCompanion::EAllowedOperation::None};
 
     TPoisonPillHelper PoisonPillHelper;
+    TChildLogTitle LogTitle;
 
 public:
     struct TSplitRequest
@@ -108,7 +110,8 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         TString rwClientId,
         NActors::TActorId nonreplPartitionActorId,
-        NActors::TActorId mirrorPartitionActorId);
+        NActors::TActorId mirrorPartitionActorId,
+        TChildLogTitle logTitle);
 
     ~TLaggingAgentsReplicaProxyActor() override;
 

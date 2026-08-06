@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
@@ -17,13 +18,13 @@
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
@@ -48,6 +49,8 @@
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
+
+using ::NCloud::NBlockStore::NStorage::TPartitionThreadSafeState;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -258,6 +261,7 @@ struct TCompactionScores
 {
     float Score = 0;
     ui32 GarbageScore = 0;
+    ui32 IgnoringZeroedScore = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -292,10 +296,11 @@ private:
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
 
+    TPartitionThreadSafeStatePtr ThreadSafeState;
+
 public:
     TPartitionState(
         NProto::TPartitionMeta meta,
-        ui32 generation,
         ICompactionPolicyPtr compactionPolicy,
         ui32 compactionScoreHistorySize,
         ui32 cleanupScoreHistorySize,
@@ -306,13 +311,15 @@ public:
         ui32 reassignFreshChannelsPercentageThreshold,
         ui32 reassignMixedChannelsPercentageThreshold,
         bool reassignSystemChannelsImmediately,
-        ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
-        ui32 compactionRangeCountPerRun);
+        ui32 compactionRangeCountPerRun,
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui64 tabletId,
+        const bool mixedBlocksFilterEnabled);
 
 private:
     bool LoadStateFinished = false;
@@ -381,6 +388,32 @@ public:
     bool CheckBlockRange(const TBlockRange64& range) const;
 
     //
+    // Commits
+    //
+
+public:
+
+    ui64 GetLastCommitId() const
+    {
+        return ThreadSafeState->GetLastCommitId();
+    }
+
+    ui64 GenerateCommitId() const
+    {
+        return ThreadSafeState->GenerateCommitId();
+    }
+
+    auto GetCommitQueue()
+    {
+        return ThreadSafeState->GetCommitQueue();
+    }
+
+    auto AccessCommitQueue()
+    {
+        return ThreadSafeState->AccessCommitQueue();
+    }
+
+    //
     // Channels
     //
 
@@ -399,7 +432,6 @@ public:
     //
 
 private:
-
     void WriteFreshBlocksImpl(
         TPartitionDatabase& db,
         const TBlockRange32& writeRange,
@@ -408,6 +440,7 @@ private:
     {
         TVector<ui64> checkpoints;
         GetCheckpoints().GetCommitIds(checkpoints);
+        ThreadSafeState->GetCheckpointsInFlight()->GetCommitIds(checkpoints);
         SortUnique(checkpoints, TGreater<ui64>());
 
         TVector<ui64> existingCommitIds;
@@ -445,7 +478,9 @@ private:
                 blockIndex,
                 commitId,
                 true,  // isStoredInDb
-                blockContent.AsStringBuf());
+                blockContent.AsStringBuf(),
+                {}  // blobId
+            );
 
             db.WriteFreshBlock(blockIndex, commitId, blockContent);
 
@@ -482,6 +517,42 @@ public:
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);
     ui32 DecrementUnflushedFreshBlocksFromDbCount(size_t value);
 
+    void IncrementFreshBlocksInFlight(size_t value)
+    {
+        ThreadSafeState->IncrementFreshBlocksInFlight(value);
+    }
+
+    void DecrementFreshBlocksInFlight(size_t value)
+    {
+        ThreadSafeState->DecrementFreshBlocksInFlight(value);
+    }
+
+    ui64 GetFreshBlocksInFlight() const
+    {
+        return ThreadSafeState->GetFreshBlocksInFlight();
+    }
+
+    //
+    // TrimFreshLog
+    //
+
+public:
+
+    auto GetTrimFreshLogBarriers()
+    {
+        return ThreadSafeState->GetTrimFreshLogBarriers();
+    }
+
+    auto AccessTrimFreshLogBarriers()
+    {
+        return ThreadSafeState->AccessTrimFreshLogBarriers();
+    }
+
+    ui64 GetTrimFreshLogToCommitId() const
+    {
+        return ThreadSafeState->GetTrimFreshLogToCommitId();
+    }
+
     //
     // Mixed blocks
     //
@@ -489,13 +560,15 @@ public:
 private:
     TProfilingAllocator MixedIndexCacheAllocator;
     TMixedIndexCache MixedIndexCache;
+    std::optional<TMixedBlocksFilter> MixedBlocksFilter;
 
 public:
     void WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block);
     void WriteMixedBlocks(
         TPartitionDatabase& db,
         const TPartialBlobId& blobId,
-        const TVector<ui32>& blockIndices);
+        const TVector<ui32>& blockIndices,
+        ui8 compactionRangeCount);
 
     void DeleteMixedBlock(
         TPartitionDatabase& db,
@@ -504,12 +577,22 @@ public:
 
     bool FindMixedBlocksForCompaction(
         TPartitionDatabase& db,
-        IBlocksIndexVisitor& visitor,
+        IMixedBlocksIndexVisitor& visitor,
         ui32 rangeIndex);
 
     void RaiseRangeTemperature(ui32 rangeIndex);
 
     ui64 GetMixedIndexCacheMemSize() const;
+
+    const TMixedBlocksFilter* GetMixedBlocksFilter() const
+    {
+        return MixedBlocksFilter ? &*MixedBlocksFilter : nullptr;
+    }
+
+    TMixedBlocksFilter* AccessMixedBlocksFilter()
+    {
+        return MixedBlocksFilter ? &*MixedBlocksFilter : nullptr;
+    }
 
     //
     // Compaction
@@ -528,6 +611,9 @@ private:
     const ui32 MaxBlobsPerRange;
     ui32 CompactionRangeCountPerRun;
     TInstant LastCompactionRangeCountPerRunTs;
+    ui64 BlobsProcessedDuringCompaction = 0;
+    ui64 BlockMaskReadDuringCompaction = 0;
+    ui32 NewlyZeroedBlocks = 0;
 
 public:
     TOperationState& GetCompactionState(ECompactionType type);
@@ -579,6 +665,12 @@ public:
         return CompactionMap.GetTopByGarbageBlockCount().Stat.GarbageBlockCount();
     }
 
+    ui32 GetCompactionIgnoringZeroedScore() const
+    {
+        return CompactionMap.GetTopByGarbageIgnoringZeroed()
+            .Stat.GarbageIgnoringZeroed();
+    }
+
     float GetCompactionScore() const
     {
         return CompactionMap.GetTop().Stat.CompactionScore.Score;
@@ -628,10 +720,47 @@ public:
         return LastCompactionRangeCountPerRunTs;
     }
 
+    void SetNewlyZeroedBlocks(ui32 value)
+    {
+        NewlyZeroedBlocks = value;
+    }
+
+    ui32 GetNewlyZeroedBlocks() const
+    {
+        return NewlyZeroedBlocks;
+    }
+
+    ui64 GetUsedBlocksIgnoringZeroed() const
+    {
+        return GetUsedBlocksCount() + GetNewlyZeroedBlocks();
+    }
+
     void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range, ui32 skipCount);
     void SetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
+
+    void IncrementBlobsProcessedDuringCompaction(ui64 value)
+    {
+        BlobsProcessedDuringCompaction += value;
+    }
+
+    void IncrementBlockMaskReadDuringCompaction(ui64 value)
+    {
+        BlockMaskReadDuringCompaction += value;
+    }
+
+    ui64 GetBlobsProcessedDuringCompaction() const
+    {
+        return BlobsProcessedDuringCompaction;
+    }
+
+    ui64 GetBlockMaskReadDuringCompaction() const
+    {
+        return BlockMaskReadDuringCompaction;
+    }
+
+    ui32 CalculateNewlyZeroedBlocks(ui32 blockIndex, ui64 usedBlockCount) const;
 
 private:
     void WriteUsedBlocksToDB(TPartitionDatabase& db, ui32 begin, ui32 end);
@@ -782,7 +911,6 @@ public:
 
 private:
     TOperationState CleanupState;
-    TCheckpointsInFlight CheckpointsInFlight;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
 
@@ -800,6 +928,11 @@ public:
     }
 
     TCleanupQueue& GetCleanupQueue()
+    {
+        return CleanupQueue;
+    }
+
+    const TCleanupQueue& GetCleanupQueue() const
     {
         return CleanupQueue;
     }
@@ -861,9 +994,14 @@ public:
         return CleanupDelay;
     }
 
-    TCheckpointsInFlight& GetCheckpointsInFlight()
+    auto GetCheckpointsInFlight() const
     {
-        return CheckpointsInFlight;
+        return ThreadSafeState->GetCheckpointsInFlight();
+    }
+
+    auto AccessCheckpointsInFlight()
+    {
+        return ThreadSafeState->AccessCheckpointsInFlight();
     }
 
     ui64 GetCleanupCommitId() const;
@@ -1058,9 +1196,6 @@ public:
     // Stats
     //
 
-private:
-    TThreadSafePartStatsPtr Stats = std::make_shared<TThreadSafePartStats>();
-
 public:
     const NProto::TPartitionStats& GetStats() const
     {
@@ -1069,7 +1204,6 @@ public:
 
     NProto::TPartitionStats& AccessStats()
     {
-        UpdateWithThreadSafeStats();
         return *Meta.MutableStats();
     }
 
@@ -1096,15 +1230,29 @@ public:
     void DumpHtml(IOutputStream& out) const;
     NJson::TJsonValue AsJson() const;
 
-    TThreadSafePartStatsPtr AccessThreadSafeStats()
+    void UpdateWithThreadSafeStats(TThreadSafePartStats& stats)
     {
-        return Stats;
+        auto statsToAdd = stats.Swap({});
+        UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
     }
 
-    void UpdateWithThreadSafeStats()
+    double GetStoredBytesCountToDiskSizeRatio() const
     {
-        auto statsToAdd = Stats->Swap({});
-        UpdatePartitionCounters(*Meta.MutableStats(), statsToAdd);
+        const auto mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
+        const auto freshBytesCount =
+            static_cast<ui64>(GetUnflushedFreshBlocksCount()) * GetBlockSize();
+        const auto mergedBytesCount = GetMergedBlocksCount() * GetBlockSize();
+        const auto bytesCount = GetBlocksCount() * GetBlockSize();
+
+        STORAGE_VERIFY_C(
+            bytesCount != 0,
+            TWellKnownEntityTypes::DISK,
+            Config.GetDiskId(),
+            "bytesCount is zero");
+
+        return static_cast<double>(
+                   mixedBytesCount + freshBytesCount + mergedBytesCount) /
+               static_cast<double>(bytesCount);
     }
 };
 

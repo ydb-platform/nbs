@@ -1,0 +1,43 @@
+name: Shfmt report
+description: Run shfmt for shell scripts and generated workflow/action scripts
+
+outputs:
+  exit_code:
+    description: "shfmt exit code"
+    value: ${{ steps.shfmt.outputs.exit_code }}
+  has_report:
+    description: "Whether shfmt report files were generated"
+    value: ${{ steps.shfmt.outputs.has_report }}
+  log_path:
+    description: "Captured shfmt log path"
+    value: ${{ steps.shfmt.outputs.log_path }}
+
+
+runs:
+  using: composite
+  steps:
+    - name: shfmt
+      id: shfmt
+      uses: ./.github/actions/lint_report
+      with:
+        title: "Shell Scripts shfmt"
+        tool: shfmt
+        report_name: ga-scripts-shfmt
+        show_summary_table: "false"
+        command: |
+          set +e
+          shfmt_diff=$(
+            bash .github/scripts/list_shell_files.sh |
+              xargs -0 --no-run-if-empty shfmt -d -i 4 -ci -kp -bn -sr 2>&1
+          )
+          shfmt_status=$?
+          set -e
+          if [ -n "${shfmt_diff}" ]; then
+            printf '%s\n' "${shfmt_diff}"
+          fi
+          if [ "${shfmt_status}" != "0" ]; then
+            exit "${shfmt_status}"
+          fi
+          if [ -n "${shfmt_diff}" ]; then
+            exit 1
+          fi

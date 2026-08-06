@@ -2,6 +2,8 @@
 
 #include "private.h"
 
+#include <cloud/storage/core/libs/rdma/iface/buffer.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>
@@ -48,12 +50,20 @@ struct TOptions
     ui32 Port = 1234;
     ui32 Backlog = 10;
     ui32 QueueSize = 256;
+    ui32 SendQueueSize = 256;
+    ui32 RecvQueueSize = 256;
     ui32 PollerThreads = 1;
     EWaitMode WaitMode = EWaitMode::Poll;
     ui32 ConnectTimeout = 5;
     ui8 Tos = 0;
     TString SourceInterface;
     bool VerbsQP = false;
+    ui32 ResolveTimeout = 10000;
+    ui32 FlushTimeout = 10000;
+    ui8 QpRetryCount = 7;
+    ui8 QpRnrRetryCount = 7;
+    ui8 QpTimeout = 0;
+    ui8 QpMinRnrTimer = 0;
 
     // storage options
     EStorageKind StorageKind = EStorageKind::Null;
@@ -73,6 +83,8 @@ struct TOptions
     // request tracing
     TString TracePath;
     ui32 TraceRate = 1;
+
+    NCloud::NStorage::NRdma::TBufferPoolConfig BufferPool;
 
     void Parse(int argc, char** argv);
 };

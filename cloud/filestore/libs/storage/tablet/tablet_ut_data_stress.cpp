@@ -387,7 +387,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         storageConfig.SetLoadedCompactionRangesPerTx(2);
         storageConfig.SetWriteBlobThreshold(block);
 
-        TTestEnv env({}, std::move(storageConfig));
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
 
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -498,7 +498,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         const auto blobSize = 2 * block;
         storageConfig.SetWriteBlobThreshold(blobSize);
 
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -639,7 +639,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         };
 
         NProto::TStorageConfig storageConfig;
-        TTestEnv env({}, storageConfig);
+        TTestEnv env(testEnvConfig, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);

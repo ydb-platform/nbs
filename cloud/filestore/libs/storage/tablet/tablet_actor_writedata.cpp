@@ -26,6 +26,28 @@ void TIndexTabletActor::HandleWriteData(
 {
     auto* msg = ev->Get();
 
+    if (msg->GetPayloadCount() > 0 && msg->GetPayload(0).size() != 0) {
+        if (!msg->Record.GetBuffer().empty()) {
+            TStringStream error;
+            error << "WriteData request has both buffer and payload. "
+                  << "FileSystemId: " << msg->Record.GetFileSystemId()
+                  << ", Handle: " << msg->Record.GetHandle()
+                  << ", NodeId: " << msg->Record.GetNodeId()
+                  << ", Offset: " << msg->Record.GetOffset()
+                  << ", Buffer size: " << msg->Record.GetBuffer().size()
+                  << ", Payload size: " << msg->GetPayload(0).size();
+            ReportWriteDataRequestWithBufferAndPayload(error.Str());
+        } else {
+            auto& payload = msg->GetPayload(0);
+            msg->Record.MutableBuffer()->ReserveAndResize(payload.size());
+            TRopeUtils::Memcpy(
+                msg->Record.MutableBuffer()->begin(),
+                payload.begin(),
+                payload.size());
+            msg->StripPayload();
+        }
+    }
+
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
         profileLogRequest,
@@ -168,16 +190,6 @@ void TIndexTabletActor::HandleWriteData(
     requestInfo->StartedTs = ctx.Now();
 
     auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
-    if (Config->GetWriteBatchEnabled()) {
-        auto request = std::make_unique<TWriteRequest>(
-            std::move(requestInfo),
-            msg->Record,
-            range,
-            std::move(blockBuffer));
-
-        EnqueueWriteBatch<TEvService::TWriteDataMethod>(ctx, std::move(request));
-        return;
-    }
 
     AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 
@@ -202,9 +214,9 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
-    Metrics.WriteData.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->WriteData.Update(msg->Count, msg->Size, msg->Time);
     if (msg->IsOverloaded) {
-        Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+        Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -258,9 +270,9 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         args.NodeId,
         args.ByteRange.Describe().c_str());
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
+    if (!ReadNode(*db, args.NodeId, args.CommitId, args.Node)) {
         return false;
     }
 
@@ -301,7 +313,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -310,7 +322,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     }
 
     MarkFreshBlocksDeleted(
-        db,
+        *db,
         args.NodeId,
         args.CommitId,
         args.ByteRange.FirstAlignedBlock(),
@@ -322,7 +334,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         BlockGroupSize,
         [&] (ui32 blockOffset, ui32 blocksCount) {
             MarkMixedBlocksDeleted(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.FirstAlignedBlock() + blockOffset,
@@ -334,7 +346,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
             ++b)
     {
         WriteFreshBlock(
-            db,
+            *db,
             args.NodeId,
             args.CommitId,
             b,
@@ -343,7 +355,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     if (args.ByteRange.UnalignedHeadLength()) {
         WriteFreshBytes(
-            db,
+            *db,
             args.NodeId,
             args.CommitId,
             args.ByteRange.Offset,
@@ -355,26 +367,26 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         if (args.Node->Attrs.GetSize() <= args.ByteRange.End()) {
             // it's safe to write at the end of file fresh block w 0s at the end
             MarkFreshBlocksDeleted(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
                 1);
             MarkMixedBlocksDeleted(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
                 1);
             WriteFreshBlock(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
                 args.Buffer->GetUnalignedTail());
         } else {
             WriteFreshBytes(
-                db,
+                *db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.UnalignedTailOffset(),
@@ -388,7 +400,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     }
 
     UpdateNode(
-        db,
+        *db,
         args.NodeId,
         args.Node->MinCommitId,
         args.CommitId,
@@ -435,11 +447,10 @@ void TIndexTabletActor::CompleteTx_WriteData(
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
 
-        Metrics.WriteData.Count.fetch_add(1, std::memory_order_relaxed);
-        Metrics.WriteData.RequestBytes.fetch_add(
+        Metrics->WriteData.Update(
+            1,
             args.ByteRange.Length,
-            std::memory_order_relaxed);
-        Metrics.WriteData.Time.Record(ctx.Now() - args.RequestInfo->StartedTs);
+            ctx.Now() - args.RequestInfo->StartedTs);
 
         return;
     }
@@ -498,7 +509,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
     BuildBackendInfo(
         *Config,
         *SystemCounters,
-        Metrics.CPUUsageRate,
+        GetFileSystemId(),
+        Metrics->CPUUsageRate,
         &backendInfo);
 
     auto actor = std::make_unique<TWriteDataActor>(

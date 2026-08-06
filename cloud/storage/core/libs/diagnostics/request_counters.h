@@ -36,7 +36,9 @@ public:
         ReportControlPlaneHistogram = (1 << 2),
         AddSpecialCounters          = (1 << 3),
         LazyRequestInitialization   = (1 << 4),
-        OnlyStartEndpointRequests   = (1 << 5),
+        OnlyStartEndpointRequests        = (1 << 5),
+        ThrottlingHistogramsDisabled     = (1 << 6),
+        DisaggregatedCountersDisabled    = (1 << 7),
     };
 
     using TRequestType = TDiagnosticsRequestType;
@@ -130,8 +132,10 @@ private:
 
     void RequestCompletedImpl(
         TRequestType requestType,
-        TDuration requestTime,
-        TDuration requestCompletionTime,
+        TDuration totalTime,
+        TDuration completionTime,
+        TDuration time,
+        TDuration execTime,
         TDuration postponedTime,
         TDuration backoffTime,
         TDuration shapingTime,

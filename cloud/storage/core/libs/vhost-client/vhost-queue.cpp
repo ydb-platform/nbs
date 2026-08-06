@@ -5,6 +5,7 @@
 
 #include <util/generic/scope.h>
 
+#include <atomic>
 #include <new>
 
 #include <poll.h>
@@ -109,7 +110,7 @@ TFuture<uint32_t> TQueue::WriteAsync(
         }
     };
 
-    const uint32_t inflight = FreeBuffers.front();
+    const uint32_t head = FreeBuffers.front();
 
     int prevIdx = -1;
     for (auto buf: inBuffers) {
@@ -118,20 +119,15 @@ TFuture<uint32_t> TQueue::WriteAsync(
         FreeBuffers.pop();
         usedBuffers.push_back(inIdx);
 
-        if (prevIdx == -1) {
-            UsedRings->flags = 0;
-            AvailableRings->flags = 0;
-            AvailableRings->ring[AvailableRings->idx % Size] = inIdx;
-            AvailableRings->ring[Size] = 0;
-            ++AvailableRings->idx;
-        } else {
+        if (prevIdx != -1) {
             Descriptors[prevIdx].next = inIdx;
         }
         prevIdx = inIdx;
         Descriptors[inIdx] = {
             .addr = std::bit_cast<uint64_t>(buf.data()),
             .len = static_cast<uint32_t>(buf.size()),
-            .flags = VIRTQ_DESC_F_NEXT
+            .flags = VIRTQ_DESC_F_NEXT,
+            .next = 0,
         };
     }
 
@@ -147,21 +143,36 @@ TFuture<uint32_t> TQueue::WriteAsync(
         Descriptors[outIdx] = {
             .addr = std::bit_cast<uint64_t>(buf.data()),
             .len = static_cast<uint32_t>(buf.size()),
-            .flags = VIRTQ_DESC_F_WRITE | VIRTQ_DESC_F_NEXT
+            .flags = VIRTQ_DESC_F_WRITE | VIRTQ_DESC_F_NEXT,
+            .next = 0,
         };
     }
 
     Descriptors[prevIdx].flags &= ~((uint16_t) VIRTQ_DESC_F_NEXT);
     Descriptors[prevIdx].next = 0;
 
+    // The descriptor chain is now fully built and terminated. Only after this
+    // point may it be exposed to the device. Publishing the available
+    // ring entry earlier would let the server walk a half-built chain whose
+    // last descriptor still has VIRTQ_DESC_F_NEXT set, corrupting the request.
+    UsedRings->flags = 0;
+    AvailableRings->flags = 0;
+    AvailableRings->ring[AvailableRings->idx % Size] = head;
+    AvailableRings->ring[Size] = 0;
+
+    // Ensure the descriptor table writes are visible to the server before it
+    // observes the bumped available index.
+    std::atomic_thread_fence(std::memory_order_release);
+    ++AvailableRings->idx;
+
     if (eventfd_write(KickFd, 1) < 0) {
         return MakeFuture<uint32_t>();
     }
     usedBuffers.clear();
 
-    InFlights[inflight] = NewPromise<uint32_t>();
+    InFlights[head] = NewPromise<uint32_t>();
 
-    return InFlights[inflight].GetFuture();
+    return InFlights[head].GetFuture();
 }
 
 bool TQueue::RunOnce(TDuration timeout)

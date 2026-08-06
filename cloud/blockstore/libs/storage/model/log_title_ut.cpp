@@ -261,7 +261,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             TLogTitle::TVolume{.TabletId = 12345, .DiskId = "disk1"});
         logTitle1.SetGeneration(5);
 
-        std::pair<TString, TString> tags[] = {{"cp", "123"}};
+        const std::pair<TStringBuf, TPrintableValue> tags[] = {{"cp", "123"}};
 
         auto childLogTitle = logTitle1.GetChildWithTags(
             startTime + GetCyclesPerMillisecond() * 1001,
@@ -270,6 +270,98 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
         UNIT_ASSERT_STRING_CONTAINS(
             childLogTitle.GetWithTime(),
             "[v:12345 g:5 d:disk1 cp:123 t:1.001s + 1.");
+    }
+
+    Y_UNIT_TEST(GetChildWithTags)
+    {
+        const ui64 startTime = 1234;
+        TLogTitle logTitle(
+            startTime,
+            TLogTitle::TVolume{.TabletId = 12345, .DiskId = "disk1"});
+
+        auto childLogTitle = logTitle.GetChildWithTags(
+            startTime,
+            {{"flag", std::monostate{}}, {"diskId", "disk1"}});
+        const auto title = childLogTitle.GetWithTime();
+        UNIT_ASSERT_STRING_CONTAINS(title, "[v:12345 g:? d:disk1 flag diskId:disk1 t:");
+    }
+
+    Y_UNIT_TEST(GetChildWithTagsDifferentValueTypes)
+    {
+        const ui64 startTime = 0;
+        TLogTitle logTitle(
+            startTime,
+            TLogTitle::TVolume{.TabletId = 12345, .DiskId = "disk1"});
+        logTitle.SetGeneration(5);
+        const ui64 childTime = GetCyclesPerMillisecond() * 1001;
+
+        const std::pair<TStringBuf, TPrintableValue> tags[] = {
+            {"str", "value"},
+            {"int", 42},
+            {"ui32", ui32(100)},
+            {"ui64", ui64(1234567890)},
+            {"buf", TStringBuf("bufvalue")},
+            {"cstr", "cstring"},
+            {"empty", std::monostate{}}};
+        auto childLogTitle = logTitle.GetChildWithTags(childTime, tags);
+        UNIT_ASSERT_STRING_CONTAINS(
+            childLogTitle.GetWithTime(),
+            "[v:12345 g:5 d:disk1 str:value int:42 ui32:100 ui64:1234567890 "
+            "buf:bufvalue cstr:cstring empty t:1.001s + ");
+    }
+
+    Y_UNIT_TEST(GetChildOfChild)
+    {
+        const ui64 startTime = 0;
+        TLogTitle logTitle{
+            startTime,
+            TLogTitle::TPartitionNonrepl{.DiskId = "disk1"}};
+
+        const ui64 childTime = GetCyclesPerMillisecond() * 1001;
+        const ui64 grandChildTime =
+            childTime + GetCyclesPerMillisecond() * 1001;
+        const ui64 greatGrandChildTime =
+            grandChildTime + GetCyclesPerMillisecond() * 1001;
+
+        auto child = logTitle.GetChild(childTime);
+        auto grandChild = child.GetChild(grandChildTime);
+        auto greatGrandChild = grandChild.GetChild(greatGrandChildTime);
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            child.GetWithTime(),
+            "[nrd:disk1 t:1.001s + ");
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            grandChild.GetWithTime(),
+            "[nrd:disk1 t:1.001s + 1.001s + ");
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            greatGrandChild.GetWithTime(),
+            "[nrd:disk1 t:1.001s + 1.001s + 1.001s + ");
+    }
+
+    Y_UNIT_TEST(GetChildOfChildWithTags)
+    {
+        const ui64 startTime = 0;
+        TLogTitle logTitle{
+            startTime,
+            TLogTitle::TPartitionNonrepl{.DiskId = "disk1"}};
+
+        const ui64 childTime = GetCyclesPerMillisecond() * 1001;
+        const ui64 grandChildTime =
+            childTime + GetCyclesPerMillisecond() * 1001;
+
+        auto child = logTitle.GetChildWithTags(childTime, {{"cp", "123"}});
+        auto grandChild =
+            child.GetChildWithTags(grandChildTime, {{"rq", "456"}});
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            child.GetWithTime(),
+            "[nrd:disk1 cp:123 t:1.001s + ");
+
+        UNIT_ASSERT_STRING_CONTAINS(
+            grandChild.GetWithTime(),
+            "[nrd:disk1 cp:123 t:1.001s rq:456 + 1.001s + ");
     }
 
     Y_UNIT_TEST(GetForDiskRegistry)

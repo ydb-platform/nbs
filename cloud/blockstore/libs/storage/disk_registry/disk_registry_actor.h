@@ -92,6 +92,7 @@ private:
     bool DiskStatesPublicationInProgress = false;
     bool AutomaticallyReplacedDevicesDeletionInProgress = false;
     THashSet<TString> SecureEraseInProgressPerPool;
+    THashMap<TString, TInstant> DeviceEraseStartTs;
     bool StartMigrationInProgress = false;
 
     TVector<TString> DisksBeingDestroyed;
@@ -132,6 +133,8 @@ private:
 
     THashMap<TString, NActors::TActorId>
         AgentsWithAttachDetachRequestsInProgress;
+
+    ui64 RequestNumber = 1;
 
 public:
     TDiskRegistryActor(
@@ -280,6 +283,8 @@ private:
     void RenderConfigDetailed(IOutputStream& out) const;
     void RenderDirtyDeviceList(IOutputStream& out) const;
     void RenderDirtyDeviceListDetailed(IOutputStream& out) const;
+    void RenderDirtyDevicesCleanupOverview(IOutputStream& out) const;
+    void RenderDirtyDevicesCleanupOverviewDetailed(IOutputStream& out) const;
     void RenderSuspendedDeviceList(IOutputStream& out) const;
     void RenderSuspendedDeviceListDetailed(IOutputStream& out) const;
     void RenderAutomaticallyReplacedDeviceList(IOutputStream& out) const;
@@ -348,6 +353,8 @@ private:
 
     void ProcessPathsToAttach(const NActors::TActorContext& ctx);
 
+    ui64 NextRequestNumber();
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);
@@ -392,6 +399,16 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
 
+    void HandleHttpInfo_SendCmsHostRequest(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_SendCmsDeviceRequest(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_RenderDisks(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
@@ -418,6 +435,11 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_RenderDirtyDeviceList(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderDirtyDevicesCleanupOverview(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

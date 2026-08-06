@@ -1,8 +1,10 @@
 # Cache objects
 packer_cache/
+# build reports
+reports/
 
-# Crash log
-crash.log
+# logs
+*.log
 
 # https://www.packer.io/guides/hcl/variables
 # Exclude all .pkrvars.hcl files, which are likely to contain sensitive data,
@@ -14,3 +16,5 @@ crash.log
 
 # For built boxes
 *.box
+
+

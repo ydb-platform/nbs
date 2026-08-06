@@ -107,6 +107,143 @@ func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command 
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type acquireBaseDisk struct {
+	clientConfig      *client_config.ClientConfig
+	serverConfig      *server_config.ServerConfig
+	srcImageID        string
+	overlayDiskZoneID string
+	overlayDiskID     string
+	async             bool
+}
+
+func (c *acquireBaseDisk) run() error {
+	ctx := newContext(c.clientConfig)
+
+	resourceStorage, db, err := newResourceStorage(ctx, c.serverConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create resource storage: %w", err)
+	}
+	defer db.Close(ctx)
+
+	diskMeta, err := resourceStorage.GetDiskMeta(ctx, c.overlayDiskID)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to get disk meta for %v: %w",
+			c.overlayDiskID,
+			err,
+		)
+	}
+	if diskMeta == nil {
+		return fmt.Errorf(
+			"disk %v not found in resource storage",
+			c.overlayDiskID,
+		)
+	}
+
+	overlayDiskKind, ok := stringToDiskKind[diskMeta.Kind]
+	if !ok {
+		return fmt.Errorf(
+			"unknown disk kind %q for disk %v",
+			diskMeta.Kind,
+			c.overlayDiskID,
+		)
+	}
+
+	overlayDiskSize := uint64(diskMeta.BlockSize) * diskMeta.BlocksCount
+
+	client, err := internal_client.NewPrivateClientForCLI(ctx, c.clientConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+	defer client.Close()
+
+	req := &api.AcquireBaseDiskRequest{
+		SrcImageId: c.srcImageID,
+		OverlayDiskId: &disk_manager.DiskId{
+			ZoneId: c.overlayDiskZoneID,
+			DiskId: c.overlayDiskID,
+		},
+		OverlayDiskKind: disk_manager.DiskKind(overlayDiskKind),
+		OverlayDiskSize: overlayDiskSize,
+	}
+
+	resp, err := client.AcquireBaseDisk(getRequestContext(ctx), req)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Operation: %v\n", resp.Id)
+
+	if c.async {
+		return nil
+	}
+
+	return internal_client.WaitOperation(ctx, client, resp.Id)
+}
+
+func newAcquireBaseDiskCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+	c := &acquireBaseDisk{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use: "acquire-base-disk",
+		Aliases: []string{
+			"acquire_base_disk",
+			"acquire-base-disk-slot",
+			"acquire_base_disk_slot",
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.srcImageID,
+		"src-image-id",
+		"",
+		"source image ID of base disk; required",
+	)
+	if err := cmd.MarkFlagRequired("src-image-id"); err != nil {
+		log.Fatalf("Error setting flag src-image-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.overlayDiskZoneID,
+		"zone-id",
+		"",
+		"zone ID where overlay disk is located; required",
+	)
+	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
+		log.Fatalf("Error setting flag zone-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.overlayDiskID,
+		"overlay-disk-id",
+		"",
+		"overlay disk ID; required",
+	)
+	if err := cmd.MarkFlagRequired("overlay-disk-id"); err != nil {
+		log.Fatalf("Error setting flag overlay-disk-id as required: %v", err)
+	}
+
+	cmd.Flags().BoolVar(
+		&c.async,
+		"async",
+		false,
+		"do not wait for task ending",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type releaseBaseDisk struct {
 	config        *client_config.ClientConfig
 	zoneID        string
@@ -913,6 +1050,7 @@ func newPrivateCmd(
 	}
 
 	cmd.AddCommand(
+		newAcquireBaseDiskCmd(clientConfig, serverConfig),
 		newReleaseBaseDiskCmd(clientConfig),
 		newRebaseOverlayDiskCmd(clientConfig),
 		newRetireBaseDiskCmd(clientConfig),

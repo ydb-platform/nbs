@@ -27,13 +27,15 @@ class TStatFileStoreActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
+    const TDuration StatCacheTTL;
 
     NProto::TFileStore FileStore;
 
 public:
     TStatFileStoreActor(
         TRequestInfoPtr requestInfo,
-        TString fileSystemId);
+        TString fileSystemId,
+        TDuration statCacheTTL);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -65,10 +67,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TStatFileStoreActor::TStatFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TString fileSystemId)
+    TRequestInfoPtr requestInfo,
+    TString fileSystemId,
+    TDuration statCacheTTL)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
+    , StatCacheTTL(statCacheTTL)
 {}
 
 void TStatFileStoreActor::Bootstrap(const TActorContext& ctx)
@@ -102,8 +106,8 @@ void TStatFileStoreActor::HandleDescribeFileStoreResponse(
 
     auto request = std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
     // explicitly stating the intent
-    request->Record.SetAllowCache(false);
     request->Record.SetFileSystemId(FileSystemId);
+    request->Record.SetCacheTTL(StatCacheTTL.MilliSeconds());
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -181,6 +185,22 @@ void TStorageServiceActor::HandleStatFileStore(
 {
     const auto* msg = ev->Get();
 
+    const auto& headers = msg->Record.GetHeaders();
+    const auto* session =
+        State->FindSession(headers.GetSessionId(), headers.GetSessionSeqNo());
+    if (!session || session->ClientId != headers.GetClientId() ||
+        !session->SessionActor)
+    {
+        auto response = std::make_unique<TEvService::TEvStatFileStoreResponse>(
+            ErrorInvalidSession(
+                headers.GetClientId(),
+                headers.GetSessionId(),
+                headers.GetSessionSeqNo()));
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        return;
+    }
+
     auto [cookie, inflight] = CreateInFlightRequest(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT,
@@ -196,7 +216,9 @@ void TStorageServiceActor::HandleStatFileStore(
 
     auto actor = std::make_unique<TStatFileStoreActor>(
         std::move(requestInfo),
-        msg->Record.GetFileSystemId());
+        msg->Record.GetFileSystemId(),
+        TDuration::MilliSeconds(
+            session->FileStore.GetFeatures().GetStatFileStoreCacheTTL()));
 
     NCloud::Register(ctx, std::move(actor));
 }

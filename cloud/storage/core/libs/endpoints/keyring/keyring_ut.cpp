@@ -7,6 +7,8 @@
 
 namespace NCloud {
 
+bool TryParseProcKeysLine(const TString& line, const TString& desc, ui32& key);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TKeyringTest)
@@ -92,6 +94,22 @@ Y_UNIT_TEST_SUITE(TKeyringTest)
             auto root = user.SearchKeyring(rootDesc);
             RootChecker(root);
         }
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreMalformedProcKeysLines)
+    {
+        ui32 key = 0;
+        UNIT_ASSERT(!TKeyring::ParseProcKeysLine("", "desc", key));
+        UNIT_ASSERT(
+            !TKeyring::ParseProcKeysLine("12345678 short line", "desc", key));
+
+        UNIT_ASSERT(
+            TKeyring::ParseProcKeysLine(
+                "12345678 I--Q---     1 perm 3f3f0000  1000  1000 keyring   "
+                "desc: 1",
+                "desc",
+                key));
+        UNIT_ASSERT_VALUES_EQUAL(0x12345678, key);
     }
 }
 

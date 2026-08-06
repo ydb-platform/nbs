@@ -44,6 +44,5 @@ type Storage interface {
 	ClearDirectoryListingQueue(
 		ctx context.Context,
 		snapshotID string,
-		deletionLimit uint64,
 	) error
 }

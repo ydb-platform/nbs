@@ -89,8 +89,8 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     const TActorContext& ctx)
 {
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Resync read fast path %s",
-        PartConfig->GetName().c_str(),
+        "%s Resync read fast path %s",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(range).c_str());
 
     TFastPathRecord fastPathRecord{
@@ -118,7 +118,7 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     NCloud::Register<TMirrorPartitionResyncFastPathActor>(
         ctx,
         std::move(requestInfo),
-        PartConfig->GetName(),
+        LogTitle.GetChild(GetCycleCount()),
         blockSize,
         range,
         fastPathRecord.SgList,
@@ -136,8 +136,8 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     const TActorContext& ctx)
 {
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Resync read local fast path %s",
-        PartConfig->GetName().c_str(),
+        "%s Resync read local fast path %s",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(range).c_str());
 
     auto blockSize = PartConfig->GetBlockSize();
@@ -156,7 +156,7 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     NCloud::Register<TMirrorPartitionResyncFastPathActor>(
         ctx,
         std::move(requestInfo),
-        PartConfig->GetName(),
+        LogTitle.GetChild(GetCycleCount()),
         blockSize,
         range,
         fastPathRecord.SgList,
@@ -173,8 +173,8 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSlowPath(
     const TActorContext& ctx)
 {
     LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Resync read slow path %s",
-        PartConfig->GetName().c_str(),
+        "%s Resync read slow path %s",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(range).c_str());
 
     ResyncRangeAfterError(range, ctx);
@@ -313,8 +313,8 @@ void TMirrorPartitionResyncActor::HandleResyncFastPathChecksumCompareResponse(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Resync range %s after error: %s",
-        PartConfig->GetName().c_str(),
+        "%s Resync range %s after error: %s",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(msg->BlockRange).c_str(),
         FormatError(msg->GetError()).c_str());
 

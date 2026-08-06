@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
@@ -555,6 +556,84 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 
 	testcommon.DeleteDisk(t, ctx, client, diskID1)
 	testcommon.DeleteDisk(t, ctx, client, diskID2)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestPrivateServiceAcquireAndReleaseBaseDisk(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	imageID := t.Name()
+	imageSize := uint64(64 * 1024 * 1024)
+	diskKind := disk_manager.DiskKind_DISK_KIND_SSD
+
+	testcommon.CreateImage(
+		t,
+		ctx,
+		imageID,
+		imageSize,
+		"folder",
+		true, // pooled
+	)
+
+	diskID := t.Name()
+	diskSize := 2 * imageSize
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: diskKind,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	privateClient, err := testcommon.NewPrivateClient(ctx)
+	require.NoError(t, err)
+	defer privateClient.Close()
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = privateClient.AcquireBaseDisk(reqCtx, &api.AcquireBaseDiskRequest{
+		SrcImageId: imageID,
+		OverlayDiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		OverlayDiskKind: diskKind,
+		OverlayDiskSize: uint64(diskSize),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = privateClient.ReleaseBaseDisk(reqCtx, &api.ReleaseBaseDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
+
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	testcommon.CheckConsistency(t, ctx)
 }

@@ -187,6 +187,8 @@ private:
     void Activate(const NActors::TActorContext& ctx);
     void Suicide(const NActors::TActorContext& ctx);
 
+    void StartBaseDiskKeepAliveActorIfNeeded(const NActors::TActorContext& ctx);
+
     void OnDetach(const NActors::TActorContext& ctx) override;
 
     void OnTabletDead(
@@ -332,7 +334,8 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
-        const TBlockRange32& describeRange);
+        const TBlockRange32& describeRange,
+        bool indexOnly);
 
     void FillDescribeBlocksResponse(
         TTxPartition::TDescribeBlocks& args,

@@ -108,7 +108,9 @@ void TDestroyFileStoreActor::HandleModifySchemeResponse(
     const TActorContext& ctx)
 {
     NProto::TError error = ev->Get()->GetError();
-    if (error.GetCode() == MAKE_SCHEMESHARD_ERROR(NKikimrScheme::EStatus::StatusPathDoesNotExist)) {
+    const ui32 pathDoesNotExist =
+        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::EStatus::StatusPathDoesNotExist);
+    if (error.GetCode() == pathDoesNotExist) {
         error = MakeError(S_FALSE, FileSystemId.Quote() + " does not exist");
     }
 
@@ -130,7 +132,8 @@ void TDestroyFileStoreActor::ReplyAndDie(
             FileSystemId.Quote().c_str());
     }
 
-    auto response = std::make_unique<TEvSSProxy::TEvDestroyFileStoreResponse>(error);
+    auto response = std::make_unique<TEvSSProxy::TEvDestroyFileStoreResponse>(
+        TranslateSchemeShardError(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);

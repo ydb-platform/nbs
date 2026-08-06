@@ -7,12 +7,80 @@
 #include <util/folder/tempdir.h>
 #include <util/generic/buffer.h>
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 namespace NCloud::NFileStore {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TEnvironment
+{
+    ILoggingServicePtr Logging =
+        CreateLoggingService("console", {TLOG_RESOURCES});
+    TLog Log;
+
+    TEnvironment()
+        : Log(Logging->CreateLog("LOWLEVEL_TEST"))
+    {}
+};
+
+mode_t GetUmask()
+{
+    const auto currentUmask = ::umask(0);
+    ::umask(currentUmask);
+    return currentUmask;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TLowlevelTest)
 {
+    Y_UNIT_TEST(ShouldRespectOptionalUmaskOverride)
+    {
+        TEnvironment env;
+        const auto originalUmask = ::umask(0027);
+
+        {
+            NLowLevel::UnixCredentialsGuard guard(
+                env.Log,
+                0,
+                0,
+                std::nullopt,
+                false);
+            UNIT_ASSERT_VALUES_EQUAL(GetUmask(), 0027);
+        }
+
+        {
+            NLowLevel::UnixCredentialsGuard guard(
+                env.Log,
+                0,
+                0,
+                0,
+                false);
+            UNIT_ASSERT_VALUES_EQUAL(GetUmask(), 0);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(GetUmask(), 0027);
+
+        {
+            NLowLevel::UnixCredentialsGuard guard(
+                env.Log,
+                0,
+                0,
+                0077,
+                false);
+            UNIT_ASSERT_VALUES_EQUAL(GetUmask(), 0077);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(GetUmask(), 0027);
+        ::umask(originalUmask);
+    }
+
     Y_UNIT_TEST(ShouldDoIterativeListDir)
     {
         const TTempDir TempDir;
@@ -67,22 +135,6 @@ Y_UNIT_TEST_SUITE(TLowlevelTest)
         res = NLowLevel::ListDirAt(rootNode, 0, 0, false);
         checkListDirResult(res, 10);
 
-    }
-
-    Y_UNIT_TEST(ShouldPropagateFsyncErrors)
-    {
-        TFileHandle handle(9999);
-        Y_DEFER
-        {
-            handle.Release();
-        };
-
-        for (auto dataSync: {true, false}) {
-            UNIT_ASSERT_EXCEPTION_SATISFIES(
-                NLowLevel::Fsync(handle, dataSync),
-                TServiceError,
-                [](auto const& e) { return e.GetCode() == E_FS_BADHANDLE; });
-        }
     }
 };
 

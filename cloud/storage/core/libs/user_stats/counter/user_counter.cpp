@@ -230,28 +230,24 @@ private:
 
     const TBuckets Buckets;
     const TString Units;
-    TVector<TBaseDynamicCounters> BaseCounters;
+    // Original inputs. Kept for lazy re-resolution if base subgroups are
+    // not yet registered.
+    const TVector<TBaseDynamicCounters> OriginalInputs;
+    // Empty if source histograms are lazily registered (not yet created at
+    // construction time).
+    const TVector<TBaseDynamicCounters> BaseCounters;
+    // True if some of the subgroups were not yet registered at construction.
+    // GetValue re-resolves from OriginalInputs on every call in this case.
+    const bool IsLazy;
     const size_t HistogramSize;
     TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
     const EMetricType Type = EMetricType::HIST_RATE;
     const EHistogramCounterOptions HistogramCounterOptions;
 
-public:
-    TUserSumHistogramWrapper(
-        const TBucketsWithUnits& buckets,
-        const TVector<TBaseDynamicCounters>& baseCounters,
-        EHistogramCounterOptions histogramCounterOptions)
-        : Buckets(buckets.first)
-        , Units(buckets.second)
-        , HistogramSize(Buckets.size() - MergeFirstBucketsCount)
-        , Histogram(TExplicitHistogramSnapshot::New(HistogramSize))
-        , HistogramCounterOptions(histogramCounterOptions)
+    TVector<TBaseDynamicCounters> ResolveBaseCounters() const
     {
-        for (size_t i = 0; i < HistogramSize; ++i) {
-            (*Histogram)[i].first = Buckets[i + MergeFirstBucketsCount].Bound;
-        }
-
-        for (const auto& [baseCounter, name]: baseCounters) {
+        TVector<TBaseDynamicCounters> result;
+        for (const auto& [baseCounter, name]: OriginalInputs) {
             if (!baseCounter) {
                 continue;
             }
@@ -266,8 +262,28 @@ public:
                 }
             }
             if (subgroup) {
-                BaseCounters.emplace_back(subgroup, name);
+                result.emplace_back(subgroup, name);
             }
+        }
+        return result;
+    }
+
+public:
+    TUserSumHistogramWrapper(
+        const TBucketsWithUnits& buckets,
+        const TVector<TBaseDynamicCounters>& baseCounters,
+        EHistogramCounterOptions histogramCounterOptions)
+        : Buckets(buckets.first)
+        , Units(buckets.second)
+        , OriginalInputs(baseCounters)
+        , BaseCounters(ResolveBaseCounters())
+        , IsLazy(BaseCounters.size() < OriginalInputs.size())
+        , HistogramSize(Buckets.size() - MergeFirstBucketsCount)
+        , Histogram(TExplicitHistogramSnapshot::New(HistogramSize))
+        , HistogramCounterOptions(histogramCounterOptions)
+    {
+        for (size_t i = 0; i < HistogramSize; ++i) {
+            (*Histogram)[i].first = Buckets[i + MergeFirstBucketsCount].Bound;
         }
     }
 
@@ -296,9 +312,14 @@ public:
         TInstant time,
         NMonitoring::IMetricConsumer* consumer) const override
     {
+        // Re-resolve on every call when lazy: histogram subgroups may not have
+        // existed at construction but are created once the first request fires.
+        const auto lazyCounters =
+            IsLazy ? ResolveBaseCounters() : TVector<TBaseDynamicCounters>{};
+        const auto& counters = IsLazy ? lazyCounters : BaseCounters;
         Clear();
 
-        for (const auto& [baseCounter, name]: BaseCounters) {
+        for (const auto& [baseCounter, name]: counters) {
             if (!baseCounter) {
                 continue;
             }

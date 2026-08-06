@@ -161,6 +161,24 @@ void TMaskSensitiveData::MaskRequest(
                 Transform(newNodeName, request.GetNodeInfo().GetNodeId()));
         }
     }
+    if (request.HasListNodesInfo()) {
+        auto* listNodesInfo = request.MutableListNodesInfo();
+        const auto nodeId = listNodesInfo->GetNodeId();
+        if (listNodesInfo->HasRequestCookie()) {
+            if (const auto& cookie = listNodesInfo->GetRequestCookie();
+                !cookie.empty())
+            {
+                listNodesInfo->SetRequestCookie(Transform(cookie, nodeId));
+            }
+        }
+        if (listNodesInfo->HasResponseCookie()) {
+            if (const auto& cookie = listNodesInfo->GetResponseCookie();
+                !cookie.empty())
+            {
+                listNodesInfo->SetResponseCookie(Transform(cookie, nodeId));
+            }
+        }
+    }
 }
 
 void TMaskSensitiveData::MaskSensitiveData(

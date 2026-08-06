@@ -23,6 +23,7 @@ def mk_inputs(
     contains=None,
     san=None,
     large_tests: bool = False,
+    arm64: bool = False,
 ) -> Inputs:
     """Helper to build Inputs with sensible defaults."""
     # default: all components false
@@ -43,6 +44,7 @@ def mk_inputs(
         contains=full_contains,
         has_san=full_san,
         has_large_tests_label=large_tests,
+        has_arm64_label=arm64,
     )
 
 
@@ -148,6 +150,10 @@ def test_build_matrix_single_mode_no_sanitizers():
     assert row["test_size"] == "small,medium"
     assert row["vm_name_suffix"] == ""
     assert row["number_of_retries"] == 3
+    assert row["run_build"] is True
+    assert row["run_tests"] is True
+    assert row["allow_split_workload"] is True
+    assert row["target_platform"] == ""
 
     # targets match compute_targets()
     bt, tt, _, _ = compute_targets(inp)
@@ -207,6 +213,16 @@ def test_build_matrix_large_tests_propagates_to_all_rows():
         assert row["test_size"] == "small,medium,large"
 
 
+def test_build_matrix_leaves_timeout_to_downstream_plan():
+    inp = mk_inputs(
+        contains={"blockstore": True, "filestore": True},
+        san={"asan": True},
+        large_tests=True,
+    )
+
+    assert all("test_timeout_minutes" not in row for row in build_matrix(inp))
+
+
 def test_build_matrix_skips_empty_san_targets():
     # tasks is not SAN-eligible; SAN targets become empty and should be ignored
     inp = mk_inputs(
@@ -218,3 +234,46 @@ def test_build_matrix_skips_empty_san_targets():
     # only the regular row should remain
     assert len(matrix) == 1
     assert matrix[0]["san"] == ""
+
+
+def test_build_matrix_arm64_is_hybrid_and_build_only():
+    inp = mk_inputs(
+        contains={"blockstore": True, "storage": True},
+        arm64=True,
+    )
+    matrix = build_matrix(inp)
+
+    assert len(matrix) == 2
+    regular, arm = matrix
+
+    assert regular["mode"] == "on_demand"
+    assert regular["build_preset"] == "relwithdebinfo"
+    assert regular["run_tests"] is True
+
+    assert arm["mode"] == "hybrid"
+    assert arm["build_preset"] == "relwithdebinfo"
+    assert arm["build_target"] == "cloud/blockstore/apps/,cloud/storage/"
+    assert arm["test_target"] == "cloud/blockstore/,cloud/storage/"
+    assert arm["vm_name_suffix"] == "-arm-grace"
+    assert arm["number_of_retries"] == 1
+    assert arm["run_build"] is True
+    assert arm["run_tests"] is False
+    assert arm["allow_split_workload"] is False
+    assert arm["target_platform"] == "default-linux-armv9a_grace"
+
+
+def test_build_matrix_arm64_coexists_with_sanitizers():
+    inp = mk_inputs(
+        scheduling_type="hybrid",
+        contains={"storage": True},
+        san={"asan": True},
+        arm64=True,
+    )
+    matrix = build_matrix(inp)
+
+    assert len(matrix) == 3
+    assert [row["target_platform"] for row in matrix] == [
+        "",
+        "",
+        "default-linux-armv9a_grace",
+    ]

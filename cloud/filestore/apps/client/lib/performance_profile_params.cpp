@@ -11,9 +11,8 @@ TPerformanceProfileParams::TPerformanceProfileParams(NLastGetopt::TOpts& opts)
     opts.AddLongOption(
             "performance-profile-throttling-enabled",
             "Enables/disables throttling")
-        .RequiredArgument("NUM")
         .NoArgument()
-        .SetFlag(&ThrottlingEnabled);
+        .StoreValue(&ThrottlingEnabled, true);
 
     opts.AddLongOption(
             "performance-profile-max-read-bandwidth",

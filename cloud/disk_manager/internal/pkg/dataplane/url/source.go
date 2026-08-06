@@ -8,9 +8,11 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	url_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/qcow2"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/vhd"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/vmdk"
+	common_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
@@ -30,6 +32,7 @@ type URLSource interface {
 
 	ETag() string
 
+	// TODO (jkuradobery): remove this in favour of new metrics
 	CacheMissedRequestsCount() uint64
 }
 
@@ -175,8 +178,10 @@ func NewURLSource(
 	httpClientMaxRetries uint32,
 	url string,
 	chunkSize uint64,
+	metricsRegistry common_metrics.Registry,
 ) (URLSource, error) {
 
+	readerMetrics := metrics.New(metricsRegistry)
 	urlReader, err := url_common.NewURLReader(
 		ctx,
 		httpClientTimeout,
@@ -184,6 +189,7 @@ func NewURLSource(
 		httpClientMaxRetryTimeout,
 		httpClientMaxRetries,
 		url,
+		readerMetrics,
 	)
 	if err != nil {
 		return nil, err
@@ -217,6 +223,7 @@ func GetImageFormat(ctx context.Context, url string) (ImageFormat, error) {
 		defaultHTTPClientMaxRetryTimeout,
 		defaultHTTPClientMaxRetries,
 		url,
+		metrics.New(common_metrics.NewEmptyRegistry()),
 	)
 	if err != nil {
 		return "", err

@@ -21,6 +21,7 @@ enum EAction
     ACTION_ACCESS_NODE = 8;
     ACTION_LIST_NODES = 9;
     ACTION_FLUSH = 10;
+    ACTION_LIST_NODES_INTERNAL = 11;
 
     // DATA
     ACTION_WRITE = 101;
@@ -122,6 +123,25 @@ message TReplaySpec
     string ReplayTimeTill = 15;
 }
 
+message TFastShardLoadSpec
+{
+    message TAction
+    {
+        EAction Action = 1;
+        uint32 Rate = 2;
+    }
+
+    // Port of the fastshard TCP server to connect to.
+    uint32 FastShardPort = 1;
+    // Filesystem id of the shard to route requests to.
+    string ShardFileSystemId = 2;
+    uint32 ReadBytes = 3;
+    uint32 WriteBytes = 4;
+    // Amount of data written to each newly created file before it enters the pool.
+    uint64 InitialFileSize = 5;
+    repeated TAction Actions = 6;
+}
+
 message TDatashardLikeLoadSpec
 {
     message TAction
@@ -134,6 +154,20 @@ message TDatashardLikeLoadSpec
     uint32 WriteBytes = 3;
     uint64 InitialFileSize = 4;
     repeated TAction Actions = 5;
+
+    // If both set, use shared-memory transport for data IO.
+    string SharedMemoryBaseDir = 6;
+    string SharedMemoryFilePath = 7;
+
+    // Size of the shared memory region in bytes (used when SharedMemoryFilePath is set).
+    uint64 SharedMemorySizeBytes = 8;
+
+    // Size of the iovec in read/write requests with shared memory
+    uint32 SharedMemoryPageSize = 9;
+
+    // Allows the client to reuse the same shared memory page across parallel requests.
+    // Intended for testing the page-locking feature in filestore-server.
+    bool AllowOverlappingSharedMemoryPages = 10;
 }
 
 message TMigrationSpec
@@ -162,6 +196,7 @@ message TLoadTest
         TReplaySpec ReplayFsSpec = 17;
         TReplaySpec ReplayGrpcSpec = 18;
         TDatashardLikeLoadSpec DatashardLikeLoadSpec = 20;
+        TFastShardLoadSpec FastShardLoadSpec = 21;
     }
 
     uint32 IODepth = 10;
@@ -174,6 +209,10 @@ message TLoadTest
     // disables destruction of the filestore created via CreateFileStoreRequest
     bool KeepFileStore = 16;
     string ClientId = 19;
+
+    // Maximum number of nodes created by this synthetic load test.
+    // Zero means unlimited. Ignored by replay specs.
+    uint64 MaxNodes = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -198,6 +237,7 @@ message TTestStats
         string Action = 1;
         uint64 Count = 2;
         TLatency Latency = 3;
+        uint64 RequestBytes = 4;
     }
 
     string Name = 1;

@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -73,10 +74,14 @@ Y_UNIT_TEST_SUITE(TFileStoreClientTest)
             MakeIntrusive<NMonitoring::TDynamicCounters>(),
             CreateProfileLogStub(),
             CreateSchedulerStub(),
-            service);
+            service,
+            CreateCertificateProviderStub());
         server->Start();
 
-        auto client = CreateFileStoreClient(clientConfig, logging);
+        auto client = CreateFileStoreClient(
+            clientConfig,
+            logging,
+            CreateCertificateProviderStub());
         client->Start();
 
         auto context = MakeIntrusive<TCallContext>();

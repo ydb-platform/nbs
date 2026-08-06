@@ -51,4 +51,8 @@ private:
     STFUNC(StateWork);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TranslateSchemeShardError(const NProto::TError& e);
+
 }   // namespace NCloud::NFileStore::NStorage

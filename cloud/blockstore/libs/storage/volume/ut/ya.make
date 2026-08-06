@@ -8,6 +8,7 @@ SRCS(
     volume_state_ut.cpp
     volume_throttling_ut.cpp
     volume_ut.cpp
+    volume_ut_broken_devices.cpp
     volume_ut_checkpoint.cpp
     volume_ut_checksums.cpp
     volume_ut_session.cpp

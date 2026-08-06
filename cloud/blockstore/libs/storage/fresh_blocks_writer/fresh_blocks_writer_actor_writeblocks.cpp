@@ -222,7 +222,7 @@ void TFreshBlocksWriterActor::HandleWriteBlocksRequest(
 
     if constexpr (std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>)
     {
-        msg->Record.CopySglistIntoBuffers();
+        msg->Record.TakeDataOwnership();
     }
 
     auto writeHandler = CreateWriteHandler(
@@ -270,11 +270,10 @@ void TFreshBlocksWriterActor::WriteBlocks(
         replyError(ctx, MakeError(E_BS_OUT_OF_SPACE, "insufficient disk space"));
 
         ReassignChannelsIfNeeded(ctx);
-
         return;
     }
 
-    ++WriteAndZeroRequestsInProgress;
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer{
         writeRange.Size(),
@@ -286,20 +285,19 @@ void TFreshBlocksWriterActor::WriteBlocks(
         }
     };
 
-    // TODO(issue-4875): support batching for fresh blocks writer.
-    // if (Config->GetWriteRequestBatchingEnabled()) {
-        // // we will try to batch small writes and, if batching fails,
-        // // we will accumulate these writes in FreshBlocks table
-        // EnqueueProcessWriteQueueIfNeeded(ctx);
+    if (Config->GetWriteRequestBatchingEnabled()) {
+        EnqueueProcessWriteQueueIfNeeded(ctx);
 
-        // LOG_TRACE(
-        //     ctx,
-        //     TBlockStoreComponents::PARTITION,
-        //     "%s Enqueueing fresh blocks (range: %s)",
-        //     LogTitle.GetWithTime().c_str(),
-        //     DescribeRange(writeRange).c_str());
-        // State->AccessWriteBuffer().Put(std::move(requestInBuffer));
-    // }
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Enqueueing fresh blocks (range: %s)",
+            LogTitle.GetWithTime().c_str(),
+            DescribeRange(writeRange).c_str());
+        FlushState->AccessWriteBuffer().Put(std::move(requestInBuffer));
+        return;
+    }
+
     WriteFreshBlocks(ctx, std::move(requestInBuffer));
 }
 
@@ -322,14 +320,14 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
     ui64 blocksCount = msg->Stats.GetUserWriteCounters().GetBlocksCount();
     ui64 requestBytes = blocksCount * PartitionConfig.GetBlockSize();
 
-    ResourceMetricsQueue->Push(
+    SharedState->ResourceMetricsQueue.Push(
         NPartition::TUpdateCPUUsageStat{ctx.Now(), msg->ExecCycles});
 
     auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     const auto requestCount =
         msg->Stats.GetUserWriteCounters().GetRequestsCount();
 
-    PartCounters->Access(
+    SharedState->PartCounters.Access(
         [&](auto& partCounters)
         {
             partCounters->RequestCounters.WriteBlocks.AddRequest(
@@ -361,11 +359,17 @@ void TFreshBlocksWriterActor::HandleWriteBlocksCompleted(
 
     Actors.Erase(ev->Sender);
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress >= requestCount);
-    WriteAndZeroRequestsInProgress -= requestCount;
+    Y_DEBUG_ABORT_UNLESS(
+        SharedState->WriteAndZeroRequestsInProgress.load() >= requestCount);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(requestCount);
 
-    // TODO(issue-4875): process drain requests
-    // DrainActorCompanion.ProcessDrainRequests(ctx);
+    SharedState->FinishFreshWrite(
+        ctx,
+        commitId,
+        blocksCount,
+        HasError(msg->GetError()));
+
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter

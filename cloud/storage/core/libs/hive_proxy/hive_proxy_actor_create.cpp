@@ -53,7 +53,8 @@ void THiveProxyActor::HandleCreateTablet(
         msg->Request.GetOwner(),
         msg->Request.GetOwnerIdx());
 
-    auto& queue = HiveStates[msg->HiveId].CreateRequests[key];
+    Y_ABORT_UNLESS(msg->HiveId == HiveTabletId);
+    auto& queue = HiveState.CreateRequests[key];
     queue.emplace_back(false, ev.Release());
 
     SendNextCreateOrLookupRequest(ctx, queue);
@@ -67,7 +68,8 @@ void THiveProxyActor::HandleLookupTablet(
 
     const auto key = std::make_pair(msg->Owner, msg->OwnerIdx);
 
-    auto& queue = HiveStates[msg->HiveId].CreateRequests[key];
+    Y_ABORT_UNLESS(msg->HiveId == HiveTabletId);
+    auto& queue = HiveState.CreateRequests[key];
     queue.emplace_back(true, ev.Release());
 
     SendNextCreateOrLookupRequest(ctx, queue);
@@ -79,8 +81,8 @@ void THiveProxyActor::HandleCreateTabletReply(
 {
     const auto* msg = ev->Get();
 
-    const auto hiveId = ev->Cookie;
-    auto& state = HiveStates[hiveId];
+    Y_ABORT_UNLESS(ev->Cookie == HiveTabletId);
+    auto& state = HiveState;
 
     const auto key = std::make_pair(
          msg->Record.GetOwner(),

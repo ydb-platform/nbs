@@ -84,7 +84,7 @@ public:
         request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
         request->SetStartIndex(fileOffset / BlockSize);
         request->SetBlocksCount(bytesCount / BlockSize);
-        request->BlockSize = BlockSize;
+        request->SetBlockSize(BlockSize);
 
         auto sgListOrError = SgListNormalize(
             { (char *)buf, bytesCount },
@@ -121,7 +121,7 @@ public:
         request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
         request->SetStartIndex(fileOffset / BlockSize);
         request->SetBlocksCount(bytesCount / BlockSize);
-        request->BlockSize = BlockSize;
+        request->SetBlockSize(BlockSize);
 
         auto sgListOrError = SgListNormalize(std::move(sglist), BlockSize);
         if (HasError(sgListOrError)) {
@@ -154,8 +154,8 @@ public:
         request->MutableHeaders()->SetRequestId(callContext->RequestId);
         request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
         request->SetStartIndex(fileOffset / BlockSize);
+        request->SetBlockSize(BlockSize);
         request->BlocksCount = bytesCount / BlockSize;
-        request->BlockSize = BlockSize;
 
         auto sgListOrError = SgListNormalize(
             { (char *)buf, bytesCount },
@@ -191,8 +191,8 @@ public:
         request->MutableHeaders()->SetRequestId(callContext->RequestId);
         request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
         request->SetStartIndex(fileOffset / BlockSize);
+        request->SetBlockSize(BlockSize);
         request->BlocksCount = bytesCount / BlockSize;
-        request->BlockSize = BlockSize;
 
         auto sgListOrError = SgListNormalize(std::move(sglist), BlockSize);
         if (HasError(sgListOrError)) {

@@ -83,8 +83,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto write = [&] (ui64 startIndex, ui64 blockCount) {
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             request->SetStartIndex(startIndex);
+            request->SetBlockSize(blockSize);
             request->BlocksCount = blockCount;
-            request->BlockSize = blockSize;
             request->Sglist = writeSgList;
 
             auto response = storage->WriteBlocksLocal(
@@ -103,7 +103,7 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetStartIndex(startIndex);
             request->SetBlocksCount(blockCount);
-            request->BlockSize = blockSize;
+            request->SetBlockSize(blockSize);
             request->Sglist = readSgList;
 
             auto response = storage->ReadBlocksLocal(

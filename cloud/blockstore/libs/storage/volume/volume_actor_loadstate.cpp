@@ -2,10 +2,10 @@
 
 #include "volume_database.h"
 
+#include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
 #include <cloud/storage/core/libs/common/format.h>
-#include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -51,6 +51,7 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadFollowers(args.FollowerDisks),
         db.ReadLeaders(args.LeaderDisks),
+        db.ReadBrokenDevices(args.BrokenDevices),
     };
 
     if (args.Meta) {
@@ -112,15 +113,23 @@ void TVolumeActor::CompleteLoadState(
         HasStorageConfigPatch = Config != GlobalStorageConfig;
     }
 
+    // Create BlockDigestGenerator using the effective storage configuration
+    BlockDigestGenerator =
+        BlockDigestGeneratorFactory->CreateBlockDigestGenerator(*Config);
+
     if (args.Meta.Defined()) {
+        const auto throttlerInfo = args.ThrottlerStateInfo.GetOrElse(
+            TVolumeDatabase::TThrottlerStateInfo{
+                .BoostBudget =
+                    CalculateBoostTime(
+                        args.Meta->GetConfig().GetPerformanceProfile())
+                        .MilliSeconds(),
+                .SpentShapingBudgetShare = 0.0});
         TThrottlerConfig throttlerConfig(
             Config->GetMaxThrottlerDelay(),
             Config->GetMaxWriteCostMultiplier(),
             Config->GetDefaultPostponedRequestWeight(),
-            args.ThrottlerStateInfo.Defined()
-                ? TDuration::MilliSeconds(args.ThrottlerStateInfo->Budget)
-                : CalculateBoostTime(
-                    args.Meta->GetConfig().GetPerformanceProfile()),
+            TDuration::MilliSeconds(throttlerInfo.BoostBudget),
             Config->GetDiskSpaceScoreThrottlingEnabled());
 
         bool startPartitionsNeeded = args.StartPartitionsNeeded.GetOrElse(false);
@@ -136,6 +145,7 @@ void TVolumeActor::CompleteLoadState(
             std::move(args.MetaHistory),
             std::move(args.VolumeParams),
             throttlerConfig,
+            throttlerInfo.SpentShapingBudgetShare,
             std::move(args.Clients),
             std::move(volumeHistory),
             std::move(args.CheckpointRequests),
@@ -157,6 +167,13 @@ void TVolumeActor::CompleteLoadState(
                 CopyCachedStatsToPartCounters(partStats.Stats, *info);
             }
         }
+
+        for (const auto& info: args.BrokenDevices) {
+            DeviceUUIDToBrokenAt[info.DeviceUUID] = info.BrokenTs;
+        }
+
+        CleanupStaleBrokenDevices(ctx);
+        RegisterVolumeHealthSyncActorIfNeeded(ctx);
 
         Y_ABORT_UNLESS(CurrentState == STATE_INIT);
         BecomeAux(ctx, STATE_WORK);
@@ -209,6 +226,7 @@ void TVolumeActor::CompleteLoadState(
     }
 
     if (State) {
+        SendEnableVhostDiscardFlagIfNeeded(ctx);
         ProcessNextPendingClientRequest(ctx);
     }
 }

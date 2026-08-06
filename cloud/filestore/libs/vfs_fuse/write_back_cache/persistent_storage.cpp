@@ -1,7 +1,10 @@
 #include "persistent_storage.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/file_ring_buffer.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <library/cpp/json/writer/json.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
@@ -18,18 +21,27 @@ class TFileRingBufferStorage: public IPersistentStorage
 private:
     const IPersistentStorageStatsPtr Stats;
     TFileRingBuffer Storage;
-    THashSet<const void*> DeletedEntries;
     const TPersistentStorageConfig Config;
+    const TLog Log;
+    const TString LogTag;
 
 public:
     TFileRingBufferStorage(
         IPersistentStorageStatsPtr stats,
-        TPersistentStorageConfig config)
+        TPersistentStorageConfig config,
+        TLog log,
+        TString logTag)
         : Stats(std::move(stats))
-        , Storage(config.FilePath, config.DataCapacity, config.MetadataCapacity)
+        , Storage(
+              config.FilePath,
+              config.DataCapacity,
+              config.MetadataCapacity,
+              EFileRingBufferVersion::V6)
         , Config(std::move(config))
+        , Log(std::move(log))
+        , LogTag(std::move(logTag))
     {
-        UpdateStats();
+        SetCounters();
     }
 
     NProto::TError Init()
@@ -40,15 +52,32 @@ public:
 
         if (!Storage.ValidateMetadata()) {
             Storage.SetCorrupted();
-            UpdateStats();
+            SetCounters();
             return MakeError(E_FAIL, "Metadata is corrupted");
         }
 
         if (Config.EnableChecksumValidation && !Storage.Validate().empty()) {
             Storage.SetCorrupted();
-            UpdateStats();
+            SetCounters();
             return MakeError(E_FAIL, "Data entries are corrupted");
         }
+
+        NJsonWriter::TBuf json;
+        json.BeginObject()
+            .WriteKey("FilePath")
+            .WriteString(Config.FilePath)
+            .WriteKey("Version")
+            .WriteULongLong(Storage.GetVersion())
+            .WriteKey("RawCapacityByteCount")
+            .WriteULongLong(Storage.GetRawCapacity())
+            .WriteKey("RawUsedByteCount")
+            .WriteULongLong(Storage.GetRawUsedBytesCount())
+            .WriteKey("EntryCount")
+            .WriteULongLong(Storage.Size())
+            .EndObject();
+
+        STORAGE_INFO(
+            LogTag << " WriteBackCache has been initialized " << json.Str());
 
         return {};
     }
@@ -61,15 +90,13 @@ public:
     void Visit(const TVisitor& visitor) override
     {
         Storage.Visit(
-            [this, &visitor](ui32 checksum, TStringBuf entry)
+            [&visitor](ui32 checksum, ui32 tag, TStringBuf entry)
             {
                 Y_UNUSED(checksum);
-                if (!DeletedEntries.contains(entry.data())) {
-                    visitor({entry.data(), entry.size()});
-                }
+                visitor(tag, {entry.data(), entry.size()});
             });
 
-        UpdateStats();
+        SetCounters();
     }
 
     ui64 GetMaxSupportedAllocationByteCount() const override
@@ -82,49 +109,42 @@ public:
         return Storage.Alloc(size);
     }
 
-    bool Commit() override
+    void Commit() override
     {
-        auto res = Storage.Commit();
-        UpdateStats();
-        return res;
+        bool success = Storage.Commit();
+        Y_ENSURE(success, "Failed to commit allocation");
+        SetCounters();
     }
 
     void Free(const void* ptr) override
     {
-        auto [it, inserted] = DeletedEntries.insert(ptr);
-        Y_ENSURE(inserted, "Double free detected");
-
-        while (!Storage.Empty()) {
-            const char* front = Storage.Front().data();
-            if (DeletedEntries.erase(front) != 0) {
-                Storage.PopFront();
-            } else {
-                break;
-            }
-        }
-
-        if (Storage.Empty()) {
-            Y_ENSURE(
-                DeletedEntries.empty(),
-                "Orphaned deleted entries detected");
-        }
-
-        UpdateStats();
+        bool success = Storage.Free(ptr);
+        Y_ENSURE(success, "Failed to free pointer " << ptr);
+        SetCounters();
     }
 
-    TPersistentStorageStats GetStats() const override
+    void SetTag(const void* ptr, ui32 tag) override
     {
-        return {
-            .RawCapacityByteCount = Storage.GetRawCapacity(),
-            .RawUsedByteCount = Storage.GetRawUsedBytesCount(),
-            .EntryCount = Storage.Size() - DeletedEntries.size(),
-            .IsCorrupted = Storage.IsCorrupted()};
+        Storage.SetTag(ptr, tag);
+    }
+
+    void UpdateStats() const override
+    {
+        Stats->UpdateStats();
     }
 
 private:
-    void UpdateStats()
+    void SetCounters()
     {
-        Stats->UpdatePersistentStorageStats(GetStats());
+        Stats->SetPersistentStorageCounters({
+            .RawCapacityBytesCount = Storage.GetRawCapacity(),
+            .RawUsedBytesCount = Storage.GetRawUsedBytesCount(),
+            .EntryCount = Storage.Size(),
+            .MaxObservedEntryByteCount =
+                Storage.GetMaxObservedEntryByteCount(),
+            .Version = Storage.GetVersion(),
+            .IsCorrupted = Storage.IsCorrupted(),
+        });
     }
 };
 
@@ -134,11 +154,15 @@ private:
 
 TResultOrError<IPersistentStoragePtr> CreateFileRingBufferPersistentStorage(
     IPersistentStorageStatsPtr stats,
-    TPersistentStorageConfig config)
+    TPersistentStorageConfig config,
+    TLog log,
+    TString logTag)
 {
     auto storage = std::make_shared<TFileRingBufferStorage>(
         std::move(stats),
-        std::move(config));
+        std::move(config),
+        std::move(log),
+        std::move(logTag));
 
     auto error = storage->Init();
     if (HasError(error)) {

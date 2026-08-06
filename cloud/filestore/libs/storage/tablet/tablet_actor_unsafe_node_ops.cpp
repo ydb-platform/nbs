@@ -47,8 +47,8 @@ bool TIndexTabletActor::PrepareTx_UnsafeCreateNode(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
-    return ReadNode(db, args.Request.GetNode().GetId(), commitId, args.Node);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
+    return ReadNode(*db, args.Request.GetNode().GetId(), commitId, args.Node);
 }
 
 void TIndexTabletActor::ExecuteTx_UnsafeCreateNode(
@@ -56,7 +56,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeCreateNode(
     TTransactionContext& tx,
     TTxIndexTablet::TUnsafeCreateNode& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     if (args.Node) {
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
@@ -75,7 +75,8 @@ void TIndexTabletActor::ExecuteTx_UnsafeCreateNode(
 
     NProto::TNode node;
     ConvertAttrsToNode(args.Request.GetNode(), &node);
-    CreateNodeWithId(db, args.Request.GetNode().GetId(), commitId, node);
+    node.SetSymLink(args.Request.GetSymLink());
+    CreateNodeWithId(*db, args.Request.GetNode().GetId(), commitId, node);
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeCreateNode(
@@ -139,8 +140,8 @@ bool TIndexTabletActor::PrepareTx_UnsafeDeleteNode(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
-    return ReadNode(db, args.Request.GetId(), commitId, args.Node);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
+    return ReadNode(*db, args.Request.GetId(), commitId, args.Node);
 }
 
 void TIndexTabletActor::ExecuteTx_UnsafeDeleteNode(
@@ -148,7 +149,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNode(
     TTransactionContext& tx,
     TTxIndexTablet::TUnsafeDeleteNode& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     if (!args.Node) {
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
@@ -165,7 +166,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNode(
         return;
     }
 
-    args.Error = RemoveNode(db, *args.Node, args.Node->MinCommitId, commitId);
+    args.Error = RemoveNode(*db, *args.Node, args.Node->MinCommitId, commitId);
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeDeleteNode(
@@ -225,8 +226,8 @@ bool TIndexTabletActor::PrepareTx_UnsafeUpdateNode(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
-    return ReadNode(db, args.Request.GetNode().GetId(), commitId, args.Node);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
+    return ReadNode(*db, args.Request.GetNode().GetId(), commitId, args.Node);
 }
 
 void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
@@ -234,7 +235,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
     TTransactionContext& tx,
     TTxIndexTablet::TUnsafeUpdateNode& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     if (!args.Node) {
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
@@ -258,7 +259,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNode(
 
     ConvertAttrsToNode(args.Request.GetNode(), &node);
     UpdateNode(
-        db,
+        *db,
         args.Request.GetNode().GetId(),
         nodeCommitId,
         commitId,
@@ -329,7 +330,7 @@ bool TIndexTabletActor::ValidateTx_UnsafeGetNode(
 
 bool TIndexTabletActor::PrepareTx_UnsafeGetNode(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TUnsafeGetNode& args)
 {
     Y_UNUSED(ctx);
@@ -406,9 +407,9 @@ bool TIndexTabletActor::PrepareTx_UnsafeCreateNodeRef(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
     return ReadNodeRef(
-        db,
+        *db,
         args.Request.GetParentId(),
         commitId,
         args.Request.GetName(),
@@ -420,7 +421,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeCreateNodeRef(
     TTransactionContext& tx,
     TTxIndexTablet::TUnsafeCreateNodeRef& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     if (args.NodeRef) {
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
@@ -438,7 +439,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeCreateNodeRef(
     }
 
     CreateNodeRef(
-        db,
+        *db,
         args.Request.GetParentId(),
         commitId,
         args.Request.GetName(),
@@ -504,9 +505,9 @@ bool TIndexTabletActor::PrepareTx_UnsafeDeleteNodeRef(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
     return ReadNodeRef(
-        db,
+        *db,
         args.Request.GetParentId(),
         commitId,
         args.Request.GetName(),
@@ -518,7 +519,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNodeRef(
     TTransactionContext& tx,
     TTxIndexTablet::TUnsafeDeleteNodeRef& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     if (!args.NodeRef) {
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
@@ -538,7 +539,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeDeleteNodeRef(
     }
 
     RemoveNodeRef(
-        db,
+        *db,
         args.Request.GetParentId(),
         args.NodeRef->MinCommitId,
         commitId,
@@ -605,9 +606,9 @@ bool TIndexTabletActor::PrepareTx_UnsafeUpdateNodeRef(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
     return ReadNodeRef(
-        db,
+        *db,
         args.Request.GetParentId(),
         commitId,
         args.Request.GetName(),
@@ -619,7 +620,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNodeRef(
     TTransactionContext& tx,
     TTxIndexTablet::TUnsafeUpdateNodeRef& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     if (!args.NodeRef) {
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
@@ -639,7 +640,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNodeRef(
     }
 
     RemoveNodeRef(
-        db,
+        *db,
         args.Request.GetParentId(),
         args.NodeRef->MinCommitId,
         commitId,
@@ -649,7 +650,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeUpdateNodeRef(
         args.NodeRef->ShardNodeName);
 
     CreateNodeRef(
-        db,
+        *db,
         args.Request.GetParentId(),
         commitId,
         args.Request.GetName(),
@@ -716,7 +717,7 @@ bool TIndexTabletActor::ValidateTx_UnsafeGetNodeRef(
 
 bool TIndexTabletActor::PrepareTx_UnsafeGetNodeRef(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TUnsafeGetNodeRef& args)
 {
     Y_UNUSED(ctx);
@@ -787,9 +788,9 @@ void TIndexTabletActor::HandleUnsafeCreateHandle(
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::PrepareTx_UnsafeCreateHandle(
-        const TActorContext& ctx,
-        TTransactionContext& tx,
-        TTxIndexTablet::TUnsafeCreateHandle& args)
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeCreateHandle& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -814,10 +815,10 @@ void TIndexTabletActor::ExecuteTx_UnsafeCreateHandle(
         return;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     TSessionHandle* handle = UnsafeCreateHandle(
-        db,
+        *db,
         session,
         args.Request.GetHandle(),
         args.Request.GetNodeId(),
@@ -847,6 +848,86 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateHandle(
         ctx,
         TFileStoreComponents::TABLET,
         "%s UnsafeCreateHandle: %s, result: %s",
+        LogTag.c_str(),
+        args.Request.DebugString().Quote().c_str(),
+        response->Record.ShortUtf8DebugString().Quote().c_str());
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleUnsafeChangeTabletState(
+    const TEvIndexTablet::TEvUnsafeChangeTabletStateRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddInFlightRequest<TEvIndexTablet::TUnsafeChangeTabletStateMethod>(
+        *requestInfo);
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s UnsafeChangeTabletState: %s",
+        LogTag.c_str(),
+        msg->Record.DebugString().Quote().c_str());
+
+    ExecuteTx<TUnsafeChangeTabletState>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_UnsafeChangeTabletState(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeChangeTabletState& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TUnsafeChangeTabletState& args)
+{
+    Y_UNUSED(ctx);
+
+    auto db = CreateIndexTabletDatabase(tx.DB);
+
+    if (args.Request.HasCompressNodeRef()) {
+        SetCompressNodeRef(*db, args.Request.GetCompressNodeRef());
+    }
+
+    if (args.Request.HasFrozen()) {
+        SetFrozen(*db, args.Request.GetFrozen());
+    }
+}
+
+void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
+    const TActorContext& ctx,
+    TTxIndexTablet::TUnsafeChangeTabletState& args)
+{
+    RemoveInFlightRequest(*args.RequestInfo);
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s UnsafeChangeTabletState: %s, result: %s",
         LogTag.c_str(),
         args.Request.DebugString().Quote().c_str(),
         response->Record.ShortUtf8DebugString().Quote().c_str());

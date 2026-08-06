@@ -16,7 +16,6 @@
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
-#include <library/cpp/threading/atomic/bool.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
@@ -311,6 +310,13 @@ using TShardStatePtr = TIntrusivePtr<TShardState>;
 struct TSessionInfo
     : public TIntrusiveListItem<TSessionInfo>
 {
+    struct TSubSessionInfo
+    {
+        bool ReadOnly = false;
+        TInstant LastPing;
+        ui64 OwnerGeneration = 0;
+    };
+
     TString ClientId;
     NProto::TFileStore FileStore;
     TString SessionId;
@@ -321,7 +327,7 @@ struct TSessionInfo
     NActors::TActorId SessionActor;
     ui64 TabletId = 0;
 
-    THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
+    THashMap<ui64, TSubSessionInfo> SubSessions;
     ESessionCreateDestroyState CreateDestroyState =
         ESessionCreateDestroyState::STATE_NONE;
 
@@ -339,7 +345,7 @@ struct TSessionInfo
         info.SetSessionSeqNo(seqNo);
         auto it = SubSessions.find(seqNo);
         if (it != SubSessions.end()) {
-            info.SetReadOnly(it->second.first);
+            info.SetReadOnly(it->second.ReadOnly);
         }
     }
 
@@ -349,9 +355,15 @@ struct TSessionInfo
         FileStore = std::move(fileStore);
     }
 
-    void AddSubSession(ui64 seqNo, bool readOnly)
+    void AddSubSession(
+        ui64 seqNo,
+        bool readOnly,
+        ui64 ownerGeneration)
     {
-        SubSessions[seqNo] = std::make_pair(readOnly, TInstant::Now());
+        auto& subSession = SubSessions[seqNo];
+        subSession.ReadOnly = readOnly;
+        subSession.LastPing = TInstant::Now();
+        subSession.OwnerGeneration = ownerGeneration;
     }
 
     bool RemoveSubSession(ui64 seqNo)
@@ -365,10 +377,16 @@ struct TSessionInfo
         return SubSessions.count(seqNo) > 0;
     }
 
+    const TSubSessionInfo* FindSubSession(ui64 seqNo) const
+    {
+        auto it = SubSessions.find(seqNo);
+        return it != SubSessions.end() ? &it->second : nullptr;
+    }
+
     void UpdateSubSession(ui64 seqNo, TInstant now)
     {
         if (auto it = SubSessions.find(seqNo); it != SubSessions.end()) {
-            it->second.second = now;
+            it->second.LastPing = now;
         }
     }
 
@@ -397,6 +415,11 @@ struct TSessionInfo
         }
 
         return MainTabletState;
+    }
+
+    bool HasShards() const
+    {
+        return FileStore.ShardFileSystemIdsSize() > 0;
     }
 
     const TString& SelectShard()
@@ -463,6 +486,7 @@ public:
         NCloud::NProto::EStorageMediaKind mediaKind,
         IRequestStatsPtr requestStats,
         const NActors::TActorId& sessionActor,
+        ui64 ownerGeneration,
         ui64 tabletId);
 
     TSessionInfo* FindSession(

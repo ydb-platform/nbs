@@ -30,7 +30,6 @@ struct TOptions
     TString Host;
     ui32 InsecurePort = 0;
     ui32 SecurePort = 0;
-    TString IamTokenFile;
 
     EDeviceMode DeviceMode = EDeviceMode::Endpoint;
 

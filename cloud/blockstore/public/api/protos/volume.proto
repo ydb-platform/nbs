@@ -110,6 +110,9 @@ message TVolumeModel
 
     // Number of user channels to store fresh blobs.
     uint32 FreshChannelsCount = 9;
+
+    // Number of blocks per stripe (for multipartition YDB-based volumes).
+    uint32 BlocksPerStripe = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -292,6 +295,9 @@ message TVolume
     // Enables discard (ZeroBlocks) requests for the volume.
     // If this flag is set, it should never be unset anymore!
     optional bool VhostDiscardEnabled = 39;
+
+    // Number of blocks per stripe (for multipartition YDB-based volumes).
+    uint32 BlocksPerStripe = 40;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -407,6 +413,15 @@ message TVolumeStats
 
     // Current trim fresh log as commit id
     uint64 TrimFreshLogToCommitId = 29;
+
+    // Number of read block masks during compaction.
+    uint64 BlockMaskReadDuringCompaction = 30;
+
+    // Number of blobs processed during compaction.
+    uint64 BlobsProcessedDuringCompaction = 31;
+
+    // Number of garbage blocks in the most dirty range ignoring zeroed blocks.
+    uint32 CompactionIgnoringZeroedScore = 32;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -633,6 +648,10 @@ message TListVolumesRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
+
+    // Maximum number of concurrent DescribeScheme requests during traversal.
+    // 0 means use server default.
+    uint32 MaxConcurrency = 2;
 }
 
 message TListVolumesResponse

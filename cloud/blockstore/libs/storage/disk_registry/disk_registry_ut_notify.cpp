@@ -499,6 +499,134 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         });
         UNIT_ASSERT_VALUES_EQUAL(2, backOnlineCount);
     }
+
+    Y_UNIT_TEST(ShouldNotifyAboutVolumeHealthChange)
+    {
+        auto notifyService = std::make_shared<TFakeNotifyService>();
+
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                }),
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+                           .WithAgents(agents)
+                           .With(notifyService)
+                           .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        diskRegistry.AllocateDisk(
+            "nonrepl-vol",
+            10_GB,
+            4_KB,
+            "",
+            0,
+            "yc-nbs",
+            "yc-nbs.folder");
+
+        diskRegistry.UpdateVolumeHealth(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_UNHEALTHY,
+            1);
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL("yc-nbs", notifyService->Requests[0].CloudId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "yc-nbs.folder",
+            notifyService->Requests[0].FolderId);
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL(
+            "nonrepl-vol",
+            notifyService->Requests[0].Event,
+            TDiskError,
+            DiskId);
+
+        diskRegistry.UpdateVolumeHealth(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_HEALTHY,
+            2);
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, notifyService->Requests.size());
+        MY_UNIT_ASSERT_NOTIFICATION_EVENT_FIELD_EQUAL(
+            "nonrepl-vol",
+            notifyService->Requests[1].Event,
+            TDiskBackOnline,
+            DiskId);
+    }
+
+    Y_UNIT_TEST(ShouldEnforceSeqNoOrdering)
+    {
+        auto notifyService = std::make_shared<TFakeNotifyService>();
+
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                }),
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+                           .WithAgents(agents)
+                           .With(notifyService)
+                           .Build();
+        TDiskRegistryClient diskRegistry(*runtime);
+
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        diskRegistry.AllocateDisk(
+            "nonrepl-vol",
+            10_GB,
+            4_KB,
+            "",
+            0,
+            "yc-nbs",
+            "yc-nbs.folder");
+
+        diskRegistry.UpdateVolumeHealth(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_UNHEALTHY,
+            5);
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
+
+        diskRegistry.SendUpdateVolumeHealthRequest(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_UNHEALTHY,
+            5);
+        auto duplicate = diskRegistry.RecvUpdateVolumeHealthResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, duplicate->GetStatus());
+
+        diskRegistry.SendUpdateVolumeHealthRequest(
+            "nonrepl-vol",
+            NProto::VOLUME_HEALTH_HEALTHY,
+            3);
+        auto stale = diskRegistry.RecvUpdateVolumeHealthResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, stale->GetStatus());
+
+        runtime->AdvanceCurrentTime(5s);
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, notifyService->Requests.size());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

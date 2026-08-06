@@ -1,0 +1,2 @@
+ExternalReadDataPayload: true
+ExternalWriteDataPayloadEnabled: true

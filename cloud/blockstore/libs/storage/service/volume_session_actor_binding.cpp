@@ -88,6 +88,7 @@ void TVolumeSessionActor::HandleChangeVolumeBindingRequest(
     }
     request->BindingType = bindingType;
     request->PreemptionSource = msg->Source;
+    request->UseGentlePreemption = msg->UseGentlePreemption;
     request->CallContext = std::move(msg->CallContext);
 
     using TEventType =

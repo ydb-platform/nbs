@@ -3,6 +3,7 @@
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -33,7 +34,7 @@ struct TReplicaDescriptor
 
 // TODO: increase x4?
 // Keep the value less than MaxBufferSize in
-// cloud/blockstore/libs/rdma/iface/client.h
+// cloud/storage/core/libs/rdma/iface/client.h
 constexpr ui64 ResyncRangeSize = 4_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,7 +46,7 @@ bool CanFixMismatch(bool isMinor, NProto::EResyncPolicy resyncPolicy);
 
 std::unique_ptr<NActors::IActor> MakeResyncRangeActor(
     TRequestInfoPtr requestInfo,
-    TString diskId,
+    const TLogTitle& logTitle,
     ui32 blockSize,
     TBlockRange64 range,
     TVector<TReplicaDescriptor> replicas,

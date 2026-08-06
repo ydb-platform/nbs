@@ -72,6 +72,7 @@ public:
     TString GetCertFile() const;
     TString GetCertPrivateKeyFile() const;
     TVector<TCertificate> GetCerts() const;
+    TVector<TCertificate> GetCertsWithLegacyFallback() const;
     bool GetKeepAliveEnabled() const;
     TDuration GetKeepAliveIdleTimeout() const;
     TDuration GetKeepAliveProbeTimeout() const;
@@ -121,7 +122,7 @@ public:
     ui32 GetMaxWriteIops() const;
     TDuration GetMaxBurstTime() const;
     bool DeprecatedGetRdmaClientEnabled() const;
-    const NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
+    const ::NCloud::NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
     bool GetUseFakeRdmaClient() const;
     bool GetDisableClientThrottlers() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
@@ -138,6 +139,9 @@ public:
     TString GetNodeRegistrationToken() const;
     NProto::TChecksumFlags GetChecksumFlags() const;
     bool GetVhostDiscardEnabled() const;
+    bool GetVhostDiscardOnlyEnabled() const;
+    bool GetVhostWriteZeroesEnabled() const;
+    bool GetDropDiscardRequests() const;
     ui32 GetVhostOptimalIoSize() const;
     ui32 GetMaxZeroBlocksSubRequestSize() const;
     NProto::EEncryptZeroPolicy GetEncryptZeroPolicy() const;
@@ -145,6 +149,8 @@ public:
     bool GetAutomaticNbdDeviceManagement() const;
     bool GetEnableOverlappingRequestsGuard() const;
     bool GetEnableRequestSplitter() const;
+    ui64 GetExternalVhostServerThreadPoolSize() const;
+    TDuration GetRefreshCertsPeriod() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

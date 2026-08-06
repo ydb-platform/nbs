@@ -94,11 +94,7 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
         return TString();
     }
 
-    const bool multiTabletForwardingEnabled =
-        StorageConfig->GetMultiTabletForwardingEnabled()
-        && !disableMultiTabletForwarding;
-
-    if (multiTabletForwardingEnabled && shardNo) {
+    if (!disableMultiTabletForwarding && shardNo) {
         const int shardIdx = SafeIntegerCast<int>(shardNo - 1);
 
         if (shardIds.size() <= shardIdx) {

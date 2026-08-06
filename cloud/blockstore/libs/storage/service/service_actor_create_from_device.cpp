@@ -173,6 +173,7 @@ void TCreateVolumeFromDeviceActor::HandleCreateDiskFromDevicesResponse(
     volumeParams.BlockSize = volumeConfig.GetBlockSize();
     volumeParams.MediaKind = static_cast<NProto::EStorageMediaKind>(
         volumeConfig.GetStorageMediaKind());
+    volumeParams.IsSystem = volumeConfig.GetIsSystem();
     volumeParams.BlocksCountPerPartition = msg->Record.GetBlockCount();
     volumeParams.PartitionsCount = 1;
 

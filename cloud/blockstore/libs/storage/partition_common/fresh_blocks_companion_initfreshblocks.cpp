@@ -59,6 +59,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
     for (const auto& blob: msg->Blobs) {
         auto error = ParseFreshBlobContent(
             blob.CommitId,
+            blob.BlobId,
             PartitionConfig.GetBlockSize(),
             blob.Data,
             blocks);
@@ -78,7 +79,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
     }
 
     for (const auto& block: blocks) {
-        TrimFreshLogState.AccessTrimFreshLogBarriers().AcquireBarrier(
+        ThreadSafeState->AccessTrimFreshLogBarriers()->AcquireBarrier(
             block.Meta.CommitId);
     }
 

@@ -6,6 +6,7 @@ SRCS(
     service_actor_actions_backup_disk_registry_state.cpp
     service_actor_actions_backup_path_descriptions.cpp
     service_actor_actions_backup_tablet_boot_infos.cpp
+    service_actor_actions_get_tablet_boot_infos.cpp
     service_actor_actions_change_disk_device.cpp
     service_actor_actions_change_storage_config.cpp
     service_actor_actions_check_blob.cpp
@@ -15,9 +16,11 @@ SRCS(
     service_actor_actions_configure_volume_balancer.cpp
     service_actor_actions_create_disk_from_devices.cpp
     service_actor_actions_delete_checkpoint_data.cpp
+    service_actor_actions_describe_blob.cpp
     service_actor_actions_describe_blocks.cpp
     service_actor_actions_describe.cpp
     service_actor_actions_disk_registry_change_state.cpp
+    service_actor_actions_disk_registry_describe_disk.cpp
     service_actor_actions_disk_registry_ensure_state_integrity.cpp
     service_actor_actions_drain_node.cpp
     service_actor_actions_finish_fill_disk.cpp
@@ -49,7 +52,7 @@ SRCS(
     service_actor_actions_setup_channels.cpp
     service_actor_actions_suspend_device.cpp
     service_actor_actions_suspend_disk_agent.cpp
-    service_actor_actions_switch_vhost_discard_option.cpp
+    service_actor_actions_set_vhost_discard_enabled_flag.cpp
     service_actor_actions_update_disk_block_size.cpp
     service_actor_actions_update_disk_replica_count.cpp
     service_actor_actions_update_disk_registry_params.cpp
@@ -88,6 +91,7 @@ SRCS(
     service_actor_unmount.cpp
     service_actor_update_disk_registry_config.cpp
     service_actor_update_volume_throttling_config.cpp
+    service_actor_vhost_discard_flag.cpp
     service_actor_volume_binding.cpp
     service_actor_writeblocks.cpp
     service_counters.cpp
@@ -96,6 +100,7 @@ SRCS(
     volume_session_actor.cpp
     volume_session_actor_binding.cpp
     volume_session_actor_mount.cpp
+    volume_session_actor_release.cpp
     volume_session_actor_start.cpp
     volume_session_actor_stop.cpp
     volume_session_actor_unmount.cpp

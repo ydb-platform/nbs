@@ -35,6 +35,22 @@ Y_UNIT_TEST_SUITE(TBlockMaskTest)
 
         mask.Set(255);
         UNIT_ASSERT(IsBlockMaskFull(mask, 256));
+
+        mask.Set(0, MaxBlocksCount);
+        UNIT_ASSERT(IsBlockMaskFull(mask, MaxBlocksCount));
+    }
+
+    Y_UNIT_TEST(ShouldConstructFullMask)
+    {
+        TBlockMask mask = GetFullBlockMask(256);
+        for (ui32 i = 1; i <= 256; ++i) {
+            UNIT_ASSERT(IsBlockMaskFull(mask, i));
+        }
+
+        mask = GetFullBlockMask(MaxBlocksCount);
+        for (ui32 i = 1; i <= MaxBlocksCount; ++i) {
+            UNIT_ASSERT(IsBlockMaskFull(mask, i));
+        }
     }
 }
 

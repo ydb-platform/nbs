@@ -424,12 +424,18 @@ void TIndexTabletActor::AddBlobIndexOpIfNeeded(
         ? static_cast<int>(backpressureStatus.FlushBytes)
         : 0;
 
+    const int flushBytesItemCountPriority =
+        shouldFlushBytesByFreshBytesItemCount
+            ? static_cast<int>(backpressureStatus.FlushBytesItemCount)
+            : 0;
+
     // Prioritize background operations whose optimization targets are close
     // to their backpressure thresholds
     const int maxPriority = Max(
         compactionPriority,
         cleanupPriority,
-        flushBytesPriority);
+        flushBytesPriority,
+        flushBytesItemCountPriority);
 
     if (maxPriority == 0) {
         // No background operations are needed to run
@@ -490,7 +496,7 @@ void TIndexTabletActor::AddBlobIndexOpIfNeeded(
     // FlushBytes operation will run for a long time and this will result
     // in high delays for user operations.
     // Therefore FlushBytes operation is enqueued at any priority level.
-    if (flushBytesPriority > 0) {
+    if (flushBytesPriority > 0 || flushBytesItemCountPriority > 0) {
         AddBackgroundBlobIndexOp(EBlobIndexOp::FlushBytes);
     }
 }
@@ -601,13 +607,13 @@ bool TIndexTabletActor::PrepareTx_Compaction(
 {
     InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     args.CommitId = GetCurrentCommitId();
 
     // should not ref mixed range on tx restart due to nodes validation
     if (!args.RangeLoaded) {
-        if (!LoadMixedBlocks(db, args.RangeId)) {
+        if (!LoadMixedBlocks(*db, args.RangeId)) {
             return false;
         }
     }
@@ -628,8 +634,8 @@ bool TIndexTabletActor::PrepareTx_Compaction(
 
     bool ready = true;
     for (auto nodeId: nodes) {
-        TMaybe<IIndexTabletDatabase::TNode> node;
-        if (!ReadNode(db, nodeId, args.CommitId, node)) {
+        TMaybe<INodeIndexTabletDatabase::TNode> node;
+        if (!ReadNode(*db, nodeId, args.CommitId, node)) {
             ready = false;
             continue;
         }
@@ -658,9 +664,9 @@ void TIndexTabletActor::ExecuteTx_Compaction(
     const auto stats = GetCompactionStats(args.RangeId);
 
     if (!args.CompactionBlobs) {
-        TIndexTabletDatabase db(tx.DB);
+        auto db = CreateIndexTabletDatabase(tx.DB);
         UpdateCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0, true);
-        db.WriteCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0);
+        db->WriteCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0);
         args.SkipRangeRewrite = true;
     } else if (garbageThreshold && blobSizeThreshold) {
         ui32 storedBlocks = 0;
@@ -739,11 +745,11 @@ void TIndexTabletActor::CompleteTx_Compaction(
 
         CompleteBlobIndexOp();
         EnqueueBlobIndexOpIfNeeded(ctx);
-        Metrics.Compaction.Update(
+        Metrics->Compaction.Update(
             1,  // count
             0,  // requestBytes
             ctx.Now() - args.RequestInfo->StartedTs);
-        Metrics.CompactionExtra.DudCount.fetch_add(
+        Metrics->CompactionExtra.DudCount.fetch_add(
             1,
             std::memory_order_relaxed);
         return;
@@ -842,7 +848,7 @@ void TIndexTabletActor::HandleCompactionCompleted(
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    Metrics.Compaction.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->Compaction.Update(msg->Count, msg->Size, msg->Time);
 
     WorkerActors.erase(ev->Sender);
 }

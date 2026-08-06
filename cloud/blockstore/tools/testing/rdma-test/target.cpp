@@ -8,12 +8,12 @@
 
 #include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
 
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <util/string/builder.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
@@ -21,6 +21,8 @@
 #include <util/system/mutex.h>
 
 namespace NCloud::NBlockStore {
+
+using namespace NCloud::NStorage;
 
 LWTRACE_USING(BLOCKSTORE_TEST_PROVIDER);
 
@@ -42,8 +44,7 @@ auto CreateRequest(NRdma::TProtoMessagePtr proto)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestHandler final
-    : public NRdma::IServerHandler
+class TRequestHandler final: public NRdma::IServerHandler
 {
 private:
     const TOptionsPtr Options;
@@ -51,7 +52,8 @@ private:
     const IStoragePtr Storage;
 
     NRdma::IServerEndpointPtr Endpoint;
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TRequestHandler(
@@ -68,24 +70,40 @@ public:
         Endpoint = std::move(endpoint);
     }
 
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return NCloud::NBlockStore::CreateCallContext();
+    }
+
     void HandleRequest(
         void* context,
-        TCallContextPtr callContext,
+        TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
     {
-        TaskQueue->ExecuteSimple([=, this] {
-            auto error = SafeExecute<NProto::TError>([=, this] {
-                return DoHandleRequest(context, callContext, in, out);
-            });
+        TaskQueue->ExecuteSimple(
+            [=,
+             this,
+             callContext =
+                 ToBlockStoreCallContext(std::move(callContext))]() mutable
+            {
+                auto error = SafeExecute<NProto::TError>(
+                    [=, this]()
+                    {
+                        return DoHandleRequest(
+                            context,
+                            std::move(callContext),
+                            in,
+                            out);
+                    });
 
-            if (HasError(error)) {
-                Endpoint->SendError(
-                    context,
-                    error.GetCode(),
-                    error.GetMessage());
-            }
-        });
+                if (HasError(error)) {
+                    Endpoint->SendError(
+                        context,
+                        error.GetCode(),
+                        error.GetMessage());
+                }
+            });
     }
 
 private:
@@ -217,8 +235,7 @@ using TRequestHandlerPtr = std::shared_ptr<TRequestHandler>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestTarget final
-    : public IRunnable
+class TTestTarget final: public IRunnable
 {
 private:
     const TOptionsPtr Options;
@@ -236,19 +253,17 @@ private:
 
 public:
     TTestTarget(
-            TOptionsPtr options,
-            ITaskQueuePtr taskQueue,
-            IStoragePtr storage,
-            NRdma::IServerPtr server)
+        TOptionsPtr options,
+        ITaskQueuePtr taskQueue,
+        IStoragePtr storage,
+        NRdma::IServerPtr server)
         : Options(std::move(options))
         , TaskQueue(std::move(taskQueue))
         , Storage(std::move(storage))
         , Server(std::move(server))
     {
-        RequestHandler = std::make_shared<TRequestHandler>(
-            Options,
-            TaskQueue,
-            Storage);
+        RequestHandler =
+            std::make_shared<TRequestHandler>(Options, TaskQueue, Storage);
 
         auto serverEndpoint = Server->StartEndpoint(
             Options->Host,

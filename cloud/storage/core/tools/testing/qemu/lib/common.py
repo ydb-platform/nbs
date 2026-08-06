@@ -1,8 +1,25 @@
-import os
 import logging
+import os
+import platform
+import shlex
+import tarfile
 import yatest.common as common
 
 logger = logging.getLogger(__name__)
+
+SANITIZER_OPTIONS = (
+    "ASAN_OPTIONS",
+    "MSAN_OPTIONS",
+    "TSAN_OPTIONS",
+    "UBSAN_OPTIONS",
+)
+
+
+def sanitizer_core_options_exports():
+    return [
+        'export {name}="${{{name}:+${name}:}}disable_coredump=0"'.format(name=name)
+        for name in SANITIZER_OPTIONS
+    ]
 
 
 class SshToGuest(object):
@@ -11,11 +28,21 @@ class SshToGuest(object):
         self.port = port
         self.key = key
 
-    def get_command(self, command, timeout=None):
+    def get_command(self, command, timeout=None, wrap_test_env=True):
         cmd = []
 
         if timeout is not None:
             cmd = ["timeout", str(timeout)]
+
+        if command and wrap_test_env:
+            quoted_command = shlex.quote(command)
+            command = (
+                "if [ -x /test_env.sh ]; then "
+                "exec /test_env.sh {command}; "
+                "else "
+                "exec /bin/bash -lc {command}; "
+                "fi"
+            ).format(command=quoted_command)
 
         cmd += [
             "ssh",
@@ -30,7 +57,7 @@ class SshToGuest(object):
             "-i", self.key,
             "-l", self.user,
             "-p", str(self.port),
-            "-o LogLevel=error",
+            "-o", "LogLevel=VERBOSE",
             "127.0.0.1",
             command
         ]
@@ -69,4 +96,108 @@ def get_mount_paths(inst_index=0):
     if common.ram_drive_path():
         mounts.append(tuple(("tmpfs_path", common.ram_drive_path(), socket_path("tmpfs_path"))))
 
+    if common.runtime.gdb_path():
+        tool_dir = os.path.dirname(os.path.dirname(os.path.dirname(
+            common.runtime.gdb_path())))
+        mounts.append(("gdb", tool_dir, socket_path("gdb")))
+
     return mounts
+
+
+def _get_qemu_bindir():
+    return common.build_path(
+        "cloud/storage/core/tools/testing/qemu/bin"
+    )
+
+
+def _unpack_qemu_bindir(bindir):
+    with tarfile.open(os.path.join(bindir, "qemu-bin.tar.gz")) as tf:
+        tf.extractall(bindir)
+
+
+def is_arm():
+    return platform.machine().lower() in ("aarch64", "arm64")
+
+
+def _get_env_value(name):
+    return os.getenv(name) or None
+
+
+def _get_env_path(name, *relative_roots):
+    value = _get_env_value(name)
+    if value is None:
+        return None
+
+    if os.path.isabs(value):
+        return value
+
+    paths = [os.path.join(root, value) for root in relative_roots]
+    paths += [common.build_path(value), common.source_path(value)]
+    for path in paths:
+        if os.path.exists(path):
+            return path
+
+    return paths[0]
+
+
+def get_virtiofs_migration():
+    virtiofs_migration = _get_env_value("QEMU_VIRTIOFS_MIGRATION")
+    if virtiofs_migration:
+        return virtiofs_migration
+
+    return None
+
+
+def get_chardev_reconnect():
+    reconnect = _get_env_value("QEMU_CHARDEV_RECONNECT")
+    if reconnect is not None:
+        return int(reconnect)
+
+    return None
+
+
+def get_qemu_kvm():
+    bindir = _get_qemu_bindir()
+    qemu_kvm = _get_env_path("QEMU_BIN", bindir)
+    if qemu_kvm is None:
+        qemu_system_bin = "qemu-system-x86_64"
+        if is_arm():
+            qemu_system_bin = "qemu-system-aarch64"
+
+        qemu_kvm = os.path.join(bindir, "usr", "bin", qemu_system_bin)
+    if not os.path.exists(qemu_kvm):
+        _unpack_qemu_bindir(bindir)
+
+    return qemu_kvm
+
+
+def get_qemu_firmware():
+    bindir = _get_qemu_bindir()
+    qemu_firmware = _get_env_path("QEMU_FIRMWARE", bindir)
+    if qemu_firmware is None:
+        qemu_firmware = os.path.join(bindir, "usr", "share", "qemu")
+    if not os.path.exists(qemu_firmware):
+        _unpack_qemu_bindir(bindir)
+
+    return qemu_firmware
+
+
+def get_qemu_bios(is_arm_host=None):
+    if is_arm_host is None:
+        is_arm_host = is_arm()
+
+    bindir = _get_qemu_bindir()
+    qemu_bios = _get_env_path("QEMU_BIOS", bindir)
+    if qemu_bios is not None:
+        if not os.path.exists(qemu_bios):
+            _unpack_qemu_bindir(bindir)
+        return qemu_bios
+
+    if not is_arm_host:
+        return None
+
+    qemu_bios = os.path.join(bindir, "usr", "share", "qemu", "edk2-aarch64-code.fd")
+    if not os.path.exists(qemu_bios):
+        _unpack_qemu_bindir(bindir)
+
+    return qemu_bios

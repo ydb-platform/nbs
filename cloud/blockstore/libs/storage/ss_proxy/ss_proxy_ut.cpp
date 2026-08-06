@@ -1288,6 +1288,90 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             error.GetMessage());
     }
 
+    Y_UNIT_TEST(ShouldReturnSilentErrorIfDescribeSchemeFails)
+    {
+        TTestEnv env;
+        auto config = CreateStorageConfig(
+            []()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(true);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+
+        bool armed = false;
+        NSchemeCache::TSchemeCacheNavigate::EStatus forcedStatus =
+            NSchemeCache::TSchemeCacheNavigate::EStatus::Unknown;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTxProxySchemeCache::EvNavigateKeySetResult: {
+                        if (!armed) {
+                            break;
+                        }
+
+                        auto* msg = event->Get<
+                            TEvTxProxySchemeCache::TEvNavigateKeySetResult>();
+                        auto* record = msg->Request.Get();
+                        if (!record || record->ResultSet.size() != 1) {
+                            break;
+                        }
+
+                        record->ErrorCount = 1;
+                        record->ResultSet.front().Status = forcedStatus;
+                        armed = false;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto expectedError = MakeSchemeShardError(
+            NKikimrScheme::StatusPathDoesNotExist,
+            "Path doesn't exist");
+
+        const TString missingPath =
+            config->GetSchemeShardDir() + "/missing-path";
+        const auto statuses = {
+            NSchemeCache::TSchemeCacheNavigate::EStatus::PathErrorUnknown,
+            NSchemeCache::TSchemeCacheNavigate::EStatus::RootUnknown,
+        };
+
+        for (const auto status: statuses) {
+            forcedStatus = status;
+            armed = true;
+
+            TActorId sender = runtime.AllocateEdgeActor();
+
+            Send(
+                runtime,
+                MakeSSProxyServiceId(),
+                sender,
+                std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+                    missingPath));
+
+            TAutoPtr<IEventHandle> handle;
+            auto* response = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvDescribeSchemeResponse>(handle);
+
+            UNIT_ASSERT_C(!Succeeded(response), GetErrorReason(response));
+
+            const auto error = response->GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedError.GetCode(),
+                error.GetCode(),
+                error.GetMessage());
+            UNIT_ASSERT_C(
+                HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
+                error.GetMessage());
+        }
+    }
+
     Y_UNIT_TEST(ShouldFailDecsribeVolumeIfSSTimesout)
     {
         TTestEnv env;
@@ -1989,6 +2073,89 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "NavigateKeySet undelivered",
             response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldSkipUnknownChildKindsWithSchemeCache)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+        auto config = CreateStorageConfig(
+            []()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(true);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        CreateVolume(runtime, "volume0");
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvTxProxySchemeCache::EvNavigateKeySetResult)
+                {
+                    auto* msg = event->Get<
+                        TEvTxProxySchemeCache::TEvNavigateKeySetResult>();
+                    auto* record = msg->Request.Get();
+                    if (!record || record->ResultSet.size() != 1) {
+                        return false;
+                    }
+
+                    auto& entry = record->ResultSet.front();
+                    if (!entry.ListNodeEntry) {
+                        return false;
+                    }
+
+                    auto newListNode = MakeIntrusive<
+                        NSchemeCache::TSchemeCacheNavigate::TListNodeEntry>();
+                    newListNode->Kind = entry.ListNodeEntry->Kind;
+                    for (const auto& child: entry.ListNodeEntry->Children) {
+                        newListNode->Children.emplace_back(
+                            child.Name,
+                            child.PathId,
+                            child.Kind,
+                            child.SchemaVersion);
+                    }
+
+                    newListNode->Children.emplace_back(
+                        "fake-table",
+                        TPathId(1, 999),
+                        NSchemeCache::TSchemeCacheNavigate::KindTable);
+                    newListNode->Children.emplace_back(
+                        "fake-topic",
+                        TPathId(1, 998),
+                        NSchemeCache::TSchemeCacheNavigate::KindTopic);
+
+                    entry.ListNodeEntry = std::move(newListNode);
+                }
+                return false;
+            });
+
+        const auto response = DescribePath(runtime, config);
+        const auto& pathDescription = response->Get()->PathDescription;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimrSchemeOp::EPathTypeSubDomain,
+            pathDescription.GetSelf().GetPathType());
+
+        for (const auto& child: pathDescription.GetChildren()) {
+            UNIT_ASSERT_C(
+                child.GetName() != "fake-table" &&
+                    child.GetName() != "fake-topic",
+                TStringBuilder()
+                    << "Unknown child kind should have been skipped: "
+                    << child.GetName());
+
+            auto pathType = child.GetPathType();
+            UNIT_ASSERT_C(
+                pathType == NKikimrSchemeOp::EPathTypeDir ||
+                    pathType == NKikimrSchemeOp::EPathTypeBlockStoreVolume ||
+                    pathType == NKikimrSchemeOp::EPathTypeSubDomain,
+                TStringBuilder()
+                    << "Unexpected path type: " << static_cast<int>(pathType));
+        }
     }
 }
 

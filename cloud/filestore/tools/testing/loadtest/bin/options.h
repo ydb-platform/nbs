@@ -32,6 +32,7 @@ struct TOptions
 
     TString VerboseLevel;
     bool EnableGrpcTracing = false;
+    bool UseFastShardRuntime = false;
 
     void Parse(int argc, char** argv);
 

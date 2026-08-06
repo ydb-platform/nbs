@@ -4,24 +4,52 @@
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
+#include <util/generic/intrlist.h>
 #include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Referenced from TWriteBackCacheState::ReleaseHandleRequests
+struct TReleaseHandleRequest: public TIntrusiveListItem<TReleaseHandleRequest>
+{
+    TInstant RequestStartTime = TInstant::Zero();
+
+    // The promise is fulfilled when |THandleState::RequestCount| hits 0
+    NThreading::TPromise<NCloud::NProto::TError> ReadyToReleasePromise =
+        NThreading::NewPromise<NCloud::NProto::TError>();
+
+    explicit TReleaseHandleRequest(TInstant now)
+        : RequestStartTime(now)
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct THandleState
 {
-    // Number of pending and unflushed requests associated with the handle
-    ui64 ActiveWriteDataRequestCount = 0;
+    // Pending requests from TNodeState::Cache filtered by Handle
+    TIntrusiveList<TPendingWriteDataRequest, THandleStateTag> PendingRequests;
 
-    // The promise is fulfilled when |RequestCount| hits 0
-    // Not initialized by default unless ReleaseHandle is requested
-    NThreading::TPromise<NCloud::NProto::TError> ReadyToReleasePromise;
+    // Unflushed requests from TNodeState::Cache filtered by Handle
+    TIntrusiveList<TCachedWriteDataRequest, THandleStateTag> UnflushedRequests;
+
+    // The field is initialized when ReleaseHandle request is made.
+    // Only one ReleaseHandle request may be active at a time for a handle.
+    std::unique_ptr<TReleaseHandleRequest> ReleaseHandleRequest;
+
+    bool HasRequests() const
+    {
+        return !PendingRequests.Empty() || !UnflushedRequests.Empty();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,18 +68,39 @@ enum class ENodeFlushStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFlushRequest
+// Referenced from TWriteBackCacheState::FlushRequests
+struct TFlushRequest: public TIntrusiveListItem<TFlushRequest>
 {
     const ui64 SequenceId = 0;
+    const TInstant RequestStartTime = TInstant::Zero();
 
     // The promise is fulfilled when there are no pending or unflushed requests
     // with SequenceId <= TFlushRequest::SequenceId (for a node or global)
     NThreading::TPromise<NCloud::NProto::TError> Promise =
         NThreading::NewPromise<NCloud::NProto::TError>();
 
-    explicit TFlushRequest(ui64 sequenceId)
+    explicit TFlushRequest(ui64 sequenceId, TInstant requestStartTime)
         : SequenceId(sequenceId)
+        , RequestStartTime(requestStartTime)
     {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Referenced from TWriteBackCacheState::ActiveBarriers when the barrier has
+// been acquired or from TWriteBackCacheState::PendingBarriers when the
+// acquisition request has not been completed
+struct TBarrier: public TIntrusiveListItem<TBarrier>
+{
+    // The promise is fulfilled when all requests associated with a node with
+    // SequenceId less than or equal to the barrier id (the key in
+    // TNodeState::Barriers) are evicted
+    NThreading::TPromise<TResultOrError<ui64>> Promise;
+
+    TInstant RequestStartTime = TInstant::Zero();
+    TInstant BarrierAcquisitionTime = TInstant::Zero();
+
+    bool IsAcquired = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -75,31 +124,34 @@ struct TNodeState
     // requests with SequenceId less or equal than |TFlushRequest::SequenceId|.
     // Flush requests are stored in chronological order: SequenceId values are
     // strictly increasing so newer flush requests have larger SequenceId.
-    TDeque<TFlushRequest> FlushRequests;
+    TDeque<std::unique_ptr<TFlushRequest>> FlushRequests;
 
     // Holds active request handles and tracks handle release
     // Key: handle
     THashMap<ui64, THandleState> Handles;
 
-    // Number of handles that have been requested for release.
-    // When HandleToReleaseCount == Handles.size(), the next flush failure
-    // will cause all pending requests to be failed and cached data to be
-    // dropped
-    size_t HandleToReleaseCount = 0;
+    // Handles that have THandleState::ReleaseHandleRequest initialized
+    THashSet<ui64> HandlesWithReleaseRequests;
 
-    // Cached data extends the node size but until the data is flushed,
-    // the changes are not visible to the tablet. FileSystem requests that
-    // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
-    // should have the node size adjusted to this value.
-    ui64 CachedNodeSize = 0;
+    // Barriers are used to execute operations that should not interfere with
+    // cache. Pending or acquired barrier prohibits scheduling flush for a node
+    // when all unflushed requests have SequenceId > BarrierId.
+    //
+    // Pending barrier becomes acquired when the following conditions are met:
+    // - there are no unflushed requests with SequenceId < BarrierId;
+    // - all flushed requests are evicted.
+    //
+    // When building a flush batch, barriers are not taken into account - it is
+    // allowed to reorder concurrent pending requests.
+    TMap<ui64, std::unique_ptr<TBarrier>> Barriers;
 
     bool CanBeDeleted() const
     {
-        if (Cache.Empty() && CachedDataPins.empty()) {
+        if (Cache.Empty() && CachedDataPins.empty() && Barriers.empty()) {
             Y_ABORT_UNLESS(FlushRequests.empty());
             Y_ABORT_UNLESS(FlushStatus == ENodeFlushStatus::NothingToFlush);
             Y_ABORT_UNLESS(Handles.empty());
-            Y_ABORT_UNLESS(HandleToReleaseCount == 0);
+            Y_ABORT_UNLESS(HandlesWithReleaseRequests.empty());
             return true;
         }
         return false;
@@ -115,8 +167,29 @@ struct TNodeState
         if (!Cache.HasUnflushedRequests()) {
             return ENodeFlushStatus::NothingToFlush;
         }
+
+        const ui64 minUnflushedSequenceId = Cache.GetMinUnflushedSequenceId();
+
+        if (!Barriers.empty()) {
+            // Having a barrier means that there is an operation that wants
+            // the data prior to barrier acquisition to be flushed and evicted.
+            // If a barrier cannot be acquired due to unflushed data, flush
+            // is scheduled. Otherwise, flush is prohibited.
+            return minUnflushedSequenceId < Barriers.cbegin()->first
+                       ? ENodeFlushStatus::FlushRequested
+                       : ENodeFlushStatus::NothingToFlush;
+        }
+
+        if (!HandlesWithReleaseRequests.empty()) {
+            // Non-empty HandlesWithReleaseRequests indicates that there are
+            // handles that are requested for release but cannot be released
+            // because there are pending or unflushed WriteData requests
+            // associated with them. We need to flush these requests first.
+            return ENodeFlushStatus::FlushRequested;
+        }
+
         if (!FlushRequests.empty() ||
-            Cache.GetMinUnflushedSequenceId() <= flushAllSequenceId)
+            minUnflushedSequenceId <= flushAllSequenceId)
         {
             return ENodeFlushStatus::FlushRequested;
         }

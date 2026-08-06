@@ -4,7 +4,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
-#include <cloud/blockstore/libs/rdma/iface/public.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 namespace NCloud::NBlockStore {
 
@@ -14,6 +14,6 @@ IRunnablePtr CreateTestTarget(
     TOptionsPtr options,
     ITaskQueuePtr taskQueue,
     IStoragePtr storage,
-    NRdma::IServerPtr server);
+    NCloud::NStorage::NRdma::IServerPtr server);
 
 }   // namespace NCloud::NBlockStore

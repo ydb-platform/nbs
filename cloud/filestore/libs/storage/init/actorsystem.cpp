@@ -104,7 +104,9 @@ public:
         // IndexTabletProxy
         //
 
-        auto tabletProxy = CreateIndexTabletProxy(Args.StorageConfig);
+        auto tabletProxy = CreateIndexTabletProxy(
+            Args.StorageConfig,
+            Args.TraceSerializer);
 
         setup->LocalServices.emplace_back(
             MakeIndexTabletProxyServiceId(),
@@ -228,7 +230,8 @@ public:
              profileLog = Args.ProfileLog,
              traceSerializer = Args.TraceSerializer,
              systemCounters = SystemCounters,
-             metricsRegistry = MetricsRegistry] (
+             metricsRegistry = MetricsRegistry,
+             fastShardServer = Args.FastShardServer] (
                 const TActorId& owner,
                 TTabletStorageInfo* storage)
             {
@@ -241,7 +244,14 @@ public:
                     profileLog,
                     traceSerializer,
                     systemCounters,
-                    metricsRegistry);
+                    metricsRegistry,
+                    fastShardServer,
+                    config->GetFakeTxPageFaultsProbability() > 0
+                        ? CreateRescheduler(
+                              {.Probability =
+                                   config->GetFakeTxPageFaultsProbability(),
+                               .RandomSeed = std::nullopt})
+                        : nullptr);
                 return actor.release();
             };
 
@@ -364,7 +374,8 @@ void TActorSystem::Init()
     servicesMask.EnableSchedulerActor = 1;
     servicesMask.EnableProfiler = 1;
     servicesMask.EnableSelfPing = 1;
-    servicesMask.EnableRestartsCountPublisher = 1;
+    // Filestore publishes RestartsCount from InitDiagnostics().
+    servicesMask.EnableRestartsCountPublisher = 0;
     servicesMask.EnableStateStorageService = 1;
     servicesMask.EnableTabletResolver = 1;
     servicesMask.EnableTabletMonitor = 1;

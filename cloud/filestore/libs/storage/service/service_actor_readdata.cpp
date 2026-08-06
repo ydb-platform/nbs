@@ -1,5 +1,8 @@
 #include "service_actor.h"
+
 #include "rope_utils.h"
+#include "protobuf_utils.h"
+#include "verify.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -10,13 +13,14 @@
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
-#include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <contrib/libs/protobuf/src/google/protobuf/io/coded_stream.h>
 
 #include <memory>
 
@@ -84,6 +88,8 @@ private:
     TShardStatePtr ShardState;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     const bool UseTwoStageRead;
+    const bool UseCustomReadDataResponseParser;
+    const bool ZeroCopyReadEnabled;
 
 public:
     TReadDataActor(
@@ -104,7 +110,9 @@ public:
         TString clientId,
         TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useTwoStageRead);
+        bool useTwoStageRead,
+        bool useCustomReadDataResponseParser,
+        bool zeroCopyReadEnabled);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -128,6 +136,10 @@ private:
         const TActorContext& ctx);
 
     void ReadData(const TActorContext& ctx, const TString& fallbackReason);
+
+    NProto::TError ProcessExternalPayload(
+        const TRope& payload,
+        NProto::TReadDataResponse& readDataResponse);
 
     void HandleReadDataResponse(
         const TEvService::TEvReadDataResponse::TPtr& ev,
@@ -164,7 +176,9 @@ TReadDataActor::TReadDataActor(
         TString clientId,
         TShardStatePtr shardState,
         NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useTwoStageRead)
+        bool useTwoStageRead,
+        bool useCustomReadDataResponseParser,
+        bool zeroCopyReadEnabled)
     : ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
@@ -190,20 +204,29 @@ TReadDataActor::TReadDataActor(
     , ShardState(std::move(shardState))
     , MediaKind(mediaKind)
     , UseTwoStageRead(useTwoStageRead)
+    , UseCustomReadDataResponseParser(useCustomReadDataResponseParser)
+    , ZeroCopyReadEnabled(
+          zeroCopyReadEnabled &&
+          !ReadRequest.GetIovecs()
+               .empty())   // Zero-copy read optimization is only applicable
+                           // when iovecs are provided
 {
 }
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
-    if (ReadRequest.GetIovecs().empty()) {
-        // BlockBuffer should not be initialized in constructor, because
-        // creating a block buffer leads to memory allocation (and
-        // initialization) which is heavy and we would like to execute that on a
-        // separate thread (instead of this actor's parent thread)
-        BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
-        TargetBuffers = CreateRope(BlockBuffer->begin(), BlockBuffer->size());
-    } else {
-        TargetBuffers = CreateRope(ReadRequest.GetIovecs());
+    if (UseTwoStageRead) {
+        if (!ZeroCopyReadEnabled) {
+            // BlockBuffer should not be initialized in constructor, because
+            // creating a block buffer leads to memory allocation (and
+            // initialization) which is heavy and we would like to execute that
+            // on a separate thread (instead of this actor's parent thread)
+            BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
+            TargetBuffers =
+                CreateRope(BlockBuffer->begin(), BlockBuffer->size());
+        } else {
+            TargetBuffers = CreateRope(ReadRequest.GetIovecs());
+        }
     }
 
     // Registering InFlightRequest here for the same reason - it's quite
@@ -264,6 +287,14 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
         MainInFlightRequest->CallContext->RequestId);
     describeCallContext->SetRequestStartedCycles(GetCycleCount());
     describeCallContext->RequestType = EFileStoreRequest::DescribeData;
+    if (!MainInFlightRequest->CallContext->LWOrbit.Fork(
+            describeCallContext->LWOrbit))
+    {
+        FILESTORE_TRACK(
+            ForkFailed,
+            MainInFlightRequest->CallContext,
+            GetFileStoreRequestName(EFileStoreRequest::DescribeData));
+    }
     InFlightRequest.emplace(
         Sender,
         Cookie,
@@ -271,6 +302,7 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
         ProfileLog,
         MediaKind,
         RequestStats);
+    request->CallContext = InFlightRequest->CallContext;
 
     InFlightRequest->Start(ctx.Now());
     InitProfileLogRequestInfo(
@@ -360,18 +392,14 @@ void TReadDataActor::HandleDescribeDataResponse(
     auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    TABLET_VERIFY(InFlightRequest);
+    SERVICE_VERIFY(InFlightRequest);
 
+    MainInFlightRequest->CallContext->LWOrbit.Join(
+        InFlightRequest->CallContext->LWOrbit);
     FinalizeProfileLogRequestInfo(
         InFlightRequest->AccessProfileLogRequest(),
         msg->Record);
     InFlightRequest->Complete(ctx.Now(), error);
-    HandleServiceTraceInfo(
-        "DescribeData",
-        ctx,
-        TraceSerializer,
-        MainInFlightRequest->CallContext,
-        msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         if (error.GetCode() != E_FS_THROTTLED) {
@@ -515,13 +543,25 @@ void TReadDataActor::HandleReadBlobResponse(
     const auto* msg = ev->Get();
     MainInFlightRequest->CallContext->LWOrbit.Join(msg->Orbit);
 
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "%s ReadBlobResponse count: %lu, status: %lu, cookie: %lu",
+        LogTag.c_str(),
+        msg->ResponseSz,
+        (ui64)(msg->Status),
+        ev->Cookie);
+
     if (msg->Status != NKikimrProto::OK) {
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
-            "%s TEvBlobStorage::TEvGet failed: response %s",
+            "%s TEvBlobStorage::TEvGet failed: response: %s, group: %lu",
             LogTag.c_str(),
-            msg->Print(false).c_str());
+            msg->Print(false).c_str(),
+            ev->Cookie < DescribeResponse.BlobPiecesSize()
+                ? DescribeResponse.GetBlobPieces(ev->Cookie).GetBSGroupId()
+                : 0);
 
         const NProto::TError error(
             MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
@@ -533,20 +573,11 @@ void TReadDataActor::HandleReadBlobResponse(
         return;
     }
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "%s ReadBlobResponse count: %lu, status: %lu, cookie: %lu",
-        LogTag.c_str(),
-        msg->ResponseSz,
-        (ui64)(msg->Status),
-        ev->Cookie);
-
-    TABLET_VERIFY(ev->Cookie < DescribeResponse.BlobPiecesSize());
+    SERVICE_VERIFY(ev->Cookie < DescribeResponse.BlobPiecesSize());
     const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
 
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
-        TABLET_VERIFY(i < blobPiece.RangesSize());
+        SERVICE_VERIFY(i < blobPiece.RangesSize());
 
         const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
         const auto& blobRange = blobPiece.GetRanges(i);
@@ -611,7 +642,7 @@ void TReadDataActor::HandleReadBlobResponse(
             DescribeResponse.DebugString().Quote().c_str(),
             i,
             response.Buffer.size());
-        TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
+        SERVICE_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
         const auto blobByteRange =
             TByteRange{blobRange.GetOffset(), blobRange.GetLength(), BlockSize};
@@ -683,6 +714,7 @@ void TReadDataActor::ReadData(
     auto request = std::make_unique<TEvService::TEvReadDataRequest>();
     request->Record = std::move(ReadRequest);
     request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+    request->CallContext = MainInFlightRequest->CallContext;
     TraceSerializer->BuildTraceRequest(
         *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
         MainInFlightRequest->CallContext->LWOrbit);
@@ -690,42 +722,150 @@ void TReadDataActor::ReadData(
     // Original iovecs should be preserved in this request and pruned during
     // this forwarding on the tablet side
     ReadRequest.MutableIovecs()->Swap(request->Record.MutableIovecs());
+    // Length should be preserved to validate payload size
+    ReadRequest.SetLength(request->Record.GetLength());
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
+NProto::TError TReadDataActor::ProcessExternalPayload(
+    const TRope& payload,
+    NProto::TReadDataResponse& readDataResponse)
+{
+    ui64 bufferSize = readDataResponse.GetLength();
+    if (payload.size() != bufferSize) {
+        return MakeError(
+            E_BADMSG,
+            TStringBuilder()
+                << "Payload has an incorrect size. Expected size: "
+                << bufferSize << " Actual size: " << payload.size());
+    }
+
+    if (readDataResponse.GetBufferOffset() >= bufferSize) {
+        return MakeError(
+            E_BADMSG,
+            TStringBuilder() << "Incorrect buffer offset. Buffer offset: "
+                             << readDataResponse.GetBufferOffset()
+                             << " Buffer size : " << bufferSize);
+    }
+
+    auto it = payload.begin() + readDataResponse.GetBufferOffset();
+    ui64 remainingBufferSize = bufferSize - readDataResponse.GetBufferOffset();
+    if (!ReadRequest.GetIovecs().empty()) {
+        if (remainingBufferSize > ReadRequest.GetLength()) {
+            return MakeError(
+                E_BADMSG,
+                TStringBuilder()
+                    << "Payload size is more than iovecs size. Expected size: "
+                    << ReadRequest.GetLength()
+                    << " Actual size: " << remainingBufferSize);
+        }
+
+        for (auto& iovec: ReadRequest.GetIovecs()) {
+            ui64 dataToWrite = Min(iovec.GetLength(), remainingBufferSize);
+            if (dataToWrite == 0) {
+                break;
+            }
+            TRopeUtils::Memcpy(
+                reinterpret_cast<char*>(iovec.GetBase()),
+                it,
+                dataToWrite);
+            remainingBufferSize -= dataToWrite;
+            it += dataToWrite;
+        }
+
+        if (remainingBufferSize != 0) {
+            return MakeError(
+                E_BADMSG,
+                TStringBuilder()
+                    << "Failed to read buffer from payload. "
+                       " Expected buffer size: "
+                    << bufferSize << " Actual bytes copied from payload: "
+                    << bufferSize - remainingBufferSize);
+        }
+    } else {
+        auto& buffer = *readDataResponse.MutableBuffer();
+        buffer.ReserveAndResize(remainingBufferSize);
+        TRopeUtils::Memcpy(buffer.begin(), it, remainingBufferSize);
+    }
+
+    // Set the buffer offset to 0 because the response buffer/iovecs do not
+    // contain data before the offset anymore
+    readDataResponse.SetBufferOffset(0);
+
+    return {};
 }
 
 void TReadDataActor::HandleReadDataResponse(
     const TEvService::TEvReadDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
-    HandleServiceTraceInfo(
-        "ReadData",
-        ctx,
-        TraceSerializer,
-        MainInFlightRequest->CallContext,
-        msg->Record);
+    auto response = std::make_unique<TEvService::TEvReadDataResponse>();
+    bool isResponseParsed = false;
+    if (UseCustomReadDataResponseParser && !ReadRequest.GetIovecs().empty()) {
+        auto buffer = ev->GetChainBuffer();
+        // extended format is not used for ReadDataResponse, but we check it
+        // just in case to avoid parsing errors
+        if (buffer && !buffer->GetSerializationInfo().IsExtendedFormat) {
+            auto ret = ParseReadDataResponse(
+                *buffer,
+                response->Record,
+                *ReadRequest.MutableIovecs());
+            if (!HasError(ret)) {
+                isResponseParsed = true;
+            } else {
+                // report critical event and fallback to the default parser
+                ReportReadDataResponseParserFailed(FormatError(ret));
+                // Abort execution to detect parser failures in the tests
+                Y_DEBUG_ABORT_UNLESS(isResponseParsed);
+            }
+        }
+    }
 
-    if (FAILED(msg->GetStatus())) {
-        HandleError(ctx, msg->GetError());
+    if (!isResponseParsed) {
+        auto* msg = ev->Get();
+        response->Record = std::move(msg->Record);
+
+        ui64 bufferSize = response->Record.GetLength();
+        if (response->Record.GetBuffer().empty() && bufferSize != 0) {
+            if (msg->GetPayloadCount() != 1) {
+                HandleError(
+                    ctx,
+                    MakeError(
+                        E_BADMSG,
+                        TStringBuilder()
+                            << "Payload is unavailable or message has more "
+                               "than one payload. Payload count: "
+                            << msg->GetPayloadCount()));
+                return;
+            }
+            auto err =
+                ProcessExternalPayload(msg->GetPayload(0), response->Record);
+            if (HasError(err)) {
+                HandleError(ctx, err);
+                return;
+            }
+        }
+    }
+
+    auto& record = response->Record;
+    if (HasError(record)) {
+        HandleError(ctx, record.GetError());
         return;
     }
 
-    const auto& backendInfo = msg->Record.GetHeaders().GetBackendInfo();
+    const auto& backendInfo = record.GetHeaders().GetBackendInfo();
     ShardState->SetIsOverloaded(backendInfo.GetIsOverloaded());
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
         "ReadData succeeded %lu data, backend-info: %s",
-        msg->Record.GetBuffer().size(),
+        record.GetBuffer().size(),
         backendInfo.ShortUtf8DebugString().Quote().c_str());
 
-    auto response = std::make_unique<TEvService::TEvReadDataResponse>();
-    response->Record = std::move(msg->Record);
-
-    MoveBufferToIovecsIfNeeded(ctx, response->Record);
+    MoveBufferToIovecsIfNeeded(ctx, record);
 
     SendResponseAndDie(ctx, std::move(response));
 }
@@ -736,7 +876,7 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
     const TActorContext& ctx,
     NProto::TReadDataResponse& response)
 {
-    if (ReadRequest.GetIovecs().empty()) {
+    if (ReadRequest.GetIovecs().empty() || response.GetBuffer().empty()) {
         return;
     }
 
@@ -817,12 +957,15 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
             zeroInterval.End - zeroInterval.Start);
     }
 
+    // The actual file size may already be bigger than the returned one (see
+    // TDescribeDataResponse::FileSize), it can only be used to clamp the read
+    // range.
     const auto end = Min(DescribeResponse.GetFileSize(), OriginByteRange.End());
     if (end <= OriginByteRange.Offset) {
         BlockBuffer->clear();
     } else {
         const ui64 length = end - OriginByteRange.Offset;
-        if (ReadRequest.GetIovecs().empty()) {
+        if (!ZeroCopyReadEnabled) {
             BlockBuffer->ReserveAndResize(length);
             response->Record.set_allocated_buffer(BlockBuffer.release());
         } else {
@@ -830,6 +973,7 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
         }
     }
 
+    MoveBufferToIovecsIfNeeded(ctx, response->Record);
     SendResponseAndDie(ctx, std::move(response));
 }
 
@@ -844,7 +988,6 @@ void TReadDataActor::SendResponseAndDie(
 
     CompleteRequestImpl<TEvService::TReadDataMethod>(
         ctx,
-        TraceSerializer,
         response->Record,
         MainInFlightRequest,
         *InFlightRequests,
@@ -1016,7 +1159,12 @@ void TStorageServiceActor::HandleReadData(
         session->ClientId,
         std::move(shardState),
         session->MediaKind,
-        useTwoStageRead);
+        useTwoStageRead,
+        // UseCustomReadDataResponseParser is deprecated and not compatible with
+        // ExternalReadDataPayload
+        filestore.GetFeatures().GetUseCustomReadDataResponseParser() &&
+            !filestore.GetFeatures().GetExternalReadDataPayload(),
+        filestore.GetFeatures().GetZeroCopyReadEnabled());
 
     NCloud::Register(ctx, std::move(actor));
 }

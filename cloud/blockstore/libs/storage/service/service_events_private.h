@@ -217,6 +217,7 @@ struct TEvServicePrivate
         NProto::TMountVolumeRequest Record;
         NProto::EVolumeBinding BindingType = NProto::BINDING_NOT_SET;
         NProto::EPreemptionSource PreemptionSource = NProto::SOURCE_NONE;
+        bool UseGentlePreemption = false;
 
         TInternalMountVolumeRequest() = default;
 
@@ -260,6 +261,26 @@ struct TEvServicePrivate
             NActors::TActorId VolumeActor;
         };
         TVector<TMountedVolumeInfo> MountedVolumes;
+    };
+
+    //
+    // Release volume to hive
+    //
+
+    struct TReleaseVolumeToHiveRequest
+    {
+    };
+
+    struct TReleaseVolumeToHiveResponse
+    {
+    };
+
+    //
+    // GentlePreemptionRequestProcessed notification
+    //
+
+    struct TGentlePreemptionRequestProcessed
+    {
     };
 
     //
@@ -328,6 +349,9 @@ struct TEvServicePrivate
         EvCreateEncryptionKeyResponse,
         EvListMountedVolumesRequest,
         EvListMountedVolumesResponse,
+        EvReleaseVolumeToHiveRequest,
+        EvReleaseVolumeToHiveResponse,
+        EvGentlePreemptionRequestProcessed,
 
         EvEnd
     };
@@ -429,6 +453,18 @@ struct TEvServicePrivate
     using TEvListMountedVolumesResponse = TResponseEvent<
         TListMountedVolumesResponse,
         EvListMountedVolumesResponse>;
+
+    using TEvReleaseVolumeToHiveRequest = TRequestEvent<
+        TReleaseVolumeToHiveRequest,
+        EvReleaseVolumeToHiveRequest>;
+
+    using TEvReleaseVolumeToHiveResponse = TResponseEvent<
+        TReleaseVolumeToHiveResponse,
+        EvReleaseVolumeToHiveResponse>;
+
+    using TEvGentlePreemptionRequestProcessed = TResponseEvent<
+        TGentlePreemptionRequestProcessed,
+        EvGentlePreemptionRequestProcessed>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

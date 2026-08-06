@@ -9,7 +9,6 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
@@ -22,6 +21,7 @@
 
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
@@ -67,7 +67,7 @@ struct TTestEnv
     TDiskAgentStatePtr DiskAgentState;
     TVector<TActorId> ReplicaActors;
     TDuration ScrubbingInterval;
-    NRdma::IClientPtr RdmaClient;
+    NCloud::NStorage::NRdma::IClientPtr RdmaClient;
 
     static void AddDevice(
         ui32 nodeId,
@@ -159,7 +159,7 @@ struct TTestEnv
         , DiskAgentState(std::make_shared<TDiskAgentState>())
         , RdmaClient(
               useRdma ? std::make_shared<TRdmaClientTest>()
-                      : NRdma::IClientPtr())
+                      : NCloud::NStorage::NRdma::IClientPtr())
     {
         SetupLogging();
 

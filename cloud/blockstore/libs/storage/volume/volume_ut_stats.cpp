@@ -1285,6 +1285,92 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotCleanupHistoryOnUpdateCountersInPullScheme)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
+        storageServiceConfig.SetVolumeHistoryDuration(1000);
+        storageServiceConfig.SetVolumeHistoryCleanupItemCount(20);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto firstClientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(firstClientInfo);
+
+        for (ui32 i = 0; i < 39; ++i) {
+            auto clientInfo = CreateVolumeClientInfo(
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0);
+            volume.SendAddClientRequest(clientInfo);
+            auto response = volume.RecvAddClientResponse();
+            UNIT_ASSERT_C(
+                FAILED(response->GetStatus()),
+                "Unexpected successful result");
+        }
+
+        runtime->AdvanceCurrentTime(TDuration::Minutes(1));
+        volume.RebootTablet();
+        volume.WaitReady();
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()));
+        {
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(40, response->History.size());
+        }
+
+        // This should do nothing because the counters are updated at the
+        // request of the service.
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()));
+        {
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(40, response->History.size());
+        }
+
+        // Pull the statistics from the volume.
+        volume.SendToPipe(
+            std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvVolumePrivate::EvPartStatsSaved);
+            runtime->DispatchEvents(options);
+        }
+
+        // The history should be truncated.
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()));
+        {
+            auto response =
+                volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(20, response->History.size());
+        }
+    }
+
     Y_UNIT_TEST(ShouldPullStatisticsFromPartitions)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
@@ -1937,6 +2023,84 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         options.FinalEvents.emplace_back(TEvVolumePrivate::EvPartStatsSaved);
         runtime->DispatchEvents(options);
 
+    }
+
+    Y_UNIT_TEST(ShouldPullStatisticsAfterPartitionStopped)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+
+        auto runtime = PrepareTestActorRuntime(config, state);
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024,
+            "vol0",
+            "cloud",
+            "folder",
+            1   // partitionCount
+        );
+
+        volume.WaitReady();
+
+        auto pullStatistics = [&](TAutoPtr<IEventHandle>& handle)
+        {
+            volume.SendToPipe(
+                std::make_unique<
+                    TEvStatsService::TEvGetServiceStatisticsRequest>());
+
+            auto* response = runtime->GrabEdgeEventRethrow<
+                TEvStatsService::TEvGetServiceStatisticsResponse>(
+                handle,
+                TDuration::Seconds(5));
+            UNIT_ASSERT(handle);
+            return response;
+        };
+
+        ui32 partCountersRequestCount = 0;
+        auto observer = runtime->AddObserver<
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest>(
+            [&](TEvNonreplPartitionPrivate::
+                    TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev)
+            {
+                Y_UNUSED(ev);
+                ++partCountersRequestCount;
+            });
+
+        // Warm up the cached counters.
+        {
+            TAutoPtr<IEventHandle> handle;
+            auto* response = pullStatistics(handle);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->PartsCounters.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, partCountersRequestCount);
+        }
+
+        // The partition gets stopped before the volume destruction.
+        volume.GracefulShutdown();
+
+        partCountersRequestCount = 0;
+
+        // The volume should reply with the cached counters instead of asking
+        // the already stopped partition.
+        {
+            TAutoPtr<IEventHandle> handle;
+            auto* response = pullStatistics(handle);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->PartsCounters.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, partCountersRequestCount);
     }
 }
 

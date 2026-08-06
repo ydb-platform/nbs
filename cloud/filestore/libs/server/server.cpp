@@ -18,6 +18,7 @@
 #include <cloud/filestore/public/api/protos/server.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -44,21 +45,49 @@
 #include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <library/cpp/deprecated/atomic/atomic.h>
-#include <library/cpp/threading/atomic/bool.h>
+#include <library/cpp/string_utils/quote/quote.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/hash_set.h>
-#include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
 #include <util/system/file.h>
 #include <util/system/thread.h>
+
+#include <atomic>
 
 namespace NCloud::NFileStore::NServer {
 
 using namespace NThreading;
 
 LWTRACE_USING(FILESTORE_SERVER_PROVIDER);
+
+namespace NImpl {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void PrepareRequestHeaders(
+    NCloud::NProto::ERequestSource source,
+    TStringBuf peer,
+    TStringBuf authToken,
+    NProto::THeaders& headers)
+{
+    auto& internal = *headers.MutableInternal();
+
+    internal.Clear();
+    internal.SetRequestSource(source);
+    internal.SetPeer(UrlUnescapeRet(peer));
+    internal.SetRequestOrigin(
+        NProto::THeaders::TInternal::REQUEST_ORIGIN_EXTERNAL);
+
+    if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
+        internal.SetAuthToken(TString(authToken));
+    }
+}
+
+}   // namespace NImpl
+
+////////////////////////////////////////////////////////////////////////////////
 
 namespace {
 
@@ -150,15 +179,13 @@ ELogPriority GetRequestLogPriority()
         : ELogPriority::TLOG_RESOURCES;
 }
 
-#undef FILESTORE_REQUEST_CHECK
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString ReadFile(const TString& fileName)
+template <>
+ELogPriority GetRequestLogPriority<NProto::TExecuteActionRequest>()
 {
-    TFileInput in(fileName);
-    return in.ReadAll();
+    return ELogPriority::TLOG_RESOURCES;
 }
+
+#undef FILESTORE_REQUEST_CHECK
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -174,8 +201,10 @@ class TServerRequestHandlerBase
 {
 protected:
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
-    NAtomic::TBool Started = false;
+    std::atomic<bool> Started = false;
     NCloud::NProto::TError Error;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TMaybe<TIncompleteRequest> ToIncompleteRequest(ui64 nowCycles) const
@@ -432,15 +461,16 @@ void TAppContext::ValidateRequest(
             << "internal field should not be set by client";
     }
 
-    auto& internal = *headers.MutableInternal();
-
-    internal.Clear();
-    internal.SetRequestSource(*source);
-
-    // we will only get token from secure control channel
+    TString authToken;
     if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
-        internal.SetAuthToken(GetAuthToken(context.client_metadata()));
+        authToken = GetAuthToken(context.client_metadata());
     }
+
+    NImpl::PrepareRequestHeaders(
+        *source,
+        context.peer(),
+        authToken,
+        headers);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -453,46 +483,6 @@ using TExecutorContext = NStorage::NGrpc::
 
 using TExecutor = NStorage::NGrpc::
     TExecutor<grpc::ServerCompletionQueue, TRequestsInFlight>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-NProto::TError TryAdjustIovecOffsets(
-    const TLog& Log,
-    TServerState* state,
-    google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
-    ui64 regionId)
-{
-    TResultOrError<TMmapRegionMetadata> region = state->GetMmapRegion(regionId);
-    if (NCloud::HasError(region.GetError())) {
-        STORAGE_DEBUG(
-            "Failed to get mmap region " << regionId << ": "
-                                         << region.GetError().GetMessage());
-        return region.GetError();
-    }
-
-    const auto& metadata = region.GetResult();
-    STORAGE_DEBUG(
-        "Adjusting iovecs for region " << regionId
-                                       << ": address=" << metadata.Address
-                                       << " size=" << metadata.Size);
-
-    for (auto& iovec: iovecs) {
-        ui64 offset = iovec.GetBase();
-        ui64 length = iovec.GetLength();
-
-        if (offset + length > metadata.Size) {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder() << "Iovec out of bounds: offset=" << offset
-                                 << " length=" << length
-                                 << " region_size=" << metadata.Size);
-        }
-
-        iovec.SetBase(offset + reinterpret_cast<ui64>(metadata.Address));
-    }
-
-    return {};
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -682,7 +672,7 @@ private:
         STORAGE_LOG(GetRequestLogPriority<TRequest>(),
             TMethod::RequestName
             << " #" << RequestId
-            << " execute request: " << DumpMessage(*Request));
+            << " execute request: " << ProtoMessagePrinter.ToString(*Request));
 
         FILESTORE_TRACK(
             ExecuteRequest,
@@ -694,6 +684,7 @@ private:
 
         AppCtx.Stats->RequestStarted(Log, *CallContext);
         Started = true;
+        bool iovecsLocked = false;
 
         if constexpr (
             (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
@@ -701,15 +692,18 @@ private:
             std::is_same_v<TAppContext, TFileStoreContext>)
         {
             if (AppCtx.State && Request->IovecsSize() > 0) {
-                auto error = TryAdjustIovecOffsets(
-                    Log,
-                    this->AppCtx.State.get(),
-                    *Request->MutableIovecs(),
-                    Request->GetRegionId());
-                if (HasError(error)) {
+                auto adjustedIovecs = AppCtx.State->AdjustAndLockIovecs(
+                    Request->GetRegionId(),
+                    *Request->MutableIovecs());
+                if (HasError(adjustedIovecs)) {
                     TResponse response;
+                    auto error = adjustedIovecs.GetError();
                     response.MutableError()->Swap(&error);
                     Response = MakeFuture(std::move(response));
+                } else {
+                    iovecsLocked = true;
+                    auto iovecs = adjustedIovecs.ExtractResult();
+                    Request->MutableIovecs()->Swap(&iovecs);
                 }
             }
         }
@@ -721,7 +715,7 @@ private:
                 Response = TMethod::Execute(
                     *AppCtx.ServiceImpl,
                     CallContext,
-                    std::move(Request));
+                    Request);
             } catch (const TServiceError& e) {
                 STORAGE_WARN(
                     TMethod::RequestName << " #" << RequestId
@@ -749,6 +743,25 @@ private:
             [=, this] (const auto& response) {
                 Y_UNUSED(response);
 
+                if constexpr (
+                    (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
+                     std::is_same_v<TRequest, NProto::TReadDataRequest>) &&
+                    std::is_same_v<TAppContext, TFileStoreContext>)
+                {
+                    if (iovecsLocked) {
+                        auto err = AppCtx.State->UnlockIovecs(
+                            Request->GetRegionId(),
+                            Request->GetIovecs());
+                        if (HasError(err)) {
+                            STORAGE_ERROR(
+                                TMethod::RequestName
+                                << " #" << RequestId
+                                << " failed to unlock iovecs: "
+                                << FormatError(err));
+                        }
+                    }
+                }
+
                 if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {
                     // will be processed on executor thread
                     EnqueueCompletion(ExecCtx.CompletionQueue.get(), tag);
@@ -770,7 +783,7 @@ private:
         STORAGE_LOG(GetRequestLogPriority<TRequest>(),
             TMethod::RequestName
             << " #" << RequestId
-            << " send response: " << DumpMessage(response));
+            << " send response: " << ProtoMessagePrinter.ToString(response));
 
         FILESTORE_TRACK(
             SendResponse,
@@ -823,6 +836,15 @@ private:
                 TString(TMethod::RequestName),
                 ts.TotalTime.MicroSeconds(),
                 ts.ExecutionTime.MicroSeconds());
+
+            // Ids in public API requests come from the client, so E_NOT_FOUND
+            // is an expected outcome here (e.g. filesystem was never created
+            // or already destroyed) - report it as silent so it isn't counted
+            // as a fatal error. Internal lookups of entities that must exist
+            // don't go through this handler and stay loud.
+            if (Error.GetCode() == E_NOT_FOUND) {
+                SetErrorProtoFlag(Error, NCloud::NProto::EF_SILENT);
+            }
 
             AppCtx.Stats->RequestCompleted(Log, *CallContext, Error);
 
@@ -1111,7 +1133,7 @@ private:
         auto& Log = AppCtx.Log;
 
         STORAGE_TRACE(TMethod::RequestName
-            << " send response: " << DumpMessage(response));
+            << " send response: " << ProtoMessagePrinter.ToString(response));
 
         Writer.Write(response, AcquireCompletionTag());
     }
@@ -1278,6 +1300,7 @@ public:
             regionInfo->SetSize(region.Size);
             regionInfo->SetLatestActivityTimestamp(
                 region.LatestActivityTimestamp.MicroSeconds());
+            regionInfo->SetPageSize(region.PageSize);
         }
         this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
     }
@@ -1328,7 +1351,9 @@ public:
     {
         Result = this->AppCtx.State->CreateMmapRegion(
             this->Request->GetFilePath(),
-            this->Request->GetSize());
+            this->Request->GetSize(),
+            this->Request->GetPageSize(),
+            this->Request->GetMapPopulate());
         NProto::TMmapResponse response;
 
         if (NCloud::HasError(Result)) {
@@ -1523,6 +1548,7 @@ class TServer final
 private:
     const TGrpcInitializer GrpcInitializer;
     const TServerConfigPtr Config;
+    const ICertificateProviderPtr CertificateProvider;
     const ILoggingServicePtr Logging;
 
     TAppContext AppCtx;
@@ -1538,6 +1564,7 @@ public:
     template <typename T>
     TServer(
             TServerConfigPtr config,
+            ICertificateProviderPtr certificateProvider,
             ILoggingServicePtr logging,
             IRequestStatsPtr requestStats,
             NMonitoring::TDynamicCountersPtr counters,
@@ -1545,6 +1572,7 @@ public:
             ISchedulerPtr scheduler,
             T service)
         : Config(std::move(config))
+        , CertificateProvider(std::move(certificateProvider))
         , Logging(std::move(logging))
         , Scheduler(std::move(scheduler))
     {
@@ -1555,6 +1583,11 @@ public:
     }
 
 private:
+    std::shared_ptr<grpc::ServerCredentials> CreateSecureServerCredentials()
+    {
+        return CertificateProvider->CreateSecureServerCredentials();
+    }
+
     void InitializeAppContext(
         auto& ctx,
         auto& /*service*/,
@@ -1662,8 +1695,7 @@ public:
             auto address = Join(":", host, port);
             STORAGE_INFO("Listen on (secure control) " << address);
 
-            auto sslOptions = CreateSslOptions();
-            auto credentials = grpc::SslServerCredentials(sslOptions);
+            auto credentials = CreateSecureServerCredentials();
             credentials->SetAuthMetadataProcessor(
                 std::make_shared<TAuthMetadataProcessor>(
                     RequestSourceKinds,
@@ -1779,33 +1811,6 @@ public:
     }
 
 private:
-
-    grpc::SslServerCredentialsOptions CreateSslOptions()
-    {
-        grpc::SslServerCredentialsOptions sslOptions;
-        sslOptions.client_certificate_request = GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY;
-
-        if (const auto& rootCertsFile = Config->GetRootCertsFile()) {
-            sslOptions.pem_root_certs = ReadFile(rootCertsFile);
-        }
-
-        Y_ENSURE(Config->GetCerts().size(), "Empty Certs");
-
-        for (const auto& cert: Config->GetCerts()) {
-            grpc::SslServerCredentialsOptions::PemKeyCertPair keyCert;
-
-            Y_ENSURE(cert.CertFile, "Empty CertFile");
-            keyCert.cert_chain = ReadFile(cert.CertFile);
-
-            Y_ENSURE(cert.CertPrivateKeyFile, "Empty CertPrivateKeyFile");
-            keyCert.private_key = ReadFile(cert.CertPrivateKeyFile);
-
-            sslOptions.pem_key_cert_pairs.push_back(keyCert);
-        }
-
-        return sslOptions;
-    }
-
     void StartListenUnixSocket(
         const TString& unixSocketPath,
         ui32 backlog,
@@ -1856,10 +1861,12 @@ IServerPtr CreateServer(
     NMonitoring::TDynamicCountersPtr counters,
     IProfileLogPtr profileLog,
     ISchedulerPtr scheduler,
-    IFileStoreServicePtr service)
+    IFileStoreServicePtr service,
+    ICertificateProviderPtr certificateProvider)
 {
     return std::make_shared<TFileStoreServer>(
         std::move(config),
+        std::move(certificateProvider),
         std::move(logging),
         std::move(requestStats),
         std::move(counters),
@@ -1876,10 +1883,12 @@ IServerPtr CreateServer(
     IRequestStatsPtr requestStats,
     NMonitoring::TDynamicCountersPtr counters,
     ISchedulerPtr scheduler,
-    IEndpointManagerPtr service)
+    IEndpointManagerPtr service,
+    ICertificateProviderPtr certificateProvider)
 {
     return std::make_shared<TEndpointManagerServer>(
         std::move(config),
+        std::move(certificateProvider),
         std::move(logging),
         std::move(requestStats),
         std::move(counters),

@@ -32,6 +32,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/grpc/init.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -44,8 +45,8 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/generic/guid.h>
-#include <util/stream/file.h>
-#include <util/string/strip.h>
+#include <util/system/env.h>
+#include <util/system/fs.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NBD {
@@ -59,39 +60,25 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString DefaultConfigFile = "/Berkanavt/nbs-server/cfg/nbs-client.txt";
-const TString DefaultIamTokenFile = "~/.nbs-client/iam-token";
-
-////////////////////////////////////////////////////////////////////////////////
-
-TString ResolvePath(const TString& path)
-{
-    if (path.StartsWith('~')) {
-        return TStringBuilder() << GetHomeDir() << path.substr(1);
-    }
-
-    return path;
-}
-
-TString GetIamToken(const TString& iamTokenFile)
-{
-    auto filename = ResolvePath(iamTokenFile);
-    TFile file;
-    try {
-        file = TFile(filename, EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-    } catch (...) {
-        return {};
-    }
-
-    if (!file.IsOpen()) {
-        return {};
-    }
-
-    return Strip(TFileInput(file).ReadAll());
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TDuration WaitTimeout = TDuration::Seconds(10);
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TClientAppConfigPtr& config)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
 
 TNetworkAddress CreateListenAddress(const TOptions& options)
 {
@@ -223,19 +210,9 @@ void TBootstrap::InitClientConfig()
         monConfig.SetThreadsCount(1);  // reasonable defaults
     }
 
-    auto iamTokenFile = Options->IamTokenFile;
-    if (!iamTokenFile) {
-        auto& authConfig = appConfig.GetAuthConfig();
-        if (authConfig.HasIamTokenFile()) {
-            iamTokenFile = authConfig.GetIamTokenFile();
-        } else {
-            iamTokenFile = DefaultIamTokenFile;
-        }
-    }
-
     // Do not send token via insecure channel.
     if (clientConfig.GetSecurePort() != 0) {
-        clientConfig.SetAuthToken(GetIamToken(iamTokenFile));
+        clientConfig.SetAuthToken(GetEnv("IAM_TOKEN"));
     }
 
     if (!clientConfig.GetClientId()) {
@@ -259,6 +236,10 @@ void TBootstrap::Start()
 
     if (Monitoring) {
         Monitoring->Start();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Start();
     }
 
     if (Client) {
@@ -370,6 +351,10 @@ void TBootstrap::Stop()
         Client->Stop();
     }
 
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
+    }
+
     if (Monitoring) {
         Monitoring->Stop();
     }
@@ -413,13 +398,16 @@ void TBootstrap::InitControlClient()
         VolumeStats,
         ClientConfig->GetInstanceId());
 
+    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
+
     auto [client, error] = CreateClient(
         ClientConfig,
         Timer,
         Scheduler,
         Logging,
         Monitoring,
-        ClientStats);
+        ClientStats,
+        CertificateProvider);
 
     Y_ABORT_UNLESS(!HasError(error));
     Client = std::move(client);

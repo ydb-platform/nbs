@@ -11,10 +11,12 @@ SRCS(
     authorization_mode.proto
     certificate.proto
     config_dispatcher_settings.proto
+    device.proto
     diagnostics.proto
     endpoints.proto
     error.proto
     media.proto
+    rdma.proto
     request_source.proto
     tablet.proto
     throttler.proto

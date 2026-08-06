@@ -3,11 +3,18 @@ import logging
 import os
 import re
 import time
+import uuid
 
-import cloud.filestore.tools.testing.profile_log.common as profile
 import yatest.common as common
 
-from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.tests.library.harness.daemon import Daemon
+
+from cloud.storage.core.tests.common import process_recipe_err_files
+
+from cloud.filestore.tests.python.lib.client import FilestoreCliClient, daemon_log_files
+from cloud.filestore.tests.python.lib.common import flush_logs
+import cloud.filestore.tools.testing.profile_log.common as profile
 
 BLOCK_SIZE = 4 * 1024
 BLOCKS_COUNT = 1000
@@ -62,6 +69,7 @@ def __create_multitablet_fs(client, fs_id, shard_ids):
             {
                 "FileSystemId": shard_id,
                 "ShardNo": i + 1,
+                "MainFileSystemId": fs_id
             },
         )
 
@@ -785,15 +793,7 @@ def test_io_telemetry():
 
     client.destroy(fs_id)
 
-    #
-    # Sleep for a while to ensure that the profile log is flushed
-    # before we start analyzing it
-    # The default value of ProfileLogTimeThreshold for tests is 100ms
-    # TODO(#568) - here and in other similar places - introduce and use a
-    # private api method which would force profile-log flush
-    #
-
-    time.sleep(2)
+    flush_logs()
 
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool"
@@ -820,10 +820,20 @@ def test_io_telemetry():
     with open(common.output_path("filestore-server.err")) as err:
         for line in err.readlines():
             parts = line.rstrip().split(" ", maxsplit=4)
+            if len(parts) < 4:
+                # we expect that line has the following format
+                # <time> <component> <severity> <message>
+                continue
             component = parts[1]
             message = parts[3]
             if component == ":NFS_TRACE":
-                track = json.loads(message)
+                track = ""
+                try:
+                    track = json.loads(message)
+                except json.JSONDecodeError:
+                    logging.warning(
+                        "failed to deserialize message to JSON: %s" % message)
+                    continue
                 for probe in track:
                     if len(probe) < 3:
                         continue
@@ -861,3 +871,89 @@ def test_io_telemetry():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_symlink_non_utf8_path():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    non_utf8_target = os.fsdecode(b"\xff\xfe\x80\x81")
+    client.ln("fs0", "/non_utf8_link", "--symlink", non_utf8_target)
+
+    stat = json.loads(client.stat("fs0", "/non_utf8_link"))
+    del stat["ATime"]
+    del stat["MTime"]
+    del stat["CTime"]
+
+    client.destroy("fs0")
+
+    with open(results_path, "w") as results_file:
+        json.dump(stat, results_file, indent=4)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
+def test_readlink():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    target = "/some/target/path"
+    client.ln("fs0", "/mylink", "--symlink", target)
+
+    out = client.readlink("fs0", path="/mylink")
+
+    node_id = json.loads(client.stat("fs0", "/mylink"))["Id"]
+    out += client.readlink("fs0", node=node_id)
+
+    client.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    return common.canonical_file(results_path, local=True)
+
+
+def test_client_should_not_crash_on_shutdown_while_listing_endpoints():
+    port_manager = yatest_common.PortManager()
+    # We need a free port with no listener so the request gets stuck
+    free_port = port_manager.get_port()
+
+    binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
+
+    cmd = [
+        binary_path, "listendpoints",
+        "--verbose", "trace",
+        "--server-address", "localhost",
+        "--server-port", str(free_port),
+    ]
+
+    cwd = common.output_path()
+    log_files = daemon_log_files(
+        prefix="filestore-client-%s" % uuid.uuid4(),
+        cwd=cwd,
+    )
+
+    daemon = Daemon(
+        cmd,
+        cwd=cwd,
+        timeout=60,
+        **log_files,
+    )
+    daemon.start()
+
+    time.sleep(10)
+
+    # Stop filestore-client to cancel the in-flight request and potentially
+    # trigger a crash
+    try:
+        daemon.stop()
+    except Exception:
+        pass
+
+    assert 1 == daemon.daemon.exit_code
+
+    # Check that there are no sanitizer errors
+    errors = process_recipe_err_files(log_files["stderr_file"])
+    if errors:
+        raise RuntimeError("Recipe found errors in the log files: " + "\n".join(errors))

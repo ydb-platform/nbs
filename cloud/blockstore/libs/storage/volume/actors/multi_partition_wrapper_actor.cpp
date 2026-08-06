@@ -1,5 +1,6 @@
 #include "multi_partition_wrapper_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 
@@ -39,11 +40,13 @@ TMultiPartitionWrapperActor::TMultiPartitionWrapperActor(
     const TString& diskId,
     ui32 blockSize,
     ui32 blocksPerStripe,
+    NProto::ERequestSplitterPolicy splitterPolicy,
     const TVector<NActors::TActorId>& partitionActors)
     : LogTitle(std::move(logTitle))
     , TraceSerializer(std::move(traceSerializer))
     , BlockSize(blockSize)
     , BlocksPerStripe(blocksPerStripe)
+    , SplitterPolicy(splitterPolicy)
     , Partitions(MakePartitions(diskId, blockSize, partitionActors))
 {}
 
@@ -157,7 +160,8 @@ void TMultiPartitionWrapperActor::HandleRequest(
     const bool isCrossPartitionRequest =
         partitionRequests.size() > 1 || IsDescribeBlocksMethod<TMethod>;
 
-    if (!isCrossPartitionRequest) {
+    const auto forwardToSinglePartition = [&]
+    {
         auto newEvent = typename TMethod::TRequest::TPtr(
             static_cast<typename TMethod::TRequest::THandle*>(new IEventHandle(
                 partitionRequests.front().ActorId,
@@ -169,8 +173,26 @@ void TMultiPartitionWrapperActor::HandleRequest(
                 &ev->Sender   // The non-delivery error of the request is also
                               // handled by the volume actor
                 )));
-
         ctx.Send(newEvent.Release());
+    };
+
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        if (SplitterPolicy == NProto::ERequestSplitterPolicy::RSP_DISABLE) {
+            forwardToSinglePartition();
+            return;
+        }
+
+        if (SplitterPolicy ==
+                NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT &&
+            isCrossPartitionRequest)
+        {
+            ReportCrossPartitionRequestDetected(
+                {{"disk", Partitions.front().DiskId}, {"range", blockRange}});
+        }
+    }
+
+    if (!isCrossPartitionRequest) {
+        forwardToSinglePartition();
         return;
     }
 

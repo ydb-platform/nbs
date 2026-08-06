@@ -6,10 +6,10 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 #include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/auth/authorizer.h>
+#include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/log.h>
@@ -43,6 +43,7 @@ private:
     const EBlockStoreRequest RequestType;
     const TDuration RequestTimeout;
     const TString DiskId;
+    const TString Peer;
 
     bool RequestCompleted = false;
 
@@ -54,7 +55,8 @@ public:
             TCallContextPtr callContext,
             EBlockStoreRequest requestType,
             TDuration requestTimeout,
-            TString diskId)
+            TString diskId,
+            TString peer)
         : Permissions(permissions)
         , AuthToken(std::move(authToken))
         , Response(std::move(response))
@@ -62,6 +64,7 @@ public:
         , RequestType(requestType)
         , RequestTimeout(requestTimeout)
         , DiskId(std::move(diskId))
+        , Peer(std::move(peer))
     {}
 
     ~TRequestActor() override
@@ -96,7 +99,8 @@ private:
 
         auto request = std::make_unique<TEvAuth::TEvAuthorizationRequest>(
             std::move(AuthToken),
-            std::move(Permissions));
+            std::move(Permissions),
+            Peer);
 
         LWTRACK(
             AuthRequestSent_Proxy,
@@ -159,7 +163,7 @@ private:
         if (FAILED(msg->GetStatus())) {
             LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
                 TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-                << " unauthorized request");
+                << " unauthorized request, peer: " << Peer);
         }
 
         CompleteRequest(ctx, msg->Error);
@@ -173,7 +177,7 @@ private:
 
         LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-            << " request timed out");
+            << " request timed out, peer: " << Peer);
 
         NProto::TError error;
         error.SetCode(E_REJECTED);  // TODO: E_TIMEOUT
@@ -211,7 +215,8 @@ public:
         TString authToken,
         EBlockStoreRequest requestType,
         TDuration requestTimeout,
-        TString diskId) override
+        TString diskId,
+        TString peer) override
     {
         auto response = NewPromise<NProto::TError>();
 
@@ -222,7 +227,8 @@ public:
             std::move(callContext),
             requestType,
             requestTimeout,
-            std::move(diskId)));
+            std::move(diskId),
+            std::move(peer)));
 
         return response.GetFuture();
     }

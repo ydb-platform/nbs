@@ -1,5 +1,7 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 
 #include <util/generic/algorithm.h>
@@ -67,6 +69,31 @@ void ProcessUserNotifications(
     std::erase_if(userNotifications, isObsolete);
 }
 
+// TODO: Remove in next release
+void RemovePendingCleanupDevicesInErrorState(
+    TDiskRegistryDatabase& db,
+    TVector<NProto::TAgentConfig>& agents,
+    TVector<TDirtyDevice>& dirtyDevices)
+{
+    THashMap<TString, size_t> dirtyDevicesUUID;
+    for (size_t deviceIdx = 0; deviceIdx < dirtyDevices.size(); deviceIdx++) {
+        const auto& device = dirtyDevices[deviceIdx];
+        dirtyDevicesUUID[device.Id] = deviceIdx;
+    }
+
+    for (auto& agent: agents) {
+        for (auto& device: agent.GetDevices()) {
+            if (device.GetState() == NProto::DEVICE_STATE_ERROR &&
+                dirtyDevicesUUID.contains(device.GetDeviceUUID()))
+            {
+                db.UpdateDirtyDevice(device.GetDeviceUUID(), "");
+                auto deviceIdx = dirtyDevicesUUID[device.GetDeviceUUID()];
+                dirtyDevices[deviceIdx].DiskId.clear();
+            }
+        }
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -124,6 +151,11 @@ void TDiskRegistryActor::ExecuteLoadState(
         db,
         args.Snapshot.ErrorNotifications,
         args.Snapshot.UserNotifications);
+
+    RemovePendingCleanupDevicesInErrorState(
+        db,
+        args.Snapshot.Agents,
+        args.Snapshot.DirtyDevices);
 }
 
 void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
@@ -175,10 +207,12 @@ void TDiskRegistryActor::CompleteLoadState(
     if (TDuration timeout = Config->GetNonReplicatedAgentMaxTimeout()) {
         const auto deadline = timeout.ToDeadLine(ctx.Now());
 
-        LOG_INFO_S(
+        LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Schedule the initial agents rejection phase to " << deadline);
+            "%s Schedule the initial agents rejection phase after %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatDuration(deadline - ctx.Now()).c_str());
 
         auto request =
             std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>();
@@ -219,8 +253,9 @@ void TDiskRegistryActor::CompleteLoadState(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "Found devices without agent and try to remove them: "
+            "%s Found devices without agent and try to remove them: "
             "DeviceUUIDs=%s",
+            LogTitle.GetWithTime().c_str(),
             JoinSeq(" ", orphanDevices).c_str());
 
         ExecuteTx<TRemoveOrphanDevices>(ctx, std::move(orphanDevices));

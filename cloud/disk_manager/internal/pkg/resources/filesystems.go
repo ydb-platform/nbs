@@ -49,13 +49,14 @@ func filesystemStatusToString(status filesystemStatus) string {
 // This is mapped into a DB row. If you change this struct, make sure to update
 // the mapping code.
 type filesystemState struct {
-	id          string
-	zoneID      string
-	blocksCount uint64
-	blockSize   uint32
-	kind        string
-	cloudID     string
-	folderID    string
+	id            string
+	zoneID        string
+	srcSnapshotID string
+	blocksCount   uint64
+	blockSize     uint32
+	kind          string
+	cloudID       string
+	folderID      string
 
 	createRequest []byte
 	createTaskID  string
@@ -74,18 +75,19 @@ type filesystemState struct {
 
 func (s *filesystemState) toFilesystemMeta() *FilesystemMeta {
 	return &FilesystemMeta{
-		ID:           s.id,
-		ZoneID:       s.zoneID,
-		BlocksCount:  s.blocksCount,
-		BlockSize:    s.blockSize,
-		Kind:         s.kind,
-		CloudID:      s.cloudID,
-		FolderID:     s.folderID,
-		CreateTaskID: s.createTaskID,
-		CreatingAt:   s.creatingAt,
-		CreatedAt:    s.createdAt,
-		CreatedBy:    s.createdBy,
-		DeleteTaskID: s.deleteTaskID,
+		ID:            s.id,
+		ZoneID:        s.zoneID,
+		SrcSnapshotID: s.srcSnapshotID,
+		BlocksCount:   s.blocksCount,
+		BlockSize:     s.blockSize,
+		Kind:          s.kind,
+		CloudID:       s.cloudID,
+		FolderID:      s.folderID,
+		CreateTaskID:  s.createTaskID,
+		CreatingAt:    s.creatingAt,
+		CreatedAt:     s.createdAt,
+		CreatedBy:     s.createdBy,
+		DeleteTaskID:  s.deleteTaskID,
 
 		IsExternal:                 s.isExternal,
 		ExternalStorageClusterName: s.externalStorageClusterName,
@@ -96,6 +98,7 @@ func (s *filesystemState) structValue() persistence.Value {
 	return persistence.StructValue(
 		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
 		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.zoneID)),
+		persistence.StructFieldValue("src_snapshot_id", persistence.UTF8Value(s.srcSnapshotID)),
 		persistence.StructFieldValue("blocks_count", persistence.Uint64Value(s.blocksCount)),
 		persistence.StructFieldValue("block_size", persistence.Uint32Value(s.blockSize)),
 		persistence.StructFieldValue("kind", persistence.UTF8Value(s.kind)),
@@ -124,6 +127,7 @@ func scanFilesystemState(res persistence.Result) (state filesystemState, err err
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("id", &state.id),
 		persistence.OptionalWithDefault("zone_id", &state.zoneID),
+		persistence.OptionalWithDefault("src_snapshot_id", &state.srcSnapshotID),
 		persistence.OptionalWithDefault("blocks_count", &state.blocksCount),
 		persistence.OptionalWithDefault("block_size", &state.blockSize),
 		persistence.OptionalWithDefault("kind", &state.kind),
@@ -171,6 +175,7 @@ func filesystemStateStructTypeString() string {
 	return `Struct<
 		id: Utf8,
 		zone_id: Utf8,
+		src_snapshot_id: Utf8,
 		blocks_count: Uint64,
 		block_size: Uint32,
 		kind: Utf8,
@@ -193,6 +198,7 @@ func filesystemStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("src_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("blocks_count", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("block_size", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithColumn("kind", persistence.Optional(persistence.TypeUTF8)),
@@ -328,6 +334,7 @@ func (s *storageYDB) createFilesystem(
 	state := filesystemState{
 		id:            filesystem.ID,
 		zoneID:        filesystem.ZoneID,
+		srcSnapshotID: filesystem.SrcSnapshotID,
 		blocksCount:   filesystem.BlocksCount,
 		blockSize:     filesystem.BlockSize,
 		kind:          filesystem.Kind,

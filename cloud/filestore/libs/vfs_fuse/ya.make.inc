@@ -1,7 +1,10 @@
 SRCS(
     config.cpp
-    directory_handles_stats.cpp
-    directory_handles_storage.cpp
+    directory_entry_version_cache.cpp
+    directory_handle_cache.cpp
+    directory_handle_stats.cpp
+    directory_handle_storage.cpp
+    directory_handle_storage_stats.cpp
     fs.cpp
     fs_directory_content_format.cpp
     fs_directory_handle.cpp
@@ -13,6 +16,7 @@ SRCS(
     fs_impl_node.cpp
     fs_impl_stat.cpp
     handle_ops_queue.cpp
+    handle_ops_queue_stats.cpp
     log.cpp
     loop.cpp
     node_cache.cpp
@@ -22,9 +26,11 @@ PEERDIR(
     cloud/filestore/config
     cloud/filestore/libs/client
     cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/diagnostics/metrics
     cloud/filestore/libs/service
     cloud/filestore/libs/vfs
     cloud/filestore/libs/vfs/protos
+    cloud/filestore/libs/vfs_fuse/counters
     cloud/filestore/libs/vfs_fuse/protos
     cloud/filestore/libs/vfs_fuse/write_back_cache
 

@@ -1,6 +1,8 @@
 #include "tablet_actor.h"
 #include "shard_request_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -78,6 +80,8 @@ void TIndexTabletActor::HandleDestroySession(
         std::move(requestInfo),
         sessionId,
         sessionSeqNo,
+        Config->GetMaxDeleteSessionHandlesPerTx(),
+        false /* isContinuation */,
         std::move(msg->Record));
 }
 
@@ -105,29 +109,13 @@ bool TIndexTabletActor::PrepareTx_DestroySession(
         args.SessionId.c_str(),
         args.SessionSeqNo);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    bool ready = true;
-    auto commitId = GetCurrentCommitId();
-    args.Nodes.reserve(session->Handles.Size());
-    for (const auto& handle: session->Handles) {
-        if (args.Nodes.contains(handle.GetNodeId())) {
-            continue;
-        }
-
-        TMaybe<IIndexTabletDatabase::TNode> node;
-        if (!ReadNode(db, handle.GetNodeId(), commitId, node)) {
-            ready = false;
-        } else {
-            TABLET_VERIFY(node);
-            if (node->Attrs.GetLinks() == 0) {
-                // candidate to be removed
-                args.Nodes.insert(*node);
-            }
-        }
-    }
-
-    return ready;
+    return ReadNodesToRemoveForSessionHandles(
+        *db,
+        *session,
+        args.MaxHandlesPerTx,
+        args.Nodes);
 }
 
 void TIndexTabletActor::ExecuteTx_DestroySession(
@@ -135,45 +123,64 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
     TTransactionContext& tx,
     TTxIndexTablet::TDestroySession& args)
 {
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
+        if (args.IsContinuation) {
+            args.Error = MakeError(
+                E_REJECTED,
+                "session destroy interrupted: session destroyed");
+            ReportDestroySessionInterrupted(TStringBuilder()
+                << LogTag << " DestroySession s:" << args.SessionId
+                << " n:" << args.SessionSeqNo
+                << " interrupted: session destroyed");
+        }
+        args.Completed = true;
         return;
     }
 
-    if (!CheckSessionForDestroy(session, args.SessionSeqNo) &&
-        session->DeleteSubSession(args.SessionSeqNo))
-    {
-        db.WriteSession(*session);
-        return;
+    if (!CheckSessionForDestroy(session, args.SessionSeqNo)) {
+        if (args.IsContinuation) {
+            args.Error = MakeError(
+                E_REJECTED,
+                "session destroy interrupted: session recovered");
+            ReportDestroySessionInterrupted(TStringBuilder()
+                << LogTag << " DestroySession s:" << args.SessionId
+                << " n:" << args.SessionSeqNo
+                << " interrupted: session recovered");
+            args.Completed = true;
+            return;
+        }
+
+        if (session->DeleteSubSession(args.SessionSeqNo)) {
+            db->WriteSession(*session);
+            args.Completed = true;
+            return;
+        }
     }
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
         args.OnCommitIdOverflow();
+        args.Completed = true;
         return;
     }
 
-    auto handle = session->Handles.begin();
-    while (handle != session->Handles.end()) {
-        auto nodeId = handle->GetNodeId();
-        DestroyHandle(db, &*(handle++));
+    DestroySessionHandlesAndRemoveNodes(
+        *db,
+        ctx,
+        session,
+        args.CommitId,
+        args.MaxHandlesPerTx,
+        args.IsContinuation,
+        args.Nodes,
+        "session destroy");
 
-        auto it = args.Nodes.find(nodeId);
-        if (it != args.Nodes.end() && !HasOpenHandles(nodeId)) {
-            auto e = RemoveNode(db, *it, it->MinCommitId, args.CommitId);
-
-            if (HasError(e)) {
-                WriteOrphanNode(db, TStringBuilder()
-                    << "DestroySession: " << args.SessionId
-                    << ", RemoveNode: " << nodeId
-                    << ", Error: " << FormatError(e), nodeId);
-            }
-        }
+    if (session->Handles.Empty()) {
+        RemoveSession(*db, args.SessionId);
+        args.Completed = true;
     }
-
-    RemoveSession(db, args.SessionId);
 
     EnqueueTruncateIfNeeded(ctx);
 }
@@ -182,18 +189,36 @@ void TIndexTabletActor::CompleteTx_DestroySession(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroySession& args)
 {
+    if (!args.Completed) {
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s Destroy session s:%s n:%lu continues in the next tx",
+            LogTag.c_str(),
+            args.SessionId.c_str(),
+            args.SessionSeqNo);
+
+        ExecuteTx<TDestroySession>(
+            ctx,
+            std::move(args.RequestInfo),
+            args.SessionId,
+            args.SessionSeqNo,
+            args.MaxHandlesPerTx,
+            true /* isContinuation */,
+            std::move(args.Request));
+        return;
+    }
+
     RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(args.Error);
 
-    UnregisterSessionByPipeServer(args.SessionId);
-    DeleteUnconfirmedDataForSession(args.SessionId, ctx);
-
     if (HasError(args.Error)) {
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }
+
+    UnregisterSessionByPipeServer(args.SessionId);
+    DeleteUnconfirmedDataForSession(args.SessionId, ctx);
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     // session will be deleted in other shards via the code in the main tablet

@@ -45,6 +45,7 @@ public:
 
 NProto::TError ParseFreshBlobContent(
     ui64 commitId,
+    TPartialBlobId blobId,
     ui32 blockSize,
     const TString& buffer,
     TVector<TOwningFreshBlock>& blocks,

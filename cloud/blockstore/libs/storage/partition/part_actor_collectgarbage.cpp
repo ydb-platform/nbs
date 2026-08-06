@@ -594,7 +594,9 @@ void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
         }
     }
 
-    State->GetCollectGarbageState().SetStatus(EOperationStatus::Enqueued);
+    State->GetCollectGarbageState().SetStatus(
+        EOperationStatus::Enqueued,
+        ctx.Now());
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCollectGarbageRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
@@ -682,7 +684,9 @@ void TPartitionActor::HandleCollectGarbage(
             LogTitle.GetWithTime().c_str(),
             commitId);
 
-        State->GetCollectGarbageState().SetStatus(EOperationStatus::Started);
+        State->GetCollectGarbageState().SetStatus(
+            EOperationStatus::Started,
+            ctx.Now());
 
         AddTransaction<TEvPartitionPrivate::TCollectGarbageMethod>(*requestInfo);
 
@@ -694,7 +698,9 @@ void TPartitionActor::HandleCollectGarbage(
     auto garbageBlobs = State->GetGarbageQueue().GetGarbageBlobs(commitId);
 
     if (!newBlobs && !garbageBlobs && State->GetStartupGcExecuted()) {
-        State->GetCollectGarbageState().SetStatus(EOperationStatus::Idle);
+        State->GetCollectGarbageState().SetStatus(
+            EOperationStatus::Idle,
+            ctx.Now());
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to collect");
         return;
@@ -716,7 +722,9 @@ void TPartitionActor::HandleCollectGarbage(
         static_cast<ui32>(newBlobs.size()),
         static_cast<ui32>(garbageBlobs.size()));
 
-    State->GetCollectGarbageState().SetStatus(EOperationStatus::Started);
+    State->GetCollectGarbageState().SetStatus(
+        EOperationStatus::Started,
+        ctx.Now());
 
     TVector<ui32> mixedAndMergedChannels = State->GetChannelsByKind([](auto kind) {
         return kind == EChannelDataKind::Mixed || kind == EChannelDataKind::Merged;
@@ -782,7 +790,9 @@ void TPartitionActor::HandleCollectGarbageCompleted(
         }
     }
 
-    State->GetCollectGarbageState().SetStatus(EOperationStatus::Idle);
+    State->GetCollectGarbageState().SetStatus(
+        EOperationStatus::Idle,
+        ctx.Now());
 
     Actors.Erase(ev->Sender);
 

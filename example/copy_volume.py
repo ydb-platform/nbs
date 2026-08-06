@@ -3,6 +3,7 @@ import json
 import subprocess as sp
 import optparse
 
+BLOCKSTORE_CLIENT = './blockstore-client.sh'
 
 def parse_args():
     parser = optparse.OptionParser()
@@ -25,7 +26,7 @@ def exec(cmd):
 
 def execAction(action, input):
     cmd = [
-        './blockstore-client.sh',
+        BLOCKSTORE_CLIENT,
         'ExecuteAction',
         '--action={}'.format(action),
         '--input-bytes={}'.format(json.dumps(input))
@@ -72,7 +73,10 @@ def get_disk_info(described_disk):
     blockSize = int(volume_config['BlockSize'])
     storageMediaKind = translate_media_kind(volume_config['StorageMediaKind'])
     placementGroupId = volume_config['PlacementGroupId']
-    placementPartitionIndex = volume_config['PlacementPartitionIndex']
+    if 'PlacementPartitionIndex' in volume_config:
+        placementPartitionIndex = volume_config['PlacementPartitionIndex']
+    else:
+        placementPartitionIndex = ''
 
     blockCount = 0
     for partition in volume_config['Partitions']:
@@ -113,7 +117,7 @@ def make_copy_info(volume, opts):
 def copy_disk(src, dst, opts):
     tags = "source-disk-id={}".format(src["diskId"])
     create_cmd = [
-        './blockstore-client.sh',
+        BLOCKSTORE_CLIENT,
         'CreateVolume',
         '--disk-id={}'.format(dst["diskId"]),
         '--storage-media-kind={}'.format(dst["storageMediaKind"]),
@@ -121,17 +125,19 @@ def copy_disk(src, dst, opts):
         '--block-size={}'.format(dst["blockSize"]),
         '--folder-id={}'.format(dst["folderId"]),
         '--cloud-id={}'.format(dst["cloudId"]),
-        '--placement-group-id={}'.format(dst["placementGroupId"]),
-        '--placement-partition-index={}'.format(
-            dst["placementPartitionIndex"]),
         '--tags={}'.format(tags)
     ]
+    if dst["placementGroupId"] != '':
+        create_cmd.append('--placement-group-id={}'.format(dst["placementGroupId"]))
+    if dst["placementPartitionIndex"] != '':
+        create_cmd.append('--placement-partition-index={}'.format(dst["placementPartitionIndex"]))
+
     print(create_cmd)
     if opts.apply:
         exec(create_cmd)
 
     link_cmd = [
-        './blockstore-client.sh',
+        BLOCKSTORE_CLIENT,
         'CreateVolumeLink',
         '--leader-disk-id={}'.format(src["diskId"]),
         '--follower-disk-id={}'.format(dst["diskId"])

@@ -22,6 +22,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
+	"github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/volume"
@@ -187,7 +188,7 @@ type nodeService struct {
 	targetBlkPathRegexp *regexp.Regexp
 	externalFsOverrides ExternalFsOverrideMap
 
-	nbsClient               nbsclient.ClientIface
+	nbsClients              []nbsclient.ClientIface
 	nfsClients              []nfsclient.EndpointClientIface
 	nfsLocalClient          nfsclient.EndpointClientIface
 	nfsLocalFilestoreClient nfsclient.ClientIface
@@ -198,6 +199,7 @@ type nodeService struct {
 	useDiscardForYDBBasedDisks  bool
 	startEndpointRequestTimeout time.Duration
 	nfsVhostReplicaCount        uint
+	nbsServerReplicaCount       uint
 }
 
 func newNodeService(
@@ -208,7 +210,7 @@ func newNodeService(
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
 	externalFsOverrides ExternalFsOverrideMap,
-	nbsClient nbsclient.ClientIface,
+	nbsClients []nbsclient.ClientIface,
 	nfsClients []nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
 	nfsLocalFilestoreClient nfsclient.ClientIface,
@@ -216,14 +218,15 @@ func newNodeService(
 	mountOptions []string,
 	useDiscardForYDBBasedDisks bool,
 	startEndpointRequestTimeout time.Duration,
-	nfsVhostReplicaCount uint) csi.NodeServer {
+	nfsVhostReplicaCount uint,
+	nbsServerReplicaCount uint) csi.NodeServer {
 
 	return &nodeService{
 		nodeId:                      nodeId,
 		clientId:                    clientId,
 		vmMode:                      vmMode,
 		socketsDir:                  socketsDir,
-		nbsClient:                   nbsClient,
+		nbsClients:                  nbsClients,
 		nfsClients:                  nfsClients,
 		nfsLocalClient:              nfsLocalClient,
 		nfsLocalFilestoreClient:     nfsLocalFilestoreClient,
@@ -236,6 +239,7 @@ func newNodeService(
 		useDiscardForYDBBasedDisks:  useDiscardForYDBBasedDisks,
 		startEndpointRequestTimeout: startEndpointRequestTimeout,
 		nfsVhostReplicaCount:        nfsVhostReplicaCount,
+		nbsServerReplicaCount:       nbsServerReplicaCount,
 	}
 }
 
@@ -306,16 +310,18 @@ func (s *nodeService) NodeStageVolume(
 				if stageDataErr != nil {
 					// Backend can be empty for old disks, in this case we use NBS
 					backend := "nbs"
-					nfsClientIndex := uint(0)
+					clientIndex := uint(0)
 					if nfsBackend {
 						backend = "nfs"
-						nfsClientIndex = getNfsClientIndex(instanceId, s.nfsVhostReplicaCount)
+						clientIndex = s.getNfsClientIndex(ctx)
+					} else {
+						clientIndex = s.getNbsClientIndex(ctx)
 					}
 					stageData = &StageData{
-						Backend:        backend,
-						InstanceId:     instanceId,
-						RealStagePath:  s.getEndpointDir(instanceId, nbsId),
-						NfsClientIndex: nfsClientIndex,
+						Backend:       backend,
+						InstanceId:    instanceId,
+						RealStagePath: s.getEndpointDir(instanceId, nbsId),
+						ClientIndex:   clientIndex,
 					}
 					if err = s.writeStageData(stageRecordPath, stageData); err != nil {
 						return nil, s.statusErrorf(codes.Internal,
@@ -329,7 +335,7 @@ func (s *nodeService) NodeStageVolume(
 						instanceId,
 						nbsId,
 						vhostSettings,
-						stageData.NfsClientIndex)
+						stageData.ClientIndex)
 				} else {
 					err = s.nodeStageDiskAsVhostSocket(
 						ctx,
@@ -337,7 +343,10 @@ func (s *nodeService) NodeStageVolume(
 						nbsId,
 						req.VolumeContext,
 						req.VolumeCapability.GetMount(),
-						vhostSettings)
+						req.VolumeCapability.AccessMode,
+						getNbsVolumeAccessMode(req.VolumeCapability.AccessMode, false),
+						vhostSettings,
+						stageData.ClientIndex)
 				}
 
 				if err != nil {
@@ -413,6 +422,50 @@ func (s *nodeService) NodeUnstageVolume(
 	}
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
+}
+
+func (s *nodeService) getNbsClientIndex(ctx context.Context) uint {
+	if s.nbsServerReplicaCount < 2 {
+		return 0
+	}
+	endpointsCount := math.MaxInt32
+	nbsClientIndex := uint(0)
+	for index := uint(0); index < s.nbsServerReplicaCount; index++ {
+		listEndpointsResp, err := s.nbsClients[index].ListEndpoints(ctx,
+			&nbsapi.TListEndpointsRequest{})
+		if err != nil {
+			continue
+		}
+
+		if len(listEndpointsResp.Endpoints) < endpointsCount {
+			endpointsCount = len(listEndpointsResp.Endpoints)
+			nbsClientIndex = uint(index)
+		}
+	}
+
+	return nbsClientIndex
+}
+
+func (s *nodeService) getNfsClientIndex(ctx context.Context) uint {
+	if s.nfsVhostReplicaCount < 2 {
+		return 0
+	}
+	endpointsCount := math.MaxInt32
+	nfsClientIndex := uint(0)
+	for index := uint(0); index < s.nfsVhostReplicaCount; index++ {
+		listEndpointsResp, err := s.nfsClients[index].ListEndpoints(ctx,
+			&nfsapi.TListEndpointsRequest{})
+		if err != nil {
+			continue
+		}
+
+		if len(listEndpointsResp.Endpoints) < endpointsCount {
+			endpointsCount = len(listEndpointsResp.Endpoints)
+			nfsClientIndex = uint(index)
+		}
+	}
+
+	return nfsClientIndex
 }
 
 func (s *nodeService) NodePublishVolume(
@@ -606,6 +659,9 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	headers := &nbsapi.THeaders{
 		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
 	}
+	volumeAccessMode := getNbsVolumeAccessMode(
+		req.VolumeCapability.AccessMode,
+		req.Readonly)
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		Headers:          headers,
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
@@ -615,18 +671,21 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		VolumeAccessMode: volumeAccessMode,
+		VolumeMountMode:  getNbsVolumeMountMode(req.VolumeCapability.AccessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			false,
+			UseFreeNbdDeviceFile: false,
 		},
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
 	}
-	_, err := s.nbsClient.StartEndpoint(ctx,
-		s.resolveEndpoint(ctx, startEndpointRequest))
+
+	// Use index 0, as multiple blockstore servers are not supported in legacy VM mode
+	nbsClient := s.getNbsClient(0)
+	_, err := nbsClient.StartEndpoint(ctx,
+		s.resolveEndpoint(ctx, startEndpointRequest, nbsClient))
 
 	if err != nil {
 		return err
@@ -640,10 +699,10 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 }
 
 type StageData struct {
-	Backend        string `json:"backend"`
-	InstanceId     string `json:"instanceId"`
-	RealStagePath  string `json:"realStagePath"`
-	NfsClientIndex uint   `json:"nfsClientIndex"`
+	Backend       string `json:"backend"`
+	InstanceId    string `json:"instanceId"`
+	RealStagePath string `json:"realStagePath"`
+	ClientIndex   uint   `json:"clientIndex"`
 }
 
 func (s *nodeService) writeStageData(path string, data *StageData) error {
@@ -687,7 +746,10 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 	diskId string,
 	volumeContext map[string]string,
 	volumeCapabilities *csi.VolumeCapability_MountVolume,
-	vhostSettings vhostSettings) error {
+	accessMode *csi.VolumeCapability_AccessMode,
+	volumeAccessMode nbsapi.EVolumeAccessMode,
+	vhostSettings vhostSettings,
+	clientIndex uint) error {
 
 	log.Printf("csi.nodeStageDiskAsVhostSocket: %s %s %+v", instanceId, diskId, volumeContext)
 
@@ -709,7 +771,7 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 
 	defer func() {
 		if err != nil {
-			s.cleanupNbsEndpoint(ctx, instanceId, diskId)
+			s.cleanupNbsEndpoint(ctx, instanceId, diskId, clientIndex)
 		}
 	}()
 
@@ -722,18 +784,20 @@ func (s *nodeService) nodeStageDiskAsVhostSocket(
 		DeviceName:       deviceName,
 		IpcType:          vhostIpc,
 		VhostQueuesCount: vhostSettings.queuesCount,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		VolumeAccessMode: volumeAccessMode,
+		VolumeMountMode:  getNbsVolumeMountMode(accessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			false,
+			UseFreeNbdDeviceFile: false,
 		},
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
 	}
-	_, err = s.nbsClient.StartEndpoint(ctx,
-		s.resolveEndpoint(ctx, startEndpointRequest))
+
+	nbsClient := s.getNbsClient(clientIndex)
+	_, err = nbsClient.StartEndpoint(ctx,
+		s.resolveEndpoint(ctx, startEndpointRequest, nbsClient))
 
 	if err != nil {
 		return err
@@ -749,7 +813,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	mounted, _ := s.mounter.IsMountPoint(req.StagingTargetPath)
 	if !mounted {
 		return s.statusErrorf(codes.FailedPrecondition,
-			"Staging target path is not mounted: %w", req.VolumeId)
+			"Staging target path is not mounted: %s", req.VolumeId)
 	}
 
 	readOnly, _ := s.mounter.IsFilesystemRemountedAsReadonly(req.StagingTargetPath)
@@ -780,7 +844,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		}
 	}
 
-	if req.Readonly {
+	if hasReadOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
 		mountOptions = append(mountOptions, "ro")
 	}
 
@@ -868,7 +932,12 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 
 	diskId := req.VolumeId
 	instanceId := ""
-	resp, err := s.startNbsEndpointForNBD(ctx, instanceId, diskId, req.VolumeContext)
+	resp, err := s.startNbsEndpointForNBD(
+		ctx,
+		instanceId,
+		diskId,
+		req.VolumeContext,
+		req.VolumeCapability.AccessMode)
 	if err != nil {
 		return err
 	}
@@ -876,7 +945,9 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	err = nil
 	defer func() {
 		if err != nil {
-			s.cleanupNbsEndpoint(ctx, instanceId, diskId)
+			// Use index 0, as multiple blockstore servers are supported only in VM mode.
+			clientIndex := uint(0)
+			s.cleanupNbsEndpoint(ctx, instanceId, diskId, clientIndex)
 		}
 	}()
 
@@ -887,7 +958,7 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 	hasBlockDevice, err := s.mounter.HasBlockDevice(ctx, resp.NbdDeviceFile)
 	if !hasBlockDevice {
 		return s.statusErrorf(codes.Unavailable,
-			"Nbd device is not available: %w", err)
+			"Nbd device is not available: %v", err)
 	}
 
 	mnt := req.VolumeCapability.GetMount()
@@ -940,7 +1011,12 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 
 	diskId := req.VolumeId
 	instanceId := ""
-	resp, err := s.startNbsEndpointForNBD(ctx, instanceId, diskId, req.VolumeContext)
+	resp, err := s.startNbsEndpointForNBD(
+		ctx,
+		instanceId,
+		diskId,
+		req.VolumeContext,
+		req.VolumeCapability.AccessMode)
 	if err != nil {
 		return err
 	}
@@ -951,7 +1027,9 @@ func (s *nodeService) nodeStageDiskAsBlockDevice(
 	err = s.mountBlockDevice(diskId, resp.NbdDeviceFile, devicePath, false)
 
 	if err != nil {
-		s.cleanupNbsEndpoint(ctx, instanceId, diskId)
+		// Use index 0, as multiple blockstore servers are supported only in VM mode.
+		clientIndex := uint(0)
+		s.cleanupNbsEndpoint(ctx, instanceId, diskId, clientIndex)
 	}
 	return err
 }
@@ -965,17 +1043,22 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 	mounted, _ := s.mounter.IsMountPoint(devicePath)
 	if !mounted {
 		return s.statusErrorf(codes.FailedPrecondition,
-			"Staging target path is not mounted: %w", req.VolumeId)
+			"Staging target path is not mounted: %s", req.VolumeId)
 	}
 
-	return s.mountBlockDevice(diskId, devicePath, req.TargetPath, req.Readonly)
+	return s.mountBlockDevice(
+		diskId,
+		devicePath,
+		req.TargetPath,
+		hasReadOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly))
 }
 
 func (s *nodeService) startNbsEndpointForNBD(
 	ctx context.Context,
 	instanceId string,
 	diskId string,
-	volumeContext map[string]string) (*nbsapi.TStartEndpointResponse, error) {
+	volumeContext map[string]string,
+	accessMode *csi.VolumeCapability_AccessMode) (*nbsapi.TStartEndpointResponse, error) {
 
 	endpointDir := s.getEndpointDir(instanceId, diskId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
@@ -997,6 +1080,7 @@ func (s *nodeService) startNbsEndpointForNBD(
 	headers := &nbsapi.THeaders{
 		RequestTimeout: uint32(s.startEndpointRequestTimeout.Milliseconds()),
 	}
+	volumeAccessMode := getNbsVolumeAccessMode(accessMode, false)
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
 		Headers:          headers,
 		UnixSocketPath:   unixSocketPath,
@@ -1006,25 +1090,31 @@ func (s *nodeService) startNbsEndpointForNBD(
 		DeviceName:       deviceName,
 		IpcType:          nbdIpc,
 		VhostQueuesCount: 8,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		VolumeAccessMode: volumeAccessMode,
+		VolumeMountMode:  getNbsVolumeMountMode(accessMode),
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			true,
+			UseFreeNbdDeviceFile: true,
 		},
 		ClientProfile: &nbsapi.TClientProfile{
 			HostType: &hostType,
 		},
 	}
-	resp, err := s.nbsClient.StartEndpoint(ctx,
-		s.resolveEndpoint(ctx, startEndpointRequest))
+
+	// Use index 0, as multiple blockstore servers are supported only in VM mode
+	nbsClient := s.getNbsClient(0)
+	resp, err := nbsClient.StartEndpoint(ctx,
+		s.resolveEndpoint(ctx, startEndpointRequest, nbsClient))
 
 	return resp, err
 }
 
-func (s *nodeService) resolveEndpoint(ctx context.Context,
-	startEndpointRequest *nbsapi.TStartEndpointRequest) *nbsapi.TStartEndpointRequest {
-	listEndpointsResp, err := s.nbsClient.ListEndpoints(ctx,
+func (s *nodeService) resolveEndpoint(
+	ctx context.Context,
+	startEndpointRequest *nbsapi.TStartEndpointRequest,
+	nbsClient client.ClientIface,
+) *nbsapi.TStartEndpointRequest {
+	listEndpointsResp, err := nbsClient.ListEndpoints(ctx,
 		&nbsapi.TListEndpointsRequest{})
 	if err != nil {
 		return startEndpointRequest
@@ -1043,12 +1133,13 @@ func (s *nodeService) resolveEndpoint(ctx context.Context,
 	return startEndpointRequest
 }
 
-func (s *nodeService) cleanupNbsEndpoint(ctx context.Context, instanceId string, diskId string) {
-	_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+func (s *nodeService) cleanupNbsEndpoint(ctx context.Context, instanceId string, diskId string, clientIndex uint) {
+	nbsClient := s.getNbsClient(clientIndex)
+	_, err := nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 		UnixSocketPath: filepath.Join(s.getEndpointDir(instanceId, diskId), nbsSocketName),
 	})
 	if err != nil {
-		logVolume(diskId, "StopEndpoint failed in cleanup: %w", err)
+		logVolume(diskId, "StopEndpoint failed in cleanup: %v", err)
 	}
 }
 
@@ -1063,6 +1154,14 @@ func (s *nodeService) getNfsClient(fileSystemId string, nfsClientIndex uint) nfs
 	}
 
 	return s.nfsClients[nfsClientIndex]
+}
+
+func (s *nodeService) getNbsClient(nbsClientIndex uint) client.ClientIface {
+	if len(s.nbsClients) <= int(nbsClientIndex) {
+		return nil
+	}
+
+	return s.nbsClients[nbsClientIndex]
 }
 
 func (s *nodeService) nodePublishFileStoreAsVhostSocket(
@@ -1211,33 +1310,6 @@ func (s *nodeService) nodeStageLocalFileStoreStartEndpoint(
 		fsConfig,
 		endpointDir)
 
-	if fsConfig.SizeGb == 0 {
-		// legacy local filestore config - passthrough StartEndpoint to nfs-local service
-		if s.nfsLocalClient == nil {
-			return fmt.Errorf("nfs local client wasn't created")
-		}
-		_, err := s.nfsLocalClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
-			Endpoint: &nfsapi.TEndpointConfig{
-				SocketPath:       filepath.Join(endpointDir, nfsSocketName),
-				FileSystemId:     fsConfig.Id,
-				ClientId:         fmt.Sprintf("%s-%s", s.clientId, instanceId),
-				VhostQueuesCount: vhostSettings.queuesCount,
-				Persistent:       true,
-			},
-		})
-		if err != nil {
-			if s.IsGrpcTimeoutError(err) {
-				s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-					SocketPath: filepath.Join(endpointDir, nfsSocketName),
-				})
-			}
-
-			return fmt.Errorf("failed to start nfs local endpoint: %w", err)
-		}
-
-		return nil
-	}
-
 	if s.nfsLocalClient == nil || s.nfsLocalFilestoreClient == nil {
 		return fmt.Errorf("nfs local clients weren't created")
 	}
@@ -1382,8 +1454,10 @@ func (s *nodeService) nodeUnstageVolume(
 	}
 
 	endpointDir := s.getEndpointDir("", diskId)
-	if s.nbsClient != nil {
-		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+	// Use index 0, as multiple blockstore servers are supported only in VM mode
+	nbsClient := s.getNbsClient(0)
+	if nbsClient != nil {
+		_, err := nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 		})
 		if err != nil {
@@ -1439,8 +1513,11 @@ func (s *nodeService) nodeUnpublishVolume(
 		// Trying to stop both NBS and NFS endpoints,
 		// because the endpoint's backend service is unknown here.
 		// When we miss we get S_FALSE/S_ALREADY code (err == nil).
-		if s.nbsClient != nil {
-			_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+
+		// Use index 0, as multiple blockstore servers are not supported in legacy VM mode
+		nbsClient := s.getNbsClient(0)
+		if nbsClient != nil {
+			_, err := nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 			})
 			if err != nil {
@@ -1494,7 +1571,7 @@ func (s *nodeService) mountSocketDir(sourcePath string, req *csi.NodePublishVolu
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	if req.Readonly {
+	if hasReadOnlyVolumeAccess(req.VolumeCapability.AccessMode, req.Readonly) {
 		mountOptions = append(mountOptions, "ro")
 	}
 
@@ -1516,7 +1593,7 @@ func (s *nodeService) nodeUnstageFileStoreStopEndpoint(
 	ctx context.Context,
 	fileSystemId string,
 	stageData *StageData) error {
-	nfsClient := s.getNfsClient(fileSystemId, stageData.NfsClientIndex)
+	nfsClient := s.getNfsClient(fileSystemId, stageData.ClientIndex)
 	if nfsClient == nil {
 		return fmt.Errorf("NFS client wasn't created")
 	}
@@ -1538,22 +1615,6 @@ func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
 	stageData *StageData) error {
 
 	log.Printf("csi.nodeUnstageLocalFileStoreStopEndpoint: fsConfig=%+v, stageData=%+v", fsConfig, stageData)
-
-	if fsConfig.SizeGb == 0 {
-		// legacy local filestore config - passthrough StopEndpoint to nfs-local service
-		if s.nfsLocalClient == nil {
-			return fmt.Errorf("NFS local clients wasn't created")
-		}
-
-		_, err := s.nfsLocalClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(stageData.RealStagePath, nfsSocketName),
-		})
-		if err != nil {
-			return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to stop local nfs endpoint (%T)", s.nfsLocalClient)
-		}
-
-		return nil
-	}
 
 	if s.nfsLocalClient == nil || s.nfsLocalFilestoreClient == nil {
 		return fmt.Errorf("NFS local clients weren't created")
@@ -1604,9 +1665,14 @@ func (s *nodeService) nodeUnstageVhostSocket(
 		nbsId, stageData.RealStagePath)
 
 	if stageData.Backend == "nbs" {
-		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(stageData.RealStagePath, nbsSocketName),
+		unixSocketPath := filepath.Join(stageData.RealStagePath, nbsSocketName)
+		nbsClient := s.getNbsClient(stageData.ClientIndex)
+		_, err := nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+			UnixSocketPath: unixSocketPath,
 		})
+
+		log.Printf("csi.StopEndpoint[%s]: %v", unixSocketPath, err)
+
 		if err != nil {
 			return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
 		}
@@ -1826,7 +1892,7 @@ func (s *nodeService) NodeGetVolumeStats(
 		return nil, fmt.Errorf("NodeGetVolumeStats is not supported in vmMode")
 	}
 
-	if s.nbsClient == nil {
+	if len(s.nbsClients) == 0 {
 		return nil, fmt.Errorf("NBS client is not available")
 	}
 
@@ -1840,7 +1906,7 @@ func (s *nodeService) NodeGetVolumeStats(
 
 		return nil, s.statusErrorf(
 			codes.Internal,
-			"NodeGetVolumeStats failed: %w", err)
+			"NodeGetVolumeStats failed: %v", err)
 	}
 
 	if !mounted {
@@ -1901,11 +1967,12 @@ func (s *nodeService) nodeExpandVolumeVmMode(
 		}, nil
 	}
 
-	if s.nbsClient == nil {
+	nbsClient := s.getNbsClient(stageData.ClientIndex)
+	if nbsClient == nil {
 		return nil, fmt.Errorf("NodeExpandVolume is not supported")
 	}
 
-	resp, err := s.nbsClient.DescribeVolume(
+	resp, err := nbsClient.DescribeVolume(
 		ctx, &nbsapi.TDescribeVolumeRequest{
 			DiskId: diskId,
 		},
@@ -1932,7 +1999,7 @@ func (s *nodeService) nodeExpandVolumeVmMode(
 	}
 
 	endpointDir := s.getEndpointDir(stageData.InstanceId, diskId)
-	_, err = s.nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
+	_, err = nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
 		UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 	})
 
@@ -1975,12 +2042,14 @@ func (s *nodeService) NodeExpandVolume(
 		return s.nodeExpandVolumeVmMode(ctx, req)
 	}
 
-	if s.nbsClient == nil {
+	// Use index 0, as multiple blockstore servers are supported only in VM mode.
+	nbsClient := s.getNbsClient(0)
+	if nbsClient == nil {
 		return nil, fmt.Errorf("NodeExpandVolume is not supported")
 	}
 
 	diskId := req.VolumeId
-	resp, err := s.nbsClient.DescribeVolume(
+	resp, err := nbsClient.DescribeVolume(
 		ctx, &nbsapi.TDescribeVolumeRequest{
 			DiskId: diskId,
 		},
@@ -2021,7 +2090,7 @@ func (s *nodeService) NodeExpandVolume(
 	endpointDir := s.getEndpointDir("", diskId)
 	unixSocketPath := filepath.Join(endpointDir, nbsSocketName)
 
-	listEndpointsResp, err := s.nbsClient.ListEndpoints(
+	listEndpointsResp, err := nbsClient.ListEndpoints(
 		ctx, &nbsapi.TListEndpointsRequest{},
 	)
 	if err != nil {
@@ -2045,7 +2114,7 @@ func (s *nodeService) NodeExpandVolume(
 	}
 
 	log.Printf("Resize volume id %v blocks count %v", diskId, newBlocksCount)
-	_, err = s.nbsClient.ResizeVolume(ctx, &nbsapi.TResizeVolumeRequest{
+	_, err = nbsClient.ResizeVolume(ctx, &nbsapi.TResizeVolumeRequest{
 		DiskId:        diskId,
 		BlocksCount:   newBlocksCount,
 		ConfigVersion: resp.Volume.ConfigVersion,
@@ -2057,7 +2126,7 @@ func (s *nodeService) NodeExpandVolume(
 			"Resize volume failed %v", err)
 	}
 
-	_, err = s.nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
+	_, err = nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
 		UnixSocketPath: unixSocketPath,
 	})
 

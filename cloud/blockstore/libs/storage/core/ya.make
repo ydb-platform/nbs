@@ -4,7 +4,9 @@ GENERATE_ENUM_SERIALIZATION(device_operation_tracker.h)
 GENERATE_ENUM_SERIALIZATION(mount_token.h)
 
 SRCS(
+    block_digest_factory.cpp
     block_handler.cpp
+    channel_permissions.cpp
     compaction_map.cpp
     compaction_options.cpp
     compaction_policy.cpp

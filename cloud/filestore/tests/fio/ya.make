@@ -1,6 +1,7 @@
 RECURSE_FOR_TESTS(
     mount-kikimr-test
     mount-local-test
+    qemu-kikimr-external-payload-test
     qemu-kikimr-nemesis-test
     qemu-kikimr-newfeatures-test
     qemu-kikimr-test
@@ -11,6 +12,7 @@ RECURSE_FOR_TESTS(
     qemu-kikimr-zero-copy-fallback-test
     qemu-local-noserver-direct-io-test
     qemu-local-noserver-mq-test
+    qemu-local-noserver-no-zero-copy-test
     qemu-local-noserver-test
     qemu-local-test
 )

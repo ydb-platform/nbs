@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 
@@ -50,17 +51,13 @@ private:
     TPoisonPillHelper PoisonPillHelper;
 
     std::unique_ptr<TPartitionChannelsState> ChannelsState;
-    std::unique_ptr<TCommitIdsState> CommitIdsState;
     std::unique_ptr<TPartitionFlushState> FlushState;
-    std::unique_ptr<TPartitionTrimFreshLogState> TrimFreshLogState;
 
     ui64 TabletGeneration = 0;
 
     bool StateLoaded = false;
 
     TDeque<TPendingRequest> PendingRequests;
-
-    ui64 WriteAndZeroRequestsInProgress = 0;
 
     TRunningActors Actors;
 
@@ -72,10 +69,7 @@ private:
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
-    NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
-    NPartition::TThreadSafePartCountersPtr PartCounters;
-
-    NPartition::TThreadSafePartStatsPtr PartStats;
+    TPartitionThreadSafeStatePtr SharedState;
 
 public:
     TFreshBlocksWriterActor(
@@ -102,16 +96,13 @@ private:
         NCloud::Send<NActors::TEvents::TEvPoisonPill>(ctx, ctx.SelfID);
     }
 
-    void ScheduleYellowStateUpdate(const NActors::TActorContext& ctx);
-
-    void UpdateYellowState(const NActors::TActorContext& ctx);
-
-    void ReassignChannelsIfNeeded(const NActors::TActorContext& ctx);
-
-    void UpdateChannelPermissions(
+    void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,
+        NKikimr::TStorageStatusFlags flags,
         ui32 channel,
-        EChannelPermissions permissions);
+        ui32 generation,
+        double approximateFreeSpaceShare,
+        bool notifyPartition);
 
     // IMortalActor overrides
 
@@ -141,16 +132,28 @@ private:
         const NActors::TActorContext& ctx,
         TArrayRef<TRequestInBuffer<TWriteBufferRequestData>> requestsInBuffer);
 
+    void ZeroFreshBlocks(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TBlockRange32 writeRange);
+
     void RebootOnCommitIdOverflow(
         const NActors::TActorContext& ctx,
         const TStringBuf& requestName);
 
     void UpdateStats(const NProto::TPartitionStats& update);
 
+    void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
+
+    void ClearWriteQueue(const NActors::TActorContext& ctx);
+
+    void ReassignChannelsIfNeeded(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateWaitPartition);
     STFUNC(StateFreshBlobsLoading);
     STFUNC(StateWork);
+    STFUNC(StateZombie);
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
@@ -177,6 +180,18 @@ private:
 
     void HandleZeroBlocksCompleted(
         const TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleProcessWriteQueue(
+        const NPartition::TEvPartitionPrivate::TEvProcessWriteQueue::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleProcessStorageStatusFlags(
+        const TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCheckBlobstorageStatusResult(
+        const NKikimr::TEvTablet::TEvCheckBlobstorageStatusResult::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
@@ -206,6 +221,9 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange,               TEvVolume)
 
     BLOCKSTORE_IMPLEMENT_REQUEST(GetPartCounters, TEvPartitionCommonPrivate)
+
+    BLOCKSTORE_IMPLEMENT_REQUEST(Drain,         NPartition::TEvPartition);
+    BLOCKSTORE_IMPLEMENT_REQUEST(StatPartition, NPartition::TEvPartition);
 
     BLOCKSTORE_FRESH_BLOCKS_WRITER_REQUESTS(
         BLOCKSTORE_IMPLEMENT_REQUEST,

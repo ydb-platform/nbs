@@ -2,6 +2,31 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+    requires(
+        std::is_integral_v<T> && std::is_unsigned_v<T> &&
+        !std::is_same_v<T, bool>)
+T GetIntWithNBits(unsigned n)
+{
+    constexpr unsigned bits = std::numeric_limits<T>::digits;
+
+    if (n == 0) {
+        return T{0};
+    }
+
+    if (n >= bits) {
+        return std::numeric_limits<T>::max();
+    }
+
+    return static_cast<T>(std::numeric_limits<T>::max() >> (bits - n));
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TBlockMask BlockMaskFromString(TStringBuf s)
@@ -30,16 +55,26 @@ bool IsBlockMaskFull(const TBlockMask& mask, ui32 blockCount)
     for (size_t i = 0; i < mask.GetChunkCount(); ++i) {
         const auto chunk = mask.GetChunks()[i];
         if (blockCount < blocksInChunk) {
-            const TBitMap<blocksInChunk> m(chunk);
-            Y_DEBUG_ABORT_UNLESS(m.Count() <= blockCount);
-            return m.Count() == blockCount;
-        } else if (chunk != ~TBlockMask::TChunk(0)) {
+            const TBitMap<blocksInChunk> actual(chunk);
+            const TBitMap<blocksInChunk> expectedMask(
+                GetIntWithNBits<TBlockMask::TChunk>(blockCount));
+            return (actual & expectedMask) == expectedMask;
+        }
+
+        if (chunk != ~TBlockMask::TChunk(0)) {
             return false;
         }
 
         blockCount -= blocksInChunk;
     }
     return true;
+}
+
+TBlockMask GetFullBlockMask(ui32 blockCount)
+{
+    TBlockMask mask;
+    mask.Set(0, blockCount);
+    return mask;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

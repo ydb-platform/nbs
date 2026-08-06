@@ -4,6 +4,7 @@
 #include "test.h"
 
 #include <cloud/storage/core/libs/common/thread.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/singleton.h>
 
@@ -18,6 +19,7 @@ namespace {
 class TApp
 {
 private:
+    ILoggingServicePtr Logging;
     ITestPtr Test;
 
 public:
@@ -28,7 +30,13 @@ public:
 
     int Run(TOptionsPtr options)
     {
-        Test = CreateTest(options);
+        Logging = NCloud::CreateLoggingService(
+            "console",
+            {.FiltrationLevel = NCloud::GetLogLevel(options->VerboseLevel)
+                                    .GetOrElse(TLOG_INFO)});
+        Logging->Start();
+
+        Test = CreateTest(std::move(options), Logging);
         return Test->Run();
     }
 
@@ -36,6 +44,10 @@ public:
     {
         if (Test) {
             Test->Stop(exitCode);
+        }
+
+        if (Logging) {
+            Logging->Stop();
         }
     }
 };

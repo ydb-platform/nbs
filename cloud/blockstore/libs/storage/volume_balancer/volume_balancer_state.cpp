@@ -20,10 +20,16 @@ constexpr TDuration MaxPullDelay = TDuration::Hours(24);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
+    : BackoffDelayProvider(pullInterval, MaxPullDelay)
+    , LastSuccessfulPull(TInstant::Now())
+{}
+
 TVolumeBalancerState::TVolumeBalancerState(TStorageConfigPtr storageConfig)
     : StorageConfig(std::move(storageConfig))
     , InitialVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
     , OverridenVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
+    , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
 {}
 
 void TVolumeBalancerState::UpdateVolumeStats(
@@ -55,10 +61,16 @@ void TVolumeBalancerState::UpdateVolumeStats(
 
         info.IsLocal = v.GetIsLocal();
         if (info.IsLocal) {
-            info.NextPullAttempt = {};
+            if (info.NextPullAttempt != TInstant{}) {
+                info.NextPullAttempt = {};
+                info.LastSuccessfulPull = now;   // Rough but ok
+            }
+            if (info.LastSuccessfulPull + PullDelayResetTimespan <= now) {
+                info.BackoffDelayProvider.Reset();
+            }
         } else if (!info.NextPullAttempt) {
-            info.NextPullAttempt = now + info.PullInterval;
-            info.PullInterval = Min(MaxPullDelay, info.PullInterval * 2);
+            info.NextPullAttempt =
+                now + info.BackoffDelayProvider.GetDelayAndIncrease();
         }
 
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
@@ -142,7 +154,9 @@ void TVolumeBalancerState::RenderPreemptedVolumes(
                         : "danger";
                     TABLER_CLASS(cls) {
                         TABLED() { out << v.first; }
-                        TABLED() { out << v.second.PullInterval; }
+                        TABLED() {
+                            out << v.second.BackoffDelayProvider.GetDelay();
+                        }
                         TABLED() { out << v.second.NextPullAttempt; }
                     }
                 }

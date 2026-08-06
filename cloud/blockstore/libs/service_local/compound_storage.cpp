@@ -436,7 +436,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
         subRequest->MutableHeaders()->CopyFrom(request->GetHeaders());
         subRequest->SetStartIndex(startIndex);
         subRequest->SetBlocksCount(blockCount);
-        subRequest->BlockSize = request->BlockSize;
+        subRequest->SetBlockSize(request->GetBlockSize());
         subRequest->Sglist.SetSgList(src.Next(blockCount));
 
         Storages[storageBlockRange.Storage]->ReadBlocksLocal(
@@ -509,8 +509,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
         auto subRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         subRequest->MutableHeaders()->CopyFrom(request->GetHeaders());
         subRequest->SetStartIndex(startIndex);
+        subRequest->SetBlockSize(request->GetBlockSize());
         subRequest->BlocksCount = blockCount;
-        subRequest->BlockSize = request->BlockSize;
         subRequest->Sglist.SetSgList(dst.Next(blockCount));
 
         Storages[storageBlockRange.Storage]->WriteBlocksLocal(

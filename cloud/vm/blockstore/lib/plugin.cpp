@@ -580,8 +580,8 @@ void TPlugin::HandleReadBlocks(
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(r->start_index);
     request->SetBlocksCount(r->blocks_count);
+    request->SetBlockSize(volume->block_size);
     request->Sglist = guardedSgList;
-    request->BlockSize = volume->block_size;
 
     SetupHeaders(*request->MutableHeaders(), comp->id);
 
@@ -647,9 +647,9 @@ void TPlugin::HandleWriteBlocks(
 
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(r->start_index);
+    request->SetBlockSize(volume->block_size);
     request->Sglist = guardedSgList;
     request->BlocksCount = r->blocks_count;
-    request->BlockSize = volume->block_size;
 
     SetupHeaders(*request->MutableHeaders(), comp->id);
 

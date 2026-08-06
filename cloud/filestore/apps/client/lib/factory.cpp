@@ -34,6 +34,7 @@ TCommandPtr NewExecuteActionCommand();
 TCommandPtr NewCreateSessionCommand();
 TCommandPtr NewResetSessionCommand();
 TCommandPtr NewDestroySessionCommand();
+TCommandPtr NewReadLinkCommand();
 TCommandPtr NewStatCommand();
 TCommandPtr NewSetNodeAttrCommand();
 TCommandPtr NewFindGarbageCommand();
@@ -41,6 +42,7 @@ TCommandPtr NewForcedCompactionCommand();
 TCommandPtr NewFindCommand();
 TCommandPtr NewDiffCommand();
 TCommandPtr NewPingCommand();
+TCommandPtr NewDiagnoseFilesystemCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -69,6 +71,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "mount", NewMountCommand },
     { "mv", NewMvCommand },
     { "read", NewReadCommand },
+    { "readlink", NewReadLinkCommand },
     { "removeclusternode", NewRemoveClusterNodeCommand },
     { "resetsession", NewResetSessionCommand },
     { "resize", NewResizeCommand },
@@ -80,6 +83,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "touch", NewTouchCommand },
     { "write", NewWriteCommand },
     { "ping", NewPingCommand },
+    { "diagnosefilesystem", NewDiagnoseFilesystemCommand },
 };
 
 ////////////////////////////////////////////////////////////////////////////////

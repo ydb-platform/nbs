@@ -3,13 +3,15 @@
 #include <util/system/types.h>
 #include <util/system/yassert.h>
 
+#include <atomic>
 #include <type_traits>
 
 namespace NCloud::NBlockStore::NVHostServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <ui32 BucketShift = 7>
+template <typename T, ui32 BucketShift = 7>
+    requires std::is_same_v<T, ui64> || std::is_same_v<T, std::atomic<ui64>>
 class THistogram
 {
     static constexpr ui32 BucketLsb = 64 - BucketShift;
@@ -18,9 +20,29 @@ class THistogram
     static constexpr ui32 NumBucketRanges = BucketLsb + 1;
     static constexpr ui32 NumBuckets = NumBucketsPerRange * NumBucketRanges;
 
-    ui64 Buckets[NumBuckets] = {};
+    T Buckets[NumBuckets] = {};
 
 public:
+    THistogram() = default;
+
+    template <typename U>
+    explicit THistogram(const THistogram<U, BucketShift>& rhs) noexcept
+    {
+        for (ui64 i = 0; i != NumBuckets; ++i) {
+            Buckets[i] = rhs.GetBucketValue(i);
+        }
+    }
+
+    template <typename U>
+    THistogram& operator=(const THistogram<U, BucketShift>& rhs) noexcept
+    {
+        for (ui64 i = 0; i != NumBuckets; ++i) {
+            Buckets[i] = rhs.GetBucketValue(i);
+        }
+
+        return *this;
+    }
+
     void Increment(ui64 value, ui64 count = 1) noexcept
     {
         const ui32 range = GetBucketRange(value);
@@ -29,24 +51,35 @@ public:
         Buckets[(range << BucketShift) + index] += count;
     }
 
-    THistogram& operator += (const THistogram& rhs) noexcept
+    template <typename U>
+    THistogram& operator+=(const THistogram<U, BucketShift>& rhs) noexcept
     {
         for (ui64 i = 0; i != THistogram::NumBuckets; ++i) {
-            Buckets[i] += rhs.Buckets[i];
+            Buckets[i] += rhs.GetBucketValue(i);
         }
 
         return *this;
     }
 
-    THistogram& operator -= (const THistogram& rhs) noexcept
+    template <typename U>
+    THistogram& operator-=(const THistogram<U, BucketShift>& rhs) noexcept
     {
         for (ui64 i = 0; i != THistogram::NumBuckets; ++i) {
-            if (Buckets[i]) {
-                Buckets[i] -= rhs.Buckets[i];
+            if (GetBucketValue(i)) {
+                Buckets[i] -= rhs.GetBucketValue(i);
             }
         }
 
         return *this;
+    }
+
+    [[nodiscard]] ui64 GetBucketValue(size_t index) const noexcept
+    {
+        if constexpr (std::is_same_v<T, std::atomic<ui64>>) {
+            return Buckets[index].load();
+        } else {
+            return Buckets[index];
+        }
     }
 
     template <typename F>
@@ -94,7 +127,7 @@ public:
 private:
     [[nodiscard]] ui64 GetCount(ui32 range, ui32 index) const noexcept
     {
-        return Buckets[(range << BucketShift) + index];
+        return GetBucketValue((range << BucketShift) + index);
     }
 
     [[nodiscard]] static ui32 GetBucketRange(ui64 value) noexcept

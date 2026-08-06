@@ -23,7 +23,7 @@ bool TIndexTabletActor::ValidateTx_LoadNodeRefs(
 
 bool TIndexTabletActor::PrepareTx_LoadNodeRefs(
     const TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TLoadNodeRefs& args)
 {
     TVector<TIndexTabletDatabase::TNodeRef> nodeRefs;
@@ -38,7 +38,8 @@ bool TIndexTabletActor::PrepareTx_LoadNodeRefs(
         return false;   // not ready
     }
 
-    bool ready = db.ReadNodeRefs(
+    bool ready = ReadNodeRefs(
+        db,
         args.NodeId,
         args.Cookie,
         args.MaxNodeRefs,

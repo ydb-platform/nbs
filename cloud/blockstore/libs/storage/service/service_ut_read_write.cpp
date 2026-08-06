@@ -374,6 +374,7 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         writeBlocksRequest->Record.SetSessionId(sessionId);
         writeBlocksRequest->Record.SetStartIndex(0);
         writeBlocksRequest->Record.MutableHeaders()->SetClientId(service.GetClientId());
+        writeBlocksRequest->Record.SetBlockSize(DefaultBlockSize);
 
         ui32 blocksCount = 1024;
         auto writeBlockContent = GetBlockContent(char(1));
@@ -381,7 +382,6 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         sglist.resize(blocksCount, {writeBlockContent.data(), writeBlockContent.size()});
         writeBlocksRequest->Record.Sglist = TGuardedSgList(std::move(sglist));
         writeBlocksRequest->Record.BlocksCount = blocksCount;
-        writeBlocksRequest->Record.BlockSize = DefaultBlockSize;
 
         service.SendRequest(MakeStorageServiceId(), std::move(writeBlocksRequest));
         auto response = service.RecvWriteBlocksLocalResponse();
@@ -452,11 +452,11 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         readBlocksRequest->Record.SetStartIndex(0);
         readBlocksRequest->Record.SetBlocksCount(1);
         readBlocksRequest->Record.MutableHeaders()->SetClientId(service.GetClientId());
+        readBlocksRequest->Record.SetBlockSize(DefaultBlockSize);
 
         auto block = TString::Uninitialized(DefaultBlockSize);
         auto buffer = TGuardedBuffer(std::move(block));
         readBlocksRequest->Record.Sglist = buffer.GetGuardedSgList();
-        readBlocksRequest->Record.BlockSize = DefaultBlockSize;
 
         service.SendRequest(MakeStorageServiceId(), std::move(readBlocksRequest));
         auto response = service.RecvReadBlocksLocalResponse();
@@ -567,11 +567,11 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         readBlocksRequest->Record.SetStartIndex(0);
         readBlocksRequest->Record.SetBlocksCount(1);
         readBlocksRequest->Record.MutableHeaders()->SetClientId(service.GetClientId());
+        readBlocksRequest->Record.SetBlockSize(DefaultBlockSize);
 
         auto block = TString::Uninitialized(DefaultBlockSize);
         auto buffer = TGuardedBuffer(std::move(block));
         readBlocksRequest->Record.Sglist = buffer.GetGuardedSgList();
-        readBlocksRequest->Record.BlockSize = DefaultBlockSize;
 
         service.SendRequest(MakeStorageServiceId(), std::move(readBlocksRequest));
         auto response = service.RecvReadBlocksLocalResponse();

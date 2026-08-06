@@ -15,6 +15,8 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
+#include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
+#include <cloud/filestore/libs/storage/fastshard/server/server.h>
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
@@ -38,6 +40,7 @@
 
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>
+#include <util/system/hostname.h>
 
 #include <atomic>
 
@@ -53,29 +56,41 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+inline bool IsTabletOverloaded(
+    const TStorageConfig& config,
+    const TSystemCounters& systemCounters,
+    ui32 tabletActorCpuUsageRate)
+{
+    const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
+    return tabletActorCpuUsageRate >=
+               config.GetTabletActorCpuUsageOverloadThreshold() ||
+           cl >= config.GetCpuLackOverloadThreshold();
+}
+
 inline void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    TString fileSystemId,
     ui32 tabletActorCpuUsageRate,
     NProto::TBackendInfo* backendInfo)
 {
-    //
-    // Keeping it simple for now - checking only CpuWait and tablet actor cpu
-    // usage. We might decide to add some other metrics into consideration here
-    // - e.g. network usage.
-    //
-
-    const ui64 cl = systemCounters.CpuLack.load(std::memory_order_relaxed);
     backendInfo->SetIsOverloaded(
-        tabletActorCpuUsageRate
-            >= config.GetTabletActorCpuUsageOverloadThreshold()
-        || cl >= config.GetCpuLackOverloadThreshold());
+        IsTabletOverloaded(config, systemCounters, tabletActorCpuUsageRate));
+
+    const ui32 fastShardPort = config.GetFastShardServerPort();
+    if (fastShardPort) {
+        backendInfo->SetFastShardHost(FQDNHostName());
+        backendInfo->SetFastShardPort(fastShardPort);
+    }
+
+    backendInfo->SetActualFileSystemId(std::move(fileSystemId));
 }
 
 template <typename T>
 void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
+    TString fileSystemId,
     ui32 tabletActorCpuUsageRate,
     T& response)
 {
@@ -85,6 +100,7 @@ void BuildBackendInfo(
         BuildBackendInfo(
             config,
             systemCounters,
+            std::move(fileSystemId),
             tabletActorCpuUsageRate,
             backendInfo);
     }
@@ -103,6 +119,19 @@ MakeRenameNodeInDestinationRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TMethod>
+void CompleteResponse(
+    const TStorageConfig& config,
+    const ITraceSerializerPtr& traceSerializer,
+    TSystemCounters& systemCounters,
+    const TString& fileSystemId,
+    TTabletMetrics& metrics,
+    typename TMethod::TResponse::ProtoRecordType& response,
+    const TCallContextPtr& callContext,
+    bool* builtTraceInfo);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletActor final
     : public NActors::TActor<TIndexTabletActor>
     , public TTabletBase<TIndexTabletActor>
@@ -115,6 +144,7 @@ class TIndexTabletActor final
         STATE_BOOT,
         STATE_INIT,
         STATE_WORK,
+        STATE_ADAPTER,
         STATE_ZOMBIE,
         STATE_BROKEN,
         STATE_MAX,
@@ -127,11 +157,12 @@ class TIndexTabletActor final
     };
 
 private:
-    TTabletMetrics Metrics;
+    TTabletMetricsPtr Metrics;
+    TCPUUsageTimer CPUUsageTimer;
 
     NProtoPrivate::TStorageStats CachedAggregateStats;
-    TVector<TShardStats> CachedShardStats;
     TInstant CachedStatsFetchingStartTs;
+    TInstant CachedAggregateStatsTs;
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
@@ -171,6 +202,7 @@ private:
 
     // used on monpages
     NProto::TStorageConfig StorageConfigOverride;
+    NProto::TStorageConfig BaseStorageConfig;
 
     ui32 BackpressureErrorCount = 0;
     TInstant BackpressurePeriodStart;
@@ -178,6 +210,11 @@ private:
     const NBlockCodecs::ICodec* BlobCodec;
 
     TVector<ui32> RangesWithEmptyCompactionScore;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
+
+    NFastShard::IFileSystemShardPtr FastShard;
+    NFastShard::IServerPtr FastShardServer;
 
 public:
     TIndexTabletActor(
@@ -188,7 +225,9 @@ public:
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
-        NMetrics::IMetricsRegistryPtr metricsRegistry);
+        NMetrics::IMetricsRegistryPtr metricsRegistry,
+        NFastShard::IServerPtr fastShardServer,
+        ITxReschedulerPtr txRescheduler);
     ~TIndexTabletActor() override;
 
     static constexpr ui32 LogComponent = TFileStoreComponents::TABLET;
@@ -296,30 +335,6 @@ private:
         TVector<TString> shardIds);
     void RestartCheckpointDestruction(const NActors::TActorContext& ctx);
 
-    template <typename TMethod>
-    void EnqueueWriteBatch(
-        const NActors::TActorContext& ctx,
-        std::unique_ptr<TWriteRequest> request)
-    {
-        request->RequestInfo->CancelRoutine = [] (
-            const NActors::TActorContext& ctx,
-            TRequestInfo& requestInfo)
-        {
-            auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_REJECTED, "tablet is shutting down"));
-
-            NCloud::Reply(ctx, requestInfo, std::move(response));
-        };
-
-        if (TIndexTabletState::EnqueueWriteBatch(std::move(request))) {
-            if (auto timeout = Config->GetWriteBatchTimeout()) {
-                ctx.Schedule(timeout, new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-            } else {
-                ctx.Send(SelfId(), new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-            }
-        }
-    }
-
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
     void AddBlobIndexOpIfNeeded(
@@ -363,17 +378,24 @@ private:
         const NActors::TActorContext& ctx,
         TArgs&&... args)
     {
+        TCPUUsageTimerGuard t(CPUUsageTimer);
+
         typename TTx::TArgs tx(std::forward<TArgs>(args)...);
 
         // if we can execute the transaction using the in-memory index state,
         // we will do so and return immediately.
-        if (TryExecuteTx(ctx, AccessInMemoryIndexState(), tx)) {
-            Metrics.InMemoryIndexStateROCacheHitCount.fetch_add(
+        auto* indexState = AccessInMemoryIndexState();
+        if (!indexState) {
+            ReportInMemoryIndexStateNotInitialized();
+        }
+
+        if (indexState && TryExecuteTx(ctx, *indexState, tx)) {
+            Metrics->InMemoryIndexStateROCacheHitCount.fetch_add(
                 1,
                 std::memory_order_relaxed);
             return;
         }
-        Metrics.InMemoryIndexStateROCacheMissCount.fetch_add(
+        Metrics->InMemoryIndexStateROCacheMissCount.fetch_add(
             1,
             std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(ctx, tx);
@@ -384,7 +406,7 @@ private:
         const NActors::TActorContext& ctx,
         TArgs&&... args)
     {
-        Metrics.InMemoryIndexStateRWCount.fetch_add(
+        Metrics->InMemoryIndexStateRWCount.fetch_add(
             1,
             std::memory_order_relaxed);
         TTabletBase<TIndexTabletActor>::ExecuteTx<TTx>(
@@ -417,9 +439,12 @@ private:
         const NProto::TSessionEvent& event);
 
     TBackpressureThresholds BuildBackpressureThresholds() const;
+    TBackpressureThresholds BuildBackpressureSoftThresholds() const;
     TBackpressureValues GetBackpressureValues() const;
 
     void ResetThrottlingPolicy();
+    double CalculateWriteCostMultiplierBackpressure() const;
+    void UpdateWriteCostMultiplierDueToBackpressure();
 
     void ExecuteTx_AddBlob_Write(
         const NActors::TActorContext& ctx,
@@ -442,6 +467,26 @@ private:
         TTxIndexTablet::TAddBlob& args);
 
     bool CheckSessionForDestroy(const TSession* session, ui64 seqNo);
+
+    bool ReadNodesToRemoveForSessionHandles(
+        IIndexTabletDatabase& db,
+        const TSession& session,
+        ui32 maxHandlesPerTx,
+        TNodeSet& nodesToRemove);
+
+    void DestroySessionHandlesAndRemoveNodes(
+        IIndexTabletDatabase& db,
+        const NActors::TActorContext& ctx,
+        TSession* session,
+        ui64 commitId,
+        ui32 maxHandlesPerTx,
+        bool isContinuation,
+        const TNodeSet& nodesToRemove,
+        const char* operation);
+
+    //
+    // Helper actor factory funcs.
+    //
 
     void RegisterCreateNodeInShardActor(
         const NActors::TActorContext& ctx,
@@ -490,9 +535,23 @@ private:
         TString dstShardNodeName,
         bool isLocalRename);
 
+    //
+    // Misc.
+    //
+
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);
+
+    void CompleteAdapterLoadState(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TLoadState& args);
+
+    void ApplyStorageConfigOverrides(
+        const NActors::TActorContext& ctx,
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fileSystemId);
 
     bool IsMainTablet() const;
     bool BehaveAsShard(const NProto::THeaders& headers) const;
@@ -505,8 +564,20 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx,
         const std::function<NProto::TError(
-            const typename TMethod::TRequest::ProtoRecordType&)>& validator = {},
-        bool validateSession = true);
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator);
+
+    template <typename TMethod>
+    bool AcceptRequestNoSession(
+        const typename TMethod::TRequest::TPtr& ev,
+        const NActors::TActorContext& ctx,
+        const std::function<NProto::TError(
+            const typename TMethod::TRequest::ProtoRecordType&)>& validator);
+
+    template <typename TMethod>
+    void CompleteResponse(
+        typename TMethod::TResponse::ProtoRecordType& response,
+        const TCallContextPtr& callContext,
+        bool* builtTraceInfo);
 
     template <typename TMethod>
     void CompleteResponse(
@@ -533,6 +604,7 @@ private:
 
     NProto::TError IsDataOperationAllowed() const;
     bool CanUseUnconfirmedData() const;
+    bool IsTabletConsideredOverloaded() const;
 
     ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
@@ -546,6 +618,26 @@ private:
         ui64 value) const;
     TBackgroundOpsBackpressureStatus GetBackgroundOpsBackpressureStatus() const;
 
+    void ReplyListNodes(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TListNodes& args);
+
+    void ReplyListNodesInternal(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TListNodes& args);
+
+    void CompleteCreateHandle(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TCreateHandle& args);
+
+    void CompleteDestroyHandle(
+        const NActors::TActorContext& ctx,
+        TTxIndexTablet::TDestroyHandle& args);
+
+    //
+    // Common event handlers.
+    //
+
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -554,6 +646,10 @@ private:
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    //
+    // Monpage handlers.
+    //
+
     void HandleHttpInfo(
         const NActors::NMon::TEvRemoteHttpInfo::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -561,6 +657,11 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
+    void RenderHttpInfo_OverviewTab(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        IOutputStream& out);
+    void RenderHttpInfo_QuotasTab(IOutputStream& out);
     void HandleHttpInfo_ForceOperation(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
@@ -569,6 +670,18 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
+    void HandleHttpInfo_DirViewer(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+    void HandleHttpInfo_Locks(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    //
+    // Custom event handlers.
+    //
 
     void HandleSessionDisconnected(
         const NKikimr::TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
@@ -599,6 +712,9 @@ private:
 
     void HandleReleaseCollectBarrier(
         const TEvIndexTabletPrivate::TEvReleaseCollectBarrier::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleCancelUnconfirmedData(
+        const TEvIndexTabletPrivate::TEvCancelUnconfirmedData::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadDataCompleted(
@@ -686,11 +802,16 @@ private:
     std::unique_ptr<TEvIndexTabletPrivate::TEvAddBlobRequest>
     BuildAddBlobRequest(ui64 commitId, const NProto::TUnconfirmedData& entry);
 
+    //
+    // Unconfirmed flow.
+    //
+
     void AddBlobForUnconfirmedData(
         const NActors::TActorContext& ctx,
         ui64 commitId,
         const NProto::TUnconfirmedData& entry);
     void ConfirmData(ui64 commitId, const NActors::TActorContext& ctx);
+    void ConfirmNextRecoveredData(const NActors::TActorContext& ctx);
     void SendDeferredConfirmAddDataResponse(
         const NActors::TActorContext& ctx,
         TPendingConfirmAddData pending,
@@ -702,13 +823,32 @@ private:
         const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
+    void DeleteUnconfirmedData(
+        const NActors::TActorContext& ctx,
+        const char* entityLogTag,
+        const TString& entityLogValue,
+        const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
+            shouldDelete);
+
     void DeleteUnconfirmedDataForSession(
         const TString& sessionId,
         const NActors::TActorContext& ctx);
 
+    void DeleteUnconfirmedDataForPipeServer(
+        const NActors::TActorId& pipeServerId,
+        const NActors::TActorContext& ctx);
+
     void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
+    TCPUUsageTimer& AccessCPUUsageTimer();
+
+    //
+    // Request handlers.
+    //
+
     bool HandleRequests(STFUNC_SIG);
+    bool HandleRequestsByFrozenTablet(STFUNC_SIG);
+    bool HandleRequestsByAdapter(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
     bool RejectRequestsByBrokenTablet(STFUNC_SIG);
 
@@ -717,9 +857,19 @@ private:
 
     FILESTORE_TABLET_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTablet)
     FILESTORE_SERVICE_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvService)
+    FILESTORE_SERVICE_ADAPTER_REQUESTS(
+        FILESTORE_IMPLEMENT_ADAPTER_REQUEST,
+        TEvService)
+    FILESTORE_TABLET_ADAPTER_REQUESTS(
+        FILESTORE_IMPLEMENT_ADAPTER_REQUEST,
+        TEvIndexTablet)
 
-    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTabletPrivate)
-    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IMPLEMENT_ASYNC_REQUEST, TEvIndexTabletPrivate)
+    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(
+        FILESTORE_IMPLEMENT_REQUEST,
+        TEvIndexTabletPrivate)
+    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+        FILESTORE_IMPLEMENT_ASYNC_REQUEST,
+        TEvIndexTabletPrivate)
 
     FILESTORE_TABLET_RW_TRANSACTIONS(
         FILESTORE_IMPLEMENT_RW_TRANSACTION,
@@ -727,12 +877,12 @@ private:
     FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(
         FILESTORE_IMPLEMENT_RO_TRANSACTION,
         TTxIndexTablet,
-        TIndexTabletDatabaseProxy,
-        IIndexTabletDatabase);
+        INodeIndexTabletDatabase);
 
     STFUNC(StateBoot);
     STFUNC(StateInit);
     STFUNC(StateWork);
+    STFUNC(StateAdapter);
     STFUNC(StateZombie);
     STFUNC(StateBroken);
 
@@ -744,6 +894,13 @@ private:
     bool HasBlocksLeft(ui64 blocksRequired) const;
     bool HasSpaceLeft(ui64 prevSize, ui64 newSize) const;
     bool HasNodesLeft() const;
+
+    std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabase(
+        NKikimr::NTable::TDatabase& database);
+
+    std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabaseProxy(
+        NKikimr::NTable::TDatabase& database,
+        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -2,6 +2,7 @@ LIBRARY(filestore-libs-storage-core)
 
 SRCS(
     config.cpp
+    cpu_timer.cpp
     helpers.cpp
     model.cpp
     probes.cpp
@@ -10,11 +11,13 @@ SRCS(
     tablet.cpp
     tablet_counters.cpp
     tablet_schema.cpp
+    tablet_tx_rescheduler.cpp
 )
 
 PEERDIR(
     cloud/filestore/config
     cloud/filestore/libs/service
+    cloud/filestore/private/api/protos
     cloud/filestore/public/api/protos
 
     cloud/storage/core/libs/common

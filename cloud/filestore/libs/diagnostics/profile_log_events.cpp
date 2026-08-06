@@ -18,6 +18,7 @@
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 
@@ -269,18 +270,6 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
-    const NProto::TReadDataLocalRequest& request)
-{
-    auto* rangeInfo = profileLogRequest.AddRanges();
-    rangeInfo->SetNodeId(request.GetNodeId());
-    rangeInfo->SetHandle(request.GetHandle());
-    rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(request.GetLength());
-}
-
-template <>
-void InitProfileLogRequestInfo(
-    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProtoPrivate::TDescribeDataRequest& request)
 {
     auto* rangeInfo = profileLogRequest.AddRanges();
@@ -319,7 +308,7 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProtoPrivate::TConfirmAddDataRequest& request)
 {
-    Y_UNUSED(profileLogRequest, request);
+    profileLogRequest.SetCommitId(request.GetCommitId());
 }
 
 template <>
@@ -327,7 +316,7 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProtoPrivate::TCancelAddDataRequest& request)
 {
-    Y_UNUSED(profileLogRequest, request);
+    profileLogRequest.SetCommitId(request.GetCommitId());
 }
 
 template <>
@@ -340,18 +329,6 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
     rangeInfo->SetBytes(CalculateByteCount(request));
-}
-
-template <>
-void InitProfileLogRequestInfo(
-    NProto::TProfileLogRequestInfo& profileLogRequest,
-    const NProto::TWriteDataLocalRequest& request)
-{
-    auto* rangeInfo = profileLogRequest.AddRanges();
-    rangeInfo->SetNodeId(request.GetNodeId());
-    rangeInfo->SetHandle(request.GetHandle());
-    rangeInfo->SetOffset(request.GetOffset());
-    rangeInfo->SetBytes(request.BytesToWrite);
 }
 
 template <>
@@ -426,6 +403,8 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TUnlinkNodeRequest& request)
 {
+    profileLogRequest.SetFlags(static_cast<ui32>(request.GetUnlinkDirectory()));
+
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetParentNodeId(request.GetNodeId());
     nodeInfo->SetNodeName(request.GetName());
@@ -501,8 +480,10 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TListNodesRequest& request)
 {
-    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
-    nodeInfo->SetNodeId(request.GetNodeId());
+    auto* listNodesInfo = profileLogRequest.MutableListNodesInfo();
+    listNodesInfo->SetNodeId(request.GetNodeId());
+    listNodesInfo->SetMaxBytes(request.GetMaxBytes());
+    listNodesInfo->SetRequestCookie(request.GetCookie());
 }
 
 template <>
@@ -519,10 +500,22 @@ void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TSetNodeAttrRequest& request)
 {
+    const auto flags = request.GetFlags();
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetParentNodeId(request.GetNodeId());
-    nodeInfo->SetFlags(request.GetFlags());
+    nodeInfo->SetFlags(flags);
     nodeInfo->SetMode(request.GetUpdate().GetMode());
+
+    using F = NProto::TSetNodeAttrRequest;
+    if (HasProtoFlag(flags, F::F_SET_ATTR_ATIME)) {
+        nodeInfo->SetATime(request.GetUpdate().GetATime());
+    }
+    if (HasProtoFlag(flags, F::F_SET_ATTR_MTIME)) {
+        nodeInfo->SetMTime(request.GetUpdate().GetMTime());
+    }
+    if (HasProtoFlag(flags, F::F_SET_ATTR_CTIME)) {
+        nodeInfo->SetCTime(request.GetUpdate().GetCTime());
+    }
 }
 
 template <>
@@ -740,8 +733,9 @@ void FinalizeProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TListNodesResponse& response)
 {
-    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
-    nodeInfo->SetSize(response.GetNames().size());
+    auto* listNodesInfo = profileLogRequest.MutableListNodesInfo();
+    listNodesInfo->SetNameCount(response.GetNames().size());
+    listNodesInfo->SetResponseCookie(response.GetCookie());
 }
 
 template <>
@@ -802,20 +796,11 @@ void FinalizeProfileLogRequestInfo(
         profileLogRequest.AddRanges();
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
-    rangeInfo->SetActualBytes(response.GetBuffer().size());
+    rangeInfo->SetActualBytes(
+        response.GetBuffer().empty()
+            ? response.GetLength()
+            : response.GetBuffer().size());
     rangeInfo->SetBufferOffset(response.GetBufferOffset());
-}
-
-template <>
-void FinalizeProfileLogRequestInfo(
-    NProto::TProfileLogRequestInfo& profileLogRequest,
-    const NProto::TReadDataLocalResponse& response)
-{
-    if (profileLogRequest.RangesSize() == 0) {
-        profileLogRequest.AddRanges();
-    }
-    auto* rangeInfo = profileLogRequest.MutableRanges(0);
-    rangeInfo->SetActualBytes(response.BytesRead);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

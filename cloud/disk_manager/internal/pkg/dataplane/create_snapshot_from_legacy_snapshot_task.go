@@ -82,6 +82,7 @@ func (t *createSnapshotFromLegacySnapshotTask) Run(
 		t.storage,
 		ignoreZeroChunks,
 		t.request.UseS3,
+		"", // storageClass
 	)
 	defer target.Close(ctx)
 

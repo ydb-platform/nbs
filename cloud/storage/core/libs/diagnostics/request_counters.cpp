@@ -372,6 +372,7 @@ struct TRequestCounters::TStatCounters
     bool IsReadWriteRequest = false;
     bool ReportDataPlaneHistogram = false;
     bool ReportControlPlaneHistogram = false;
+    bool ThrottlingHistogramsDisabled = false;
 
     TIntrusivePtr<TDynamicCounters> CountersGroup;
 
@@ -430,6 +431,9 @@ struct TRequestCounters::TStatCounters
     TAdaptiveTimeHist BackoffTimeHist;
     TRequestPercentiles<TAdaptiveTimeHist> BackoffTimePercentiles;
 
+    TAdaptiveTimeHist ShapingTimeHist;
+    TRequestPercentiles<TAdaptiveTimeHist> ShapingTimePercentiles;
+
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTimeCalc;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTotalTimeCalc;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxSizeCalc;
@@ -463,6 +467,8 @@ struct TRequestCounters::TStatCounters
         , PostponedTimePercentiles(PostponedTimeHist)
         , BackoffTimeHist("BackoffTime", histogramCounterOptions)
         , BackoffTimePercentiles(BackoffTimeHist)
+        , ShapingTimeHist("ShapingTime", histogramCounterOptions)
+        , ShapingTimePercentiles(ShapingTimeHist)
         , MaxTimeCalc(timer)
         , MaxTotalTimeCalc(timer)
         , MaxSizeCalc(timer)
@@ -491,7 +497,8 @@ struct TRequestCounters::TStatCounters
         TDynamicCountersPtr countersGroup,
         bool isReadWriteRequest,
         bool reportDataPlaneHistogram,
-        bool reportControlPlaneHistogram)
+        bool reportControlPlaneHistogram,
+        bool throttlingHistogramsDisabled)
     {
         CountersGroup = std::move(countersGroup);
         auto& counters = *CountersGroup;
@@ -499,16 +506,16 @@ struct TRequestCounters::TStatCounters
         IsReadWriteRequest = isReadWriteRequest;
         ReportDataPlaneHistogram = reportDataPlaneHistogram;
         ReportControlPlaneHistogram = reportControlPlaneHistogram;
+        ThrottlingHistogramsDisabled = throttlingHistogramsDisabled;
 
         // always reporting the most important counters even when lazy
         // initialization is enabled and the values are zeroes
         Count = counters.GetCounter("Count", true);
         ErrorsFatal = counters.GetCounter("Errors/Fatal", true);
         Time = counters.GetCounter("Time", true);
-        if (ReportControlPlaneHistogram) {
-            TimeHist.Register(counters);
-        } else {
-            TimePercentiles.Register(counters);
+
+        if (IsReadWriteRequest) {
+            RequestBytes = counters.GetCounter("RequestBytes", true);
         }
     }
 
@@ -539,13 +546,20 @@ struct TRequestCounters::TStatCounters
         ErrorsSession = counters.GetCounter("Errors/Session", true);
         Retries = counters.GetCounter("Retries", true);
 
+        if (!IsReadWriteRequest) {
+            if (ReportControlPlaneHistogram) {
+                TimeHist.Register(counters);
+            } else {
+                TimePercentiles.Register(counters);
+            }
+        }
+
         if (IsReadWriteRequest) {
             ErrorsSilent = counters.GetCounter("Errors/Silent", true);
 
             MaxSize = counters.GetCounter("MaxSize");
             MaxCount = counters.GetCounter("MaxCount");
 
-            RequestBytes = counters.GetCounter("RequestBytes", true);
             MaxRequestBytes = counters.GetCounter("MaxRequestBytes");
 
             InProgressBytes = counters.GetCounter("InProgressBytes");
@@ -558,26 +572,33 @@ struct TRequestCounters::TStatCounters
 
                 SizeHist.Register(counters);
                 TimeHistUnaligned.Register(*unalignedClassGroup);
-                ExecutionTimeHist.Register(counters);
-                ExecutionTimeHistUnaligned.Register(*unalignedClassGroup);
+                if (!ThrottlingHistogramsDisabled) {
+                    ExecutionTimeHist.Register(counters);
+                    ExecutionTimeHistUnaligned.Register(*unalignedClassGroup);
+                }
             } else {
                 SizePercentiles.Register(counters);
-                ExecutionTimePercentiles.Register(counters);
-                PostponedTimePercentiles.Register(counters);
-                BackoffTimePercentiles.Register(counters);
+                if (!ThrottlingHistogramsDisabled) {
+                    ExecutionTimePercentiles.Register(counters);
+                    PostponedTimePercentiles.Register(counters);
+                    BackoffTimePercentiles.Register(counters);
+                    ShapingTimePercentiles.Register(counters);
+                }
                 TimePercentiles.Register(counters);
             }
 
-            for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
-                auto sizeClassCounters = counters.GetSubgroup(
-                    "sizeclass",
-                    ToString(TSizeInterval{sizeClass.Begin, sizeClass.End}));
-                if (ReportDataPlaneHistogram) {
-                    sizeClass.Value->ExecutionTimeHist.Register(
-                        *sizeClassCounters);
-                } else {
-                    sizeClass.Value->ExecutionTimePercentiles.Register(
-                        *sizeClassCounters);
+            if (!ThrottlingHistogramsDisabled) {
+                for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                    auto sizeClassCounters = counters.GetSubgroup(
+                        "sizeclass",
+                        ToString(TSizeInterval{sizeClass.Begin, sizeClass.End}));
+                    if (ReportDataPlaneHistogram) {
+                        sizeClass.Value->ExecutionTimeHist.Register(
+                            *sizeClassCounters);
+                    } else {
+                        sizeClass.Value->ExecutionTimePercentiles.Register(
+                            *sizeClassCounters);
+                    }
                 }
             }
 
@@ -585,8 +606,11 @@ struct TRequestCounters::TStatCounters
                 ? TCountableBase::EVisibility::Public
                 : TCountableBase::EVisibility::Private;
 
-            PostponedTimeHist.Register(counters, visibleHistogram);
-            BackoffTimeHist.Register(counters, visibleHistogram);
+            if (!ThrottlingHistogramsDisabled) {
+                PostponedTimeHist.Register(counters, visibleHistogram);
+                BackoffTimeHist.Register(counters, visibleHistogram);
+                ShapingTimeHist.Register(counters, visibleHistogram);
+            }
             TimeHist.Register(counters, visibleHistogram);
 
             // Always enough only percentiles.
@@ -631,8 +655,10 @@ struct TRequestCounters::TStatCounters
     }
 
     void AddStats(
-        TDuration requestTime,
-        TDuration requestCompletionTime,
+        TDuration totalTime,
+        TDuration completionTime,
+        TDuration time,
+        TDuration execTime,
         TDuration postponedTime,
         TDuration backoffTime,
         TDuration shapingTime,
@@ -641,8 +667,6 @@ struct TRequestCounters::TStatCounters
         bool unaligned,
         ECalcMaxTime calcMaxTime)
     {
-        Y_UNUSED(shapingTime);
-
         const bool failed = errorKind != EDiagnosticsErrorKind::Success
             && (errorKind != EDiagnosticsErrorKind::ErrorSilent
                 || !IsReadWriteRequest);
@@ -684,19 +708,16 @@ struct TRequestCounters::TStatCounters
                 return;
         }
 
-        const auto time = requestTime - requestCompletionTime;
-        const auto execTime = time - postponedTime - backoffTime;
-
         if (calcMaxTime == ECalcMaxTime::ENABLE) {
             MaxTimeCalc.Add(execTime.MicroSeconds());
         }
-        MaxTotalTimeCalc.Add(requestTime.MicroSeconds());
+        MaxTotalTimeCalc.Add(totalTime.MicroSeconds());
 
         Time->Add(time.MicroSeconds());
         TimeHist.Increment(time);
 
-        if (requestCompletionTime != TDuration::Zero()) {
-            RequestCompletionTimeHist.Increment(requestCompletionTime);
+        if (completionTime != TDuration::Zero()) {
+            RequestCompletionTimeHist.Increment(completionTime);
         }
 
         if (IsReadWriteRequest) {
@@ -710,21 +731,26 @@ struct TRequestCounters::TStatCounters
             if (unaligned) {
                 UnalignedCount->Inc();
                 TimeHistUnaligned.Increment(time);
-                ExecutionTimeHistUnaligned.Increment(execTime);
+                if (!ThrottlingHistogramsDisabled) {
+                    ExecutionTimeHistUnaligned.Increment(execTime);
+                }
             }
 
-            ExecutionTimeHist.Increment(execTime);
+            if (!ThrottlingHistogramsDisabled) {
+                ExecutionTimeHist.Increment(execTime);
 
-            ExecutionTimeSizeClasses.VisitOverlapping(
-                requestBytes,
-                requestBytes + 1,
-                [&](TDisjointIntervalMap<
-                    ui64,
-                    std::unique_ptr<TSizeClassCounters>>::TIterator it)
-                { it->second.Value->ExecutionTimeHist.Increment(execTime); });
+                ExecutionTimeSizeClasses.VisitOverlapping(
+                    requestBytes,
+                    requestBytes + 1,
+                    [&](TDisjointIntervalMap<
+                        ui64,
+                        std::unique_ptr<TSizeClassCounters>>::TIterator it)
+                    { it->second.Value->ExecutionTimeHist.Increment(execTime); });
 
-            PostponedTimeHist.Increment(postponedTime);
-            BackoffTimeHist.Increment(backoffTime);
+                PostponedTimeHist.Increment(postponedTime);
+                BackoffTimeHist.Increment(backoffTime);
+                ShapingTimeHist.Increment(shapingTime);
+            }
         }
     }
 
@@ -866,13 +892,16 @@ struct TRequestCounters::TStatCounters
             if (updatePercentiles && !ReportDataPlaneHistogram) {
                 SizePercentiles.Update();
                 TimePercentiles.Update();
-                ExecutionTimePercentiles.Update();
                 RequestCompletionTimePercentiles.Update();
-                PostponedTimePercentiles.Update();
-                BackoffTimePercentiles.Update();
+                if (!ThrottlingHistogramsDisabled) {
+                    ExecutionTimePercentiles.Update();
+                    PostponedTimePercentiles.Update();
+                    BackoffTimePercentiles.Update();
+                    ShapingTimePercentiles.Update();
 
-                for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
-                    sizeClass.Value->ExecutionTimePercentiles.Update();
+                    for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                        sizeClass.Value->ExecutionTimePercentiles.Update();
+                    }
                 }
             }
         } else if (updatePercentiles && !ReportControlPlaneHistogram) {
@@ -939,7 +968,8 @@ void TRequestCounters::Register(TDynamicCounters& counters)
                 std::move(requestGroup),
                 IsReadWriteRequestType(t),
                 Options & EOption::ReportDataPlaneHistogram,
-                Options & EOption::ReportControlPlaneHistogram);
+                Options & EOption::ReportControlPlaneHistogram,
+                Options & EOption::ThrottlingHistogramsDisabled);
 
             // ReadWrite counters are usually the most important ones so let's
             // report zeroes for them instead of not reporting anything at all
@@ -979,19 +1009,22 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
     ECalcMaxTime calcMaxTime,
     ui64 responseSent)
 {
-    auto requestCompleted = GetCycleCount();
-    auto requestTime = CyclesToDurationSafe(requestCompleted - requestStarted);
-    auto requestCompletionTime =
+    const ui64 requestCompleted = GetCycleCount();
+    const TDuration totalTime =
+        CyclesToDurationSafe(requestCompleted - requestStarted);
+    const TDuration completionTime =
         responseSent ? CyclesToDurationSafe(requestCompleted - responseSent)
                      : TDuration::Zero();
 
-    const auto time = requestTime - requestCompletionTime;
-    const auto execTime = time - postponedTime;
+    const TDuration time = totalTime - completionTime;
+    const TDuration execTime = time - postponedTime - backoffTime - shapingTime;
 
     RequestCompletedImpl(
         requestType,
-        requestTime,
-        requestCompletionTime,
+        totalTime,
+        completionTime,
+        time,
+        execTime,
         postponedTime,
         backoffTime,
         shapingTime,
@@ -1001,7 +1034,7 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
         unaligned,
         calcMaxTime);
 
-    return {.ExecutionTime = execTime, .Time = requestTime};
+    return {.ExecutionTime = execTime, .Time = totalTime};
 }
 
 void TRequestCounters::AddRetryStats(
@@ -1145,8 +1178,10 @@ void TRequestCounters::RequestStartedImpl(
 
 void TRequestCounters::RequestCompletedImpl(
     TRequestType requestType,
-    TDuration requestTime,
-    TDuration requestCompletionTime,
+    TDuration totalTime,
+    TDuration completionTime,
+    TDuration time,
+    TDuration execTime,
     TDuration postponedTime,
     TDuration backoffTime,
     TDuration shapingTime,
@@ -1164,8 +1199,10 @@ void TRequestCounters::RequestCompletedImpl(
         auto& statCounters = AccessRequestStats(requestType);
         statCounters.Completed(requestBytes);
         statCounters.AddStats(
-            requestTime,
-            requestCompletionTime,
+            totalTime,
+            completionTime,
+            time,
+            execTime,
             postponedTime,
             backoffTime,
             shapingTime,
@@ -1177,8 +1214,10 @@ void TRequestCounters::RequestCompletedImpl(
     NotifySubscribers(
         &TRequestCounters::RequestCompletedImpl,
         requestType,
-        requestTime,
-        requestCompletionTime,
+        totalTime,
+        completionTime,
+        time,
+        execTime,
         postponedTime,
         backoffTime,
         shapingTime,
@@ -1191,6 +1230,10 @@ void TRequestCounters::RequestCompletedImpl(
 
 bool TRequestCounters::ShouldReport(TRequestType requestType) const
 {
+    if (Options & EOption::DisaggregatedCountersDisabled) {
+        return false;
+    }
+
     if (requestType >= CountersByRequest.size()) {
         return false;
     }

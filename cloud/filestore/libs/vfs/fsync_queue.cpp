@@ -1,5 +1,9 @@
 #include "fsync_queue.h"
 
+#include <cloud/storage/core/libs/common/verify.h>
+
+#include <library/cpp/threading/future/wait/wait.h>
+
 #include <util/generic/algorithm.h>
 
 namespace NCloud::NFileStore::NVFS {
@@ -8,228 +12,96 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFSyncCache::TFSyncCache(TString logTag, ILoggingServicePtr logging)
-    : LogTag(std::move(logTag))
+TFSyncQueue::TFSyncQueue(
+        const TString& fileSystemId,
+        ILoggingServicePtr logging)
+    : FileSystemId(fileSystemId)
+    , LogTag("[" + fileSystemId + "][FSYNC_QUEUE]")
     , Logging(std::move(logging))
-    // TODO: add vfs log component
     , Log(Logging->CreateLog("NFS_FUSE"))
 {}
 
-void TFSyncCache::AddRequest(const TRequest& request)
+TFSyncQueue::TShard& TFSyncQueue::AccessShard(TNodeId nodeId)
 {
-    Y_ABORT_UNLESS(request.NodeId);
-
-    TItem item{ .Request = request };
-
-    // Meta request.
-    Meta[request.NodeId].emplace(request.ReqId, item);
-    GlobalMeta.emplace(request.ReqId, item);
-
-    STORAGE_TRACE(LogTag << " Request was added to meta maps " << request);
-
-    if (request.Handle) {
-        // Data request.
-        Data[request.NodeId][request.Handle].emplace(request.ReqId, item);
-        GlobalData.emplace(request.ReqId, item);
-
-        STORAGE_TRACE(LogTag << " Request was added to data maps " << request);
-    }
-
-    CheckFSyncNotifications();
+    return Shards[ToUnderlying(nodeId) % ShardCount];
 }
 
-TFuture<NProto::TError> TFSyncCache::AddFSyncRequest(const TRequest& request)
+bool TFSyncQueue::IsFSync(const TItem& item)
 {
-    TItem item{ .Request = request, .Promise = NewPromise<NProto::TError>() };
-    auto future = item.Promise.GetFuture();
-
-    if (request.NodeId) {
-        if (request.Handle) {
-            // Node Data request.
-            Data[request.NodeId][request.Handle]
-                .emplace(request.ReqId, std::move(item));
-
-            STORAGE_TRACE(LogTag
-                << " FSync request was added to local data map " << request);
-        } else {
-            // Node Meta request.
-            Meta[request.NodeId].emplace(request.ReqId, std::move(item));
-
-            STORAGE_TRACE(LogTag
-                << " FSync request was added to local meta map " << request);
-        }
-    } else {
-        if (request.Handle) {
-            // Global Data request.
-            GlobalData.emplace(request.ReqId, std::move(item));
-
-            STORAGE_TRACE(LogTag
-                << " FSync request was added to global data map " << request);
-        } else {
-            // Global Meta request.
-            GlobalMeta.emplace(request.ReqId, std::move(item));
-
-            STORAGE_TRACE(LogTag
-                << " FSync request was added to global meta map " << request);
-        }
-    }
-
-    CheckFSyncNotifications();
-    return future;
+    return item.Promise.Initialized();
 }
 
-void TFSyncCache::RemoveRequest(const TRequest& request)
+bool TFSyncQueue::NotifyAndEraseLeadingFSyncs(TRequestMap& map)
 {
-    Y_ABORT_UNLESS(request.NodeId);
-
-    {
-        // Meta request.
-        auto nodeIt = Meta.find(request.NodeId);
-        Y_ABORT_UNLESS(nodeIt != Meta.end());
-
-        if (!nodeIt->second.erase(request.ReqId)) {
-            Y_ABORT(
-                "Cannot find requestId: %lu for nodeId: %lu in local meta map",
-                request.ReqId,
-                ToUnderlying(request.NodeId));
-        }
-
-        if (nodeIt->second.empty()) {
-            Meta.erase(nodeIt);
-        }
-
-        STORAGE_TRACE(LogTag
-            << " Request was removed from local meta map " << request);
-
-        // Global meta request.
-        if (!GlobalMeta.erase(request.ReqId)) {
-            Y_ABORT(
-                "Cannot find requestId: %lu in global meta map",
-                request.ReqId);
-        }
-
-        STORAGE_TRACE(LogTag
-            << " Request was removed from global meta map " << request);
-    }
-
-    if (request.Handle) {
-        // Data request.
-        auto nodeIt = Data.find(request.NodeId);
-        Y_ABORT_UNLESS(nodeIt != Data.end());
-
-        auto handleIt = nodeIt->second.find(request.Handle);
-        Y_ABORT_UNLESS(handleIt != nodeIt->second.end());
-
-        if (!handleIt->second.erase(request.ReqId)) {
-            Y_ABORT(
-                "Cannot find requestId: %lu for nodeId: %lu and handle: %lu"
-                " in local data map",
-                request.ReqId,
-                ToUnderlying(request.NodeId),
-                ToUnderlying(request.Handle));
-        }
-
-        if (handleIt->second.empty()) {
-            nodeIt->second.erase(handleIt);
-            if (nodeIt->second.empty()) {
-                Data.erase(nodeIt);
-            }
-        }
-
-        STORAGE_TRACE(LogTag
-            << " Request was removed from local data map " << request);
-
-        // Global data request.
-        if (!GlobalData.erase(request.ReqId)) {
-            Y_ABORT(
-                "Cannot find requestId: %lu in global data map",
-                request.ReqId);
-        }
-
-        STORAGE_TRACE(LogTag
-            << " Request was removed from global data map " << request);
-    }
-
-    CheckFSyncNotifications();
-}
-
-void TFSyncCache::CheckFSyncNotifications()
-{
-    const auto notifyAndErase = [this] (auto& kv) {
-        return NotifyAndEraseLatest(kv.second);
-    };
-
-    // Check in node meta map.
-    EraseNodesIf(Meta, notifyAndErase);
-
-    // Check in global meta map.
-    NotifyAndEraseLatest(GlobalMeta);
-
-    // Check in node data map.
-    EraseNodesIf(Data, [&] (auto& kv) {
-        auto& map = kv.second;
-        EraseNodesIf(map, notifyAndErase);
-        return map.empty();
-    });
-
-    // Check in global data map.
-    NotifyAndEraseLatest(GlobalData);
-}
-
-bool TFSyncCache::NotifyAndEraseLatest(TRequestMap& map)
-{
+    // Fires leading fsyncs in `map` (calls SetValue on their promises).
+    // Returns true if the map is empty afterwards.
+    // SetValue runs subscriber callbacks synchronously, so they execute
+    // while the caller still holds the shard lock.
     while (!map.empty()) {
         auto it = map.begin();
         if (!IsFSync(it->second)) {
             break;
         }
 
-        auto item = std::move(it->second);
+        auto promise = std::move(it->second.Promise);
         map.erase(it);
-
-        Notify(item.Request, std::move(item.Promise));
+        promise.SetValue(MakeError(S_OK));
     }
 
     return map.empty();
 }
 
-void TFSyncCache::Notify(
-    const TRequest& request,
-    TPromise<NProto::TError>&& promise)
-{
-    // TODO: Fsync or flush can finish not only with success
-    // https://man7.org/linux/man-pages/man2/fsync.2.html
-    // https://man7.org/linux/man-pages/man3/fflush.3.html
-    promise.SetValue({});
-
-    STORAGE_TRACE(LogTag
-        << " FSync request was notified and erased " << request);
-}
-
-bool TFSyncCache::IsFSync(const TItem& item) const
-{
-    return item.Promise.Initialized();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-TFSyncQueue::TFSyncQueue(
-        const TString& fileSystemId,
-        ILoggingServicePtr logging)
-    : LogTag("[" + fileSystemId + "][FSYNC]")
-    , Logging(std::move(logging))
-    , Log(Logging->CreateLog("NFS_FUSE"))
-    , CurrentState(LogTag, Logging)
-{}
-
 void TFSyncQueue::Enqueue(TRequestId reqId, TNodeId nodeId, THandle handle)
 {
-    TRequest request{ .ReqId = reqId, .NodeId = nodeId, .Handle = handle };
+    STORAGE_VERIFY(nodeId, TWellKnownEntityTypes::FILESYSTEM, FileSystemId);
+
+    TRequest request{.ReqId = reqId, .NodeId = nodeId, .Handle = handle};
 
     STORAGE_TRACE(LogTag << " Request was started " << request);
 
-    with_lock (StateLock) {
-        CurrentState.AddRequest(request);
+    auto& shard = AccessShard(nodeId);
+    with_lock (shard.Lock) {
+        TItem item{.Request = request};
+        auto& metaMap = shard.Meta[nodeId];
+        // There is no need to call NotifyAndEraseLeadingFSyncs here since the
+        // head of any map (lowest reqId) is always non-fsync, because
+        // Dequeue and WaitFor* drain leading fsyncs under the shard lock
+        // before releasing it. A non-fsync insert cannot violate this. It
+        // either becomes the new head (still non-fsync) or lands below the
+        // existing head (head unchanged).
+        STORAGE_VERIFY_DEBUG_C(
+            metaMap.empty() || !IsFSync(metaMap.begin()->second),
+            TWellKnownEntityTypes::FILESYSTEM,
+            FileSystemId,
+            TStringBuilder() << "FSync at head of meta map for nodeId="
+                             << ToUnderlying(nodeId) << " before Enqueue");
+        const bool metaEmplaced = metaMap.emplace(reqId, item).second;
+        STORAGE_VERIFY_C(
+            metaEmplaced,
+            TWellKnownEntityTypes::FILESYSTEM,
+            FileSystemId,
+            TStringBuilder() << "Duplicate requestId: " << reqId
+                             << " for nodeId: " << ToUnderlying(nodeId)
+                             << " in local meta map");
+        if (handle) {
+            auto& dataMap = shard.Data[nodeId][handle];
+            STORAGE_VERIFY_DEBUG_C(
+                dataMap.empty() || !IsFSync(dataMap.begin()->second),
+                TWellKnownEntityTypes::FILESYSTEM,
+                FileSystemId,
+                TStringBuilder() << "FSync at head of data map for nodeId="
+                                 << ToUnderlying(nodeId) << " handle="
+                                 << ToUnderlying(handle) << " before Enqueue");
+            const bool dataEmplaced = dataMap.emplace(reqId, item).second;
+            STORAGE_VERIFY_C(
+                dataEmplaced,
+                TWellKnownEntityTypes::FILESYSTEM,
+                FileSystemId,
+                TStringBuilder() << "Duplicate requestId: " << reqId
+                                 << " for nodeId: " << ToUnderlying(nodeId)
+                                 << " and handle: " << ToUnderlying(handle)
+                                 << " in local data map");
+        }
     }
 }
 
@@ -241,13 +113,60 @@ void TFSyncQueue::Dequeue(
 {
     // TODO: Request can finish with error
     Y_UNUSED(error);
+    STORAGE_VERIFY(nodeId, TWellKnownEntityTypes::FILESYSTEM, FileSystemId);
 
-    TRequest request{ .ReqId = reqId, .NodeId = nodeId, .Handle = handle };
+    TRequest request{.ReqId = reqId, .NodeId = nodeId, .Handle = handle};
 
     STORAGE_TRACE(LogTag << " Request was finished " << request);
 
-    with_lock (StateLock) {
-        CurrentState.RemoveRequest(request);
+    auto& shard = AccessShard(nodeId);
+    with_lock (shard.Lock) {
+        // Local meta map: always present.
+        auto metaNodeIt = shard.Meta.find(nodeId);
+        STORAGE_VERIFY(
+            metaNodeIt != shard.Meta.end(),
+            TWellKnownEntityTypes::FILESYSTEM,
+            FileSystemId);
+        const bool metaErased = metaNodeIt->second.erase(reqId);
+        STORAGE_VERIFY_C(
+            metaErased,
+            TWellKnownEntityTypes::FILESYSTEM,
+            FileSystemId,
+            TStringBuilder() << "Cannot find requestId: " << reqId
+                             << " for nodeId: " << ToUnderlying(nodeId)
+                             << " in local meta map");
+        if (NotifyAndEraseLeadingFSyncs(metaNodeIt->second)) {
+            shard.Meta.erase(metaNodeIt);
+        }
+
+        if (handle) {
+            // Local data map: present only for data requests.
+            auto dataNodeIt = shard.Data.find(nodeId);
+            STORAGE_VERIFY(
+                dataNodeIt != shard.Data.end(),
+                TWellKnownEntityTypes::FILESYSTEM,
+                FileSystemId);
+            auto handleIt = dataNodeIt->second.find(handle);
+            STORAGE_VERIFY(
+                handleIt != dataNodeIt->second.end(),
+                TWellKnownEntityTypes::FILESYSTEM,
+                FileSystemId);
+            const bool dataErased = handleIt->second.erase(reqId);
+            STORAGE_VERIFY_C(
+                dataErased,
+                TWellKnownEntityTypes::FILESYSTEM,
+                FileSystemId,
+                TStringBuilder() << "Cannot find requestId: " << reqId
+                                 << " for nodeId: " << ToUnderlying(nodeId)
+                                 << " and handle: " << ToUnderlying(handle)
+                                 << " in local data map");
+            if (NotifyAndEraseLeadingFSyncs(handleIt->second)) {
+                dataNodeIt->second.erase(handleIt);
+                if (dataNodeIt->second.empty()) {
+                    shard.Data.erase(dataNodeIt);
+                }
+            }
+        }
     }
 }
 
@@ -255,20 +174,45 @@ TFuture<NProto::TError> TFSyncQueue::WaitForRequests(
     TRequestId reqId,
     TNodeId nodeId)
 {
-    TRequest request{ .ReqId = reqId, .NodeId = nodeId };
+    TRequest request{.ReqId = reqId, .NodeId = nodeId};
 
-    STORAGE_TRACE(LogTag
-        << " FSync request was received " << request << " meta");
+    STORAGE_TRACE(
+        LogTag << " FSync request was received " << request << " meta");
 
-    with_lock (StateLock) {
-        return CurrentState.AddFSyncRequest(request);
+    if (!nodeId) {
+        return WaitForGlobalMeta(reqId);
     }
+
+    TFuture<NProto::TError> future;
+    auto& shard = AccessShard(nodeId);
+    with_lock (shard.Lock) {
+        auto it = shard.Meta.find(nodeId);
+        if (it == shard.Meta.end()) {
+            return MakeFuture(MakeError(S_OK));
+        }
+        TItem item{
+            .Request = request,
+            .Promise = NewPromise<NProto::TError>(),
+        };
+        future = item.Promise.GetFuture();
+        const bool emplaced = it->second.emplace(reqId, std::move(item)).second;
+        STORAGE_VERIFY_C(
+            emplaced,
+            TWellKnownEntityTypes::FILESYSTEM,
+            FileSystemId,
+            TStringBuilder() << "Duplicate requestId: " << reqId
+                             << " for nodeId: " << ToUnderlying(nodeId)
+                             << " in local meta map");
+        if (NotifyAndEraseLeadingFSyncs(it->second)) {
+            shard.Meta.erase(it);
+        }
+    }
+    return future;
 }
 
 TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(TRequestId reqId)
 {
-    // Handle should not be equal to InvalidHandle for global data fsync.
-    return WaitForDataRequests(reqId, TNodeId {InvalidNodeId}, THandle {~InvalidHandle});
+    return WaitForGlobalData(reqId);
 }
 
 TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(
@@ -276,14 +220,158 @@ TFuture<NProto::TError> TFSyncQueue::WaitForDataRequests(
     TNodeId nodeId,
     THandle handle)
 {
-    TRequest request{ .ReqId = reqId, .NodeId = nodeId, .Handle = handle };
+    TRequest request{.ReqId = reqId, .NodeId = nodeId, .Handle = handle};
 
-    STORAGE_TRACE(LogTag
-        << " FSync request was received " << request << " data");
+    STORAGE_TRACE(
+        LogTag << " FSync request was received " << request << " data");
 
-    with_lock (StateLock) {
-        return CurrentState.AddFSyncRequest(request);
+    if (!nodeId) {
+        return WaitForGlobalData(reqId);
     }
+
+    TFuture<NProto::TError> future;
+    auto& shard = AccessShard(nodeId);
+    with_lock (shard.Lock) {
+        auto nodeIt = shard.Data.find(nodeId);
+        if (nodeIt == shard.Data.end()) {
+            return MakeFuture(MakeError(S_OK));
+        }
+
+        auto& nodeMap = nodeIt->second;
+        auto handleIt = nodeMap.find(handle);
+        if (handleIt == nodeMap.end()) {
+            return MakeFuture(MakeError(S_OK));
+        }
+
+        TItem item{
+            .Request = request,
+            .Promise = NewPromise<NProto::TError>(),
+        };
+        future = item.Promise.GetFuture();
+        const bool emplaced =
+            handleIt->second.emplace(reqId, std::move(item)).second;
+        STORAGE_VERIFY_C(
+            emplaced,
+            TWellKnownEntityTypes::FILESYSTEM,
+            FileSystemId,
+            TStringBuilder() << "Duplicate requestId: " << reqId
+                             << " for nodeId: " << ToUnderlying(nodeId)
+                             << " and handle: " << ToUnderlying(handle)
+                             << " in local data map");
+        if (NotifyAndEraseLeadingFSyncs(handleIt->second)) {
+            nodeMap.erase(handleIt);
+            if (nodeMap.empty()) {
+                shard.Data.erase(nodeIt);
+            }
+        }
+    }
+    return future;
+}
+
+TFuture<NProto::TError> TFSyncQueue::WaitForShardMeta(
+    TShard& shard,
+    TRequestId reqId)
+{
+    TVector<TFuture<NProto::TError>> leafFutures;
+    with_lock (shard.Lock) {
+        leafFutures.reserve(shard.Meta.size());
+        // Insert a leaf into every per-node meta map in the shard; drain
+        // leading fsyncs that may sit at the head (out-of-order reqIds from
+        // multi-threaded FUSE loops would otherwise cause the per-shard fsync
+        // to wait on semantically-later requests).
+        EraseNodesIf(
+            shard.Meta,
+            [&](auto& kv)
+            {
+                auto& [nodeId, map] = kv;
+                TItem item{
+                    .Request = {.ReqId = reqId, .NodeId = nodeId},
+                    .Promise = NewPromise<NProto::TError>(),
+                };
+                leafFutures.push_back(item.Promise.GetFuture());
+                const bool emplaced = map.emplace(reqId, std::move(item)).second;
+                STORAGE_VERIFY_C(
+                    emplaced,
+                    TWellKnownEntityTypes::FILESYSTEM,
+                    FileSystemId,
+                    TStringBuilder() << "Duplicate requestId: " << reqId
+                                     << " for nodeId: " << ToUnderlying(nodeId)
+                                     << " in shard meta map");
+                return NotifyAndEraseLeadingFSyncs(map);
+            });
+    }
+    return WaitAll(leafFutures)
+        .Apply([](const auto&) { return MakeError(S_OK); });
+}
+
+TFuture<NProto::TError> TFSyncQueue::WaitForShardData(
+    TShard& shard,
+    TRequestId reqId)
+{
+    TVector<TFuture<NProto::TError>> leafFutures;
+    with_lock (shard.Lock) {
+        EraseNodesIf(
+            shard.Data,
+            [&](auto& nodeKv)
+            {
+                auto& [nodeId, perHandle] = nodeKv;
+                EraseNodesIf(
+                    perHandle,
+                    [&](auto& handleKv)
+                    {
+                        auto& [handle, map] = handleKv;
+                        TItem item{
+                            .Request =
+                                {.ReqId = reqId,
+                                 .NodeId = nodeId,
+                                 .Handle = handle},
+                            .Promise = NewPromise<NProto::TError>(),
+                        };
+                        leafFutures.push_back(item.Promise.GetFuture());
+                        const bool emplaced =
+                            map.emplace(reqId, std::move(item)).second;
+                        STORAGE_VERIFY_C(
+                            emplaced,
+                            TWellKnownEntityTypes::FILESYSTEM,
+                            FileSystemId,
+                            TStringBuilder()
+                                << "Duplicate requestId: " << reqId
+                                << " for nodeId: " << ToUnderlying(nodeId)
+                                << " and handle: " << ToUnderlying(handle)
+                                << " in shard data map");
+                        return NotifyAndEraseLeadingFSyncs(map);
+                    });
+                return perHandle.empty();
+            });
+    }
+    return WaitAll(leafFutures)
+        .Apply([](const auto&) { return MakeError(S_OK); });
+}
+
+TFuture<NProto::TError> TFSyncQueue::WaitForGlobalMeta(TRequestId reqId)
+{
+    // Each shard scan is the global fsync's ordering point for that shard.
+    // Requests that enter an already-scanned shard later are concurrent from
+    // this queue's point of view even if their fuse_req_unique is lower than
+    // reqId.
+    TVector<TFuture<NProto::TError>> shardFutures;
+    shardFutures.reserve(Shards.size());
+    for (auto& shard: Shards) {
+        shardFutures.push_back(WaitForShardMeta(shard, reqId));
+    }
+    return WaitAll(shardFutures)
+        .Apply([](const auto&) { return MakeError(S_OK); });
+}
+
+TFuture<NProto::TError> TFSyncQueue::WaitForGlobalData(TRequestId reqId)
+{
+    TVector<TFuture<NProto::TError>> shardFutures;
+    shardFutures.reserve(Shards.size());
+    for (auto& shard: Shards) {
+        shardFutures.push_back(WaitForShardData(shard, reqId));
+    }
+    return WaitAll(shardFutures)
+        .Apply([](const auto&) { return MakeError(S_OK); });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -313,13 +401,13 @@ TFuture<NProto::TError> TFSyncQueueStub::WaitForRequests(
 {
     Y_UNUSED(reqId);
     Y_UNUSED(nodeId);
-    return MakeFuture<NProto::TError>();
+    return MakeFuture(MakeError(S_OK));
 }
 
 TFuture<NProto::TError> TFSyncQueueStub::WaitForDataRequests(TRequestId reqId)
 {
     Y_UNUSED(reqId);
-    return MakeFuture<NProto::TError>();
+    return MakeFuture(MakeError(S_OK));
 }
 
 TFuture<NProto::TError> TFSyncQueueStub::WaitForDataRequests(
@@ -330,18 +418,16 @@ TFuture<NProto::TError> TFSyncQueueStub::WaitForDataRequests(
     Y_UNUSED(reqId);
     Y_UNUSED(nodeId);
     Y_UNUSED(handle);
-    return MakeFuture<NProto::TError>();
+    return MakeFuture(MakeError(S_OK));
 }
 
 }   // namespace NCloud::NFileStore::NVFS
 
 template <>
-inline void Out<NCloud::NFileStore::NVFS::TFSyncCache::TRequest>(
+inline void Out<NCloud::NFileStore::NVFS::IFSyncQueue::TRequest>(
     IOutputStream& out,
-    const NCloud::NFileStore::NVFS::TFSyncCache::TRequest& request)
+    const NCloud::NFileStore::NVFS::IFSyncQueue::TRequest& request)
 {
-    out
-        << "#" << ToUnderlying(request.NodeId)
-        << " @" << ToUnderlying(request.Handle)
-        << " id:" << request.ReqId;
+    out << "#" << ToUnderlying(request.NodeId) << " @"
+        << ToUnderlying(request.Handle) << " id:" << request.ReqId;
 }

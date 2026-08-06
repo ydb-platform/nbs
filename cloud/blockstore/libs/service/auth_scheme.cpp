@@ -202,6 +202,7 @@ TPermissionList GetRequestPermissions(
         perms("scandisk", {EPermission::Get}),
         perms("getdiskregistrytabletinfo", {EPermission::Get}),
         perms("listnvmedevices", {EPermission::Get}),
+        perms("diskregistrydescribedisk", {EPermission::Get}),
 
         // Update
         perms("configurevolumebalancer", {EPermission::Update}),

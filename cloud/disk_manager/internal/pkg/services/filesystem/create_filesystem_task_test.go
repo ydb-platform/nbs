@@ -10,10 +10,13 @@ import (
 	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	nfs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/mocks"
+	filesystem_snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
@@ -127,6 +130,81 @@ func TestCreateFilesystemTaskFailure(t *testing.T) {
 	err := task.Run(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, nfsFactory, nfsClient, execCtx)
 	require.Equal(t, err, assert.AnError)
+}
+
+func TestCreateFilesystemTaskFromSnapshot(t *testing.T) {
+	ctx := context.Background()
+	storage := resources_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	nfsFactory := nfs_mocks.NewFactoryMock()
+	nfsClient := nfs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+
+	params := &protos.CreateFilesystemRequest{
+		Filesystem: &protos.FilesystemId{
+			ZoneId:       "zone",
+			FilesystemId: "filesystem",
+		},
+		CloudId:     "cloud",
+		FolderId:    "folder",
+		BlockSize:   456,
+		BlocksCount: 123,
+	}
+	request := &protos.CreateFilesystemFromSnapshotRequest{
+		SrcSnapshotId: "snapshot",
+		Params:        params,
+	}
+
+	task := &createFilesystemFromSnapshotTask{
+		storage:   storage,
+		factory:   nfsFactory,
+		scheduler: scheduler,
+		request:   request,
+		state:     &protos.CreateFilesystemFromSnapshotTaskState{},
+	}
+
+	storage.On("CreateFilesystem", ctx, mock.MatchedBy(func(meta resources.FilesystemMeta) bool {
+		return meta.ID == "filesystem" &&
+			meta.ZoneID == "zone" &&
+			meta.SrcSnapshotID == "snapshot"
+	})).Return(&resources.FilesystemMeta{
+		ID:            "filesystem",
+		ZoneID:        "zone",
+		SrcSnapshotID: "snapshot",
+	}, nil)
+	storage.On("FilesystemCreated", ctx, mock.Anything).Return(nil)
+
+	nfsFactory.On("NewClient", ctx, "zone").Return(nfsClient, nil)
+	nfsClient.On("ZoneID").Return("zone")
+	nfsClient.On("Create", ctx, "filesystem", nfs.CreateFilesystemParams{
+		CloudID:     "cloud",
+		FolderID:    "folder",
+		BlockSize:   456,
+		BlocksCount: 123,
+	}).Return(nil)
+	nfsClient.On("Close").Return(nil)
+
+	scheduler.On(
+		"ScheduleZonalTask",
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_transfer_from_snapshot"),
+		"dataplane.TransferFromSnapshotToFilesystem",
+		"",
+		"zone",
+		&filesystem_snapshot_protos.TransferFromSnapshotToFilesystemRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "filesystem",
+			},
+			SnapshotId: "snapshot",
+		},
+	).Return("transfer", nil)
+	execCtx.On("SaveState", ctx).Return(nil)
+	scheduler.On("WaitTask", ctx, execCtx, "transfer").Return(nil, nil)
+
+	err := task.Run(ctx, execCtx)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, nfsFactory, nfsClient, execCtx)
+	require.NoError(t, err)
+	require.Equal(t, "transfer", task.state.TransferFromSnapshotTaskId)
 }
 
 func TestCancelCreateFilesystemTask(t *testing.T) {

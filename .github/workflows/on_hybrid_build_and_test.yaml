@@ -26,6 +26,18 @@ on:
           - release-tsan
           - release-msan
           - release-ubsan
+      run_build:
+        type: boolean
+        default: true
+        description: "Run build"
+      run_tests:
+        type: boolean
+        default: true
+        description: "Run tests"
+      target_platform:
+        type: string
+        default: ""
+        description: "ya make target platform"
       cache_update_build:
         type: boolean
         default: false
@@ -47,10 +59,11 @@ on:
         default: "unittest"
         description: "type of tests to run"
         options:
+          - unittest
           - unittest,clang_tidy,gtest
           - py3test,py2test,pytest,flake8,black,py2_flake8
-          - go_test,gofmt
-          - unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt
+          - go_test,gofmt,govet
+          - unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet
       sleep_after_tests:
         type: string
         default: "0"
@@ -59,6 +72,10 @@ on:
         type: string
         default: "1"
         description: "Number of retries for tests"
+      test_timeout_minutes:
+        type: string
+        default: ""
+        description: "Per ya make test attempt timeout in minutes"
   workflow_call:
     inputs:
       component:
@@ -76,6 +93,15 @@ on:
       build_preset:
         type: string
         default: "relwithdebinfo"
+      run_build:
+        type: boolean
+        default: true
+      run_tests:
+        type: boolean
+        default: true
+      target_platform:
+        type: string
+        default: ""
       vm_preset:
         type: string
         default: ""
@@ -87,7 +113,7 @@ on:
         default: "small,medium,large"
       test_type:
         type: string
-        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
       sleep_after_tests:
         type: string
         default: "0"
@@ -124,6 +150,10 @@ on:
         type: string
         default: "1"
         description: "Number of retries for tests"
+      test_timeout_minutes:
+        type: string
+        default: ""
+        description: "Per ya make test attempt timeout in minutes"
 
 env:
   allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
@@ -144,7 +174,7 @@ jobs:
       link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
     steps:
       - name: checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
@@ -156,13 +186,16 @@ jobs:
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
         run: |
-          [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
+          if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
+          fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
@@ -178,11 +211,9 @@ jobs:
         uses: ./.github/actions/nebius_runner_create
         timeout-minutes: 60
         with:
-          org: ydb-platform
-          team: nbs
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
-          service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+          nebius_config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
@@ -205,7 +236,7 @@ jobs:
           tests_size: ${{ inputs.test_size }}
 
   build-and-test:
-    name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }}]
+    name: Build and test NBS [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}] [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }}]
     uses: ./.github/workflows/on_hybrid_build_and_test_ya.yaml
     needs:
       - provide-runner
@@ -218,8 +249,9 @@ jobs:
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}
-      run_build: true
-      run_tests: true
+      run_build: ${{ inputs.run_build }}
+      run_tests: ${{ inputs.run_tests }}
+      target_platform: ${{ inputs.target_platform }}
       test_size: ${{ inputs.test_size }}
       test_type: ${{ inputs.test_type }}
       build_threads: ${{ needs.provide-runner.outputs.build_threads || '60' }}
@@ -233,6 +265,7 @@ jobs:
       use_network_cache: ${{ github.event_name == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
       truncate_enabled: ${{ contains(github.event.pull_request.labels.*.name, 'disable_truncate') && 'no' || 'yes' }}
       number_of_retries: ${{ inputs.number_of_retries }}
+      test_timeout_minutes: ${{ inputs.test_timeout_minutes || '390' }}
     secrets: inherit
 
   sleep-if-needed:
@@ -241,7 +274,7 @@ jobs:
     needs:
       - provide-runner # required to get output from the start-runner job
       - build-and-test # required to wait when the main job is done
-    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
+    runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
     steps:
       - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests  || '0' }}s if build failed
         shell: bash
@@ -251,7 +284,6 @@ jobs:
         run: |
           echo "sleeping ${{ needs.build-and-test.outputs.sleep_after_tests }}s"
           /usr/bin/sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
-
   release-runner:
     name: Release self-hosted runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }}]
     needs:
@@ -259,10 +291,10 @@ jobs:
       - build-and-test  # required to wait when the main job is done
       - sleep-if-needed # required to wait until all debug is done
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
-    if: always() && needs.provide-runner.outputs.instance-id != ''
+    if: always()
     steps:
       - name: checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: false
@@ -274,13 +306,16 @@ jobs:
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
         run: |
-          [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
+          if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
+          fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: false
@@ -292,11 +327,11 @@ jobs:
         continue-on-error: true
       - name: Decide whether to remove VM
         id: decider
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           ANY_CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
           REMOVE_CANCELLED_VMS: ${{ vars.NEBIUS_REMOVE_CANCELLED_VMS }}
-          AUTO_CANCEL_EVENTS: ${{ vars.AUTO_CANCEL_EVENTS || 'pull_request,pull_request_target' }}
+          AUTO_CANCEL_EVENTS: 'pull_request,pull_request_target'
         with:
           script: |
             const anyCancelled = (process.env.ANY_CANCELLED || '') === 'true';
@@ -355,9 +390,10 @@ jobs:
         if: ${{ steps.decider.outputs.result == 'true' }}
         timeout-minutes: 60
         with:
-          service_account_key: ${{ secrets.POOLED_HEAVY_SA_JSON }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
+          nebius_config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           vm_parent_id: ${{ vars.POOLED_HEAVY_PARENT_ID }}
           vm_id: ${{ needs.provide-runner.outputs.instance-id }}
+          vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}

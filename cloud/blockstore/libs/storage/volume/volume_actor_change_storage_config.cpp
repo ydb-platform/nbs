@@ -2,6 +2,8 @@
 
 #include "volume_database.h"
 
+#include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -57,6 +59,10 @@ void TVolumeActor::CompleteChangeStorageConfig(
     Config =
         TStorageConfig::Merge(GlobalStorageConfig, args.ResultStorageConfig);
     HasStorageConfigPatch = Config != GlobalStorageConfig;
+
+    // Recreate BlockDigestGenerator with the updated configuration
+    BlockDigestGenerator =
+        BlockDigestGeneratorFactory->CreateBlockDigestGenerator(*Config);
 
     if (State->GetPartitionsState() == TPartitionInfo::READY ||
         State->GetPartitionsState() == TPartitionInfo::STARTED)

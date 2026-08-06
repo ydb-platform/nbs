@@ -3,6 +3,7 @@
 #include "client.h"
 #include "context.h"
 #include "request.h"
+#include "shm_client.h"
 
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
@@ -11,6 +12,7 @@
 #include <cloud/filestore/libs/service/request.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -50,7 +52,13 @@ struct TTestStats
     struct TStats
     {
         ui64 Requests = 0;
+        ui64 RequestBytes = 0;
+        // Resets after each progress report
+        ui64 IntervalRequests = 0;
+        // Whole-run distribution, reported in the final results
         TLatencyHistogram Hist;
+        // Reset after each progress report, reported in progress reports
+        TLatencyHistogram IntervalHist;
     };
 
     TString Name;
@@ -252,9 +260,11 @@ private:
     const TString TestTag;
 
     TLoadTestControllerCommandChannel& Controller;
+    const IClientFactoryPtr ClientFactory;
 
     TLog Log;
     IFileStoreServicePtr Client;
+    IShmDataClientPtr ShmClient;
     ISessionPtr Session;
 
     TString FileSystemId;
@@ -273,6 +283,9 @@ private:
 
     TInstant LastReportTs;
     ui64 LastRequestsCompleted = 0;
+
+    ui64 RequestBytes = 0;
+    ui64 LastRequestBytes = 0;
 
     IRequestGeneratorPtr RequestGenerator;
     TRequestsCompletionQueue CompletionQueue;
@@ -304,6 +317,7 @@ public:
         , TestInstanceId(std::move(testInstanceId))
         , TestTag(NLoadTest::MakeTestTag(Config.GetName()))
         , Controller(controller)
+        , ClientFactory(clientFactory)
         , Client(clientFactory->CreateClient())
         , ClientId(Config.GetClientId() ? Config.GetClientId() : "test-client")
     {
@@ -475,7 +489,7 @@ public:
             // prevent race between this thread and main thread
             // destroying test instance right after setvalue()
             auto result = Result;
-            result.SetValue(GetStats());
+            result.SetValue(GetStats(false /* sinceLastReport */));
         } catch(...) {
             STORAGE_ERROR("%s test has failed: %s",
                 MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
@@ -520,15 +534,16 @@ private:
         NProto::THeaders headers;
         headers.SetClientId(Config.GetClientId());
         headers.SetSessionId(SessionId);
-
         switch (Config.GetSpecsCase()) {
             case NProto::TLoadTest::kIndexLoadSpec:
                 RequestGenerator = CreateIndexRequestGenerator(
                     Config.GetIndexLoadSpec(),
                     Logging,
+                    Client,
                     Session,
                     FileSystemId,
-                    headers);
+                    headers,
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             case NProto::TLoadTest::kDataLoadSpec:
                 RequestGenerator = CreateDataRequestGenerator(
@@ -536,7 +551,8 @@ private:
                     Logging,
                     Session,
                     FileSystemId,
-                    headers);
+                    headers,
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             case NProto::TLoadTest::kReplayFsSpec:
                 RequestGenerator = CreateReplayRequestGeneratorFs(
@@ -554,13 +570,41 @@ private:
                     FileSystemId,
                     headers);
                 break;
-            case NProto::TLoadTest::kDatashardLikeLoadSpec:
+            case NProto::TLoadTest::kDatashardLikeLoadSpec: {
+                const auto& spec = Config.GetDatashardLikeLoadSpec();
+                if (!spec.GetSharedMemoryBaseDir().empty() &&
+                    !spec.GetSharedMemoryFilePath().empty())
+                {
+                    ShmClient = CreateSharedMemoryClient(
+                        spec.GetSharedMemoryBaseDir(),
+                        spec.GetSharedMemoryFilePath(),
+                        spec.GetSharedMemorySizeBytes(),
+                        Max(static_cast<ui64>(spec.GetReadBytes()),
+                            static_cast<ui64>(spec.GetWriteBytes())),
+                        spec.GetSharedMemoryPageSize(),
+                        ClientFactory->CreateShmControl(),
+                        Scheduler,
+                        Timer,
+                        Logging,
+                        spec.GetAllowOverlappingSharedMemoryPages());
+                    ShmClient->Start();
+                }
                 RequestGenerator = CreateDatashardLikeRequestGenerator(
-                    Config.GetDatashardLikeLoadSpec(),
+                    spec,
                     Logging,
                     Session,
+                    ShmClient,
                     FileSystemId,
-                    headers);
+                    headers,
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
+                break;
+            }
+            case NProto::TLoadTest::kFastShardLoadSpec:
+                RequestGenerator = CreateFastShardRequestGenerator(
+                    Config.GetFastShardLoadSpec(),
+                    Config.GetIODepth(),
+                    Logging,
+                    std::make_shared<TCountLimiter>(Config.GetMaxNodes()));
                 break;
             default:
                 ythrow yexception()
@@ -648,7 +692,7 @@ private:
 
             auto code = request->Error.GetCode();
             if (FAILED(code)) {
-                if (RequestGenerator->ShouldFailOnError()) {
+                if (RequestGenerator->ShouldFailOnError(request->Error)) {
                     STORAGE_ERROR(
                         "%s failing test %s due to: %s",
                         MakeTestTag().c_str(),
@@ -661,7 +705,11 @@ private:
 
             auto& stats = TestStats.ActionStats[request->Action];
             ++stats.Requests;
+            ++stats.IntervalRequests;
+            stats.RequestBytes += request->RequestBytes;
+            RequestBytes += request->RequestBytes;
             stats.Hist.RecordValue(request->Elapsed);
+            stats.IntervalHist.RecordValue(request->Elapsed);
         }
     }
 
@@ -672,30 +720,51 @@ private:
 
         if (elapsed > ReportInterval) {
             const auto requestsCompleted = RequestsCompleted - LastRequestsCompleted;
+            const auto requestBytes = RequestBytes - LastRequestBytes;
 
-            auto stats = GetStats();
-            STORAGE_INFO("%s current rate: %ld r/s; stats:\n%s",
+            auto stats = GetStats(true /* sinceLastReport */);
+            STORAGE_INFO(
+                "%s current rate: %ld r/s, bandwidth: %s/s; stats:\n%s",
                 MakeTestTag().c_str(),
-                (ui64)(requestsCompleted / elapsed.Seconds()),
-                NProtobufJson::Proto2Json(stats, {.FormatOutput = true}).c_str());
+                (ui64)(requestsCompleted / elapsed.SecondsFloat()),
+                FormatByteSize((ui64)(requestBytes / elapsed.SecondsFloat()))
+                    .c_str(),
+                NProtobufJson::Proto2Json(stats, {.FormatOutput = true})
+                    .c_str());
 
             LastReportTs = now;
             LastRequestsCompleted = RequestsCompleted;
+            LastRequestBytes = RequestBytes;
         }
     }
 
-    NProto::TTestStats GetStats()
+    // With sinceLastReport latencies cover only the requests completed after
+    // the previous progress report; otherwise they cover the whole run
+    NProto::TTestStats GetStats(bool sinceLastReport)
     {
         NProto::TTestStats results;
         results.SetName(Config.GetName());
         results.SetSuccess(TestStats.Success);
 
         auto* stats = results.MutableStats();
-        for (const auto& pair: TestStats.ActionStats) {
+        for (auto& pair: TestStats.ActionStats) {
+            if (sinceLastReport && pair.second.IntervalRequests == 0) {
+                // Skip reporting latencies for actions that have not been
+                // executed since the last report
+                continue;
+            }
+
             auto* action = stats->Add();
             action->SetAction(NProto::EAction_Name(pair.first));
             action->SetCount(pair.second.Requests);
-            FillLatency(pair.second.Hist, *action->MutableLatency());
+            action->SetRequestBytes(pair.second.RequestBytes);
+            if (sinceLastReport) {
+                FillLatency(pair.second.IntervalHist, *action->MutableLatency());
+                pair.second.IntervalHist.Reset();
+                pair.second.IntervalRequests = 0;
+            } else {
+                FillLatency(pair.second.Hist, *action->MutableLatency());
+            }
         }
 
         // TODO report some stats for the files generated during the shooting
@@ -740,6 +809,10 @@ private:
             if (cmd.Complete.Initialized()) {
                 cmd.Complete.SetValue(true);
             }
+        }
+
+        if (ShmClient) {
+            ShmClient->Stop();
         }
 
         if (Client) {
@@ -823,6 +896,8 @@ private:
     ui64 SessionSeqNo = 0;
 
     IFileStoreServicePtr Client;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TLoadTestController(
@@ -1045,7 +1120,7 @@ public:
 
             STORAGE_INFO("%s create filestore: %s",
                 MakeTestTag().c_str(),
-                DumpMessage(*request).c_str());
+                ProtoMessagePrinter.ToString(*request).c_str());
 
             TCallContextPtr ctx = MakeIntrusive<TCallContext>();
             auto result = Client->CreateFileStore(ctx, request);

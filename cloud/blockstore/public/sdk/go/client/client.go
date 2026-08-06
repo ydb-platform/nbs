@@ -1,9 +1,6 @@
 package client
 
 import (
-	"errors"
-	"strings"
-
 	protos "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	"golang.org/x/net/context"
 )
@@ -254,14 +251,18 @@ func (client *Client) ListNVMeDevices(
 func (client *Client) AcquireNVMeDevice(
 	ctx context.Context,
 	serialNumber string,
-) error {
+) (*protos.TNVMeDeviceDesc, error) {
 
 	req := &protos.TAcquireNVMeDeviceRequest{
 		SerialNumber: serialNumber,
 	}
 
-	_, err := client.Impl.AcquireNVMeDevice(ctx, req)
-	return err
+	resp, err := client.Impl.AcquireNVMeDevice(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Device, nil
 }
 
 func (client *Client) ReleaseNVMeDevice(
@@ -275,27 +276,6 @@ func (client *Client) ReleaseNVMeDevice(
 
 	_, err := client.Impl.ReleaseNVMeDevice(ctx, req)
 	return err
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func IsDiskNotFoundError(e error) bool {
-	var clientErr *ClientError
-	if errors.As(e, &clientErr) {
-		if clientErr.Facility() == FACILITY_SCHEMESHARD {
-			// TODO: remove support for PathDoesNotExist.
-			if clientErr.Status() == 2 {
-				return true
-			}
-
-			// Hack for NBS-3162.
-			if strings.Contains(clientErr.Error(), "Another drop in progress") {
-				return true
-			}
-		}
-	}
-
-	return false
 }
 
 ////////////////////////////////////////////////////////////////////////////////

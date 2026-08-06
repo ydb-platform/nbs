@@ -4,7 +4,6 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 SRCS(
     blob_markers.cpp
-    commit_id_generator.cpp
     fresh_blob.cpp
 )
 
@@ -19,7 +18,3 @@ PEERDIR(
 )
 
 END()
-
-RECURSE_FOR_TESTS(
-    ut
-)

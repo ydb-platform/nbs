@@ -2,6 +2,8 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/core/helpers.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -26,13 +28,13 @@ void AddNode(
 void AddExternalNode(
     NProto::TListNodesResponse& record,
     TString name,
-    const TString& shardId,
-    const TString& shardNodeName)
+    TString shardId,
+    TString shardNodeName)
 {
     record.AddNames(std::move(name));
     auto* node = record.AddNodes();
-    node->SetShardFileSystemId(shardId);
-    node->SetShardNodeName(shardNodeName);
+    node->SetShardFileSystemId(std::move(shardId));
+    node->SetShardNodeName(std::move(shardNodeName));
 }
 
 NProto::TError ValidateRequest(const NProto::TListNodesRequest& request)
@@ -44,6 +46,12 @@ NProto::TError ValidateRequest(const NProto::TListNodesRequest& request)
     return {};
 }
 
+NProto::TError ValidateInternalRequest(
+    const NProtoPrivate::TListNodesInternalRequest& request)
+{
+    return ValidateRequest(request.GetOriginalRequest());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,11 +60,19 @@ void TIndexTabletActor::HandleListNodes(
     const TEvService::TEvListNodesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TListNodesMethod>(ev, ctx, ValidateRequest)) {
+    using TMethod = TEvService::TListNodesMethod;
+    auto* msg = ev->Get();
+
+    const bool shouldValidateSession = !msg->Record.GetUnsafe();
+
+    if (shouldValidateSession) {
+        if (!AcceptRequest<TMethod>(ev, ctx, ValidateRequest)) {
+            return;
+        }
+    } else if (!AcceptRequestNoSession<TMethod>(ev, ctx, ValidateRequest)) {
         return;
     }
 
-    auto* msg = ev->Get();
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -84,7 +100,53 @@ void TIndexTabletActor::HandleListNodes(
         std::move(requestInfo),
         msg->Record,
         maxBytes,
-        Config->GetMaxBytesMultiplier());
+        Config->GetMaxBytesMultiplier(),
+        false /* replyInternal */);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleListNodesInternal(
+    const TEvIndexTablet::TEvListNodesInternalRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    using TMethod = TEvIndexTablet::TListNodesInternalMethod;
+    auto* msg = ev->Get();
+
+    if (!AcceptRequestNoSession<TMethod>(ev, ctx, ValidateInternalRequest)) {
+        return;
+    }
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddInFlightRequest<TEvIndexTablet::TListNodesInternalMethod>(*requestInfo);
+
+    auto maxBytes = Min(
+        Config->GetMaxResponseEntries() * MaxName,
+        Config->GetMaxResponseBytes());
+    auto& originalRequest = *msg->Record.MutableOriginalRequest();
+    if (auto bytes = originalRequest.GetMaxBytes()) {
+        maxBytes = Min(bytes, maxBytes);
+    }
+
+    // Set size calculation mode from config if not explicitly set in request.
+    // TODO(#5148): explicitly pass the mode from client side.
+    if (originalRequest.GetListNodesSizeMode() == NProto::LNSM_UNSPECIFIED)
+    {
+        originalRequest.SetListNodesSizeMode(Config->GetListNodesSizeMode());
+    }
+
+    ExecuteTx<TListNodes>(
+        ctx,
+        std::move(requestInfo),
+        std::move(originalRequest),
+        maxBytes,
+        Config->GetMaxBytesMultiplier(),
+        true /* replyInternal */);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -99,17 +161,11 @@ bool TIndexTabletActor::ValidateTx_ListNodes(
         args.ClientId,
         args.SessionId,
         args.SessionSeqNo);
-    if (!session) {
-        args.Error = ErrorInvalidSession(
-            args.ClientId,
-            args.SessionId,
-            args.SessionSeqNo);
-        return false;
-    }
 
-    args.CommitId = GetReadCommitId(session->GetCheckpointId());
+    const TString& checkpointId = session ? session->GetCheckpointId() : "";
+    args.CommitId = GetReadCommitId(checkpointId);
     if (args.CommitId == InvalidCommitId) {
-        args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
+        args.Error = ErrorInvalidCheckpoint(checkpointId);
         return false;
     }
 
@@ -118,7 +174,7 @@ bool TIndexTabletActor::ValidateTx_ListNodes(
 
 bool TIndexTabletActor::PrepareTx_ListNodes(
     const NActors::TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TListNodes& args)
 {
     Y_UNUSED(ctx);
@@ -131,7 +187,9 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     if (!args.Node) {
         args.Error = ErrorInvalidTarget(args.NodeId);
         return true;
-    } else if (args.Node->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
+    }
+
+    if (args.Node->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
         args.Error = ErrorIsNotDirectory(args.NodeId);
         return true;
     }
@@ -168,7 +226,7 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     // get actual nodes
     args.ChildNodes.reserve(args.ChildRefs.size());
     for (const auto& ref: args.ChildRefs) {
-        if (ref.ShardId) {
+        if (ref.IsExternal()) {
             continue;
         }
 
@@ -187,13 +245,12 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     return ready;
 }
 
-void TIndexTabletActor::CompleteTx_ListNodes(
+void TIndexTabletActor::ReplyListNodes(
     const TActorContext& ctx,
     TTxIndexTablet::TListNodes& args)
 {
-    RemoveInFlightRequest(*args.RequestInfo);
-
-    auto response = std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         auto& record = response->Record;
         record.MutableNames()->Reserve(args.ChildRefs.size());
@@ -203,16 +260,15 @@ void TIndexTabletActor::CompleteTx_ListNodes(
 
         size_t j = 0;
         for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
-            const auto& ref = args.ChildRefs[i];
+            auto& ref = args.ChildRefs[i];
             requestBytes += ref.Name.size();
-            if (ref.ShardId) {
+            if (ref.IsExternal()) {
                 if (!HasPendingNodeCreateInShard(ref.ShardNodeName)) {
                     AddExternalNode(
                         record,
-                        ref.Name,
-                        ref.ShardId,
-                        ref.ShardNodeName);
-
+                        std::move(ref.Name),
+                        std::move(ref.ShardId),
+                        std::move(ref.ShardNodeName));
                 }
 
                 continue;
@@ -220,7 +276,7 @@ void TIndexTabletActor::CompleteTx_ListNodes(
 
             AddNode(
                 record,
-                ref.Name,
+                std::move(ref.Name),
                 ref.ChildNodeId,
                 args.ChildNodes[j].Attrs);
             ++j;
@@ -230,17 +286,17 @@ void TIndexTabletActor::CompleteTx_ListNodes(
             record.SetCookie(args.Next);
         }
 
-        Metrics.ListNodes.Update(
+        Metrics->ListNodes.Update(
             1,
             requestBytes,
             ctx.Now() - args.RequestInfo->StartedTs);
-        Metrics.ListNodesExtra.RequestedBytesPrecharge.fetch_add(
+        Metrics->ListNodesExtra.RequestedBytesPrecharge.fetch_add(
             args.BytesToPrecharge,
             std::memory_order_relaxed);
-        Metrics.ListNodesExtra.PrepareAttempts.fetch_add(
+        Metrics->ListNodesExtra.PrepareAttempts.fetch_add(
             args.PrepareAttempts,
             std::memory_order_relaxed);
-        Metrics.ListNodesExtra.ResponseNodeRefs.fetch_add(
+        Metrics->ListNodesExtra.ResponseNodeRefs.fetch_add(
             args.ChildRefs.size(),
             std::memory_order_relaxed);
     }
@@ -251,6 +307,126 @@ void TIndexTabletActor::CompleteTx_ListNodes(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+void TIndexTabletActor::ReplyListNodesInternal(
+    const TActorContext& ctx,
+    TTxIndexTablet::TListNodes& args)
+{
+    using TResponse = TEvIndexTablet::TEvListNodesInternalResponse;
+    auto response = std::make_unique<TResponse>(args.Error);
+    if (SUCCEEDED(args.Error.GetCode())) {
+        //
+        // Allocate memory.
+        //
+
+        ui64 nameBufferSize = 0;
+        ui64 extRefBufferSize = 0;
+        int extRefCount = 0;
+        int skippedRefCount = 0;
+        for (const auto& ref: args.ChildRefs) {
+            if (ref.IsExternal()
+                    && HasPendingNodeCreateInShard(ref.ShardNodeName))
+            {
+                ++skippedRefCount;
+                continue;
+            }
+
+            nameBufferSize += ref.Name.size();
+            if (!ref.IsExternal()) {
+                continue;
+            }
+
+            extRefBufferSize += ref.ShardId.size();
+            extRefBufferSize += ref.ShardNodeName.size();
+            ++extRefCount;
+        }
+
+        auto& record = response->Record;
+        TListNodesInternalResponseBuilder builder(
+            record,
+            nameBufferSize,
+            extRefBufferSize,
+            args.ChildRefs.size() - skippedRefCount,
+            extRefCount);
+        record.MutableNodes()->Reserve(
+            args.ChildRefs.size() - extRefCount - skippedRefCount);
+
+        //
+        // Build response.
+        //
+
+        ui32 j = 0;
+        for (auto& ref: args.ChildRefs) {
+            if (ref.IsExternal()
+                    && HasPendingNodeCreateInShard(ref.ShardNodeName))
+            {
+                continue;
+            }
+
+            const bool added = builder.AddNodeRef(
+                ref.Name,
+                ref.ShardId,
+                ref.ShardNodeName);
+            if (!added) {
+                auto message = ReportListNodesInternalFailedToAddNodeRef(
+                    TStringBuilder() << "builder index: " << builder.GetIndex());
+                *response->Record.MutableError() =
+                    MakeError(E_INVALID_STATE, std::move(message));
+                break;
+            }
+
+            if (ref.IsExternal()) {
+                continue;
+            }
+
+            ConvertNodeFromAttrs(
+                *record.AddNodes(),
+                ref.ChildNodeId,
+                args.ChildNodes[j].Attrs);
+
+            ++j;
+        }
+
+        if (args.Next) {
+            record.SetCookie(args.Next);
+        }
+
+        Metrics->ListNodes.Update(
+            1,
+            nameBufferSize,
+            ctx.Now() - args.RequestInfo->StartedTs);
+        Metrics->ListNodesExtra.RequestedBytesPrecharge.fetch_add(
+            args.BytesToPrecharge,
+            std::memory_order_relaxed);
+        Metrics->ListNodesExtra.PrepareAttempts.fetch_add(
+            args.PrepareAttempts,
+            std::memory_order_relaxed);
+        Metrics->ListNodesExtra.ResponseNodeRefs.fetch_add(
+            args.ChildRefs.size(),
+            std::memory_order_relaxed);
+    }
+
+    CompleteResponse<TEvIndexTablet::TListNodesInternalMethod>(
+        response->Record,
+        args.RequestInfo->CallContext,
+        ctx);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+void TIndexTabletActor::CompleteTx_ListNodes(
+    const TActorContext& ctx,
+    TTxIndexTablet::TListNodes& args)
+{
+    RemoveInFlightRequest(*args.RequestInfo);
+
+    if (args.ReplyInternal) {
+        ReplyListNodesInternal(ctx, args);
+        return;
+    }
+
+    ReplyListNodes(ctx, args);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

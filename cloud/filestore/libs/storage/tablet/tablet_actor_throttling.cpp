@@ -80,11 +80,14 @@ void TIndexTabletActor::HandleUpdateLeakyBucketCounters(
     const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& /*ev*/,
     const NActors::TActorContext& ctx)
 {
+    // update write cost multiplier for metrics
+    UpdateWriteCostMultiplierDueToBackpressure();
+
     const ui64 currentRate = std::ceil(
         GetThrottlingPolicy().CalculateCurrentSpentBudgetShare(ctx.Now()) * 100);
 
-    Metrics.MaxUsedQuota.Record(currentRate);
-    NMetrics::Add(Metrics.UsedQuota, currentRate);
+    Metrics->MaxUsedQuota.Record(currentRate);
+    NMetrics::Add(Metrics->UsedQuota, currentRate);
 
     UpdateLeakyBucketCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
@@ -96,11 +99,11 @@ void TIndexTabletActor::UpdateDelayCounter(
 {
     switch (opType) {
         case TThrottlingPolicy::EOpType::Read: {
-            Metrics.ReadDataPostponed.Record(time.MicroSeconds());
+            Metrics->ReadDataPostponed.Record(time.MicroSeconds());
             return;
         }
         case TThrottlingPolicy::EOpType::Write: {
-            Metrics.WriteDataPostponed.Record(time.MicroSeconds());
+            Metrics->WriteDataPostponed.Record(time.MicroSeconds());
             return;
         }
         default:
@@ -120,6 +123,9 @@ NProto::TError TIndexTabletActor::Throttle(
 
     auto* msg = ev->Get();
 
+    // recalculate write cost multiplier before making throttling decision
+    UpdateWriteCostMultiplierDueToBackpressure();
+
     const auto requestInfo = BuildRequestInfo(
         *msg,
         GetThrottlingPolicy().GetVersion()
@@ -134,14 +140,14 @@ NProto::TError TIndexTabletActor::Throttle(
 
     switch (status) {
         case ETabletThrottlerStatus::POSTPONED: {
-            NMetrics::Inc(Metrics.PostponedRequests);
+            NMetrics::Inc(Metrics->PostponedRequests);
             break;
         }
         case ETabletThrottlerStatus::ADVANCED: {
             break;
         }
         case ETabletThrottlerStatus::REJECTED: {
-            NMetrics::Inc(Metrics.RejectedRequests);
+            NMetrics::Inc(Metrics->RejectedRequests);
             return err;
         }
         default:
@@ -156,9 +162,22 @@ bool TIndexTabletActor::ThrottleIfNeeded(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    if (!Config->GetThrottlingEnabled() ||
-        !GetPerformanceProfile().GetThrottlingEnabled() ||
-        ev->Get()->Record.GetHeaders().GetThrottlingDisabled())
+    if (ev->Get()->Record.GetHeaders().GetThrottlingDisabled()) {
+        return false;
+    }
+
+    const bool throttlingEnabled =
+        Config->GetThrottlingEnabled() &&
+        GetPerformanceProfile().GetThrottlingEnabled();
+    const bool hasPostponedRequests = Throttler &&
+        Throttler->GetPostponedRequestsCount();
+    const bool softBackpressureThrottlingEnabled =
+        !throttlingEnabled &&
+        CalculateWriteCostMultiplierBackpressure() > 0.0;
+
+    if (!throttlingEnabled &&
+        !softBackpressureThrottlingEnabled &&
+        !hasPostponedRequests)
     {
         return false;
     }

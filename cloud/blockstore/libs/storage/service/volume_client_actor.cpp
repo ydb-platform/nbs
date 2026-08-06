@@ -51,6 +51,18 @@ NTabletPipe::TClientConfig CreateTabletPipeClientConfig(
     return clientConfig;
 }
 
+template <typename TProtoMessage>
+const NProto::TTraceInfo& GetTraceInfo(const TProtoMessage& msg)
+{
+    if (msg.Record.GetHeaders().HasTrace()) {
+        return msg.Record.GetHeaders().GetTrace();
+    }
+    if constexpr (requires { msg.Record.MutableDeprecatedTrace(); }) {
+        return msg.Record.GetDeprecatedTrace();
+    }
+    return msg.Record.GetHeaders().GetTrace();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TVolumeClientActor final
@@ -362,13 +374,13 @@ void TVolumeClientActor::HandleResponse(
 
     if (it->second.CallContext->LWOrbit.HasShuttles()) {
         TraceSerializer->HandleTraceInfo(
-            msg->Record.GetHeaders().HasTrace()
-                ? msg->Record.GetHeaders().GetTrace()
-                : msg->Record.GetDeprecatedTrace(),
+            GetTraceInfo(*msg),
             it->second.CallContext->LWOrbit,
             it->second.SendTime,
             GetCycleCount());
-        msg->Record.ClearDeprecatedTrace();
+        if constexpr (requires { msg->Record.MutableDeprecatedTrace(); }) {
+            msg->Record.ClearDeprecatedTrace();
+        }
         msg->Record.MutableHeaders()->ClearTrace();
     }
 

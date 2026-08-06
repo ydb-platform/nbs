@@ -442,6 +442,34 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
+    // BrokenDeviceNotification
+    //
+
+    struct TBrokenDeviceNotification
+    {
+        TString DeviceUUID;
+        TInstant BrokenTs;
+
+        TBrokenDeviceNotification(TString deviceUUID, TInstant brokenTs)
+            : DeviceUUID(std::move(deviceUUID))
+            , BrokenTs(brokenTs)
+        {}
+    };
+
+    //
+    // DeviceRecoveredNotification
+    //
+
+    struct TDeviceRecoveredNotification
+    {
+        TString DeviceUUID;
+
+        explicit TDeviceRecoveredNotification(TString deviceUUID)
+            : DeviceUUID(std::move(deviceUUID))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -478,7 +506,8 @@ struct TEvNonreplPartitionPrivate
         EvGetDiskRegistryBasedPartCountersRequest,
         EvGetDiskRegistryBasedPartCountersResponse,
         EvDiskRegistryBasedPartCountersCombined,
-
+        EvBrokenDeviceNotification,
+        EvDeviceRecoveredNotification,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
 
@@ -597,6 +626,13 @@ struct TEvNonreplPartitionPrivate
         TDiskRegistryBasedPartCountersCombined,
         EvDiskRegistryBasedPartCountersCombined>;
 
+    using TEvBrokenDeviceNotification =
+        TResponseEvent<TBrokenDeviceNotification, EvBrokenDeviceNotification>;
+
+    using TEvDeviceRecoveredNotification = TResponseEvent<
+        TDeviceRecoveredNotification,
+        EvDeviceRecoveredNotification>;
+
     BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
 
 };
@@ -610,7 +646,6 @@ struct TMultiAgentWriteRequest: public NProto::TWriteBlocksRequest
     using TGetDeviceForRangeResponse = NCloud::NBlockStore::NStorage::
         TEvNonreplPartitionPrivate::TGetDeviceForRangeResponse;
 
-    ui32 BlockSize = 0;
     TBlockRange64 Range;
     TVector<TGetDeviceForRangeResponse> DevicesAndRanges;
 };

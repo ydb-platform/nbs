@@ -101,7 +101,7 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
         std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
 
     *request->Record.MutableHeaders() = Request.GetHeaders();
-    request->Record.SetBlockSize(Request.BlockSize);
+    request->Record.SetBlockSize(Request.GetBlockSize());
     request->Record.MutableBlocks()->Swap(Request.MutableBlocks());
 
     for (const auto& deviceInfo: Request.DevicesAndRanges) {
@@ -120,7 +120,8 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
     if (auto checksum = CombineChecksums(Request.GetChecksums());
         checksum.GetByteCount() > 0)
     {
-        if (checksum.GetByteCount() == Request.Range.Size() * Request.BlockSize)
+        if (checksum.GetByteCount() ==
+            Request.Range.Size() * Request.GetBlockSize())
         {
             *request->Record.MutableChecksum() = std::move(checksum);
         } else {
@@ -130,7 +131,7 @@ void TDiskAgentMultiWriteActor::SendRequest(const TActorContext& ctx)
                 {{"range", Request.Range.Print()},
                  {"request range length", Request.Range.Size()},
                  {"checksum length",
-                  checksum.GetByteCount() / Request.BlockSize},
+                  checksum.GetByteCount() / Request.GetBlockSize()},
                  {"disk id", PartConfig->GetName().Quote()}});
         }
     }

@@ -23,10 +23,11 @@ bool TIndexTabletActor::ValidateTx_ReadNodeRefs(
 
 bool TIndexTabletActor::PrepareTx_ReadNodeRefs(
     const TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TReadNodeRefs& args)
 {
-    bool ready = db.ReadNodeRefs(
+    bool ready = ReadNodeRefs(
+        db,
         args.NodeId,
         args.Cookie,
         args.Limit,

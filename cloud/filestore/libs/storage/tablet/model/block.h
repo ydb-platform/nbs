@@ -159,7 +159,6 @@ struct TBlockBytesMeta
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// XXX not the best place for this struct
 struct TFlushBytesCleanupInfo
 {
     ui64 ChunkId = 0;
@@ -243,54 +242,11 @@ struct TBlockLocationInBlobHash
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IFreshBlockVisitor
-{
-    virtual ~IFreshBlockVisitor() = default;
-
-    virtual void Accept(const TBlock& block, TStringBuf blockData) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct IMixedBlockVisitor
-{
-    virtual ~IMixedBlockVisitor() = default;
-
-    // Accepts |blocksCount| consecutive |block|'s with offset |blobOffset|
-    // from the beginning of the blob with |blobId|
-    virtual void Accept(
-        const TBlock& block,
-        const TPartialBlobId& blobId,
-        ui32 blobOffset,
-        ui32 blocksCount) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct ILargeBlockVisitor
-{
-    virtual ~ILargeBlockVisitor() = default;
-
-    virtual void Accept(
-        const TBlockDeletion& marker) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct IFreshBytesVisitor
-{
-    virtual ~IFreshBytesVisitor() = default;
-
-    virtual void Accept(const TBytes& bytes, TStringBuf data) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct IBlockLocation2RangeIndex
 {
     virtual ~IBlockLocation2RangeIndex() = default;
 
-    virtual ui32 Calc(ui64 nodeId, ui32 blockIndex) const = 0;
+    [[nodiscard]] virtual ui32 Calc(ui64 nodeId, ui32 blockIndex) const = 0;
 };
 
 IBlockLocation2RangeIndexPtr CreateRangeIdHasher(ui32 type);

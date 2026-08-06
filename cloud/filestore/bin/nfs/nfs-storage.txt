@@ -1,5 +1,4 @@
 SchemeShardDir: "/Root/NFS"
-MultiTabletForwardingEnabled: true
 AllowFileStoreForceDestroy: true
 AutomaticShardCreationEnabled: true
 StrictFileSystemSizeEnforcementEnabled: true
@@ -11,4 +10,3 @@ TwoStageReadEnabled: true
 TwoStageReadThreshold: 65536
 MaxFuseLoopThreads: 8
 DirectoryCreationInShardsEnabled: true
-ShardIdSelectionInLeaderEnabled: true

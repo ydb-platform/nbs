@@ -196,3 +196,19 @@ func (client *testClient) GetNodeAttr(
 
 	return &protos.TGetNodeAttrResponse{}, nil
 }
+
+func (client *testClient) UnlinkNode(
+	ctx context.Context,
+	req *protos.TUnlinkNodeRequest,
+) (*protos.TUnlinkNodeResponse, error) {
+
+	return &protos.TUnlinkNodeResponse{}, nil
+}
+
+func (client *testClient) ExecuteAction(
+	ctx context.Context,
+	req *protos.TExecuteActionRequest,
+) (*protos.TExecuteActionResponse, error) {
+
+	return &protos.TExecuteActionResponse{}, nil
+}

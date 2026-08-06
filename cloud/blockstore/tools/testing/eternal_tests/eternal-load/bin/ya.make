@@ -21,4 +21,5 @@ END()
 
 RECURSE_FOR_TESTS(
     tests
+    tests_in_qemu
 )

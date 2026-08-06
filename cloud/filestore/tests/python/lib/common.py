@@ -1,5 +1,6 @@
 import logging
 import os
+import requests
 import signal
 import time
 import yatest.common as common
@@ -33,9 +34,13 @@ def shutdown(pid, timeout=60):
     try:
         os.kill(pid, signal.SIGTERM)
         if not wait_for(lambda: __is_dead(pid), timeout):
+            logger.warning(
+                f"process {pid} did not stop in {timeout}s after SIGTERM, "
+                "sending SIGKILL")
             os.kill(pid, signal.SIGKILL)
     except BaseException:
-        pass
+        logger.warning(
+            f"failed to shut down process {pid}", exc_info=True)
 
 
 def daemon_log_files(prefix, cwd):
@@ -115,3 +120,38 @@ def get_restart_flag(flag, name):
         return None
 
     return os.path.join(common.work_path(), name)
+
+
+def flush_logs():
+    #
+    # Sleep for a while to ensure that the profile log is flushed
+    # before we start analyzing it
+    # The default value of ProfileLogTimeThreshold for tests is 100ms
+    # TODO(#568) - here and in other similar places - introduce and use a
+    # private api method which would force profile-log flush
+    #
+
+    time.sleep(2)
+
+
+def fetch_counters():
+    #
+    # TODO(#568) - same as for flush_logs()
+    #
+
+    time.sleep(2)
+
+    mon_port = os.getenv("NFS_MON_PORT")
+    url = f"http://localhost:{mon_port}/counters/counters=filestore/json"
+    r = requests.get(url, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+
+def filter_counters(counters, fs_id, names):
+    result = []
+    for sensor in counters["sensors"]:
+        labels = sensor["labels"]
+        if labels.get("sensor") in names and labels.get("filesystem") == fs_id:
+            result.append(sensor)
+    return result

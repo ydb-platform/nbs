@@ -9,6 +9,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_map_memory_limiter.h>
 
 namespace NCloud::NFileStore::NVhost {
 
@@ -31,14 +32,16 @@ struct TWriteBackCacheConfig
     ui32 FlushMaxWriteRequestSize = 0;
     ui32 FlushMaxWriteRequestsCount = 0;
     ui32 FlushMaxSumWriteRequestsSize = 0;
+    ui32 MaxQueuedFlushBatchesPerNode = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDirectoryHandlesStorageConfig
+struct TDirectoryHandleStorageConfig
 {
     TString PathPrefix;
     ui64 InitialDataSize = 0;
+    ui64 MaxDataAreaStepSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,6 +54,7 @@ IEndpointListenerPtr CreateEndpointListener(
     NVFS::IFileSystemLoopFactoryPtr loopFactory,
     THandleOpsQueueConfig handleOpsQueueConfig,
     TWriteBackCacheConfig writeBackCacheConfig,
-    TDirectoryHandlesStorageConfig directoryHandlesStorageConfig);
+    TDirectoryHandleStorageConfig directoryHandleStorageConfig,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter);
 
 }   // namespace NCloud::NFileStore::NVhost

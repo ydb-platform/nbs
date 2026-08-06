@@ -23,17 +23,24 @@ type Storage interface {
 		limit int,
 	) (nodes []nfs.Node, nextCookie string, err error)
 
+	ListNodesByShard(
+		ctx context.Context,
+		snapshotID string,
+		shardFilesystemID string,
+		limit uint64,
+		cookie *NodeRefsByShardCookie,
+	) ([]nfs.Node, *NodeRefsByShardCookie, error)
+
 	DeleteSnapshotData(
 		ctx context.Context,
 		snapshotID string,
-	) (bool, error)
+	) error
 
 	UpdateRestorationNodeIDMapping(
 		ctx context.Context,
 		srcID string,
 		dstID string,
-		srcNodeIds []uint64,
-		dstNodeIds []uint64,
+		nodeIDMapping map[uint64]uint64,
 	) error
 
 	GetDestinationNodeIDs(
@@ -49,4 +56,17 @@ type Storage interface {
 		limit int,
 		offset int,
 	) ([]nfs.Node, error)
+
+	CleanupRestorationNodeIDsMapping(
+		ctx context.Context,
+		snapshotID string,
+		destinationFilesystemID string,
+	) error
+}
+
+// NodeRefsByShardCookie identifies a position in the node_refs_by_shard order.
+type NodeRefsByShardCookie struct {
+	ParentNodeID uint64
+	Name         string
+	StoreAsChild bool
 }

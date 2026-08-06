@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "quota.h"
 #include "tablet_schema.h"
 #include "tablet_state.h"
 #include "tablet_state_cache.h"
@@ -58,8 +59,6 @@ struct TIndexTabletState::TImpl
 
     THandlesStats HandlesStats;
 
-    TWriteRequestList WriteBatch;
-
     TRangeLocks RangeLocks;
     TFreshBytes FreshBytes;
     TFreshBlocks FreshBlocks;
@@ -68,17 +67,20 @@ struct TIndexTabletState::TImpl
     TCompactionMap CompactionMap;
     TGarbageQueue GarbageQueue;
     TTruncateQueue TruncateQueue;
+    TCacheReadBypass CacheReadBypass;
     TReadAheadCache ReadAheadCache;
-    TInMemoryIndexState InMemoryIndexState;
+    std::unique_ptr<IInMemoryIndexState> InMemoryIndexState;
     TSet<ui64> OrphanNodeIds;
     TSet<TString> PendingNodeCreateInShardNames;
     THashSet<TNodeRefKey, TNodeRefKeyHash> LockedNodeRefs;
+    THashSet<ui64> OpLogEntryIds;
     THashMap<
         TInternalRequestId,
         NProtoPrivate::TResponseLogEntry,
         TInternalRequestIdHash> InternalResponses;
 
     TCheckpointStore Checkpoints;
+    TQuotaStore Quotas;
     TChannels Channels;
 
     IBlockLocation2RangeIndexPtr RangeIdHasher;
@@ -86,6 +88,7 @@ struct TIndexTabletState::TImpl
     TThrottlingPolicy ThrottlingPolicy;
 
     IShardBalancerPtr ShardBalancer;
+    IShardBalancerPtr FileShardBalancer;
 
     explicit TImpl(const TFileStoreAllocRegistry& registry)
         : FreshBytes(registry.GetAllocator(EAllocatorTag::FreshBytes))
@@ -95,7 +98,6 @@ struct TIndexTabletState::TImpl
         , CompactionMap(registry.GetAllocator(EAllocatorTag::CompactionMap))
         , GarbageQueue(registry.GetAllocator(EAllocatorTag::GarbageQueue))
         , ReadAheadCache(registry.GetAllocator(EAllocatorTag::ReadAheadCache))
-        , InMemoryIndexState(registry.GetAllocator(EAllocatorTag::InMemoryNodeIndexCache))
         , ThrottlingPolicy(TThrottlerConfig())
     {}
 };

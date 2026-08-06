@@ -1,8 +1,9 @@
 #include "storage_rdma.h"
 
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <library/cpp/testing/common/env.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -18,11 +19,11 @@ namespace {
 #define UNIT_ASSERT_SUCCEEDED(e) \
     UNIT_ASSERT_C(SUCCEEDED(e.GetCode()), e.GetMessage())
 
-class TDummyClientEndpoint: public NRdma::IClientEndpoint
+class TDummyClientEndpoint: public NCloud::NStorage::NRdma::IClientEndpoint
 {
-    TResultOrError<NRdma::TClientRequestPtr> AllocateRequest(
-        NRdma::IClientHandlerPtr handler,
-        std::unique_ptr<NRdma::TNullContext> context,
+    TResultOrError<NCloud::NStorage::NRdma::TClientRequestPtr> AllocateRequest(
+        NCloud::NStorage::NRdma::IClientHandlerPtr handler,
+        std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) override
     {
@@ -35,8 +36,8 @@ class TDummyClientEndpoint: public NRdma::IClientEndpoint
     }
 
     ui64 SendRequest(
-        NRdma::TClientRequestPtr req,
-        TCallContextPtr callContext) override
+        NCloud::NStorage::NRdma::TClientRequestPtr req,
+        TCallContextBasePtr callContext) override
     {
         Y_UNUSED(req);
         Y_UNUSED(callContext);
@@ -57,19 +58,19 @@ class TDummyClientEndpoint: public NRdma::IClientEndpoint
     {}
 };
 
-class TRdmaClientHelper: public NRdma::IClient
+class TRdmaClientHelper: public NCloud::NStorage::NRdma::IClient
 {
 public:
     TVector<std::tuple<TString, ui32>> StartedEndpoints;
 
 public:
-    TFuture<NRdma::IClientEndpointPtr> StartEndpoint(
+    TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port) noexcept override
     {
         StartedEndpoints.emplace_back(host, port);
 
-        return MakeFuture<NRdma::IClientEndpointPtr>(
+        return MakeFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>(
             std::make_shared<TDummyClientEndpoint>());
     }
 

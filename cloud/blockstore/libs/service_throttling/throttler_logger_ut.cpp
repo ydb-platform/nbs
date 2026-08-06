@@ -88,6 +88,11 @@ public:
 
         return PostponeTimeout.GetValue() / 1e6;
     }
+
+    TUsedQuota TakeUsedQuota() override
+    {
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -457,63 +462,6 @@ Y_UNIT_TEST_SUITE(TServiceThrotterLoggerTest)
         BLOCKSTORE_SERVICE(DO_TEST, requestCount);
 
 #undef DO_TEST
-    }
-
-    Y_UNIT_TEST(ShouldUpdateCallContextWithThrottlerDelay)
-    {
-        auto logger = CreateServiceThrottlerLogger(
-            std::make_shared<TRequestStats>(),
-            CreateLoggingService("console"));
-
-        TCallContext ctx;
-
-        SetCyclesPerSecond(1'000);
-
-        logger->LogPostponedRequest(
-            1'000,
-            ctx,
-            nullptr,
-            NProto::TWriteBlocksRequest(),
-            TDuration::Zero());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Zero(),
-            ctx.Time(EProcessingStage::Postponed));
-
-        logger->LogAdvancedRequest(
-            2'250,
-            ctx,
-            nullptr,
-            NProto::TWriteBlocksRequest());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            CyclesToDurationSafe(1'250), // 2'250 - 1'000
-            ctx.Time(EProcessingStage::Postponed));
-
-        logger->LogPostponedRequest(
-            3'000,
-            ctx,
-            nullptr,
-            NProto::TWriteBlocksRequest(),
-            TDuration::Zero());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::MilliSeconds(1'250),
-            ctx.Time(EProcessingStage::Postponed));
-
-        logger->LogAdvancedRequest(
-            4'400,
-            ctx,
-            nullptr,
-            NProto::TWriteBlocksRequest());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            CyclesToDurationSafe(2'650), // 1'250 + (4'400 - 3'000)
-            ctx.Time(EProcessingStage::Postponed));
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::MilliSeconds(2'650),
-            ctx.Time(EProcessingStage::Postponed));
     }
 
     Y_UNIT_TEST(ShouldUpdateCallContextInsideThrottler)

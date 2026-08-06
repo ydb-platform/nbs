@@ -14,9 +14,28 @@
 #include <util/generic/hash.h>
 #include <util/system/rwlock.h>
 
+#include <limits>
+#include <type_traits>
+
 namespace NCloud::NBlockStore {
 
 using namespace NMonitoring;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+    requires(std::is_integral_v<T> && std::is_unsigned_v<T>)
+[[nodiscard]] T SafeMultiply(T a, double m)
+{
+    if (m > 1.0 && static_cast<T>(std::numeric_limits<T>::max() / m) <= a) {
+        return std::numeric_limits<T>::max();
+    }
+    return a * m;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -68,29 +87,40 @@ TVolumePerformanceCalculator::TVolumePerformanceCalculator(
 void TVolumePerformanceCalculator::Register(const NProto::TVolume& volume)
 {
     const auto old = *PerfSettings.AtomicLoad();
-    if (old.IsValid()) {
-        const auto& profile = volume.GetPerformanceProfile();
-        TVolumePerfSettings clientSettings(
-            Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
-            Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
-            Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
-            Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()),
-            ConfigSettings.CriticalFactor);
-
-        TIntrusivePtr<TVolumePerfSettings> newSettings;
-
-        if (clientSettings.IsValid() && old != clientSettings) {
-            newSettings = new TVolumePerfSettings(
-                Min(ConfigSettings.ReadIops, profile.GetMaxReadIops()),
-                Min(ConfigSettings.ReadBandwidth, profile.GetMaxReadBandwidth()),
-                Min(ConfigSettings.WriteIops, profile.GetMaxWriteIops()),
-                Min(ConfigSettings.WriteBandwidth, profile.GetMaxWriteBandwidth()),
-                ConfigSettings.CriticalFactor);
-
-            PerfSettings.AtomicStore(newSettings);
-        }
-        IsEnabled = true;
+    if (!old.IsValid()) {
+        return;
     }
+
+    const auto& profile = volume.GetPerformanceProfile();
+    TVolumePerfSettings clientSettings(
+        Max(Min(ConfigSettings.Read.Iops,
+                SafeMultiply(
+                    profile.GetMaxReadIops(),
+                    ConfigSettings.ThrottlerOvercommit)),
+            ConfigSettings.MinRead.Iops),
+        Max(Min(ConfigSettings.Read.Bandwidth,
+                SafeMultiply(
+                    profile.GetMaxReadBandwidth(),
+                    ConfigSettings.ThrottlerOvercommit)),
+            ConfigSettings.MinRead.Bandwidth),
+        Max(Min(ConfigSettings.Write.Iops,
+                SafeMultiply(
+                    profile.GetMaxWriteIops(),
+                    ConfigSettings.ThrottlerOvercommit)),
+            ConfigSettings.MinWrite.Iops),
+        Max(Min(ConfigSettings.Write.Bandwidth,
+                SafeMultiply(
+                    profile.GetMaxWriteBandwidth(),
+                    ConfigSettings.ThrottlerOvercommit)),
+            ConfigSettings.MinWrite.Bandwidth),
+        ConfigSettings.CriticalFactor,
+        ConfigSettings.ThrottlerOvercommit);
+
+    if (clientSettings.IsValid() && old != clientSettings) {
+        PerfSettings.AtomicStore(new TVolumePerfSettings(clientSettings));
+    }
+
+    IsEnabled = true;
 }
 
 void TVolumePerformanceCalculator::Register(
@@ -129,8 +159,8 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
                 ExpectedScore,
                 GetExpectedWriteCost(requestBytes).MicroSeconds());
         }
-        auto requestTime = requestCompleted - requestStarted;
-        auto execTime = 0;
+        ui64 requestTime = requestCompleted - requestStarted;
+        ui64 execTime = 0;
         if (requestTime > waitTime) {
             execTime = requestTime - waitTime;
         }
@@ -139,11 +169,12 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
 }
 
 bool TVolumePerformanceCalculator::DidSuffer(
-    long expectedScore,
-    long actualScore) const
+    ui64 expectedScore,
+    ui64 actualScore,
+    TDuration window) const
 {
-    return (expectedScore < ExpectedIoParallelism * 1e6)
-        && (actualScore > expectedScore);
+    const ui64 windowCapacity = window.MicroSeconds() * ExpectedIoParallelism;
+    return (expectedScore < windowCapacity) && (actualScore > expectedScore);
 }
 
 bool TVolumePerformanceCalculator::UpdateStats()
@@ -152,9 +183,10 @@ bool TVolumePerformanceCalculator::UpdateStats()
         return false;
     }
 
-    auto expectedScore = AtomicGet(ExpectedScore);
-    auto actualScore = AtomicGet(CurrentScore);
-    bool suffered = DidSuffer(expectedScore, actualScore);
+    const auto expectedScore = AtomicGet(ExpectedScore);
+    const auto actualScore = AtomicGet(CurrentScore);
+    const bool suffered =
+        DidSuffer(expectedScore, actualScore, UpdateStatsInterval);
 
     AtomicAdd(SufferCount, suffered - Samples[UpdateCounter].Suffered);
     Samples[UpdateCounter] = {suffered, expectedScore, actualScore};
@@ -169,12 +201,18 @@ bool TVolumePerformanceCalculator::UpdateStats()
 
     AtomicSet(
         SmoothSufferCount,
-        DidSuffer(windowExpectedScore, windowActualScore));
+        DidSuffer(
+            windowExpectedScore,
+            windowActualScore,
+            UpdateCountersInterval));
 
     ui32 criticalFactor = Max(2u, ConfigSettings.CriticalFactor);
     AtomicSet(
         CriticalSufferCount,
-        DidSuffer(windowExpectedScore * criticalFactor, windowActualScore));
+        DidSuffer(
+            windowExpectedScore * criticalFactor,
+            windowActualScore,
+            UpdateCountersInterval));
 
     if (!UpdateCounter && Counter) {
         *Counter = SufferCount;
@@ -258,8 +296,8 @@ TDuration TVolumePerformanceCalculator::GetExpectedReadCost(
 {
     auto perf = PerfSettings.AtomicLoad();
     return ExpectedIoParallelism * CostPerIO(
-        perf->ReadIops,
-        perf->ReadBandwidth,
+        perf->Read.Iops,
+        perf->Read.Bandwidth,
         requestBytes);
 }
 
@@ -268,8 +306,8 @@ TDuration TVolumePerformanceCalculator::GetExpectedWriteCost(
 {
     auto perf = PerfSettings.AtomicLoad();
     return ExpectedIoParallelism * CostPerIO(
-        perf->WriteIops,
-        perf->WriteBandwidth,
+        perf->Write.Iops,
+        perf->Write.Bandwidth,
         requestBytes);
 }
 
@@ -282,6 +320,5 @@ TDuration TVolumePerformanceCalculator::GetCurrentCost() const
 {
     return TDuration::MicroSeconds(AtomicGet(CurrentScore));
 }
-
 
 }   // namespace NCloud::NBlockStore

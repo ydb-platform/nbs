@@ -1,6 +1,6 @@
 PROGRAM(nbsd-lightweight)
 
-ALLOCATOR(TCMALLOC_TC)
+ALLOCATOR(TCMALLOC_256K)
 
 SRCS(
     main.cpp
@@ -8,10 +8,6 @@ SRCS(
 
 IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG")
     SPLIT_DWARF()
-ELSE()
-    PEERDIR(
-        library/cpp/terminate_handler
-    )
 ENDIF()
 
 IF (SANITIZER_TYPE)

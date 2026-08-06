@@ -198,7 +198,9 @@ void TPartitionActor::EnqueueAddConfirmedBlobsIfNeeded(
         return;
     }
 
-    State->GetAddConfirmedBlobsState().SetStatus(EOperationStatus::Enqueued);
+    State->GetAddConfirmedBlobsState().SetStatus(
+        EOperationStatus::Enqueued,
+        ctx.Now());
 
     auto request =
         std::make_unique<TEvPartitionPrivate::TEvAddConfirmedBlobsRequest>(
@@ -278,7 +280,9 @@ void TPartitionActor::HandleAddConfirmedBlobs(
         return;
     }
 
-    State->GetAddConfirmedBlobsState().SetStatus(EOperationStatus::Started);
+    State->GetAddConfirmedBlobsState().SetStatus(
+        EOperationStatus::Started,
+        ctx.Now());
 
     TRequests requests;
     for (const auto& entry: State->GetConfirmedBlobs()) {
@@ -327,7 +331,9 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
 
     const auto* msg = ev->Get();
 
-    State->GetAddConfirmedBlobsState().SetStatus(EOperationStatus::Idle);
+    State->GetAddConfirmedBlobsState().SetStatus(
+        EOperationStatus::Idle,
+        ctx.Now());
 
     Actors.Erase(ev->Sender);
     if (FAILED(msg->GetStatus())) {

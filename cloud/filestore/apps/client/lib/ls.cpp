@@ -257,7 +257,6 @@ public:
         page.Cookie = CliArgs.Cookie;
         do {
             auto request = CreateRequest<NProto::TListNodesRequest>();
-
             request->SetNodeId(nodeId);
             request->SetCookie(page.Cookie);
             if (CliArgs.MaxBytes > 0) {

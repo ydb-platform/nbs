@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
 
@@ -40,7 +41,31 @@ using namespace NCloud::NStorage;
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 constexpr TInstant DRTabletIdRequestRetryInterval = TInstant::Seconds(3);
+
+bool ShapingThrottlerEnabled(
+    const TStorageConfigPtr& config,
+    NProto::EStorageMediaKind mediaKind)
+{
+    switch (mediaKind) {
+        case NProto::STORAGE_MEDIA_HDD:
+        case NProto::STORAGE_MEDIA_HYBRID:
+            return config->GetShapingThrottlerConfig().HasHddQuota();
+        case NProto::STORAGE_MEDIA_SSD:
+            return config->GetShapingThrottlerConfig().HasSsdQuota();
+        case NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+            return config->GetShapingThrottlerConfig().HasNonreplQuota();
+        case NProto::STORAGE_MEDIA_SSD_MIRROR2:
+            return config->GetShapingThrottlerConfig().HasMirror2Quota();
+        case NProto::STORAGE_MEDIA_SSD_MIRROR3:
+            return config->GetShapingThrottlerConfig().HasMirror3Quota();
+        default:
+            return false;
+    }
+    return false;
+}
 
 }   // namespace
 
@@ -66,9 +91,9 @@ TVolumeActor::TVolumeActor(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,
-    NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TPartitionBudgetManagerPtr partitionBudgetManager,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     EVolumeStartMode startMode,
@@ -79,7 +104,7 @@ TVolumeActor::TVolumeActor(
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
-    , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , BlockDigestGeneratorFactory(std::move(blockDigestGeneratorFactory))
     , TraceSerializer(std::move(traceSerializer))
     , RdmaClient(std::move(rdmaClient))
     , PartitionBudgetManager(std::move(partitionBudgetManager))
@@ -193,8 +218,11 @@ void TVolumeActor::RegisterCounters(const TActorContext& ctx)
 
 void TVolumeActor::ScheduleRegularUpdates(const TActorContext& ctx)
 {
-    if (!UpdateCountersScheduled) {
-        ctx.Schedule(UpdateCountersInterval,
+    if (!UpdateCountersScheduled &&
+        !Config->GetUsePullSchemeForVolumeStatistics())
+    {
+        ctx.Schedule(
+            UpdateCountersInterval,
             new TEvVolumePrivate::TEvUpdateCounters());
         UpdateCountersScheduled = true;
     }
@@ -256,14 +284,12 @@ void TVolumeActor::UpdateLeakyBucketCounters(const TActorContext& ctx)
 
 void TVolumeActor::UpdateCounters(const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-
     if (!State) {
         return;
     }
 
     if (Config->GetUsePullSchemeForVolumeStatistics()) {
-        SendStatsToServiceStatisticsCollectorActor(ctx);
+        ReplyToServiceStatisticsCollectorActor(ctx);
         return;
     }
 
@@ -419,11 +445,11 @@ TVolumeActor::EStatus TVolumeActor::GetVolumeStatus() const
     return TVolumeActor::STATUS_OFFLINE;
 }
 
-NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
+NCloud::NStorage::NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
 {
     return (Config->GetUseNonreplicatedRdmaActor() && State->GetUseRdma())
                ? RdmaClient
-               : NRdma::IClientPtr{};
+               : NCloud::NStorage::NRdma::IClientPtr{};
 }
 
 ui64 TVolumeActor::GetBlocksCount() const
@@ -603,6 +629,22 @@ bool TVolumeActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
         .Contains(range);
 }
 
+bool TVolumeActor::IsFreshBlocksWriterEnabled(ui64 partTabletId) const
+{
+    const auto* part = State->GetPartition(partTabletId);
+    if (!part ||
+        part->StorageInfo->TabletType != TTabletTypes::BlockStorePartition)
+    {
+        return false;
+    }
+
+    return Config->GetFreshBlocksWriterEnabled() ||
+           Config->IsFreshBlocksWriterFeatureEnabled(
+               State->GetConfig().GetCloudId(),
+               State->GetConfig().GetFolderId(),
+               State->GetConfig().GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandlePoisonPill(
@@ -647,21 +689,27 @@ void TVolumeActor::HandleUpdateThrottlerState(
 
     const auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
         GetNewestConfig().GetStorageMediaKind());
-    if ((mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD
-            || mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HYBRID)
-            && ctx.Now() - Config->GetThrottlerStateWriteInterval() >= LastThrottlerStateWrite)
+    const bool isHdd =
+        mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD ||
+        mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HYBRID;
+
+    if ((isHdd || ShapingThrottlerEnabled(Config, mediaKind)) &&
+        ctx.Now() - Config->GetThrottlerStateWriteInterval() >=
+            LastThrottlerStateWrite)
     {
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            ev->Get()->CallContext);
+        auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
         ExecuteTx<TWriteThrottlerState>(
             ctx,
             std::move(requestInfo),
             TVolumeDatabase::TThrottlerStateInfo{
-                State->GetThrottlingPolicy().GetCurrentBoostBudget().MilliSeconds()
-            });
+                .BoostBudget = State->GetThrottlingPolicy()
+                                   .GetCurrentBoostBudget()
+                                   .MilliSeconds(),
+                .SpentShapingBudgetShare =
+                    State->GetShapingThrottler()
+                        .CalculateCurrentSpentBudgetShare(ctx.Now())});
     }
 }
 
@@ -671,23 +719,24 @@ void TVolumeActor::HandleUpdateCounters(
 {
     UpdateCountersScheduled = false;
 
-    // Under these conditions, the counters are updated at the request of the
-    // service.
-    if (Config->GetUsePullSchemeForVolumeStatistics() && State &&
-        GetVolumeStatus() != EStatus::STATUS_INACTIVE)
-    {
+    if (Config->GetUsePullSchemeForVolumeStatistics()) {
+        // The counters are updated at the request of the service.
         return;
     }
 
     UpdateCounters(ctx);
     ScheduleRegularUpdates(ctx);
-    CleanupHistory(ctx, ev->Sender, ev->Cookie, ev->Get()->CallContext);
+    CleanupHistory(
+        ctx,
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
 }
 
 void TVolumeActor::HandleGetServiceStatistics(
     const TEvStatsService::TEvGetServiceStatisticsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    STORAGE_CHECK_PRECONDITION(Config->GetUsePullSchemeForVolumeStatistics());
+
     if (StatisticRequestInfo) {
         NCloud::Reply(
             ctx,
@@ -715,14 +764,18 @@ void TVolumeActor::HandleGetServiceStatistics(
     StatisticRequestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
-    if (GetVolumeStatus() == EStatus::STATUS_INACTIVE) {
+    if (!CanRequestStatisticsFromPartitions())
+    {
+        // The partitions are not running: either they have not been started
+        // yet, or they have already been stopped. Reply with the cached
+        // counters.
         UpdateCounters(ctx);
         return;
     }
 
     State->IsDiskRegistryMediaKind()
         ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
-        : SendStatisticRequests(ctx);
+        : SendStatisticRequestsForYDBBasedPartitions(ctx);
 }
 
 void TVolumeActor::RejectGetServiceStatistics(
@@ -1079,7 +1132,6 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
             HandleDiskRegistryBasedPartCounters);
         HFunc(TEvStatsService::TEvVolumePartCounters, HandlePartCounters);
-        HFunc(TEvVolumePrivate::TEvPartStatsSaved, HandlePartStatsSaved);
         HFunc(TEvVolume::TEvScrubberCounters, HandleScrubberCounters);
         HFunc(
             TEvVolumePrivate::TEvWriteOrZeroCompleted,
@@ -1135,6 +1187,12 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvDeviceTimedOutRequest,
             HandleDeviceTimedOut);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification,
+            HandleBrokenDeviceNotification);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification,
+            HandleDeviceRecoveredNotification);
         HFunc(
             TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
             HandleUpdateLaggingAgentMigrationState);
@@ -1193,6 +1251,11 @@ STFUNC(TVolumeActor::StateWork)
             TEvStatsService::TEvGetServiceStatisticsRequest,
             HandleGetServiceStatistics);
 
+        HFunc(
+            TEvService::TEvSetVhostDiscardFlagResponse,
+            HandleSetVhostDiscardFlagResponse);
+
+        IgnoreFunc(TEvVolumePrivate::TEvPartStatsSaved);
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         default:
@@ -1222,6 +1285,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolumePrivate::TEvRemoveExpiredVolumeParams);
         IgnoreFunc(TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification);
         IgnoreFunc(TEvVolumePrivate::TEvAcquireDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState);
         IgnoreFunc(TEvVolumePrivate::TEvLaggingAgentMigrationFinished);

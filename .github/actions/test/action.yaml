@@ -63,14 +63,40 @@ inputs:
     required: false
     default: "1"
     description: "Number of retries for ya make"
+  test_timeout_minutes:
+    required: false
+    default: "390"
+    description: "Per ya make test attempt timeout in minutes"
+  test_budget_minutes:
+    required: false
+    default: "480"
+    description: "Total job budget in minutes"
+  test_budget_reserve_minutes:
+    required: false
+    default: "30"
+    description: "Minutes reserved for uploading and processing after tests"
+  build_duration_seconds:
+    required: false
+    default: "0"
+    description: "Elapsed build time in seconds to subtract from test budget"
   tmpfs_mount_point:
     required: false
     default: "/mnt/ya_make_tmpfs"
     description: "Mount point path for the tmpfs filesystem"
+  ya_registry_endpoint:
+    required: false
+    default: "https://devtools-registry.s3.yandex.net"
+    description: "Ya tool mirror endpoint"
 outputs:
   failed_tests:
     description: "List of failed tests"
     value: ${{ steps.check_test_results.outputs.failed_tests }}
+  test_failed:
+    description: "Whether tests failed"
+    value: ${{ steps.check_test_results.outputs.failed_tests }}
+  report_generated:
+    description: "Whether the test summary was generated"
+    value: ${{ steps.check_test_results.outputs.report_generated }}
 
 runs:
   using: composite
@@ -79,24 +105,24 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       id: init
       run: |
-        export TMP_DIR=/home/github/tmp_test      
-        COMPONENT_DIR="" 
+        export TMP_DIR=/home/github/tmp_test
+        COMPONENT_DIR=""
         if [ -n "$COMPONENT" ]; then
-          COMPONENT_DIR="${COMPONENT}/"
+            COMPONENT_DIR="${COMPONENT}/"
         fi
         if [ "$COMPONENT" == "all" ]; then
-          COMPONENT_DIR=""
+            COMPONENT_DIR=""
         fi
         {
-          echo "TMP_DIR=$TMP_DIR"
-          echo "LOG_DIR=$TMP_DIR/logs"
-          echo "OUT_DIR=$TMP_DIR/out"
-          echo "ARTIFACTS_DIR=$TMP_DIR/artifacts"
-          echo "TESTS_DATA_DIR=$TMP_DIR/test_data"
-          echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports"
-          echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
-          echo "SUMMARY_LINKS=$(mktemp -p /home/github summary_links.XXXX)"
-          echo "COMPONENT_DIR=$COMPONENT_DIR"
+            echo "TMP_DIR=$TMP_DIR"
+            echo "LOG_DIR=$TMP_DIR/logs"
+            echo "OUT_DIR=$TMP_DIR/out"
+            echo "ARTIFACTS_DIR=$TMP_DIR/artifacts"
+            echo "TESTS_DATA_DIR=$TMP_DIR/test_data"
+            echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports"
+            echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
+            echo "SUMMARY_LINKS=$(mktemp -p /home/github summary_links.XXXX)"
+            echo "COMPONENT_DIR=$COMPONENT_DIR"
         } | tee -a $GITHUB_ENV
       env:
         COMPONENT: ${{ inputs.component }}
@@ -106,25 +132,15 @@ runs:
       env:
         CLEAN_YA_DIR: ${{ inputs.clean_ya_dir }}
       run: |
-        mkdir -p /coredumps
-        chmod 1777 /coredumps
-        echo "kernel.core_pattern=/coredumps/core.%e.%u.%b.%p.%t" | sudo tee -a /etc/sysctl.conf
-        echo "kernel.core_uses_pid=1" | sudo tee -a /etc/sysctl.conf
-        echo "fs.suid_dumpable=0" | sudo tee -a /etc/sysctl.conf
-        sudo sysctl -p
         rm -rf $TMP_DIR $JUNIT_REPORT_XML $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
         mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
-        chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR \
-                               $REPORTS_ARTIFACTS_DIR $SUMMARY_LINKS $GITHUB_WORKSPACE \
-                               $GITHUB_STEP_SUMMARY $TESTS_DATA_DIR
         # shellcheck disable=SC2193
         if [ "$CLEAN_YA_DIR" == "yes" ] && [ -d /home/github/.ya/ ]; then
-          echo "Cleaning ya dir"
-          rm -rf /home/github/.ya/
+            echo "Cleaning ya dir"
+            rm -rf /home/github/.ya/
         fi
         # checking /etc/hosts to see if vm was created correctly
         cat /etc/hosts
-
     - name: Setup cache password file
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
@@ -134,12 +150,16 @@ runs:
         echo -n "$BAZEL_REMOTE_PASSWORD" > "$BAZEL_REMOTE_PASSWORD_FILE"
         echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
         chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
-        chown github:github "$BAZEL_REMOTE_PASSWORD_FILE"
-
     - name: ya test
+      id: check_test_results
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
+        YA_REGISTRY_ENDPOINT: ${{ inputs.ya_registry_endpoint }}
         NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
+        TEST_TIMEOUT_MINUTES: ${{ inputs.test_timeout_minutes }}
+        TEST_BUDGET_MINUTES: ${{ inputs.test_budget_minutes }}
+        TEST_BUDGET_RESERVE_MINUTES: ${{ inputs.test_budget_reserve_minutes }}
+        BUILD_DURATION_SECONDS: ${{ inputs.build_duration_seconds }}
         BUILD_PRESET: ${{ inputs.build_preset }}
         TEST_TARGET: ${{ inputs.test_target }}
         TEST_SIZE: ${{ inputs.test_size }}
@@ -156,51 +176,51 @@ runs:
         TMPFS_MOUNT_POINT: ${{ inputs.tmpfs_mount_point }}
       run: |
         extra_params=(
-          --run-all-tests
-          --keep-going
-          --retest
-          --test-threads "$TEST_THREADS"
-          --link-threads "$LINK_THREADS"
-          --cache-size 512G
-          --do-not-output-stderrs
-          -T
-          --nice 0
-          --stat
-          --output "$OUT_DIR"
-          -DGITHUB_CI=yes
+            --run-all-tests
+            --keep-going
+            --retest
+            --test-threads "$TEST_THREADS"
+            --link-threads "$LINK_THREADS"
+            --cache-size 512G
+            --do-not-output-stderrs
+            -T
+            --nice 0
+            --stat
+            --output "$OUT_DIR"
+            -DGITHUB_CI=yes
         )
 
         case "$BUILD_PRESET" in
-          debug)
-            extra_params+=(--build "debug")
-            ;;
-          relwithdebinfo)
-            extra_params+=(--build "relwithdebinfo")
-            ;;
-          release-asan)
-            extra_params+=(--build "release")
-            extra_params+=(--sanitize="address")
-            extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            ;;
-          release-tsan)
-            extra_params+=(--build "release")
-            extra_params+=(--sanitize="thread")
-            extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            ;;
-          release-msan)
-            extra_params+=(--build "release")
-            extra_params+=(--sanitize="memory")
-            extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            ;;
-          release-ubsan)
-            extra_params+=(--build "release")
-            extra_params+=(--sanitize="undefined")
-            extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
-            ;;
-          *)
-            echo "Invalid preset: $BUILD_PRESET"
-            exit 1
-            ;;
+            debug)
+                extra_params+=(--build "debug")
+                ;;
+            relwithdebinfo)
+                extra_params+=(--build "relwithdebinfo")
+                ;;
+            release-asan)
+                extra_params+=(--build "release")
+                extra_params+=(--sanitize="address")
+                extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+                ;;
+            release-tsan)
+                extra_params+=(--build "release")
+                extra_params+=(--sanitize="thread")
+                extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+                ;;
+            release-msan)
+                extra_params+=(--build "release")
+                extra_params+=(--sanitize="memory")
+                extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+                ;;
+            release-ubsan)
+                extra_params+=(--build "release")
+                extra_params+=(--sanitize="undefined")
+                extra_params+=(-DSKIP_JUNK -DUSE_EAT_MY_DATA -DDEBUGINFO_LINES_ONLY)
+                ;;
+            *)
+                echo "Invalid preset: $BUILD_PRESET"
+                exit 1
+                ;;
         esac
 
         # strip quotes from the string
@@ -208,35 +228,35 @@ runs:
         TEST_TARGET=${TEST_TARGET//\"/}
 
         if [ -n "$TEST_TARGET" ]; then
-          readarray -d ',' -t targets < <(printf "%s" "$TEST_TARGET")
-          for target in "${targets[@]}"; do
-            extra_params+=(--target="${target}")
-          done
+            readarray -d ',' -t targets < <(printf "%s" "$TEST_TARGET")
+            for target in "${targets[@]}"; do
+                extra_params+=(--target="${target}")
+            done
         fi
 
         if [ "$USE_NETWORK_CACHE" == "yes" ]; then
-          if [ -n "$BAZEL_REMOTE_URI" ]; then
-            extra_params+=(--bazel-remote-store)
-            extra_params+=(--bazel-remote-base-uri "$BAZEL_REMOTE_URI")
-          fi
+            if [ -n "$BAZEL_REMOTE_URI" ]; then
+                extra_params+=(--bazel-remote-store)
+                extra_params+=(--bazel-remote-base-uri "$BAZEL_REMOTE_URI")
+            fi
 
-          if [ -n "$BAZEL_REMOTE_USERNAME" ]; then
-            extra_params+=(--bazel-remote-username "$BAZEL_REMOTE_USERNAME")
-            extra_params+=(--bazel-remote-password-file "$BAZEL_REMOTE_PASSWORD_FILE")
-          fi
+            if [ -n "$BAZEL_REMOTE_USERNAME" ]; then
+                extra_params+=(--bazel-remote-username "$BAZEL_REMOTE_USERNAME")
+                extra_params+=(--bazel-remote-password-file "$BAZEL_REMOTE_PASSWORD_FILE")
+            fi
 
-          if [ "$CACHE_UPDATE" = "true" ]; then
-            extra_params+=(--bazel-remote-put)
-          fi
+            if [ "$CACHE_UPDATE" = "true" ]; then
+                extra_params+=(--bazel-remote-put)
+            fi
         fi
 
         if [[ -n "$TMPFS_MOUNT_POINT" ]]; then
-          if mountpoint -q "$TMPFS_MOUNT_POINT"; then
-            export YA_RAM_DRIVE_PATH="$TMPFS_MOUNT_POINT"
-            echo "Tmpfs enabled ($YA_RAM_DRIVE_PATH)"
-          else
-            echo "Error: $TMPFS_MOUNT_POINT is not mounted"
-          fi
+            if mountpoint -q "$TMPFS_MOUNT_POINT"; then
+                export YA_RAM_DRIVE_PATH="$TMPFS_MOUNT_POINT"
+                echo "Tmpfs enabled ($YA_RAM_DRIVE_PATH)"
+            else
+                echo "Error: $TMPFS_MOUNT_POINT is not mounted"
+            fi
         fi
 
         # shellcheck disable=SC2153
@@ -246,266 +266,392 @@ runs:
 
         date
         ./ya --version
+
+        function remaining_test_budget_seconds() {
+            local now elapsed_test_seconds
+            now=$(date +%s)
+            elapsed_test_seconds=$((now - TEST_BUDGET_STARTED_AT))
+            echo $((TEST_BUDGET_MINUTES * 60 - TEST_BUDGET_RESERVE_MINUTES * 60 - BUILD_DURATION_SECONDS - elapsed_test_seconds))
+        }
+
+        if [ "$TEST_BUDGET_RESERVE_MINUTES" -ge "$TEST_BUDGET_MINUTES" ]; then
+            echo "Invalid test budget reserve (${TEST_BUDGET_RESERVE_MINUTES}m) for total budget (${TEST_BUDGET_MINUTES}m), using 30m reserve"
+            TEST_BUDGET_RESERVE_MINUTES=30
+        fi
+        TEST_BUDGET_STARTED_AT=$(date +%s)
+        echo "TEST_TIMEOUT_MINUTES=${TEST_TIMEOUT_MINUTES}" | tee -a "$GITHUB_ENV"
+        echo "TEST_BUDGET_MINUTES=${TEST_BUDGET_MINUTES}" | tee -a "$GITHUB_ENV"
+        echo "TEST_BUDGET_RESERVE_MINUTES=${TEST_BUDGET_RESERVE_MINUTES}" | tee -a "$GITHUB_ENV"
+        echo "BUILD_DURATION_SECONDS=${BUILD_DURATION_SECONDS}" | tee -a "$GITHUB_ENV"
+
         RETRIES="${NUMBER_OF_RETRIES}"
         OOM_CAN_BE_RETRIED=1
         BUILD_FAILED=0
+        FAIL_CHECKER_RC=1
 
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
+        echo "report_generated=no" >> "$GITHUB_OUTPUT"
         RETRY_FLAG=""
         i=0
+        echo "LAST_STEP=0" | tee -a "$GITHUB_ENV"
         # setting variable in case that test will be interrupter by OOM killer that
         # will kill VM with runner
         echo "failed_tests=yes" >> $GITHUB_OUTPUT
         while [ "$RETRIES" -gt 0 ]; do
-          TEST_START_TIME=$(date +%s)
-          echo TEST_START_TIME=$TEST_START_TIME  | tee -a "$GITHUB_ENV"
-          RETRIES=$((RETRIES - 1))
-          i=$((i + 1))
-          RETRY_LOG_DIR="$LOG_DIR/$i"
-          sudo -E -H -u github mkdir -p "$RETRY_LOG_DIR"
-          echo "LAST_STEP=${i}" | tee -a "$GITHUB_ENV"
-          echo "::group::ya-make-test-${i}"
-          set +e
-          (
-            sudo -E -H -u github ./ya make "${test_size[@]/#/--test-size=}" \
-                "${test_type[@]/#/--test-type=}" \
-                "${extra_params[@]}" \
-                --junit "${JUNIT_REPORT_XML}.${i}" \
-                --log-file "$RETRY_LOG_DIR/ya_log.txt" \
-                --evlog-file "$RETRY_LOG_DIR/ya_evlog.jsonl" \
-                "$RETRY_FLAG";
-            echo $? > exit_code
-          ) |& tee "$RETRY_LOG_DIR/ya_make_output.txt"
-          set -e
-          RC=$(< exit_code)
-          DO_RETRY=0
-          case $RC in
-            0)
-              echo "ya test successfully finished, no errors"
-              ls -la "${JUNIT_REPORT_XML}.${i}" || true
-              date
-              if [ -s "${JUNIT_REPORT_XML}.${i}" ]; then
-                echo "${JUNIT_REPORT_XML}.${i} exists"
-              else
-                echo "${JUNIT_REPORT_XML}.${i} doesn't exist or has zero size"
-              fi
-              ;;
-            137)
-              echo "ya test returned $RC it was killed by OOM killer"
-              if [ $OOM_CAN_BE_RETRIED -eq 0 ]; then
-                DO_RETRY=0
-              else
-                DO_RETRY=1
-                OOM_CAN_BE_RETRIED=0
-                RETRIES=$((RETRIES + 1 ))
-                echo "RETRIES=$((RETRIES + 1 ))" | tee -a "$GITHUB_ENV"
-                echo "Retrying once because OOM killer killed ya-bin, increasing retry count by 1"
-              fi
-              ;;
-            *)
-              echo "ya test returned $RC"
-              ls -la "${JUNIT_REPORT_XML}.${i}" || true
-              date
-              if [ -s "${JUNIT_REPORT_XML}.${i}" ]; then
-                echo "${JUNIT_REPORT_XML}.${i} exists"
-              else
-                echo "${JUNIT_REPORT_XML}.${i} doesn't exist or has zero size"
-              fi
-              # disabling retries here for now until we will be able to
-              # process junit with retried runs
-              DO_RETRY=1
-              RETRY_FLAG="-X"
-              ;;
-          esac
-
-          touch "$LOG_DIR/${i}_build_finished"
-          TEST_END_TIME=$(date +%s)
-          echo TEST_END_TIME=$TEST_END_TIME  | tee -a "$GITHUB_ENV"
-
-          echo "::group::s3-sync-logs"
-          if [ "$SYNC_TO_S3" = "true" ];
-          then
-            sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}${i}/"
-          fi
-          echo "::endgroup::"
-
-          touch "$LOG_DIR/${i}_logs_synced"
-
-          NEED_COPYING=0
-
-          # shellcheck disable=SC2024
-          if [ -f "${JUNIT_REPORT_XML}.${i}" ];
-          then
-            echo "::group::muted-tests"
-            cat .github/config/muted_ya.txt
-            MUTED_CONFIG=".github/config/muted_ya.txt"
-            echo "::endgroup::"
-            echo "::group::postprocess-junit-${i}"
-            sudo -E -H -u github mkdir -p "$ARTIFACTS_DIR/${COMPONENT_DIR}"
-            sudo -E -H -u github mkdir -p "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}"
-            sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}orig_junit.${i}.xml.gz"
-            sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
-              -m "${MUTED_CONFIG}" \
-              --ya-out "$OUT_DIR" \
-              --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
-              --data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE" \
-              --log-out-dir "$ARTIFACTS_DIR/logs/${COMPONENT_DIR}${i}" \
-              "${JUNIT_REPORT_XML}.${i}"
-
-            echo "::endgroup::"
-            # exports BUILD_FAILED_COUNT if it is not zero, we need to save current value to compare it to new one in retries and if it is bigger - update it
-            if [ -z "$BUILD_FAILED_COUNT" ]; then
-              BUILD_FAILED_COUNT=0
+            TEST_START_TIME=$(date +%s)
+            echo TEST_START_TIME=$TEST_START_TIME | tee -a "$GITHUB_ENV"
+            RETRIES=$((RETRIES - 1))
+            i=$((i + 1))
+            echo "report_generated=no" >> "$GITHUB_OUTPUT"
+            RETRY_LOG_DIR="$LOG_DIR/$i"
+            mkdir -p "$RETRY_LOG_DIR"
+            echo "LAST_STEP=${i}" | tee -a "$GITHUB_ENV"
+            echo "::group::ya-make-test-${i}"
+            REMAINING_TEST_BUDGET_SECONDS=$(remaining_test_budget_seconds)
+            ATTEMPT_TIMEOUT_SECONDS=$((TEST_TIMEOUT_MINUTES * 60))
+            if [ "$REMAINING_TEST_BUDGET_SECONDS" -lt "$ATTEMPT_TIMEOUT_SECONDS" ]; then
+                ATTEMPT_TIMEOUT_SECONDS="$REMAINING_TEST_BUDGET_SECONDS"
             fi
-            BUILD_FAILED_COUNT_TMP=$BUILD_FAILED_COUNT
-            FAIL_CHECKER_TEMP_FILE=$(mktemp -p /home/github)
+            if [ "$ATTEMPT_TIMEOUT_SECONDS" -lt 60 ]; then
+                echo "No test budget left: remaining=${REMAINING_TEST_BUDGET_SECONDS}s build=${BUILD_DURATION_SECONDS}s reserve=${TEST_BUDGET_RESERVE_MINUTES}m total=${TEST_BUDGET_MINUTES}m"
+                FAIL_CHECKER_RC=124
+                echo "::endgroup::"
+                break
+            fi
+            echo "ya make timeout for attempt ${i}: ${ATTEMPT_TIMEOUT_SECONDS}s (cap=${TEST_TIMEOUT_MINUTES}m remaining_budget=${REMAINING_TEST_BUDGET_SECONDS}s build=${BUILD_DURATION_SECONDS}s reserve=${TEST_BUDGET_RESERVE_MINUTES}m total=${TEST_BUDGET_MINUTES}m)"
+            EXIT_CODE_FILE=$(mktemp)
+            YA_MAKE_ATTEMPT_STARTED_AT=$(date +%s)
             set +e
-            (sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}"; echo $? > fail_checker_exit_code) |& tee fail-checker-output.log
+            {
+                timeout --signal=TERM --kill-after=60s "${ATTEMPT_TIMEOUT_SECONDS}s" \
+                    ./ya make "${test_size[@]/#/--test-size=}" \
+                    "${test_type[@]/#/--test-type=}" \
+                    "${extra_params[@]}" \
+                    --junit "${JUNIT_REPORT_XML}.${i}" \
+                    --log-file "$RETRY_LOG_DIR/ya_log.txt" \
+                    --evlog-file "$RETRY_LOG_DIR/ya_evlog.jsonl" \
+                    "$RETRY_FLAG"
+                echo $? > "$EXIT_CODE_FILE"
+            } |& tee "$RETRY_LOG_DIR/ya_make_output.txt"
             set -e
-            if [ -f "$FAIL_CHECKER_TEMP_FILE" ]; then
-              BUILD_FAILED_COUNT=$(grep -E '^BUILD_FAILED_COUNT=' "$FAIL_CHECKER_TEMP_FILE" | cut -d '=' -f2) || true
-              if [ -z "$BUILD_FAILED_COUNT" ]; then
-                BUILD_FAILED_COUNT=0
-              fi
-              rm "$FAIL_CHECKER_TEMP_FILE"
-            fi
-            if [ "$BUILD_FAILED_COUNT" -gt "$BUILD_FAILED_COUNT_TMP" ]; then
-              echo "BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT" | tee -a "$GITHUB_ENV"
+            YA_MAKE_ATTEMPT_FINISHED_AT=$(date +%s)
+            YA_MAKE_ATTEMPT_ELAPSED_SECONDS=$((YA_MAKE_ATTEMPT_FINISHED_AT - YA_MAKE_ATTEMPT_STARTED_AT))
+            RC=$(< "$EXIT_CODE_FILE")
+            rm -f "$EXIT_CODE_FILE"
+            if [ -s "${JUNIT_REPORT_XML}.${i}" ]; then
+                JUNIT_AVAILABLE=1
             else
-              echo "BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP" | tee -a "$GITHUB_ENV"
-              BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP
+                JUNIT_AVAILABLE=0
             fi
-            FAIL_CHECKER_RC=$(< fail_checker_exit_code)
-            if [ "$FAIL_CHECKER_RC" -ne 0 ]; then
-              NEED_COPYING=1
-              echo "::group::Copy-failed-tests-data"
-              sudo -E -H -u github .github/scripts/tests/fail-checker.py "${JUNIT_REPORT_XML}.${i}" --paths-only | while read -r path; do
-                echo $path
-                find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
-              done
-              echo "::endgroup::"
+            FAIL_CHECKER_RC="$RC"
+            if [ "$JUNIT_AVAILABLE" -eq 0 ] && [ "$FAIL_CHECKER_RC" -eq 0 ]; then
+                FAIL_CHECKER_RC=1
             fi
-            if [ "$FAIL_CHECKER_RC" -eq 237 ]; then
-              BUILD_FAILED=1
+            DO_RETRY=0
+            ATTEMPT_TIMED_OUT=0
+            if [ "$RC" -eq 124 ]; then
+                ATTEMPT_TIMED_OUT=1
             fi
-          fi
-          if [ "$NEED_COPYING" -ne "0" ];
-          then
-            chown -R github:github "$TESTS_DATA_DIR"
-            echo "::group::remove-binaries-from-tests-data-dir"
-            find "$TESTS_DATA_DIR" -type f -print0 | while IFS= read -r -d '' file; do
-              if file --mime-type "$file" | grep -q 'application/x-executable'; then
-                echo "$file"
-                rm -f "$file"
-              fi
-            done
+            case $RC in
+                0)
+                    echo "ya test successfully finished, no errors"
+                    ls -la "${JUNIT_REPORT_XML}.${i}" || true
+                    date
+                    if [ -s "${JUNIT_REPORT_XML}.${i}" ]; then
+                        echo "${JUNIT_REPORT_XML}.${i} exists"
+                    else
+                        echo "${JUNIT_REPORT_XML}.${i} doesn't exist or has zero size"
+                    fi
+                    ;;
+                137)
+                    if [ "$YA_MAKE_ATTEMPT_ELAPSED_SECONDS" -ge "$ATTEMPT_TIMEOUT_SECONDS" ]; then
+                        echo "ya test returned $RC after timeout killed it with SIGKILL"
+                        ATTEMPT_TIMED_OUT=1
+                        DO_RETRY=1
+                        RETRY_FLAG="-X"
+                    else
+                        echo "ya test returned $RC it was killed by OOM killer"
+                        if [ $OOM_CAN_BE_RETRIED -eq 0 ]; then
+                            DO_RETRY=0
+                        else
+                            DO_RETRY=1
+                            OOM_CAN_BE_RETRIED=0
+                            RETRIES=$((RETRIES + 1))
+                            echo "RETRIES=$((RETRIES + 1))" | tee -a "$GITHUB_ENV"
+                            echo "Retrying once because OOM killer killed ya-bin, increasing retry count by 1"
+                        fi
+                    fi
+                    ;;
+                *)
+                    echo "ya test returned $RC"
+                    ls -la "${JUNIT_REPORT_XML}.${i}" || true
+                    date
+                    if [ -s "${JUNIT_REPORT_XML}.${i}" ]; then
+                        echo "${JUNIT_REPORT_XML}.${i} exists"
+                    else
+                        echo "${JUNIT_REPORT_XML}.${i} doesn't exist or has zero size"
+                    fi
+                    # disabling retries here for now until we will be able to
+                    # process junit with retried runs
+                    DO_RETRY=1
+                    RETRY_FLAG="-X"
+                    ;;
+            esac
+
+            touch "$LOG_DIR/${i}_build_finished"
+            TEST_END_TIME=$(date +%s)
+            echo TEST_END_TIME=$TEST_END_TIME | tee -a "$GITHUB_ENV"
+
+            echo "::group::s3-sync-logs"
+            if [ "$SYNC_TO_S3" = "true" ]; then
+                aws s3 sync --acl public-read --follow-symlinks --no-progress "$RETRY_LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}${i}/"
+            fi
             echo "::endgroup::"
-            echo "::group::remove-images-from-tests-data-dir"
-            find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name 'NVMENBS0*' -o -name generated_other_big_raw_image
-            find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name 'NVMENBS0*' -o -name generated_other_big_raw_image \) -delete
-            echo "::endgroup::"
-            echo "::group::truncate-err-files"
-            find "$TESTS_DATA_DIR" -type f -name '*.err' -o -name '*.log' -o -name '*.out' -size +1G -print0 | while IFS= read -r -d '' file; do
-                orig_size=$(du -h "$file" | cut -f1)
-                echo "$file - $orig_size"
-                # shellcheck disable=SC2193
-                if [ "$TRUNCATE_ENABLED" == "yes" ]; then
-                  truncate -s 1G "$file"
-                  echo "... truncated (original size was $orig_size) ..." >> "$file"
-                else
-                  echo "not truncated"
+
+            touch "$LOG_DIR/${i}_logs_synced"
+
+            NEED_COPYING=0
+
+            # shellcheck disable=SC2024
+            if [ "$JUNIT_AVAILABLE" -eq 1 ]; then
+                echo "::group::muted-tests"
+                cat .github/config/muted_ya.txt
+                MUTED_CONFIG=".github/config/muted_ya.txt"
+                echo "::endgroup::"
+                echo "::group::postprocess-junit-${i}"
+                mkdir -p "$ARTIFACTS_DIR/${COMPONENT_DIR}"
+                mkdir -p "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}"
+                gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}orig_junit.${i}.xml.gz"
+                PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                    python3 -m scripts.tests.transform_ya_junit -i \
+                    -m "${MUTED_CONFIG}" \
+                    --ya-out "$OUT_DIR" \
+                    --log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
+                    --data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE" \
+                    --log-out-dir "$ARTIFACTS_DIR/logs/${COMPONENT_DIR}${i}" \
+                    "${JUNIT_REPORT_XML}.${i}"
+
+                echo "::endgroup::"
+                # exports BUILD_FAILED_COUNT if it is not zero, we need to save current value to compare it to new one in retries and if it is bigger - update it
+                if [ -z "$BUILD_FAILED_COUNT" ]; then
+                    BUILD_FAILED_COUNT=0
                 fi
-            done
-            echo "::endgroup::"
-            echo "::group::s3-sync-test-data"
-            if [ "$SYNC_TO_S3" = "true" ];
-            then
-              du -h "$TESTS_DATA_DIR/"
-              sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${COMPONENT_DIR}${i}/"
+                BUILD_FAILED_COUNT_TMP=$BUILD_FAILED_COUNT
+                FAIL_CHECKER_TEMP_FILE=$(mktemp -p /home/github)
+                FAIL_CHECKER_EXIT_CODE_FILE=$(mktemp)
+                set +e
+                {
+                    PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                        python3 -m scripts.tests.fail_checker "${JUNIT_REPORT_XML}.${i}"
+                    echo $? > "$FAIL_CHECKER_EXIT_CODE_FILE"
+                } |& tee fail-checker-output.log
+                set -e
+                if [ -f "$FAIL_CHECKER_TEMP_FILE" ]; then
+                    BUILD_FAILED_COUNT=$(grep -E '^BUILD_FAILED_COUNT=' "$FAIL_CHECKER_TEMP_FILE" | cut -d '=' -f2) || true
+                    if [ -z "$BUILD_FAILED_COUNT" ]; then
+                        BUILD_FAILED_COUNT=0
+                    fi
+                    rm "$FAIL_CHECKER_TEMP_FILE"
+                fi
+                if [ "$BUILD_FAILED_COUNT" -gt "$BUILD_FAILED_COUNT_TMP" ]; then
+                    echo "BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT" | tee -a "$GITHUB_ENV"
+                else
+                    echo "BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP" | tee -a "$GITHUB_ENV"
+                    BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT_TMP
+                fi
+                JUNIT_FAIL_CHECKER_RC=$(< "$FAIL_CHECKER_EXIT_CODE_FILE")
+                rm -f "$FAIL_CHECKER_EXIT_CODE_FILE"
+                if [ "$JUNIT_FAIL_CHECKER_RC" -ne 0 ]; then
+                    NEED_COPYING=1
+                    echo "::group::Copy-failed-tests-data"
+                    PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                        python3 -m scripts.tests.fail_checker "${JUNIT_REPORT_XML}.${i}" --paths-only | while read -r path; do
+                        echo $path
+                        find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
+                    done
+                    echo "::endgroup::"
+                fi
+                if [ "$JUNIT_FAIL_CHECKER_RC" -eq 237 ]; then
+                    BUILD_FAILED=1
+                fi
+                if [ "$ATTEMPT_TIMED_OUT" -eq 1 ]; then
+                    echo "Keeping ya make timeout exit code $RC instead of JUnit checker exit code $JUNIT_FAIL_CHECKER_RC"
+                else
+                    FAIL_CHECKER_RC="$JUNIT_FAIL_CHECKER_RC"
+                fi
             fi
-            touch "$LOG_DIR/${i}_test_data_synced"
+            if [ "$NEED_COPYING" -ne "0" ]; then
+                echo "::group::remove-binaries-from-tests-data-dir"
+                find "$TESTS_DATA_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+                    if file --mime-type "$file" | grep -q 'application/x-executable'; then
+                        echo "$file"
+                        rm -f "$file"
+                    fi
+                done
+                echo "::endgroup::"
+                echo "::group::remove-images-from-tests-data-dir"
+                find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name 'NVMENBS0*' -o -name generated_other_big_raw_image
+                find "$TESTS_DATA_DIR" \( -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -o -name 'NVMENBS0*' -o -name generated_other_big_raw_image \) -delete
+                echo "::endgroup::"
+                echo "::group::truncate-err-files"
+                find "$TESTS_DATA_DIR" -type f -name '*.err' -o -name '*.log' -o -name '*.out' -size +1G -print0 | while IFS= read -r -d '' file; do
+                    orig_size=$(du -h "$file" | cut -f1)
+                    echo "$file - $orig_size"
+                    # shellcheck disable=SC2193
+                    if [ "$TRUNCATE_ENABLED" == "yes" ]; then
+                        truncate -s 1G "$file"
+                        echo "... truncated (original size was $orig_size) ..." >> "$file"
+                    else
+                        echo "not truncated"
+                    fi
+                done
+                echo "::endgroup::"
+                echo "::group::s3-sync-test-data"
+                if [ "$SYNC_TO_S3" = "true" ]; then
+                    du -h "$TESTS_DATA_DIR/"
+                    aws s3 sync --acl public-read --follow-symlinks --no-progress "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/${COMPONENT_DIR}${i}/"
+                fi
+                touch "$LOG_DIR/${i}_test_data_synced"
+                echo "::endgroup::"
+            fi
+            # shellcheck disable=SC2024
+            if [ "$JUNIT_AVAILABLE" -eq 1 ]; then
+                gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}transformed_junit.${i}.xml.gz"
+            else
+                echo "Skipping transformed junit archive: ${JUNIT_REPORT_XML}.${i} is missing or empty"
+            fi
+
+            echo "::group::write-summary-${i}"
+            mkdir -p $ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}
+
+            cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
+
+            platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
+            BUILD_ERROR_LOG_URL_FOR_ITERATION=""
+
+            if [ "$JUNIT_AVAILABLE" -eq 1 ]; then
+                SUMMARY_FILE="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/build_errors.html"
+                BUILD_ERROR_LOG_URL_FOR_ITERATION="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/build_errors.html"
+                PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                    python3 -m scripts.tests.ya_build_errors \
+                    --junit "${JUNIT_REPORT_XML}.${i}" \
+                    --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
+                    --log "$LOG_DIR/${i}/ya_log.txt" \
+                    --ya-log-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_log.txt" \
+                    --evlog-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_evlog.jsonl" \
+                    --only-if-junit-failed-build \
+                    > "$SUMMARY_FILE"
+
+                if [ ! -s "$SUMMARY_FILE" ]; then
+                    BUILD_ERROR_LOG_URL_FOR_ITERATION=""
+                    rm -f "$SUMMARY_FILE"
+                fi
+            elif [ "$RC" -ne 0 ]; then
+                SUMMARY_FILE="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/build_errors.html"
+                BUILD_ERROR_LOG_URL_FOR_ITERATION="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/build_errors.html"
+                PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                    python3 -m scripts.tests.ya_build_errors \
+                    --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
+                    --log "$LOG_DIR/${i}/ya_log.txt" \
+                    --ya-make-output "$LOG_DIR/${i}/ya_make_output.txt" \
+                    --ya-make-output-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_make_output.txt" \
+                    --ya-log-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_log.txt" \
+                    --evlog-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_evlog.jsonl" \
+                    > "$SUMMARY_FILE"
+
+                if [ ! -s "$SUMMARY_FILE" ]; then
+                    BUILD_ERROR_LOG_URL_FOR_ITERATION=""
+                    rm -f "$SUMMARY_FILE"
+                fi
+            fi
+
+            export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
+            PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                python3 -m scripts.tests.generate_summary \
+                --summary-out-path "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/" \
+                --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
+                --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/" \
+                --build-preset "${platform_name}-${BUILD_PRESET}" \
+                --workload-status in_progress \
+                --test-target "${TEST_TARGET//\"/}" \
+                --test-time $((TEST_END_TIME - TEST_START_TIME)) \
+                --build-error-log-url "$BUILD_ERROR_LOG_URL_FOR_ITERATION" \
+                "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
+            echo "report_generated=yes" >> "$GITHUB_OUTPUT"
+
+            if [ "$JUNIT_AVAILABLE" -eq 0 ] && [ -n "$BUILD_ERROR_LOG_URL_FOR_ITERATION" ]; then
+                {
+                    echo
+                    echo "[Extracted build errors]($BUILD_ERROR_LOG_URL_FOR_ITERATION)"
+                } >> "$SUMMARY_OUT_ENV_PATH"
+            fi
+            cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
             echo "::endgroup::"
-          fi
-          # shellcheck disable=SC2024
-          sudo -E -H -u github gzip -c "${JUNIT_REPORT_XML}.${i}" > "$REPORTS_ARTIFACTS_DIR/${COMPONENT_DIR}transformed_junit.${i}.xml.gz"
 
-          echo "::group::write-summary-${i}"
-          sudo -E -H -u github mkdir -p $ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}
+            if [ -d "$ARTIFACTS_DIR/logs/" ]; then
+                echo "::group::cleaning-artifacts-log-dir"
+                find "$ARTIFACTS_DIR/logs/" -type f -print0 | while IFS= read -r -d '' file; do
+                    if file --mime-type "$file" | grep -q 'application/x-executable'; then
+                        echo "$file"
+                        rm -f "$file"
+                    fi
+                done
+                echo "::endgroup::"
+            fi
 
-          cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
-
-          platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
-
-          export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
-          chown github:github $SUMMARY_OUT_ENV_PATH
-          sudo -E -H -u github .github/scripts/tests/generate-summary.py \
-            --summary-out-path "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/" \
-            --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
-            --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/" \
-            --build-preset "${platform_name}-${BUILD_PRESET}" \
-            --test-target "${TEST_TARGET//\"/}" \
-            --test-time $((TEST_END_TIME - TEST_START_TIME)) \
-            "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
-
-          cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
-          echo "::endgroup::"
-
-          if [ -d "$ARTIFACTS_DIR/logs/" ]; then
-            echo "::group::cleaning-artifacts-log-dir"
-            find "$ARTIFACTS_DIR/logs/" -type f -print0 | while IFS= read -r -d '' file; do
-              if file --mime-type "$file" | grep -q 'application/x-executable'; then
-                echo "$file"
-                rm -f "$file"
-              fi
-            done
+            echo "::group::s3-sync"
+            aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+            if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ] && [ -f "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/summary.json" ]; then
+                aws s3 cp --acl public-read --follow-symlinks --no-progress \
+                    "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/summary.json" \
+                    "$S3_REPORTS_BUCKET_PATH/${COMPONENT_DIR}${i}/summary.json"
+            fi
+            touch "$LOG_DIR/${i}_artifacts_synced"
             echo "::endgroup::"
-          fi
 
-          echo "::group::s3-sync"
-          sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
-          touch "$LOG_DIR/${i}_artifacts_synced"
-          echo "::endgroup::"
-
-          if [ $DO_RETRY -eq 1 ]; then
-            echo "Retrying..."
-            echo "::endgroup::"
-            continue
-          else
-            echo "::endgroup::"
-            break
-          fi
+            if [ $DO_RETRY -eq 1 ]; then
+                echo "Retrying..."
+                echo "::endgroup::"
+                continue
+            else
+                echo "::endgroup::"
+                break
+            fi
         done
         echo "exiting with code $FAIL_CHECKER_RC"
-        echo "END_EXIT_CODE=${FAIL_CHECKER_RC}" |tee -a "$GITHUB_ENV"
+        echo "END_EXIT_CODE=${FAIL_CHECKER_RC}" | tee -a "$GITHUB_ENV"
         if [ "$BUILD_FAILED" -eq 1 ]; then
-          echo "BUILD_FAILED=1" | tee -a "$GITHUB_ENV"
-          echo "failed_tests=yes" >> $GITHUB_OUTPUT
+            echo "BUILD_FAILED=1" | tee -a "$GITHUB_ENV"
+            {
+                echo "failed_tests=yes"
+            } >> "$GITHUB_OUTPUT"
         else
-          echo "BUILD_FAILED=0" | tee -a "$GITHUB_ENV"
-         echo "failed_tests=yes" >> $GITHUB_OUTPUT
+            echo "BUILD_FAILED=0" | tee -a "$GITHUB_ENV"
+            {
+                echo "failed_tests=yes"
+            } >> "$GITHUB_OUTPUT"
         fi
-
-    - name: copying system files
+    - name: collect VM system logs
       if: ${{ always() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        sudo cp /var/log/kern.log "$LOG_DIR/kern.log" || true
-        sudo chown -R github:github "$LOG_DIR/kern.log" || true
-
+        mkdir -p "$LOG_DIR/system_logs"
+        if command -v actions-runner-collect-system-logs.sh > /dev/null; then
+            sudo -n actions-runner-collect-system-logs.sh || true
+        else
+            sudo cp /var/log/kern.log "$LOG_DIR/kern.log" || cp /var/log/kern.log "$LOG_DIR/kern.log" || true
+            # shellcheck disable=SC2024
+            sudo dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || true
+            sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
+            sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
+        fi
     - name: dump VM artifacts
       shell: bash --noprofile --norc -eo pipefail -x {0}
       if: ${{ always() }}
       run: |
         echo "::group::dump-vm-artifacts"
-        sudo mkdir -p "$LOG_DIR/system_logs"
-        # shellcheck disable=SC2024
-        sudo dmesg -T > "$LOG_DIR/system_logs/dmesg.log" || true
-        sudo cp /var/log/atop/atop_* "$LOG_DIR/system_logs/" || true
-        sudo cp /var/log/syslog "$LOG_DIR/system_logs/syslog.log" || true
-        sudo chown -R github:github "$LOG_DIR/system_logs/" || true
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}"
+        aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/system_logs/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}"
         echo "::endgroup::"
-
     - name: sync logs in case of cancel and additional debug info
       if: ${{ cancelled() }}
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -521,62 +667,56 @@ runs:
         perf report --stdio -i "${CANCEL_LOG_DIR}/perf.data" > "${CANCEL_LOG_DIR}/perf_report.log" 2>&1 || true
         perf script -i "${CANCEL_LOG_DIR}/perf.data" > "${CANCEL_LOG_DIR}/perf.out" 2>&1 || true
 
-        sudo chown -R github:github "$LOG_DIR/"
-
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}" || true
+        aws s3 sync --acl public-read --follow-symlinks --no-progress "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/${COMPONENT_DIR}" || true
 
         if [ ! -f "${LAST_STEP}_artifacts_synced" ]; then
-          echo "Syncing artifacts dir"
-          if [ -d "$ARTIFACTS_DIR/logs/" ]; then
-            echo "::group::cleaning-artifacts-log-dir"
-            find "$ARTIFACTS_DIR/logs/" -type f -print0 | while IFS= read -r -d '' file; do
-              if file --mime-type "$file" | grep -q 'application/x-executable'; then
-                echo "$file"
-                rm -f "$file"
-              fi
-            done
-            echo "::endgroup::"
-          fi
-          sudo -E -H -u github aws s3 sync --acl private --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
+            echo "Syncing artifacts dir"
+            if [ -d "$ARTIFACTS_DIR/logs/" ]; then
+                echo "::group::cleaning-artifacts-log-dir"
+                find "$ARTIFACTS_DIR/logs/" -type f -print0 | while IFS= read -r -d '' file; do
+                    if file --mime-type "$file" | grep -q 'application/x-executable'; then
+                        echo "$file"
+                        rm -f "$file"
+                    fi
+                done
+                echo "::endgroup::"
+            fi
+            aws s3 sync --acl private --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/artifacts/" || true
         fi
-
     - name: Finish with END_EXIT_CODE
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "Tests ended with exit code $END_EXIT_CODE"
         if [ "$BUILD_FAILED" -eq 1 ]; then
-          echo "Build failed, setting END_EXIT_CODE to 237"
-          END_EXIT_CODE=237
+            echo "Build failed, setting END_EXIT_CODE to 237"
+            END_EXIT_CODE=237
         fi
         exit $END_EXIT_CODE
-
     - name: Sync test results to S3
       if: always()
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
-        sudo -E -H -u github aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/test_reports/" "$S3_BUCKET_PATH/test_reports/"
+        aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/test_reports/" "$S3_BUCKET_PATH/test_reports/"
         echo "::endgroup::"
-
     - name: Display links to s3 summary
       if: always()
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-report-links"
         for i in $(seq 1 $LAST_STEP); do
-          echo ${S3_URL_PREFIX}/summary/${COMPONENT_DIR}${i}/ya-test.html
-          echo ${S3_WEBSITE_PREFIX}/summary/${COMPONENT_DIR}${i}/ya-test.html
+            echo ${S3_URL_PREFIX}/summary/${COMPONENT_DIR}${i}/ya-test.html
+            echo ${S3_WEBSITE_PREFIX}/summary/${COMPONENT_DIR}${i}/ya-test.html
         done
         echo "::endgroup::"
-
     - name: upload ya dir to s3 on success
       id: upload_ya_dir
       shell: bash --noprofile --norc -eo pipefail -x {0}
       if: success() && inputs.upload_ya_dir == 'yes'
       run: |
         function grep_ya_tc() {
-          # shellcheck disable=SC2009
-          ps aux | grep "[y]a-tc" || true
+            # shellcheck disable=SC2009
+            ps aux | grep "[y]a-tc" || true
         }
         process_name="ya-tc"
         # by default ya-tc should terminate within 5 minutes
@@ -614,36 +754,35 @@ runs:
         echo "::endgroup::"
         ya_bin_path=$(find /home/github/.ya/tools/ -type f -name "ya-bin")
         if [ ! -s "$ya_bin_path" ]; then
-          echo "ya-bin exists but is empty"
-          echo "empty_ya_bin=yes" >> $GITHUB_OUTPUT
+            echo "ya-bin exists but is empty"
+            echo "empty_ya_bin=yes" >> $GITHUB_OUTPUT
         else
-          echo "empty_ya_bin=no" >> $GITHUB_OUTPUT
-          echo "::group::upload-ya-dir"
+            echo "empty_ya_bin=no" >> $GITHUB_OUTPUT
+            echo "::group::upload-ya-dir"
 
-          df -h
-          EXTENSION=tar.xz
-          if [ "$EXTENSION" = "tar.zst" ] || [ "$EXTENSION" = "tar.zstd" ]; then COMPRESS_ARGS='zstd -16 -T60'; fi
-          if [ "$EXTENSION" = "tar.xz" ]; then COMPRESS_ARGS='pixz -1'; fi
-          if [ "$EXTENSION" = "tar.bz2" ]; then COMPRESS_ARGS=pbzip2; fi
-          if [ "$EXTENSION" = "tar.gz" ]; then COMPRESS_ARGS=pigz; fi
-          sudo -E -H -u github time tar -S -C /home/github -I "$COMPRESS_ARGS" -c -f  /home/github/tmp/ya.${EXTENSION} /home/github/.ya
-          ls -lsha /home/github/tmp/ya.${EXTENSION}
-          sudo -E -H -u github time aws s3 cp --no-progress  /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}"
-          echo "${S3_WEBSITE_PREFIX}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_web_url.txt
-          echo "${S3_BUCKET_PATH}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_s3_url.txt
-          df -h
-          echo "::endgroup::"
+            df -h || true
+            EXTENSION=tar.xz
+            if [ "$EXTENSION" = "tar.zst" ] || [ "$EXTENSION" = "tar.zstd" ]; then COMPRESS_ARGS='zstd -16 -T60'; fi
+            if [ "$EXTENSION" = "tar.xz" ]; then COMPRESS_ARGS='pixz -1'; fi
+            if [ "$EXTENSION" = "tar.bz2" ]; then COMPRESS_ARGS=pbzip2; fi
+            if [ "$EXTENSION" = "tar.gz" ]; then COMPRESS_ARGS=pigz; fi
+            time tar -S -C /home/github -I "$COMPRESS_ARGS" -c -f /home/github/tmp/ya.${EXTENSION} /home/github/.ya
+            ls -lsha /home/github/tmp/ya.${EXTENSION}
+            time aws s3 cp --no-progress /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}"
+            echo "${S3_WEBSITE_PREFIX}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_web_url.txt
+            echo "${S3_BUCKET_PATH}/ya_archive/${COMPONENT_DIR}ya.${EXTENSION}" > /home/github/ya_s3_url.txt
+            df -h || true
+            echo "::endgroup::"
         fi
-
     - name: upload ya url to s3 on success
       if: success() && inputs.upload_ya_dir == 'yes' && steps.upload_ya_dir.outputs.empty_ya_bin != 'yes'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: ya_web_url_file
         path: /home/github/ya_web_url.txt
     - name: upload ya url to s3 on success
       if: success() && inputs.upload_ya_dir == 'yes' && steps.upload_ya_dir.outputs.empty_ya_bin != 'yes'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: ya_s3_url_file
         path: /home/github/ya_s3_url.txt
@@ -652,20 +791,20 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::generate-listing"
-        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH/" --generate-indexes --apply
+        python3 .github/scripts/index.py "$S3_BUCKET_PATH/" --generate-indexes --apply
         echo "::endgroup::"
     - name: show free space
       if: always()
       shell: bash --noprofile --norc -eo pipefail -x {0}
-      run: df -h
+      run: |
+        mount || true
+        df -h || true
 
     - name: clean up
       if: always()
       shell: bash
       run: |
         echo "::group::clean-up"
-        sudo -E -H -u github rm -rf $TMP_DIR $SUMMARY_LINKS $BAZEL_REMOTE_PASSWORD_FILE \
-                                    $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS
-        chown -R root:root $GITHUB_WORKSPACE 
+        rm -rf $TMP_DIR $SUMMARY_LINKS $BAZEL_REMOTE_PASSWORD_FILE \
+               $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS
         echo "::endgroup::"
-

@@ -12,6 +12,7 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig, TServerConfig, TLocation
 from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
+from cloud.storage.core.tools.common.python.port_reservation import PortManager
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
 from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig
@@ -61,11 +62,11 @@ class LocalDiskAgent(Daemon):
                 dict(name="dynamic_storage_pool:2", kind="ssd")]
 
         self.__service_type = LocalDiskAgent.__get_service_type(server_app_config)
-        self.__port_manager = yatest_common.PortManager()
+        self.__port_manager = PortManager()
         self.__grpc_port = grpc_port
         self.__grpc_trace = grpc_trace
-        self.__ic_port = self.__port_manager.get_port()
-        self.__mon_port = self.__port_manager.get_port()
+        self.__ic_port = self.__port_manager.reserve_port()
+        self.__mon_port = self.__port_manager.reserve_port()
         self.__temporary_agent = temporary_agent
         if disk_agent_binary_path is not None:
             self.__binary_path = disk_agent_binary_path
@@ -131,8 +132,8 @@ class LocalDiskAgent(Daemon):
         self.__access_service = None
         if enable_access_service:
             host = "localhost"
-            port = self.__port_manager.get_port()
-            control_server_port = self.__port_manager.get_port()
+            port = self.__port_manager.reserve_port()
+            control_server_port = self.__port_manager.reserve_port()
             self.__access_service = AccessService(host, port, control_server_port)
             self.__proto_configs["auth.txt"] = self.__generate_auth_txt(port)
 
@@ -557,6 +558,17 @@ ModifyScheme {
             command = [
                 launcher_path,
             ] + self.__unstable_process_args
+
+            # All ports allocated by this agent (ic, mon, access-service,
+            # ...) are reserved by PortManager (flocked under PORT_SYNC_PATH)
+            # only while the allocating process lives.
+            #
+            # Pass the reserved ports to the launcher so it re-takes and holds
+            # those flocks across every restart.
+            #
+            # See issue #6518 for details
+            for reserved_port in self.__port_manager.list_reserved_ports():
+                command += ["--reserve-port", str(reserved_port)]
 
             for cmd in commands:
                 command += [

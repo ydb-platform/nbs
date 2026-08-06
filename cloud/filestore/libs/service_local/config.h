@@ -58,6 +58,7 @@ public:
     [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
     [[nodiscard]] bool GetForceAsyncIO() const;
     [[nodiscard]] bool GetPropagateAffinityToKernelWorkers() const;
+    [[nodiscard]] bool GetSQKernelPollingEnabled() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,12 +96,17 @@ public:
     bool GetZeroCopyEnabled() const;
     bool GetGuestPageCacheDisabled() const;
     bool GetExtendedAttributesDisabled() const;
+    bool GetExtendedAttributesDisabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
 
     void Dump(IOutputStream& out) const;
     TString DumpStr() const;
     void DumpHtml(IOutputStream& out) const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetAsyncDestroyReadOnlyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     bool GetOpenNodeByHandleEnabled() const;
@@ -152,10 +158,25 @@ public:
         const TString& fsId) const;
 
     ui64 GetDirectoryHandlesTableSize() const;
+    ui64 GetDirectoryHandlesPersistentHandleMaxSize() const;
 
     bool GetGuestHandleKillPrivV2Enabled() const;
+    bool GetGuestHandleKillPrivV2Enabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
+
+    bool GetGuestPosixAclEnabled() const;
+    bool GetGuestPosixAclEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
 
     bool GetSnapshotsDirEnabled() const;
+    bool GetSnapshotsDirEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& fsId) const;
 
     TDuration GetSnapshotsDirRefreshInterval() const;
 };

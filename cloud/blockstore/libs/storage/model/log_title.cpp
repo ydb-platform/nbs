@@ -31,7 +31,7 @@ TStringBuilder& operator<<(TStringBuilder& stream, TOptional<T> opt)
         } else {
             stream << "?";
         }
-    } else{
+    } else {
         stream << opt.Value;
     }
 
@@ -155,9 +155,24 @@ TString ToString(const TLogTitle::TPartitionNonrepl& data)
     return TStringBuilder() << "[nrd:" << data.DiskId;
 }
 
+TString ToString(const TLogTitle::TPartitionNonreplRdma& data)
+{
+    return TStringBuilder() << "[nrd_rdma:" << data.DiskId;
+}
+
 TString ToString(const TLogTitle::TPartitionMirror& data)
 {
     return TStringBuilder() << "[md:" << data.DiskId;
+}
+
+TString ToString(const TLogTitle::TPartitionMigration& data)
+{
+    return TStringBuilder() << "[mig:" << data.DiskId;
+}
+
+TString ToString(const TLogTitle::TMirrorPartitionResync& data)
+{
+    return TStringBuilder() << "[MirrorPartitionResync:" << data.DiskId;
 }
 
 TString ToString(const TLogTitle::TDiskRegistry& data)
@@ -179,6 +194,12 @@ TString ToString(const TLogTitle::TFreshBlocksWriter& data)
     stream << " d:" << TOptional{data.DiskId};
 
     return stream;
+}
+
+TString ToString(const TLogTitle::TAgentAvailabilityMonitoringActor& data)
+{
+    return TStringBuilder()
+           << "[aam:" << data.DiskId << " agent:" << data.AgentId;
 }
 
 }   // namespace
@@ -210,13 +231,13 @@ TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
 
 TChildLogTitle TLogTitle::GetChildWithTags(
     const ui64 startTime,
-    std::span<const std::pair<TString, TString>> additionalTags) const
+    TPrintableParams additionalTags) const
 {
     TStringBuilder childPrefix;
     childPrefix << CachedPrefix;
 
-    for (const auto& [key, value]: additionalTags) {
-        childPrefix << " " << key << ":" << value;
+    if (!additionalTags.empty()) {
+        childPrefix << " " << PrintParams(additionalTags);
     }
 
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
@@ -227,9 +248,10 @@ TChildLogTitle TLogTitle::GetChildWithTags(
 
 TChildLogTitle TLogTitle::GetChildWithTags(
     const ui64 startTime,
-    std::initializer_list<std::pair<TString, TString>> additionalTags) const
+    std::initializer_list<std::pair<TStringBuf, TPrintableValue>>
+        additionalTags) const
 {
-    return GetChildWithTags(startTime, std::span(additionalTags));
+    return GetChildWithTags(startTime, TPrintableParams(additionalTags));
 }
 
 TString TLogTitle::Get(EDetails details) const
@@ -313,6 +335,40 @@ TChildLogTitle::TChildLogTitle(TString cachedPrefix, ui64 startTime)
     : CachedPrefix(std::move(cachedPrefix))
     , StartTime(startTime)
 {}
+
+TChildLogTitle TChildLogTitle::GetChild(const ui64 startTime) const
+{
+    TStringBuilder childPrefix;
+    childPrefix << CachedPrefix;
+    const auto duration = CyclesToDurationSafe(startTime - StartTime);
+    childPrefix << " + " << FormatDuration(duration);
+    return {childPrefix, startTime};
+}
+
+TChildLogTitle TChildLogTitle::GetChildWithTags(
+    const ui64 startTime,
+    const TPrintableParams& additionalTags) const
+{
+    TStringBuilder childPrefix;
+    childPrefix << CachedPrefix;
+
+    if (!additionalTags.empty()) {
+        childPrefix << " " << PrintParams(additionalTags);
+    }
+
+    const auto duration = CyclesToDurationSafe(startTime - StartTime);
+    childPrefix << " + " << FormatDuration(duration);
+
+    return {childPrefix, startTime};
+}
+
+TChildLogTitle TChildLogTitle::GetChildWithTags(
+    const ui64 startTime,
+    std::initializer_list<std::pair<TStringBuf, TPrintableValue>>
+        additionalTags) const
+{
+    return GetChildWithTags(startTime, TPrintableParams(additionalTags));
+}
 
 TString TChildLogTitle::GetWithTime() const
 {

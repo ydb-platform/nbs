@@ -335,6 +335,210 @@ func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicyIfNoCapacities(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func TestSelectCellForPlacementGroupFirstInConfig(t *testing.T) {
+	ctx := newContext()
+
+	policy := cells_config.CellSelectionPolicy_FIRST_IN_CONFIG
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			shardedZoneID: {Cells: []string{cellID2, cellID1}},
+			otherZoneID:   {Cells: []string{otherZoneID}},
+		},
+		CellSelectionPolicy: &policy,
+	}
+
+	selector := cellSelector{
+		config: config,
+	}
+
+	selectedCell, err := selector.selectCellForPlacementGroup(
+		ctx,
+		shardedZoneID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, cellID2, selectedCell)
+
+	selectedCell, err = selector.selectCellForPlacementGroup(
+		ctx,
+		cellID2,
+	)
+	require.NoError(t, err)
+	require.Equal(t, cellID2, selectedCell)
+
+	selectedCell, err = selector.selectCellForPlacementGroup(
+		ctx,
+		otherZoneID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, otherZoneID, selectedCell)
+
+	selectedCell, err = selector.selectCellForPlacementGroup(
+		ctx,
+		"incorrectZoneID",
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "incorrect zone ID provided")
+	require.Empty(t, selectedCell)
+}
+
+func TestSelectCellForPlacementGroupNoConfig(t *testing.T) {
+	ctx := newContext()
+	selector := cellSelector{}
+
+	selectedCell, err := selector.selectCellForPlacementGroup(
+		ctx,
+		otherZoneID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, otherZoneID, selectedCell)
+}
+
+func TestSelectCellForPlacementGroupMaxFreeBytes(t *testing.T) {
+	ctx := newContext()
+	cellStorage := storage_mocks.NewStorageMock()
+
+	policy := cells_config.CellSelectionPolicy_MAX_FREE_BYTES
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			shardedZoneID: {Cells: []string{cellID1, cellID2}},
+		},
+		CellSelectionPolicy: &policy,
+	}
+
+	cellStorage.On(
+		"GetRecentClusterCapacities",
+		ctx,
+		shardedZoneID,
+		mock.AnythingOfType("types.DiskKind"),
+	).Return([]storage.ClusterCapacity{
+		{FreeBytes: 1024, CellID: cellID1},
+		{FreeBytes: 2048, CellID: cellID2},
+	}, nil)
+
+	selector := cellSelector{
+		config:  config,
+		storage: cellStorage,
+	}
+
+	selectedCell, err := selector.selectCellForPlacementGroup(
+		ctx,
+		shardedZoneID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, cellID2, selectedCell)
+}
+
+func TestSelectCellForPlacementGroupMaxFreeBytesFiltersStaleCells(t *testing.T) {
+	ctx := newContext()
+	cellStorage := storage_mocks.NewStorageMock()
+
+	policy := cells_config.CellSelectionPolicy_MAX_FREE_BYTES
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			shardedZoneID: {Cells: []string{cellID1, cellID2}},
+		},
+		CellSelectionPolicy: &policy,
+	}
+
+	// Stale cell "zone-a-removed" has the most free space but is no longer
+	// in the config — it must be filtered out.
+	cellStorage.On(
+		"GetRecentClusterCapacities",
+		ctx,
+		shardedZoneID,
+		mock.AnythingOfType("types.DiskKind"),
+	).Return([]storage.ClusterCapacity{
+		{FreeBytes: 1024, CellID: cellID1},
+		{FreeBytes: 2048, CellID: cellID2},
+		{FreeBytes: 4096, CellID: "zone-a-removed"},
+	}, nil)
+
+	selector := cellSelector{
+		config:  config,
+		storage: cellStorage,
+	}
+
+	selectedCell, err := selector.selectCellForPlacementGroup(
+		ctx,
+		shardedZoneID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, cellID2, selectedCell)
+}
+
+func TestSelectCellForPlacementGroupMaxFreeBytesNoCapacities(t *testing.T) {
+	ctx := newContext()
+	cellStorage := storage_mocks.NewStorageMock()
+
+	policy := cells_config.CellSelectionPolicy_MAX_FREE_BYTES
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			shardedZoneID: {Cells: []string{cellID1, cellID2}},
+		},
+		CellSelectionPolicy: &policy,
+	}
+
+	cellStorage.On(
+		"GetRecentClusterCapacities",
+		ctx,
+		shardedZoneID,
+		mock.AnythingOfType("types.DiskKind"),
+	).Return([]storage.ClusterCapacity{}, nil)
+
+	selector := cellSelector{
+		config:  config,
+		storage: cellStorage,
+	}
+
+	selectedCell, err := selector.selectCellForPlacementGroup(
+		ctx,
+		shardedZoneID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, cellID1, selectedCell)
+}
+
+func TestResolveCellsWithConfig(t *testing.T) {
+	config := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			shardedZoneID: {Cells: []string{cellID1, cellID2}},
+			otherZoneID:   {Cells: []string{otherZoneID}},
+		},
+	}
+
+	selector := cellSelector{
+		config: config,
+	}
+
+	cells, err := selector.ResolveCells(shardedZoneID)
+	require.NoError(t, err)
+	require.Equal(t, []string{cellID1, cellID2}, cells)
+
+	cells, err = selector.ResolveCells(otherZoneID)
+	require.NoError(t, err)
+	require.Equal(t, []string{otherZoneID}, cells)
+
+	// Cell ID itself should be resolved.
+	cells, err = selector.ResolveCells(cellID2)
+	require.NoError(t, err)
+	require.Equal(t, []string{cellID2}, cells)
+
+	// Unknown zone should return an error.
+	_, err = selector.ResolveCells("unknownZone")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "incorrect zone ID provided")
+}
+
+func TestResolveCellsNoConfig(t *testing.T) {
+	selector := cellSelector{}
+
+	cells, err := selector.ResolveCells(otherZoneID)
+	require.NoError(t, err)
+	require.Equal(t, []string{otherZoneID}, cells)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestSelectCellForLocalDiskReturnsCorrectNBSClient(t *testing.T) {
 	ctx := context.Background()
 	nbsFactory := nbs_mocks.NewFactoryMock()

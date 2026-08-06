@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flush_batch_limits.h"
+
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <util/generic/function_ref.h>
@@ -28,10 +30,7 @@ struct IWriteDataRequestBatchBuilder
     virtual ~IWriteDataRequestBatchBuilder() = default;
 
     // Add next WriteData request to the batch.
-    // Returns true if the request was added.
-    // Returns false if the request was rejected to due conditions in the
-    // configuration (e.g. max request count exceeded)
-    virtual bool AddRequest(ui64 handle, ui64 offset, TStringBuf data) = 0;
+    virtual void AddRequest(ui64 offset, TStringBuf data) = 0;
 
     virtual TWriteDataRequestBatch Build() = 0;
 };
@@ -55,14 +54,7 @@ struct TWriteDataRequestBuilderConfig
 {
     TString FileSystemId;
 
-    // The maximum size of a single consolidated WriteData request
-    ui32 MaxWriteRequestSize = 0;
-
-    // The maximum number of consolidated WriteData requests
-    ui32 MaxWriteRequestsCount = 0;
-
-    // The maximum total size of all consolidated WriteData requests
-    ui32 MaxSumWriteRequestsSize = 0;
+    TFlushBatchLimits FlushBatchLimits;
 
     // Generate WriteData requests with iovecs
     bool ZeroCopyWriteEnabled = false;

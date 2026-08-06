@@ -1,0 +1,35 @@
+[Unit]
+Description=NVMe Loop Target Service
+Documentation=man:nvmet(8)
+After=local-fs.target
+Before=multi-user.target
+Wants=local-fs.target
+ConditionPathExists=/etc/nvme-loop/config.json
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/nvme-loop-setup.sh
+ExecStop=/usr/local/bin/nvme-loop-cleanup.sh
+ExecReload=/usr/local/bin/nvme-loop-setup.sh
+TimeoutStartSec=30
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+# Restart policy
+Restart=no
+RestartSec=5
+
+# Security settings
+User=root
+Group=root
+
+# Environment
+Environment=NVME_LOOP_CONFIG_DIR=/etc/nvme-loop
+Environment=NVME_LOOP_DEVICES_DIR=/opt/nvme-loop/devices
+Environment=NVME_LOOP_IMAGES_DIR=/opt/nvme-loop/images
+Environment=NVME_LOOP_LOG_FILE=/var/log/nvme-loop.log
+
+[Install]
+WantedBy=multi-user.target

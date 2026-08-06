@@ -1,0 +1,26 @@
+Tests {
+    LoadTest {
+        Name: "max-file-count"
+        ClientId: "max-file-count-loadtest"
+        CreateFileStoreRequest {
+            FileSystemId: "max-file-count"
+            FolderId: "folder"
+            CloudId: "cloud"
+            BlocksCount: 10241024
+            BlockSize: 4096
+        }
+        KeepFileStore: true
+        MaxNodes: 3
+        RequestsCount: 30
+        IODepth: 16
+        DataLoadSpec {
+            Actions {
+                Action: ACTION_READ
+                Rate: 1
+            }
+            ReadBytes: 4096
+            WriteBytes: 4096
+            MinFileCount: 3
+        }
+    }
+}

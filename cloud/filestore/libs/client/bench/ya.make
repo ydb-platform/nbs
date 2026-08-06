@@ -1,5 +1,7 @@
 Y_BENCHMARK()
 
+SIZE(medium)
+
 IF (SANITIZER_TYPE)
     TAG(ya:manual)
 ENDIF()

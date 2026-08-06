@@ -65,6 +65,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
     xxx(ReplaceBrokenDevicesAfterRestart,   __VA_ARGS__)                       \
     xxx(UpdatePathAttachState,              __VA_ARGS__)                       \
+    xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -628,6 +629,7 @@ struct TTxDiskRegistry
         const TString Host;
         const TString Path;
         const NProto::EDeviceState State;
+        const TString CustomMessage;
         const bool ShouldResumeDevice;
         const bool DryRun;
 
@@ -641,12 +643,14 @@ struct TTxDiskRegistry
                 TString host,
                 TString path,
                 NProto::EDeviceState state,
+                TString customMessage,
                 bool shouldResumeDevice,
                 bool dryRun)
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , Path(std::move(path))
             , State(state)
+            , CustomMessage(std::move(customMessage))
             , ShouldResumeDevice(shouldResumeDevice)
             , DryRun(dryRun)
         {}
@@ -667,6 +671,7 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const TString Host;
         const NProto::EAgentState State;
+        const TString CustomMessage;
         const bool DryRun;
 
         NProto::TError Error;
@@ -678,10 +683,12 @@ struct TTxDiskRegistry
                 TRequestInfoPtr requestInfo,
                 TString host,
                 NProto::EAgentState state,
+                TString customMessage,
                 bool dryRun)
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , State(state)
+            , CustomMessage(std::move(customMessage))
             , DryRun(dryRun)
         {}
 
@@ -700,6 +707,7 @@ struct TTxDiskRegistry
     {
         const TRequestInfoPtr RequestInfo;
         const TString Host;
+        const TString CustomMessage;
         const bool DryRun;
 
         NProto::TError Error;
@@ -708,9 +716,11 @@ struct TTxDiskRegistry
         TPurgeHostCms(
                 TRequestInfoPtr requestInfo,
                 TString host,
+                TString customMessage,
                 bool dryRun)
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
+            , CustomMessage(std::move(customMessage))
             , DryRun(dryRun)
         {}
 
@@ -1520,6 +1530,39 @@ struct TTxDiskRegistry
             , AgentId(std::move(agentId))
             , Path(std::move(path))
             , NewState(newState)
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
+        }
+    };
+
+    //
+    // UpdateVolumeHealth
+    //
+
+    struct TUpdateVolumeHealth
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString DiskId;
+        const TInstant Now;
+        const NProto::EVolumeHealth VolumeHealth;
+        const ui64 VolumeHealthSeqNo;
+
+        NProto::TError Error;
+
+        TUpdateVolumeHealth(
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            TInstant now,
+            NProto::EVolumeHealth volumeHealth,
+            ui64 volumeHealthSeqNo)
+            : RequestInfo(std::move(requestInfo))
+            , DiskId(std::move(diskId))
+            , Now(now)
+            , VolumeHealth(volumeHealth)
+            , VolumeHealthSeqNo(volumeHealthSeqNo)
         {}
 
         void Clear()

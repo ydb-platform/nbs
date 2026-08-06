@@ -85,6 +85,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
 // clang-format off
 #define BLOCKSTORE_STORAGE_CONFIG_RO(xxx)                                      \
     xxx(SchemeShardDir,                TString,   "/Root"                     )\
+    xxx(ListVolumesConcurrency,        ui32,      100                         )\
     xxx(DisableLocalService,           bool,      false                       )\
     xxx(ServiceVersionInfo,            TString,   ""                          )\
     xxx(FolderId,                      TString,   ""                          )\
@@ -175,6 +176,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             {"ssd", NCloud::NProto::STORAGE_MEDIA_SSD},                        \
             {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
         }})                                                                   )\
+    xxx(ShapingThrottlerConfig,           NProto::TShapingThrottlerConfig, {} )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
@@ -200,14 +202,23 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionRangeGarbageThreshold,    ui32,      200                    )\
     xxx(MaxAffectedBlocksPerCompaction,     ui32,      8192                   )\
     xxx(V1GarbageCompactionEnabled,         bool,      false                  )\
+    xxx(IgnoringZeroedCompactionEnabled,    bool,      false                  )\
     xxx(OptimizeForShortRanges,             bool,      false                  )\
     xxx(MaxCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MinCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MaxCompactionExecTimePerSecond,     TDuration, TDuration::Zero()      )\
+    xxx(MinGarbageCompactionExecTimePerSecond,                                 \
+            TDuration,                                                         \
+            TDuration::Seconds(1)                                             )\
+    xxx(MaxCompactionExecTimePerSecondForZeroed, TDuration, TDuration::Zero() )\
     xxx(CompactionScoreHistorySize,             ui32,   10                    )\
     xxx(CompactionScoreLimitForThrottling,      ui32,   300                   )\
+    xxx(EnableDynamicGarbageCompactionThrottling,           bool, false       )\
+    xxx(ThrottleGarbageCompactionBelowFillPercentage,       ui32, 120         )\
+    xxx(StopGarbageCompactionThrottlingAboveFillPercentage, ui32, 200         )\
     xxx(TargetCompactionBytesPerOp,             ui64,   64_KB                 )\
     xxx(MaxSkippedBlobsDuringCompaction,        ui32,   3                     )\
+    xxx(MaxSkippedBlobsDuringCompactionHDD,     ui32,   3                     )\
     xxx(IncrementalCompactionEnabled,           bool,   false                 )\
     xxx(CompactionCountPerRunIncreasingThreshold, ui32, 0                     )\
     xxx(CompactionCountPerRunDecreasingThreshold, ui32, 0                     )\
@@ -271,6 +282,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SSDUnitWriteIops,                   ui32,      1000                   )\
     xxx(SSDMaxReadIops,                     ui32,      20000                  )\
     xxx(SSDMaxWriteIops,                    ui32,      40000                  )\
+    xxx(SystemSSDUnitReadBandwidth,         ui32,      15                     )\
+    xxx(SystemSSDUnitWriteBandwidth,        ui32,      15                     )\
+    xxx(SystemSSDMaxReadBandwidth,          ui32,      450                    )\
+    xxx(SystemSSDMaxWriteBandwidth,         ui32,      450                    )\
+    xxx(SystemSSDUnitReadIops,              ui32,      1000                   )\
+    xxx(SystemSSDUnitWriteIops,             ui32,      1000                   )\
+    xxx(SystemSSDMaxReadIops,               ui32,      20000                  )\
+    xxx(SystemSSDMaxWriteIops,              ui32,      40000                  )\
     xxx(RealSSDUnitReadIops,                ui32,      400                    )\
     xxx(RealSSDUnitWriteIops,               ui32,      1000                   )\
     /* 16000 ReadBlob requests per sec utilize all our cpus                    \
@@ -507,6 +526,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxWriteBlobErrorsBeforeSuicide,           ui32,      1               )\
     xxx(RejectMountOnAddClientTimeout,             bool,      false           )\
     xxx(NonReplicatedVolumeNotificationTimeout,    TDuration, Seconds(30)     )\
+                                                                               \
+    xxx(CoolDownTimeoutBeforeSecureErase,          TDuration, Seconds(0)      )\
+    xxx(VolumeHealthNotificationEnabled,           bool,      false           )\
     xxx(NonReplicatedSecureEraseTimeout,           TDuration, Minutes(10)     )\
     xxx(MaxDevicesToErasePerDeviceNameForDefaultPoolKind,   ui32,   100       )\
     xxx(MaxDevicesToErasePerDeviceNameForLocalPoolKind,     ui32,   100       )\
@@ -669,9 +691,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
                                                                                \
     xxx(EnableVhostDiscardForNewVolumes,      bool,        false              )\
+    xxx(EnableVhostDiscardOnVolumeRestart,    bool,        false              )\
+                                                                               \
     xxx(TabletExecutorRejectionThreshold,     ui32,        0                  )\
                                                                                \
     xxx(VolumeProxyPipeInactivityTimeout,     TDuration,   Minutes(1)         )\
+    xxx(BaseDiskPipeKeepAliveEnabled,         bool,        false              )\
     xxx(FreshChannelZeroRequestsEnabled,      bool,        false              )\
     xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
     xxx(ResourceMetricsUpdateInterval,        TDuration,   Seconds(1)         )\
@@ -679,10 +704,28 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshBlocksWriterEnabled,             bool,        false              )\
                                                                                \
     xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
+    xxx(MaxInFlightCmsRequests,               ui32,        0                  )\
     xxx(OverlappingRequestsPolicy,                                             \
         NProto::EOverlappingRequestsPolicy,                                    \
         NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
+    xxx(RequestSplitterPolicy,                                                 \
+        NProto::ERequestSplitterPolicy,                                        \
+        NProto::ERequestSplitterPolicy::RSP_ENABLE                            )\
     xxx(VolumeBalancerMaxInProgress,          ui64,        0                  )\
+    xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
+        bool,                                                                  \
+        false                                                                 )\
+                                                                               \
+    xxx(SplitCompactionTxEnabled,                   bool,       false         )\
+    xxx(VolumeBalancerGentlePreemptionEnabled,      bool,       false         )\
+    xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
+    xxx(SplitByCompactionRangeMaxBlobCount,         ui64,       0             )\
+    xxx(VerifyRecreatedBlobMetasOnCleanup,          bool,       false         )\
+    xxx(UseRecreatedBlobMetasOnCleanup,             bool,       false         )\
+                                                                               \
+    xxx(AllowGentlePreemptionForRebindVolumesAction,    bool,   false         )\
+                                                                               \
+    xxx(MixedBlocksFilterEnabled,                   bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -718,6 +761,14 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
     xxx(EnableVhostDiscardForNewVolumes)                                       \
+    xxx(EnableVhostDiscardOnVolumeRestart)                                     \
+    xxx(FreshBlocksWriter)                                                     \
+    xxx(ReadBlockMaskOnCompactionOptimization)                                 \
+    xxx(SplitCompactionTx)                                                     \
+    xxx(VerifyRecreatedBlobMetasOnCleanup)                                     \
+    xxx(UseRecreatedBlobMetasOnCleanup)                                        \
+    xxx(DynamicGarbageCompactionThrottling)                                    \
+    xxx(MixedBlocksFilter)                                                     \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -836,6 +887,13 @@ IOutputStream& operator<<(
     NProto::EOverlappingRequestsPolicy orp)
 {
     return out << NProto::EOverlappingRequestsPolicy_Name(orp);
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::ERequestSplitterPolicy rsp)
+{
+    return out << NProto::ERequestSplitterPolicy_Name(rsp);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

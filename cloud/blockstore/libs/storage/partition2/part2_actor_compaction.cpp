@@ -982,7 +982,15 @@ bool TPartitionActor::PrepareCompaction(
 
     visitor.Finish();
 
-    if (!args.CompactionOptions.test(ToBit(ECompactionOption::Full))) {
+    const ui32 maxSkippedBlobs =
+        PartitionConfig.GetStorageMediaKind() ==
+                NCloud::NProto::STORAGE_MEDIA_SSD
+            ? Config->GetMaxSkippedBlobsDuringCompaction()
+            : Config->GetMaxSkippedBlobsDuringCompactionHDD();
+
+    if (maxSkippedBlobs > 0 &&
+        !args.CompactionOptions.test(ToBit(ECompactionOption::Full)))
+    {
         Sort(
             args.Blobs.begin(),
             args.Blobs.end(),
@@ -998,7 +1006,7 @@ bool TPartitionActor::PrepareCompaction(
         while (it != args.Blobs.end()) {
             const auto bytes = blocks * State->GetBlockSize();
             const auto blobCountOk =
-                args.BlobsSkipped <= Config->GetMaxSkippedBlobsDuringCompaction();
+                args.BlobsSkipped <= maxSkippedBlobs;
             const auto byteCountOk =
                 bytes >= Config->GetTargetCompactionBytesPerOp();
 

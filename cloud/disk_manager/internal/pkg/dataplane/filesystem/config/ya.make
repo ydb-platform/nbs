@@ -8,6 +8,7 @@ SRCS(
 
 PEERDIR(
     cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config
+    cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/config
     cloud/tasks/persistence/config
 )
 

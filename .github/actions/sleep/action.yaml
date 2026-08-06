@@ -17,4 +17,3 @@ runs:
       shell: bash
       run: |
         echo "sleep_after_tests=${{inputs.sleep_after_tests}}" >> $GITHUB_OUTPUT
-

@@ -1,8 +1,9 @@
 #pragma once
 
+#include <cloud/blockstore/libs/common/printable_params.h>
+
 #include <util/generic/string.h>
 #include <util/system/types.h>
-#include <span>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -48,7 +49,22 @@ public:
         TString DiskId;
     };
 
+    struct TPartitionNonreplRdma
+    {
+        TString DiskId;
+    };
+
     struct TPartitionMirror
+    {
+        TString DiskId;
+    };
+
+    struct TPartitionMigration
+    {
+        TString DiskId;
+    };
+
+    struct TMirrorPartitionResync
     {
         TString DiskId;
     };
@@ -86,17 +102,27 @@ public:
         ui32 Generation = 0;
     };
 
+    struct TAgentAvailabilityMonitoringActor
+    {
+        TString DiskId;
+        TString AgentId;
+    };
+
 private:
     using TData = std::variant<
         TVolume,
         TVolumeProxy,
         TPartition,
         TPartitionNonrepl,
+        TPartitionNonreplRdma,
         TSession,
         TClient,
         TDiskRegistry,
         TPartitionMirror,
-        TFreshBlocksWriter>;
+        TPartitionMigration,
+        TMirrorPartitionResync,
+        TFreshBlocksWriter,
+        TAgentAvailabilityMonitoringActor>;
 
     ui64 StartTime = 0;
     TData Data;
@@ -119,12 +145,12 @@ public:
 
     [[nodiscard]] TChildLogTitle GetChildWithTags(
         ui64 startTime,
-        std::span<const std::pair<TString, TString>> additionalTags) const;
+        TPrintableParams additionalTags) const;
 
     [[nodiscard]] TChildLogTitle GetChildWithTags(
         ui64 startTime,
-        std::initializer_list<std::pair<TString, TString>> additionalTags)
-        const;
+        std::initializer_list<std::pair<TStringBuf, TPrintableValue>>
+            additionalTags) const;
 
     [[nodiscard]] TString Get(EDetails details) const;
 
@@ -150,6 +176,17 @@ private:
     TChildLogTitle(TString cachedPrefix, ui64 startTime);
 
 public:
+    [[nodiscard]] TChildLogTitle GetChild(const ui64 startTime) const;
+
+    [[nodiscard]] TChildLogTitle GetChildWithTags(
+        ui64 startTime,
+        const TPrintableParams& additionalTags) const;
+
+    [[nodiscard]] TChildLogTitle GetChildWithTags(
+        ui64 startTime,
+        std::initializer_list<std::pair<TStringBuf, TPrintableValue>>
+            additionalTags) const;
+
     [[nodiscard]] TString GetWithTime() const;
 };
 

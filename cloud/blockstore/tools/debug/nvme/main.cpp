@@ -86,7 +86,7 @@ public:
             [&]
             {
                 STORAGE_DEBUG("Sanitize " << path.Quote());
-                CheckError(NVMe->Sanitize(path));
+                CheckError(NVMe->StartSanitize(path));
 
                 for (;;) {
                     const auto& [r, error] = NVMe->GetSanitizeStatus(path);
@@ -148,7 +148,7 @@ private:
             CreateLoggingService("console", {.FiltrationLevel = logPriority});
         Log = Logging->CreateLog("NVME");
 
-        NVMe = NNvme::CreateNvmeManager(Logging, 1min);
+        NVMe = NNvme::CreateNvmeManager(Logging, 1min, 1s);
     }
 
     void AddCtrlPathOption(TString& path)

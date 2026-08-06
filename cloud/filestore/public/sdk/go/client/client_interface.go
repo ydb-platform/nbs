@@ -33,6 +33,14 @@ type ClientInterface interface {
 		configVersion uint32,
 	) error
 
+	EnableDirectoryCreationInShards(
+		ctx context.Context,
+		filesystemID string,
+		blocksCount uint64,
+		configVersion uint32,
+		shardCount uint32,
+	) error
+
 	DestroyFileStore(
 		ctx context.Context,
 		fileSystemID string,
@@ -67,6 +75,7 @@ type ClientInterface interface {
 	CreateSession(
 		ctx context.Context,
 		fileSystemID string,
+		clientID string,
 		checkpointId string,
 		readonly bool,
 	) (Session, error)
@@ -103,6 +112,20 @@ type ClientInterface interface {
 		parentNodeID uint64,
 		name string,
 	) (Node, error)
+
+	UnlinkNode(
+		ctx context.Context,
+		session Session,
+		parentNodeID uint64,
+		name string,
+		unlinkDirectory bool,
+	) error
+
+	ExecuteAction(
+		ctx context.Context,
+		action string,
+		input []byte,
+	) ([]byte, error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

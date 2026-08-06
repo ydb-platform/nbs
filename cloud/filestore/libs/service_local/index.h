@@ -7,8 +7,8 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
-#include <cloud/storage/core/libs/common/persistent_table.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/file_backed_containers/persistent_table.h>
 
 #include <util/datetime/base.h>
 #include <util/folder/path.h>

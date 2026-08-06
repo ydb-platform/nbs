@@ -104,7 +104,8 @@ bool TPartitionChannelsState::UpdatePermissions(
     if (channelState.Permissions != permissions) {
         channelState.Permissions = permissions;
 
-        return UpdateChannelFreeSpaceScore(channelState, channel);
+        UpdateChannelFreeSpaceScore(channelState, channel);
+        return true;
     }
 
     return false;

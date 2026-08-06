@@ -20,11 +20,11 @@ TServiceActor::TServiceActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         NDiscovery::IDiscoveryServicePtr discoveryService,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes,
@@ -33,7 +33,7 @@ TServiceActor::TServiceActor(
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
-    , BlockDigestGenerator(std::move(blockDigestGenerator))
+    , BlockDigestGeneratorFactory(std::move(blockDigestGeneratorFactory))
     , DiscoveryService(std::move(discoveryService))
     , TraceSerializer(std::move(traceSerializer))
     , EndpointEventHandler(std::move(endpointEventHandler))
@@ -319,6 +319,10 @@ STFUNC(TServiceActor::StateWork)
         HFunc(
             TEvServicePrivate::TEvListMountedVolumesRequest,
             HandleListMountedVolumes);
+
+        HFunc(
+            TEvService::TEvSetVhostDiscardFlagRequest,
+            HandleSetVhostDiscardFlagRequest);
 
         default:
             if (!HandleRequests(ev)) {

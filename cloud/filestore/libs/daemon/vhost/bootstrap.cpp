@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
+#include <cloud/filestore/libs/diagnostics/tcmalloc_stats.h>
 #include <cloud/filestore/libs/endpoint/endpoint_manager.h>
 #include <cloud/filestore/libs/endpoint/listener.h>
 #include <cloud/filestore/libs/endpoint/service_auth.h>
@@ -26,10 +27,14 @@
 #include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/filestore/libs/service_kikimr/service.h>
+#include <cloud/filestore/libs/service_kikimr/side_channel.h>
 #include <cloud/filestore/libs/service_local/config.h>
 #include <cloud/filestore/libs/service_local/service.h>
 #include <cloud/filestore/libs/service_null/service.h>
+#include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
+#include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
@@ -40,6 +45,7 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
+#include <cloud/storage/core/libs/daemon/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -47,6 +53,8 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_map_memory_limiter.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
@@ -78,13 +86,87 @@ const TString ServerMetricsComponent = "server";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TClientCertificateProviderFactory
+{
+    ILoggingServicePtr Logging;
+    TString LogComponent;
+    ISchedulerPtr Scheduler;
+    ITaskQueuePtr LongRunningTaskExecutor;
+    NMonitoring::TDynamicCountersPtr ServerGroup;
+    TDuration RefreshInterval;
+
+    TClientCertificateProviderFactory(
+            ILoggingServicePtr logging,
+            TString logComponent,
+            ISchedulerPtr scheduler,
+            ITaskQueuePtr longRunningTaskExecutor,
+            NMonitoring::TDynamicCountersPtr serverGroup,
+            TDuration refreshInterval)
+        : Logging(std::move(logging))
+        , LogComponent(std::move(logComponent))
+        , Scheduler(std::move(scheduler))
+        , LongRunningTaskExecutor(std::move(longRunningTaskExecutor))
+        , ServerGroup(std::move(serverGroup))
+        , RefreshInterval(refreshInterval)
+    {}
+
+    ICertificateProviderPtr Build(
+        const TString& endpointName,
+        TString rootCertPath,
+        TVector<TCertificateFiles> certificates) const
+    {
+        auto endpointGroup = ServerGroup->GetSubgroup("endpoint", endpointName);
+        return CreateCertificateProvider(
+            Logging,
+            LogComponent,
+            Scheduler,
+            LongRunningTaskExecutor,
+            std::move(endpointGroup),
+            std::move(rootCertPath),
+            std::move(certificates),
+            RefreshInterval);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TString& endpointName,
+    const NClient::TClientConfigPtr& config,
+    const TClientCertificateProviderFactory& factory)
+{
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
+
+    if (!config->GetSecurePort()) {
+        return CreateCertificateProviderStub();
+    }
+
+    Y_ENSURE(
+        certPathList || config->GetRootCertsFile(),
+        "Secure client port is configured without certificates");
+
+    return factory.Build(
+        endpointName,
+        config->GetRootCertsFile(),
+        std::move(certPathList));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TFileStoreEndpoints final
     : public IFileStoreEndpoints
 {
 private:
     using TEndpointsMap = TMap<TString, IFileStoreServicePtr>;
+    using TCertificateProvidersMap = TMap<TString, ICertificateProviderPtr>;
 
 private:
+    TClientCertificateProviderFactory CertificateProviderFactory;
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
@@ -92,15 +174,18 @@ private:
     IActorSystemPtr ActorSystem;
 
     TEndpointsMap Endpoints;
+    TCertificateProvidersMap CertificateProviders;
 
 public:
     TFileStoreEndpoints(
+            TClientCertificateProviderFactory certificateProviderFactory,
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
             IFileStoreServicePtr localService,
             IActorSystemPtr actorSystem)
-        : Timer(std::move(timer))
+        : CertificateProviderFactory(std::move(certificateProviderFactory))
+        , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
         , LocalService(std::move(localService))
@@ -109,15 +194,23 @@ public:
 
     void Start() override
     {
-        for (const auto& [name, endpoint]: Endpoints) {
+        for (const auto& [_, certificateProvider]: CertificateProviders) {
+            certificateProvider->Start();
+        }
+
+        for (const auto& [_, endpoint]: Endpoints) {
             endpoint->Start();
         }
     }
 
     void Stop() override
     {
-        for (const auto& [name, endpoint]: Endpoints) {
+        for (const auto& [_, endpoint]: Endpoints) {
             endpoint->Stop();
+        }
+
+        for (const auto& [_, certificateProvider]: CertificateProviders) {
+            certificateProvider->Stop();
         }
     }
 
@@ -131,9 +224,11 @@ public:
         const TString& name,
         const NProto::TClientConfig& config,
         NDaemon::EServiceKind kind,
-        bool usePermanentActor)
+        NProto::ESideChannelType sideChannelType,
+        ui32 permanentActorCount)
     {
         auto clientConfig = std::make_shared<NClient::TClientConfig>(config);
+        ICertificateProviderPtr certificateProvider;
         IFileStoreServicePtr fileStore;
         switch (kind) {
             case NDaemon::EServiceKind::Null: {
@@ -142,8 +237,10 @@ public:
             }
 
             case NDaemon::EServiceKind::Kikimr: {
-                fileStore =
-                    CreateKikimrFileStore(ActorSystem, usePermanentActor);
+                fileStore = CreateKikimrFileStore(
+                    ActorSystem,
+                    CreateSideChannel(sideChannelType),
+                    permanentActorCount);
                 break;
             }
 
@@ -151,18 +248,29 @@ public:
                 if (LocalService) {
                     fileStore = LocalService;
                 } else {
+                    certificateProvider = CreateClientCertificateProvider(
+                        name,
+                        clientConfig,
+                        CertificateProviderFactory);
                     fileStore = NClient::CreateFileStoreClient(
                         clientConfig,
-                        Logging);
+                        Logging,
+                        certificateProvider);
                 }
                 break;
             }
         }
 
-        return AddEndpoint(
+        const bool inserted = AddEndpoint(
             name,
             std::move(clientConfig),
             std::move(fileStore));
+
+        if (inserted && certificateProvider) {
+            CertificateProviders.emplace(name, std::move(certificateProvider));
+        }
+
+        return inserted;
     }
 
     bool Empty() const
@@ -189,6 +297,20 @@ private:
 
         Endpoints.emplace(name, std::move(client));
         return true;
+    }
+
+    ISideChannelPtr CreateSideChannel(NProto::ESideChannelType sideChannelType)
+    {
+        switch (sideChannelType) {
+            case NProto::SCT_NONE: return nullptr;
+            case NProto::SCT_TCP: {
+                return CreateTCPSideChannel(
+                    *Logging,
+                    std::make_shared<NStorage::NFastShard::TAsyncClient>());
+            }
+        }
+
+        Y_ABORT("sct=%d", static_cast<int>(sideChannelType));
     }
 };
 
@@ -229,6 +351,7 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
                     .ForceAsyncIO = ring.GetForceAsyncIO(),
                     .PropagateAffinityToKernelWorkers =
                         ring.GetPropagateAffinityToKernelWorkers(),
+                    .SQKernelPollingEnabled = ring.GetSQKernelPollingEnabled(),
                 });
 
                 if (config.GetNumThreads() <= 1) {
@@ -269,6 +392,9 @@ TConfigInitializerCommonPtr TBootstrapVhost::InitConfigs(int argc, char** argv)
     return Configs;
 }
 
+void TBootstrapVhost::InitActorSystemPrerequisites()
+{}
+
 void TBootstrapVhost::InitComponents()
 {
     InitConfig();
@@ -280,12 +406,25 @@ void TBootstrapVhost::InitComponents()
 
     NVhost::InitLog(Logging);
 
-    ModuleStatsRegistry = CreateModuleStatsRegistry(FsCountersProvider);
+    ModuleStatsRegistry = CreateModuleStatsRegistry(
+        Timer,
+        FsCountersProvider,
+        FilestoreCounters->GetSubgroup("component", VhostMetricsComponent));
 
     ModuleStatsUpdater = CreateStatsUpdater(
         Timer,
         BackgroundScheduler,
         ModuleStatsRegistry);
+
+    // Need tcmalloc metrics wrapper for local service since these are usually
+    // provided as part of actor system
+    if (Configs->Options->Service == NDaemon::EServiceKind::Local)
+    {
+        TcMallocStatsUpdater = CreateStatsUpdater(
+            Timer,
+            BackgroundScheduler,
+            CreateTcMallocStatsHandler(Monitoring->GetCounters()));
+    }
 
     switch (Configs->VhostServiceConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
@@ -308,6 +447,10 @@ void TBootstrapVhost::InitComponents()
                 Configs->VhostServiceConfig->GetEndpointStorageType());
     }
 
+    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
+        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
+    }
+
     switch (Configs->Options->Service) {
         case NDaemon::EServiceKind::Local:
         case NDaemon::EServiceKind::Kikimr:
@@ -327,13 +470,42 @@ void TBootstrapVhost::InitComponents()
     auto serverCounters =
         FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
 
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: Configs->ServerConfig->GetCerts()) {
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
+
+
+    if (!Configs->ServerConfig->GetSecurePort()) {
+        CertificateProvider = CreateCertificateProviderStub();
+    } else {
+        Y_ENSURE(
+            certPathList,
+            "Secure port is configured without certificates");
+
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            GetComponentName(
+                NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+            Scheduler,
+            LongRunningTaskExecutor,
+            serverCounters,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
+    }
+
     Server = CreateServer(
         Configs->ServerConfig,
         Logging,
         StatsRegistry->GetRequestStats(),
         serverCounters,
         Scheduler,
-        EndpointManager);
+        EndpointManager,
+        CertificateProvider);
     RegisterServer(Server);
 
     if (LocalService) {
@@ -347,7 +519,8 @@ void TBootstrapVhost::InitComponents()
             serverCounters,
             ProfileLog,
             Scheduler,
-            LocalService);
+            LocalService,
+            CertificateProvider);
 
         STORAGE_INFO("initialized LocalServiceServer: %s",
             serverConfigProto.Utf8DebugString().Quote().c_str());
@@ -384,19 +557,31 @@ void TBootstrapVhost::InitEndpoints()
             localServiceConfig->Utf8DebugString().Quote().c_str());
     }
 
+    TClientCertificateProviderFactory certFactory(
+        Logging,
+        GetComponentName(
+            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+        Scheduler,
+        LongRunningTaskExecutor,
+        FilestoreCounters->GetSubgroup("component", VhostMetricsComponent),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
+
     auto endpoints = std::make_shared<TFileStoreEndpoints>(
+        std::move(certFactory),
         Timer,
         Scheduler,
         Logging,
         LocalService,
         ActorSystem);
 
-    for (const auto& endpoint: Configs->VhostServiceConfig->GetServiceEndpoints()) {
+    const auto& serviceConfig = *Configs->VhostServiceConfig;
+    for (const auto& endpoint: serviceConfig.GetServiceEndpoints()) {
         bool inserted = endpoints->AddEndpoint(
             endpoint.GetName(),
             endpoint.GetClientConfig(),
             Configs->Options->Service,
-            Configs->AppConfig.GetVhostServiceConfig().GetUsePermanentActor());
+            serviceConfig.GetSideChannelType(),
+            serviceConfig.GetPermanentActorCount());
 
         if (inserted) {
             STORAGE_INFO("configured endpoint type %s -> %s",
@@ -414,6 +599,11 @@ void TBootstrapVhost::InitEndpoints()
 
     FileStoreEndpoints = std::move(endpoints);
 
+    auto fileMapMemoryLimiter = NCloud::CreateFileMapMemoryLimiter(
+        NCloud::TFileMapMemoryLimiterConfig{
+            .FileMapMemoryLimit =
+                Configs->VhostServiceConfig->GetFileMapMemoryLimit()});
+
     EndpointListener = NVhost::CreateEndpointListener(
         Logging,
         Timer,
@@ -429,7 +619,8 @@ void TBootstrapVhost::InitEndpoints()
             ProfileLog),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
-            .MaxQueueSize = Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
+            .MaxQueueSize =
+                Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
         },
         TWriteBackCacheConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetWriteBackCachePath(),
@@ -438,9 +629,8 @@ void TBootstrapVhost::InitEndpoints()
             .AutomaticFlushPeriod =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheAutomaticFlushPeriod(),
-            .FlushRetryPeriod =
-                Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushRetryPeriod(),
+            .FlushRetryPeriod = Configs->VhostServiceConfig
+                                    ->GetWriteBackCacheFlushRetryPeriod(),
             .FlushMaxWriteRequestSize =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheFlushMaxWriteRequestSize(),
@@ -449,14 +639,20 @@ void TBootstrapVhost::InitEndpoints()
                     ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
             .FlushMaxSumWriteRequestsSize =
                 Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
+                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
+            .MaxQueuedFlushBatchesPerNode =
+                Configs->VhostServiceConfig
+                    ->GetWriteBackCacheMaxQueuedFlushBatchesPerNode(),
         },
-        TDirectoryHandlesStorageConfig{
-            .PathPrefix = Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
-            .InitialDataSize =
-                Configs->VhostServiceConfig->GetDirectoryHandlesInitialDataSize()
-        }
-    );
+        TDirectoryHandleStorageConfig{
+            .PathPrefix =
+                Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
+            .InitialDataSize = Configs->VhostServiceConfig
+                                   ->GetDirectoryHandlesInitialDataSize(),
+            .MaxDataAreaStepSize =
+                Configs->VhostServiceConfig
+                    ->GetDirectoryHandlesMaxDataAreaStepSize()},
+        std::move(fileMapMemoryLimiter));
 
     EndpointManager = CreateEndpointManager(
         Logging,
@@ -491,7 +687,13 @@ void TBootstrapVhost::InitLWTrace()
 
 void TBootstrapVhost::StartComponents()
 {
+    const auto& serviceConfig = *Configs->VhostServiceConfig;
+    if (serviceConfig.GetSideChannelType() == NProto::SCT_TCP) {
+        NStorage::NFastShard::Init();
+    }
+
     FILESTORE_LOG_START_COMPONENT(ModuleStatsUpdater);
+    FILESTORE_LOG_START_COMPONENT(TcMallocStatsUpdater);
 
     NVhost::StartServer();
 
@@ -518,11 +720,29 @@ void TBootstrapVhost::StopComponents()
 
     NVhost::StopServer();
 
+    FILESTORE_LOG_STOP_COMPONENT(TcMallocStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ModuleStatsUpdater);
+
+    if (Configs->VhostServiceConfig) {
+        const auto& serviceConfig = *Configs->VhostServiceConfig;
+        if (serviceConfig.GetSideChannelType() == NProto::SCT_TCP) {
+            NStorage::NFastShard::Destroy();
+        }
+    }
 }
 
 void TBootstrapVhost::Drain()
 {
+    if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr &&
+        GetShouldContinue().PollState() != TProgramShouldContinue::Continue)
+    {
+        const int code = GetShouldContinue().GetReturnCode();
+        if (code == NodeLeaseExpirationExitCode) {
+            ythrow TAppShouldExitWithoutShutdownException()
+                << "Node lease is expired";
+        }
+    }
+
     if (EndpointManager) {
         EndpointManager->Drain();
     }

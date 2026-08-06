@@ -5,7 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
 DEPENDS(
     cloud/storage/core/tools/testing/fio/bin
     cloud/storage/core/tools/testing/qemu/bin
-    cloud/storage/core/tools/testing/qemu/image
+    cloud/storage/core/tools/testing/qemu/image-noble
 )
 
 PEERDIR(
@@ -22,6 +22,7 @@ TEST_SRCS(
 )
 
 SET(QEMU_VIRTIO fs)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tools/testing/qemu/bin/qemu-params.inc)
 SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/common_configs/nfs-storage-migration-patch.txt
@@ -33,4 +34,3 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/virtiofs-server.inc)
 
 END()
-

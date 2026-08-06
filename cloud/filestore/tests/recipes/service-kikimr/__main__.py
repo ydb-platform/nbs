@@ -14,6 +14,7 @@ from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerato
 
 from cloud.filestore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig
+from cloud.filestore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.storage.core.protos.authorization_mode_pb2 import EAuthorizationMode
 from cloud.filestore.tests.python.lib.common import shutdown, get_restart_interval
 from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_filestore_server
@@ -22,6 +23,7 @@ from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
+    expand_placeholders,
     process_recipe_err_files,
 )
 
@@ -42,10 +44,13 @@ def start(argv):
     parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", action="store", default=None)
+    parser.add_argument("--diag-config-patch", action="store", default=None)
     parser.add_argument("--server-config-patch", action="store", default=None)
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
+    parser.add_argument("--use-fast-shard-port", action="store_true", default=False)
+    parser.add_argument("--bs-failure-probability", action="store", default=None, type=float)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -86,11 +91,17 @@ def start(argv):
     server_config = TServerAppConfig()
     server_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     storage_config = TStorageConfig()
+    diag_config = TDiagnosticsConfig()
     if args.storage_config_patch:
         with open(common.source_path(args.storage_config_patch)) as p:
             storage_config = text_format.Parse(
                 p.read(),
                 TStorageConfig())
+    if args.diag_config_patch:
+        with open(common.source_path(args.diag_config_patch)) as p:
+            diag_config = text_format.Parse(
+                p.read(),
+                TDiagnosticsConfig())
     if args.use_unix_socket:
         # Create in temp directory because we would like a shorter path
         server_unix_socket_path = str(
@@ -105,9 +116,17 @@ def start(argv):
             server_config.MergeFrom(server_config_patch)
 
     if server_config.ServerConfig.SharedMemoryBasePath != "":
-        shared_memory_base_path = os.path.join(common.output_path(), "shm")
+        shared_memory_base_path = expand_placeholders(
+            server_config.ServerConfig.SharedMemoryBasePath
+        )
         os.makedirs(shared_memory_base_path, exist_ok=True)
         server_config.ServerConfig.SharedMemoryBasePath = shared_memory_base_path
+
+    fast_shard_port = 0
+    if args.use_fast_shard_port:
+        import contrib.ydb.tests.library.common.yatest_common as _yatest_common
+        fast_shard_port = _yatest_common.PortManager().get_port()
+        storage_config.FastShardServerPort = fast_shard_port
 
     secure = False
     if access_service_port:
@@ -141,9 +160,11 @@ def start(argv):
         restart_interval=restart_interval,
         access_service_port=access_service_port,
         storage_config=storage_config,
+        diag_config=diag_config,
         secure=secure,
         access_service_type=access_service_type,
         trace_sampling_rate=args.trace_sampling_rate,
+        bs_failure_probability=args.bs_failure_probability,
     )
     filestore_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 
@@ -164,6 +185,8 @@ def start(argv):
     set_env("NFS_SERVER_PORT", str(filestore_configurator.port))
     set_env("NFS_MON_PORT", str(filestore_configurator.mon_port))
     set_env("NFS_DOMAIN", str(domain))
+    if fast_shard_port:
+        set_env("NFS_FAST_SHARD_PORT", str(fast_shard_port))
     set_env("NFS_CONFIG_DIR", str(filestore_configurator.configs_dir))
     set_env("NFS_RESTART_INTERVAL", str(restart_interval))
     if secure:

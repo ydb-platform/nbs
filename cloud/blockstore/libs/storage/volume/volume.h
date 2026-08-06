@@ -5,8 +5,9 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -28,9 +29,9 @@ NActors::IActorPtr CreateVolumeTablet(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,
-    NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TPartitionBudgetManagerPtr partitionBudgetManager,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     EVolumeStartMode startMode,

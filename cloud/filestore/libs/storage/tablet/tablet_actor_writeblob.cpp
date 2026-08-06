@@ -326,10 +326,10 @@ void TIndexTabletActor::HandleWriteBlob(
                     chunk.begin());
             }
 
-            Metrics.UncompressedBytesWritten.fetch_add(
+            Metrics->UncompressedBytesWritten.fetch_add(
                 data.size(),
                 std::memory_order_relaxed);
-            Metrics.CompressedBytesWritten.fetch_add(
+            Metrics->CompressedBytesWritten.fetch_add(
                 compressedSize,
                 std::memory_order_relaxed);
         }
@@ -435,7 +435,7 @@ void TIndexTabletActor::HandleWriteBlobCompleted(
 
     WorkerActors.erase(ev->Sender);
 
-    Metrics.WriteBlob.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->WriteBlob.Update(msg->Count, msg->Size, msg->Time);
 
     for (const auto& result: msg->Results) {
         RegisterEvPutResult(

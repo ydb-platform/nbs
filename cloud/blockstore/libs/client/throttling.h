@@ -15,6 +15,7 @@ struct THostPerformanceProfile
 {
     ui32 CpuCount = 0;
     ui32 NetworkMbitThroughput = 0;
+    bool IsTightServiceMemoryPlatform = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

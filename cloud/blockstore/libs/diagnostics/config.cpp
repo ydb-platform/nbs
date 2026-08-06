@@ -12,6 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// clang-format off
 #define BLOCKSTORE_DIAGNOSTICS_CONFIG(xxx)                                                               \
     xxx(HostNameScheme,                  NProto::EHostNameScheme, NProto::EHostNameScheme::HOSTNAME_RAW )\
     xxx(BastionNameSuffix,               TString,         ""                                            )\
@@ -64,7 +65,10 @@ namespace {
                                                                                                          \
     xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
     xxx(PassTraceIdToBlobstorage,       bool,                    false                                  )\
+    xxx(EnableDurableVolumeInfo,        bool,                    false                                  )\
+
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
+// clang-format on
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \
     Y_DECLARE_UNUSED static const type Default##name = value;                  \
@@ -290,11 +294,16 @@ void Out<NCloud::NBlockStore::TVolumePerfSettings>(
     const NCloud::NBlockStore::TVolumePerfSettings& value)
 {
     NCloud::NBlockStore::NProto::TVolumePerfSettings v;
-    v.MutableRead()->SetIops(value.ReadIops);
-    v.MutableRead()->SetBandwidth(value.ReadBandwidth);
-    v.MutableWrite()->SetIops(value.WriteIops);
-    v.MutableWrite()->SetBandwidth(value.WriteBandwidth);
+    v.MutableRead()->SetIops(value.Read.Iops);
+    v.MutableRead()->SetBandwidth(value.Read.Bandwidth);
+    v.MutableWrite()->SetIops(value.Write.Iops);
+    v.MutableWrite()->SetBandwidth(value.Write.Bandwidth);
     v.SetCriticalFactor(value.CriticalFactor);
+    v.SetThrottlerOvercommit(value.ThrottlerOvercommit);
+    v.MutableMinRead()->SetIops(value.MinRead.Iops);
+    v.MutableMinRead()->SetBandwidth(value.MinRead.Bandwidth);
+    v.MutableMinWrite()->SetIops(value.MinWrite.Iops);
+    v.MutableMinWrite()->SetBandwidth(value.MinWrite.Bandwidth);
 
     SerializeToTextFormat(v, out);
 }

@@ -170,8 +170,8 @@ private:
 
         auto req = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         req->SetStartIndex(request->StartOffset);
+        req->SetBlockSize(Options.BlockSize);
         req->BlocksCount = request->BlocksCount;
-        req->BlockSize = Options.BlockSize;
 
         auto sgList = TSgList {{
             request->Buffer.begin(),
@@ -200,7 +200,7 @@ private:
         auto req = std::make_shared<NProto::TReadBlocksLocalRequest>();
         req->SetStartIndex(request->StartOffset);
         req->SetBlocksCount(request->BlocksCount);
-        req->BlockSize = Options.BlockSize;
+        req->SetBlockSize(Options.BlockSize);
 
         TSgList sgList = {{
             request->Buffer.begin(),

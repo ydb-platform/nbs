@@ -20,6 +20,7 @@ const defaultRetriableErrorsThreshold = 10 * time.Minute
 
 const volumeId1 = "disk-123"
 const volumeId2 = "disk-456"
+const filesystemId1 = "filesystem-123"
 
 func trimTrailingWhitespace(input string) string {
 	lines := strings.Split(input, "\n")
@@ -45,6 +46,7 @@ func NewTestMonitoring(retriableErrorsDurationThreshold time.Duration) *Monitori
 		Path:                             "/metrics",
 		Component:                        "server",
 		RetriableErrorsDurationThreshold: retriableErrorsDurationThreshold,
+		FilesystemPrefix:                 "filesystem",
 	}
 	mon := NewMonitoring(&monintoringCfg)
 	return mon
@@ -69,10 +71,10 @@ version{component="server",revision="2.5"} 1
 
 func TestShouldReportInflightAndCount(t *testing.T) {
 	mon := NewTestMonitoring(defaultRetriableErrorsThreshold)
-	mon.ReportRequestReceived("/csi.v1.Controller/ControllerPublishVolume")
-	mon.ReportRequestReceived("/csi.v1.Controller/CreateVolume")
-	mon.ReportRequestReceived("/csi.v1.Controller/CreateVolume")
-	mon.ReportRequestReceived("/csi.v1.Controller/DeleteVolume")
+	mon.ReportRequestReceived(volumeId1, "/csi.v1.Controller/ControllerPublishVolume")
+	mon.ReportRequestReceived(volumeId1, "/csi.v1.Controller/CreateVolume")
+	mon.ReportRequestReceived(volumeId1, "/csi.v1.Controller/CreateVolume")
+	mon.ReportRequestReceived(volumeId1, "/csi.v1.Controller/DeleteVolume")
 
 	serv := httptest.NewServer(mon.Handler)
 	defer serv.Close()
@@ -83,39 +85,39 @@ func TestShouldReportInflightAndCount(t *testing.T) {
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
-Count{component="server",method="/csi.v1.Controller/CreateVolume"} 2
-Count{component="server",method="/csi.v1.Controller/DeleteVolume"} 1
+Count{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 1
+Count{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 2
+Count{component="server",method="/csi.v1.Controller/DeleteVolume",service="nbs"} 1
 # HELP CriticalRetriableErrors
 # TYPE CriticalRetriableErrors counter
-CriticalRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
-CriticalRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
-CriticalRetriableErrors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/DeleteVolume",service="nbs"} 0
 # HELP Errors
 # TYPE Errors counter
-Errors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
-Errors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
-Errors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
+Errors{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 0
+Errors{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 0
+Errors{component="server",method="/csi.v1.Controller/DeleteVolume",service="nbs"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
-InflightCount{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
-InflightCount{component="server",method="/csi.v1.Controller/CreateVolume"} 2
-InflightCount{component="server",method="/csi.v1.Controller/DeleteVolume"} 1
+InflightCount{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 1
+InflightCount{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 2
+InflightCount{component="server",method="/csi.v1.Controller/DeleteVolume",service="nbs"} 1
 # HELP RetriableErrors
 # TYPE RetriableErrors counter
-RetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
-RetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
-RetriableErrors{component="server",method="/csi.v1.Controller/DeleteVolume"} 0
+RetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 0
+RetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 0
+RetriableErrors{component="server",method="/csi.v1.Controller/DeleteVolume",service="nbs"} 0
 `)
 }
 
 func TestShouldReportErrorsAndSuccess(t *testing.T) {
 	mon := NewTestMonitoring(defaultRetriableErrorsThreshold)
 	method := "/csi.v1.Controller/CreateVolume"
-	mon.ReportRequestReceived(method)
-	mon.ReportRequestReceived(method)
-	mon.ReportRequestReceived(method)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(volumeId1, method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method, nil, time.Now(), -1)
 	mon.ReportRequestCompleted(volumeId1, method, nil, time.Now(), -1)
 	mon.ReportRequestCompleted(volumeId1, method, errors.New("some error"), time.Now(), -1)
@@ -129,29 +131,29 @@ func TestShouldReportErrorsAndSuccess(t *testing.T) {
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Controller/CreateVolume"} 4
+Count{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 4
 # HELP CriticalRetriableErrors
 # TYPE CriticalRetriableErrors counter
-CriticalRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 0
 # HELP Errors
 # TYPE Errors counter
-Errors{component="server",method="/csi.v1.Controller/CreateVolume"} 1
+Errors{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 1
 # HELP InflightCount
 # TYPE InflightCount gauge
-InflightCount{component="server",method="/csi.v1.Controller/CreateVolume"} 1
+InflightCount{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 1
 # HELP RetriableErrors
 # TYPE RetriableErrors counter
-RetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume"} 0
+RetriableErrors{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 0
 # HELP Success
 # TYPE Success counter
-Success{component="server",method="/csi.v1.Controller/CreateVolume"} 2
+Success{component="server",method="/csi.v1.Controller/CreateVolume",service="nbs"} 2
 `)
 }
 
 func TestShouldReportTimeBuckets(t *testing.T) {
 	mon := NewTestMonitoring(defaultRetriableErrorsThreshold)
 	method := "/csi.v1.Controller/ControllerPublishVolume"
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method, nil, time.Now(), 7*time.Second)
 
 	serv := httptest.NewServer(mon.Handler)
@@ -163,35 +165,35 @@ func TestShouldReportTimeBuckets(t *testing.T) {
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
+Count{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 1
 # HELP CriticalRetriableErrors
 # TYPE CriticalRetriableErrors counter
-CriticalRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 0
 # HELP Errors
 # TYPE Errors counter
-Errors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+Errors{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
-InflightCount{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+InflightCount{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 0
 # HELP RetriableErrors
 # TYPE RetriableErrors counter
-RetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 0
+RetriableErrors{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 0
 # HELP Success
 # TYPE Success counter
-Success{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
+Success{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 1
 # HELP Time
 # TYPE Time histogram
-Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",le="0.001"} 0
-Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",le="0.01"} 0
-Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",le="0.1"} 0
-Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",le="1"} 0
-Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",le="10"} 1
-Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",le="60"} 1
-Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",le="600"} 1
-Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",le="3600"} 1
-Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",le="+Inf"} 1
-Time_sum{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 7
-Time_count{component="server",method="/csi.v1.Controller/ControllerPublishVolume"} 1
+Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs",le="0.001"} 0
+Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs",le="0.01"} 0
+Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs",le="0.1"} 0
+Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs",le="1"} 0
+Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs",le="10"} 1
+Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs",le="60"} 1
+Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs",le="600"} 1
+Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs",le="3600"} 1
+Time_bucket{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs",le="+Inf"} 1
+Time_sum{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 7
+Time_count{component="server",method="/csi.v1.Controller/ControllerPublishVolume",service="nbs"} 1
 `)
 }
 
@@ -200,22 +202,22 @@ func TestShouldReportRetriableErrors(t *testing.T) {
 	method := "/csi.v1.Node/NodeStageVolume"
 	timestamp := time.Now()
 	duration := 11 * time.Minute
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp, -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(duration), -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Aborted, ""), timestamp.Add(duration), -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.DeadlineExceeded, ""), timestamp.Add(duration), -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Canceled, ""), timestamp.Add(duration), -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.DeadlineExceeded, ""), timestamp.Add(2*duration), -1)
 
@@ -228,19 +230,19 @@ func TestShouldReportRetriableErrors(t *testing.T) {
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 6
+Count{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 6
 # HELP CriticalRetriableErrors
 # TYPE CriticalRetriableErrors counter
-CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 1
 # HELP Errors
 # TYPE Errors counter
-Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
-InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP RetriableErrors
 # TYPE RetriableErrors counter
-RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 4
+RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 4
 `)
 }
 
@@ -270,20 +272,20 @@ func TestShouldReportRetriableErrosAfterExceedingThresholdForVolume(t *testing.T
 	timestamp := time.Now()
 	method := "/csi.v1.Node/NodeStageVolume"
 
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp, -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(5*time.Minute), -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(11*time.Minute), -1)
 
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId2, method)
 	mon.ReportRequestCompleted(volumeId2, method,
 		status.Error(codes.Unavailable, ""), timestamp, -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId2, method)
 	mon.ReportRequestCompleted(volumeId2, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(10*time.Minute), -1)
 
@@ -296,25 +298,25 @@ func TestShouldReportRetriableErrosAfterExceedingThresholdForVolume(t *testing.T
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 5
+Count{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 5
 # HELP CriticalRetriableErrors
 # TYPE CriticalRetriableErrors counter
-CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP Errors
 # TYPE Errors counter
-Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
-InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP RetriableErrors
 # TYPE RetriableErrors counter
-RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 1
 `)
 
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(12*time.Minute), -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId2, method)
 	mon.ReportRequestCompleted(volumeId2, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(12*time.Minute), -1)
 
@@ -324,27 +326,27 @@ RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 7
+Count{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 7
 # HELP CriticalRetriableErrors
 # TYPE CriticalRetriableErrors counter
-CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP Errors
 # TYPE Errors counter
-Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
-InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP RetriableErrors
 # TYPE RetriableErrors counter
-RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
+RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 3
 `)
 
 	// send success request to reset errors counter for volume so next error
 	// should not increase retriable errors counter
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method, nil,
 		timestamp.Add(12*time.Minute), -1)
-	mon.ReportRequestReceived(method)
+	mon.ReportRequestReceived(volumeId1, method)
 	mon.ReportRequestCompleted(volumeId1, method,
 		status.Error(codes.Unavailable, ""), timestamp.Add(15*time.Minute), -1)
 
@@ -354,21 +356,75 @@ RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
 	assert.Equal(t, getResponseBody(response),
 		`# HELP Count
 # TYPE Count counter
-Count{component="server",method="/csi.v1.Node/NodeStageVolume"} 9
+Count{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 9
 # HELP CriticalRetriableErrors
 # TYPE CriticalRetriableErrors counter
-CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP Errors
 # TYPE Errors counter
-Errors{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP InflightCount
 # TYPE InflightCount gauge
-InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume"} 0
+InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 0
 # HELP RetriableErrors
 # TYPE RetriableErrors counter
-RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume"} 3
+RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 3
 # HELP Success
 # TYPE Success counter
-Success{component="server",method="/csi.v1.Node/NodeStageVolume"} 1
+Success{component="server",method="/csi.v1.Node/NodeStageVolume",service="nbs"} 1
+`)
+}
+
+func TestShouldReportFilestoreErrors(t *testing.T) {
+	mon := NewTestMonitoring(defaultRetriableErrorsThreshold)
+	method := "/csi.v1.Node/NodeStageVolume"
+	timestamp := time.Now()
+	duration := 11 * time.Minute
+	mon.ReportRequestReceived(filesystemId1, method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.Unavailable, ""), timestamp, -1)
+	mon.ReportRequestReceived(filesystemId1, method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.Unavailable, ""), timestamp.Add(duration), -1)
+	mon.ReportRequestReceived(filesystemId1, method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.Aborted, ""), timestamp.Add(duration), -1)
+	mon.ReportRequestReceived(filesystemId1, method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.DeadlineExceeded, ""), timestamp.Add(duration), -1)
+	mon.ReportRequestReceived(filesystemId1, method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.Canceled, ""), timestamp.Add(duration), -1)
+	mon.ReportRequestReceived(filesystemId1, method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.DeadlineExceeded, ""), timestamp.Add(2*duration), -1)
+
+	// fatal error
+	mon.ReportRequestReceived(filesystemId1, method)
+	mon.ReportRequestCompleted(filesystemId1, method,
+		status.Error(codes.FailedPrecondition, ""), timestamp, -1)
+
+	serv := httptest.NewServer(mon.Handler)
+	defer serv.Close()
+
+	response, err := http.Get(serv.URL)
+	require.NoError(t, err)
+	assert.Equal(t, response.StatusCode, http.StatusOK)
+	assert.Equal(t, getResponseBody(response),
+		`# HELP Count
+# TYPE Count counter
+Count{component="server",method="/csi.v1.Node/NodeStageVolume",service="filestore"} 7
+# HELP CriticalRetriableErrors
+# TYPE CriticalRetriableErrors counter
+CriticalRetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="filestore"} 1
+# HELP Errors
+# TYPE Errors counter
+Errors{component="server",method="/csi.v1.Node/NodeStageVolume",service="filestore"} 1
+# HELP InflightCount
+# TYPE InflightCount gauge
+InflightCount{component="server",method="/csi.v1.Node/NodeStageVolume",service="filestore"} 0
+# HELP RetriableErrors
+# TYPE RetriableErrors counter
+RetriableErrors{component="server",method="/csi.v1.Node/NodeStageVolume",service="filestore"} 4
 `)
 }

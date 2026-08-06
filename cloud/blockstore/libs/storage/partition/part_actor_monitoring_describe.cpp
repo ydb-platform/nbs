@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <contrib/ydb/core/base/logoblob.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <library/cpp/cgiparam/cgiparam.h>
@@ -24,6 +26,7 @@ namespace {
 class TDescribeRangeVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
+    , public IMixedBlocksIndexVisitor
 {
 private:
     TTxPartition::TDescribeRange& Args;
@@ -54,12 +57,26 @@ public:
         Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
         return true;
     }
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        Y_UNUSED(compactionRangeCount);
+
+        Args.MarkBlock(blockIndex, commitId, blobId, blobOffset);
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDescribeBlobVisitor final
-    : public IExtendedBlocksIndexVisitor
+    : public IFreshBlocksIndexVisitor
+    , public IExtendedBlocksIndexVisitor
 {
 private:
     TTxPartition::TDescribeBlob& Args;
@@ -69,6 +86,21 @@ public:
         : Args(args)
     {}
 
+    bool Visit(const TFreshBlock& block) override
+    {
+        if (block.BlobId != Args.BlobId) {
+            return true;
+        }
+
+        Args.MarkBlock(
+            block.Meta.BlockIndex,
+            block.Meta.CommitId,
+            0, // blobOffset
+            0  // checksum
+        );
+        return true;
+    }
+
     bool Visit(
         ui32 blockIndex,
         ui64 commitId,
@@ -76,7 +108,9 @@ public:
         ui16 blobOffset,
         ui32 checksum) override
     {
-        Y_UNUSED(blobId);
+        if (blobId != Args.BlobId) {
+            return true;
+        }
 
         Args.MarkBlock(blockIndex, commitId, blobOffset, checksum);
         return true;
@@ -278,6 +312,16 @@ bool TPartitionActor::PrepareDescribeBlob(
     TPartitionDatabase db(tx.DB);
 
     TDescribeBlobVisitor visitor(args);
+    State->FindFreshBlocks(
+        visitor,
+        TBlockRange32::Max(),
+        Max<ui64>()  // maxCommitId
+    );
+
+    if (!args.BlockMarks.empty()) {
+        return true;
+    }
+
     return db.FindBlocksInBlobsIndex(
         visitor,
         State->GetMaxBlocksInBlob(),
@@ -298,6 +342,19 @@ void TPartitionActor::CompleteDescribeBlob(
     const TActorContext& ctx,
     TTxPartition::TDescribeBlob& args)
 {
+    if (!args.HttpInfo) {
+        auto response = std::make_unique<TEvVolume::TEvDescribeBlobResponse>();
+        for (const auto& mark: args.BlockMarks) {
+            auto* block = response->Record.AddBlocks();
+            block->SetBlockIndex(mark.BlockIndex);
+            block->SetCommitId(mark.CommitId);
+            block->SetBlobOffset(mark.BlobOffset);
+            block->SetChecksum(mark.Checksum);
+        }
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
     using namespace NMonitoringUtils;
 
     TStringStream out;
@@ -350,6 +407,44 @@ void TPartitionActor::CompleteDescribeBlob(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TPartitionActor::HandleDescribeBlob(
+    const TEvVolume::TEvDescribeBlobRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    TRequestScope timer(*requestInfo);
+
+    LWTRACK(
+        RequestReceived_Partition,
+        requestInfo->CallContext->LWOrbit,
+        "DescribeBlob",
+        requestInfo->CallContext->RequestId);
+
+    const auto blobId = LogoBlobIDFromLogoBlobID(msg->Record.GetBlobId());
+    if (!blobId) {
+        auto response = std::make_unique<TEvVolume::TEvDescribeBlobResponse>(
+            MakeError(E_ARGUMENT, "invalid blob id in DescribeBlob request"));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
+    ExecuteTx(
+        ctx,
+        CreateTx<TDescribeBlob>(
+            requestInfo,
+            MakePartialBlobId(blobId),
+            false  // httpInfo
+        ));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TPartitionActor::HandleHttpInfo_Describe(
     const TActorContext& ctx,
     const TCgiParameters& params,
@@ -382,7 +477,10 @@ void TPartitionActor::HandleHttpInfo_Describe(
                 ctx,
                 CreateTx<TDescribeBlob>(
                     std::move(requestInfo),
-                    MakePartialBlobId(blobId)));
+                    MakePartialBlobId(blobId),
+                    true  // httpInfo
+                )
+            );
         } else {
             TStringBuilder message;
             message << "invalid blob specified: " + blob.Quote() +

@@ -58,6 +58,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         tablet.DestroyHandle(writeHandle);
         UNIT_ASSERT(tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
                         ->Record.GetGuestKeepCache());
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{{"filesystem", "test"},
+              {"sensor", "GuestKeepCacheSet"},
+              {"request", "CreateHandle"}},
+             2},
+        });
     }
 
     Y_UNIT_TEST(ShouldSetGuestKeepCacheBasedOnMtime)
@@ -113,6 +124,33 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
+#define CHECK_HANDLE_STATS(maxSize, sumSize, maxTotalSize, sumTotalSize,       \
+                           keepCacheSet)                                       \
+    {                                                                          \
+        tablet.SendRequest(tablet.CreateUpdateCounters());                     \
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));            \
+        TTestRegistryVisitor visitor;                                          \
+        registry->Visit(TInstant::Zero(), visitor);                            \
+        visitor.ValidateExpectedCounters({                                     \
+            {{{"filesystem", "test"},                                          \
+              {"sensor", "HandleStatsByNodeMaxSize"}},                         \
+             maxSize},                                                         \
+            {{{"filesystem", "test"},                                          \
+              {"sensor", "HandleStatsByNodeSumSize"}},                         \
+             sumSize},                                                         \
+            {{{"filesystem", "test"},                                          \
+              {"sensor", "HandleStatsByNodeMaxTotalSize"}},                    \
+             maxTotalSize},                                                    \
+            {{{"filesystem", "test"},                                          \
+              {"sensor", "HandleStatsByNodeSumTotalSize"}},                    \
+             sumTotalSize},                                                    \
+            {{{"filesystem", "test"},                                          \
+              {"sensor", "GuestKeepCacheSet"},                                 \
+              {"request", "CreateHandle"}},                                    \
+             keepCacheSet},                                                    \
+        });                                                                    \
+    }
+
         // Open a file and close it twice. The second create handle should have
         // GuestKeepCache set because its mtime has not changed since the last
         // time we opened it
@@ -121,7 +159,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         auto createHandleResponse =
             tablet.CreateHandle(id, TCreateHandleArgs::RDNLY);
         UNIT_ASSERT(!createHandleResponse->Record.GetGuestKeepCache());
+        // Stats={test}, Offloaded={}
+        CHECK_HANDLE_STATS(1, 1, 1, 1, 0);
         tablet.DestroyHandle(createHandleResponse->Record.GetHandle());
+        // Stats={}, Offloaded={test}
+        CHECK_HANDLE_STATS(0, 0, 1, 1, 0);
+
         // Create handle again, should have GuestKeepCache set
         createHandleResponse =
             tablet.CreateHandle(id, TCreateHandleArgs::RDNLY);
@@ -138,12 +181,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             UNIT_ASSERT(!createHandleResponse->Record.GetGuestKeepCache());
             tablet.DestroyHandle(createHandleResponse->Record.GetHandle());
         }
+        // Stats={}, Offloaded={test0, test1} ("test" was evicted by LRU)
+        CHECK_HANDLE_STATS(0, 0, 2, 2, 1);
+
         // Create handle for the first file again, will not have the
         // GuestKeepCache set because this node was evicted from the cache
         createHandleResponse =
             tablet.CreateHandle(id, TCreateHandleArgs::RDNLY);
         UNIT_ASSERT(!createHandleResponse->Record.GetGuestKeepCache());
+        // Stats={test}, Offloaded={test0, test1}
+        CHECK_HANDLE_STATS(1, 1, 3, 3, 1);
+
         tablet.DestroyHandle(createHandleResponse->Record.GetHandle());
+
+#undef CHECK_HANDLE_STATS
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInCreateDestroyHandle)

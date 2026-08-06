@@ -53,7 +53,7 @@ Y_CPU_BENCHMARK(WriteBlocks, iface)
 
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->BlocksCount = blocksCount;
-    request->BlockSize = options->BlockSize;
+    request->SetBlockSize(options->BlockSize);
     request->Sglist = TGuardedSgList(std::move(sglist));
 
     for (size_t i = 0; i < iface.Iterations(); ++i) {

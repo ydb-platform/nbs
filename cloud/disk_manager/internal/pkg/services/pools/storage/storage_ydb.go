@@ -23,6 +23,10 @@ type storageYDB struct {
 	maxBaseDiskUnits                   uint64
 	takeBaseDisksToScheduleParallelism int
 	baseDiskIDPrefix                   string
+
+	adjustBaseDiskSizeToMinBaseDiskUnits bool
+
+	baseDiskOverSubscription uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -472,6 +476,43 @@ func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 	)
 }
 
+func (s *storageYDB) GetIdleBaseDisks(
+	ctx context.Context,
+	imageID string,
+	zoneID string,
+	idleDuration time.Duration,
+	limit uint64,
+) ([]BaseDisk, error) {
+
+	var baseDisks []BaseDisk
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			baseDisks, err = s.getIdleBaseDisks(
+				ctx,
+				imageID,
+				zoneID,
+				session,
+				idleDuration,
+				limit,
+			)
+			return err
+		},
+	)
+	return baseDisks, err
+}
+
+func (s *storageYDB) InitializeIdleTimestamps(ctx context.Context) error {
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.initializeIdleTimestamps(ctx, session)
+		},
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorage(
@@ -492,6 +533,10 @@ func NewStorage(
 		config.GetMaxBaseDiskUnits() != 0,
 		"MaxBaseDiskUnits should not be zero",
 	)
+	common.Assert(
+		config.GetBaseDiskOverSubscription() != 0,
+		"BaseDiskOverSubscription should not be zero",
+	)
 
 	// Default value.
 	takeBaseDisksToScheduleParallelism := 1
@@ -510,5 +555,9 @@ func NewStorage(
 		maxBaseDiskUnits:                   uint64(config.GetMaxBaseDiskUnits()),
 		takeBaseDisksToScheduleParallelism: takeBaseDisksToScheduleParallelism,
 		baseDiskIDPrefix:                   config.GetBaseDiskIdPrefix(),
+
+		adjustBaseDiskSizeToMinBaseDiskUnits: config.GetAdjustBaseDiskSizeToMinBaseDiskUnits(),
+
+		baseDiskOverSubscription: uint64(config.GetBaseDiskOverSubscription()),
 	}, nil
 }

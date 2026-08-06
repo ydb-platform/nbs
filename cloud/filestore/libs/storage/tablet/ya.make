@@ -5,6 +5,7 @@ GENERATE_ENUM_SERIALIZATION(session.h)
 SRCS(
     checkpoint.cpp
     helpers.cpp
+    quota.cpp
     rebase_logic.cpp
     session.cpp
     shard_request_actor.cpp
@@ -13,6 +14,7 @@ SRCS(
     tablet_actor.cpp
     tablet_actor_accessnode.cpp
     tablet_actor_acquirelock.cpp
+    tablet_actor_adapter.cpp
     tablet_actor_addblob.cpp
     tablet_actor_adddata.cpp
     tablet_actor_adddata_unconfirmed.cpp
@@ -53,7 +55,10 @@ SRCS(
     tablet_actor_loadstate_noderefs.cpp
     tablet_actor_loadstate_nodes.cpp
     tablet_actor_monitoring.cpp
+    tablet_actor_monitoring_directory_viewer.cpp
+    tablet_actor_monitoring_locks.cpp
     tablet_actor_oplog.cpp
+    tablet_actor_quota.cpp
     tablet_actor_readblob.cpp
     tablet_actor_readdata.cpp
     tablet_actor_readlink.cpp
@@ -80,20 +85,23 @@ SRCS(
     tablet_actor_unsafe_node_ops.cpp
     tablet_actor_updateconfig.cpp
     tablet_actor_waitready.cpp
-    tablet_actor_writebatch.cpp
     tablet_actor_writeblob.cpp
     tablet_actor_writedata.cpp
     tablet_actor_write_compactionmap.cpp
     tablet_actor_zerorange.cpp
+    tablet_cache_read_bypass.cpp
     tablet_counters.cpp
     tablet_database.cpp
+    tablet_database_failure_injection.cpp
     tablet_schema.cpp
     tablet_state.cpp
+    tablet_state_iface.cpp
     tablet_state_cache.cpp
     tablet_state_channels.cpp
     tablet_state_checkpoints.cpp
     tablet_state_data.cpp
     tablet_state_nodes.cpp
+    tablet_state_quotas.cpp
     tablet_state_sessions.cpp
     tablet_state_throttling.cpp
     tablet_tx.cpp
@@ -105,11 +113,16 @@ PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
+    cloud/filestore/libs/storage/fastshard/iface
+    cloud/filestore/libs/storage/fastshard/impl/mem
+    cloud/filestore/libs/storage/fastshard/impl/naive_mirrored
     cloud/filestore/libs/storage/model
     cloud/filestore/libs/storage/tablet/actors
     cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/tablet/model
     cloud/filestore/libs/storage/tablet/protos
+    cloud/filestore/libs/storage/tablet/resources
+    cloud/filestore/private/api/unsafe_protos
 
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common
@@ -119,7 +132,7 @@ PEERDIR(
     cloud/storage/core/libs/viewer
     cloud/storage/core/protos
 
-    contrib/ydb/library/actors/core
+    library/cpp/digest/md5
     library/cpp/protobuf/json
 
     contrib/ydb/core/base
@@ -129,6 +142,7 @@ PEERDIR(
     contrib/ydb/core/scheme
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
+    contrib/ydb/library/actors/core
 )
 
 END()

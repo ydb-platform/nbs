@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/throttling/throttler_policy.h>
+
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -18,7 +20,7 @@ struct IThrottlerMetrics
         const TString& clientId) = 0;
     virtual void Trim(TInstant now) = 0;
 
-    virtual void UpdateUsedQuota(ui64 quota) = 0;
+    virtual void UpdateUsedQuota(TUsedQuota quota) = 0;
     virtual void UpdateMaxUsedQuota() = 0;
 };
 

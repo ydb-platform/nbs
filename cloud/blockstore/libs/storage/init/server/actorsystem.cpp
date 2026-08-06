@@ -225,7 +225,7 @@ public:
             Args.StorageConfig,
             Args.DiagnosticsConfig,
             Args.ProfileLog,
-            Args.BlockDigestGenerator,
+            Args.BlockDigestGeneratorFactory,
             Args.DiscoveryService,
             Args.TraceSerializer,
             Args.EndpointEventHandler,
@@ -383,14 +383,16 @@ private:
     const TStorageConfigPtr StorageConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
+    const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NLogbroker::IServicePtr LogbrokerService;
     const NNotify::IServicePtr NotifyService;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const bool IsDiskRegistrySpareNode;
+    const bool IsHiveLocalServiceEnabled;
 
 public:
     TCustomLocalServiceInitializer(
@@ -399,19 +401,22 @@ public:
             TStorageConfigPtr storageConfig,
             TDiagnosticsConfigPtr diagnosticsConfig,
             IProfileLogPtr profileLog,
+            IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
             IBlockDigestGeneratorPtr blockDigestGenerator,
             ITraceSerializerPtr traceSerializer,
             NLogbroker::IServicePtr logbrokerService,
             NNotify::IServicePtr notifyService,
-            NRdma::IClientPtr rdmaClient,
+            NCloud::NStorage::NRdma::IClientPtr rdmaClient,
             NServer::IEndpointEventHandlerPtr endpointEventHandler,
             TPartitionBudgetManagerPtr partitionBudgetManager,
-            bool isDiskRegistrySpareNode)
+            bool isDiskRegistrySpareNode,
+            bool isHiveLocalServiceEnabled)
         : AppConfig(appConfig)
         , Logging(std::move(logging))
         , StorageConfig(std::move(storageConfig))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , ProfileLog(std::move(profileLog))
+        , BlockDigestGeneratorFactory(std::move(blockDigestGeneratorFactory))
         , BlockDigestGenerator(std::move(blockDigestGenerator))
         , TraceSerializer(std::move(traceSerializer))
         , LogbrokerService(std::move(logbrokerService))
@@ -420,6 +425,7 @@ public:
         , EndpointEventHandler(std::move(endpointEventHandler))
         , PartitionBudgetManager(std::move(partitionBudgetManager))
         , IsDiskRegistrySpareNode(isDiskRegistrySpareNode)
+        , IsHiveLocalServiceEnabled(isHiveLocalServiceEnabled)
     {}
 
     void InitializeServices(
@@ -429,7 +435,7 @@ public:
         auto storageConfig = StorageConfig;
         auto diagnosticsConfig = DiagnosticsConfig;
         auto profileLog = ProfileLog;
-        auto blockDigestGenerator = BlockDigestGenerator;
+        auto blockDigestGeneratorFactory = BlockDigestGeneratorFactory;
         auto traceSerializer = TraceSerializer;
         auto logbrokerService = LogbrokerService;
         auto notifyService = NotifyService;
@@ -447,7 +453,7 @@ public:
                 storageConfig,
                 diagnosticsConfig,
                 profileLog,
-                blockDigestGenerator,
+                blockDigestGeneratorFactory,
                 traceSerializer,
                 rdmaClient,
                 partitionBudgetManager,
@@ -472,12 +478,10 @@ public:
             return tablet.release();
         };
 
-        const bool enableLocal = !StorageConfig->GetDisableLocalService();
-
-        if (enableLocal || IsDiskRegistrySpareNode) {
+        if (IsHiveLocalServiceEnabled || IsDiskRegistrySpareNode) {
             auto localConfig = MakeIntrusive<TLocalConfig>();
 
-            if (enableLocal) {
+            if (IsHiveLocalServiceEnabled) {
                 localConfig->TabletClassInfo[TTabletTypes::BlockStoreVolume] =
                     TLocalConfig::TTabletClassInfo(
                         MakeIntrusive<TTabletSetupInfo>(
@@ -579,6 +583,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.StorageConfig,
             sArgs.DiagnosticsConfig,
             sArgs.ProfileLog,
+            sArgs.BlockDigestGeneratorFactory,
             sArgs.BlockDigestGenerator,
             sArgs.TraceSerializer,
             sArgs.LogbrokerService,
@@ -586,7 +591,8 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.RdmaClient,
             sArgs.EndpointEventHandler,
             sArgs.PartitionBudgetManager,
-            sArgs.IsDiskRegistrySpareNode));
+            sArgs.IsDiskRegistrySpareNode,
+            sArgs.IsHiveLocalServiceEnabled));
     };
 
     auto storageConfig = sArgs.StorageConfig;
@@ -618,7 +624,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 
     auto nodeId = sArgs.NodeId;
     auto onStart = [=] (IActorSystem& actorSystem) {
-        if (storageConfig->GetDisableLocalService()) {
+        if (!sArgs.IsHiveLocalServiceEnabled) {
             using namespace NNodeWhiteboard;
             const TActorId wb(MakeNodeWhiteboardServiceId(nodeId));
             actorSystem.Send(

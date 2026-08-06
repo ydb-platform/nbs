@@ -39,39 +39,65 @@ struct TRequestStats
 {
     TString Name;
     std::atomic<ui64> Requests{0};
+    std::atomic<ui64> Weight{0};
     std::atomic<ui64> TimeUs{0};
 
     explicit TRequestStats(TString name)
         : Name(std::move(name))
     {}
 
-    void Register(double seconds)
+    void Register(double weight, double seconds)
     {
         Requests.fetch_add(1, std::memory_order_relaxed);
+        Weight.fetch_add(weight, std::memory_order_relaxed);
         TimeUs.fetch_add(seconds * 1'000'000, std::memory_order_relaxed);
     }
+
+    struct TLoadStat
+    {
+        ui64 Cnt;
+        ui64 Lat;
+        ui64 Weight;
+        ui64 WLat;
+    };
 
     auto Load() const
     {
         const ui64 cnt = Requests.load(std::memory_order_relaxed);
+        const ui64 w = Weight.load(std::memory_order_relaxed);
         const ui64 timeUs = TimeUs.load(std::memory_order_relaxed);
         const ui64 lat = cnt ? timeUs / cnt : 0;
-        return std::make_pair(cnt, lat);
+        const ui64 wlat = w ? timeUs / w : 0;
+        return TLoadStat{.Cnt = cnt, .Lat = lat, .Weight = w, .WLat = wlat};
     }
 
     void Report(TLog& Log) const
     {
-        const auto [cnt, lat] = Load();
-        STORAGE_INFO(Name << ": count=" << cnt << ", lat-us=" << lat);
+        const auto loadStat = Load();
+        TStringBuilder sb;
+        sb << Name << ": count=" << loadStat.Cnt;
+        sb << ", lat-us=" << loadStat.Lat;
+        if (loadStat.Weight) {
+            sb << ", weight=" << loadStat.Weight;
+            sb << ", wlat-us=" << loadStat.WLat;
+        }
+
+        STORAGE_INFO(sb);
     }
 
     void Report(NJsonWriter::TBuf& buf) const
     {
-        const auto [cnt, lat] = Load();
+        const auto loadStat = Load();
         buf.WriteKey(Name);
-        buf.WriteULongLong(cnt);
+        buf.WriteULongLong(loadStat.Cnt);
         buf.WriteKey(Name + "-lat-us");
-        buf.WriteULongLong(lat);
+        buf.WriteULongLong(loadStat.Lat);
+        if (loadStat.Weight) {
+            buf.WriteKey(Name + "-w");
+            buf.WriteULongLong(loadStat.Weight);
+            buf.WriteKey(Name + "-wlat-us");
+            buf.WriteULongLong(loadStat.WLat);
+        }
     }
 };
 
@@ -96,6 +122,7 @@ struct TFsPathHash
 
 struct TValidationContext
 {
+    THashMap<ui64, TFileInfo> NodeId2FileInfo;
     THashSet<TFsPath, TFsPathHash> UnlinkedPaths;
     THashSet<TFsPath, TFsPathHash> StolenPaths;
 };
@@ -113,9 +140,11 @@ private:
 
     TFsPath DirPath;
     TVector<TFileInfo> Files;
+    TVector<TFileInfo> AllFiles;
     TVector<TString> UnlinkedFiles;
     TVector<TString> FailedToUnlinkFiles;
     ui64 FileNo = 0;
+    TVector<TString> CreateFileErrors;
 
 public:
     TProducerThread(
@@ -132,12 +161,11 @@ public:
     {
         DirPath = TFsPath(Options.TestDir)
             / (TStringBuilder() << "producer_" << ThreadId);
+        MakeDirIfNotExist(DirPath.c_str());
     }
 
     void* ThreadProc() override
     {
-        MakeDirIfNotExist(DirPath.c_str());
-
         while (!ShouldStop.load()) {
             // Create files
             if (Files.size() < Options.FilesPerProducer) {
@@ -145,15 +173,22 @@ public:
             }
 
             // Randomly delete some files
-            if (!Files.empty() && RandomNumber<ui32>(100) < 20) {
+            if (!Files.empty()
+                    && RandomNumber<ui32>(100) < Options.UnlinkPercentage)
+            {
                 DeleteRandomFile();
             }
 
             // Small sleep to avoid busy loop
-            Sleep(TDuration::MilliSeconds(1));
+            Sleep(Options.ProducerSleepDuration);
         }
 
         return nullptr;
+    }
+
+    const auto& GetAllFiles() const
+    {
+        return AllFiles;
     }
 
     const auto& GetUnlinkedFiles() const
@@ -165,7 +200,10 @@ public:
     {
         STORAGE_INFO("Producer " << ThreadId << " validating...");
 
-        ui32 errors = 0;
+        ui32 errors = CreateFileErrors.size();
+        for (const auto& e: CreateFileErrors) {
+            STORAGE_ERROR(e);
+        }
 
         for (const auto& fileName: UnlinkedFiles) {
             TFsPath filePath = DirPath / fileName;
@@ -175,12 +213,20 @@ public:
                     OpenExisting | RdOnly | Seq;
                 TFileHandle f(filePath, OpenMode);
                 if (f.IsOpen()) {
-                    STORAGE_ERROR("Unlinked file still exists: " << filePath);
-                    ++errors;
+                    if (Options.SkipFileValidation) {
+                        STORAGE_WARN(
+                            "Unlinked file still exists: " << filePath);
+                    } else {
+                        STORAGE_ERROR(
+                            "Unlinked file still exists: " << filePath);
+                        ++errors;
+                    }
+
                     f.Close();
                 } else {
-                    STORAGE_WARN("Unlinked file still exists: " << filePath
-                        << ", but can't be opened (stale dentry?)");
+                    STORAGE_ERROR("Unlinked file still exists: " << filePath
+                        << ", but can't be opened");
+                    ++errors;
                 }
             }
         }
@@ -198,6 +244,10 @@ public:
             TFsPath filePath = DirPath / file.Name;
 
             if (NFs::Exists(filePath)) {
+                if (Options.SkipFileValidation) {
+                    continue;
+                }
+
                 TFileStat stat(filePath);
                 if (stat.INode != file.Ino) {
                     STORAGE_ERROR("Inode mismatch for " << filePath
@@ -246,18 +296,74 @@ private:
         TString content(Options.FileSize, 'a' + (ThreadId % ('z' - 'a' + 1)));
         static constexpr EOpenMode OpenMode = CreateAlways | WrOnly | Seq;
         THPTimer timer;
-        TFile f(filePath, OpenMode);
-        Stats.Create.Register(timer.Passed());
 
-        TOFStream os(f);
-        os.Write(content);
-        os.Flush();
+        int e = 0;
+        TFileStat stat;
+        for (ui32 i = 0; i < Options.CreateFileAttemptCount; ++i) {
+            timer.Reset();
+            TFileHandle f(filePath, OpenMode);
+            if (!f.IsOpen()) {
+                CreateFileErrors.push_back(TStringBuilder()
+                    << "failed to open " << filePath
+                    << ", error: " << errno);
+                return;
+            }
 
-        timer.Reset();
-        TFileStat stat(filePath);
-        Stats.Stat.Register(timer.Passed());
+            Stats.Create.Register(0 /* weight */, timer.Passed());
+
+            ui64 written = 0;
+            e = 0;
+            while (written < content.size()) {
+                int r =
+                    f.Write(content.data() + written, content.size() - written);
+                if (r == -1) {
+                    e = errno;
+                    break;
+                }
+
+                Y_ABORT_UNLESS(r > 0);
+                written += r;
+            }
+
+            Y_ABORT_UNLESS(
+                e || written == content.size(),
+                "written=%lu, content.size()=%lu",
+                written,
+                content.size());
+
+            if (!e) {
+                if (f.Flush()) {
+                    timer.Reset();
+                    stat = TFileStat(f);
+                    if (stat.INode) {
+                        Stats.Stat.Register(0 /* weight */, timer.Passed());
+                        break;
+                    }
+                }
+
+                e = errno;
+            }
+
+            if (e != EBADF) {
+                break;
+            }
+        }
+
+        if (e) {
+            CreateFileErrors.push_back(TStringBuilder()
+                << "failed to write to " << filePath
+                << ", error: " << e);
+            return;
+        }
 
         Files.push_back({
+            fileName,
+            stat.INode,
+            stat.Size,
+            content
+        });
+
+        AllFiles.push_back({
             fileName,
             stat.INode,
             stat.Size,
@@ -278,7 +384,7 @@ private:
         THPTimer timer;
         const bool removed = NFs::Remove(filePath);
         if (removed) {
-            Stats.Unlink.Register(timer.Passed());
+            Stats.Unlink.Register(0 /* weight */, timer.Passed());
             UnlinkedFiles.push_back(file.Name);
         } else {
             FailedToUnlinkFiles.push_back(file.Name);
@@ -326,15 +432,14 @@ public:
     {
         DirPath = TFsPath(Options.TestDir)
             / (TStringBuilder() << "stealer_" << ThreadId);
+        MakeDirIfNotExist(DirPath.c_str());
     }
 
     void* ThreadProc() override
     {
-        MakeDirIfNotExist(DirPath.c_str());
-
         while (!ShouldStop.load()) {
             StealRandomFile();
-            Sleep(TDuration::MilliSeconds(10));
+            Sleep(Options.StealerSleepDuration);
         }
 
         return nullptr;
@@ -362,31 +467,8 @@ public:
             }
         }
 
-        for (const auto& file: StolenFiles) {
-            TFsPath filePath = DirPath / file.Name;
-
-            if (NFs::Exists(filePath)) {
-                TFileStat stat(filePath);
-                if (stat.INode != file.Ino) {
-                    STORAGE_ERROR("Inode mismatch for stolen file " << filePath
-                         << " expected: " << file.Ino
-                         << " got: " << stat.INode);
-                    ++errors;
-                }
-                if (stat.Size != file.Size) {
-                    STORAGE_ERROR("Size mismatch for stolen file " << filePath
-                         << " expected: " << file.Size
-                         << " got: " << stat.Size);
-                    ++errors;
-                }
-
-                TString content = TFileInput(filePath).ReadAll();
-                if (content != file.Content) {
-                    STORAGE_ERROR("Content mismatch for stolen file "
-                        << filePath);
-                    ++errors;
-                }
-            }
+        if (!Options.SkipFileValidation) {
+            errors += ValidateStolenFiles(vc);
         }
 
         STORAGE_INFO("Stealer " << ThreadId << " validation complete");
@@ -395,6 +477,50 @@ public:
     }
 
 private:
+    ui32 ValidateStolenFiles(const TValidationContext& vc)
+    {
+        STORAGE_INFO("Stealer " << ThreadId << " validating...");
+
+        ui32 errors = 0;
+
+        for (auto& file: StolenFiles) {
+            TFsPath filePath = DirPath / file.Name;
+
+            TFileStat stat(filePath);
+            if (stat.INode != file.Ino) {
+                STORAGE_ERROR("Inode mismatch for stolen file " << filePath
+                        << " expected: " << file.Ino
+                        << " got: " << stat.INode);
+                ++errors;
+            }
+
+            const auto* fileInfo = vc.NodeId2FileInfo.FindPtr(file.Ino);
+            if (!fileInfo) {
+                STORAGE_ERROR("Stolen file " << filePath << ", " << file.Ino
+                        << " not found in producer files");
+                ++errors;
+                continue;
+            }
+
+            file = *fileInfo;
+
+            if (stat.Size != file.Size) {
+                STORAGE_ERROR("Size mismatch for stolen file " << filePath
+                        << " expected: " << file.Size
+                        << " got: " << stat.Size);
+                ++errors;
+            }
+
+            TString content = TFileInput(filePath).ReadAll();
+            if (content != file.Content) {
+                STORAGE_ERROR("Content mismatch for stolen file " << filePath);
+                ++errors;
+            }
+        }
+
+        return errors;
+    }
+
     void StealRandomFile()
     {
         if (Producers.empty()) {
@@ -409,7 +535,7 @@ private:
         TVector<TString> files;
         THPTimer timer;
         producerDir.ListNames(files);
-        Stats.List.Register(timer.Passed());
+        Stats.List.Register(files.size() /* weight */, timer.Passed());
 
         if (files.empty()) {
             return;
@@ -429,7 +555,7 @@ private:
         timer.Reset();
         bool renamed = NFs::Rename(srcPath, dstPath);
         if (renamed) {
-            Stats.Rename.Register(timer.Passed());
+            Stats.Rename.Register(0 /* weight */, timer.Passed());
 
             //
             // Stat and file info after moving
@@ -437,21 +563,74 @@ private:
 
             timer.Reset();
             TFileStat stat(dstPath);
-            Stats.Stat.Register(timer.Passed());
-
-            TString content = TFileInput(dstPath).ReadAll();
+            Stats.Stat.Register(0 /* weight */, timer.Passed());
 
             StolenFiles.push_back({
                 newFileName,
                 stat.INode,
-                stat.Size,
-                content
+                0 /* Size */,
+                "" /* Content */,
             });
 
             StolenPaths.push_back(srcPath);
         } else {
             FailedToStealPaths.push_back(srcPath);
         }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TListerThread: public ISimpleThread
+{
+private:
+    TLog Log;
+    const TOptions& Options;
+    TStats& Stats;
+    std::atomic<bool>& ShouldStop;
+    const TVector<TProducerThread*>& Producers;
+
+public:
+    TListerThread(
+            TLog log,
+            const TOptions& options,
+            TStats& stats,
+            std::atomic<bool>& shouldStop,
+            const TVector<TProducerThread*>& producers)
+        : Log(std::move(log))
+        , Options(options)
+        , Stats(stats)
+        , ShouldStop(shouldStop)
+        , Producers(producers)
+    {
+    }
+
+    void* ThreadProc() override
+    {
+        while (!ShouldStop.load()) {
+            ListRandomDir();
+            Sleep(Options.ListerSleepDuration);
+        }
+
+        return nullptr;
+    }
+
+private:
+    void ListRandomDir()
+    {
+        if (Producers.empty()) {
+            return;
+        }
+
+        // Pick random producer
+        ui32 producerIdx = RandomNumber<ui32>(Producers.size());
+        const auto& producerDir = Producers[producerIdx]->GetDirPath();
+
+        // List files in producer directory
+        TVector<TString> files;
+        THPTimer timer;
+        producerDir.ListNames(files);
+        Stats.List.Register(files.size() /* weight */, timer.Passed());
     }
 };
 
@@ -464,6 +643,7 @@ private:
     TStats Stats;
     TVector<THolder<TProducerThread>> ProducerThreads;
     TVector<THolder<TStealerThread>> StealerThreads;
+    TVector<THolder<TListerThread>> ListerThreads;
     TInstant StartTime;
 
 public:
@@ -493,7 +673,6 @@ public:
             auto p = MakeHolder<TProducerThread>(
                 Log, options, i, Stats, ShouldStop);
             producerPtrs.push_back(p.Get());
-            p->Start();
             ProducerThreads.push_back(std::move(p));
         }
 
@@ -501,8 +680,27 @@ public:
         for (ui32 i = 0; i < options.StealerThreads; ++i) {
             auto s = MakeHolder<TStealerThread>(
                 Log, options, i, Stats, ShouldStop, producerPtrs);
-            s->Start();
             StealerThreads.push_back(std::move(s));
+        }
+
+        // Create lister threads
+        for (ui32 i = 0; i < options.ListerThreads; ++i) {
+            auto s = MakeHolder<TListerThread>(
+                Log, options, Stats, ShouldStop, producerPtrs);
+            ListerThreads.push_back(std::move(s));
+        }
+
+        // Run all threads
+        for (auto& p: ProducerThreads) {
+            p->Start();
+        }
+
+        for (auto& s: StealerThreads) {
+            s->Start();
+        }
+
+        for (auto& l: ListerThreads) {
+            l->Start();
         }
 
         // Wait for test duration
@@ -510,7 +708,7 @@ public:
             Sleep(TDuration::Seconds(1));
 
             auto elapsed = TInstant::Now() - StartTime;
-            if (elapsed.Seconds() >= options.TestDurationSec) {
+            if (elapsed >= options.TestDuration) {
                 break;
             }
 
@@ -528,8 +726,13 @@ public:
         for (auto& p: ProducerThreads) {
             p->Join();
         }
+
         for (auto& s: StealerThreads) {
             s->Join();
+        }
+
+        for (auto& l: ListerThreads) {
+            l->Join();
         }
 
         TInstant endTime = TInstant::Now();
@@ -538,6 +741,10 @@ public:
         // Build validation context
         TValidationContext vc;
         for (const auto& p: ProducerThreads) {
+            for (const auto& fileInfo: p->GetAllFiles()) {
+                vc.NodeId2FileInfo[fileInfo.Ino] = fileInfo;
+            }
+
             for (const auto& fileName: p->GetUnlinkedFiles()) {
                 vc.UnlinkedPaths.insert(p->GetDirPath() / fileName);
             }

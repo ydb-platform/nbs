@@ -30,6 +30,10 @@ TOptionsYdbBase::TOptionsYdbBase()
         .OptionalArgument("FILE")
         .StoreResult(&SharedCacheConfig);
 
+    Opts.AddLongOption("immediate-controls-file")
+        .RequiredArgument("FILE")
+        .StoreResult(&ImmediateControlsConfig);
+
     Opts.AddLongOption("sys-file")
         .RequiredArgument("FILE")
         .StoreResult(&SysConfig);
@@ -95,6 +99,10 @@ TOptionsYdbBase::TOptionsYdbBase()
     Opts.AddLongOption("actor-system-available-cpu-cores-percentage")
         .OptionalArgument("NUM")
         .StoreResult(&ActorSystemAvailableCpuCoresPercentage);
+
+    Opts.AddLongOption("bs-file")
+        .RequiredArgument("FILE")
+        .StoreResult(&BlobStorageConfig);
 }
 
 }   // namespace NCloud::NStorage

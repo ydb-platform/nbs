@@ -19,6 +19,8 @@ private:
 public:
     TDiscoveryConfig(NProto::TDiscoveryServiceConfig discoveryServiceConfig = {});
 
+    const NProto::TDiscoveryServiceConfig* GetConfig() const;
+
     TString GetConductorApiUrl() const;
     TString GetInstanceListFile() const;
     TString GetBannedInstanceListFile() const;

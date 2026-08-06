@@ -6,6 +6,7 @@ GENERATE_ENUM_SERIALIZATION(mixed_index_cache.h)
 GENERATE_ENUM_SERIALIZATION(operation_status.h)
 
 SRCS(
+    background_ops_throttling.cpp
     barrier.cpp
     blob_index.cpp
     blob_to_confirm.cpp
@@ -16,9 +17,11 @@ SRCS(
     cleanup_queue.cpp
     commit_queue.cpp
     compaction_map_load_state.cpp
+    flush_blocks_visitor.cpp
     fresh_blob.cpp
     garbage_queue.cpp
     group_downtimes.cpp
+    mixed_blocks_filter.cpp
     mixed_index_cache.cpp
     operation_status.cpp
     part_counters_wrapper.cpp
@@ -27,6 +30,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos
 

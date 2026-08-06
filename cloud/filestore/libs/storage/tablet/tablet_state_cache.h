@@ -1,12 +1,16 @@
 #pragma once
 
+#include "tablet_cache_read_bypass.h"
 #include "tablet_state_iface.h"
 
+#include <cloud/filestore/libs/storage/tablet/model/metadata_cache.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_schema.h>
+
+#include <cloud/storage/core/libs/common/lru_cache.h>
 
 #include <library/cpp/cache/cache.h>
 
-#include <cloud/storage/core/libs/common/lru_cache.h>
+#include <util/generic/hash.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -27,43 +31,126 @@ struct TInMemoryIndexStateStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/**
- * @brief Stores the state of the index tables in memory. Can be used to perform
- * read-only operations.
- */
-class TInMemoryIndexState : public IIndexTabletDatabase
+class IInMemoryIndexState : public INodeIndexTabletDatabase
 {
 public:
-    explicit TInMemoryIndexState(IAllocator* allocator);
+    virtual void LoadNodeRefs(const TVector<TNodeRef>& nodeRefs) = 0;
 
-    void Reset(
-        ui64 nodesCapacity,
-        ui64 nodeAttrsCapacity,
-        ui64 nodeRefsCapacity,
-        ui64 nodeRefsExhaustivenessCapacity);
+    virtual void MarkNodeRefsLoadComplete() = 0;
 
-    void LoadNodeRefs(const TVector<TNodeRef>& nodeRefs);
+    virtual void MarkNodeRefsExhaustive(ui64 nodeId) = 0;
 
-    void MarkNodeRefsLoadComplete();
+    [[nodiscard]] virtual TInMemoryIndexStateStats GetStats() const = 0;
 
-    void MarkNodeRefsExhaustive(ui64 nodeId);
-
-    [[nodiscard]] TInMemoryIndexStateStats GetStats() const;
+    virtual void UpdateLogTag(TString logTag) = 0;
 
     //
     // Nodes
     //
 
+    struct TNodeRow
+    {
+        ui64 CommitId = 0;
+        NProto::TNode Node;
+    };
+
+    struct TWriteNodeRequest
+    {
+        ui64 NodeId = 0;
+        TNodeRow Row;
+    };
+
+    struct TDeleteNodeRequest
+    {
+        ui64 NodeId = 0;
+    };
+
+    struct TWriteNodeAttrsRequest
+    {
+        TNodeAttrsKey NodeAttrsKey;
+        TNodeAttrsRow NodeAttrsRow;
+    };
+
+    using TDeleteNodeAttrsRequest = TNodeAttrsKey;
+
+    struct TWriteNodeRefsRequest
+    {
+        TNodeRefsKey NodeRefsKey;
+        TNodeRefsRow NodeRefsRow;
+    };
+
+    using TDeleteNodeRefsRequest = TNodeRefsKey;
+
+    // This request can be interpreted as follow: "last RefsSize added refs were
+    // children of the NodeId and present the entirety of its children", thus if
+    // we see such request, we can mark the NodeRefs cache as exhaustive for
+    // this particular NodeId
+    struct TMarkNodeRefsAsCachedRequest
+    {
+        ui64 NodeId;
+        ui64 RefsSize;
+    };
+
+    using TIndexStateRequest = std::variant<
+        TWriteNodeRequest,
+        TDeleteNodeRequest,
+        TWriteNodeAttrsRequest,
+        TDeleteNodeAttrsRequest,
+        TWriteNodeRefsRequest,
+        TDeleteNodeRefsRequest,
+        TMarkNodeRefsAsCachedRequest>;
+
+    virtual void UpdateState(
+        const TVector<TIndexStateRequest>& nodeUpdates) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Stores the state of the index tables in memory. Can be used to perform
+ * read-only operations.
+ */
+template <typename TNodeRefsImpl>
+class TInMemoryIndexState : public IInMemoryIndexState
+{
+public:
+    TInMemoryIndexState(
+        IAllocator* allocator,
+        const TCacheReadBypass& cacheReadBypass,
+        ui64 nodesCapacity,
+        ui64 nodeAttrsCapacity,
+        ui64 nodeRefsCapacity,
+        ui64 nodeRefsExhaustivenessCapacity);
+
+    void LoadNodeRefs(const TVector<TNodeRef>& nodeRefs) override;
+
+    void MarkNodeRefsLoadComplete() override;
+
+    void MarkNodeRefsExhaustive(ui64 nodeId) override;
+
+    [[nodiscard]] TInMemoryIndexStateStats GetStats() const override;
+
+    void UpdateLogTag(TString logTag) override;
+
+private:
+    TString LogTag;
+    const TCacheReadBypass& CacheReadBypass;
+
+    //
+    // Nodes
+    //
+
+public:
     bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
-        TMaybe<IIndexTabletDatabase::TNode>& node) override;
+        TMaybe<INodeIndexTabletDatabase::TNode>& node) override;
 
     bool ReadNodes(
         ui64 startNodeId,
         ui64 maxNodes,
         ui64& nextNodeId,
-        TVector<IIndexTabletDatabase::TNode>& nodes) override;
+        TVector<INodeIndexTabletDatabase::TNode>& nodes) override;
 
 private:
     void WriteNode(
@@ -81,7 +168,7 @@ public:
     bool ReadNodeVer(
         ui64 nodeId,
         ui64 commitId,
-        TMaybe<IIndexTabletDatabase::TNode>& node) override;
+        TMaybe<INodeIndexTabletDatabase::TNode>& node) override;
 
     //
     // NodeAttrs
@@ -91,12 +178,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
+        TMaybe<INodeIndexTabletDatabase::TNodeAttr>& attr) override;
 
     bool ReadNodeAttrs(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
+        TVector<INodeIndexTabletDatabase::TNodeAttr>& attrs) override;
 
 private:
     void WriteNodeAttr(
@@ -117,12 +204,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
+        TMaybe<INodeIndexTabletDatabase::TNodeAttr>& attr) override;
 
     bool ReadNodeAttrVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
+        TVector<INodeIndexTabletDatabase::TNodeAttr>& attrs) override;
 
     //
     // NodeRefs
@@ -132,13 +219,13 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef>& ref) override;
 
     bool ReadNodeRefs(
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
         TString* next,
         ui32* skippedRefs,
@@ -149,7 +236,7 @@ public:
         ui64 startNodeId,
         const TString& startCookie,
         ui64 maxCount,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs,
+        TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
         ui64& nextNodeId,
         TString& nextCookie) override;
 
@@ -179,12 +266,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef>& ref) override;
 
     bool ReadNodeRefVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexTabletDatabase::TNodeRef>& refs) override;
+        TVector<INodeIndexTabletDatabase::TNodeRef>& refs) override;
 
     //
     // CheckpointNodes
@@ -201,7 +288,7 @@ public:
 
     bool ReadMixedBlocks(
         ui32 rangeId,
-        TVector<IIndexTabletDatabase::TMixedBlob>& blobs,
+        TVector<INodeIndexTabletDatabase::TMixedBlob>& blobs,
         IAllocator* alloc) override;
 
     bool ReadDeletionMarkers(
@@ -214,94 +301,20 @@ private:
     // Nodes
     //
 
-    struct TNodeRow
-    {
-        ui64 CommitId = 0;
-        NProto::TNode Node;
-    };
-
     ::TLRUCache<ui64, TNodeRow> Nodes;
 
     //
     // NodeAttrs
     //
 
-public:
-    struct TNodeAttrsKey
-    {
-        TNodeAttrsKey(ui64 nodeId, const TString& name)
-            : NodeId(nodeId)
-            , Name(name)
-        {}
-
-        ui64 NodeId = 0;
-        TString Name;
-
-        bool operator==(const TNodeAttrsKey& rhs) const
-        {
-            return std::tie(NodeId, Name) == std::tie(rhs.NodeId, rhs.Name);
-        }
-    };
-
 private:
-    struct TNodeAttrsRow
-    {
-        ui64 CommitId = 0;
-        TString Value;
-        ui64 Version = 0;
-    };
-
     ::TLRUCache<TNodeAttrsKey, TNodeAttrsRow> NodeAttrs;
 
     //
     // NodeRefs
     //
 
-    struct TNodeRefsKey
-    {
-        TNodeRefsKey(ui64 nodeId, const TString& name)
-            : NodeId(nodeId)
-            , Name(name)
-        {}
-
-        ui64 NodeId = 0;
-        TString Name;
-
-        bool operator<(const TNodeRefsKey& rhs) const
-        {
-            return std::tie(NodeId, Name) < std::tie(rhs.NodeId, rhs.Name);
-        }
-
-        bool operator==(const TNodeRefsKey& rhs) const
-        {
-            return std::tie(NodeId, Name) == std::tie(rhs.NodeId, rhs.Name);
-        }
-    };
-
-    struct TNodeRefsKeyHash
-    {
-        size_t operator()(
-            const NCloud::NFileStore::NStorage::TInMemoryIndexState::TNodeRefsKey&
-                key) const
-        {
-            return MultiHash(key.NodeId, key.Name);
-        }
-    };
-
-    struct TNodeRefsRow
-    {
-        ui64 CommitId = 0;
-        ui64 ChildId = 0;
-        TString ShardId;
-        TString ShardNodeName;
-    };
-
-    NCloud::TLRUCache<
-        TNodeRefsKey,
-        TNodeRefsRow,
-        TNodeRefsKeyHash,
-        TMap<TNodeRefsKey, TNodeRefsRow, TLess<TNodeRefsKey>, TStlAllocator>>
-        NodeRefs;
+    TNodeRefsImpl NodeRefs;
 
     struct TNodeRefsExhaustivenessInfo
     {
@@ -315,14 +328,9 @@ private:
         ::TLRUCache<ui64, bool> IsExhaustivePerNode;
 
     public:
-        TNodeRefsExhaustivenessInfo()
-            : IsExhaustivePerNode(0)
+        explicit TNodeRefsExhaustivenessInfo(size_t size)
+            : IsExhaustivePerNode(size)
         {}
-
-        void SetMaxSize(size_t size)
-        {
-            IsExhaustivePerNode.SetMaxSize(size);
-        }
 
         [[nodiscard]] bool IsExhaustiveForNode(ui64 nodeId)
         {
@@ -378,66 +386,11 @@ private:
     } NodeRefsExhaustivenessInfo;
 
 public:
-    struct TWriteNodeRequest
-    {
-        ui64 NodeId = 0;
-        TNodeRow Row;
-    };
-
-    struct TDeleteNodeRequest
-    {
-        ui64 NodeId = 0;
-    };
-
-    struct TWriteNodeAttrsRequest
-    {
-        TNodeAttrsKey NodeAttrsKey;
-        TNodeAttrsRow NodeAttrsRow;
-    };
-
-    using TDeleteNodeAttrsRequest = TNodeAttrsKey;
-
-    struct TWriteNodeRefsRequest
-    {
-        TNodeRefsKey NodeRefsKey;
-        TNodeRefsRow NodeRefsRow;
-    };
-
-    using TDeleteNodeRefsRequest = TNodeRefsKey;
-
-    // This request can be interpreted as follow: "last RefsSize added refs were
-    // children of the NodeId and present the entirety of its children", thus if
-    // we see such request, we can mark the NodeRefs cache as exhaustive for
-    // this particular NodeId
-    struct TMarkNodeRefsAsCachedRequest
-    {
-        ui64 NodeId;
-        ui64 RefsSize;
-    };
-
-    using TIndexStateRequest = std::variant<
-        TWriteNodeRequest,
-        TDeleteNodeRequest,
-        TWriteNodeAttrsRequest,
-        TDeleteNodeAttrsRequest,
-        TWriteNodeRefsRequest,
-        TDeleteNodeRefsRequest,
-        TMarkNodeRefsAsCachedRequest>;
-
-    void UpdateState(const TVector<TIndexStateRequest>& nodeUpdates);
+    void UpdateState(const TVector<TIndexStateRequest>& nodeUpdates) override;
 };
-
-}   // namespace NCloud::NFileStore::NStorage
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <>
-struct THash<NCloud::NFileStore::NStorage::TInMemoryIndexState::TNodeAttrsKey>
-{
-    inline size_t operator()(
-        const NCloud::NFileStore::NStorage::TInMemoryIndexState::TNodeAttrsKey&
-            key) const
-    {
-        return MultiHash(key.NodeId, key.Name);
-    }
-};
+using TStandardInMemoryIndexState = TInMemoryIndexState<TStandardNodeRefsCache>;
+
+}   // namespace NCloud::NFileStore::NStorage

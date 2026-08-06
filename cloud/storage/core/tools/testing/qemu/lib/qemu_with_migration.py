@@ -1,52 +1,34 @@
+import atexit
 import os
-import logging
-import yatest.common as common
 import time
-import tarfile
 
-from .common import get_mount_paths
+import yatest.common as common
+
+from cloud.storage.core.tools.testing.virtiofs_server.lib import VirtioFsServerSet
+
+from .common import (
+    env_with_guest_index,
+    get_mount_paths,
+    get_qemu_bios,
+    get_qemu_firmware,
+    get_qemu_kvm,
+    get_chardev_reconnect,
+    get_virtiofs_migration,
+)
 from .qemu import Qemu
+from .recipe import recipe_get_env
 
-EMU_NET = "10.0.2.0/24"
-QEMU_HOST = "10.0.2.2"
-
-logger = logging.getLogger(__name__)
-
-
-def _get_bindir():
-    return common.build_path(
-        "cloud/storage/core/tools/testing/qemu/bin")
-
-
-def _unpack_qemu_bin(bindir):
-    with tarfile.open(os.path.join(bindir, "qemu-bin.tar.gz")) as tf:
-        tf.extractall(bindir)
-
-
-def _get_qemu_kvm():
-    bindir = _get_bindir()
-    qemu_kvm = os.path.join(bindir, "usr", "bin", "qemu-system-x86_64")
-    if not os.path.exists(qemu_kvm):
-        _unpack_qemu_bin(bindir)
-
-    return qemu_kvm
-
-
-def _get_qemu_firmware():
-    bindir = _get_bindir()
-    qemu_firmware = os.path.join(bindir, "usr", "share", "qemu")
-    if not os.path.exists(qemu_firmware):
-        _unpack_qemu_bin(bindir)
-
-    return qemu_firmware
+VIRTIOFS_SERVER_BINARY = (
+    "cloud/storage/core/tools/testing/virtiofs_server/bin/virtiofs-server")
 
 
 class QemuWithMigration:
     def __init__(self, socket_generator):
         self.qemu = Qemu(
-            qemu_kmv=_get_qemu_kvm(),
-            qemu_firmware=_get_qemu_firmware(),
-            rootfs=common.build_path("cloud/storage/core/tools/testing/qemu/image/rootfs.img"),
+            qemu_kvm=get_qemu_kvm(),
+            qemu_firmware=get_qemu_firmware(),
+            qemu_bios=get_qemu_bios(),
+            rootfs=common.build_path("cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img"),
             kernel=None,
             kcmdline=None,
             initrd=None,
@@ -56,9 +38,17 @@ class QemuWithMigration:
             qemu_options=[],
             vhost_socket="",
             enable_kvm=True,
-            use_virtiofs_server=True)
+            use_virtiofs_server=True,
+            chardev_reconnect=get_chardev_reconnect(),
+            virtiofs_migration=get_virtiofs_migration())
 
         self.socket_generator = socket_generator
+        self.virtiofs_servers = VirtioFsServerSet(
+            common.binary_path(VIRTIOFS_SERVER_BINARY),
+            common.output_path(),
+            env_get=self._get_env,
+            env_set=self._set_env)
+        atexit.register(self.virtiofs_servers.stop_all)
 
     def start(self):
         self.socket = self.socket_generator(0, False)
@@ -70,5 +60,17 @@ class QemuWithMigration:
     def migrate(self, count, timeout):
         for migration in range(0, count):
             self.socket = self.socket_generator(migration, False)
-            self.qemu.migrate(migration, self.socket)
+            self.qemu.migrate(
+                migration,
+                self.socket,
+                before_restore=self._restart_virtiofs_servers)
             time.sleep(timeout)
+
+    def _restart_virtiofs_servers(self):
+        self.virtiofs_servers.restart(self.qemu.mount_paths, self.qemu.seqno)
+
+    def _get_env(self, key):
+        return recipe_get_env(key, self.qemu.inst_index)
+
+    def _set_env(self, key, value):
+        os.environ[env_with_guest_index(key, self.qemu.inst_index)] = value

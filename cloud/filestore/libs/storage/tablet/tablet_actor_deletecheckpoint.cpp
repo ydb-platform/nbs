@@ -70,7 +70,7 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
 
     args.CommitId = checkpoint->GetCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     bool ready = true;
     switch (args.Mode) {
@@ -79,15 +79,15 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
             break;
 
         case EDeleteCheckpointMode::RemoveCheckpointNodes: {
-            ready = db.ReadCheckpointNodes(
+            ready = db->ReadCheckpointNodes(
                 args.CommitId,
                 args.NodeIds,
                 RemoveCheckpointNodesBatchSize);
 
             if (ready) {
                 for (ui64 nodeId: args.NodeIds) {
-                    TMaybe<IIndexTabletDatabase::TNode> node;
-                    if (!db.ReadNodeVer(nodeId, args.CommitId, node)) {
+                    TMaybe<INodeIndexTabletDatabase::TNode> node;
+                    if (!db->ReadNodeVer(nodeId, args.CommitId, node)) {
                         ready = false;
                     }
 
@@ -95,11 +95,11 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
                         args.Nodes.emplace_back(node.GetRef());
                     }
 
-                    if (!db.ReadNodeAttrVers(nodeId, args.CommitId, args.NodeAttrs)) {
+                    if (!db->ReadNodeAttrVers(nodeId, args.CommitId, args.NodeAttrs)) {
                         ready = false;
                     }
 
-                    if (!db.ReadNodeRefVers(nodeId, args.CommitId, args.NodeRefs)) {
+                    if (!db->ReadNodeRefVers(nodeId, args.CommitId, args.NodeRefs)) {
                         ready = false;
                     }
                 }
@@ -108,7 +108,7 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
         }
 
         case EDeleteCheckpointMode::RemoveCheckpointBlobs: {
-            ready = db.ReadCheckpointBlobs(
+            ready = db->ReadCheckpointBlobs(
                 args.CommitId,
                 args.Blobs,
                 RemoveCheckpointBlobsBatchSize);
@@ -116,15 +116,15 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
             if (ready) {
                 for (const auto& blob: args.Blobs) {
                     if (!args.MixedBlocksRanges.count(blob.RangeId)) {
-                        if (!LoadMixedBlocks(db, blob.RangeId)) {
+                        if (!LoadMixedBlocks(*db, blob.RangeId)) {
                             ready = false;
                         } else {
                             args.MixedBlocksRanges.insert(blob.RangeId);
                         }
                     }
 
-                    TMaybe<IIndexTabletDatabase::TMixedBlob> mixedBlob;
-                    if (!db.ReadMixedBlocks(
+                    TMaybe<INodeIndexTabletDatabase::TMixedBlob> mixedBlob;
+                    if (!db->ReadMixedBlocks(
                             blob.RangeId,
                             blob.BlobId,
                             mixedBlob,
@@ -166,11 +166,11 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
     auto* checkpoint = FindCheckpoint(args.CheckpointId);
     TABLET_VERIFY(checkpoint);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     switch (args.Mode) {
         case EDeleteCheckpointMode::MarkCheckpointDeleted:
-            MarkCheckpointDeleted(db, checkpoint);
+            MarkCheckpointDeleted(*db, checkpoint);
             break;
 
         case EDeleteCheckpointMode::RemoveCheckpointNodes: {
@@ -181,7 +181,7 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
 
             for (const auto& node: args.Nodes) {
                 RewriteNode(
-                    db,
+                    *db,
                     node.NodeId,
                     node.MinCommitId,
                     node.MaxCommitId,
@@ -190,7 +190,7 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
 
             for (const auto& attr: args.NodeAttrs) {
                 RewriteNodeAttr(
-                    db,
+                    *db,
                     attr.NodeId,
                     attr.MinCommitId,
                     attr.MaxCommitId,
@@ -199,7 +199,7 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
 
             for (const auto& ref: args.NodeRefs) {
                 RewriteNodeRef(
-                    db,
+                    *db,
                     ref.NodeId,
                     ref.MinCommitId,
                     ref.MaxCommitId,
@@ -209,7 +209,7 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
                     ref.ShardNodeName);
             }
 
-            RemoveCheckpointNodes(db, checkpoint, args.NodeIds);
+            RemoveCheckpointNodes(*db, checkpoint, args.NodeIds);
             break;
         }
 
@@ -235,14 +235,14 @@ void TIndexTabletActor::ExecuteTx_DeleteCheckpoint(
                     args.MixedBlobs[i].CheckpointBlocks,
                 };
 
-                RewriteMixedBlocks(db, rangeId, blob, stats);
-                RemoveCheckpointBlob(db, checkpoint, rangeId, blob.BlobId);
+                RewriteMixedBlocks(*db, rangeId, blob, stats);
+                RemoveCheckpointBlob(*db, checkpoint, rangeId, blob.BlobId);
             }
             break;
         }
 
         case EDeleteCheckpointMode::RemoveCheckpoint:
-            RemoveCheckpoint(db, checkpoint);
+            RemoveCheckpoint(*db, checkpoint);
             break;
     }
 }

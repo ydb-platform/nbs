@@ -190,20 +190,43 @@ class NbsCsiDriverRunner:
         return self._controller_run("deletevolume", "--id", name)
 
     @retry(max_retries=3)
-    def stage_volume(self, volume_id: str, access_type: str, is_nfs: bool = False, vhost_request_queues_count: int = 8):
-        args = ["stagevolume", "--volume-id", volume_id, "--access-type", access_type, "--vhost-request-queues-count", str(vhost_request_queues_count)]
+    def stage_volume(
+            self,
+            volume_id: str,
+            access_type: str,
+            is_nfs: bool = False,
+            vhost_request_queues_count: int = 8,
+            instance_id: str = "example-instance-id",
+            staging_target_path: str = "",
+            access_mode: str = "single-node-writer"):
+        args = [
+            "stagevolume",
+            "--volume-id",
+            volume_id,
+            "--access-type",
+            access_type,
+            "--vhost-request-queues-count",
+            str(vhost_request_queues_count),
+        ]
+        args += ["--instance-id", instance_id, "--access-mode", access_mode]
+        if staging_target_path:
+            args += ["--staging-target-path", staging_target_path]
         if is_nfs:
             args += ["--backend", "nfs"]
 
         return self._node_run(*args)
 
     @retry(max_retries=3)
-    def unstage_volume(self, volume_id: str):
-        return self._node_run(
+    def unstage_volume(self, volume_id: str, staging_target_path: str = ""):
+        args = [
             "unstagevolume",
             "--volume-id",
             volume_id,
-        )
+        ]
+        if staging_target_path:
+            args += ["--staging-target-path", staging_target_path]
+
+        return self._node_run(*args)
 
     @retry(max_retries=3)
     def publish_volume(
@@ -215,7 +238,11 @@ class NbsCsiDriverRunner:
             fs_type: str = "",
             readonly: bool = False,
             volume_mount_group: str = "",
-            is_nfs: bool = False):
+            is_nfs: bool = False,
+            instance_id: str = "example-instance-id",
+            staging_target_path: str = "",
+            target_path: str = "",
+            access_mode: str = "single-node-writer"):
         args = [
             "publishvolume",
             "--pod-id",
@@ -228,7 +255,15 @@ class NbsCsiDriverRunner:
             fs_type,
             "--access-type",
             access_type,
+            "--instance-id",
+            instance_id,
+            "--access-mode",
+            access_mode,
         ]
+        if staging_target_path:
+            args += ["--staging-target-path", staging_target_path]
+        if target_path:
+            args += ["--target-path", target_path]
         if readonly:
             args += ["--readonly"]
 
@@ -241,8 +276,13 @@ class NbsCsiDriverRunner:
         return self._node_run(*args)
 
     @retry(max_retries=3)
-    def unpublish_volume(self, pod_id: str, volume_id: str, access_type: str):
-        return self._node_run(
+    def unpublish_volume(
+            self,
+            pod_id: str,
+            volume_id: str,
+            access_type: str,
+            target_path: str = ""):
+        args = [
             "unpublishvolume",
             "--pod-id",
             pod_id,
@@ -250,7 +290,11 @@ class NbsCsiDriverRunner:
             volume_id,
             "--access-type",
             access_type,
-        )
+        ]
+        if target_path:
+            args += ["--target-path", target_path]
+
+        return self._node_run(*args)
 
     def stop(self):
         if self._proc is not None:
@@ -370,7 +414,8 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs
     client_config_path.write_text(MessageToString(client_config))
 
     def run(*args, **kwargs):
-        args = [BINARY_PATH, *args, "--config", str(client_config_path)]
+        config_path = kwargs.get("config_path", client_config_path)
+        args = [BINARY_PATH, *args, "--config", str(config_path)]
         script_input = kwargs.get("input")
         if script_input is not None:
             script_input = script_input + "\n"

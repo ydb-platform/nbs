@@ -17,13 +17,17 @@
 #include <cloud/filestore/libs/service_local/config.h>
 #include <cloud/filestore/libs/service_local/service.h>
 #include <cloud/filestore/libs/service_null/service.h>
+#include <cloud/filestore/libs/storage/api/components.h>
+#include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
@@ -65,6 +69,12 @@ TBootstrapServer::~TBootstrapServer()
 
 void TBootstrapServer::StartComponents()
 {
+    if (FastShardServer
+            || Configs->StorageConfig->GetFastShardRuntimeEnabled())
+    {
+        NStorage::NFastShard::Init();
+    }
+    FILESTORE_LOG_START_COMPONENT(FastShardServer);
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
     FILESTORE_LOG_START_COMPONENT(Service);
     FILESTORE_LOG_START_COMPONENT(Server);
@@ -78,6 +88,12 @@ void TBootstrapServer::StopComponents()
     FILESTORE_LOG_STOP_COMPONENT(Server);
     FILESTORE_LOG_STOP_COMPONENT(Service);
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
+    FILESTORE_LOG_STOP_COMPONENT(FastShardServer);
+    if (FastShardServer
+            || Configs->StorageConfig->GetFastShardRuntimeEnabled())
+    {
+        NStorage::NFastShard::Destroy();
+    }
 }
 
 TConfigInitializerCommonPtr TBootstrapServer::InitConfigs(int argc, char** argv)
@@ -87,6 +103,17 @@ TConfigInitializerCommonPtr TBootstrapServer::InitConfigs(int argc, char** argv)
 
     Configs = std::make_shared<TConfigInitializerServer>(std::move(options));
     return Configs;
+}
+
+void TBootstrapServer::InitActorSystemPrerequisites()
+{
+    InitConfigs();
+
+    const ui32 port = Configs->StorageConfig->GetFastShardServerPort();
+    if (port) {
+        FastShardServer =
+            NStorage::NFastShard::CreateServer(port);
+    }
 }
 
 void TBootstrapServer::InitComponents()
@@ -106,14 +133,49 @@ void TBootstrapServer::InitComponents()
             break;
     }
 
+    auto serverCounters =
+        FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
+
+    TVector<TCertificateFiles> certPathList;
+    for (const auto& cert: Configs->ServerConfig->GetCerts()) {
+        certPathList.push_back({
+            cert.CertPrivateKeyFile,
+            cert.CertFile
+        });
+    }
+
+    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
+        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
+    }
+
+    if (!Configs->ServerConfig->GetSecurePort()) {
+        CertificateProvider = CreateCertificateProviderStub();
+    } else {
+        Y_ENSURE(
+            certPathList,
+            "Secure port is configured without certificates");
+
+        CertificateProvider = CreateCertificateProvider(
+            Logging,
+            GetComponentName(
+                NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+            Scheduler,
+            LongRunningTaskExecutor,
+            serverCounters,
+            Configs->ServerConfig->GetRootCertsFile(),
+            std::move(certPathList),
+            Configs->ServerConfig->GetRefreshCertsPeriod());
+    }
+
     Server = NServer::CreateServer(
         Configs->ServerConfig,
         Logging,
         StatsRegistry->GetRequestStats(),
-        FilestoreCounters->GetSubgroup("component", ServerMetricsComponent),
+        serverCounters,
         ProfileLog,
         Scheduler,
-        Service);
+        Service,
+        CertificateProvider);
     RegisterServer(Server);
 
     InitLWTrace();
@@ -149,7 +211,10 @@ void TBootstrapServer::InitLWTrace()
 void TBootstrapServer::InitKikimrService()
 {
     Y_ABORT_UNLESS(ActorSystem, "Actor system MUST be initialized to create kikimr filestore");
-    Service = CreateKikimrFileStore(ActorSystem, false /* usePermanentActor */);
+    Service = CreateKikimrFileStore(
+        ActorSystem,
+        nullptr /* sideChannel */,
+        0 /* permanentActorCount */);
 
     Service = CreateAuthService(
         std::move(Service),

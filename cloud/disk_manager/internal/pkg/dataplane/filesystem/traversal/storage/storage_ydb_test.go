@@ -45,12 +45,13 @@ func newStorage(
 	ctx context.Context,
 	db *persistence.YDBClient,
 	storageFolder string,
+	deletionLimit uint64,
 ) Storage {
 
 	err := schema.Create(ctx, storageFolder, db, false)
 	require.NoError(t, err)
 
-	storage := NewStorage(db, storageFolder)
+	storage := NewStorage(db, storageFolder, deletionLimit)
 	require.NotNil(t, storage)
 
 	return storage
@@ -94,7 +95,7 @@ func createFixture(t *testing.T) *fixture {
 		"filesystem_snapshot_storage_ydb_test/%v",
 		t.Name(),
 	)
-	storage := newStorage(t, ctx, db, storageFolder)
+	storage := newStorage(t, ctx, db, storageFolder, 1000)
 
 	return &fixture{
 		t:             t,
@@ -128,10 +129,10 @@ func TestNodesScheduling(t *testing.T) {
 			1,
 			"cookie1",
 			[]nfs.Node{
-				{NodeID: 2, ParentID: 1},
-				{NodeID: 3, ParentID: 1},
-				{NodeID: 5, ParentID: 1},
-				{NodeID: 6, ParentID: 1},
+				{NodeID: 2, ParentNodeID: 1},
+				{NodeID: 3, ParentNodeID: 1},
+				{NodeID: 5, ParentNodeID: 1},
+				{NodeID: 6, ParentNodeID: 1},
 			},
 		),
 	)
@@ -143,7 +144,7 @@ func TestNodesScheduling(t *testing.T) {
 			2,
 			"cookie2",
 			[]nfs.Node{
-				{NodeID: 4, ParentID: 2},
+				{NodeID: 4, ParentNodeID: 2},
 			},
 		),
 	)
@@ -163,8 +164,8 @@ func TestNodesScheduling(t *testing.T) {
 			1, // nodeID
 			"cookie99",
 			[]nfs.Node{
-				{NodeID: 99, ParentID: 1},
-				{NodeID: 100, ParentID: 1},
+				{NodeID: 99, ParentNodeID: 1},
+				{NodeID: 100, ParentNodeID: 1},
 			}, // children
 		),
 	)
@@ -212,9 +213,9 @@ func TestNodesScheduling(t *testing.T) {
 	err = f.storage.ScheduleChildNodesForListing(
 		f.ctx,
 		otherSnapshot,
-		99,                                      // nodeID
-		"",                                      // nextCookie
-		[]nfs.Node{{NodeID: 101, ParentID: 99}}, // children
+		99, // nodeID
+		"", // nextCookie
+		[]nfs.Node{{NodeID: 101, ParentNodeID: 99}}, // children
 	)
 	require.NoError(t, err)
 	entries, err = f.storage.SelectNodesToList(
@@ -251,16 +252,16 @@ func TestClearDirectoryListingQueue(t *testing.T) {
 		nfs.RootNodeID,
 		"cookie1",
 		[]nfs.Node{
-			{NodeID: 2, ParentID: nfs.RootNodeID},
-			{NodeID: 3, ParentID: nfs.RootNodeID},
-			{NodeID: 4, ParentID: nfs.RootNodeID},
-			{NodeID: 5, ParentID: nfs.RootNodeID},
-			{NodeID: 1001, ParentID: nfs.RootNodeID},
-			{NodeID: 1002, ParentID: nfs.RootNodeID},
-			{NodeID: 1003, ParentID: nfs.RootNodeID},
-			{NodeID: 1004, ParentID: nfs.RootNodeID},
-			{NodeID: 1005, ParentID: nfs.RootNodeID},
-			{NodeID: 1006, ParentID: nfs.RootNodeID},
+			{NodeID: 2, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 3, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 4, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 5, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1001, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1002, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1003, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1004, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1005, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1006, ParentNodeID: nfs.RootNodeID},
 		},
 	))
 
@@ -270,11 +271,11 @@ func TestClearDirectoryListingQueue(t *testing.T) {
 		nfs.RootNodeID,
 		"cookie2",
 		[]nfs.Node{
-			{NodeID: 2, ParentID: nfs.RootNodeID},
-			{NodeID: 3, ParentID: nfs.RootNodeID},
-			{NodeID: 4, ParentID: nfs.RootNodeID},
-			{NodeID: 1002, ParentID: nfs.RootNodeID},
-			{NodeID: 1005, ParentID: nfs.RootNodeID},
+			{NodeID: 2, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 3, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 4, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1002, ParentNodeID: nfs.RootNodeID},
+			{NodeID: 1005, ParentNodeID: nfs.RootNodeID},
 		},
 	))
 
@@ -393,7 +394,7 @@ func TestClearDirectoryListingQueue(t *testing.T) {
 	require.ElementsMatch(t, getNodeIDs(entries2), savedSnapshot2IDs)
 
 	// 8. Delete from snapshot2 using public method, require no elements remain.
-	err = f.storage.ClearDirectoryListingQueue(f.ctx, snapshot2, 2)
+	err = f.storage.ClearDirectoryListingQueue(f.ctx, snapshot2)
 	require.NoError(t, err)
 
 	entries2, err = f.storage.SelectNodesToList(

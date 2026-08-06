@@ -14,6 +14,8 @@ DEPENDS(
 PEERDIR(
     cloud/filestore/tests/python/lib
     cloud/filestore/tools/testing/profile_log
+
+    cloud/storage/core/tests/common
 )
 
 SET(

@@ -1,5 +1,7 @@
 LIBRARY()
 
+GENERATE_ENUM_SERIALIZATION(disk_registry_state.h)
+
 SRCS(
     disk_registry_actor_acquire.cpp
     disk_registry_actor_add_lagging_devices.cpp
@@ -30,6 +32,7 @@ SRCS(
     disk_registry_actor_migration.cpp
     disk_registry_actor_monitoring_replace_device.cpp
     disk_registry_actor_monitoring_volume_realloc.cpp
+    disk_registry_actor_monitoring_cms.cpp
     disk_registry_actor_monitoring.cpp
     disk_registry_actor_notify.cpp
     disk_registry_actor_notify_users.cpp
@@ -59,6 +62,7 @@ SRCS(
     disk_registry_actor_update_params.cpp
     disk_registry_actor_update_placement_group_settings.cpp
     disk_registry_actor_update_stats.cpp
+    disk_registry_actor_volume_broken.cpp
     disk_registry_actor_volume_config.cpp
     disk_registry_actor_waitready.cpp
     disk_registry_actor.cpp
@@ -110,6 +114,7 @@ RECURSE_FOR_TESTS(
     ut_create
     ut_migration
     ut_mirrored_disk_migration
+    ut_monitoring_cms
     ut_notify
     ut_pools
     ut_restore

@@ -93,6 +93,7 @@ private:
         const auto mediaKind = volumeConfig.GetStorageMediaKind();
         volumeParams.MediaKind =
             static_cast<NCloud::NProto::EStorageMediaKind>(mediaKind);
+        volumeParams.IsSystem = volumeConfig.GetIsSystem();
 
         if (volumeConfig.ExplicitChannelProfilesSize()) {
             Y_DEBUG_ABORT_UNLESS(volumeConfig.ExplicitChannelProfilesSize() > 3);
@@ -211,14 +212,18 @@ void TAlterVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending describe request for volume %s",
         DiskId.Quote().c_str());
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            DiskId,
+            /*exactDiskIdMatch=*/true));
 }
 
 void TAlterVolumeActor::AlterVolume(

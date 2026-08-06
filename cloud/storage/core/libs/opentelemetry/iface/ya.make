@@ -7,7 +7,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/config
 
-    contrib/libs/opentelemetry-proto
+    contrib/proto/opentelemetry
 
     library/cpp/threading/future
 )

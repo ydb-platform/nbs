@@ -49,7 +49,15 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddLongOption("read-only", "perform only read stage without write")
         .StoreTrue(&ReadOnly);
 
-    TOptsParseResultException(&opts, argc, argv);
+    opts.AddLongOption("verbose", "output level for diagnostics messages")
+        .OptionalArgument("STR")
+        .StoreResult(&VerboseLevel);
+
+    TOptsParseResultException res(&opts, argc, argv);
+
+    if (res.FindLongOptParseResult("verbose") && !VerboseLevel) {
+        VerboseLevel = "debug";
+    }
 }
 
 }   // namespace NCloud::NBlockStore

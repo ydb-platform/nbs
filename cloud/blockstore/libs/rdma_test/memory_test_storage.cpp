@@ -106,11 +106,11 @@ TFuture<NProto::TWriteBlocksLocalResponse> TMemoryTestStorage::
     const TSgList& sgList = guard.Get();
     auto range = TBlockRange32::WithLength(
         request->GetStartIndex(),
-        SgListGetSize(sgList) / request->BlockSize);
+        SgListGetSize(sgList) / request->GetBlockSize());
 
     auto lockIt = LockRange(range);
 
-    char* ptr = GetPtr(request->GetStartIndex(), request->BlockSize);
+    char* ptr = GetPtr(request->GetStartIndex(), request->GetBlockSize());
     for (auto dataRef: sgList) {
         std::memcpy(ptr, dataRef.Data(), dataRef.Size());
         ptr += dataRef.Size();
@@ -142,19 +142,19 @@ TFuture<NProto::TReadBlocksLocalResponse> TMemoryTestStorage::DoReadBlocksLocal(
     ui32 totalBlocksToRead = request->GetBlocksCount();
     ui32 totalBlocksRead = 0;
     for (auto dataRef: sgList) {
-        UNIT_ASSERT(dataRef.Size() % request->BlockSize == 0);
+        UNIT_ASSERT(dataRef.Size() % request->GetBlockSize() == 0);
 
         ui32 blocksToRead = std::min(
             totalBlocksToRead,
-            static_cast<ui32>(dataRef.Size() / request->BlockSize));
+            static_cast<ui32>(dataRef.Size() / request->GetBlockSize()));
 
         char* ptr = GetPtr(
             request->GetStartIndex() + totalBlocksRead,
-            request->BlockSize);
+            request->GetBlockSize());
         std::memcpy(
             const_cast<char*>(dataRef.Data()),
             ptr,
-            blocksToRead * request->BlockSize);
+            blocksToRead * request->GetBlockSize());
         totalBlocksToRead -= blocksToRead;
         totalBlocksRead += blocksToRead;
     }

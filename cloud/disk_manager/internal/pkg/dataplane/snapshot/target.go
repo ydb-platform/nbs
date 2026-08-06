@@ -16,6 +16,7 @@ type snapshotTarget struct {
 	storage          storage.Storage
 	ignoreZeroChunks bool
 	useS3            bool
+	storageClass     string
 }
 
 func (t *snapshotTarget) Write(
@@ -26,6 +27,8 @@ func (t *snapshotTarget) Write(
 	if t.ignoreZeroChunks && chunk.Zero {
 		return nil
 	}
+
+	chunk.StorageClass = t.storageClass
 
 	_, err := t.storage.WriteChunk(
 		ctx,
@@ -53,6 +56,7 @@ func NewSnapshotTarget(
 	storage storage.Storage,
 	ignoreZeroChunks bool,
 	useS3 bool,
+	storageClass string,
 ) common.Target {
 
 	return &snapshotTarget{
@@ -61,5 +65,6 @@ func NewSnapshotTarget(
 		storage:          storage,
 		ignoreZeroChunks: ignoreZeroChunks,
 		useS3:            useS3,
+		storageClass:     storageClass,
 	}
 }

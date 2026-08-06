@@ -244,4 +244,16 @@ TString TTransactionTimeTracker::GetInflightInfo(ui64 nowCycles) const
     return "Inflight: " + builder;
 }
 
+ui32 TTransactionTimeTracker::GetInFlightOperationsCountByTransactionName(
+    const TString& transactionName) const
+{
+    ui32 count = 0;
+    for (const auto& [id, tx]: Inflight) {
+        if (tx.TransactionName == transactionName) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

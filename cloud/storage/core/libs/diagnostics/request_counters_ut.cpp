@@ -316,8 +316,10 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             ReadRequestType,
             {
                 {.RequestBytes = 1_MB,
-                 .RequestTime = TDuration::MilliSeconds(101),
-                 .PostponedTime = TDuration::MilliSeconds(50)},
+                 .RequestTime = TDuration::MilliSeconds(401),
+                 .PostponedTime = TDuration::MilliSeconds(50),
+                 .BackoffTime = TDuration::MilliSeconds(200),
+                 .ShapingTime = TDuration::MilliSeconds(100)},
             });
 
         requestCounters.UpdateStats(true);
@@ -351,8 +353,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
-            UNIT_ASSERT_VALUES_EQUAL(200000, p100->Val());
-            UNIT_ASSERT_VALUES_EQUAL(150000, p50->Val());
+            UNIT_ASSERT_VALUES_EQUAL(500000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(350000, p50->Val());
         }
 
         {
@@ -546,6 +548,78 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         {
             auto percentiles =
                 readBlocks->GetSubgroup("percentiles", "BackoffTime")
+                    ->GetSubgroup("units", "usec");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(0, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(0, p50->Val());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFillShapingTimeHistogramAndPercentiles)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto requestCounters = MakeRequestCounters();
+        requestCounters.Register(*monitoring->GetCounters());
+
+        auto writeBlocks =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        auto readBlocks =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+
+        AddRequestStats(
+            requestCounters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(200),
+                 .PostponedTime = TDuration::MilliSeconds(50),
+                 .BackoffTime = TDuration::MilliSeconds(30),
+                 .ShapingTime = TDuration::MilliSeconds(100)},
+            });
+
+        requestCounters.UpdateStats(true);
+
+        // Check the percentiles for ShapingTime
+        {
+            auto percentiles =
+                writeBlocks->GetSubgroup("percentiles", "ShapingTime")
+                    ->GetSubgroup("units", "usec");
+            auto p100 = percentiles->GetCounter("100");
+            auto p50 = percentiles->GetCounter("50");
+
+            UNIT_ASSERT_VALUES_EQUAL(100000, p100->Val());
+            UNIT_ASSERT_VALUES_EQUAL(75000, p50->Val());
+        }
+
+        // Check the histogram for ShapingTime
+        {
+            auto histGroup =
+                writeBlocks->GetSubgroup("histogram", "ShapingTime")
+                    ->GetSubgroup("units", "usec");
+
+            TMap<TString, uint64_t> expectedValues;
+            for (const auto& name: TRequestUsTimeBuckets::MakeNames()) {
+                expectedValues[name] = 0;
+            }
+            expectedValues["100000"] = 1;
+
+            for (const auto& [name, value]: expectedValues) {
+                auto counter = histGroup->FindCounter(name);
+                UNIT_ASSERT_C(
+                    counter,
+                    "Counter " + name.Quote() + " not found");
+                UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+            }
+        }
+
+        // Percentiles for ShapingTime for read blocks should be empty
+        {
+            auto percentiles =
+                readBlocks->GetSubgroup("percentiles", "ShapingTime")
                     ->GetSubgroup("units", "usec");
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
@@ -1201,6 +1275,87 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         UNIT_ASSERT_EQUAL_C(8_GB, requestBytes->Val(), requestBytes->Val());
     }
 
+    Y_UNIT_TEST(ShouldNotRegisterOrAccountThrottlingMetrics)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto requestCounters = MakeRequestCounters(
+            {.Options =
+                 TRequestCounters::EOption::ThrottlingHistogramsDisabled});
+        requestCounters.Register(*monitoring->GetCounters());
+
+        auto writeBlocks =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        AddRequestStats(
+            requestCounters,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(200),
+                 .PostponedTime = TDuration::MilliSeconds(50),
+                 .BackoffTime = TDuration::MilliSeconds(30),
+                 .ShapingTime = TDuration::MilliSeconds(40)},
+            });
+
+        requestCounters.UpdateStats(true);
+
+        // Time percentile must still be reported
+        {
+            auto p100 = writeBlocks->GetSubgroup("percentiles", "Time")
+                            ->GetSubgroup("units", "usec")
+                            ->GetCounter("100");
+            UNIT_ASSERT_VALUES_UNEQUAL(0, p100->Val());
+        }
+
+        for (const TString histogram:
+             {"ExecutionTime", "ThrottlerDelay", "BackoffTime", "ShapingTime"})
+        {
+            auto percentilesGroup =
+                writeBlocks->FindSubgroup("percentiles", histogram);
+            UNIT_ASSERT_C(
+                !percentilesGroup,
+                "Percentiles for " << histogram << " should not be registered");
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotRegisterDisaggregatedCounters)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto fsCounters = monitoring->GetCounters()->GetSubgroup("type", "fs");
+        auto totalCounters = monitoring->GetCounters()->GetSubgroup("type", "total");
+
+        auto aggregated = MakeRequestCountersPtr({});
+        aggregated->Register(*totalCounters);
+
+        auto perFs = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::DisaggregatedCountersDisabled});
+        perFs.Register(*fsCounters);
+        perFs.Subscribe(aggregated);
+
+        AddRequestStats(
+            perFs,
+            WriteRequestType,
+            {
+                {.RequestBytes = 1_MB,
+                 .RequestTime = TDuration::MilliSeconds(100)},
+            });
+
+        perFs.UpdateStats(true);
+        aggregated->UpdateStats(true);
+
+        // Per-fs monitoring group must have no request subgroups at all
+        UNIT_ASSERT_C(
+            !fsCounters->FindSubgroup("request", "WriteBlocks"),
+            "Per-fs request subgroup should not be registered");
+
+        // Aggregated must still receive the stats via subscription
+        auto count = totalCounters
+            ->GetSubgroup("request", "WriteBlocks")
+            ->GetCounter("Count", true);
+        UNIT_ASSERT_VALUES_EQUAL(1, count->Val());
+    }
+
     Y_UNIT_TEST(ShouldFillTimePercentilesForDifferentSizeClassesSeparately)
     {
         auto monitoring = CreateMonitoringServiceStub();
@@ -1220,17 +1375,35 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
                 WriteRequestType,
                 {
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(8)},
+                     .RequestTime = TDuration::Seconds(11),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(20)},
+                     .RequestTime = TDuration::Seconds(23),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(30)},
+                     .RequestTime = TDuration::Seconds(33),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(37)},
+                     .RequestTime = TDuration::Seconds(40),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(50)},
+                     .RequestTime = TDuration::Seconds(50),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                     {.RequestBytes = size,
-                     .RequestTime = TDuration::Seconds(100)},
+                     .RequestTime = TDuration::Seconds(100),
+                     .PostponedTime = TDuration::Seconds(1),
+                     .BackoffTime = TDuration::Seconds(1),
+                     .ShapingTime = TDuration::Seconds(1)},
                 });
         };
 

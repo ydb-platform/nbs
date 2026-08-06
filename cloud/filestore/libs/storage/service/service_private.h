@@ -38,6 +38,7 @@ struct TEvServicePrivate
         ui64 SessionSeqNo = 0;
         TString SessionState;
         ui64 TabletId = 0;
+        ui64 OwnerGeneration = 0;
         NProto::TFileStore FileStore;
         TRequestInfoPtr RequestInfo;
         bool Shutdown = false;

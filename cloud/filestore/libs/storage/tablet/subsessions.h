@@ -18,7 +18,17 @@ struct TSubSession
     ui64 SeqNo;
     bool ReadOnly;
     NActors::TActorId Owner;
+    ui64 OwnerGeneration = 0;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui64 MakeSubSessionOwnerGeneration(
+    ui32 tabletGeneration,
+    ui32 ownerGeneration);
+
+ui32 ExtractTabletGeneration(ui64 ownerGeneration);
+ui32 ExtractSubSessionOwnerGeneration(ui64 ownerGeneration);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,12 +47,14 @@ public:
     NActors::TActorId AddSubSession(
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        ui32 tabletGeneration);
 
     NActors::TActorId UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
+        const NActors::TActorId& owner,
+        ui32 tabletGeneration);
 
     ui32 DeleteSubSession(const NActors::TActorId& owner);
     ui32 DeleteSubSession(ui64 sessionSeqNo);

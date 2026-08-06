@@ -19,6 +19,8 @@ private:
     ui32 ShardCount = 0;
     bool EnableStrictFileSystemSizeEnforcement = false;
     bool EnableDirectoryCreationInShards = false;
+    bool ForceDirectoryCreationInShards = false;
+    ui32 ConfigVersion = 0;
 
 public:
     TResizeCommand()
@@ -45,6 +47,13 @@ public:
         Opts.AddLongOption("enable-directory-creation-in-shards")
             .StoreTrue(&EnableDirectoryCreationInShards)
             .Help("enable directory creation in shards");
+
+        Opts.AddLongOption("force-directory-creation-in-shards")
+            .StoreTrue(&ForceDirectoryCreationInShards)
+            .Help("force directory creation in shards");
+
+        Opts.AddLongOption("config-version")
+            .StoreResult(&ConfigVersion);
     }
 
     bool Execute() override
@@ -58,7 +67,11 @@ public:
         request->SetShardCount(ShardCount);
         request->SetEnableStrictFileSystemSizeEnforcement(
             EnableStrictFileSystemSizeEnforcement);
-        request->SetEnableDirectoryCreationInShards(EnableDirectoryCreationInShards);
+        request->SetEnableDirectoryCreationInShards(
+            EnableDirectoryCreationInShards);
+        request->SetForceDirectoryCreationInShards(
+            ForceDirectoryCreationInShards);
+        request->SetConfigVersion(ConfigVersion);
 
         PerformanceProfileParams.FillRequest(*request);
 

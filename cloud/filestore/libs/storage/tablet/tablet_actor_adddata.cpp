@@ -133,9 +133,9 @@ bool TIndexTabletActor::ValidateAddDataRequest(
     }
     ui64 commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
-    if (!ReadNode(db, args.NodeId, commitId, args.Node)) {
+    if (!ReadNode(*db, args.NodeId, commitId, args.Node)) {
         return false;
     }
 
@@ -274,7 +274,8 @@ void TIndexTabletActor::CompleteTx_AddData(
     BuildBackendInfo(
         *Config,
         *SystemCounters,
-        Metrics.CPUUsageRate,
+        GetFileSystemId(),
+        Metrics->CPUUsageRate,
         &backendInfo);
 
     auto actor = std::make_unique<TAddDataActor>(
@@ -301,7 +302,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     const TEvIndexTablet::TEvGenerateBlobIdsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto startedTs = ctx.Now();
+    const auto startedTs = ctx.Now();
 
     auto* msg = ev->Get();
 
@@ -311,7 +312,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         "%s %s: %s",
         LogTag.c_str(),
         "GenerateBlobIds",
-        DumpMessage(msg->Record).c_str());
+        ProtoMessagePrinter.ToString(msg->Record).c_str());
 
     const ui32 blockSize = GetBlockSize();
     const TByteRange range(
@@ -336,8 +337,9 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return ScheduleRebootTabletOnCommitIdOverflow(ctx, "GenerateBlobIds");
     }
 
-    // TODO (#5468) consider take into account isOverloaded
-    const bool canUseUnconfirmed = CanUseUnconfirmedData();
+    const bool canUseUnconfirmed =
+        msg->Record.GetUnconfirmedFlowRequested() && CanUseUnconfirmedData() &&
+        !IsTabletConsideredOverloaded();
 
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)
     {
@@ -379,15 +381,6 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return;
     }
 
-    if (!canUseUnconfirmed) {
-        // We schedule this event for the case if the client does not call
-        // AddData. Thus we ensure that the collect barrier will be released
-        // eventually.
-        ctx.Schedule(
-            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
-            new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
-    }
-
     AcquireCollectBarrier(commitId);
 
     auto response =
@@ -401,6 +394,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             GenerateBlobId(commitId, length, blobIndex, &partialBlobId);
         if (!ok) {
             ReassignDataChannelsIfNeeded(ctx);
+
+            TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
 
             auto response =
                 std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>(
@@ -420,6 +415,21 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         offset += length;
     }
 
+    if (canUseUnconfirmed) {
+        // If the client never confirms or cancels the operation, delete
+        // unconfirmed data and release the collect barrier eventually.
+        ctx.Schedule(
+            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
+            new TEvIndexTabletPrivate::TEvCancelUnconfirmedData(commitId));
+    } else {
+        // We schedule this event for the case if the client does not call
+        // AddData. Thus we ensure that the collect barrier will be released
+        // eventually.
+        ctx.Schedule(
+            Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
+            new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
+    }
+
     response->Record.SetCommitId(commitId);
 
     response->Record.SetUnconfirmedFlowEnabled(canUseUnconfirmed);
@@ -436,17 +446,16 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             response->Record);
     }
 
-    Metrics.GenerateBlobIds.Count.fetch_add(1, std::memory_order_relaxed);
     ui64 generateBlobIdsBytes = msg->Record.GetLength();
     if (canUseUnconfirmed) {
         for (const auto& part: msg->Record.GetUnalignedDataRanges()) {
             generateBlobIdsBytes += part.GetContent().size();
         }
     }
-    Metrics.GenerateBlobIds.RequestBytes.fetch_add(
+    Metrics->GenerateBlobIds.Update(
+        1,
         generateBlobIdsBytes,
-        std::memory_order_relaxed);
-    Metrics.GenerateBlobIds.Time.Record(ctx.Now() - startedTs);
+        ctx.Now() - startedTs);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 
@@ -460,7 +469,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             commitId,
             TTrackedUnconfirmedData{
                 .Data = std::move(unconfirmedData),
-                .SessionId = GetSessionId(msg->Record)});
+                .SessionId = GetSessionId(msg->Record),
+                .PipeServerId = ev->Recipient});
         TABLET_VERIFY(inserted);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
@@ -468,6 +478,14 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             profileLogRequest,
             EFileStoreSystemRequest::AddDataUnconfirmed,
             ctx.Now());
+
+        AddRange(
+            msg->Record.GetNodeId(),
+            msg->Record.GetHandle(),
+            byteRange.Offset,
+            byteRange.Length,
+            profileLogRequest);
+        profileLogRequest.SetCommitId(commitId);
 
         auto requestInfo = CreateRequestInfo(
             SelfId(),
@@ -669,9 +687,9 @@ void TIndexTabletActor::HandleAddDataCompleted(
             LogTag.c_str(),
             FormatError(msg->Error).Quote().c_str());
     } else {
-        Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
+        Metrics->AddData.Update(msg->Count, msg->Size, msg->Time);
         if (msg->IsOverloaded) {
-            Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+            Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
         }
     }
 

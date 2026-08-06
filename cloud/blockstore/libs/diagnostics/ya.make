@@ -52,6 +52,7 @@ PEERDIR(
     library/cpp/monlib/service
     library/cpp/monlib/service/pages
     library/cpp/monlib/service/pages/tablesorter
+    library/cpp/string_utils/quote
     library/cpp/threading/hot_swap
 )
 

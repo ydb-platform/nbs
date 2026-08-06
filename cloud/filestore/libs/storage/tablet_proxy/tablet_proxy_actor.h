@@ -63,10 +63,15 @@ class TIndexTabletProxyActor final
     {
         const ui64 ConnectionId;
         NActors::IEventHandlePtr Request;
+        TCallContextPtr CallContext;
 
-        TActiveRequest(ui64 connectionId, NActors::IEventHandlePtr request)
+        TActiveRequest(
+                ui64 connectionId,
+                NActors::IEventHandlePtr request,
+                TCallContextPtr callContext)
             : ConnectionId(connectionId)
             , Request(std::move(request))
+            , CallContext(std::move(callContext))
         {}
     };
 
@@ -74,6 +79,7 @@ class TIndexTabletProxyActor final
 
 private:
     const TStorageConfigPtr Config;
+    const ITraceSerializerPtr TraceSerializer;
 
     ui64 ConnectionId = 0;
     THashMap<TString, TConnection> Connections;
@@ -86,7 +92,9 @@ private:
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
 
 public:
-    TIndexTabletProxyActor(TStorageConfigPtr config);
+    TIndexTabletProxyActor(
+        TStorageConfigPtr config,
+        ITraceSerializerPtr traceSerializer);
 
 private:
     TConnection& CreateConnection(const TString& fileSystemId);
@@ -150,6 +158,7 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev);
 
+    template <typename TMethod>
     void HandleResponse(
         const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev);

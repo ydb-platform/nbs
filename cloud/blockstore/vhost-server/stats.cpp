@@ -60,6 +60,24 @@ public:
         NeedUpdateCompletionStats = false;
         CompletionStatsEvent.Signal();
     }
+
+    void Sync(const TAtomicStats& stats) override
+    {
+        if (!NeedUpdateCompletionStats) {
+            return;
+        }
+
+        CompletionStats.Completed = stats.Completed;
+        CompletionStats.CompFailed = stats.CompFailed;
+        CompletionStats.EncryptorErrors = stats.EncryptorErrors;
+
+        std::ranges::copy(stats.Requests, CompletionStats.Requests.begin());
+        std::ranges::copy(stats.Times, CompletionStats.Times.begin());
+        std::ranges::copy(stats.Sizes, CompletionStats.Sizes.begin());
+
+        NeedUpdateCompletionStats = false;
+        CompletionStatsEvent.Signal();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

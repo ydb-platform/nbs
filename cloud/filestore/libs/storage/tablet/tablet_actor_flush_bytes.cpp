@@ -21,6 +21,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * Single-block visitor used for an individual byte range during FlushBytes.
+ * Each byte range is supposed to lie entirely within one block.
+ */
 class TReadBlockVisitor final
     : public IFreshBlockVisitor
     , public IMixedBlockVisitor
@@ -96,6 +100,15 @@ public:
         TABLET_VERIFY(!ApplyingByteLayer);
 
         if (BlockMinCommitId < deletion.CommitId) {
+            //
+            // There's no need to save deletion commit-id because after the
+            // large-blocks layer only fresh-bytes are applied and all deletion
+            // markers are supposed to be also applied directly to the
+            // fresh-bytes layer when a deletion is made so a situation when
+            // older fresh bytes are applied after a newer large-blocks deletion
+            // is applied shouldn't happen.
+            //
+
             Block.Block = {};
         }
     }
@@ -123,6 +136,18 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * This actor performs a compaction-like operation:
+ * 1. takes blob index info and the overlapping fresh bytes as input
+ * 2. reads source blobs
+ * 3. writes fresh bytes on top of them
+ * 4. writes new blobs with fresh bytes applied
+ * 5. calls AddBlob op to:
+ *  5.1 add those new blobs to the index
+ *  5.2 update source blob blocklists
+ *  5.3 erase source blocks
+ * 6. reports completion after which the processed fresh bytes will be trimmed
+ */
 class TFlushBytesActor final
     : public TActorBootstrapped<TFlushBytesActor>
 {
@@ -635,7 +660,7 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
     TTransactionContext& tx,
     TTxIndexTablet::TFlushBytes& args)
 {
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
@@ -643,7 +668,7 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
     for (const auto& bytes: args.Bytes) {
         ui32 rangeId = GetMixedRangeIndex(bytes.NodeId, bytes.Offset / GetBlockSize());
         if (!args.MixedBlocksRanges.count(rangeId)) {
-            if (LoadMixedBlocks(db, rangeId)) {
+            if (LoadMixedBlocks(*db, rangeId)) {
                 args.MixedBlocksRanges.insert(rangeId);
             } else {
                 ready = false;
@@ -698,8 +723,6 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
             NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         }
     };
-
-
 
     THashMap<TBlockLocation, TBlockWithBytes, TBlockLocationHash> blockMap;
 
@@ -895,16 +918,30 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
 {
     const auto* msg = ev->Get();
 
+    ReleaseMixedBlocks(msg->MixedBlocksRanges);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
+    WorkerActors.erase(ev->Sender);
+
+    const auto error = msg->GetError();
+
+    if (HasError(error)) {
+        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+            "%s FlushBytes failed (%s)",
+            LogTag.c_str(),
+            FormatError(error).c_str());
+
+        CompleteBlobIndexOp();
+        FlushState.Complete();
+        EnqueueBlobIndexOpIfNeeded(ctx);
+        return;
+    }
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s FlushBytes completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
-    ReleaseMixedBlocks(msg->MixedBlocksRanges);
-    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
-    WorkerActors.erase(ev->Sender);
-
-    Metrics.FlushBytes.Update(1, msg->Size, msg->Time);
+    Metrics->FlushBytes.Update(1, msg->Size, msg->Time);
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -917,7 +954,6 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         msg->CallContext,
         "TrimBytes");
 
-    // FIXME: validate for errors
     ExecuteTx<TTrimBytes>(ctx, std::move(requestInfo), msg->ChunkId);
 }
 
@@ -942,10 +978,10 @@ void TIndexTabletActor::ExecuteTx_TrimBytes(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
 
     auto result = FinishFlushBytes(
-        db,
+        *db,
         Config->GetTrimBytesItemCount(),
         args.ChunkId,
         args.ProfileLogRequest);
@@ -971,7 +1007,7 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
         args.RequestInfo->CallContext,
         "TrimBytes");
 
-    Metrics.TrimBytes.Update(
+    Metrics->TrimBytes.Update(
         1,
         args.TrimmedBytes,
         ctx.Now() - args.RequestInfo->StartedTs);

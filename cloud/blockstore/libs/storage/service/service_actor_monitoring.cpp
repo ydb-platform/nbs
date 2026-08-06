@@ -3,12 +3,12 @@
 #include <cloud/blockstore/libs/diagnostics/diag_down_graph.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs//diagnostics/hostname.h>
-#include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 

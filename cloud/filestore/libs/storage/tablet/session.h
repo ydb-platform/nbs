@@ -147,6 +147,16 @@ public:
         }
         return false;
     }
+
+    [[nodiscard]] size_t StatsSize() const
+    {
+        return Stats.size();
+    }
+
+    [[nodiscard]] size_t TotalSize() const
+    {
+        return Stats.size() + OffloadedStats.Size();
+    }
 };
 
 using TNodeRefsByHandle = THashMap<ui64, ui64>;
@@ -248,9 +258,14 @@ public:
     NActors::TActorId UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
-        const NActors::TActorId& owner)
+        const NActors::TActorId& owner,
+        ui32 tabletGeneration)
     {
-        auto result = SubSessions.UpdateSubSession(seqNo, readOnly, owner);
+        auto result = SubSessions.UpdateSubSession(
+            seqNo,
+            readOnly,
+            owner,
+            tabletGeneration);
         UpdateSeqNo();
         return result;
     }
@@ -439,6 +454,11 @@ struct TSessionsStats
     ui32 StatelessSessionsCount = 0;
     ui32 ActiveSessionsCount = 0;
     ui32 OrphanSessionsCount = 0;
+
+    ui64 HandleStatsByNodeMaxSize = 0;
+    ui64 HandleStatsByNodeSumSize = 0;
+    ui64 HandleStatsByNodeMaxTotalSize = 0;
+    ui64 HandleStatsByNodeSumTotalSize = 0;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

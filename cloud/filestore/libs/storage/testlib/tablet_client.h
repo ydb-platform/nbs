@@ -109,16 +109,20 @@ private:
 
     ui64 AutoRequestId = 0;
 
+    TStorageConfig StorageConfig;
+
 public:
     TIndexTabletClient(
             NKikimr::TTestActorRuntime& runtime,
             ui32 nodeIdx,
             ui64 tabletId,
             const TFileSystemConfig& config = {},
-            bool updateConfig = true)
+            bool updateConfig = true,
+            const TStorageConfig& storageConfig = {})
         : Runtime(runtime)
         , NodeIdx(nodeIdx)
         , TabletId(tabletId)
+        , StorageConfig(storageConfig)
     {
         Sender = Runtime.AllocateEdgeActor(NodeIdx);
 
@@ -295,6 +299,29 @@ public:
         return request;
     }
 
+    auto CreateSetQuotaRequest(ui32 quotaId, ui64 maxBytes, ui64 maxNodes = 0)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvSetQuotaRequest>();
+        request->Record.SetQuotaId(quotaId);
+        request->Record.SetMaxBytes(maxBytes);
+        request->Record.SetMaxNodes(maxNodes);
+        return request;
+    }
+
+    auto CreateDeleteQuotaRequest(ui32 quotaId)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvDeleteQuotaRequest>();
+        request->Record.SetQuotaId(quotaId);
+        return request;
+    }
+
+    auto CreateListQuotasRequest()
+    {
+        return std::make_unique<TEvIndexTablet::TEvListQuotasRequest>();
+    }
+
     auto CreateDestroySessionRequest(ui64 seqNo = 0)
     {
         auto request = std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
@@ -333,25 +360,42 @@ public:
         return requestToTablet;
     }
 
-    auto CreateConfigureShardsRequest(bool directoryCreationInShardsEnabled)
+    auto CreateConfigureShardsRequest(
+        bool directoryCreationInShardsEnabled,
+        TVector<TString> shardIds = {})
     {
         auto request =
             std::make_unique<TEvIndexTablet::TEvConfigureShardsRequest>();
         request->Record.SetDirectoryCreationInShardsEnabled(
             directoryCreationInShardsEnabled);
+        for (auto& shardId: shardIds) {
+            request->Record.AddShardFileSystemIds(std::move(shardId));
+        }
 
         return request;
     }
 
     auto CreateConfigureAsShardRequest(
         ui32 shardNo,
-        bool directoryCreationInShardsEnabled = false)
+        const TString& fsId,
+        const TString& mainFsId,
+        bool directoryCreationInShardsEnabled = false,
+        TVector<TString> shardIds = {},
+        NProtoPrivate::TFastShardConfig fastShardConfig = {},
+        bool isFastShard = false)
     {
         auto request =
             std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
         request->Record.SetShardNo(shardNo);
+        request->Record.SetFileSystemId(fsId);
+        request->Record.SetMainFileSystemId(mainFsId);
         request->Record.SetDirectoryCreationInShardsEnabled(
             directoryCreationInShardsEnabled);
+        for (auto& shardId: shardIds) {
+            request->Record.AddShardFileSystemIds(std::move(shardId));
+        }
+        *request->Record.MutableFastShardConfig() = std::move(fastShardConfig);
+        request->Record.SetIsFastShard(isFastShard);
 
         return request;
     }
@@ -446,6 +490,9 @@ public:
         auto* node = request->Record.MutableNode();
         node->SetId(nodeId);
         node->SetSize(sz);
+        node->SetType(NProto::E_REGULAR_NODE);
+        node->SetMTime(Now().MicroSeconds());
+        node->SetLinks(1);
         return request;
     }
 
@@ -457,6 +504,9 @@ public:
         auto* node = request->Record.MutableNode();
         node->SetId(nodeId);
         node->SetSize(newSize);
+        node->SetType(NProto::E_REGULAR_NODE);
+        node->SetMTime(Now().MicroSeconds());
+        node->SetLinks(1);
         return request;
     }
 
@@ -660,6 +710,18 @@ public:
         return std::make_unique<TRequestEvent>(entryId);
     }
 
+    auto CreateListOpLogEntriesRequest()
+    {
+        using TRequestEvent = TEvIndexTabletPrivate::TEvListOpLogEntriesRequest;
+        return std::make_unique<TRequestEvent>();
+    }
+
+    auto CreateWriteOpLogEntryRequest(NProto::TOpLogEntry entry)
+    {
+        using TRequestEvent = TEvIndexTabletPrivate::TEvWriteOpLogEntryRequest;
+        return std::make_unique<TRequestEvent>(std::move(entry));
+    }
+
     //
     // TEvService
     //
@@ -850,7 +912,12 @@ public:
         auto request = CreateSessionRequest<TEvService::TEvWriteDataRequest>();
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
-        request->Record.SetBuffer(CreateBuffer(len, fill));
+        TString buffer = CreateBuffer(len, fill);
+        if (StorageConfig.GetExternalWriteDataPayloadEnabled()) {
+            request->AddPayload(TRope(std::move(buffer)));
+        } else {
+            request->Record.SetBuffer(std::move(buffer));
+        }
         if (node != InvalidNodeId) {
             request->Record.SetNodeId(node);
         }
@@ -867,7 +934,12 @@ public:
         auto request = CreateSessionRequest<TEvService::TEvWriteDataRequest>();
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
-        request->Record.MutableBuffer()->assign(data, len);
+        TString buffer(data, len);
+        if (StorageConfig.GetExternalWriteDataPayloadEnabled()) {
+            request->AddPayload(TRope(std::move(buffer)));
+        } else {
+            request->Record.SetBuffer(std::move(buffer));
+        }
         if (node != InvalidNodeId) {
             request->Record.SetNodeId(node);
         }
@@ -904,7 +976,8 @@ public:
         ui64 nodeId,
         ui64 handle,
         ui64 offset,
-        ui64 length)
+        ui64 length,
+        bool unconfirmedFlowRequested = true)
     {
         auto request =
             CreateSessionRequest<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
@@ -912,6 +985,7 @@ public:
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         request->Record.SetLength(length);
+        request->Record.SetUnconfirmedFlowRequested(unconfirmedFlowRequested);
         return request;
     }
 

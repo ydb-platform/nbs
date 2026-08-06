@@ -222,7 +222,11 @@ private:
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
-        State.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
+        State.WriteMixedBlocks(
+            db,
+            blob.BlobId,
+            blob.Blocks,
+            blob.CompactionRangeCount);
 
         // update counters
         State.IncrementMixedBlobsCount(1);
@@ -366,17 +370,20 @@ private:
             // blob already could be garbage, but we should keep it
             // as there could be active readers (or even checkpoint)
             db.WriteCleanupQueue(blob.BlobId, DeletionCommitId);
-            State.GetCleanupQueue().Add({ blob.BlobId, DeletionCommitId });
+            State.GetCleanupQueue().Add(
+                {blob.BlobId, DeletionCommitId, blobMeta});
         }
 
         // move blocks from FreshBlocks to MixedBlocks
         blobOffset = 0;
         for (const auto& block: blob.Blocks) {
-            State.WriteMixedBlock(db, {
-                blob.BlobId,
-                block.CommitId,
-                block.BlockIndex,
-                blobOffset++});
+            State.WriteMixedBlock(
+                db,
+                {blob.BlobId,
+                 block.CommitId,
+                 block.BlockIndex,
+                 blobOffset++,
+                 blob.CompactionRangeCount});
 
             if (block.IsStoredInDb) {
                 State.DeleteFreshBlockFromDb(
@@ -504,25 +511,38 @@ private:
         for (const auto& kv: CompactionCounters) {
             const auto usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
-                Min(
-                    static_cast<ui64>(
-                        kv.first + State.GetCompactionMap().GetRangeSize()
-                    ),
-                    State.GetUsedBlocks().Capacity()
-                )
-            );
+                Min(static_cast<ui64>(
+                        kv.first + State.GetCompactionMap().GetRangeSize()),
+                    State.GetUsedBlocks().Capacity()));
+
+            ui32 newlyZeroedBlocks = 0;
+
+            if (Args.Mode != ADD_COMPACTION_RESULT) {
+                newlyZeroedBlocks =
+                    State.CalculateNewlyZeroedBlocks(kv.first, usedBlockCount);
+            }
+
+            const ui32 prevNewlyZeroedBlocks =
+                State.GetCompactionMap().Get(kv.first).NewlyZeroedBlocks;
+            const i64 newlyZeroedBlocksDiff =
+                static_cast<i64>(newlyZeroedBlocks) - prevNewlyZeroedBlocks;
+            State.SetNewlyZeroedBlocks(static_cast<ui32>(std::max(
+                static_cast<i64>(State.GetNewlyZeroedBlocks()) +
+                    newlyZeroedBlocksDiff,
+                0L)));
+
             db.WriteCompactionMap(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction
-            );
+                kv.second.Stat.BlockCount +
+                    kv.second.BlocksSkippedByCompaction);
             State.GetCompactionMap().Update(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
-                Args.Mode == ADD_COMPACTION_RESULT
-            );
+                newlyZeroedBlocks,
+                Args.Mode == ADD_COMPACTION_RESULT);
         }
     }
 
@@ -572,12 +592,35 @@ private:
     void ProcessAffectedBlobs(TPartitionDatabase& db)
     {
         for (const auto& kv: Args.AffectedBlobs) {
+            STORAGE_VERIFY_C(
+                kv.second.BlockMask.Defined(),
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "unknown block mask for blob "
+                    << MakeBlobId(TabletId, kv.first));
+
             const auto& blockMask = kv.second.BlockMask.GetRef();
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                db.WriteCleanupQueue(kv.first, DeletionCommitId);
-                State.GetCleanupQueue().Add({ kv.first, DeletionCommitId });
+                NProto::TBlobMeta blobMeta;
+                if (kv.second.BlobMeta) {
+                    blobMeta = kv.second.BlobMeta.GetRef();
+                } else if (kv.second.RecreatedBlobMeta) {
+                    blobMeta = kv.second.RecreatedBlobMeta.GetRef();
+                }
+
+                bool inserted = State.GetCleanupQueue().Add(
+                    {kv.first, DeletionCommitId, std::move(blobMeta)});
+
+                STORAGE_VERIFY_DEBUG_C(
+                    inserted,
+                    TWellKnownEntityTypes::TABLET,
+                    TabletId,
+                    "Cleanup queue: blob already in cleanup queue");
+                if (inserted) {
+                    db.WriteCleanupQueue(kv.first, DeletionCommitId);
+                }
             }
         }
     }

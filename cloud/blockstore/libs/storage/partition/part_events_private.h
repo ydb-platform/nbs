@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
@@ -51,14 +51,17 @@ struct TAddMixedBlob
     const TPartialBlobId BlobId;
     const TVector<ui32> Blocks;
     const TVector<ui32> Checksums;
+    const ui8 CompactionRangeCount = 0;
 
     TAddMixedBlob(
             const TPartialBlobId& blobId,
             TVector<ui32> blocks,
-            TVector<ui32> checksums)
+            TVector<ui32> checksums,
+            ui8 compactionRangeCount)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
+        , CompactionRangeCount(compactionRangeCount)
     {}
 };
 
@@ -90,14 +93,17 @@ struct TAddFreshBlob
     const TPartialBlobId BlobId;
     const TVector<TBlock> Blocks;
     const TVector<ui32> Checksums;
+    const ui8 CompactionRangeCount = 0;
 
     TAddFreshBlob(
             const TPartialBlobId& blobId,
             TVector<TBlock> blocks,
-            TVector<ui32> checksums)
+            TVector<ui32> checksums,
+            ui8 compactionRangeCount)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , Checksums(std::move(checksums))
+        , CompactionRangeCount(compactionRangeCount)
     {}
 };
 
@@ -116,21 +122,6 @@ struct TWriteFreshBlocksRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAffectedBlob
-{
-    TVector<ui16> Offsets;
-    TMaybe<TBlockMask> BlockMask;
-    TVector<ui32> AffectedBlockIndices;
-
-    // Filled only if a flag is set. BlobMeta is needed only to do some extra
-    // consistency checks.
-    TMaybe<NProto::TBlobMeta> BlobMeta;
-};
-
-using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TAffectedBlock
 {
     ui32 BlockIndex = 0;
@@ -138,6 +129,40 @@ struct TAffectedBlock
 };
 
 using TAffectedBlocks = TVector<TAffectedBlock>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TAffectedBlob
+{
+    struct TMergedBlobsSpecificInfo
+    {
+        TBlockRange32 BlockRange;
+        ui32 SkippedBlocksCount = 0;
+    };
+
+    ui8 CompactionRangeCount = 0;
+    ui64 MaxCommitIdInCompactionRange = 0;
+    ui64 MinCommitIdInCompactionRange = Max<ui64>();
+    // Filled only for merged blobs.
+    TMaybe<TMergedBlobsSpecificInfo> MergedBlobsSpecificInfo;
+    std::optional<EChannelDataKind> IndexKind;
+
+    TVector<ui16> Offsets;
+
+    TMaybe<TBlockMask> BlockMask;
+
+    bool BlobAlreadyInCleanupQueue = false;
+
+    TAffectedBlocks AffectedBlocks;
+
+    // Filled only if a flag is set. BlobMeta is needed only to do some extra
+    // consistency checks.
+    TMaybe<NProto::TBlobMeta> BlobMeta;
+
+    TMaybe<NProto::TBlobMeta> RecreatedBlobMeta;
+};
+
+using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -168,6 +193,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(AddBlobs,                  __VA_ARGS__)                                \
     xxx(Flush,                     __VA_ARGS__)                                \
     xxx(Compaction,                __VA_ARGS__)                                \
+    xxx(CompactionReadBlobInfo,    __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
     xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
     xxx(ScanDiskBatch,             __VA_ARGS__)                                \
@@ -292,7 +318,10 @@ struct TEvPartitionPrivate
     enum ECompactionMode
     {
         RangeCompaction,
-        GarbageCompaction
+        GarbageCompaction,
+        // Similar to GarbageCompaction, but does not treat previously used
+        // blocks that are now zeroed as garbage.
+        IgnoringZeroedCompaction
     };
 
     struct TCompactionRequest
@@ -331,6 +360,31 @@ struct TEvPartitionPrivate
 
     struct TCompactionResponse
     {
+    };
+
+    //
+    // CompactionReadBlobInfo
+    //
+
+    struct TCompactionReadBlobInfoRequest
+    {
+        TVector<TPartialBlobId> BlobsToReadBlockMasks;
+        TVector<TPartialBlobId> BlobsToReadBlobMetas;
+
+        TCompactionReadBlobInfoRequest() = default;
+
+        TCompactionReadBlobInfoRequest(
+                TVector<TPartialBlobId> blobsToReadBlockMasks,
+                TVector<TPartialBlobId> blobsToReadBlobMetas)
+            : BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
+            , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
+        {}
+    };
+
+    struct TCompactionReadBlobInfoResponse
+    {
+        TVector<TBlockMask> BlockMasksForBlobs;
+        TVector<NProto::TBlobMeta> BlobMetasForBlobs;
     };
 
     //
@@ -681,7 +735,11 @@ struct TEvPartitionPrivate
     struct TCompactionCompleted
         : TOperationCompleted
     {
-        ECompactionType CompactionType;
+        ECompactionType CompactionType = ECompactionType::Tablet;
+        TDuration ReadBlobsTime;
+        TDuration WriteBlobsTime;
+        TDuration AddBlobsTime;
+        TDuration CompactionTxTime;
     };
 
     //

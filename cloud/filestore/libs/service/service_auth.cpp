@@ -58,8 +58,6 @@ public:
 // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
-    FILESTORE_IMPLEMENT_METHOD(ReadDataLocal)
-    FILESTORE_IMPLEMENT_METHOD(WriteDataLocal)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -97,7 +95,8 @@ private:
             ctx,
             std::move(permissions),
             internal.GetAuthToken(),
-            TDuration::MilliSeconds(headers.GetRequestTimeout()));
+            TDuration::MilliSeconds(headers.GetRequestTimeout()),
+            internal.GetPeer());
 
         return HandleAuthResponse<TRequest, TResponse>(
             std::move(authResponse),
@@ -144,8 +143,6 @@ private:
 // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
-    FILESTORE_IMPLEMENT_METHOD(ReadDataLocal)
-    FILESTORE_IMPLEMENT_METHOD(WriteDataLocal)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 };

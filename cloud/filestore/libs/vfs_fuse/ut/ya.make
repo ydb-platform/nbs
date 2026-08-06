@@ -5,13 +5,17 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 SRCDIR(cloud/filestore/libs/vfs_fuse)
 
 SRCS(
+    directory_entry_version_cache_ut.cpp
+    directory_handle_cache_ut.cpp
     fs_directory_content_format_ut.cpp
     fs_directory_handle_ut.cpp
+    fs_impl_data_ut.cpp
     fs_ut.cpp
 )
 
 PEERDIR(
     cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/diagnostics/metrics
     cloud/filestore/libs/vfs_fuse/vhost
     cloud/filestore/libs/vhost
 )

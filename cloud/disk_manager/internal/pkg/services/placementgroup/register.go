@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	placement_group_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/config"
@@ -19,12 +20,14 @@ func RegisterForExecution(
 	taskScheduler tasks.Scheduler,
 	storage resources.Storage,
 	nbsFactory nbs.Factory,
+	cellSelector cells.CellSelector,
 ) error {
 
 	err := taskRegistry.RegisterForExecution("placement_group.CreatePlacementGroup", func() tasks.Task {
 		return &createPlacementGroupTask{
-			storage:    storage,
-			nbsFactory: nbsFactory,
+			storage:      storage,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {
@@ -33,8 +36,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("placement_group.DeletePlacementGroup", func() tasks.Task {
 		return &deletePlacementGroupTask{
-			storage:    storage,
-			nbsFactory: nbsFactory,
+			storage:      storage,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {
@@ -43,7 +47,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("placement_group.AlterPlacementGroupMembership", func() tasks.Task {
 		return &alterPlacementGroupMembershipTask{
-			nbsFactory: nbsFactory,
+			storage:      storage,
+			nbsFactory:   nbsFactory,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {

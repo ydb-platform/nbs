@@ -1,0 +1,5 @@
+RECURSE(
+    client
+    protos
+    server
+)

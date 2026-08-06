@@ -69,7 +69,6 @@ struct TIOCompanionClient;
 class TPartitionActor final
     : public NActors::TActor<TPartitionActor>
     , public TTabletBase<TPartitionActor>
-    , private IRequestsInProgress
 {
     enum EState
     {
@@ -131,7 +130,6 @@ private:
     const ui64 ChannelHistorySize;
     const NBlockCodecs::ICodec* BlobCodec;
     const ui64 VolumeTabletId;
-
     TLogTitle LogTitle;
 
     std::unique_ptr<TPartitionState> State;
@@ -152,15 +150,8 @@ private:
     // Requests in-progress
     TRunningActors Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
-    TDrainActorCompanion DrainActorCompanion{
-        *this,
-        PartitionConfig.GetDiskId()};
-    ui32 WriteAndZeroRequestsInProgress = 0;
 
     TPartitionDiskCountersPtr PartCounters;
-
-    std::shared_ptr<TThreadSafePartCounters> IoCompanionCounters =
-        std::make_shared<TThreadSafePartCounters>();
 
     ui64 SysCPUConsumption = 0;
     ui64 UserCPUConsumption = 0;
@@ -173,16 +164,11 @@ private:
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
 
     bool FirstGarbageCollectionCompleted = false;
+    bool IsGarbageCompactionThrottlingMisconfigured = false;
 
     TTransactionTimeTracker TransactionTimeTracker;
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
-
-    std::shared_ptr<TResourceMetricsQueue> ResourceMetricsQueue =
-        std::make_shared<TResourceMetricsQueue>();
-
-    std::shared_ptr<TGroupDowntimes> GroupDowntimes =
-        std::make_shared<TGroupDowntimes>();
 
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
@@ -192,7 +178,11 @@ private:
 
     NActors::TActorId FreshBlocksWriter;
 
-    TRequestInfoPtr Poisoner;
+    NActors::TActorId BaseDiskKeepAliveActorId;
+
+    TPartitionThreadSafeStatePtr SharedState;
+
+    TVector<TRequestInfoPtr> PendingPoisonPills;
 
 public:
     TPartitionActor(
@@ -275,28 +265,6 @@ private:
 
     void SendStatsToService(const NActors::TActorContext& ctx);
 
-    // IRequestsInProgress implementation:
-    bool WriteRequestInProgress() const override
-    {
-        return WriteAndZeroRequestsInProgress != 0;
-    }
-
-    bool OverlapsWithWrites(TBlockRange64 range) const override
-    {
-        Y_UNUSED(range);
-        Y_ABORT("Unimplemented");
-    }
-
-    void WaitForInFlightWrites() override
-    {
-        Y_ABORT("Unimplemented");
-    }
-
-    bool IsWaitingForInFlightWrites() const override
-    {
-        Y_ABORT("Unimplemented");
-    }
-
     template <typename TMethod>
     void HandleWriteBlocksRequest(
         const typename TMethod::TRequest::TPtr& ev,
@@ -357,7 +325,8 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
-        const TBlockRange32& describeRange);
+        const TBlockRange32& describeRange,
+        bool indexOnly);
 
     void FillDescribeBlocksResponse(
         TTxPartition::TDescribeBlocks& args,
@@ -366,15 +335,11 @@ private:
     void ZeroFreshBlocks(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        TBlockRange32 writeRange,
-        ui64 commitId);
+        TBlockRange32 writeRange);
 
     void ClearWriteQueue(const NActors::TActorContext& ctx);
     void ProcessCommitQueue(const NActors::TActorContext& ctx);
     void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
-    void ProcessNextCheckpointRequest(
-        const NActors::TActorContext& ctx,
-        const TString& checkpointId);
 
     template <typename TMethod>
     void DeleteCheckpoint(
@@ -450,7 +415,7 @@ private:
         ui32 blockCount,
         TBlockRange64* range) const;
 
-    void UpdateChannelPermissions(
+    bool UpdateChannelPermissions(
         const NActors::TActorContext& ctx,
         ui32 channel,
         EChannelPermissions permissions);
@@ -486,6 +451,10 @@ private:
         ui64 diskThreshold,
         const NActors::TActorContext& ctx);
 
+    TDuration ComputeGarbageCompactionExecTime(
+        const NActors::TActorContext& ctx,
+        bool throttlingAllowed);
+
     bool IsCompactRangePending(
         const TString& operationId,
         ui32& ranges) const;
@@ -518,6 +487,21 @@ private:
     void CreateFreshBlocksCompanionClient();
 
     void CreateIOCompanionClient();
+
+    [[nodiscard]] bool IsFreshBlocksWriterEnabled() const;
+    [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationEnabled() const;
+    [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupEnabled() const;
+    [[nodiscard]] bool IsUseRecreatedBlobMetasOnCleanupEnabled() const;
+    [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingEnabled() const;
+    [[nodiscard]] bool IsMixedBlocksFilterEnabled() const;
+
+    void ProcessStorageStatusFlags(
+        const NActors::TActorContext& ctx,
+        NKikimr::TStorageStatusFlags flags,
+        ui32 channel,
+        ui32 generation,
+        double approximateFreeSpaceShare,
+        bool notifyFreshBlocksWriter);
 
 private:
     STFUNC(StateBoot);
@@ -780,6 +764,8 @@ private:
     void MapBaseDiskIdToTabletId(const NActors::TActorContext& ctx);
     void ClearBaseDiskIdToTabletIdMapping(const NActors::TActorContext& ctx);
 
+    void StartBaseDiskKeepAliveActorIfNeeded(const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
 
@@ -810,6 +796,18 @@ private:
 
     void HandleUpdateResourceMetrics(
         const TEvPartitionPrivate::TEvUpdateResourceMetrics::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleExecuteTransactions(
+        const TEvPartitionCommonPrivate::TEvExecuteTransactions::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleProcessStorageStatusFlags(
+        const TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReassignChannelsIfNeeded(
+        const TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

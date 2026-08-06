@@ -942,6 +942,10 @@ func (s *storageYDB) listHangingTasks(
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
 		declare $hanging_task_timeout as Interval;
+		declare $hanging_task_timeout_by_type as List<Struct<
+			task_type: Utf8,
+			timeout: Interval
+		>>;
 		declare $inflight_hanging_task_timeout as Interval;
 		declare $stalling_hanging_task_timeout as Interval;
 		declare $missed_estimates_until_task_is_hanging as Uint64;
@@ -953,19 +957,25 @@ func (s *storageYDB) listHangingTasks(
 			select id from ready_to_cancel UNION ALL
 			select id from cancelling
 		);
-		select *
+
+		select tasks.*
 		from tasks
+		left join AS_TABLE($hanging_task_timeout_by_type) as hanging_task_timeout_by_type
+		on tasks.task_type == hanging_task_timeout_by_type.task_type
 		where
-		 	(id in $task_ids) and
-			(task_type not in $except_task_types) and
+			(tasks.id in $task_ids) and
+			(tasks.task_type not in $except_task_types) and
 			(
-				($now - created_at >= $hanging_task_timeout) or
-			    inflight_duration >= MAX_OF(
-					estimated_inflight_duration * $missed_estimates_until_task_is_hanging,
+				($now - tasks.created_at >= COALESCE(
+					hanging_task_timeout_by_type.timeout,
+					$hanging_task_timeout
+				)) or
+				tasks.inflight_duration >= MAX_OF(
+					tasks.estimated_inflight_duration * $missed_estimates_until_task_is_hanging,
 					$inflight_hanging_task_timeout,
 				) or
-				stalling_duration >= MAX_OF(
-					estimated_stalling_duration * $missed_estimates_until_task_is_hanging,
+				tasks.stalling_duration >= MAX_OF(
+					tasks.estimated_stalling_duration * $missed_estimates_until_task_is_hanging,
 					$stalling_hanging_task_timeout,
 				)
 			)
@@ -979,6 +989,10 @@ func (s *storageYDB) listHangingTasks(
 		persistence.ValueParam(
 			"$hanging_task_timeout",
 			persistence.IntervalValue(s.hangingTaskTimeout),
+		),
+		persistence.ValueParam(
+			"$hanging_task_timeout_by_type",
+			durationByTaskTypeListValue(s.hangingTaskTimeoutByType),
 		),
 		persistence.ValueParam(
 			"$inflight_hanging_task_timeout",
@@ -1425,6 +1439,17 @@ func (s *storageYDB) markForCancellation(
 	}
 	state := states[0]
 
+	if state.NonCancellable {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return false, err
+		}
+
+		return false, errors.NewNonRetriableErrorf(
+			"task is non-cancellable, if it is a cleanup task - consider using ForceFinish instead",
+		)
+	}
+
 	if IsCancellingOrCancelled(state.Status) {
 		err = tx.Commit(ctx)
 		if err != nil {
@@ -1607,6 +1632,20 @@ func (s *storageYDB) updateTaskTx(
 	}
 
 	lastState := states[0]
+
+	if lastState.NonCancellable && IsCancellationRequested(state.Status) {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return TaskState{}, err
+		}
+
+		// It is forbidden to start the cancellation process for a
+		// non-cancellable task
+		return TaskState{}, errors.NewNonRetriableErrorf(
+			"unexpected status for a non-cancellable task, got %v",
+			TaskStatusToString(state.Status),
+		)
+	}
 
 	if lastState.GenerationID != state.GenerationID {
 		// NOTE: no need to commit here, because WrongGenerationError is
@@ -2144,4 +2183,18 @@ func (s *storageYDB) resumeTask(
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) isTaskEnded(
+	ctx context.Context,
+	session *persistence.Session,
+	taskID string,
+) (bool, error) {
+
+	state, err := s.getTask(ctx, session, taskID)
+	if err != nil {
+		return false, err
+	}
+
+	return IsEnded(state.Status), nil
 }

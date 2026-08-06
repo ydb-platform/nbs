@@ -1,11 +1,17 @@
 #pragma once
 
 #include "public.h"
+#include "tls_certificate_provider.h"
 
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/security/server_credentials.h"
 
+#include <library/cpp/logger/log.h>
+
+#include <util/datetime/base.h>
+#include <util/generic/yexception.h>
 #include <util/stream/file.h>
+#include <util/system/yassert.h>
 
 #include <memory>
 
@@ -24,7 +30,8 @@ inline TString ReadFile(const TString& fileName)
 template <typename TConfig>
 std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
     bool secureEndpoint,
-    const TConfig& config)
+    const TConfig& config,
+    ICertificateProviderPtr certificateProvider)
 {
     std::shared_ptr<grpc::ChannelCredentials> credentials;
     if (!secureEndpoint) {
@@ -34,18 +41,7 @@ std::shared_ptr<grpc::ChannelCredentials> CreateTcpClientChannelCredentials(
         tlsOptions.set_verify_server_certs(false);
         credentials = grpc::experimental::TlsCredentials(tlsOptions);
     } else {
-        grpc::SslCredentialsOptions sslOptions;
-
-        if (const auto& rootCertsFile = config.GetRootCertsFile()) {
-            sslOptions.pem_root_certs = ReadFile(rootCertsFile);
-        }
-
-        if (const auto& certFile = config.GetCertFile()) {
-            sslOptions.pem_cert_chain = ReadFile(certFile);
-            sslOptions.pem_private_key = ReadFile(config.GetCertPrivateKeyFile());
-        }
-
-        credentials = grpc::SslCredentials(sslOptions);
+        credentials = certificateProvider->CreateSecureClientCredentials();
     }
     return credentials;
 }

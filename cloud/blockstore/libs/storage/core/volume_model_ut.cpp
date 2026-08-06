@@ -63,6 +63,17 @@ auto CreateConfigWithThrottlingParams(
     config.SetSSDMaxReadIops(12000);
     config.SetSSDMaxWriteIops(40000);
 
+    // Deliberately different from the SSD* values above so that tests can tell
+    // which throttling path (system vs regular) was taken for SSD volumes.
+    config.SetSystemSSDUnitReadBandwidth(60);
+    config.SetSystemSSDUnitWriteBandwidth(70);
+    config.SetSystemSSDMaxReadBandwidth(500);
+    config.SetSystemSSDMaxWriteBandwidth(500);
+    config.SetSystemSSDUnitReadIops(4000);
+    config.SetSystemSSDUnitWriteIops(5000);
+    config.SetSystemSSDMaxReadIops(99000);
+    config.SetSystemSSDMaxWriteIops(99000);
+
     config.SetAllocationUnitHDD(256);
     config.SetHDDUnitReadBandwidth(20);
     config.SetHDDUnitWriteBandwidth(30);
@@ -742,6 +753,130 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 volumeConfig.GetStorageMediaKind()
+            );
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseSystemSSDThrottlingParamsForSystemVolumes)
+    {
+        const ui32 blockSize = DefaultBlockSize;
+        // 20 GiB with AllocationUnitSSD == 32 GiB gives exactly one allocation
+        // unit, so the resulting performance profile equals the per-unit params.
+        const ui64 blocksCount = 20 * 1_GB / blockSize;
+
+        auto config = CreateConfigWithThrottlingParams(
+            NCloud::NProto::STORAGE_MEDIA_SSD
+        );
+
+        // The test config sets SystemSSD* and SSD* to different values - make
+        // sure of that, otherwise the assertions below would pass trivially.
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            config->GetSSDUnitReadBandwidth(),
+            config->GetSystemSSDUnitReadBandwidth()
+        );
+
+        const auto resize = [&] (bool isSystem, ui64 blocks) {
+            TVolumeParams volumeParams;
+            volumeParams.BlockSize = blockSize;
+            volumeParams.BlocksCountPerPartition = blocks;
+            volumeParams.PartitionsCount = 1;
+            volumeParams.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
+            volumeParams.IsSystem = isSystem;
+
+            NKikimrBlockStore::TVolumeConfig volumeConfig;
+            ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
+            return volumeConfig;
+        };
+
+        // System SSD volume, one allocation unit -> SystemSSDUnit* params.
+        {
+            const auto volumeConfig = resize(true, blocksCount);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSystemSSDUnitReadBandwidth() * 1_MB,
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSystemSSDUnitWriteBandwidth() * 1_MB,
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSystemSSDUnitReadIops(),
+                volumeConfig.GetPerformanceProfileMaxReadIops()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSystemSSDUnitWriteIops(),
+                volumeConfig.GetPerformanceProfileMaxWriteIops()
+            );
+        }
+
+        // Non-system SSD volume with the same config -> regular SSDUnit* params.
+        {
+            const auto volumeConfig = resize(false, blocksCount);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSSDUnitReadBandwidth() * 1_MB,
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSSDUnitWriteBandwidth() * 1_MB,
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSSDUnitReadIops(),
+                volumeConfig.GetPerformanceProfileMaxReadIops()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSSDUnitWriteIops(),
+                volumeConfig.GetPerformanceProfileMaxWriteIops()
+            );
+        }
+
+        // Large system SSD volume -> capped by the SystemSSDMax* params.
+        {
+            const auto volumeConfig = resize(true, 1_TB / blockSize);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSystemSSDMaxReadBandwidth() * 1_MB,
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSystemSSDMaxWriteBandwidth() * 1_MB,
+                volumeConfig.GetPerformanceProfileMaxWriteBandwidth()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSystemSSDMaxReadIops(),
+                volumeConfig.GetPerformanceProfileMaxReadIops()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                config->GetSystemSSDMaxWriteIops(),
+                volumeConfig.GetPerformanceProfileMaxWriteIops()
+            );
+        }
+
+        // IsSystem must not affect non-SSD media kinds.
+        {
+            auto hddConfig = CreateConfigWithThrottlingParams(
+                NCloud::NProto::STORAGE_MEDIA_HDD
+            );
+
+            TVolumeParams volumeParams;
+            volumeParams.BlockSize = blockSize;
+            volumeParams.BlocksCountPerPartition = blocksCount;
+            volumeParams.PartitionsCount = 1;
+            volumeParams.MediaKind = NCloud::NProto::STORAGE_MEDIA_HDD;
+            volumeParams.IsSystem = true;
+
+            NKikimrBlockStore::TVolumeConfig volumeConfig;
+            ResizeVolume(*hddConfig, volumeParams, {}, {}, volumeConfig);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                hddConfig->GetHDDUnitReadBandwidth() * 1_MB,
+                volumeConfig.GetPerformanceProfileMaxReadBandwidth()
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                hddConfig->GetHDDUnitWriteIops(),
+                volumeConfig.GetPerformanceProfileMaxWriteIops()
             );
         }
     }

@@ -500,7 +500,7 @@ void TPartitionActor::WriteMergedBlocks(
         return;
     }
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
     const auto writeRange = requestInBuffer.Data.Range;

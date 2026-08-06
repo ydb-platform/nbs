@@ -685,7 +685,8 @@ void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlo
             meta.BlockIndex,
             freshBlock.Content,
             meta.MinCommitId,
-            meta.MaxCommitId);
+            meta.MaxCommitId,
+            freshBlock.BlobId);
 
         Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
             meta.BlockIndex,
@@ -697,13 +698,15 @@ void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlo
 
 void TPartitionState::WriteFreshBlock(
     const TBlock& block,
-    TBlockDataRef blockContent)
+    TBlockDataRef blockContent,
+    TPartialBlobId blobId)
 {
     bool added = FreshBlocks.AddBlock(
         block.BlockIndex,
         blockContent.AsStringBuf(),
         block.MinCommitId,
-        block.MaxCommitId);
+        block.MaxCommitId,
+        blobId);
 
     Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
         block.BlockIndex,
@@ -750,7 +753,7 @@ void TPartitionState::FindFreshBlocks(
 {
     for (const auto& block: blocks) {
         Y_ABORT_UNLESS(block.Content.size() == Config.GetBlockSize());
-        visitor.Visit(block.Meta, block.Content);
+        visitor.Visit(block.Meta, block.Content, block.BlobId);
     }
 }
 
@@ -1634,6 +1637,7 @@ void TPartitionState::UpdateCompactionMap(
                 stat.BlobCount,
                 stat.BlockCount,
                 Min(static_cast<ui32>(stat.BlockCount), GetMaxBlocksInBlob()),
+                0,
                 false
             );
             db.WriteCompactionMap(prevBlockIndex, stat.BlobCount, stat.BlockCount);
@@ -1673,6 +1677,7 @@ void TPartitionState::ResetCompactionMap(
                 1 + blobsSkipped,
                 blockCount + blocksSkipped,
                 blockCount + blocksSkipped,
+                0,
                 true
             );
             db.WriteCompactionMap(

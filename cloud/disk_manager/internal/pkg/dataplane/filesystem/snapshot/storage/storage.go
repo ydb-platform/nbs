@@ -57,6 +57,11 @@ type Storage interface {
 		keys []*protos.DeletingFilesystemSnapshotKey,
 	) error
 
+	CheckFilesystemSnapshotReady(
+		ctx context.Context,
+		snapshotID string,
+	) error
+
 	CheckFilesystemSnapshotAlive(
 		ctx context.Context,
 		snapshotID string,
@@ -92,4 +97,7 @@ type Storage interface {
 	ListFilesystemSnapshots(
 		ctx context.Context,
 	) (tasks_common.StringSet, error)
+
+	// Used by tests to verify all the data is correctly deleted by collect snapshots task.
+	TablesEmpty(ctx context.Context) (bool, error)
 }

@@ -71,6 +71,10 @@ void TOptions::Parse(int argc, char** argv)
         .NoArgument()
         .StoreTrue(&EnableGrpcTracing);
 
+    opts.AddLongOption("use-fast-shard-runtime", "use fastshard runtime")
+        .NoArgument()
+        .StoreTrue(&UseFastShardRuntime);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.Has(&verbose) && !VerboseLevel) {

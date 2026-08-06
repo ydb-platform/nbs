@@ -1682,8 +1682,22 @@ func (c *client) Stat(
 		return DiskStats{}, err
 	}
 
+	blocksCount := volumeStats.LogicalUsedBlocksCount
+	logging.Info(
+		ctx,
+		"Stat returned logical used blocks count %v for disk %v",
+		blocksCount,
+		diskID,
+	)
+
+	// Hotfix for https://github.com/ydb-platform/nbs/issues/6175
+	// TODO: (jkuradobery) remove after NBS fix is released and rolled out.
+	if blocksCount == 0 && isDiskRegistryBasedDisk(volume.StorageMediaKind) {
+		blocksCount = volume.BlocksCount
+	}
+
 	return DiskStats{
-		StorageSize: uint64(volume.BlockSize) * volumeStats.LogicalUsedBlocksCount,
+		StorageSize: uint64(volume.BlockSize) * blocksCount,
 	}, nil
 }
 

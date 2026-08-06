@@ -358,10 +358,14 @@ int fuse_reply_err(fuse_req_t req, int err)
     return send_reply(req, -err, NULL, 0);
 }
 
+/* Implementation should define this function and add completion-specific logic
+ *
+ * See #5897 for details
 void fuse_reply_none(fuse_req_t req)
 {
     fuse_free_req(req);
 }
+*/
 
 static unsigned long calc_timeout_sec(double t)
 {
@@ -2589,7 +2593,7 @@ void fuse_session_process_buf_int(struct fuse_session *se,
              * a destroy, but we can't reply to this request yet so
              * we can't use do_destroy
              */
-            fuse_log(FUSE_LOG_DEBUG, "%s: reinit\n", __func__);
+            fuse_log(FUSE_LOG_INFO, "%s: reinit\n", __func__);
             se->got_destroy = 1;
             se->got_init = 0;
             if (se->op.destroy) {

@@ -30,6 +30,7 @@ type readFunc = func(context.Context, uint64, []byte) error
 
 type Cache struct {
 	readOnCacheMiss readFunc
+	onCacheHit      func()
 
 	chunkPool    sync.Pool
 	chunks       map[uint64]*chunk
@@ -38,11 +39,12 @@ type Cache struct {
 	chunkSize    uint64
 }
 
-func NewCache(readOnCacheMiss readFunc) *Cache {
+func NewCache(readOnCacheMiss readFunc, onCacheHit func()) *Cache {
 	// 4 MiB.
 	chunkSize := 4 * 1024 * 1024
 	return &Cache{
 		readOnCacheMiss: readOnCacheMiss,
+		onCacheHit:      onCacheHit,
 		chunkPool: sync.Pool{
 			New: func() interface{} {
 				return &chunk{
@@ -86,7 +88,11 @@ func (c *Cache) Read(
 		chunkStart := (start / c.chunkSize) * c.chunkSize
 		bytesRead, ok := c.readChunk(start, chunkStart, data)
 
-		if !ok {
+		if ok {
+			if c.onCacheHit != nil {
+				c.onCacheHit()
+			}
+		} else {
 			// We read at most one chunk, so we will retrieve at most 2 chunks and
 			// save them to cache (in case the read data crosses the border between
 			// two chunks).

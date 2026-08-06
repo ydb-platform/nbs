@@ -31,11 +31,26 @@ void TDiskRegistryActor::HandleUpdateCmsHostState(
         NProto::EAgentState_Name(msg->State).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
+    const ui32 maxInFlight = Config->GetMaxInFlightCmsRequests();
+    if (maxInFlight > 0 &&
+        TransactionTimeTracker.GetInFlightOperationsCountByTransactionName(
+            TUpdateCmsHostState::Name) >= maxInFlight)
+    {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<
+                TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse>(
+                MakeError(E_REJECTED, "too many inflight transactions")));
+        return;
+    }
+
     ExecuteTx<TUpdateCmsHostState>(
         ctx,
         std::move(requestInfo),
         std::move(msg->Host),
         msg->State,
+        std::move(msg->CustomMessage),
         msg->DryRun);
 }
 
@@ -66,6 +81,7 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
         db,
         args.Host,
         args.State,
+        args.CustomMessage,
         args.TxTs,
         args.DryRun,
         args.AffectedDisks,
@@ -86,7 +102,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
     auto* agentRegInfo = AgentRegInfo.FindPtr(args.Host);
     const bool agentAvailable =
         agent && agentRegInfo && agentRegInfo->Connected;
-    const bool needToDetachPaths = Config->GetAttachDetachPathsEnabled() &&
+    const bool needToDetachPaths = !args.DryRun &&
+                                   Config->GetAttachDetachPathsEnabled() &&
                                    args.State == NProto::AGENT_STATE_WARNING &&
                                    !HasError(args.Error) && agentAvailable;
 

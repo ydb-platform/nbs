@@ -11,6 +11,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
@@ -43,7 +44,8 @@ Y_UNIT_TEST_SUITE(TClientTest)
             CreateSchedulerStub(),
             CreateLoggingService("console"),
             CreateMonitoringServiceStub(),
-            CreateServerStatsStub());
+            CreateServerStatsStub(),
+            CreateCertificateProviderStub());
 
         auto client = result.ExtractResult();
         UNIT_ASSERT_C(client, FormatError(result.GetError()));

@@ -41,9 +41,7 @@ class TOverlappingRequestsGuard final
 private:
     const IBlockStorePtr Service;
 
-    // Set before receiving requests, so used without lock.
-    ui32 BlockSize = 0;
-    TString DiskId;
+    std::atomic<ui32> BlockSize = 0;
 
     TAdaptiveLock Lock;
     ui64 RequestIdGenerator = 0;
@@ -302,17 +300,18 @@ TFuture<NProto::TWriteBlocksResponse> TOverlappingRequestsGuard::WriteBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksRequest> request)
 {
-    if (!BlockSize) {
+    const ui32 blockSize = BlockSize.load(std::memory_order_relaxed);
+    if (!blockSize) {
         NProto::TWriteBlocksResponse error;
         *error.MutableError() = MakeError(
-            E_REJECTED,
+            E_BS_INVALID_SESSION,
             "Need to mount volume before execute WriteBlocks");
         return MakeFuture<NProto::TWriteBlocksResponse>(std::move(error));
     }
 
     const auto range = TBlockRange64::WithLength(
         request->GetStartIndex(),
-        CalculateWriteRequestBlockCount(*request, BlockSize));
+        CalculateWriteRequestBlockCount(*request, blockSize));
 
     return DoExecuteRequest<NProto::TWriteBlocksLocalResponse>(
         range,
@@ -364,8 +363,9 @@ TFuture<NProto::TMountVolumeResponse> TOverlappingRequestsGuard::MountVolume(
                 return;
             }
             if (auto self = weakSelf.lock()) {
-                self->BlockSize = response.GetVolume().GetBlockSize();
-                self->DiskId = response.GetVolume().GetDiskId();
+                self->BlockSize.store(
+                    response.GetVolume().GetBlockSize(),
+                    std::memory_order_relaxed);
             }
         });
     return result;
@@ -378,8 +378,6 @@ TFuture<TResponse> TOverlappingRequestsGuard::DoExecuteRequest(
     std::shared_ptr<TRequest> request)
 {
     auto guard = Guard(Lock);
-
-    Y_ABORT_UNLESS(DiskId == request->GetDiskId());
 
     auto overlapping = InflightRequests.FindFirstOverlapping(range);
 

@@ -77,10 +77,10 @@ def _get_agent_data_path(agent_id, data_path):
 
 
 @pytest.fixture(name='data_path')
-def create_data_path(agent_ids):
+def create_data_path(agent_ids, tmp_path):
 
     data = get_unique_path_for_current_test(
-        output_path=yatest_common.output_path(),
+        output_path=tmp_path,
         sub_folder="data")
 
     for agent_id in agent_ids:

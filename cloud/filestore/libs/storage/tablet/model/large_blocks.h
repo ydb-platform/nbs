@@ -4,6 +4,7 @@
 
 #include "block.h"
 #include "deletion_markers.h"
+#include "layer.h"
 
 #include <util/generic/vector.h>
 #include <util/memory/alloc.h>

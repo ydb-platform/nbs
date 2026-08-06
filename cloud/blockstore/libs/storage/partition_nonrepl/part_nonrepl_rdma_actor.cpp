@@ -4,8 +4,6 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -13,6 +11,8 @@
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
@@ -45,7 +45,7 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TActorId volumeActorId,
         TActorId statActorId)
     : Config(std::move(config))
@@ -54,6 +54,9 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
     , RdmaClient(std::move(rdmaClient))
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TPartitionNonreplRdma{.DiskId = PartConfig->GetName()})
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
           DiagnosticsConfig->GetHistogramCounterOptions()))
@@ -93,7 +96,8 @@ ui32 TNonreplicatedPartitionRdmaActor::GetFlags() const
 {
     ui32 flags = 0;
     if (RdmaClient->IsAlignedDataEnabled()) {
-        SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        SetProtoFlag(
+            flags, NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
     }
     return flags;
 }
@@ -314,8 +318,8 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
 {
     struct TDeviceRequestInfo
     {
-        NRdma::IClientEndpointPtr Endpoint;
-        NRdma::TClientRequestPtr ClientRequest;
+        NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+        NCloud::NStorage::NRdma::TClientRequestPtr ClientRequest;
     };
 
     TVector<TDeviceRequestInfo> requests;
@@ -348,8 +352,8 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
         auto [req, err] = ep->AllocateRequest(
             handler,
             std::move(dr),
-            NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
-            4_KB + sz);
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest, 0), 4_KB + sz);
 
         if (HasError(err)) {
             LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
@@ -363,10 +367,12 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
 
         ui32 flags = 0;
         if (RdmaClient->IsAlignedDataEnabled()) {
-            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+            SetProtoFlag(
+                flags,
+                NCloud::NStorage::NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
         }
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
             flags,
@@ -471,8 +477,11 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete read blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete read blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -512,8 +521,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete write blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete write blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -547,8 +559,8 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWriteBlocksCompleted(
     LOG_TRACE(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Complete multi-agent write blocks",
-        SelfId().ToString().c_str());
+        "%s Complete multi-agent write blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -581,8 +593,11 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete zero blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete zero blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -609,8 +624,11 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocksCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Complete checksum blocks", SelfId().ToString().c_str());
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Complete checksum blocks",
+        LogTitle.GetWithTime().c_str());
 
     UpdateStats(msg->Stats);
 
@@ -664,8 +682,8 @@ void TNonreplicatedPartitionRdmaActor::ReplyAndDie(const NActors::TActorContext&
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Reply and die",
-        SelfId().ToString().c_str());
+        "%s Reply and die",
+        LogTitle.GetWithTime().c_str());
 
     for (auto& [_, endpoint]: AgentId2EndpointFuture) {
         endpoint.Subscribe([](auto& future) {
@@ -693,8 +711,8 @@ void TNonreplicatedPartitionRdmaActor::HandlePoisonPill(
         LOG_INFO(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Postpone PoisonPill response. Wait for requests in progress",
-            SelfId().ToString().c_str());
+            "%s Postpone PoisonPill response. Wait for requests in progress",
+            LogTitle.GetWithTime().c_str());
 
         return;
     }
@@ -715,8 +733,8 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Agent %s has become unavailable (lagging)",
-        PartConfig->GetName().c_str(),
+        "%s Agent %s has become unavailable (lagging)",
+        LogTitle.GetWithTime().c_str(),
         laggingAgentId.Quote().c_str());
 
     if (!PartConfig->GetLaggingDevicesAllowed()) {
@@ -774,8 +792,8 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Lagging agent %s is back online",
-        PartConfig->GetName().c_str(),
+        "%s Lagging agent %s is back online",
+        LogTitle.GetWithTime().c_str(),
         agentId.Quote().c_str());
 
     const auto* ep = AgentId2Endpoint.FindPtr(agentId);
@@ -801,8 +819,8 @@ void TNonreplicatedPartitionRdmaActor::HandleDeviceTimedOutResponse(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Attempted to mark device %s as lagging. Result: %s",
-        PartConfig->GetName().c_str(),
+        "%s Attempted to mark device %s as lagging. Result: %s",
+        LogTitle.GetWithTime().c_str(),
         PartConfig->GetDevices()[ev->Cookie].GetDeviceUUID().c_str(),
         FormatError(msg->GetError()).c_str());
 }

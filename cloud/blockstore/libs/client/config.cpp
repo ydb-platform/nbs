@@ -51,6 +51,7 @@ TDuration MSeconds(ui64 x)
     xxx(NonRetriableErrorsForUnreliableMedia,                                  \
         TVector<EWellKnownResultCodes>,                                        \
         {})                                                                    \
+    xxx(EnableNonBlockingRemount,       bool,           false                 )\
                                                                                \
     xxx(MemoryQuotaBytes,       ui32,             0                           )\
     xxx(SecurePort,             ui32,             0                           )\

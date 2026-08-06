@@ -34,7 +34,7 @@ private:
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
 
-    const bool MultiTabletForwardingEnabled;
+    const bool DisableMultiTabletForwarding;
 
 public:
     TGetNodeAttrActor(
@@ -42,7 +42,7 @@ public:
         NProto::TGetNodeAttrRequest getNodeAttrRequest,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        bool multiTabletForwardingEnabled);
+        bool disableMultiTabletForwarding);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -74,13 +74,13 @@ TGetNodeAttrActor::TGetNodeAttrActor(
         NProto::TGetNodeAttrRequest getNodeAttrRequest,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        bool multiTabletForwardingEnabled)
+        bool disableMultiTabletForwarding)
     : RequestInfo(std::move(requestInfo))
     , GetNodeAttrRequest(std::move(getNodeAttrRequest))
     , LogTag(GetNodeAttrRequest.GetFileSystemId())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
-    , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
+    , DisableMultiTabletForwarding(disableMultiTabletForwarding)
 {
 }
 
@@ -160,7 +160,7 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
         msg->Record.GetNode().GetShardFileSystemId().c_str(),
         msg->Record.GetNode().GetShardNodeName().Quote().c_str());
 
-    if (!MultiTabletForwardingEnabled
+    if (DisableMultiTabletForwarding
             || msg->Record.GetNode().GetShardFileSystemId().empty())
     {
         ReplyAndDie(ctx, std::move(msg->Record));
@@ -294,15 +294,14 @@ void TStorageServiceActor::HandleGetNodeAttr(
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
-    const bool multiTabletForwardingEnabled =
-        StorageConfig->GetMultiTabletForwardingEnabled()
-        && !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
+    const bool disableMultiTabletForwarding =
+      msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
     auto actor = std::make_unique<TGetNodeAttrActor>(
         std::move(requestInfo),
         std::move(msg->Record),
         session->RequestStats,
         ProfileLog,
-        multiTabletForwardingEnabled);
+        disableMultiTabletForwarding);
 
     NCloud::Register(ctx, std::move(actor));
 }

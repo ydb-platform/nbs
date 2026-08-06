@@ -91,10 +91,6 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("NUM")
         .StoreResult(&SecurePort);
 
-    opts.AddLongOption("iam-token-file", "path to iam token")
-        .RequiredArgument("STR")
-        .StoreResult(&IamTokenFile);
-
     opts.AddLongOption("device-mode", "nbs device connection mode [endpoint, proxy, null]")
         .RequiredArgument("STR")
         .Handler1T<TString>([this] (const auto& s) {

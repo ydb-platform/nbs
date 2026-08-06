@@ -1,10 +1,12 @@
 #include "write_back_cache.h"
 
 #include "overlapping_interval_set.h"
+#include "write_back_cache_stats.h"
 
+#include <cloud/filestore/libs/diagnostics/metrics/metric.h>
+#include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
-#include <cloud/filestore/libs/vfs_fuse/write_back_cache/test/test_write_back_cache_stats.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
@@ -19,6 +21,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
+#include <util/stream/output.h>
 #include <util/system/mutex.h>
 #include <util/system/spinlock.h>
 #include <util/system/tempfile.h>
@@ -166,6 +169,7 @@ struct TBootstrapArgs
     bool UseTestTimerAndScheduler = true;
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
+    bool FlushWritesInParallelEnabled = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -178,17 +182,21 @@ struct TBootstrap
     std::shared_ptr<TFileStoreTest> Session;
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
-    std::shared_ptr<TTestWriteBackCacheStats> Stats;
+    IWriteBackCacheStatsPtr Stats;
+    TWriteBackCacheMetrics Metrics;
     TDuration CacheAutomaticFlushPeriod;
     TDuration CacheFlushRetryPeriod;
     TTempFileHandle TempFileHandle;
     TWriteBackCache Cache;
+    IModuleStatsPtr ModuleStats;
 
     ui32 MaxWriteRequestSize = 0;
     ui32 MaxWriteRequestsCount = 0;
     ui32 MaxSumWriteRequestsSize = 0;
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
+    bool FlushWritesInParallelEnabled = false;
+    bool DisableExpectedDataValidation = false;
 
     TCallContextPtr CallContext;
 
@@ -209,12 +217,9 @@ struct TBootstrap
 
     ui32 RecreationCount = 0;
 
-    THashMap<ui64, TInFlightRequestTracker> InFlightReadRequestTracker;
-    THashMap<ui64, TInFlightRequestTracker> InFlightWriteRequestTracker;
-
     std::atomic<int> SessionWriteDataHandlerCalled;
 
-    TBootstrap(const TBootstrapArgs& args = {})
+    explicit TBootstrap(const TBootstrapArgs& args = {})
         : CacheAutomaticFlushPeriod(args.AutomaticFlushPeriod)
         , MaxWriteRequestSize(args.MaxWriteRequestSize)
         , MaxWriteRequestsCount(args.MaxWriteRequestsCount)
@@ -222,6 +227,7 @@ struct TBootstrap
         , ZeroCopyWriteEnabled(args.ZeroCopyWriteEnabled)
         , DoNotCheckWriteDataRequestBuffer(
               args.DoNotCheckWriteDataRequestBuffer)
+        , FlushWritesInParallelEnabled(args.FlushWritesInParallelEnabled)
     {
         CacheFlushRetryPeriod = FlushRetryPeriod;
 
@@ -238,24 +244,10 @@ struct TBootstrap
         }
         Scheduler->Start();
 
-        Stats = std::make_shared<TTestWriteBackCacheStats>();
-
         Session = std::make_shared<TFileStoreTest>();
 
         Session->ReadDataHandler = [&] (auto, auto request) {
             const auto nodeId = request->GetNodeId();
-            const auto offset = request->GetOffset();
-            const auto length = request->GetLength();
-
-            // Overlapping write requests are not allowed
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                InFlightWriteRequestTracker[nodeId].Count(offset, length));
-
-            InFlightReadRequestTracker[nodeId].Add(offset, length);
-            Y_DEFER {
-                InFlightReadRequestTracker[nodeId].Remove(offset, length);
-            };
 
             std::unique_lock lock(FlushedDataMutex);
 
@@ -295,21 +287,6 @@ struct TBootstrap
         Session->WriteDataHandler = [&] (auto, auto request) {
             MoveIovecsToBuffer(*request);
             const auto nodeId = request->GetNodeId();
-            const auto offset = request->GetOffset();
-            const auto length = request->GetBuffer().length();
-
-            // Overlapping read requests are not allowed
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                InFlightReadRequestTracker[nodeId].Count(offset, length));
-
-            // Overlapping write requests are not allowed
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                InFlightWriteRequestTracker[nodeId].Add(offset, length));
-            Y_DEFER {
-                InFlightWriteRequestTracker[nodeId].Remove(offset, length);
-            };
 
             std::unique_lock lock1(ExpectedDataMutex);
             std::unique_lock lock2(FlushedDataMutex);
@@ -318,28 +295,29 @@ struct TBootstrap
                 << " to @" << request->GetNodeId()
                 << " at offset " << request->GetOffset());
 
-            UNIT_ASSERT(ExpectedData.contains(nodeId));
-
-            const auto expected = ExpectedData[nodeId];
-            UNIT_ASSERT_LE(
-                request->GetOffset() + request->GetBuffer().length(),
-                expected.length());
-
             auto from = TStringBuf(request->GetBuffer());
-
-            if (!DoNotCheckWriteDataRequestBuffer) {
-                auto expectedData = TStringBuf(expected).SubString(
-                    request->GetOffset(),
-                    request->GetBuffer().length());
-                UNIT_ASSERT_VALUES_EQUAL(expectedData, from);
-            }
 
             auto& flushed = FlushedData[nodeId];
             Write(flushed, request->GetOffset(), request->GetBuffer());
             FlushedDataWritten += request->GetBuffer().length();
 
-            if (RecreationCount == 1) {
-                UNIT_ASSERT_LE(FlushedDataWritten, ExpectedDataWritten);
+            if (!DoNotCheckWriteDataRequestBuffer) {
+                UNIT_ASSERT(ExpectedData.contains(nodeId));
+
+                const auto expected = ExpectedData[nodeId];
+                UNIT_ASSERT_LE(
+                    request->GetOffset() + request->GetBuffer().length(),
+                    expected.length());
+
+                auto expectedData = TStringBuf(expected).SubString(
+                    request->GetOffset(),
+                    request->GetBuffer().length());
+
+                UNIT_ASSERT_VALUES_EQUAL(expectedData, from);
+
+                if (RecreationCount == 1) {
+                    UNIT_ASSERT_LE(FlushedDataWritten, ExpectedDataWritten);
+                }
             }
 
             SessionWriteDataHandlerCalled++;
@@ -384,6 +362,9 @@ struct TBootstrap
 
         RecreationCount++;
 
+        Stats = CreateWriteBackCacheStats();
+        Metrics = Stats->CreateMetrics();
+
         Cache = TWriteBackCache(
             {.Session = Session,
              .Scheduler = Scheduler,
@@ -399,7 +380,10 @@ struct TBootstrap
              .FlushMaxWriteRequestSize = MaxWriteRequestSize,
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
-             .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled});
+             .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
+             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled});
+
+        ModuleStats = Cache.CreateModuleStats();
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -617,81 +601,12 @@ struct TBootstrap
 
     void CheckStatsAreEmpty() const
     {
-        UNIT_ASSERT_EQUAL(0, Stats->InProgressFlushCount);
-        UNIT_ASSERT_EQUAL(0, Stats->NodeCount);
-        UNIT_ASSERT_EQUAL(0, Stats->StorageStats.RawUsedByteCount);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->PendingStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->UnflushedStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushedStats.MinTime);
-        UNIT_ASSERT_EQUAL(0, Stats->PendingStats.InProgressCount);
-        UNIT_ASSERT_EQUAL(0, Stats->UnflushedStats.InProgressCount);
-        UNIT_ASSERT_EQUAL(0, Stats->FlushedStats.InProgressCount);
-    }
-
-    void CheckWriteDataRequestStats(
-        const TTestWriteDataRequestStats& stats,
-        const TString& name,
-        ui64 expectedInProgressCount,
-        ui64 expectedCount,
-        TInstant expectedMinTime)
-    {
-        UNIT_ASSERT_EQUAL_C(
-            expectedInProgressCount,
-            stats.InProgressCount,
-            name << "Stats.InProgressCount: expected = "
-                 << expectedInProgressCount
-                 << ", actual = " << stats.InProgressCount);
-
-        UNIT_ASSERT_EQUAL_C(
-            expectedCount,
-            stats.Count,
-            name << "Stats.Count: expected = " << expectedCount
-                 << ", actual = " << stats.Count);
-
-        UNIT_ASSERT_EQUAL_C(
-            expectedMinTime,
-            stats.MinTime,
-            name << "Stats.MinTime: expected = " << expectedMinTime
-                 << ", actual = " << stats.MinTime);
-    }
-
-    void CheckPendingWriteDataRequestStats(
-        ui64 expectedInProgressCount,
-        ui64 expectedCount,
-        TInstant expectedMinTime)
-    {
-        CheckWriteDataRequestStats(
-            Stats->PendingStats,
-            "Pending",
-            expectedInProgressCount,
-            expectedCount,
-            expectedMinTime);
-    }
-
-    void CheckUnflushedWriteDataRequestStats(
-        ui64 expectedInProgressCount,
-        ui64 expectedCount,
-        TInstant expectedMinTime)
-    {
-        CheckWriteDataRequestStats(
-            Stats->UnflushedStats,
-            "Unflushed",
-            expectedInProgressCount,
-            expectedCount,
-            expectedMinTime);
-    }
-
-    void CheckFlushedWriteDataRequestStats(
-        ui64 expectedInProgressCount,
-        ui64 expectedCount,
-        TInstant expectedMinTime)
-    {
-        CheckWriteDataRequestStats(
-            Stats->FlushedStats,
-            "Flushed",
-            expectedInProgressCount,
-            expectedCount,
-            expectedMinTime);
+        UNIT_ASSERT_VALUES_EQUAL(0, Metrics.Flush.InProgressCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, Metrics.Nodes.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, Metrics.Storage.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, Metrics.UnflushedQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, Metrics.FlushedQueue.Count->Get());
     }
 
     void RunAllScheduledTasks()
@@ -849,40 +764,20 @@ struct TStatsCalculator
 {
     ui64 WriteDataFlushCount = 0;
     ui64 FlushCount = 0;
-
-    struct TState
-    {
-        ui32 NodeId = 0;
-        bool Flushed = false;
-    };
-
-    TDeque<TState> Queue;
     THashMap<ui32, ui64> UnflushedRequestCount;
 
     void Write(ui32 nodeId)
     {
-        Queue.push_back({.NodeId = nodeId, .Flushed = false});
         UnflushedRequestCount[nodeId]++;
     }
 
     void Flush(ui32 nodeId)
     {
-        for (auto& stats: Queue) {
-            if (stats.NodeId != nodeId || stats.Flushed) {
-                continue;
-            }
-            stats.Flushed = true;
-        }
-
         auto it = UnflushedRequestCount.find(nodeId);
         if (it != UnflushedRequestCount.end()) {
             WriteDataFlushCount += it->second;
             FlushCount++;
             UnflushedRequestCount.erase(it);
-        }
-
-        while (!Queue.empty() && Queue.front().Flushed) {
-            Queue.pop_front();
         }
     }
 
@@ -893,27 +788,14 @@ struct TStatsCalculator
             WriteDataFlushCount += pair.second;
         }
 
-        Queue.clear();
         UnflushedRequestCount.clear();
-    }
-
-    void Unflush()
-    {
-        for (auto& stats: Queue) {
-            if (stats.Flushed) {
-                stats.Flushed = false;
-                UnflushedRequestCount[stats.NodeId]++;
-            }
-        }
     }
 
     ui64 GetUnflushedQueueRequestCount() const
     {
         ui64 res = 0;
-        for (const auto& stats: Queue) {
-            if (!stats.Flushed) {
-                res++;
-            }
+        for (auto [nodeId, count]: UnflushedRequestCount) {
+            res += count;
         }
         return res;
     }
@@ -1126,23 +1008,29 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.WriteToCacheSync(1, 11, "abcde");
         b.RunAllScheduledTasks();
-        UNIT_ASSERT_EQUAL(1, writeRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, writeRequests.size());
 
         // Stuck at flushing for one node should not affect automatic flushing
         // for another node
         b.WriteToCacheSync(2, 22, "efghij");
         b.RunAllScheduledTasks();
-        UNIT_ASSERT_EQUAL(2, writeRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, writeRequests.size());
     }
 
     struct TTestArgs
     {
         bool WithCacheRecreation = false;
         bool ZeroCopyWriteEnabled = false;
+        bool FlushWritesInParallelEnabled = false;
     };
 
     void TestShouldReadAfterWriteRandomized(const TTestArgs& args) {
-        TBootstrap b({.ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled});
+        TBootstrap b({
+            .ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled,
+            .DoNotCheckWriteDataRequestBuffer =
+                !args.FlushWritesInParallelEnabled,
+            .FlushWritesInParallelEnabled = args.FlushWritesInParallelEnabled,
+        });
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
 
@@ -1193,19 +1081,28 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             if (args.WithCacheRecreation && RandomNumber(20u) == 0) {
                 b.RecreateCache();
-                stats.Unflush();
+                // Stats are reset on cache recreation
+                stats.FlushCount = 0;
             }
 
             b.ValidateCache();
 
-            UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->PendingStats.InProgressCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
             UNIT_ASSERT_VALUES_EQUAL(
                 stats.GetUnflushedQueueRequestCount(),
-                b.Stats->UnflushedStats.InProgressCount);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetNodeCount(), b.Stats->NodeCount);
+                b.Metrics.UnflushedQueue.Count->Get());
             UNIT_ASSERT_VALUES_EQUAL(
-                stats.FlushCount,
-                b.Stats->CompletedFlushCount);
+                stats.GetNodeCount(),
+                b.Metrics.Nodes.Count->Get());
+
+            if (args.FlushWritesInParallelEnabled) {
+                // If parallel writes are disabled, multiple Flush operations
+                // will be needed to flush all unflushed data - these values
+                // will be different
+                UNIT_ASSERT_VALUES_EQUAL(
+                    stats.FlushCount,
+                    b.Metrics.Flush.CompletedCount->Get());
+            }
         }
 
         if (args.WithCacheRecreation) {
@@ -1221,22 +1118,34 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReadAfterWriteRandomized)
     {
         TestShouldReadAfterWriteRandomized({});
+        TestShouldReadAfterWriteRandomized(
+            {.FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreation)
     {
         TestShouldReadAfterWriteRandomized({.WithCacheRecreation = true});
+        TestShouldReadAfterWriteRandomized(
+            {.WithCacheRecreation = true,
+             .FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithZeroCopy)
     {
         TestShouldReadAfterWriteRandomized({.ZeroCopyWriteEnabled = true});
+        TestShouldReadAfterWriteRandomized(
+            {.ZeroCopyWriteEnabled = true,
+             .FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreationAndZeroCopy)
     {
         TestShouldReadAfterWriteRandomized(
             {.WithCacheRecreation = true, .ZeroCopyWriteEnabled = true});
+        TestShouldReadAfterWriteRandomized(
+            {.WithCacheRecreation = true,
+             .ZeroCopyWriteEnabled = true,
+             .FlushWritesInParallelEnabled = true});
     }
 
     Y_UNIT_TEST(FullyRandomizedWithWriteFailures)
@@ -1364,7 +1273,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_LT(0, writeDataFailedCount);
         UNIT_ASSERT_LT(0, flushSucceededCount);
         UNIT_ASSERT_LT(0, flushFailedCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->WriteDataRequestDroppedCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
 
         // Check data integrity
         b.ValidateCacheIsFlushed();
@@ -1647,21 +1558,22 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldTryToFlushWhenRequestSizeIsGreaterThanLimit)
     {
-        TBootstrap b({.MaxWriteRequestSize = 2, .MaxWriteRequestsCount = 1});
+        TBootstrap b({.MaxWriteRequestSize = 2, .MaxWriteRequestsCount = 2});
 
         TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "a");
-        // Flush will have two requests (1, 2) and (3, 2) despite the limit
-        b.WriteToCacheSync(1, 1, "bbbb");
-        b.WriteToCacheSync(1, 5, "c");
-        b.WriteToCacheSync(1, 6, "d");
+        // Flush will have three requests (1, 2), (3, 2) and (5, 1) despite the
+        // limit
+        b.WriteToCacheSync(1, 1, "bbbbb");
+        b.WriteToCacheSync(1, 6, "c");
+        b.WriteToCacheSync(1, 7, "d");
 
         b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "(0, 1), (1, 2), (3, 2), (5, 2)",
+            "(0, 1), (1, 2), (3, 2), (5, 1), (6, 2)",
             logger.RangesToString(1));
     }
 
@@ -1683,35 +1595,45 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReportPersistentQueueStats)
     {
         TBootstrap b;
-        auto& stats = b.Stats->StorageStats;
+        auto& stats = b.Metrics.Storage;
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacityByteCount);
-        UNIT_ASSERT_EQUAL(0, stats.RawUsedByteCount);
-        UNIT_ASSERT_EQUAL(0, stats.EntryCount);
-        UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            CacheCapacityBytes,
+            stats.RawCapacityByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.Corrupted->Get());
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacityByteCount);
-        UNIT_ASSERT_LT(0, stats.RawUsedByteCount);
-        UNIT_ASSERT_EQUAL(1, stats.EntryCount);
-        UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            CacheCapacityBytes,
+            stats.RawCapacityByteCount->Get());
+        UNIT_ASSERT_LT(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.Corrupted->Get());
 
-        auto prevUsedBytesCount = stats.RawUsedByteCount;
+        auto prevUsedBytesCount = stats.RawUsedByteCount->Get();
 
         b.RecreateCache();
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacityByteCount);
-        UNIT_ASSERT_EQUAL(prevUsedBytesCount, stats.RawUsedByteCount);
-        UNIT_ASSERT_EQUAL(1, stats.EntryCount);
-        UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            CacheCapacityBytes,
+            stats.RawCapacityByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            prevUsedBytesCount,
+            stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.Corrupted->Get());
 
         b.FlushCache();
 
-        UNIT_ASSERT_EQUAL(CacheCapacityBytes, stats.RawCapacityByteCount);
-        UNIT_ASSERT_EQUAL(0, stats.RawUsedByteCount);
-        UNIT_ASSERT_EQUAL(0, stats.EntryCount);
-        UNIT_ASSERT_EQUAL(false, stats.IsCorrupted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            CacheCapacityBytes,
+            stats.RawCapacityByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.Corrupted->Get());
 
         b.WriteToCacheSync(1, 0, "abc");
 
@@ -1720,15 +1642,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.RecreateCache();
 
-        UNIT_ASSERT_EQUAL(true, stats.IsCorrupted);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.Corrupted->Get());
     }
 
     Y_UNIT_TEST(ShouldReportFlushStats)
     {
         TBootstrap b;
 
-        auto& stats = *b.Stats;
-        stats.MaxItems = 10;
+        auto& stats = b.Metrics.Flush;
 
         constexpr int WriteAttemptsThreshold = 3;
         std::atomic<int> writeAttempts = 0;
@@ -1747,9 +1668,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 0, "abc");
         b.WriteToCacheSync(2, 0, "def");
 
-        UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
-        UNIT_ASSERT_EQUAL(0, stats.FailedFlushCount);
-        UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.FailedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
 
         b.Timer->Sleep(TDuration::Seconds(1));
         auto flushFuture1 = b.Cache.FlushNodeData(1);
@@ -1757,33 +1678,33 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Flush request is failed but flush attempts will be retried
         UNIT_ASSERT(flushFuture1.HasValue());
         UNIT_ASSERT(HasError(flushFuture1.GetValue()));
-        UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
-        UNIT_ASSERT_EQUAL(1, stats.FailedFlushCount);
-        UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.FailedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
 
         b.Timer->Sleep(TDuration::Seconds(1));
         b.RunAllScheduledTasks();
 
-        UNIT_ASSERT_EQUAL(0, stats.CompletedFlushCount);
-        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
-        UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.FailedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
 
         auto flushFuture2 = b.Cache.FlushNodeData(2);
 
         UNIT_ASSERT(flushFuture2.HasValue());
         UNIT_ASSERT(!HasError(flushFuture2.GetValue()));
-        UNIT_ASSERT_EQUAL(1, stats.CompletedFlushCount);
-        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
-        UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.FailedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
 
         b.Timer->Sleep(TDuration::Seconds(1));
         b.RunAllScheduledTasks();
 
         UNIT_ASSERT(flushFuture1.HasValue());
         UNIT_ASSERT(flushFuture2.HasValue());
-        UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
-        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
-        UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.FailedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
 
         TManualProceedHandlers write(b.Session->WriteDataHandler);
 
@@ -1791,198 +1712,79 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto flushFuture3 = b.Cache.FlushNodeData(1);
 
         UNIT_ASSERT(!flushFuture3.HasValue());
-        UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
-        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
-        UNIT_ASSERT_EQUAL(1, stats.InProgressFlushCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.FailedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.InProgressCount->Get());
 
         write.ProceedAll();
 
         UNIT_ASSERT(flushFuture3.HasValue());
-        UNIT_ASSERT_EQUAL(3, stats.CompletedFlushCount);
-        UNIT_ASSERT_EQUAL(2, stats.FailedFlushCount);
-        UNIT_ASSERT_EQUAL(0, stats.InProgressFlushCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.FailedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.InProgressCount->Get());
     }
 
     Y_UNIT_TEST(ShouldReportNodeCount)
     {
         TBootstrap b;
-        auto& stats = *b.Stats;
 
-        UNIT_ASSERT_EQUAL(0, stats.NodeCount);
+        auto& stats = b.Metrics.Nodes;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.Count->Get());
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        UNIT_ASSERT_EQUAL(1, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.Count->Get());
 
         b.WriteToCacheSync(2, 0, "def");
         b.WriteToCacheSync(2, 1, "xyz");
 
-        UNIT_ASSERT_EQUAL(2, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.Count->Get());
 
         b.RecreateCache();
 
-        UNIT_ASSERT_EQUAL(2, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.Count->Get());
 
         b.FlushCache(1);
 
-        UNIT_ASSERT_EQUAL(1, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.Count->Get());
 
         b.FlushCache(2);
 
-        UNIT_ASSERT_EQUAL(0, stats.NodeCount);
-    }
-
-    Y_UNIT_TEST(ShouldReportWriteDataRequestStats)
-    {
-        TBootstrap b;
-
-        const auto zero = TInstant::Zero();
-        const auto now = b.Timer->Now();
-        const auto t1 = now + TDuration::Seconds(1);
-        const auto t3 = now + TDuration::Seconds(7);
-        const auto t4 = now + TDuration::Seconds(15);
-        const auto t5 = now + TDuration::Seconds(31);
-        const auto t6 = now + TDuration::Seconds(63);
-
-        // Reaching the capacity will trigger Flush
-        // Need to prevent it from completing immediately
-        TManualProceedHandlers readRequests(b.Session->ReadDataHandler);
-        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
-
-        b.CheckStatsAreEmpty();
-
-        // --- T1
-
-        b.Timer->Sleep(TDuration::Seconds(1));
-        b.WriteToCacheSync(1, 0, "abc");
-
-        // The request skipped pending state
-        b.CheckPendingWriteDataRequestStats(0, 0, zero);
-        b.CheckUnflushedWriteDataRequestStats(1, 0, t1);
-        b.CheckFlushedWriteDataRequestStats(0, 0, zero);
-
-        // --- T2
-
-        b.Timer->Sleep(TDuration::Seconds(2));
-        b.WriteToCacheSync(2, 0, "def");
-        b.WriteToCacheSync(2, 1, "xyz");
-
-        b.CheckPendingWriteDataRequestStats(0, 0, zero);
-        b.CheckUnflushedWriteDataRequestStats(3, 0, t1);
-        b.CheckFlushedWriteDataRequestStats(0, 0, zero);
-
-        // --- T3
-
-        b.Timer->Sleep(TDuration::Seconds(4));
-        b.Cache.FlushNodeData(2);
-        b.WriteToCacheSync(2, 1, "xyz");
-        b.Cache.FlushNodeData(2);
-
-        b.CheckPendingWriteDataRequestStats(0, 0, zero);
-        b.CheckUnflushedWriteDataRequestStats(4, 0, t1);
-        b.CheckFlushedWriteDataRequestStats(0, 0, zero);
-
-        auto readFuture = b.ReadFromCache(2, 0, 100);
-
-        writeRequests.ProceedAll();
-
-        // WriteData requests for node 2 are flushed but they cannot be removed
-        // because of pin set by read request
-        b.CheckPendingWriteDataRequestStats(0, 0, zero);
-        b.CheckUnflushedWriteDataRequestStats(1, 3, t1);
-        b.CheckFlushedWriteDataRequestStats(3, 0, t3);
-
-        readRequests.ProceedAll();
-
-        b.CheckPendingWriteDataRequestStats(0, 0, zero);
-        b.CheckUnflushedWriteDataRequestStats(1, 3, t1);
-        b.CheckFlushedWriteDataRequestStats(0, 3, zero);
-
-        // --- T4
-
-        b.Timer->Sleep(TDuration::Seconds(8));
-        b.Cache.FlushNodeData(1);
-        b.RecreateCache();
-
-        // The requests are stored in a ring buffer. Flushing the request in
-        // the middle on the queue will result in request resurrection
-        b.CheckPendingWriteDataRequestStats(0, 0, zero);
-        b.CheckUnflushedWriteDataRequestStats(4, 3, t4);
-        b.CheckFlushedWriteDataRequestStats(0, 3, zero);
-
-        // --- T5
-
-        b.Timer->Sleep(TDuration::Seconds(16));
-        ui64 count = 0;
-        while (true) {
-            auto future = b.WriteToCache(3, 0, "01234567");
-            if (future.HasValue()) {
-                count++;
-            } else {
-                break;
-            }
-        }
-
-        // FlushAll should have been triggered by hitting cache capacity
-        b.CheckPendingWriteDataRequestStats(1, 0, t5);
-        b.CheckUnflushedWriteDataRequestStats(count + 4, 3, t4);
-        b.CheckFlushedWriteDataRequestStats(0, 3, zero);
-
-        // --- T6
-
-        b.Timer->Sleep(TDuration::Seconds(32));
-        writeRequests.ProceedAll();
-
-        b.CheckPendingWriteDataRequestStats(0, 1, zero);
-        b.CheckUnflushedWriteDataRequestStats(1, count + 7, t6);
-        b.CheckFlushedWriteDataRequestStats(0, count + 7, zero);
-
-        // --- T7
-
-        b.Timer->Sleep(TDuration::Seconds(64));
-        b.Cache.FlushAllData();
-
-        writeRequests.ProceedAll();
-
-        b.CheckPendingWriteDataRequestStats(0, 1, zero);
-        b.CheckUnflushedWriteDataRequestStats(0, count + 8, zero);
-        b.CheckFlushedWriteDataRequestStats(0, count + 8, zero);
-
-        b.CheckStatsAreEmpty();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.Count->Get());
     }
 
     Y_UNIT_TEST(ShouldReportReadDataCounters)
     {
         TBootstrap b;
-        b.Stats->MaxItems = 10;
-        auto& stats = b.Stats->ReadStats;
+        auto& stats = b.Metrics.ReadData;
 
         // Prevent Flush from completing immediately
         TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        UNIT_ASSERT_EQUAL(0, stats.CacheFullHitCount);
-        UNIT_ASSERT_EQUAL(0, stats.CachePartialHitCount);
-        UNIT_ASSERT_EQUAL(0, stats.CacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CacheFullHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CachePartialHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CacheMissCount->Get());
 
         b.ReadFromCache(1, 0, 2).IgnoreResult().Wait();
 
-        UNIT_ASSERT_EQUAL(1, stats.CacheFullHitCount);
-        UNIT_ASSERT_EQUAL(0, stats.CachePartialHitCount);
-        UNIT_ASSERT_EQUAL(0, stats.CacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CacheFullHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CachePartialHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CacheMissCount->Get());
 
         b.ReadFromCache(1, 2, 2).IgnoreResult().Wait();
 
-        UNIT_ASSERT_EQUAL(1, stats.CacheFullHitCount);
-        UNIT_ASSERT_EQUAL(1, stats.CachePartialHitCount);
-        UNIT_ASSERT_EQUAL(0, stats.CacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CacheFullHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CachePartialHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CacheMissCount->Get());
 
         b.ReadFromCache(1, 4, 2).IgnoreResult().Wait();
 
-        UNIT_ASSERT_EQUAL(1, stats.CacheFullHitCount);
-        UNIT_ASSERT_EQUAL(1, stats.CachePartialHitCount);
-        UNIT_ASSERT_EQUAL(1, stats.CacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CacheFullHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CachePartialHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CacheMissCount->Get());
 
         // Fill the cache until the requests become pending
         while (true) {
@@ -1999,9 +1801,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Timer->Sleep(TDuration::Seconds(1));
         writeRequests.ProceedAll();
 
-        UNIT_ASSERT_EQUAL(2, stats.CacheFullHitCount);
-        UNIT_ASSERT_EQUAL(1, stats.CachePartialHitCount);
-        UNIT_ASSERT_EQUAL(1, stats.CacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.CacheFullHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CachePartialHitCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.CacheMissCount->Get());
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteConcurrentlyWithAutomaticFlush)
@@ -2054,6 +1856,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto request = std::make_shared<NProto::TWriteDataRequest>();
         request->SetNodeId(1);
         request->SetOffset(0);
+        request->SetHandle(101);
 
         auto* iovec1 = request->AddIovecs();
         iovec1->SetBase(base + 3);
@@ -2132,6 +1935,84 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCopyIovecDataBeforeAcknowledgingNonDirectWrite)
+    {
+        // Cached writes must copy iovec data before acknowledging the request.
+        // The source buffers may disappear before the data is flushed.
+        TBootstrap b;
+
+        TString flushedBuffer;
+        std::atomic<int> writeAttempts = 0;
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            writeAttempts++;
+            // Flush must use cache owned data, not the original iovecs.
+            flushedBuffer = request->GetBuffer();
+            NProto::TWriteDataResponse response;
+            return MakeFuture(response);
+        };
+
+        auto source = std::make_unique<TString>("abcdefghij");
+        const ui64 base = reinterpret_cast<ui64>(source->data());
+
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(1);
+        request->SetHandle(101);
+        request->SetOffset(0);
+        auto* iovec = request->AddIovecs();
+        iovec->SetBase(base);
+        iovec->SetLength(source->size());
+
+        // Once WriteData resolves, the data must already be copied.
+        b.Cache.WriteData(b.CallContext, request).GetValueSync();
+
+        // Overwrite and free the source before flushing.
+        for (auto& c: *source) {
+            c = 'X';
+        }
+        source.reset();
+
+        b.Cache.FlushNodeData(1).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
+        UNIT_ASSERT_VALUES_EQUAL("abcdefghij", flushedBuffer);
+    }
+
+    Y_UNIT_TEST(ShouldConsumeIovecDataWithinRequestLifetimeForDirectWrite)
+    {
+        // Direct writes may borrow iovec data only until the request completes.
+        TBootstrap b;
+
+        TString seen;
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            for (const auto& iovec: request->GetIovecs()) {
+                seen += TStringBuf(
+                    reinterpret_cast<const char*>(iovec.GetBase()),
+                    iovec.GetLength());
+            }
+            NProto::TWriteDataResponse response;
+            return MakeFuture(response);
+        };
+
+        auto source = std::make_unique<TString>("abcdefghij");
+        const ui64 base = reinterpret_cast<ui64>(source->data());
+
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(1);
+        request->SetOffset(0);
+        auto* iovec = request->AddIovecs();
+        iovec->SetBase(base);
+        iovec->SetLength(source->size());
+
+        b.Cache.WriteDataDirect(b.CallContext, request).GetValueSync();
+
+        // The source may be released once the direct write resolves.
+        source.reset();
+
+        UNIT_ASSERT_VALUES_EQUAL("abcdefghij", seen);
+    }
+
     Y_UNIT_TEST(ShouldAutomaticallyFlushOnlyCachedRequests)
     {
         TBootstrap b;
@@ -2147,11 +2028,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT(!b.WriteToCache(2, 0, "abcdefghij").HasValue());
 
-        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->PendingStats.InProgressCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.PendingQueue.Count->Get());
 
         writeRequests.ProceedAll();
 
-        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->UnflushedStats.InProgressCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
     }
 
     Y_UNIT_TEST(ShouldFlushPendingRequests_FlushNodeData)
@@ -2174,7 +2055,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequests.ProceedAll();
 
         UNIT_ASSERT(flushNodeDataFuture.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(1, b.Stats->UnflushedStats.InProgressCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
     }
 
     Y_UNIT_TEST(ShouldFlushPendingRequests_FlushAllData)
@@ -2194,13 +2075,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         auto flushAllDataFuture = b.Cache.FlushAllData();
 
-        UNIT_ASSERT(!b.Cache.IsEmpty());
+        auto future = b.Cache.Drain();
+        UNIT_ASSERT(!b.Cache.IsDrained());
+        UNIT_ASSERT(!future.HasValue());
 
         writeRequests.ProceedAll();
 
         UNIT_ASSERT(flushAllDataFuture.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->UnflushedStats.InProgressCount);
-        UNIT_ASSERT(b.Cache.IsEmpty());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
+        UNIT_ASSERT(b.Cache.IsDrained());
+        UNIT_ASSERT(future.HasValue());
     }
 
     Y_UNIT_TEST(ShouldNotReadBeyondFileEnd)
@@ -2236,8 +2120,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Scenario 1: empty cache
         b.WriteToCacheSync(1, 2, "abcdef");
         b.FlushCache(1);
-
-        UNIT_ASSERT(b.Cache.IsEmpty());
 
         UNIT_ASSERT_VALUES_EQUAL("cdef", readFromSession(4, 12));
         UNIT_ASSERT_VALUES_EQUAL("", readFromSession(13, 5));
@@ -2276,74 +2158,541 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(TString(5, '\0'), readFromCache(13, 5));
     }
 
-    Y_UNIT_TEST(ShouldReportMinNodeSize)
+    Y_UNIT_TEST(ShouldUpdateMaxCountersForEveryMetricsComponent)
     {
         TBootstrap b;
 
-        // The node is node cached
-        b.Cache.SetCachedNodeSize(1, 2);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        TWriteBackCacheInternalMetrics& internalMetrics = b.Metrics;
+        TWriteBackCacheStateMetrics& stateMetrics = b.Metrics;
+        TNodeStateHolderMetrics& nodeStateHolderMetrics = b.Metrics;
+        TWriteDataRequestManagerMetrics& requestManagerMetrics = b.Metrics;
+        TPersistentStorageMetrics& persistentStorageMetrics = b.Metrics;
 
-        // The node is cached
         b.WriteToCacheSync(1, 0, "abc");
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
-        b.Cache.SetCachedNodeSize(1, 4);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
-        b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        b.FlushCache();
 
-        // Single reference - flush before release
-        b.WriteToCacheSync(1, 0, "abc");
-        auto ref1 = b.Cache.AcquireNodeStateRef();
-        b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
-        b.Cache.SetCachedNodeSize(1, 4);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
-        b.Cache.ReleaseNodeStateRef(ref1);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        // TWriteBackCacheInternalMetrics doesn't have Max values at the moment
+        // but they may be added in the future
+        Y_UNUSED(internalMetrics);
 
-        // Single reference - flush after release
-        b.WriteToCacheSync(1, 0, "abc");
-        auto ref2 = b.Cache.AcquireNodeStateRef();
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
-        b.Cache.SetCachedNodeSize(1, 4);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
-        b.Cache.ReleaseNodeStateRef(ref2);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
-        b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            stateMetrics.Flush.InProgressMaxCount->Get());
 
-        // Single reference - resurrect node state
-        b.WriteToCacheSync(1, 0, "abc");
-        auto ref3 = b.Cache.AcquireNodeStateRef();
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
-        b.FlushCache(1);
-        b.WriteToCacheSync(1, 0, "abcd");
-        b.Cache.ReleaseNodeStateRef(ref3);
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Cache.GetCachedNodeSize(1));
-        b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            nodeStateHolderMetrics.Nodes.MaxCount->Get());
 
-        // Multiple references
-        b.WriteToCacheSync(1, 0, "abc");
-        auto ref4 = b.Cache.AcquireNodeStateRef();
-        auto ref5 = b.Cache.AcquireNodeStateRef();
-        b.FlushCache(1);
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
-        b.Cache.ReleaseNodeStateRef(ref5);
-        UNIT_ASSERT_VALUES_EQUAL(3, b.Cache.GetCachedNodeSize(1));
-        b.Cache.ReleaseNodeStateRef(ref4);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            requestManagerMetrics.UnflushedQueue.MaxCount->Get());
 
-        // Newer references don't affect deleted node states
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            persistentStorageMetrics.Storage.EntryMaxCount->Get());
+
+        // Max values are calculated over sliding window consiting of 15 buckets
+        for (int i = 0; i <= 15; i++) {
+            b.ModuleStats->UpdateStats(b.Timer->Now());
+        }
+
+        // Ensure that UpdateStats was called for every component
+        // It is enough to check just one Max counter per component
+        // Other counters are checked by their respective tests
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            stateMetrics.Flush.InProgressMaxCount->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            nodeStateHolderMetrics.Nodes.MaxCount->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestManagerMetrics.UnflushedQueue.MaxCount->Get());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            persistentStorageMetrics.Storage.EntryMaxCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldNotWriteToCacheInDrainingMode)
+    {
+        TBootstrap b;
+
         b.WriteToCacheSync(1, 0, "abc");
-        auto ref6 = b.Cache.AcquireNodeStateRef();
+        auto drain = b.Cache.Drain();
+
+        auto future = b.WriteToCache(1, 1, "def");
+        UNIT_ASSERT(future.HasValue());
+        auto error = future.GetValue().GetError();
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        UNIT_ASSERT(drain.HasValue());
+    }
+
+    Y_UNIT_TEST(ShouldEvictFlushedRequestsOnRestart)
+    {
+        TBootstrap b;
+
+        auto readPromise = NewPromise<NProto::TReadDataResponse>();
+
+        b.Session->ReadDataHandler = [&](auto, auto)
+        {
+            return readPromise.GetFuture();
+        };
+
+        b.WriteToCacheSync(1, 0, "abc");
+        b.WriteToCacheSync(2, 0, "def");
+
+        // Prevent WriteData request from eviction by starting overlapping
+        // ReadData request that will never complete
+        auto readFuture = b.ReadFromCache(1, 0, 10);
+        UNIT_ASSERT(!readFuture.HasValue());
+
         b.FlushCache(1);
-        auto ref7 = b.Cache.AcquireNodeStateRef();
-        b.Cache.ReleaseNodeStateRef(ref6);
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Cache.GetCachedNodeSize(1));
-        b.Cache.ReleaseNodeStateRef(ref7);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.FlushedQueue.Count->Get());
+
+        b.RecreateCache();
+
+        // Ensure that WriteData request is evicted
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.FlushedQueue.Count->Get());
+    }
+
+    Y_UNIT_TEST(ShouldDropCachedDataWhenThereAreNoLiveHandles)
+    {
+        TBootstrap b({
+            .MaxWriteRequestsCount = 1,
+            .UseTestTimerAndScheduler = true,
+        });
+
+        TVector<TPromise<NProto::TWriteDataResponse>> writeRequests;
+        TVector<ui64> writeHandles;
+
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            auto promise = NewPromise<NProto::TWriteDataResponse>();
+            writeRequests.push_back(promise);
+            writeHandles.push_back(request->GetHandle());
+            return promise;
+        };
+
+        auto completeNext = [&](NProto::TWriteDataResponse response)
+        {
+            UNIT_ASSERT(!writeRequests.empty());
+            auto promise = writeRequests.front();
+            writeRequests.erase(writeRequests.begin());
+            promise.SetValue(std::move(response));
+        };
+
+        b.WriteToCacheSync(1, 101, 1, "abc");
+        b.WriteToCacheSync(1, 102, 10, "123");
+
+        auto releaseFuture = b.Cache.ReleaseHandle(1, 102);
+
+        // An attempt to flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        NProto::TWriteDataResponse errorResponse;
+        errorResponse.MutableError()->SetCode(E_FAIL);
+        completeNext(std::move(errorResponse));
+
+        UNIT_ASSERT(releaseFuture.HasValue());
+        UNIT_ASSERT(HasError(releaseFuture.GetValue()));
+
+        // Current state: WriteBackCache contains 2 WriteData requests for
+        // handle 101 and 102 but only handle 101 is live
+
+        auto flushFuture = b.Cache.FlushNodeData(1);
+        b.RunAllScheduledTasks();
+
+        // An attempt to retry flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        completeNext({});
+
+        // After a successful flush attempt, WriteBackCache contains 1 WriteData
+        // requests for handle 102 that is already released.
+        // The next flush attempt executes immediately and fails.
+
+        UNIT_ASSERT(flushFuture.HasValue());
+        UNIT_ASSERT(HasError(flushFuture.GetValue()));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldRetryFlushWithLiveHandle)
+    {
+        TBootstrap b({
+            .MaxWriteRequestsCount = 1,
+            .UseTestTimerAndScheduler = true,
+        });
+
+        TVector<ui64> writeHandles;
+
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            writeHandles.push_back(request->GetHandle());
+            NProto::TWriteDataResponse errorResponse;
+            errorResponse.MutableError()->SetCode(E_FAIL);
+            return MakeFuture(std::move(errorResponse));
+        };
+
+        b.WriteToCacheSync(1, 101, 1, "abc");
+        b.WriteToCacheSync(1, 102, 10, "123");
+
+        auto releaseFuture = b.Cache.ReleaseHandle(1, 101);
+
+        // An attempt to flush via handle=101 should have been made
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        // Confirm that handle 101 is released
+        UNIT_ASSERT(releaseFuture.HasValue());
+        UNIT_ASSERT(HasError(releaseFuture.GetValue()));
+
+        // Flush should be retried using handle 102
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[1]);
+    }
+
+    Y_UNIT_TEST(ShouldHandleFlushWritesInParallelEnabled)
+    {
+        auto test = [&](bool flushWritesInParallelEnabled)
+        {
+            TBootstrap b({
+                .UseTestTimerAndScheduler = true,
+                // Easier calculation of the request size
+                .ZeroCopyWriteEnabled = false,
+                .FlushWritesInParallelEnabled = flushWritesInParallelEnabled,
+            });
+
+            TStringBuilder sb;
+
+            b.Session->WriteDataHandler = [&](auto, auto request)
+            {
+                sb << "[" << request->GetOffset() << ","
+                   << request->GetOffset() + request->GetBuffer().size() << ")";
+                return MakeFuture<NProto::TWriteDataResponse>({});
+            };
+
+            b.WriteToCacheSync(1, 6, "def");
+            b.WriteToCacheSync(1, 9, "ghi");
+            b.WriteToCacheSync(1, 3, "abc");
+            b.WriteToCacheSync(1, 13, "123");
+            b.WriteToCacheSync(1, 12, "jkl");
+            b.WriteToCacheSync(1, 0, "000");
+
+            auto future = b.Cache.FlushNodeData(1);
+            while (!future.HasValue()) {
+                UNIT_ASSERT(!future.HasException());
+                b.RunAllScheduledTasks();
+            }
+
+            return TString(sb);
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL("[3,12)[12,16)[0,3)", test(false));
+        UNIT_ASSERT_VALUES_EQUAL("[0,16)", test(true));
+    }
+
+    Y_UNIT_TEST(ShouldNeverSplitRequestsWhenFlushWritesInParallelDisabled)
+    {
+        auto test = [&](bool flushWritesInParallelEnabled)
+        {
+            TBootstrap b({
+                .MaxWriteRequestSize = 2,
+                .UseTestTimerAndScheduler = true,
+                .FlushWritesInParallelEnabled = flushWritesInParallelEnabled,
+            });
+
+            int writeCount = 0;
+
+            TStringBuilder sb;
+
+            b.Session->WriteDataHandler = [&](auto, auto)
+            {
+                writeCount++;
+                return MakeFuture<NProto::TWriteDataResponse>({});
+            };
+
+            b.WriteToCacheSync(1, 3, "abc");
+
+            auto future = b.Cache.FlushNodeData(1);
+            while (!future.HasValue()) {
+                UNIT_ASSERT(!future.HasException());
+                b.RunAllScheduledTasks();
+            }
+
+            return writeCount;
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, test(false));
+        UNIT_ASSERT_VALUES_EQUAL(2, test(true));
+    }
+
+    struct TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest
+        : TBootstrap
+    {
+        const ui64 BytesToWrite = 16 * 1024 * 1024;
+        const ui64 MaxBytesPerWrite = 256;
+        const ui64 NodeId = 1;
+
+        TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest()
+            : TBootstrap(
+                  {.AutomaticFlushPeriod = TDuration::MilliSeconds(1),
+                   .MaxWriteRequestSize = 1024,
+                   .UseTestTimerAndScheduler = false,
+                   // WriteBackCache may execute Flush before ExpectedData is
+                   // updated in WriteData future callback in a multi-threaded
+                   // environment
+                   .DoNotCheckWriteDataRequestBuffer = true,
+                   .FlushWritesInParallelEnabled = false})
+        {}
+
+        struct TReaderResult
+        {
+            ui64 FirstCharCount = 0;
+            ui64 LastCharCount = 0;
+            bool Valid = false;
+        };
+
+        TReaderResult Read(char firstChar, char lastChar)
+        {
+            auto ctx = MakeIntrusive<TCallContext>();
+            auto rq = std::make_shared<NProto::TReadDataRequest>();
+            rq->SetNodeId(NodeId);
+            rq->SetOffset(0);
+            rq->SetLength(BytesToWrite);
+
+            auto resp =
+                Session->ReadData(std::move(ctx), std::move(rq)).GetValue();
+
+            auto data =
+                TStringBuf(resp.GetBuffer()).Skip(resp.GetBufferOffset());
+
+            TReaderResult res;
+            while (res.FirstCharCount < data.size() &&
+                   data[res.FirstCharCount] == firstChar)
+            {
+                res.FirstCharCount++;
+            }
+
+            while (res.FirstCharCount + res.LastCharCount < data.size() &&
+                   data[res.FirstCharCount + res.LastCharCount] == lastChar)
+            {
+                res.LastCharCount++;
+            }
+
+            res.Valid = res.FirstCharCount + res.LastCharCount == data.size();
+
+            return res;
+        }
+
+        void Write(bool forward, char fillChar)
+        {
+            ui64 remaining = BytesToWrite;
+            while (remaining > 0) {
+                auto len = RandomNumber(Min(remaining, MaxBytesPerWrite)) + 1;
+                auto data = TString(len, fillChar);
+                if (forward) {
+                    WriteToCacheSync(NodeId, BytesToWrite - remaining, data);
+                } else {
+                    WriteToCacheSync(NodeId, remaining - len, data);
+                }
+                remaining -= len;
+            }
+        }
+    };
+
+    Y_UNIT_TEST(ShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabled)
+    {
+        TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest b;
+
+        // Test 1: write 'X' in forward order
+
+        std::thread writerThread1([&]() { b.Write(true, 'X'); });
+        ui64 prevFirstCharCount = 0;
+
+        while (true)
+        {
+            auto r = b.Read('X', '\0');
+
+            UNIT_ASSERT_LE(prevFirstCharCount, r.FirstCharCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, r.LastCharCount);
+            UNIT_ASSERT(r.Valid);
+
+            if (r.FirstCharCount == b.BytesToWrite) {
+                break;
+            }
+
+            prevFirstCharCount = r.FirstCharCount;
+        }
+
+        UNIT_ASSERT_LT_C(0, prevFirstCharCount, "Non-trivial reads expected");
+
+        writerThread1.join();
+
+        // Test 2: overwrite 'Y' in backward order
+
+        std::thread writerThread2([&]() { b.Write(false, 'Y'); });
+        ui64 prevLastCharCount = 0;
+
+        while (true)
+        {
+            auto r = b.Read('X', 'Y');
+
+            UNIT_ASSERT_LE(prevLastCharCount, r.LastCharCount);
+            UNIT_ASSERT(r.Valid);
+
+            if (r.LastCharCount == b.BytesToWrite) {
+                break;
+            }
+
+            prevLastCharCount = r.LastCharCount;
+        }
+
+        UNIT_ASSERT_LT_C(0, prevLastCharCount, "Non-trivial reads expected");
+
+        writerThread2.join();
+    }
+
+    Y_UNIT_TEST(UseOnlyPinnedDataForReadData)
+    {
+        // ReadData acquires pin that prevents unflushed requests from being
+        // evicted from cache. But this pin doesn’t affect already flushed
+        // requests that are held by another pin. If that pin is released while
+        // ReadData is in TReadResponseBuilder::AugmentResponseWithCachedData,
+        // it may return garbage.
+
+        TBootstrap b;
+
+        // Writing to a log consumes a lot of CPU and significantly decreases
+        // reproduction probability
+        b.Log.CloseLog();
+
+        // Manually control ReadData completion
+        auto promise = NewPromise<NProto::TReadDataResponse>();
+
+        b.Session->ReadDataHandler = [&](auto, auto request)
+        {
+            if (request->GetLength() == 10) {
+                return promise.GetFuture();
+            }
+
+            NProto::TReadDataResponse res;
+            res.SetBuffer("abc");
+            return MakeFuture(std::move(res));
+        };
+
+        std::atomic<bool> stopRequested = false;
+
+        std::thread writerThread(
+            [&]()
+            {
+                while (!stopRequested) {
+                    b.ReadFromCache(1, 0, 10);
+                    b.WriteToCacheSync(1, 0, "abc");
+                    b.FlushCache(1);
+
+                    NProto::TReadDataResponse res;
+                    res.SetBuffer("abc");
+                    promise.SetValue(std::move(res));
+                    promise = NewPromise<NProto::TReadDataResponse>();
+
+                    // WriteData request is evicted here and is replaced by
+                    // a new request in the same memory address
+                    b.WriteToCacheSync(2, 0, "def");
+                    b.FlushCache(2);
+                }
+            });
+
+        Y_DEFER
+        {
+            stopRequested = true;
+            writerThread.join();
+        };
+
+        auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        auto remainingIterations = 1000000;
+
+        while (remainingIterations > 0 && TInstant::Now() < deadline) {
+            remainingIterations--;
+            auto readResult = b.ReadFromCache(1, 0, 3).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL("abc", readResult.GetBuffer());
+        }
+    }
+
+    Y_UNIT_TEST(AllowReorderingOnBarrierAcquisition)
+    {
+        TBootstrap b({
+            // Direct writes bypass cache - validation will fail
+            .DoNotCheckWriteDataRequestBuffer = true,
+            // Control flush batches
+            .FlushWritesInParallelEnabled = false,
+        });
+
+        // Prevent write requests initiated by Flush from completing immediately
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        UNIT_ASSERT(b.WriteToCache(1, 0, "abc").HasValue());
+        UNIT_ASSERT(b.WriteToCache(1, 10, "def").HasValue());
+
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(1);
+        request->SetHandle(102);
+        request->SetOffset(12);
+        request->SetBuffer("+++");
+
+        auto directWriteFuture =
+            b.Cache.WriteDataDirect(b.CallContext, std::move(request));
+
+        UNIT_ASSERT(b.WriteToCache(1, 10, "ghi").HasValue());
+        UNIT_ASSERT(b.WriteToCache(1, 14, "jkl").HasValue());
+        UNIT_ASSERT(!directWriteFuture.HasValue());
+
+        // "def" and "ghi" are expected to go to the same flush batch
+        // then direct flush is executed
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT(directWriteFuture.HasValue());
+
+        auto readResponse = b.ReadFromCache(1, 10, 7).GetValue();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "gh++jkl",
+            readResponse.GetBuffer().substr(readResponse.GetBufferOffset()));
     }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <>
+void Out<NCloud::NFileStore::NFuse::EWriteBackCacheMode>(
+    IOutputStream& out,
+    NCloud::NFileStore::NFuse::EWriteBackCacheMode value)
+{
+    switch (value) {
+        case NCloud::NFileStore::NFuse::EWriteBackCacheMode::Normal:
+            out << "Normal";
+            break;
+        case NCloud::NFileStore::NFuse::EWriteBackCacheMode::Draining:
+            out << "Draining";
+            break;
+        case NCloud::NFileStore::NFuse::EWriteBackCacheMode::Drained:
+            out << "Drained";
+            break;
+    }
+}

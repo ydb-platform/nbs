@@ -41,9 +41,15 @@ public:
     ui32 GetWriteBackCacheFlushMaxWriteRequestSize() const;
     ui32 GetWriteBackCacheFlushMaxWriteRequestsCount() const;
     ui32 GetWriteBackCacheFlushMaxSumWriteRequestsSize() const;
+    ui32 GetWriteBackCacheMaxQueuedFlushBatchesPerNode() const;
 
     TString GetDirectoryHandlesStoragePath() const;
     ui64 GetDirectoryHandlesInitialDataSize() const;
+    ui64 GetDirectoryHandlesMaxDataAreaStepSize() const;
+
+    ui32 GetPermanentActorCount() const;
+    NProto::ESideChannelType GetSideChannelType() const;
+    ui64 GetFileMapMemoryLimit() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

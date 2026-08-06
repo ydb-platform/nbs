@@ -4,10 +4,13 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 
 SRCS(
     helpers_ut.cpp
+    quota_ut.cpp
     rebase_logic_ut.cpp
     subsessions_ut.cpp
     tablet_database_ut.cpp
+    tablet_state_iface_ut.cpp
     tablet_ut.cpp
+    tablet_ut_adapter.cpp
     tablet_ut_cache.cpp
     tablet_ut_channels.cpp
     tablet_ut_checkpoints.cpp
@@ -20,6 +23,7 @@ SRCS(
     tablet_ut_nodes.cpp
     tablet_ut_nodes_filteralivenodes.cpp
     tablet_ut_nodes_internal.cpp
+    tablet_ut_quotas.cpp
     tablet_ut_sessions.cpp
     tablet_ut_subsessions.cpp
     tablet_ut_throttling.cpp

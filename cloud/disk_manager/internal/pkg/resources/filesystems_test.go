@@ -17,6 +17,7 @@ func requireFilesystemsAreEqual(t *testing.T, expected FilesystemMeta, actual Fi
 	// TODO: Get rid of boilerplate.
 	require.Equal(t, expected.ID, actual.ID)
 	require.Equal(t, expected.ZoneID, actual.ZoneID)
+	require.Equal(t, expected.SrcSnapshotID, actual.SrcSnapshotID)
 	require.Equal(t, expected.BlocksCount, actual.BlocksCount)
 	require.Equal(t, expected.BlockSize, actual.BlockSize)
 	require.Equal(t, expected.Kind, actual.Kind)
@@ -49,13 +50,14 @@ func TestFilesystemsCreateFilesystem(t *testing.T) {
 	storage := newStorage(t, ctx, db)
 
 	filesystem := FilesystemMeta{
-		ID:          "filesystem",
-		ZoneID:      "zone",
-		BlocksCount: 1000000,
-		BlockSize:   4096,
-		Kind:        "ssd",
-		CloudID:     "cloud",
-		FolderID:    "folder",
+		ID:            "filesystem",
+		ZoneID:        "zone",
+		SrcSnapshotID: "snapshot",
+		BlocksCount:   1000000,
+		BlockSize:     4096,
+		Kind:          "ssd",
+		CloudID:       "cloud",
+		FolderID:      "folder",
 
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
@@ -276,13 +278,14 @@ func TestFilesystemsGetFilesystem(t *testing.T) {
 	require.Nil(t, d)
 
 	filesystem := FilesystemMeta{
-		ID:          filesystemID,
-		ZoneID:      "zone",
-		BlocksCount: 1000000,
-		BlockSize:   4096,
-		Kind:        "ssd",
-		CloudID:     "cloud",
-		FolderID:    "folder",
+		ID:            filesystemID,
+		ZoneID:        "zone",
+		SrcSnapshotID: "snapshot",
+		BlocksCount:   1000000,
+		BlockSize:     4096,
+		Kind:          "ssd",
+		CloudID:       "cloud",
+		FolderID:      "folder",
 
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,

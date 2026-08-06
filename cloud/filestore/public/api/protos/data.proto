@@ -64,6 +64,9 @@ message TCreateHandleRequest
 
     // If set, the node will be created or looked up in the shard FS.
     bytes ShardFileSystemId = 12;
+
+    // Umask of the calling process
+    uint32 Umask = 13;
 }
 
 message TCreateHandleResponse
@@ -173,6 +176,12 @@ message TReadDataRequest
     uint64 RegionId = 8;
 }
 
+// TReadDataResponse uses a custom parser implemented in
+// cloud/filestore/libs/storage/service/protobuf_utils.h
+// to optimize TReadDataActor performance.
+//
+// IMPORTANT: update the parser whenever new fields are added
+// to TReadDataResponse.
 message TReadDataResponse
 {
     // Optional error, set only if error happened.

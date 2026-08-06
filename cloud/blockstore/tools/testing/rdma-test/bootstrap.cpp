@@ -6,10 +6,7 @@
 #include "storage.h"
 #include "target.h"
 
-#include <cloud/blockstore/libs/rdma/iface/probes.h>
-#include <cloud/blockstore/libs/rdma/impl/client.h>
-#include <cloud/blockstore/libs/rdma/impl/server.h>
-#include <cloud/blockstore/libs/rdma/impl/verbs.h>
+#include <cloud/blockstore/libs/rdma/helper.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -20,6 +17,9 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/probes.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
@@ -61,35 +61,50 @@ void TBootstrap::Init()
     }
 
     if (Options->TestMode == ETestMode::Target) {
-        auto config = std::make_unique<NRdma::TServerConfig>();
+        auto config =
+            std::make_unique<NCloud::NStorage::NRdma::TServerConfig>();
         config->Backlog = Options->Backlog;
         config->QueueSize = Options->QueueSize;
+        config->SendQueueSize = Options->SendQueueSize;
+        config->RecvQueueSize = Options->RecvQueueSize;
         config->PollerThreads = Options->PollerThreads;
-        config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
+        config->WaitMode =
+            NCloud::NStorage::NRdma::EWaitMode(Options->WaitMode);
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
+        config->BufferPool = Options->BufferPool;
+        config->QpRetryCount = Options->QpRetryCount;
+        config->QpRnrRetryCount = Options->QpRnrRetryCount;
+        config->QpTimeout = Options->QpTimeout;
+        config->QpMinRnrTimer = Options->QpMinRnrTimer;
 
-        Verbs = NRdma::NVerbs::CreateVerbs();
-
-        Server = NRdma::CreateServer(
-            Verbs,
+        Server = NCloud::NBlockStore::NRdma::CreateRdmaServer(
             Logging,
             Monitoring,
             std::move(config));
     } else if (Options->StorageKind == EStorageKind::Rdma) {
-        auto config = std::make_unique<NRdma::TClientConfig>();
+        auto config =
+            std::make_unique<NCloud::NStorage::NRdma::TClientConfig>();
         config->QueueSize = Options->QueueSize;
+        config->SendQueueSize = Options->SendQueueSize;
+        config->RecvQueueSize = Options->RecvQueueSize;
         config->PollerThreads = Options->PollerThreads;
-        config->WaitMode = NRdma::EWaitMode(Options->WaitMode);
+        config->WaitMode =
+            NCloud::NStorage::NRdma::EWaitMode(Options->WaitMode);
         config->IpTypeOfService = Options->Tos;
         config->SourceInterface = Options->SourceInterface;
         config->VerbsQP = Options->VerbsQP;
+        config->BufferPool = Options->BufferPool;
+        config->ResolveTimeout =
+            TDuration::MilliSeconds(Options->ResolveTimeout);
+        config->FlushTimeout = TDuration::MilliSeconds(Options->FlushTimeout);
+        config->QpRetryCount = Options->QpRetryCount;
+        config->QpRnrRetryCount = Options->QpRnrRetryCount;
+        config->QpTimeout = Options->QpTimeout;
+        config->QpMinRnrTimer = Options->QpMinRnrTimer;
 
-        Verbs = NRdma::NVerbs::CreateVerbs();
-
-        Client = NRdma::CreateClient(
-            Verbs,
+        Client = NCloud::NBlockStore::NRdma::CreateRdmaClient(
             Logging,
             Monitoring,
             std::move(config));
@@ -112,7 +127,7 @@ void TBootstrap::InitLogging()
 void TBootstrap::InitTracing()
 {
     auto& probes = NLwTraceMonPage::ProbeRegistry();
-    probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
+    probes.AddProbesList(LWTRACE_GET_PROBES(STORAGE_RDMA_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_TEST_PROVIDER));
 
     auto& traceManager = NLwTraceMonPage::TraceManager(false);

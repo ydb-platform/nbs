@@ -19,16 +19,15 @@ SRCS(
     disjoint_interval_map.cpp
     error.cpp
     file_io_service.cpp
-    file_ring_buffer.cpp
     format.cpp
     guarded_sglist.cpp
     helpers.cpp
     history.cpp
+    hostname.cpp
     lru_cache.cpp
     media.cpp
+    numeric.cpp
     page_size.cpp
-    dynamic_persistent_table.cpp
-    persistent_table.cpp
     proto_helpers.cpp
     random.cpp
     ring_buffer.cpp
@@ -60,12 +59,17 @@ PEERDIR(
     library/cpp/logger
     library/cpp/lwtrace
     library/cpp/protobuf/util
+    library/cpp/retry
     library/cpp/threading/future
 
     contrib/ydb/library/actors/prof
 )
 
 END()
+
+RECURSE(
+    manual_bench
+)
 
 RECURSE_FOR_TESTS(
     bench

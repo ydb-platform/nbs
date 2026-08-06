@@ -73,8 +73,9 @@ bool IReplayRequestGenerator::ShouldImmediatelyProcessQueue()
     return true;
 }
 
-bool IReplayRequestGenerator::ShouldFailOnError()
+bool IReplayRequestGenerator::ShouldFailOnError(const NProto::TError& error)
 {
+    Y_UNUSED(error);
     return false;
 }
 

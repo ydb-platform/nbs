@@ -51,6 +51,9 @@ TNonreplicatedPartitionMigrationCommonActor::
           Config->GetInitialRetryDelayForServiceRequests(),
           Config->GetMaxRetryDelayForServiceRequests())
     , PoisonPillHelper(this)
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TPartitionMigration{.DiskId = DiskId})
 {
 }
 
@@ -87,6 +90,9 @@ TNonreplicatedPartitionMigrationCommonActor::
           Config->GetInitialRetryDelayForServiceRequests(),
           Config->GetMaxRetryDelayForServiceRequests())
     , PoisonPillHelper(this)
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TPartitionMigration{.DiskId = DiskId})
 {
 }
 

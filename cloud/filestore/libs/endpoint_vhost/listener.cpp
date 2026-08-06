@@ -69,7 +69,8 @@ private:
     const IFileSystemLoopFactoryPtr LoopFactory;
     const THandleOpsQueueConfig HandleOpsQueueConfig;
     const TWriteBackCacheConfig WriteBackCacheConfig;
-    const TDirectoryHandlesStorageConfig DirectoryHandlesStorageConfig;
+    const TDirectoryHandleStorageConfig DirectoryHandleStorageConfig;
+    const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
 
     TLog Log;
 
@@ -82,7 +83,8 @@ public:
             IFileSystemLoopFactoryPtr loopFactory,
             THandleOpsQueueConfig handleOpsQueueConfig,
             TWriteBackCacheConfig writeBackCacheConfig,
-            TDirectoryHandlesStorageConfig directoryHandlesStorageConfig)
+            TDirectoryHandleStorageConfig directoryHandleStorageConfig,
+            IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -90,7 +92,9 @@ public:
         , LoopFactory(std::move(loopFactory))
         , HandleOpsQueueConfig(std::move(handleOpsQueueConfig))
         , WriteBackCacheConfig(std::move(writeBackCacheConfig))
-        , DirectoryHandlesStorageConfig(std::move(directoryHandlesStorageConfig))
+        , DirectoryHandleStorageConfig(
+              std::move(directoryHandleStorageConfig))
+        , FileMapMemoryLimiter(std::move(fileMapMemoryLimiter))
     {
         Log = Logging->CreateLog("NFS_VHOST");
     }
@@ -139,13 +143,20 @@ public:
             WriteBackCacheConfig.FlushMaxWriteRequestsCount);
         protoConfig.SetWriteBackCacheFlushMaxSumWriteRequestsSize(
             WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
-        protoConfig.SetDirectoryHandlesStoragePath(DirectoryHandlesStorageConfig.PathPrefix);
-        protoConfig.SetDirectoryHandlesInitialDataSize(DirectoryHandlesStorageConfig.InitialDataSize);
+        protoConfig.SetWriteBackCacheMaxQueuedFlushBatchesPerNode(
+            WriteBackCacheConfig.MaxQueuedFlushBatchesPerNode);
+        protoConfig.SetDirectoryHandlesStoragePath(
+            DirectoryHandleStorageConfig.PathPrefix);
+        protoConfig.SetDirectoryHandlesInitialDataSize(
+            DirectoryHandleStorageConfig.InitialDataSize);
+        protoConfig.SetDirectoryHandlesMaxDataAreaStepSize(
+            DirectoryHandleStorageConfig.MaxDataAreaStepSize);
 
         auto vFSConfig = std::make_shared<TVFSConfig>(std::move(protoConfig));
         auto Loop = LoopFactory->Create(
             std::move(vFSConfig),
-            std::move(session));
+            std::move(session),
+            FileMapMemoryLimiter);
 
         return std::make_shared<TEndpoint>(std::move(Loop));
     }
@@ -163,7 +174,8 @@ IEndpointListenerPtr CreateEndpointListener(
     IFileSystemLoopFactoryPtr loopFactory,
     THandleOpsQueueConfig handleOpsQueueConfig,
     TWriteBackCacheConfig writeBackCacheConfig,
-    TDirectoryHandlesStorageConfig directoryHandlesStorageConfig)
+    TDirectoryHandleStorageConfig directoryHandleStorageConfig,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
 {
     return std::make_shared<TEndpointListener>(
         std::move(logging),
@@ -173,7 +185,8 @@ IEndpointListenerPtr CreateEndpointListener(
         std::move(loopFactory),
         std::move(handleOpsQueueConfig),
         std::move(writeBackCacheConfig),
-        std::move(directoryHandlesStorageConfig));
+        std::move(directoryHandleStorageConfig),
+        std::move(fileMapMemoryLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NVhost

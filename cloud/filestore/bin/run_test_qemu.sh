@@ -7,8 +7,7 @@ find_bin_dir() {
 }
 
 BIN_DIR=`find_bin_dir`
-STORAGE_DIR=$BIN_DIR/../../storage
-QEMU_DIR=$STORAGE_DIR/core/tools/testing/qemu
+QEMU_DIR=$BIN_DIR/../buildall/cloud/storage/core/tools/testing/qemu
 
 : ${QEMU_BIN_DIR:=$QEMU_DIR/bin}
 

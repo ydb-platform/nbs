@@ -42,11 +42,9 @@ public:
 public:
     void Execute(
         const TActorContext& ctx,
-        TTransactionContext& tx,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
-        TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
-
         switch (args.Mode) {
             case EAddBlobMode::Write:
                 args.CommitIdOverflowMessage = "AddBlobWrite";
@@ -56,11 +54,6 @@ public:
             case EAddBlobMode::WriteUnconfirmed:
                 args.CommitIdOverflowMessage = "AddBlobWriteUnconfirmed";
                 Execute_AddBlob_WriteUnconfirmed(ctx, db, args);
-                break;
-
-            case EAddBlobMode::WriteBatch:
-                args.CommitIdOverflowMessage = "AddBlobWriteBatch";
-                Execute_AddBlob_WriteBatch(ctx, db, args);
                 break;
 
             case EAddBlobMode::Flush:
@@ -87,7 +80,7 @@ public:
 private:
     void Execute_AddBlob_Write(
         const TActorContext& ctx,
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         Y_UNUSED(ctx);
@@ -178,9 +171,47 @@ private:
         UpdateNodeAttrs(db, args);
     }
 
+    TByteRange CalculateCacheBypassRange(
+        const TTxIndexTablet::TAddBlob& args) const
+    {
+        const ui32 blockSize = Tablet.GetBlockSize();
+        const auto& writeRange = args.WriteRanges.front();
+        const auto node = args.Nodes.find(writeRange.NodeId);
+
+        // On CommitIdOverflow no data is written, but the tablet is about to
+        // be stopped; a missing node means that the old file size is unknown.
+        // In both cases no assumptions are made and all reads for the node
+        // are bypassed.
+        if (args.CommitId == InvalidCommitId || node == args.Nodes.end()) {
+            return TByteRange::MaxEnd(0, blockSize);
+        }
+
+        ui64 begin = writeRange.MaxOffset;
+        for (const auto& blob: args.MergedBlobs) {
+            begin = Min(
+                begin,
+                static_cast<ui64>(blob.Block.BlockIndex) * blockSize);
+        }
+        for (const auto& part: args.UnalignedDataParts) {
+            begin = Min(
+                begin,
+                static_cast<ui64>(part.BlockIndex) * blockSize +
+                    part.OffsetInBlock);
+        }
+
+        const ui64 fileSize = node->Attrs.GetSize();
+        if (writeRange.MaxOffset > fileSize) {
+            // The write changes the file size, so cached file sizes become
+            // stale for all offsets starting from the old one.
+            return TByteRange::MaxEnd(Min(begin, fileSize), blockSize);
+        }
+
+        return TByteRange(begin, writeRange.MaxOffset - begin, blockSize);
+    }
+
     void Execute_AddBlob_WriteUnconfirmed(
         const TActorContext& ctx,
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         // TODO(#5353) Support immediate response before Tx
@@ -191,9 +222,19 @@ private:
 
         Execute_AddBlob_Write(ctx, db, args);
 
-        if (args.CommitId == InvalidCommitId) {
-            return;
-        }
+        TABLET_VERIFY_C(
+            args.WriteRanges.size() == 1,
+            "WriteRanges.size(): " << args.WriteRanges.size());
+
+        // We shouldn't have errors other than CommitIdOverflow at this place
+        TABLET_VERIFY_C(
+            !HasError(args.Error) || args.CommitIdOverflow,
+            "Error: " << FormatError(args.Error));
+
+        Tablet.ActivateCacheReadBypass(
+            args.WriteRanges.front().NodeId,
+            args.CommitId,
+            CalculateCacheBypassRange(args));
 
         if (HasError(args.Error)) {
             return;
@@ -202,77 +243,8 @@ private:
         Tablet.ConfirmedDataAdded(db, args.ConfirmedDataRefCommitId);
     }
 
-    void Execute_AddBlob_WriteBatch(
-        const TActorContext& ctx,
-        TIndexTabletDatabase& db,
-        TTxIndexTablet::TAddBlob& args)
-    {
-        Y_UNUSED(ctx);
-
-        TABLET_VERIFY(!args.SrcBlobs);
-        TABLET_VERIFY(!args.MergedBlobs);
-        TABLET_VERIFY(!args.UnalignedDataParts);
-
-        AddBlobsInfo(
-            Tablet.GetBlockSize(),
-            args.MixedBlobs,
-            args.ProfileLogRequest);
-
-        // Flush/Compaction just transfers blocks from one place to another,
-        // but Write is different: we need to generate MinCommitId
-        // and mark overwritten blocks now
-        args.CommitId = Tablet.GenerateCommitId();
-        if (args.CommitId == InvalidCommitId) {
-            args.OnCommitIdOverflow();
-            return;
-        }
-
-        TVector<bool> isMixedBlobWritten(args.MixedBlobs.size());
-        for (ui32 i = 0; i < args.MixedBlobs.size(); ++i) {
-            auto& blob = args.MixedBlobs[i];
-
-            for (auto& block: blob.Blocks) {
-                TABLET_VERIFY(block.MinCommitId == InvalidCommitId
-                    && block.MaxCommitId == InvalidCommitId);
-                block.MinCommitId = args.CommitId;
-            }
-
-            GroupBy(
-                MakeArrayRef(blob.Blocks),
-                [] (const auto& l, const auto& r) {
-                    return r.NodeId == l.NodeId
-                        && r.BlockIndex == l.BlockIndex + 1;
-                },
-                [&] (TArrayRef<const TBlock> group) {
-                    Tablet.MarkFreshBlocksDeleted(
-                        db,
-                        group[0].NodeId,
-                        args.CommitId,
-                        group[0].BlockIndex,
-                        group.size());
-
-                    Tablet.MarkMixedBlocksDeleted(
-                        db,
-                        group[0].NodeId,
-                        args.CommitId,
-                        group[0].BlockIndex,
-                        group.size());
-                });
-
-            auto writeBlocksResult = Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
-            if (writeBlocksResult.NewBlob) {
-                ui32 rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
-                AccessCompactionRangeInfo(rangeId).BlobsCount += 1;
-                AccessCompactionRangeInfo(rangeId).GarbageBlocksCount +=
-                    writeBlocksResult.GarbageBlocksCount;
-            }
-        }
-
-        UpdateNodeAttrs(db, args);
-    }
-
     void Execute_AddBlob_Flush(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         TABLET_VERIFY(!args.SrcBlobs);
@@ -310,7 +282,7 @@ private:
     }
 
     void Execute_AddBlob_FlushBytes(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         TABLET_VERIFY(!args.MergedBlobs);
@@ -350,7 +322,7 @@ private:
     }
 
     void Execute_AddBlob_Compaction(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         TABLET_VERIFY(!args.MergedBlobs);
@@ -406,7 +378,7 @@ private:
     }
 
     void UpdateCompactionMap(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         for (const auto& [rangeId, updatedStats]: RangeId2CompactionStats) {
@@ -434,7 +406,7 @@ private:
     }
 
     void UpdateNodeAttrs(
-        TIndexTabletDatabase& db,
+        IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         for (auto [id, maxOffset]: args.WriteRanges) {
@@ -517,14 +489,14 @@ bool TIndexTabletActor::PrepareTx_AddBlob(
 {
     InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     bool ready = true;
     for (auto [id, maxOffset]: args.WriteRanges) {
-        TMaybe<IIndexTabletDatabase::TNode> node;
-        if (!ReadNode(db, id, args.CommitId, node)) {
+        TMaybe<INodeIndexTabletDatabase::TNode> node;
+        if (!ReadNode(*db, id, args.CommitId, node)) {
             ready = false;
         }
 
@@ -548,8 +520,9 @@ void TIndexTabletActor::ExecuteTx_AddBlob(
     TTransactionContext& tx,
     TTxIndexTablet::TAddBlob& args)
 {
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
     TAddBlobsExecutor executor(LogTag, *this);
-    executor.Execute(ctx, tx, args);
+    executor.Execute(ctx, *db, args);
 }
 
 void TIndexTabletActor::CompleteTx_AddBlob(
@@ -573,9 +546,12 @@ void TIndexTabletActor::CompleteTx_AddBlob(
         args.RequestInfo->CallContext,
         "AddBlob");
 
-    // For ConfirmedData we already Released barrier and Answered to the client,
-    // nothing left to do and we can skip event
-    if (args.ConfirmedDataRefCommitId != InvalidCommitId) {
+    // For unconfirmed data we already released the barrier and answered to
+    // the client, nothing left to do and we can skip event.
+    if (args.Mode == EAddBlobMode::WriteUnconfirmed) {
+        DeactivateCacheReadBypass(
+            args.WriteRanges.front().NodeId,
+            args.CommitId);
         EnqueueCollectGarbageIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
         return;

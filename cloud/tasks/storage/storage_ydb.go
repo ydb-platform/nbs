@@ -22,6 +22,7 @@ type storageYDB struct {
 
 	exceptHangingTaskTypes            []string
 	hangingTaskTimeout                time.Duration
+	hangingTaskTimeoutByType          map[string]time.Duration
 	inflightHangingTaskTimeout        time.Duration
 	stallingHangingTaskTimeout        time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
@@ -506,4 +507,22 @@ func (s *storageYDB) ResumeTask(ctx context.Context, taskID string) error {
 			return s.resumeTask(ctx, session, taskID)
 		},
 	)
+}
+
+func (s *storageYDB) IsTaskEnded(
+	ctx context.Context,
+	taskID string,
+) (bool, error) {
+
+	var ended bool
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			ended, err = s.isTaskEnded(ctx, session, taskID)
+			return err
+		},
+	)
+	return ended, err
 }

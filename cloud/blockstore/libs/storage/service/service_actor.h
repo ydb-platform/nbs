@@ -13,7 +13,6 @@
 #include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
@@ -22,6 +21,8 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/service/model/ping_metrics.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
+
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -42,11 +43,11 @@ private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
-    const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const NDiscovery::IDiscoveryServicePtr DiscoveryService;
     const ITraceSerializerPtr TraceSerializer;
     const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const IVolumeStatsPtr VolumeStats;
     const IRootKmsKeyProviderPtr RootKmsKeyProvider;
@@ -71,11 +72,11 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         NDiscovery::IDiscoveryServicePtr discoveryService,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes,
@@ -216,6 +217,10 @@ private:
         const TEvServicePrivate::TEvListMountedVolumesRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleSetVhostDiscardFlagRequest(
+        const TEvService::TEvSetVhostDiscardFlagRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)
@@ -232,6 +237,10 @@ private:
         TString input);
 
     TResultOrError<NActors::IActorPtr> CreateDescribeBlocksActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateDescribeBlobActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -268,6 +277,10 @@ private:
         TString input);
 
     TResultOrError<NActors::IActorPtr> CreateDiskRegistryEnsureStateIntegrityActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateDiskRegistryDescribeDiskActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -435,11 +448,15 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateGetTabletBootInfosActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateGetClusterCapacityActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateSetVhostDiscardEnabledFlagActionActor(
+    TResultOrError<NActors::IActorPtr> CreateSetVhostDiscardFlagActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -479,10 +496,10 @@ NActors::IActorPtr CreateVolumeSessionActor(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
-    NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TPartitionBudgetManagerPtr partitionBudgetManager,
     std::shared_ptr<NKikimr::TTabletCountersBase> counters,
     TSharedServiceCountersPtr sharedCounters,

@@ -7,11 +7,16 @@
 
 #include <cloud/filestore/libs/service/public.h>
 
+#include <cloud/filestore/public/api/protos/headers.pb.h>
+
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+
+#include <util/generic/strbuf.h>
 
 namespace NCloud::NFileStore::NServer {
 
@@ -23,6 +28,18 @@ struct IServer
 {
 };
 
+namespace NImpl {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void PrepareRequestHeaders(
+    NCloud::NProto::ERequestSource source,
+    TStringBuf peer,
+    TStringBuf authToken,
+    NProto::THeaders& headers);
+
+}   // namespace NImpl
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerPtr CreateServer(
@@ -32,7 +49,8 @@ IServerPtr CreateServer(
     NMonitoring::TDynamicCountersPtr counters,
     IProfileLogPtr profileLog,
     NCloud::ISchedulerPtr scheduler,
-    IFileStoreServicePtr service);
+    IFileStoreServicePtr service,
+    ICertificateProviderPtr certificateProvider);
 
 IServerPtr CreateServer(
     TServerConfigPtr config,
@@ -40,6 +58,7 @@ IServerPtr CreateServer(
     IRequestStatsPtr requestStats,
     NMonitoring::TDynamicCountersPtr counters,
     NCloud::ISchedulerPtr scheduler,
-    IEndpointManagerPtr service);
+    IEndpointManagerPtr service,
+    ICertificateProviderPtr certificateProvider);
 
 }   // namespace NCloud::NFileStore::NServer

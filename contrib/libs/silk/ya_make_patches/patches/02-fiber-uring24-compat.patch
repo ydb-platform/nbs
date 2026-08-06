@@ -1,0 +1,11 @@
+--- a/src/fibers/fiber.cpp
++++ b/src/fibers/fiber.cpp
+@@ -665,7 +665,7 @@
+ 
+         timer->reset(simpleCounters[SCHEDULER_IDLE_TIME], number);
+ 
+-        int r = ::io_uring_enter2(ring.ring_fd, 0, 1, IORING_ENTER_GETEVENTS | IORING_ENTER_EXT_ARG, &arg, sizeof(arg));
++        int r = ::io_uring_enter2(ring.ring_fd, 0, 1, IORING_ENTER_GETEVENTS | IORING_ENTER_EXT_ARG, reinterpret_cast<sigset_t *>(&arg), sizeof(arg));
+         if (r < 0)
+         {
+             // io_uring_enter2 returns -errno directly; it does not set errno.

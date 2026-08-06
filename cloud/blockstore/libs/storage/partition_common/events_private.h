@@ -7,13 +7,13 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
-#include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
 #include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/commit_id_generator.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 
@@ -392,12 +392,7 @@ struct TEvPartitionCommonPrivate
 
         TVector<EChannelPermissions> ChannelPermissions;
 
-        NPartition::TResourceMetricsQueuePtr ResourceMetricsQueue;
-        NPartition::TThreadSafePartCountersPtr PartCounters;
-        NPartition::TThreadSafePartStatsPtr PartStats;
-        NPartition::TGroupDowntimesPtr GroupDowntimes;
-
-        TCommitIdGeneratorPtr CommitIdGenerator;
+        TPartitionThreadSafeStatePtr SharedState;
     };
 
 
@@ -409,16 +404,19 @@ struct TEvPartitionCommonPrivate
     {
         ui64 CommitId;
         ui64 BlobSize;
+        TPartialBlobId BlobId;
         TVector<TBlockRange32> BlockRanges;
         TVector<IWriteBlocksHandlerPtr> WriteHandlers;
 
         TAddFreshBlocksRequest(
                 ui64 commitId,
                 ui64 blobSize,
+                TPartialBlobId blobId,
                 TVector<TBlockRange32> blockRanges,
                 TVector<IWriteBlocksHandlerPtr> writeHandlers)
             : CommitId(commitId)
             , BlobSize(blobSize)
+            , BlobId(blobId)
             , BlockRanges(std::move(blockRanges))
             , WriteHandlers(std::move(writeHandlers))
         {}
@@ -428,6 +426,34 @@ struct TEvPartitionCommonPrivate
     {
     };
 
+    //
+    // ExecuteTransactions
+    //
+
+    struct TExecuteTransactions
+    {
+        TVector<std::unique_ptr<ITransactionBase>> Transactions;
+    };
+
+    //
+    // ProcessStorageStatusFlags
+    //
+
+    struct TProcessStorageStatusFlags
+    {
+        NKikimr::TStorageStatusFlags Flags;
+        ui32 Channel;
+        ui32 Generation;
+        double ApproximateFreeSpaceShare;
+    };
+
+    //
+    // ReassignChannels
+    //
+
+    struct TReassignChannelsIfNeeded
+    {
+    };
 
     // Events declaration
     //
@@ -450,6 +476,9 @@ struct TEvPartitionCommonPrivate
         EvWriteBlobCompleted,
         EvWriteFreshBlocksCompleted,
         EvZeroFreshBlocksCompleted,
+        EvExecuteTransactions,
+        EvProcessStorageStatusFlags,
+        EvReassignChannelsIfNeeded,
 
         EvEnd
     };
@@ -481,6 +510,14 @@ struct TEvPartitionCommonPrivate
 
     using TEvZeroFreshBlocksCompleted =
         TResponseEvent<TOperationCompleted, EvZeroFreshBlocksCompleted>;
+
+    using TEvExecuteTransactions =
+        TRequestEvent<TExecuteTransactions, EvExecuteTransactions>;
+    using TEvProcessStorageStatusFlags =
+        TRequestEvent<TProcessStorageStatusFlags, EvProcessStorageStatusFlags>;
+
+    using TEvReassignChannelsIfNeeded =
+        TRequestEvent<TReassignChannelsIfNeeded, EvReassignChannelsIfNeeded>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

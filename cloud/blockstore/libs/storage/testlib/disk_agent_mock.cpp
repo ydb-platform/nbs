@@ -40,16 +40,19 @@ void TDiskAgentMock::HandleAcquireNVMeDevice(
 {
     auto* msg = ev->Get();
 
-    LocalNVMeService->AcquireNVMeDevice(msg->SerialNumber)
+    LocalNVMeService->AcquireNVMeDevice(msg->SerialNumber, TString())
         .Subscribe(
             [actorSystem = TActivationContext::ActorSystem(),
              replyTo = ev->Sender,
              replyFrom = ctx.SelfID,
              cookie = ev->Cookie](const auto& future)
             {
+                const auto& [device, error] = future.GetValue();
+
                 auto response = std::make_unique<
                     TEvDiskAgentPrivate::TEvAcquireNVMeDeviceResponse>(
-                    future.GetValue());
+                    error,
+                    device);
 
                 actorSystem->Send(new IEventHandle{
                     replyTo,
@@ -66,7 +69,7 @@ void TDiskAgentMock::HandleReleaseNVMeDevice(
 {
     auto* msg = ev->Get();
 
-    LocalNVMeService->ReleaseNVMeDevice(msg->SerialNumber)
+    LocalNVMeService->ReleaseNVMeDevice(msg->SerialNumber, TString())
         .Subscribe(
             [actorSystem = TActivationContext::ActorSystem(),
              replyTo = ev->Sender,

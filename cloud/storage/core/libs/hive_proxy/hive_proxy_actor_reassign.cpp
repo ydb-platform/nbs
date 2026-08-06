@@ -122,10 +122,9 @@ void THiveProxyActor::HandleReassignTablet(
 {
     auto* msg = ev->Get();
 
-    ui64 hive = GetHive(ctx, msg->TabletId);
-    auto clientId = ClientCache->Prepare(ctx, hive);
+    auto clientId = ClientCache->Prepare(ctx, HiveTabletId);
 
-    HiveStates[hive].Actors.insert(NCloud::Register<TReassignRequestActor>(
+    HiveState.Actors.insert(NCloud::Register<TReassignRequestActor>(
         ctx,
         SelfId(),
         LogComponent,

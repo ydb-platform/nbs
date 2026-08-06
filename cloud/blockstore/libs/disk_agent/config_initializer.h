@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
@@ -46,15 +46,12 @@ struct TConfigInitializer
         : Options(std::move(options))
     {}
 
-    void ApplyCMSConfigs(NKikimrConfig::TAppConfig cmsConfig);
-    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config);
-
     void InitKikimrConfig();
+    void InitServerConfig();
     void InitDiagnosticsConfig();
     void InitStorageConfig();
     void InitDiskAgentConfig();
     void InitDiskRegistryProxyConfig();
-    void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitFeaturesConfig();
     void InitRdmaConfig();
@@ -62,12 +59,8 @@ struct TConfigInitializer
     NKikimrConfig::TLogConfig GetLogConfig() const;
     NKikimrConfig::TMonitoringConfig GetMonitoringConfig() const;
 
-private:
-    TString GetFullSchemeShardDir() const;
-
-    void SetupMonitoringConfig(NKikimrConfig::TMonitoringConfig& monConfig) const;
-    void SetupLogConfig(NKikimrConfig::TLogConfig& logConfig) const;
-    void SetupDiskAgentConfig(NProto::TDiskAgentConfig& config) const;
+    void ApplyCMSConfigs(NKikimrConfig::TAppConfig cmsConfig);
+    void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config);
 
     void ApplyLogConfig(const TString& text);
     void ApplyAuthConfig(const TString& text);
@@ -86,6 +79,14 @@ private:
     void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
     void ApplyAllowedKikimrFeatureFlags(
         const NKikimrConfig::TAppConfig& config);
+
+private:
+    TString GetFullSchemeShardDir() const;
+
+    void SetupMonitoringConfig(
+        NKikimrConfig::TMonitoringConfig& monConfig) const;
+    void SetupLogConfig(NKikimrConfig::TLogConfig& logConfig) const;
+    void SetupDiskAgentConfig(NProto::TDiskAgentConfig& config) const;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

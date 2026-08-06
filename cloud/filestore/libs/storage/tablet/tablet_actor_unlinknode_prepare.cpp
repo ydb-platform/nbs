@@ -50,12 +50,12 @@ bool TIndexTabletActor::PrepareTx_PrepareUnlinkDirectoryNode(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     bool ready = ReadNode(
-        db,
+        *db,
         args.Request.GetNodeId(),
         args.CommitId,
         args.Node);
@@ -79,10 +79,10 @@ bool TIndexTabletActor::PrepareTx_PrepareUnlinkDirectoryNode(
         return true;
     }
 
-    TVector<IIndexTabletDatabase::TNodeRef> refs;
+    TVector<INodeIndexTabletDatabase::TNodeRef> refs;
     // 1 entry is enough to prevent deletion
     ready = ReadNodeRefs(
-        db,
+        *db,
         args.Request.GetNodeId(),
         args.CommitId,
         {},
@@ -109,7 +109,7 @@ void TIndexTabletActor::ExecuteTx_PrepareUnlinkDirectoryNode(
 
     FILESTORE_VALIDATE_TX_ERROR(PrepareUnlinkDirectoryNode, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -120,7 +120,7 @@ void TIndexTabletActor::ExecuteTx_PrepareUnlinkDirectoryNode(
     NProto::TNode attrs = CopyAttrs(args.Node->Attrs, E_CM_CTIME);
     attrs.SetIsPreparedForUnlink(true);
     UpdateNode(
-        db,
+        *db,
         args.Request.GetNodeId(),
         args.Node->MinCommitId,
         args.CommitId,
@@ -144,7 +144,7 @@ void TIndexTabletActor::CompleteTx_PrepareUnlinkDirectoryNode(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     if (!HasError(args.Error)) {
-        Metrics.PrepareUnlinkDirectoryNodeInShard.Update(
+        Metrics->PrepareUnlinkDirectoryNodeInShard.Update(
             1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);

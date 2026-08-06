@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/config/storage.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/features/public.h>
 
@@ -58,7 +59,7 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfig featuresConfig);
 
-    void SetCloudFolderEntity(
+    NProto::TError SetCloudFolderEntity(
         const TString& cloudId,
         const TString& folderId,
         const TString& entityId);
@@ -66,6 +67,7 @@ public:
     TStorageConfig(const TStorageConfig&) = default;
 
     void Merge(const NProto::TStorageConfig& storageConfig);
+    void Reset(const NProto::TStorageConfig& storageConfig);
 
     TValueByName GetValueByName(const TString& fieldName) const;
 
@@ -75,11 +77,12 @@ public:
     TDuration GetPipeClientMinRetryTime() const;
     TDuration GetPipeClientMaxRetryTime() const;
 
+    bool GetTabletDirectRdmaEnabled() const;
+
     TDuration GetEstablishSessionTimeout() const;
     TDuration GetIdleSessionTimeout() const;
+    ui32 GetMaxDeleteSessionHandlesPerTx() const;
 
-    bool GetWriteBatchEnabled() const;
-    TDuration GetWriteBatchTimeout() const;
     ui32 GetWriteBlobThreshold() const;
 
     ui32 GetMaxBlobSize() const;
@@ -109,6 +112,8 @@ public:
     ui32 GetCleanupThresholdForBackpressure() const;
     ui32 GetCompactionThresholdForBackpressure() const;
     ui64 GetFlushBytesThresholdForBackpressure() const;
+    ui64 GetFlushBytesItemCountThresholdForBackpressure() const;
+    ui64 GetCollectGarbageThresholdForBackpressure() const;
     ui32 GetBackpressureThresholdPercentageForBackgroundOpsPriority() const;
 
     TString GetHDDSystemChannelPoolKind() const;
@@ -179,6 +184,7 @@ public:
     ui32 GetMaxResponseEntries() const;
     ui32 GetMaxBytesMultiplier() const;
     NProto::EListNodesSizeMode GetListNodesSizeMode() const;
+    bool GetUseListNodesInternal() const;
 
     ui32 GetDefaultNodesLimit() const;
     ui32 GetSizeToNodesRatio() const;
@@ -241,8 +247,6 @@ public:
 
     ui32 GetNodeIndexCacheMaxNodes() const;
 
-    bool GetMultiTabletForwardingEnabled() const;
-
     NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
     TDuration GetEnqueueBlobIndexOpIfNeededScheduleInterval() const;
 
@@ -262,10 +266,16 @@ public:
     ui64 GetInMemoryIndexCacheNodesToNodeRefsCapacityRatio() const;
     ui64 GetInMemoryIndexCacheNodeRefsExhaustivenessCapacity() const;
     bool GetInMemoryIndexCacheLoadOnTabletStart() const;
+    bool GetInMemoryIndexCacheNodeRefsLoadOnTabletStartInShards() const;
     ui64 GetInMemoryIndexCacheLoadOnTabletStartRowsPerTx() const;
     TDuration GetInMemoryIndexCacheLoadSchedulePeriod() const;
+    bool GetUseUnlimitedBTreeNodeRefsCacheInMainTablet() const;
+    bool GetUseUnlimitedBTreeNodeRefsCacheInShards() const;
 
     bool GetAsyncDestroyHandleEnabled() const;
+    bool GetAsyncDestroyReadOnlyHandleEnabled() const;
+    bool GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() const;
+    bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     void Dump(IOutputStream& out) const;
@@ -320,12 +330,14 @@ public:
     ui64 GetAutomaticallyCreatedShardSize() const;
     bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
 
-    bool GetShardIdSelectionInLeaderEnabled() const;
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
     NProto::EShardBalancerPolicy GetShardBalancerPolicy() const;
+    ui64 GetShardBalancerPrecisionBytes() const;
 
     bool GetDirectoryCreationInShardsEnabled() const;
+
+    ui32 GetMaxShardManagementRequestsInFlight() const;
 
     bool GetGuestWriteBackCacheEnabled() const;
     ui64 GetMixedBlocksOffloadedRangesCapacity() const;
@@ -336,6 +348,7 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+    bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
     NProto::EGuestCachingType GetGuestCachingType() const;
@@ -361,8 +374,11 @@ public:
 
     bool GetDirectoryHandlesStorageEnabled() const;
     ui64 GetDirectoryHandlesTableSize() const;
+    ui64 GetDirectoryHandlesPersistentHandleMaxSize() const;
 
     bool GetGuestHandleKillPrivV2Enabled() const;
+
+    bool GetGuestPosixAclEnabled() const;
 
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 
@@ -370,6 +386,7 @@ public:
 
     [[nodiscard]] bool GetBlockChecksumsInProfileLogEnabled() const;
 
+    ui32 GetMinShardCount() const;
     ui32 GetMaxShardCount() const;
 
     bool GetReadBlobDisabled() const;
@@ -377,6 +394,7 @@ public:
 
     ui32 GetCpuLackOverloadThreshold() const;
     ui32 GetTabletActorCpuUsageOverloadThreshold() const;
+    [[nodiscard]] bool GetAllowTabletOverload() const;
 
     ui32 GetMaxTabletStep() const;
 
@@ -390,10 +408,44 @@ public:
     [[nodiscard]] TDuration GetTabletRegularTasksSchedulePeriod() const;
     [[nodiscard]] TDuration GetResponseLogEntryTTL() const;
 
-    ui32 GetForceDestroySizeThreshold() const;
+    [[nodiscard]] ui64 GetForceDestroySizeThreshold() const;
+    [[nodiscard]] TDuration GetRestartTabletUptimeThresholdDuringDestroy() const;
 
     [[nodiscard]] bool GetAddingUnconfirmedDataEnabled() const;
     [[nodiscard]] ui32 GetUnconfirmedDataCountHardLimit() const;
+
+    [[nodiscard]] bool GetHideFileNamesInTabletDirectoryViewer() const;
+
+    [[nodiscard]] bool GetUseCustomReadDataResponseParser() const;
+
+    [[nodiscard]] bool GetUseSchemeCache() const;
+
+    [[nodiscard]] ui32 GetFastShardServerPort() const;
+    [[nodiscard]] bool GetFastShardRuntimeEnabled() const;
+
+    [[nodiscard]] bool GetEnableNodeRefCompression() const;
+
+    bool GetSoftBackpressureEnabled() const;
+    ui32 GetFlushThresholdForBackpressureSoft() const;
+    ui32 GetCleanupThresholdForBackpressureSoft() const;
+    ui32 GetCompactionThresholdForBackpressureSoft() const;
+    ui64 GetFlushBytesThresholdForBackpressureSoft() const;
+    ui64 GetFlushBytesItemCountThresholdForBackpressureSoft() const;
+    ui64 GetCollectGarbageThresholdForBackpressureSoft() const;
+
+    [[nodiscard]] TDuration GetStatFileStoreCacheTTL() const;
+
+    [[nodiscard]] bool GetExternalReadDataPayload() const;
+    ui32 GetSoftBackpressureMaxWriteBandwidth() const;
+    ui32 GetSoftBackpressureMaxReadBandwidth() const;
+    ui32 GetSoftBackpressureMaxWriteIops() const;
+    ui32 GetSoftBackpressureMaxReadIops() const;
+
+    [[nodiscard]] bool GetExternalWriteDataPayloadEnabled() const;
+
+    [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
+
+    [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

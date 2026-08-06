@@ -58,6 +58,9 @@ void TPartitionActor::UpdateActorStats(const TActorContext& ctx)
 TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     const TActorContext& ctx)
 {
+    PartCounters->Simple.StoredBytesCountToDiskSizeRatio.Set(
+        std::round(State->GetStoredBytesCountToDiskSizeRatio() * 100.0));
+
     PartCounters->Simple.MixedBytesCount.Set(
         State->GetMixedBlocksCount() * State->GetBlockSize());
 
@@ -82,8 +85,14 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.CompactionGarbageScore.Set(
         State->GetCompactionGarbageScore());
 
+    PartCounters->Simple.CompactionIgnoringZeroedScore.Set(
+        State->GetCompactionIgnoringZeroedScore());
+
     PartCounters->Simple.CompactionRangeCountPerRun.Set(
         State->GetCompactionRangeCountPerRun());
+
+    PartCounters->Simple.NewlyZeroedBlocks.Set(
+        State->GetNewlyZeroedBlocks());
 
     PartCounters->Simple.BytesCount.Set(
         State->GetBlocksCount() * State->GetBlockSize());
@@ -140,9 +149,10 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
         true   // forceAll
     );
 
-    auto ioCounters = IoCompanionCounters->Swap(CreatePartitionDiskCounters(
-        EPublishingPolicy::Repl,
-        DiagnosticsConfig->GetHistogramCounterOptions()));
+    auto ioCounters =
+        SharedState->PartCounters.Swap(CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            DiagnosticsConfig->GetHistogramCounterOptions()));
 
     PartCounters->AggregateWith(*ioCounters);
 

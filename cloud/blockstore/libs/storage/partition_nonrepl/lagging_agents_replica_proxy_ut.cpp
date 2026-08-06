@@ -432,7 +432,9 @@ struct TTestEnv
                     ReplicaActors[replicaIndex],
                     // Normally this would be mirror actor, but for testing
                     // purposes easier to read data from next replica.
-                    ReplicaActors[(replicaIndex + 1) % ReplicaCount]);
+                    ReplicaActors[(replicaIndex + 1) % ReplicaCount],
+                    TLogTitle(0, TLogTitle::TPartitionMirror{})
+                        .GetChild(0));
 
             const auto actorId = Runtime.Register(controller.release(), 0);
             Runtime.DispatchEvents({}, TDuration::MilliSeconds(10));

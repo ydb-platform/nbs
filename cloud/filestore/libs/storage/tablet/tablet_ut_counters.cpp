@@ -416,92 +416,72 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         }
 
         registry->Visit(TInstant::Zero(), Visitor);
-        Visitor.ValidateExpectedHistogram({
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "WriteBlob"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "ReadBlob"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "WriteData"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "ReadData"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "DescribeData"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "GenerateBlobIds"}}, 0},
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "AddData"}}, 0},
-        }, false);
-        Visitor.ValidateExpectedHistogram({
-            {{
-                {"histogram", "Time"},
-                {"filesystem", "test"},
-                {"request", "PatchBlob"}}, 0},
-        }, true);
         Visitor.ValidateExpectedCounters({
             {{
-                {"sensor", "WriteBlob.Count"},
+                {"sensor", "Count"},
+                {"request", "WriteBlob"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "ReadBlob.Count"},
+                {"sensor", "Count"},
+                {"request", "ReadBlob"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "PatchBlob.Count"},
+                {"sensor", "Count"},
+                {"request", "PatchBlob"},
                 {"filesystem", "test"}}, 0},
             {{
-                {"sensor", "WriteData.Count"},
+                {"sensor", "Count"},
+                {"request", "WriteData"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "ReadData.Count"},
+                {"sensor", "Count"},
+                {"request", "ReadData"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "DescribeData.Count"},
+                {"sensor", "Count"},
+                {"request", "DescribeData"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "GenerateBlobIds.Count"},
+                {"sensor", "Count"},
+                {"request", "GenerateBlobIds"},
                 {"filesystem", "test"}}, 1},
             {{
-                {"sensor", "AddData.Count"},
+                {"sensor", "Count"},
+                {"request", "AddData"},
                 {"filesystem", "test"}}, 1},
         });
         Visitor.ValidateExpectedCounters({
             {{
-                {"sensor", "WriteBlob.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "WriteBlob"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "ReadBlob.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "ReadBlob"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "PatchBlob.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "PatchBlob"},
                 {"filesystem", "test"}}, 0},
             {{
-                {"sensor", "WriteData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "WriteData"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "ReadData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "ReadData"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "DescribeData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "DescribeData"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "GenerateBlobIds.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "GenerateBlobIds"},
                 {"filesystem", "test"}}, sz},
             {{
-                {"sensor", "AddData.RequestBytes"},
+                {"sensor", "RequestBytes"},
+                {"request", "AddData"},
                 {"filesystem", "test"}}, sz},
             {{
                 {"sensor", "CurrentLoad"},
@@ -589,7 +569,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         for (const auto& requestName: requestNames) {
             expectedCounters.push_back(std::make_pair(
                 TVector<TTestRegistryVisitor::TLabel>({
-                    {"sensor", Sprintf("%s.TimeSumUs", requestName)},
+                    {"sensor", "TimeSumUs"},
+                    {"request", requestName},
                     {"filesystem", "test"}
                 }),
                 latencySensorPredicate
@@ -857,6 +838,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
         tablet.InitSession("client", "session");
 
 
@@ -872,6 +854,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
              [tabletId](i64 val)
              {
                  return val == static_cast<i64>(tabletId);
+             }},
+            {{{"sensor", "TabletGeneration"}, {"filesystem", "test"}},
+             [](i64 val)
+             {
+                 return val > 0;
              }},
         });
     }
@@ -953,6 +940,61 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         advanceTime();
         checkHandlesCounters(0, 0);
+    }
+
+    Y_UNIT_TEST_F(ShouldReportCollectCommitId, TEnv)
+    {
+        auto registry = Env.GetRegistry();
+
+        auto advanceTime = [&]()
+        {
+            Tablet->AdvanceTime(TDuration::Seconds(15));
+            NActors::TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvIndexTabletPrivate::EvUpdateCounters);
+            Env.GetRuntime().DispatchEvents(options);
+        };
+
+        Tablet->InitSession("client", "session");
+
+        auto moveBarrier = [&]()
+        {
+            const auto nodeId =
+                CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+            const auto handle = CreateHandle(*Tablet, nodeId);
+            Tablet->WriteData(handle, 0, 256_KB, 'a');
+            Tablet->Flush();
+            Tablet->DestroyHandle(handle);
+            Tablet->UnlinkNode(RootNodeId, "test", false);
+            Tablet->CollectGarbage();
+        };
+
+        const TVector<TTestRegistryVisitor::TLabel> sensorLabels{
+            {"sensor", "CollectCommitId"},
+            {"filesystem", "test"},
+        };
+
+        moveBarrier();
+        advanceTime();
+
+        i64 first = 0;
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCountersWithPredicate({
+            {sensorLabels,
+             [&first](i64 val)
+             {
+                 first = val;
+                 return val > 0;
+             }},
+        });
+
+        moveBarrier();
+        advanceTime();
+
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCountersWithPredicate({
+            {sensorLabels, [&first](i64 val) { return val > first; }},
+        });
     }
 
     Y_UNIT_TEST(ShouldPersistUsedDirectHandlesCountAfterRestart)

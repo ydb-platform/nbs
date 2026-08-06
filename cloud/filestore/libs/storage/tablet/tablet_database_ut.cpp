@@ -1,10 +1,13 @@
 #include "tablet_database.h"
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 #include <cloud/filestore/libs/storage/testlib/test_executor.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/pathsplit.h>
+#include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -72,15 +75,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         });
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
-            TMaybe<IIndexTabletDatabase::TNode> node1;
+            TMaybe<INodeIndexTabletDatabase::TNode> node1;
             UNIT_ASSERT(db.ReadNode(nodeId1, commitId, node1));
             UNIT_ASSERT(node1);
 
-            TMaybe<IIndexTabletDatabase::TNode> node2;
+            TMaybe<INodeIndexTabletDatabase::TNode> node2;
             UNIT_ASSERT(db.ReadNode(nodeId2, commitId, node2));
             UNIT_ASSERT(node2);
 
-            TMaybe<IIndexTabletDatabase::TNode> node3;
+            TMaybe<INodeIndexTabletDatabase::TNode> node3;
             UNIT_ASSERT(db.ReadNode(12345, commitId, node3));
             UNIT_ASSERT(!node3);
         });
@@ -135,30 +138,42 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             db.WriteNode(nodeId, commitId, attrs);
             db.WriteNode(childNodeId1, commitId, attrs);
             db.WriteNode(childNodeId2, commitId, attrs);
-            db.WriteNodeRef(nodeId, commitId, "child1", childNodeId1, "", "");
             db.WriteNodeRef(
-                nodeId,
-                commitId,
-                "child2",
-                childNodeId2,
-                "shard",
-                "name");
+                INodeIndexTabletDatabase::TNodeRef{
+                    .NodeId = nodeId,
+                    .Name = "child1",
+                    .ChildNodeId = childNodeId1,
+                    .ShardId = "",
+                    .ShardNodeName = "",
+                    .MinCommitId = commitId,
+                    .MaxCommitId = InvalidCommitId},
+                false);
+            db.WriteNodeRef(
+                INodeIndexTabletDatabase::TNodeRef{
+                    .NodeId = nodeId,
+                    .Name = "child2",
+                    .ChildNodeId = childNodeId2,
+                    .ShardId = "shard",
+                    .ShardNodeName = "name",
+                    .MinCommitId = commitId,
+                    .MaxCommitId = InvalidCommitId},
+                false);
         });
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
-            TMaybe<IIndexTabletDatabase::TNodeRef> ref1;
+            TMaybe<INodeIndexTabletDatabase::TNodeRef> ref1;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child1", ref1));
             UNIT_ASSERT_EQUAL(ref1->ChildNodeId, childNodeId1);
             UNIT_ASSERT_EQUAL(ref1->ShardId, "");
             UNIT_ASSERT_EQUAL(ref1->ShardNodeName, "");
 
-            TMaybe<IIndexTabletDatabase::TNodeRef> ref2;
+            TMaybe<INodeIndexTabletDatabase::TNodeRef> ref2;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child2", ref2));
             UNIT_ASSERT_EQUAL(ref2->ChildNodeId, childNodeId2);
             UNIT_ASSERT_EQUAL(ref2->ShardId, "shard");
             UNIT_ASSERT_EQUAL(ref2->ShardNodeName, "name");
 
-            TMaybe<IIndexTabletDatabase::TNodeRef> ref3;
+            TMaybe<INodeIndexTabletDatabase::TNodeRef> ref3;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child3", ref3));
             UNIT_ASSERT(!ref3);
         });
@@ -570,25 +585,31 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                 db.WriteNode(childNodeId1, commitId, attrs);
                 db.WriteNode(childNodeId2, commitId, attrs);
                 db.WriteNodeRef(
-                    nodeId,
-                    commitId,
-                    "child1",
-                    childNodeId1,
-                    "",
-                    "");
+                    INodeIndexTabletDatabase::TNodeRef{
+                        .NodeId = nodeId,
+                        .Name = "child1",
+                        .ChildNodeId = childNodeId1,
+                        .ShardId = "",
+                        .ShardNodeName = "",
+                        .MinCommitId = commitId,
+                        .MaxCommitId = InvalidCommitId},
+                    false);
                 db.WriteNodeRef(
-                    nodeId,
-                    commitId,
-                    "child2",
-                    childNodeId2,
-                    "",
-                    "");
+                    INodeIndexTabletDatabase::TNodeRef{
+                        .NodeId = nodeId,
+                        .Name = "child2",
+                        .ChildNodeId = childNodeId2,
+                        .ShardId = "",
+                        .ShardNodeName = "",
+                        .MinCommitId = commitId,
+                        .MaxCommitId = InvalidCommitId},
+                    false);
             });
 
         executor.ReadTx(
             [&](TIndexTabletDatabase db)
             {
-                TVector<IIndexTabletDatabase::TNodeRef> refs;
+                TVector<INodeIndexTabletDatabase::TNodeRef> refs;
                 UNIT_ASSERT(db.ReadNodeRefs(
                     nodeId,
                     commitId,
@@ -605,7 +626,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         executor.ReadTx(
             [&](TIndexTabletDatabase db)
             {
-                TVector<IIndexTabletDatabase::TNodeRef> refs;
+                TVector<INodeIndexTabletDatabase::TNodeRef> refs;
                 UNIT_ASSERT(db.ReadNodeRefs(
                     nodeId,
                     commitId,
@@ -941,6 +962,113 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
                     "t2",
                     entries[1].Data.GetUnalignedDataRanges(1).GetContent());
             });
+    }
+
+    Y_UNIT_TEST(ShouldStoreQuotas)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        auto makeQuota = [&] (ui32 quotaId, ui64 nodeId, ui64 maxBytes) {
+            NProto::TQuota quota;
+            quota.SetQuotaId(quotaId);
+            quota.SetMaxBytes(maxBytes);
+            quota.AddNodeId(nodeId);
+            return quota;
+        };
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteQuota(makeQuota(1, 100, 1'000'000));
+            db.WriteQuota(makeQuota(2, 200, 2'000'000));
+            db.WriteQuota(makeQuota(3, 300, 3'000'000));
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TQuota> quotas;
+            UNIT_ASSERT(db.ReadQuotas(quotas));
+            UNIT_ASSERT_VALUES_EQUAL(3, quotas.size());
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteQuota(makeQuota(1, 100, 5'000'000));
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TQuota> quotas;
+            UNIT_ASSERT(db.ReadQuotas(quotas));
+            UNIT_ASSERT_VALUES_EQUAL(3, quotas.size());
+
+            for (const auto& quota: quotas) {
+                if (quota.GetQuotaId() == 1) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        5'000'000,
+                        quota.GetMaxBytes());
+                }
+            }
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteQuota(2);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<NProto::TQuota> quotas;
+            UNIT_ASSERT(db.ReadQuotas(quotas));
+            UNIT_ASSERT_VALUES_EQUAL(2, quotas.size());
+
+            for (const auto& quota: quotas) {
+                UNIT_ASSERT_UNEQUAL(2, quota.GetQuotaId());
+            }
+        });
+    }
+
+    Y_UNIT_TEST(ShouldStoreQuotaUsage)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema();
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteQuotaUsage(1, 1'000'000, 10);
+            db.WriteQuotaUsage(2, 2'000'000, 20);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TQuotaUsage> usages;
+            UNIT_ASSERT(db.ReadQuotaUsages(usages));
+            UNIT_ASSERT_VALUES_EQUAL(2, usages.size());
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.WriteQuotaUsage(1, 5'000'000, 50);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TQuotaUsage> usages;
+            UNIT_ASSERT(db.ReadQuotaUsages(usages));
+            UNIT_ASSERT_VALUES_EQUAL(2, usages.size());
+
+            for (const auto& usage: usages) {
+                if (usage.QuotaId == 1) {
+                    UNIT_ASSERT_VALUES_EQUAL(5'000'000, usage.UsedBytes);
+                    UNIT_ASSERT_VALUES_EQUAL(50, usage.UsedNodes);
+                }
+            }
+        });
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.DeleteQuotaUsage(2);
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TQuotaUsage> usages;
+            UNIT_ASSERT(db.ReadQuotaUsages(usages));
+            UNIT_ASSERT_VALUES_EQUAL(1, usages.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, usages[0].QuotaId);
+        });
     }
 }
 

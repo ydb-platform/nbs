@@ -86,6 +86,15 @@ func baseDiskStatusToString(status baseDiskStatus) string {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// It checks whether a timestamp is effectively zero.
+// Go's time.Time{} is 0001-01-01, but after a YDB round-trip it becomes
+// time.Unix(0, 0) (1970-01-01), so t.IsZero() alone is insufficient.
+func isTimestampUnset(t time.Time) bool {
+	return !t.After(time.Unix(0, 0))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type baseDisk struct {
 	id                  string
 	imageID             string
@@ -105,6 +114,7 @@ type baseDisk struct {
 	fromPool       bool
 	retiring       bool
 	deletedAt      time.Time
+	idleSince      time.Time // zero if disk has at least one active unit
 	status         baseDiskStatus
 }
 
@@ -127,6 +137,8 @@ func (d *baseDisk) toBaseDisk() BaseDisk {
 		CheckpointID:        d.checkpointID,
 		CreateTaskID:        d.createTaskID,
 		Size:                d.size,
+		Units:               d.units,
+		FreeSlots:           d.freeSlots(),
 		Ready:               d.status == baseDiskStatusReady,
 	}
 }
@@ -151,6 +163,13 @@ func (d *baseDisk) applyInvariants() {
 		if !d.isDoomed() && !d.fromPool {
 			d.status = baseDiskStatusDeleting
 		}
+
+		if isTimestampUnset(d.idleSince) {
+			d.idleSince = time.Now()
+		}
+	} else {
+		// Disk is no longer idle.
+		d.idleSince = time.Time{}
 	}
 }
 
@@ -204,6 +223,7 @@ func (d *baseDisk) structValue() persistence.Value {
 		persistence.StructFieldValue("from_pool", persistence.BoolValue(d.fromPool)),
 		persistence.StructFieldValue("retiring", persistence.BoolValue(d.retiring)),
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(d.deletedAt)),
+		persistence.StructFieldValue("idle_since", persistence.TimestampValue(d.idleSince)),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(d.status))),
 	)
 }
@@ -228,6 +248,7 @@ func baseDiskStructTypeString() string {
 		from_pool: Bool,
 		retiring: Bool,
 		deleted_at: Timestamp,
+		idle_since: Timestamp,
 		status: Int64>`
 }
 
@@ -251,6 +272,7 @@ func baseDisksTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("from_pool", persistence.Optional(persistence.TypeBool)),
 		persistence.WithColumn("retiring", persistence.Optional(persistence.TypeBool)),
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("idle_since", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 
 		persistence.WithPrimaryKeyColumn("id"),
@@ -277,6 +299,7 @@ func scanBaseDisk(res persistence.Result) (baseDisk baseDisk, err error) {
 		persistence.OptionalWithDefault("from_pool", &baseDisk.fromPool),
 		persistence.OptionalWithDefault("retiring", &baseDisk.retiring),
 		persistence.OptionalWithDefault("deleted_at", &baseDisk.deletedAt),
+		persistence.OptionalWithDefault("idle_since", &baseDisk.idleSince),
 		persistence.OptionalWithDefault("status", &baseDisk.status),
 	)
 	return
@@ -674,10 +697,10 @@ const (
 	// 32 GB.
 	baseDiskUnitSize            = uint64(32 << 30)
 	minBaseDiskUnits            = 30
-	baseDiskOverSubscription    = 2
-	overlayDiskOversubscription = 30
-	// SSD units should be more valuable than HDD.
-	ssdUnitMultiplier = 5
+	overlayDiskOverSubscription = 30
+	// Represents how many regular (HDD-equivalent) performance units one SSD
+	// allocation unit is worth.
+	regularUnitsPerSSDUnit = 5
 )
 
 func (s *storageYDB) generateBaseDisk(
@@ -694,18 +717,32 @@ func (s *storageYDB) generateBaseDisk(
 		units = s.maxBaseDiskUnits
 		maxActiveSlots = s.maxActiveSlots
 	} else {
-		// Base disks are using SSD.
-		ssdUnits := divideWithRoundingUp(
-			imageSize,
-			baseDiskUnitSize,
-		)
+		// Base disks use SSD. Compute the number of SSD allocation units
+		// needed to hold the image.
+		ssdUnits := divideWithRoundingUp(imageSize, baseDiskUnitSize)
 		size = ssdUnits * baseDiskUnitSize
 
-		units = ssdUnitMultiplier * ssdUnits
-		units = baseDiskOverSubscription * units
-		units = max(units, minBaseDiskUnits)
+		// Regular (HDD-equivalent) units with oversubscription.
+		units = s.baseDiskOverSubscription * regularUnitsPerSSDUnit * ssdUnits
+		// A base disk must provide at least minBaseDiskUnits of performance,
+		// otherwise the overlay disks sharing it get underperformed (#6257).
+		if units < minBaseDiskUnits {
+			units = minBaseDiskUnits
+
+			if s.adjustBaseDiskSizeToMinBaseDiskUnits {
+				// Grow the disk so that it physically contains enough SSD units
+				// to provide the required performance. The larger the disk, the
+				// higher the performance.
+				ssdUnits = units / regularUnitsPerSSDUnit
+				// Never shrink the base disk below the image size (for safety).
+				size = max(size, ssdUnits*baseDiskUnitSize)
+			}
+		}
+
 		units = min(units, s.maxBaseDiskUnits)
 
+		// There cannot be more slots than units because each overlay disk
+		// consumes at least one unit.
 		maxActiveSlots = min(units, s.maxActiveSlots)
 	}
 
@@ -743,13 +780,13 @@ func computeAllottedUnits(s *slot) uint64 {
 	switch s.overlayDiskKind {
 	case types.DiskKind_DISK_KIND_SSD:
 		res = divideWithRoundingUp(
-			ssdUnitMultiplier*overlayDiskUnits,
-			overlayDiskOversubscription,
+			regularUnitsPerSSDUnit*overlayDiskUnits,
+			overlayDiskOverSubscription,
 		)
 	case types.DiskKind_DISK_KIND_HDD:
 		res = divideWithRoundingUp(
 			overlayDiskUnits,
-			overlayDiskOversubscription,
+			overlayDiskOverSubscription,
 		)
 	}
 

@@ -1,5 +1,8 @@
 #include "node_cache.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+#include <util/string/printf.h>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,6 +37,7 @@ std::unique_ptr<TPendingWriteDataRequest> TNodeCache::DequeuePendingRequest()
 }
 
 void TNodeCache::EnqueueUnflushedRequest(
+    const TFlushBatchLimits& flushBatchLimits,
     std::unique_ptr<TCachedWriteDataRequest> request)
 {
     Y_ABORT_UNLESS(request->GetAllocationPtr() != nullptr);
@@ -76,15 +80,32 @@ void TNodeCache::EnqueueUnflushedRequest(
 
     CachedData.Add(begin, end, request.get());
     UnflushedRequests.push_back(std::move(request));
+    MaxWrittenOffset = Max(MaxWrittenOffset, end);
+
+    AddUnflushedRequestToFlushBatch(flushBatchLimits, begin, end);
 }
 
 TCachedWriteDataRequest* TNodeCache::MoveFrontUnflushedRequestToFlushed()
 {
     Y_ABORT_UNLESS(!UnflushedRequests.empty());
+    Y_ABORT_UNLESS(!FlushBatchRequestCountQueue.empty());
 
     auto* cachedRequest = UnflushedRequests.front().get();
     FlushedRequests.push_back(std::move(UnflushedRequests.front()));
     UnflushedRequests.pop_front();
+
+    if (FlushBatchRequestCountQueue.size() == 1 &&
+        !IncompleteFlushBatchWriteRequestCounter.IsEmpty())
+    {
+        // We are trying to pop a request from an incomplete flush batch
+        // This may happen when the cached data is dropped without flushing
+        IncompleteFlushBatchWriteRequestCounter.Reset();
+    }
+
+    FlushBatchRequestCountQueue.front()--;
+    if (FlushBatchRequestCountQueue.front() == 0) {
+        FlushBatchRequestCountQueue.pop_front();
+    }
 
     return cachedRequest;
 }
@@ -177,17 +198,76 @@ ui64 TNodeCache::GetMaxFlushedSequenceId() const
     return FlushedRequests.back()->GetSequenceId();
 }
 
-void TNodeCache::VisitUnflushedRequests(
-    TCachedWriteDataRequestVisitor visitor) const
+size_t TNodeCache::GetExpectedFlushBatchCount() const
 {
-    for (const auto& e: UnflushedRequests) {
-        if (!visitor(e.get())) {
+    return FlushBatchRequestCountQueue.size();
+}
+
+void TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(
+    const TCachedWriteDataRequestVisitor& visitor)
+{
+    if (FlushBatchRequestCountQueue.empty()) {
+        if (UnflushedRequests.empty()) {
             return;
         }
+
+        // We may go here if the following invariant is violated:
+        // sum(FlushBatchRequestCountQueue) == UnflushedRequests.size()
+        ReportWriteBackCacheImpossibleState(Sprintf(
+            "TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(): "
+            "FlushBatchRequestCountQueue is empty while UnflushedRequests is "
+            "not empty (UnflushedRequests.size()=%zu)",
+            UnflushedRequests.size()));
+
+        // Instead of crash, allow slow processing of unflushed requests
+        FlushBatchRequestCountQueue.push_back(1);
+    }
+
+    if (FlushBatchRequestCountQueue.size() == 1 &&
+        !IncompleteFlushBatchWriteRequestCounter.IsEmpty())
+    {
+        // We are visiting requests from an incomplete flush batch
+        //
+        // VisitUnflushedRequestsFromFrontFlushBatch is expected to be called
+        // from a code that executes flush batches. It is not expected that new
+        // requests may be added once the batch is taken for processing.
+        //
+        // Therefore, we forcibly complete the current batch. After the counter
+        // is reset, new requests will be added to a new batch.
+        IncompleteFlushBatchWriteRequestCounter.Reset();
+    }
+
+    auto remainingRequests = FlushBatchRequestCountQueue.front();
+
+    for (const auto& it: UnflushedRequests) {
+        if (remainingRequests == 0) {
+            break;
+        }
+        visitor(it.get());
+        remainingRequests--;
+    }
+
+    if (remainingRequests > 0) {
+        // Invariant violation
+        ReportWriteBackCacheImpossibleState(Sprintf(
+            "TNodeCache::VisitUnflushedRequestsFromFrontFlushBatch(): "
+            "UnflushedRequests contains less elements than needed to build a "
+            "flush batch (remainingRequests=%lu)",
+            remainingRequests));
+
+        // Fix the invariant
+        IncompleteFlushBatchWriteRequestCounter.Reset();
+
+        // Put each remaining request into a separate flush batch since we have
+        // no more guarantee about meeting the flush batch limits
+        FlushBatchRequestCountQueue = TDeque<ui64>(UnflushedRequests.size(), 1);
     }
 }
 
-TCachedData TNodeCache::GetCachedData(ui64 offset, ui64 byteCount) const
+TCachedData TNodeCache::GetCachedData(
+    ui64 offset,
+    ui64 byteCount,
+    ui64 maxEvictableSequenceId) const
 {
     if (CachedData.empty()) {
         return {};
@@ -196,26 +276,117 @@ TCachedData TNodeCache::GetCachedData(ui64 offset, ui64 byteCount) const
     const ui64 end = CachedData.rbegin()->second.End;
 
     TCachedData result;
+
+    // ReadDataByteCount is intentionally computed from the maximal cached write
+    // end offset, not only from the parts visible under this read pin.
+    // This value is only a response-size hint: writes can only extend the node
+    // size, so the maximal observed written offset is safe to expose.
     result.ReadDataByteCount = end > offset ? Min(byteCount, end - offset) : 0;
 
     CachedData.VisitOverlapping(
         offset,
         offset + byteCount,
-        [&result, offset, end = offset + byteCount](auto it)
+        [&result, offset, end = offset + byteCount, maxEvictableSequenceId](
+            auto it)
         {
             const ui64 partOffset = Max(offset, it->second.Begin);
             const ui64 partByteCount = Min(end, it->second.End) - partOffset;
+
             TCachedWriteDataRequest* request = it->second.Value;
-            TStringBuf data = request->GetBuffer(partOffset, partByteCount);
-            result.Parts.push_back({partOffset - offset, data});
+
+            // Requests with SequenceId > maxEvictableSequenceId are pinned and
+            // are safe to be used.
+            // Requests with SequenceId <= maxEvictableSequenceId may be evicted
+            // at any moment and data pointers may become dangling - these parts
+            // should be taken from ReadData response from the backend storage
+            // instead of cache.
+            if (request->GetSequenceId() > maxEvictableSequenceId) {
+                TStringBuf data = request->GetBuffer(partOffset, partByteCount);
+                result.Parts.push_back({partOffset - offset, data});
+            }
         });
 
     return result;
 }
 
-ui64 TNodeCache::GetCachedDataEndOffset() const
+ui64 TNodeCache::GetMaxWrittenOffset() const
 {
-    return CachedData.empty() ? 0 : CachedData.rbegin()->second.End;
+    return MaxWrittenOffset;
+}
+
+void TNodeCache::ResetMaxWrittenOffset()
+{
+    Y_ABORT_UNLESS(FlushedRequests.empty());
+    MaxWrittenOffset = CachedData.empty() ? 0 : CachedData.rbegin()->second.End;
+}
+
+void TNodeCache::AddUnflushedRequestToFlushBatch(
+    const TFlushBatchLimits& flushBatchLimits,
+    ui64 begin,
+    ui64 end)
+{
+    // Append cached request to the last (incomplete) flush batch in arrival
+    // order. IncompleteFlushBatchWriteRequestCounter models how their ranges
+    // will be consolidated into backend WriteData requests: overlapping or
+    // adjacent ranges are merged, then split according to MaxWriteRequestSize
+    // from TFlushBatchLimits.
+    //
+    // Requests are added speculatively to the incomplete batch while the
+    // resulting consolidated request count and total size fit the batch limits.
+    //
+    // If the limits are exceeded, a batch is completed and a new batch is
+    // started, and the request that caused the limits to be exceeded is
+    // added to the new batch.
+
+    const bool startNewFlushBatch =
+        IncompleteFlushBatchWriteRequestCounter.IsEmpty();
+
+    IncompleteFlushBatchWriteRequestCounter.AddRequestInterval(
+        flushBatchLimits,
+        begin,
+        end);
+
+    if (startNewFlushBatch) {
+        // A single cached request always forms a batch even if it cannot
+        // satisfy the limits on its own.
+        FlushBatchRequestCountQueue.push_back(1);
+        return;
+    }
+
+    const bool requestCountWithinLimits =
+        flushBatchLimits.MaxWriteRequestsCount == 0 ||
+        IncompleteFlushBatchWriteRequestCounter.GetWriteRequestCount() <=
+            flushBatchLimits.MaxWriteRequestsCount;
+
+    const bool sumRequestsSizeWithinLimits =
+        flushBatchLimits.MaxSumWriteRequestsSize == 0 ||
+        IncompleteFlushBatchWriteRequestCounter.GetSumWriteRequestsSize() <=
+            flushBatchLimits.MaxSumWriteRequestsSize;
+
+    if (requestCountWithinLimits && sumRequestsSizeWithinLimits) {
+        if (FlushBatchRequestCountQueue.empty()) {
+            // Invariant violation - a new batch will be created
+            ReportWriteBackCacheImpossibleState(
+                "FlushBatchRequestCountQueue is empty while "
+                "IncompleteFlushBatchRequestCounter is not empty");
+        } else {
+            // Limits are not exceeded - just increment the request count in
+            // the last (incomplete) flush batch
+            FlushBatchRequestCountQueue.back()++;
+            return;
+        }
+    }
+
+    // Limits are exceeded - start new incomplete batch
+    IncompleteFlushBatchWriteRequestCounter.Reset();
+
+    // And add the request that caused the limits to be exceeded to it
+    IncompleteFlushBatchWriteRequestCounter.AddRequestInterval(
+        flushBatchLimits,
+        begin,
+        end);
+
+    FlushBatchRequestCountQueue.push_back(1);
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

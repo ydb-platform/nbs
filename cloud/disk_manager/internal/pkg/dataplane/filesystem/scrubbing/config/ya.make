@@ -8,6 +8,7 @@ SRCS(
 
 PEERDIR(
     cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config
+    cloud/disk_manager/internal/pkg/types
 )
 
 END()

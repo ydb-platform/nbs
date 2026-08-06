@@ -12,7 +12,7 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TRequest, typename TResponse>
-class TShardRequestActor final
+class TShardRequestActor
     : public NActors::TActorBootstrapped<TShardRequestActor<TRequest, TResponse>>
 {
 private:
@@ -21,7 +21,6 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TRequest::ProtoRecordType Request;
     const TVector<TString> ShardIds;
-    std::unique_ptr<TResponse> Response;
     ui32 ProcessedShards = 0;
 
     NProto::TProfileLogRequestInfo ProfileLogRequest;
@@ -39,6 +38,11 @@ public:
         std::unique_ptr<TResponse> response);
 
     void Bootstrap(const NActors::TActorContext& ctx);
+
+protected:
+    std::unique_ptr<TResponse> Response;
+
+    virtual void OnResponse(const TResponse::ProtoRecordType& record);
 
 private:
     STFUNC(StateWork)
@@ -71,6 +75,15 @@ private:
         const NActors::TActorContext& ctx,
         const NProto::TError& error);
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TRequest, typename TResponse>
+void TShardRequestActor<TRequest, TResponse>::OnResponse(
+    const TResponse::ProtoRecordType& record)
+{
+    Y_UNUSED(record);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -144,6 +157,8 @@ void TShardRequestActor<TRequest, TResponse>::HandleResponse(
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
+
+    OnResponse(msg->Record);
 
     LOG_DEBUG(
         ctx,

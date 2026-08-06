@@ -1,7 +1,10 @@
+#include "model/profile_log_events.h"
 #include "tablet_schema.h"
 #include "tablet_tx.h"
 
+#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -13,6 +16,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/random/fast.h>
+#include <util/random/random.h>
 
 #include <algorithm>
 #include <initializer_list>
@@ -40,6 +44,11 @@ public:
     {
         UNIT_ASSERT(record.Request.HasRequestType());
         Requests[record.Request.GetRequestType()].push_back(std::move(record));
+    }
+
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override
+    {
+        Y_UNUSED(root);
     }
 };
 
@@ -247,7 +256,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             ReadData(tablet, handle, expected.size(), 0));
     }
 
-    Y_UNIT_TEST(ShouldConfirmUnalignedHeadAndTailData)
+    Y_UNIT_TEST(ShouldNotEnableUnconfirmedFlowUnlessRequested)
     {
         constexpr ui32 block = 4_KB;
 
@@ -257,6 +266,117 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         storageConfig.SetUnconfirmedDataCountHardLimit(10);
 
         TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto gbi = tablet.GenerateBlobIds(
+            id,
+            handle,
+            0,
+            block,
+            false /* unconfirmedFlowRequested */);
+
+        UNIT_ASSERT(!gbi->Record.GetUnconfirmedFlowEnabled());
+        AssertStorageStats(tablet, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldNotEnableUnconfirmedFlowWhenTabletIsOverloaded)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetCpuLackOverloadThreshold(50);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto systemCounters = env.GetSystemCounters();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        systemCounters->CpuLack.store(60);
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        UNIT_ASSERT(!gbi->Record.GetUnconfirmedFlowEnabled());
+        AssertStorageStats(tablet, 0, 0);
+
+        systemCounters->CpuLack.store(30);
+        gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        UNIT_ASSERT(gbi->Record.GetUnconfirmedFlowEnabled());
+        GenerateBlobIdsPutBlobAndConfirm(
+            env,
+            tablet,
+            *gbi,
+            TString(block, 'a'));
+
+        UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(
+            ReadData(tablet, handle, block, 0),
+            block,
+            'a');
+    }
+
+    Y_UNIT_TEST(ShouldEnableUnconfirmedFlowOnOverloadIfTabletOverloadAllowed)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetCpuLackOverloadThreshold(50);
+        storageConfig.SetAllowTabletOverload(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.GetSystemCounters()->CpuLack.store(60);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        UNIT_ASSERT(gbi->Record.GetUnconfirmedFlowEnabled());
+        GenerateBlobIdsPutBlobAndConfirm(
+            env,
+            tablet,
+            *gbi,
+            TString(block, 'a'));
+
+        UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(
+            ReadData(tablet, handle, block, 0),
+            block,
+            'a');
+    }
+
+    Y_UNIT_TEST(ShouldConfirmUnalignedHeadAndTailData)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+
+        TTestEnv env({}, std::move(storageConfig), {}, profileLog);
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
@@ -300,6 +420,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         UNIT_ASSERT_VALUES_EQUAL(1, gbi->Record.BlobsSize());
 
         GenerateBlobIdsPutBlobAndConfirm(env, tablet, *gbi, alignedData);
+
+        const auto& addData = profileLog->Requests[static_cast<ui32>(
+            EFileStoreSystemRequest::AddDataUnconfirmed)];
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.size());
+        const auto& loggedRange = addData[0].Request.GetRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(id, loggedRange.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(handle, loggedRange.GetHandle());
+        UNIT_ASSERT_VALUES_EQUAL(writeOffset, loggedRange.GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(writeLength, loggedRange.GetBytes());
 
         TString expected = headData + alignedData + tailData;
 
@@ -489,9 +618,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         tablet.AssertConfirmAddDataNoResponse();
         AssertStorageStats(tablet, 1, 0);
 
-        runtime.AdvanceCurrentTime(TDuration::Seconds(15));
-        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
-
         // Pending confirmation is not cleaned up by timeout.
         tablet.AssertConfirmAddDataNoResponse();
 
@@ -504,6 +630,541 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         tablet.AssertConfirmAddDataResponse(S_OK);
 
         AssertStorageStats(tablet, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldDeferDuplicatePendingConfirmAddData)
+    {
+        // Writing-data scenario: duplicate ConfirmAddData requests wait for
+        // the same commit and are completed together after data is indexed.
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto& runtime = env.GetRuntime();
+        TVector<TAutoPtr<IEventHandle>> heldCommitResults;
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvTablet::EvCommitResult) {
+                    heldCommitResults.push_back(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        const ui64 commitId = gbi->Record.GetCommitId();
+
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !heldCommitResults.empty(); }},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            1,
+            heldCommitResults.size(),
+            "Expected AddDataUnconfirmed commit result to be held");
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataNoResponse();
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto it = heldCommitResults.rbegin();
+             it != heldCommitResults.rend();
+             ++it)
+        {
+            runtime.PushFront(*it);
+        }
+        heldCommitResults.clear();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        tablet.AssertConfirmAddDataResponse(S_OK);
+        tablet.AssertConfirmAddDataResponse(S_OK);
+
+        AssertStorageStats(tablet, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldDeferDuplicatePendingConfirmAddDataDuringDeletion)
+    {
+        // Deleting-data scenario: duplicate ConfirmAddData requests wait for
+        // the same commit and are completed together after deletion finishes.
+        constexpr ui32 block = 4_KB;
+        const auto unconfirmedDataTimeout = TDuration::Seconds(50);
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetGenerateBlobIdsReleaseCollectBarrierTimeout(
+            unconfirmedDataTimeout.MilliSeconds());
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        runtime.CaptureScheduledEvents();
+
+        TVector<TAutoPtr<IEventHandle>> heldCommitResults;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvTablet::EvCommitResult) {
+                    heldCommitResults.push_back(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        const ui64 commitId = gbi->Record.GetCommitId();
+
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !heldCommitResults.empty(); }},
+            TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            1,
+            heldCommitResults.size(),
+            "Expected AddDataUnconfirmed commit result to be held");
+
+        runtime.AdvanceCurrentTime(unconfirmedDataTimeout);
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return heldCommitResults.size() >= 2; }},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(
+            heldCommitResults.size() >= 2,
+            "Expected DeleteUnconfirmedData commit result to be held");
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataNoResponse();
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto it = heldCommitResults.rbegin();
+             it != heldCommitResults.rend();
+             ++it)
+        {
+            runtime.PushFront(*it);
+        }
+        heldCommitResults.clear();
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        tablet.AssertConfirmAddDataResponse(E_REJECTED);
+        tablet.AssertConfirmAddDataResponse(E_REJECTED);
+
+        AssertStorageStats(tablet, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldDeleteUnconfirmedDataAfterTimeout)
+    {
+        constexpr ui32 block = 4_KB;
+        const auto unconfirmedDataTimeout = TDuration::Seconds(50);
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetGenerateBlobIdsReleaseCollectBarrierTimeout(
+            unconfirmedDataTimeout.MilliSeconds());
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        const ui64 commitId = gbi->Record.GetCommitId();
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        AssertStorageStats(tablet, 1, 0);
+
+        runtime.AdvanceCurrentTime(unconfirmedDataTimeout);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        AssertStorageStats(tablet, 0, 0);
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataResponse(E_REJECTED);
+    }
+
+    Y_UNIT_TEST(ShouldDeleteUnconfirmedDataInProgressAfterTimeout)
+    {
+        constexpr ui32 block = 4_KB;
+        const auto unconfirmedDataTimeout = TDuration::Seconds(50);
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetGenerateBlobIdsReleaseCollectBarrierTimeout(
+            unconfirmedDataTimeout.MilliSeconds());
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        runtime.CaptureScheduledEvents();
+
+        TVector<TAutoPtr<IEventHandle>> heldCommitResults;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvTablet::EvCommitResult) {
+                    heldCommitResults.push_back(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        const ui64 commitId = gbi->Record.GetCommitId();
+
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !heldCommitResults.empty(); }},
+            TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            1,
+            heldCommitResults.size(),
+            "Expected AddDataUnconfirmed commit result to be held");
+
+        runtime.AdvanceCurrentTime(unconfirmedDataTimeout);
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return heldCommitResults.size() >= 2; }},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(
+            heldCommitResults.size() >= 2,
+            "Expected DeleteUnconfirmedData commit result to be held");
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto it = heldCommitResults.rbegin();
+             it != heldCommitResults.rend();
+             ++it)
+        {
+            runtime.PushFront(*it);
+        }
+        heldCommitResults.clear();
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        tablet.AssertConfirmAddDataResponse(E_REJECTED);
+
+        AssertStorageStats(tablet, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreUnconfirmedDataTimeoutAfterConfirm)
+    {
+        constexpr ui32 block = 4_KB;
+        const auto unconfirmedDataTimeout = TDuration::Seconds(50);
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetGenerateBlobIdsReleaseCollectBarrierTimeout(
+            unconfirmedDataTimeout.MilliSeconds());
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const TString expected(block, 'a');
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        GenerateBlobIdsPutBlobAndConfirm(env, tablet, *gbi, expected);
+        AssertStorageStats(tablet, 0, 0);
+
+        runtime.AdvanceCurrentTime(
+            unconfirmedDataTimeout + TDuration::MilliSeconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        AssertStorageStats(tablet, 0, 0);
+        UNIT_ASSERT_VALUES_EQUAL(expected, ReadData(tablet, handle, block, 0));
+    }
+
+    // We emulate situation, where under high load, we received confirmation
+    // for previously triggered AddDataUnconfirmed from GenerateBlobsIdRequest
+    // before ExecuteTx even started. Later during ExecuteTx we face some error
+    // condition and should correctly report it back as ConfirmAddData response.
+    Y_UNIT_TEST(ShouldReplyToPendingConfirmOnAddDataUnconfirmedValidationError)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto& runtime = env.GetRuntime();
+        TAutoPtr<IEventHandle> blockedRwPut;
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPut: {
+                        if (!blockedRwPut) {
+                            blockedRwPut = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(1));
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]() { return !!blockedRwPut; }},
+            TDuration::Seconds(1));
+
+        tablet.AssertSetNodeAttrNoResponse();
+
+        tablet.SendRequest(tablet.CreateUpdateConfigRequest(
+            TFileSystemConfig{.BlockCount = 1}));
+
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, 2 * block);
+        const ui64 commitId = gbi->Record.GetCommitId();
+
+        tablet.SendConfirmAddDataRequest(commitId);
+
+        tablet.AssertConfirmAddDataNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(blockedRwPut.Release(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        auto setNodeAttrResponse = tablet.RecvSetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, setNodeAttrResponse->GetStatus());
+
+        auto updateConfigResponse =
+            tablet
+                .RecvResponse<NKikimr::TEvFileStore::TEvUpdateConfigResponse>();
+        UNIT_ASSERT_C(
+            updateConfigResponse->Record.GetStatus() == NKikimrFileStore::OK,
+            updateConfigResponse->Record.ShortDebugString());
+
+        tablet.AssertConfirmAddDataResponse(ErrorNoSpaceLeft().GetCode());
+
+        AssertStorageStats(tablet, 0, 0);
+    }
+
+    // We emulate situation, where under high load, we received cancellation
+    // for previously triggered AddDataUnconfirmed from GenerateBlobsIdRequest
+    // before ExecuteTx even started. For such cancel request we reply
+    // immediately. Later during ExecuteTx we face some error condition and
+    // check if deletion in progress. This test checks that we clean
+    // UnconfirmedData.
+    Y_UNIT_TEST(
+        ShouldReplyToPendingConfirmOnAddDataUnconfirmedValidationErrorAfterCancel)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto& runtime = env.GetRuntime();
+        TAutoPtr<IEventHandle> blockedRwPut;
+
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPut: {
+                        if (!blockedRwPut) {
+                            blockedRwPut = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(1));
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]() { return !!blockedRwPut; }},
+            TDuration::Seconds(1));
+
+        tablet.AssertSetNodeAttrNoResponse();
+
+        tablet.SendRequest(tablet.CreateUpdateConfigRequest(
+            TFileSystemConfig{.BlockCount = 1}));
+
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, 2 * block);
+        const ui64 commitId = gbi->Record.GetCommitId();
+
+        tablet.SendCancelAddDataRequest(commitId);
+        tablet.AssertCancelAddDataResponse(S_OK);
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(blockedRwPut.Release(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        auto setNodeAttrResponse = tablet.RecvSetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, setNodeAttrResponse->GetStatus());
+
+        auto updateConfigResponse =
+            tablet
+                .RecvResponse<NKikimr::TEvFileStore::TEvUpdateConfigResponse>();
+        UNIT_ASSERT_C(
+            updateConfigResponse->Record.GetStatus() == NKikimrFileStore::OK,
+            updateConfigResponse->Record.ShortDebugString());
+
+        AssertStorageStats(tablet, 0, 0);
+    }
+
+    // We emulate situation, where we face some error condition during
+    // AddUnconfirmedData and check if we successfully clear the barrier if no
+    // deletion in progress for that UnconfirmedData.
+    Y_UNIT_TEST(ShouldReleaseCollectBarrierOnAddDataUnconfirmedValidationError)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            TFileSystemConfig{.BlockCount = 1});
+        tablet.InitSession("client", "session");
+
+        UNIT_ASSERT_EQUAL(
+            tablet.GetStorageStats()
+                ->Record.GetStats()
+                .GetLastCollectCommitId(),
+            0);
+
+        auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "overflow"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const ui64 commitId = tablet.GenerateBlobIds(id, handle, 0, 2 * block)
+                                  ->Record.GetCommitId();
+        WaitForTabletCommit(env);
+
+        AssertStorageStats(tablet, 0, 0);
+
+        auto moveBarrier = [&]
+        {
+            auto node =
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "gc"));
+            ui64 handle = CreateHandle(tablet, node);
+            tablet.WriteData(handle, 0, block, 'a');
+            tablet.Flush();
+            tablet.DestroyHandle(handle);
+            tablet.UnlinkNode(RootNodeId, "gc", false);
+            tablet.CollectGarbage();
+        };
+
+        moveBarrier();
+
+        UNIT_ASSERT_GT(
+            tablet.GetStorageStats()
+                ->Record.GetStats()
+                .GetLastCollectCommitId(),
+            commitId);
     }
 
     Y_UNIT_TEST(ShouldRejectConfirmAddDataForUnknownCommit)
@@ -634,11 +1295,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             response->GetErrorReason().find("unconfirmed data not found") !=
                 TString::npos,
             response->GetErrorReason());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
+        const auto& cancel =
             profileLog
-                ->Requests[static_cast<ui32>(EFileStoreRequest::CancelAddData)]
-                .size());
+                ->Requests[static_cast<ui32>(EFileStoreRequest::CancelAddData)];
+        UNIT_ASSERT_VALUES_EQUAL(1, cancel.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            unknownCommitId,
+            cancel[0].Request.GetCommitId());
     }
 
     Y_UNIT_TEST(ShouldReplyToRepeatedCancelAddDataWhileDeleteInProgress)
@@ -784,6 +1447,145 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             ReadData(tablet, handle, expected.size(), 0));
     }
 
+    Y_UNIT_TEST(ShouldConfirmOverlappingUnconfirmedWritesInOrderAfterRestart)
+    {
+        const ui32 block = 4_KB;
+        const ui32 cycleCount = 15;
+
+        for (ui32 cycle = 0; cycle < cycleCount; ++cycle) {
+            NProto::TStorageConfig storageConfig;
+            storageConfig.SetWriteBlobThreshold(1);
+            storageConfig.SetAddingUnconfirmedDataEnabled(true);
+            storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+            TTestEnv env({.FakePageFaultsProbability = 0.05}, std::move(storageConfig));
+            ui32 nodeIdx = env.AddDynamicNode();
+            ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+            TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+            tablet.InitSession("client", "session");
+
+            auto id =
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+            ui64 handle = CreateHandle(tablet, id);
+            AssertStorageStats(tablet, 0, 0);
+
+            // Three overlapping writes to block 0 (oldest -> newest)
+            ui64 prevCommitId = 0;
+            for (char fill: {'a', 'b', 'c'}) {
+                const ui64 commitId = GenerateBlobIdsAndPutBlob(
+                    env,
+                    tablet,
+                    id,
+                    handle,
+                    0,
+                    block,
+                    fill);
+                WaitForTabletCommit(env);
+                UNIT_ASSERT_GT(commitId, prevCommitId);
+                prevCommitId = commitId;
+            }
+            AssertStorageStats(tablet, 3, 0);
+
+            handle = RebootTabletAndCreateHandle(tablet, id);
+            AssertStorageStats(tablet, 0, 0);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                BuildExpectedData({{block, 'c'}}),
+                ReadData(tablet, handle, block, 0),
+                "cycle=" << cycle);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldLogRecoveryAddBlobsToProfileLog)
+    {
+        const ui32 block = 4_KB;
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig), {}, profileLog);
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const ui64 commitId =
+            GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, block, 'a');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 1, 0);
+
+        const auto recoverType =
+            static_cast<ui32>(EFileStoreSystemRequest::RecoverUnconfirmedData);
+        UNIT_ASSERT(profileLog->Requests[recoverType].empty());
+
+        RebootTabletAndCreateHandle(tablet, id);
+
+        const auto& recovered = profileLog->Requests[recoverType];
+        UNIT_ASSERT_VALUES_EQUAL(1, recovered.size());
+
+        const auto& request = recovered[0].Request;
+        UNIT_ASSERT_VALUES_EQUAL(commitId, request.GetCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(1, request.RangesSize());
+
+        const auto& range = request.GetRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(id, range.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(0, range.GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(block, range.GetBytes());
+    }
+
+    Y_UNIT_TEST(ShouldLogAddDataUnconfirmedAndConfirmAddDataDetails)
+    {
+        const ui32 block = 4_KB;
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig), {}, profileLog);
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const ui64 commitId =
+            GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, block, 'a');
+        WaitForTabletCommit(env);
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataResponse(S_OK);
+
+        const auto& addData = profileLog->Requests[static_cast<ui32>(
+            EFileStoreSystemRequest::AddDataUnconfirmed)];
+        UNIT_ASSERT_VALUES_EQUAL(1, addData.size());
+        const auto& addReq = addData[0].Request;
+        UNIT_ASSERT_VALUES_EQUAL(commitId, addReq.GetCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(1, addReq.RangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(id, addReq.GetRanges(0).GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(handle, addReq.GetRanges(0).GetHandle());
+        UNIT_ASSERT_VALUES_EQUAL(0, addReq.GetRanges(0).GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(block, addReq.GetRanges(0).GetBytes());
+
+        const auto& confirm = profileLog->Requests[static_cast<ui32>(
+            EFileStoreRequest::ConfirmAddData)];
+        UNIT_ASSERT_VALUES_EQUAL(1, confirm.size());
+        UNIT_ASSERT_VALUES_EQUAL(commitId, confirm[0].Request.GetCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(0, confirm[0].Request.RangesSize());
+    }
+
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInAddDataUnconfirmed)
     {
         const ui32 block = 4_KB;
@@ -901,6 +1703,120 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         UNIT_ASSERT_VALUES_EQUAL(
             expected,
             ReadData(tablet, handle, expected.size(), 0));
+    }
+
+    Y_UNIT_TEST(ShouldRestartTabletOnConfirmBlobsError)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        auto& runtime = env.GetRuntime();
+
+        TTabletRebootTracker rebootTracker;
+        auto rebootFilter = rebootTracker.GetEventFilter();
+
+        bool injectConfirmBlobsError = false;
+        bool recoveryConfirmStarted = false;
+        ui32 injectedGetErrors = 0;
+        ui32 confirmBlobsCompleted = 0;
+        ui32 failedConfirmBlobsCompleted = 0;
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                rebootFilter(runtime, ev);
+
+                switch (ev->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::
+                        EvLoadCompactionMapChunkResponse: {
+                        if (!injectConfirmBlobsError) {
+                            return false;
+                        }
+
+                        const auto* msg =
+                            ev->Get<TEvIndexTabletPrivate::
+                                        TEvLoadCompactionMapChunkResponse>();
+                        if (msg->LastRangeId == 0) {
+                            recoveryConfirmStarted = true;
+                        }
+                        return false;
+                    }
+                    case TEvBlobStorage::EvGetResult: {
+                        if (!recoveryConfirmStarted || injectedGetErrors != 0) {
+                            return false;
+                        }
+
+                        auto* msg = ev->Get<TEvBlobStorage::TEvGetResult>();
+                        msg->Status = NKikimrProto::ERROR;
+                        msg->ErrorReason = "injected ConfirmBlobs failure";
+                        ++injectedGetErrors;
+                        return false;
+                    }
+                    case TEvIndexTabletPrivate::EvConfirmBlobsCompleted: {
+                        const auto* msg = ev->Get<
+                            TEvIndexTabletPrivate::TEvConfirmBlobsCompleted>();
+                        ++confirmBlobsCompleted;
+                        if (HasError(msg->GetError())) {
+                            ++failedConfirmBlobsCompleted;
+                        }
+                        return false;
+                    }
+                }
+
+                return false;
+            });
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, block, 'a');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 1, 0);
+
+        injectConfirmBlobsError = true;
+        recoveryConfirmStarted = false;
+
+        tablet.RebootTablet();
+
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition =
+                    [&]()
+                {
+                    return injectedGetErrors == 1 &&
+                           failedConfirmBlobsCompleted == 1 &&
+                           confirmBlobsCompleted >= 2 &&
+                           rebootTracker.GetGenerationCount() >= 3;
+                }},
+            TDuration::Seconds(5));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, injectedGetErrors);
+        UNIT_ASSERT_VALUES_EQUAL(1, failedConfirmBlobsCompleted);
+        UNIT_ASSERT_C(
+            rebootTracker.GetGenerationCount() >= 3,
+            TStringBuilder()
+                << "Expected tablet to restart after ConfirmBlobs failure, "
+                << "generation count: " << rebootTracker.GetGenerationCount());
+
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.RecoverSession();
+        handle = CreateHandle(tablet, id);
+
+        AssertStorageStats(tablet, 0, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(block, 'a'),
+            ReadData(tablet, handle, block, 0));
     }
 
     Y_UNIT_TEST(ShouldDropAllConfirmedDataWhenUnrecoverableBlobExists)
@@ -1247,6 +2163,349 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
 
         TIndexTabletClient observer(runtime, nodeIdx, tabletId);
         AssertStorageStats(observer, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnWritePipeDisconnection)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient sessionClient(runtime, nodeIdx, tabletId);
+        sessionClient.InitSession("client", "session");
+
+        auto id = CreateNode(
+            sessionClient,
+            TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(sessionClient, id);
+
+        TIndexTabletClient writeClient(
+            runtime,
+            nodeIdx,
+            tabletId,
+            {},
+            false /* updateConfig */);
+        writeClient.SetHeaders("client", "session", 0 /* sessionSeqNo */);
+
+        auto gbi = writeClient.GenerateBlobIds(id, handle, 0, block);
+        Y_UNUSED(gbi);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(sessionClient, 1, 0);
+
+        writeClient.DisconnectPipe();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        TIndexTabletClient observer(runtime, nodeIdx, tabletId);
+        AssertStorageStats(observer, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldReleaseCollectBarrierOnGenerateBlobIdsChannelError)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({.ChannelCount = 4}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            TFileSystemConfig{.ChannelCount = 4});
+        tablet.InitSession("client", "session");
+
+        auto& runtime = env.GetRuntime();
+
+        bool yellowStopInjected = false;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() != TEvBlobStorage::EvPutResult) {
+                    return false;
+                }
+
+                auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                if (msg->Id.TabletID() != tabletId ||
+                    msg->Id.Channel() < TIndexTabletSchema::DataChannel)
+                {
+                    return false;
+                }
+
+                const auto flags =
+                    ui32(NKikimrBlobStorage::StatusIsValid) |
+                    ui32(NKikimrBlobStorage::StatusDiskSpaceYellowStop);
+                const_cast<TStorageStatusFlags&>(msg->StatusFlags).Merge(flags);
+                yellowStopInjected = true;
+                return false;
+            });
+
+        auto gcNode =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "gc"));
+        ui64 gcHandle = CreateHandle(tablet, gcNode);
+        tablet.WriteData(gcHandle, 0, block, 'a');
+        UNIT_ASSERT(yellowStopInjected);
+
+        auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "target"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto failedGenerateBlobIds =
+            tablet.AssertGenerateBlobIdsFailed(id, handle, 0, block);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_OUT_OF_SPACE,
+            failedGenerateBlobIds->GetStatus());
+
+        const ui64 commitIdAfterFailedGenerateBlobIds =
+            tablet.GenerateCommitId()->CommitId;
+
+        tablet.DestroyHandle(gcHandle);
+        tablet.UnlinkNode(RootNodeId, "gc", false);
+        tablet.CollectGarbage();
+
+        UNIT_ASSERT_GT(
+            tablet.GetStorageStats()
+                ->Record.GetStats()
+                .GetLastCollectCommitId(),
+            commitIdAfterFailedGenerateBlobIds);
+    }
+
+    Y_UNIT_TEST(ShouldBlockGetNodeAttrUntilAddBlobUnconfirmedCommits)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(2);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(1);
+        storageConfig.SetInMemoryIndexCacheNodeAttrsCapacity(2);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const ui64 initialCommitId =
+            GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, block, 'a');
+        WaitForTabletCommit(env);
+        tablet.ConfirmAddData(initialCommitId);
+        WaitForTabletCommit(env);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(
+            block,
+            tablet.GetNodeAttr(id)->Record.GetNode().GetSize());
+
+        const ui64 commitId = GenerateBlobIdsAndPutBlob(
+            env,
+            tablet,
+            id,
+            handle,
+            block,
+            block,
+            'b');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 1, 0);
+
+        TAutoPtr<IEventHandle> addBlobCommitResult;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvTablet::EvCommitResult &&
+                    !addBlobCommitResult)
+                {
+                    addBlobCommitResult = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !!addBlobCommitResult; }},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(
+            addBlobCommitResult,
+            "Expected AddBlob commit result to be held by the test");
+
+        tablet.AssertConfirmAddDataResponse(S_OK);
+
+        tablet.SendGetNodeAttrRequest(id);
+
+        // With cache bypass we will not receive response until release of
+        // Commit event
+        tablet.AssertGetNodeAttrNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(addBlobCommitResult.Release(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * block,
+            tablet.GetNodeAttr(id)->Record.GetNode().GetSize());
+        AssertStorageStats(tablet, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldNotUseReadAheadCacheUntilAddBlobUnconfirmedCommits)
+    {
+        constexpr ui32 block = 4_KB;
+        constexpr ui64 readAheadStep = 128_KB;
+        constexpr ui64 writeOffset = 1_MB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+        storageConfig.SetReadAheadCacheRangeSize(1_MB);
+        storageConfig.SetReadAheadCacheMaxResultsPerNode(32);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        tablet.WriteData(handle, 0, 2_MB, 'a');
+
+        for (ui32 i = 0; i < 7; ++i) {
+            tablet.DescribeData(handle, i * readAheadStep, readAheadStep);
+        }
+
+        const ui64 commitId = GenerateBlobIdsAndPutBlob(
+            env,
+            tablet,
+            id,
+            handle,
+            writeOffset,
+            block,
+            'b');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 1, 0);
+
+        TAutoPtr<IEventHandle> blockedRwPut;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut &&
+                    !blockedRwPut)
+                {
+                    blockedRwPut = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendSetNodeAttrRequest(TSetNodeAttrArgs(RootNodeId).SetUid(2));
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]() { return !!blockedRwPut; }},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(blockedRwPut, "Expected blocked RW tx put");
+        tablet.AssertSetNodeAttrNoResponse();
+
+        TAutoPtr<IEventHandle> addBlobCommitResult;
+        bool confirmResponseSeen = false;
+        ui32 commitResultsAfterConfirm = 0;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTablet::EvConfirmAddDataResponse)
+                {
+                    confirmResponseSeen = true;
+                    return false;
+                }
+
+                if (confirmResponseSeen &&
+                    event->GetTypeRewrite() == TEvTablet::EvCommitResult)
+                {
+                    ++commitResultsAfterConfirm;
+                    if (commitResultsAfterConfirm == 2 &&
+                        !addBlobCommitResult) {
+                        addBlobCommitResult = event.Release();
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        // This request is prepared before AddBlob is executed and can
+        // repopulate read-ahead with the old blob mapping after AddBlob has
+        // already invalidated it in ExecuteTx.
+        tablet.SendDescribeDataRequest(
+            handle,
+            writeOffset - readAheadStep,
+            readAheadStep);
+
+        tablet.SendConfirmAddDataRequest(commitId);
+
+        runtime.Send(blockedRwPut.Release(), nodeIdx);
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !!addBlobCommitResult; }},
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(
+            addBlobCommitResult,
+            "Expected AddBlob commit result to be held by the test");
+
+        tablet.AssertSetNodeAttrResponse(S_OK);
+        tablet.AssertConfirmAddDataResponse(S_OK);
+        tablet.AssertDescribeDataResponse(S_OK);
+
+        tablet.SendDescribeDataRequest(handle, writeOffset, block);
+
+        // A stale read-ahead hit would answer immediately here, before
+        // CompleteTx_AddBlob gets a chance to invalidate the cache again.
+        tablet.AssertDescribeDataNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(addBlobCommitResult.Release(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        tablet.AssertDescribeDataResponse(S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(block, 'b'),
+            ReadData(tablet, handle, block, writeOffset));
+        AssertStorageStats(tablet, 0, 0);
     }
 }
 

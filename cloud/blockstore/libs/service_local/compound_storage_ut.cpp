@@ -197,7 +197,7 @@ auto RequestReadBlocksLocal(IStoragePtr storage, ui64 startIndex, ui32 blockCoun
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blockCount);
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
 
     const auto bytes = blockCount * DefaultBlockSize;
     auto buffer = storage->AllocateBuffer(bytes);
@@ -216,7 +216,7 @@ TString ReadBlocksLocal(IStoragePtr storage, ui64 startIndex, ui32 blockCount)
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blockCount);
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
 
     const auto bytes = blockCount * DefaultBlockSize;
     auto buffer = storage->AllocateBuffer(bytes);
@@ -253,7 +253,7 @@ auto RequestWriteBlocksLocal(
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
     request->BlocksCount = blockCount;
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
 
     const auto bytes = blockCount * DefaultBlockSize;
 
@@ -794,7 +794,7 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             request->SetStartIndex(0);
             request->BlocksCount = 100;
-            request->BlockSize = DefaultBlockSize;
+            request->SetBlockSize(DefaultBlockSize);
             request->Sglist.Close();
 
             auto response = storage->WriteBlocksLocal(
@@ -807,7 +807,7 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         {
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetBlocksCount(100);
-            request->BlockSize = DefaultBlockSize;
+            request->SetBlockSize(DefaultBlockSize);
             request->Sglist.Close();
 
             auto response = storage->ReadBlocksLocal(

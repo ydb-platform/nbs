@@ -69,10 +69,11 @@ func (s *service) DeleteSnapshot(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
+	return s.taskScheduler.ScheduleNonCancellableTask(
 		ctx,
 		"snapshots.DeleteSnapshot",
-		"",
+		"", // description
+		"", // zoneID
 		&protos.DeleteSnapshotRequest{
 			SnapshotId: req.SnapshotId,
 		},

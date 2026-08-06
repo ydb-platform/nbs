@@ -20,6 +20,7 @@ TEST_SRCS(
 )
 
 SET(QEMU_VIRTIO fs)
+SET(QEMU_MEM 6G)
 SET(NFS_RESTART_INTERVAL 10)
 SET(VHOST_RESTART_INTERVAL 10)
 SET(VHOST_RESTART_FLAG 1)
@@ -28,11 +29,15 @@ SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
 )
+SET(NFS_BS_FAILURE_PROBABILITY 0.0001)
 SET(NFS_FORCE_VERBOSE 1)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
+
+DEFAULT(FILESTORE_TABLETS_RESTART_INTERVAL 5)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/tablets-restarter.inc)
 
 END()

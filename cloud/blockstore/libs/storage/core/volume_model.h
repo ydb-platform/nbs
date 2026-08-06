@@ -41,6 +41,7 @@ struct TVolumeParams
     ui32 MaxWriteIops = 0;
     NCloud::NProto::EStorageMediaKind MediaKind
         = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+    bool IsSystem = false;
     NPrivateProto::TVolumeChannelsToPoolsKinds VolumeChannelsToPoolsKinds = {};
 
     ui64 GetBlocksCount() const

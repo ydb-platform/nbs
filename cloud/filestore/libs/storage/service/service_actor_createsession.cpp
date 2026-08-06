@@ -51,11 +51,14 @@ private:
     TString FileSystemId;
     TString CheckpointId;
     TString OriginFqdn;
+    // Whether the filesystem id came from the public gRPC API
+    bool FromExternalSource;
     bool RestoreClientSession;
     ui64 SeqNo;
     bool ReadOnly;
     TString SessionId;
     TString SessionState;
+    ui64 OwnerGeneration = 0;
     NProto::TFileStore FileStore;
 
     ui64 TabletId = -1;
@@ -72,6 +75,8 @@ private:
 
     TActorId Owner;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TCreateSessionActor(
         TStorageConfigPtr config,
@@ -84,6 +89,7 @@ public:
         ui64 seqNo,
         bool readOnly,
         bool restoreClientSession,
+        bool fromExternalSource,
         TActorId owner);
 
     void Bootstrap(const TActorContext& ctx);
@@ -179,6 +185,7 @@ TCreateSessionActor::TCreateSessionActor(
         ui64 seqNo,
         bool readOnly,
         bool restoreClientSession,
+        bool fromExternalSource,
         TActorId owner)
     : Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
@@ -186,6 +193,7 @@ TCreateSessionActor::TCreateSessionActor(
     , FileSystemId(std::move(fileSystemId))
     , CheckpointId(std::move(checkpointId))
     , OriginFqdn(std::move(originFqdn))
+    , FromExternalSource(fromExternalSource)
     , RestoreClientSession(restoreClientSession)
     , SeqNo(seqNo)
     , ReadOnly(readOnly)
@@ -223,7 +231,11 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
                 LogTag().c_str(),
                 FileSystemId.c_str(),
                 FormatError(msg->GetError()).c_str());
-            ReportDescribeFileStoreError();
+
+            // not_found is expected from an external source
+            if (!(FromExternalSource && msg->GetStatus() == E_NOT_FOUND)) {
+                ReportDescribeFileStoreError();
+            }
         }
 
         Notify(ctx, msg->GetError(), false);
@@ -380,7 +392,7 @@ void TCreateSessionActor::CreateSession(const TActorContext& ctx)
     LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
         "%s do creating session: %s",
         LogTag().c_str(),
-        DumpMessage(request->Record).c_str());
+        ProtoMessagePrinter.ToString(request->Record).c_str());
 
     NTabletPipe::SendData(ctx, PipeClient, request.release());
 }
@@ -426,6 +438,7 @@ void TCreateSessionActor::HandleCreateSessionResponse(
     }
 
     SessionState = msg->Record.GetSessionState();
+    OwnerGeneration = msg->Record.GetOwnerGeneration();
     FileStore = msg->Record.GetFileStore();
 
     // Some of the features of the filestore are set not by the tablet but also
@@ -586,6 +599,7 @@ void TCreateSessionActor::Notify(
     response->SessionSeqNo = SeqNo;
     response->ReadOnly = ReadOnly;
     response->TabletId = TabletId;
+    response->OwnerGeneration = OwnerGeneration;
     response->FileStore = FileStore;
     response->RequestInfo = std::move(RequestInfo);
     response->Shutdown = shutdown;
@@ -792,6 +806,8 @@ void TStorageServiceActor::HandleCreateSession(
         msg->Record.GetMountSeqNumber(),
         msg->Record.GetReadOnly(),
         msg->Record.GetRestoreClientSession(),
+        msg->Record.GetHeaders().GetInternal().GetRequestOrigin() ==
+            NProto::THeaders::TInternal::REQUEST_ORIGIN_EXTERNAL,
         SelfId());
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
@@ -844,14 +860,71 @@ void TStorageServiceActor::HandleSessionCreated(
     const auto* msg = ev->Get();
 
     auto* session = State->FindSession(msg->SessionId);
+    const TSessionInfo::TSubSessionInfo* subSession = nullptr;
+    if (session) {
+        subSession = session->FindSubSession(msg->SessionSeqNo);
+    }
+    const ui64 storedOwnerGeneration =
+        subSession ? subSession->OwnerGeneration : 0;
     if (SUCCEEDED(msg->GetStatus())) {
         // in case of vhost restart we don't know session id
         // so inevitably will create new actor
         auto actorId = ev->Sender;
+        if (session && storedOwnerGeneration && msg->OwnerGeneration) {
+            if (msg->OwnerGeneration < storedOwnerGeneration) {
+                LOG_WARN(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "%s CreateSession returned stale session owner "
+                    "generation: stored %lu, notification %lu, sender %s",
+                    LogTag(
+                        msg->FileStore.GetFileSystemId(),
+                        msg->ClientId,
+                        msg->SessionId,
+                        msg->SessionSeqNo)
+                        .c_str(),
+                    storedOwnerGeneration,
+                    msg->OwnerGeneration,
+                    ToString(ev->Sender).c_str());
+            } else if (msg->OwnerGeneration > storedOwnerGeneration) {
+                LOG_INFO(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "%s CreateSession returned newer session owner "
+                    "generation: stored %lu, notification %lu, sender %s",
+                    LogTag(
+                        msg->FileStore.GetFileSystemId(),
+                        msg->ClientId,
+                        msg->SessionId,
+                        msg->SessionSeqNo)
+                        .c_str(),
+                    storedOwnerGeneration,
+                    msg->OwnerGeneration,
+                    ToString(ev->Sender).c_str());
+            }
+        }
+
         if (session &&
             session->SessionActor &&
             session->SessionActor != ev->Sender)
         {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s CreateSession returned session actor mismatch: current "
+                "actor %s generation %lu, notification sender %s generation "
+                "%lu; keeping current actor and poisoning notification sender",
+                LogTag(
+                    msg->FileStore.GetFileSystemId(),
+                    msg->ClientId,
+                    msg->SessionId,
+                    msg->SessionSeqNo)
+                    .c_str(),
+                ToString(session->SessionActor).c_str(),
+                storedOwnerGeneration,
+                ToString(ev->Sender).c_str(),
+                msg->OwnerGeneration);
+
             ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
             actorId = session->SessionActor;
         }
@@ -886,6 +959,7 @@ void TStorageServiceActor::HandleSessionCreated(
                 mediaKind,
                 std::move(stats),
                 actorId,
+                msg->OwnerGeneration,
                 msg->TabletId);
 
             Y_ABORT_UNLESS(session);
@@ -893,7 +967,12 @@ void TStorageServiceActor::HandleSessionCreated(
             session->UpdateSessionState(
                 msg->SessionState,
                 msg->FileStore);
-            session->AddSubSession(msg->SessionSeqNo, msg->ReadOnly);
+            session->AddSubSession(
+                msg->SessionSeqNo,
+                msg->ReadOnly,
+                actorId == ev->Sender
+                    ? msg->OwnerGeneration
+                    : storedOwnerGeneration);
             session->SessionActor = actorId;
         }
     } else if (session) {

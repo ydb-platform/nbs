@@ -32,45 +32,9 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-void HandleServiceTraceInfo(
-    const char* methodName,
-    const NActors::TActorContext& ctx,
-    const ITraceSerializerPtr& traceSerializer,
-    const TCallContextBasePtr& callContext,
-    T& record)
-{
-    const bool handled =
-        HandleTraceInfo(traceSerializer, callContext, record);
-    if (handled) {
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "%s: trace handled",
-            methodName);
-        return;
-    }
-
-    if constexpr (HasResponseHeaders<T>()) {
-        if (record.GetHeaders().HasTrace()) {
-            const auto& trace = record.GetHeaders().GetTrace();
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "%s: trace not handled: %s",
-                methodName,
-                trace.Utf8DebugString().Quote().c_str(),
-                handled);
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename TMethod>
 void CompleteRequestImpl(
     const NActors::TActorContext& ctx,
-    const ITraceSerializerPtr& traceSerializer,
     typename TMethod::TResponse::ProtoRecordType& record,
     TInFlightRequest *request,
     TInFlightRequestStorage& requestStorage,
@@ -331,6 +295,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateUnsafeChangeTabletStateActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateGetStorageStatsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
@@ -356,6 +324,34 @@ private:
         TString input);
 
     NActors::IActorPtr CreateMarkNodeRefsExhaustiveActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateWriteResponseLogEntryActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateDeleteResponseLogEntryActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateGetResponseLogEntryActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateListNodesInternalActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateSetQuotaActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateDeleteQuotaActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateListQuotasActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

@@ -69,6 +69,11 @@ ELogPriority GetDetailsLogPriority(const NProto::TError& error)
     }
 }
 
+ELogPriority GetNoRetryLogPriority(const NProto::TError& error)
+{
+    return error.GetCode() == E_IO_SILENT ? TLOG_WARNING : TLOG_ERR;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
@@ -187,6 +192,8 @@ private:
             Y_DEBUG_ABORT_UNLESS(state->Response.HasValue());
             return;
         }
+
+        EnsureRequestId(*request);
 
         TMethod::Execute(Client.get(), state->CallContext, std::move(request))
             .Subscribe(
@@ -349,7 +356,8 @@ private:
             }
 
             auto duration = TInstant::Now() - state->Started;
-            STORAGE_ERROR(
+            STORAGE_LOG(
+                GetNoRetryLogPriority(response.GetError()),
                 TRequestInfo(
                     TMethod::BlockStoreRequest,
                     requestId,
@@ -441,7 +449,8 @@ private:
 
         // copy request without data (only TSgList).
         return std::make_shared<NProto::TWriteBlocksLocalRequest>(
-            request->CreateDependentRequest());
+            *request,
+            NProto::TWriteBlocksLocalRequest::TDependentTag{});
     }
 
     template <>

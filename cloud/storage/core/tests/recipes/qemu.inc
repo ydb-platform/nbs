@@ -6,9 +6,11 @@ IF (NOT QEMU_FIRMWARE)
     DEPENDS(cloud/storage/core/tools/testing/qemu/bin)
 ENDIF()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tools/testing/qemu/bin/qemu-params.inc)
+
 IF (NOT QEMU_ROOTFS)
-    SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image/rootfs.img)
-    DEPENDS(cloud/storage/core/tools/testing/qemu/image)
+    SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img)
+    DEPENDS(cloud/storage/core/tools/testing/qemu/image-noble)
 ENDIF()
 
 IF (NOT QEMU_SSH_USER)
@@ -36,20 +38,23 @@ REQUIREMENTS(
 
 USE_RECIPE(
     cloud/storage/core/tests/recipes/qemu/qemu-recipe
-    --qemu-bin $QEMU_BIN
-    --qemu-firmware $QEMU_FIRMWARE
-    --qemu-options $QEMU_OPTIONS
-    --rootfs $QEMU_ROOTFS
-    --proc $QEMU_PROC
-    --mem $QEMU_MEM
-    --ssh-key $QEMU_SSH_KEY
-    --ssh-user $QEMU_SSH_USER
-    --virtio $QEMU_VIRTIO
-    --enable-kvm $QEMU_ENABLE_KVM
-    --instance-count $QEMU_INSTANCE_COUNT
-    --invoke-test $QEMU_INVOKE_TEST
-    --use-virtiofs-server $QEMU_USE_VIRTIOFS_SERVER
-    --num-request-queues $QEMU_NUM_REQUEST_QUEUES
+    --qemu-bin "$QEMU_BIN"
+    --qemu-firmware "$QEMU_FIRMWARE"
+    --qemu-bios "$QEMU_BIOS"
+    --qemu-options "$QEMU_OPTIONS"
+    --rootfs "$QEMU_ROOTFS"
+    --proc "$QEMU_PROC"
+    --mem "$QEMU_MEM"
+    --ssh-key "$QEMU_SSH_KEY"
+    --ssh-user "$QEMU_SSH_USER"
+    --virtio "$QEMU_VIRTIO"
+    --enable-kvm "$QEMU_ENABLE_KVM"
+    --instance-count "$QEMU_INSTANCE_COUNT"
+    --invoke-test "$QEMU_INVOKE_TEST"
+    --use-virtiofs-server "$QEMU_USE_VIRTIOFS_SERVER"
+    --num-request-queues "$QEMU_NUM_REQUEST_QUEUES"
+    --chardev-reconnect "$QEMU_CHARDEV_RECONNECT"
+    --virtiofs-migration "$QEMU_VIRTIOFS_MIGRATION"
 )
 
 REQUIREMENTS(kvm)

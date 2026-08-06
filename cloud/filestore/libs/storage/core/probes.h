@@ -55,6 +55,20 @@
             NCloud::NProbeParam::RequestType,                                  \
             NCloud::NProbeParam::RequestId)                                    \
     )                                                                          \
+    PROBE(RequestReceived_TabletProxy,                                         \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId)                                    \
+    )                                                                          \
+    PROBE(ResponseSent_TabletProxy,                                            \
+        GROUPS("NFSRequest"),                                                  \
+        TYPES(TString, ui64),                                                  \
+        NAMES(                                                                 \
+            NCloud::NProbeParam::RequestType,                                  \
+            NCloud::NProbeParam::RequestId)                                    \
+    )                                                                          \
     PROBE(RequestPostponed_Tablet,                                             \
         GROUPS("NFSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \

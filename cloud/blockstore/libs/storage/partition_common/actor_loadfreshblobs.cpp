@@ -167,7 +167,14 @@ void TLoadFreshBlobsActor::HandleRangeResult(
     } else {
         for (const auto& r: msg->Responses) {
             const ui64 commitId = MakeCommitId(r.Id.Generation(), r.Id.Step());
-            Blobs.emplace_back(commitId, std::move(r.Buffer));
+            const TPartialBlobId blobId(
+                r.Id.Generation(),
+                r.Id.Step(),
+                r.Id.Channel(),
+                r.Id.BlobSize(),
+                r.Id.Cookie(),
+                r.Id.PartId());
+            Blobs.emplace_back(commitId, blobId, std::move(r.Buffer));
 
             totalBlobSize += r.Id.BlobSize();
             ++freshBlobCount;

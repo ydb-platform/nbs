@@ -25,7 +25,7 @@ ui64 SizeDiff(const TString& v1, const TString& v2)
 // Nodes
 
 void TIndexTabletState::UpdateUsedBlocksCount(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 currentSize,
     ui64 prevSize)
 {
@@ -38,7 +38,7 @@ void TIndexTabletState::UpdateUsedBlocksCount(
 }
 
 void TIndexTabletState::CreateNodeWithId(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const NProto::TNode& attrs)
@@ -51,7 +51,7 @@ void TIndexTabletState::CreateNodeWithId(
 }
 
 ui64 TIndexTabletState::CreateNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 commitId,
     const NProto::TNode& attrs)
 {
@@ -64,7 +64,7 @@ ui64 TIndexTabletState::CreateNode(
 }
 
 void TIndexTabletState::UpdateNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -87,8 +87,8 @@ void TIndexTabletState::UpdateNode(
 }
 
 NProto::TError TIndexTabletState::RemoveNode(
-    TIndexTabletDatabase& db,
-    const IIndexTabletDatabase::TNode& node,
+    IIndexTabletDatabase& db,
+    const INodeIndexTabletDatabase::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId)
 {
@@ -123,10 +123,10 @@ NProto::TError TIndexTabletState::RemoveNode(
 }
 
 NProto::TError TIndexTabletState::UnlinkNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 parentNodeId,
     const TString& name,
-    const IIndexTabletDatabase::TNode& node,
+    const INodeIndexTabletDatabase::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId,
     bool removeNodeRef)
@@ -171,7 +171,7 @@ NProto::TError TIndexTabletState::UnlinkNode(
 }
 
 void TIndexTabletState::UnlinkExternalNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 parentNodeId,
     const TString& name,
     const TString& shardId,
@@ -191,10 +191,10 @@ void TIndexTabletState::UnlinkExternalNode(
 }
 
 bool TIndexTabletState::ReadNode(
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
-    TMaybe<IIndexTabletDatabase::TNode>& node)
+    TMaybe<INodeIndexTabletDatabase::TNode>& node)
 {
     bool ready = db.ReadNode(nodeId, commitId, node);
 
@@ -215,7 +215,7 @@ bool TIndexTabletState::ReadNode(
 }
 
 void TIndexTabletState::RewriteNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -234,7 +234,7 @@ void TIndexTabletState::RewriteNode(
 }
 
 void TIndexTabletState::WriteOrphanNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TString& message,
     ui64 nodeId)
 {
@@ -263,7 +263,7 @@ void TIndexTabletState::EndNodeCreateInShard(const TString& nodeName)
 // NodeAttrs
 
 ui64 TIndexTabletState::CreateNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -278,7 +278,7 @@ ui64 TIndexTabletState::CreateNodeAttr(
 }
 
 ui64 TIndexTabletState::UpdateNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -313,7 +313,7 @@ ui64 TIndexTabletState::UpdateNodeAttr(
 }
 
 void TIndexTabletState::RemoveNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -339,7 +339,7 @@ void TIndexTabletState::RemoveNodeAttr(
 }
 
 bool TIndexTabletState::ReadNodeAttr(
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -364,7 +364,7 @@ bool TIndexTabletState::ReadNodeAttr(
 }
 
 bool TIndexTabletState::ReadNodeAttrs(
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     TVector<TIndexTabletDatabase::TNodeAttr>& attrs)
@@ -383,7 +383,7 @@ bool TIndexTabletState::ReadNodeAttrs(
 }
 
 void TIndexTabletState::RewriteNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -411,35 +411,82 @@ void TIndexTabletState::RewriteNodeAttr(
 // HasXAttrs
 
 void TIndexTabletState::WriteHasXAttrs(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     const TIndexTabletState::EHasXAttrs hasXAttrs)
 {
     SetHasXAttrs(db, static_cast<ui64>(hasXAttrs));
 }
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+// Functions that compress and decompress NodeRefs
+
+inline void TryToEncodeShardId(
+    const TString& mainFsId,
+    INodeIndexTabletDatabase::TNodeRef& nodeRef)
+{
+    if (!nodeRef.TryToEncodeShardId(mainFsId)) {
+        ReportMalformedShardNodeRef(
+            TStringBuilder()
+            << "ShardId: " << nodeRef.ShardId.Quote()
+            << ", ShardNodeName: " << nodeRef.ShardNodeName.Quote());
+    }
+}
+
+inline bool TryToDecodeShardId(
+    const TString& mainFsId,
+    INodeIndexTabletDatabase::TNodeRef& nodeRef)
+{
+    if (!nodeRef.TryToDecodeShardId(mainFsId)) {
+        // This is a kind of impossible situation meaning that data in
+        // the table is corrupted
+        ReportMalformedEncodedShardNodeRef(
+            TStringBuilder()
+            << "Filesystem: " << mainFsId
+            << ", encoded ShardId: " << nodeRef.ShardId.Quote()
+            << ", encoded ShardNodeName: " << nodeRef.ShardNodeName.Quote());
+
+        return false;
+    }
+
+    return true;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 // NodeRefs
 
 void TIndexTabletState::CreateNodeRef(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& childName,
     ui64 childNodeId,
     const TString& shardId,
-    const TString& shardNodeName)
+    const TString& shardNodeName,
+    bool markExhaustive)
 {
-    db.WriteNodeRef(
-        nodeId,
-        commitId,
-        childName,
-        childNodeId,
-        shardId,
-        shardNodeName);
+    INodeIndexTabletDatabase::TNodeRef nodeRef {
+        .NodeId = nodeId,
+        .Name = childName,
+        .ChildNodeId = childNodeId,
+        .ShardId = shardId,
+        .ShardNodeName = shardNodeName,
+        .MinCommitId = commitId,
+        .MaxCommitId = InvalidCommitId
+    };
+
+    if (GetCompressNodeRef()) {
+        TryToEncodeShardId(GetMainFileSystemId(), nodeRef);
+    }
+
+    db.WriteNodeRef(nodeRef, markExhaustive);
 }
 
 void TIndexTabletState::RemoveNodeRef(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -467,13 +514,17 @@ void TIndexTabletState::RemoveNodeRef(
 }
 
 bool TIndexTabletState::ReadNodeRef(
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    TMaybe<IIndexTabletDatabase::TNodeRef>& ref)
+    TMaybe<INodeIndexTabletDatabase::TNodeRef>& ref)
 {
     bool ready = db.ReadNodeRef(nodeId, commitId, name, ref);
+
+    if (ref && !TryToDecodeShardId(GetMainFileSystemId(), ref.GetRef())) {
+        ref.Clear();
+    }
 
     if (ready && ref) {
         // fast path
@@ -492,11 +543,11 @@ bool TIndexTabletState::ReadNodeRef(
 }
 
 bool TIndexTabletState::ReadNodeRefs(
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& cookie,
-    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
     ui32 maxBytes,
     TString* next,
     bool noAutoPrecharge,
@@ -513,6 +564,11 @@ bool TIndexTabletState::ReadNodeRefs(
         noAutoPrecharge,
         sizeMode);
 
+    std::erase_if(
+        refs,
+        [this](INodeIndexTabletDatabase::TNodeRef& ref)
+        { return !TryToDecodeShardId(GetMainFileSystemId(), ref); });
+
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
     if (checkpointId != InvalidCommitId) {
         // there could be history versions
@@ -525,25 +581,32 @@ bool TIndexTabletState::ReadNodeRefs(
 }
 
 bool TIndexTabletState::ReadNodeRefs(
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     ui64 startNodeId,
     const TString& startCookie,
     ui64 maxCount,
-    TVector<IIndexTabletDatabase::TNodeRef>& refs,
+    TVector<INodeIndexTabletDatabase::TNodeRef>& refs,
     ui64& nextNodeId,
     TString& nextCookie)
 {
-    return db.ReadNodeRefs(
+    bool ready = db.ReadNodeRefs(
         startNodeId,
         startCookie,
         maxCount,
         refs,
         nextNodeId,
         nextCookie);
+
+    std::erase_if(
+        refs,
+        [this](INodeIndexTabletDatabase::TNodeRef& ref)
+        { return !TryToDecodeShardId(GetMainFileSystemId(), ref); });
+
+    return ready;
 }
 
 bool TIndexTabletState::PrechargeNodeRefs(
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     ui64 nodeId,
     const TString& cookie,
     ui64 rowsToPrecharge,
@@ -554,7 +617,7 @@ bool TIndexTabletState::PrechargeNodeRefs(
 }
 
 void TIndexTabletState::RewriteNodeRef(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -600,32 +663,40 @@ bool TIndexTabletState::IsNodeRefLocked(const TNodeRefKey& key) const
     return Impl->LockedNodeRefs.contains(key);
 }
 
+void TIndexTabletState::VisitNodeRefLocks(
+    const TNodeRefLockVisitor& visitor) const
+{
+    for (const auto& x: Impl->LockedNodeRefs) {
+        visitor(x);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-IIndexTabletDatabase& TIndexTabletState::AccessInMemoryIndexState()
+INodeIndexTabletDatabase* TIndexTabletState::AccessInMemoryIndexState()
 {
-    return Impl->InMemoryIndexState;
+    return Impl->InMemoryIndexState.get();
 }
 
 void TIndexTabletState::UpdateInMemoryIndexState(
-    TVector<TInMemoryIndexState::TIndexStateRequest> nodeUpdates)
+    const TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
 {
-    Impl->InMemoryIndexState.UpdateState(nodeUpdates);
+    Impl->InMemoryIndexState->UpdateState(nodeUpdates);
 }
 
 void TIndexTabletState::MarkNodeRefsLoadComplete()
 {
-    Impl->InMemoryIndexState.MarkNodeRefsLoadComplete();
+    Impl->InMemoryIndexState->MarkNodeRefsLoadComplete();
 }
 
 void TIndexTabletState::MarkNodeRefsExhaustive(ui64 nodeId)
 {
-    Impl->InMemoryIndexState.MarkNodeRefsExhaustive(nodeId);
+    Impl->InMemoryIndexState->MarkNodeRefsExhaustive(nodeId);
 }
 
 TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const
 {
-    return Impl->InMemoryIndexState.GetStats();
+    return Impl->InMemoryIndexState->GetStats();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -106,6 +106,9 @@ constexpr TDuration Seconds(int s)
     xxx(VhostServerTimeoutAfterParentExit, TDuration,       Seconds(60)       )\
     xxx(ChecksumFlags,               NProto::TChecksumFlags, {}               )\
     xxx(VhostDiscardEnabled,         bool,                   false            )\
+    xxx(VhostDiscardOnlyEnabled,     bool,                   false            )\
+    xxx(VhostWriteZeroesEnabled,     bool,                   false            )\
+    xxx(DropDiscardRequests,         bool,                   false            )\
     xxx(VhostOptimalIoSize,          ui32,                   0                )\
     xxx(MaxZeroBlocksSubRequestSize, ui32,                   0                )\
     xxx(EncryptZeroPolicy,                                                     \
@@ -115,6 +118,8 @@ constexpr TDuration Seconds(int s)
     xxx(AutomaticNbdDeviceManagement,bool,                   false            )\
     xxx(EnableOverlappingRequestsGuard,  bool,               false            )\
     xxx(EnableRequestSplitter,       bool,                   false            )\
+    xxx(ExternalVhostServerThreadPoolSize, ui64,             0                )\
+    xxx(RefreshCertsPeriod,          TDuration,              Seconds(0)       )\
 // BLOCKSTORE_SERVER_CONFIG
 
 // clang-format on
@@ -315,10 +320,22 @@ bool TServerAppConfig::DeprecatedGetRdmaClientEnabled() const
     return GetRdmaClientEnabled();
 }
 
-const NProto::TRdmaClient&
+const ::NCloud::NProto::TRdmaClient&
 TServerAppConfig::DeprecatedGetRdmaClientConfig() const
 {
     return ServerConfig->GetRdmaClientConfig();
+}
+
+TVector<TCertificate> TServerAppConfig::GetCertsWithLegacyFallback() const
+{
+    auto certs = GetCerts();
+    if (!certs.empty()) {
+        return certs;
+    }
+
+    certs.push_back({GetCertFile(), GetCertPrivateKeyFile()});
+
+    return certs;
 }
 
 }   // namespace NCloud::NBlockStore::NServer

@@ -16,6 +16,8 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
+#include <contrib/ydb/core/base/logoblob.h>
+
 #include <util/generic/guid.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -82,7 +84,7 @@ void CopySgListIntoRequestBuffers(
         record.GetDiskId(),
         TStringBuilder() << "Buffers: " << record.GetBlocks().BuffersSize());
 
-    record.CopySglistIntoBuffers();
+    record.TakeDataOwnership();
 }
 
 template <typename T>
@@ -140,6 +142,7 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
     ui64 volumeRequestId,
     TBlockRange64 blockRange,
     ui64 traceTime,
+    TThrottlingRequestInfo throttlingRequestInfo,
     bool forkTraces,
     bool isMultipartitionWriteOrZero)
 {
@@ -183,6 +186,8 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
             std::move(originalContext),
             forkTraces ? msg->CallContext : nullptr,
             traceTime,
+            GetCycleCount(),
+            throttlingRequestInfo,
             &RejectVolumeRequest<TMethod>,
             isMultipartitionWriteOrZero));
 
@@ -225,7 +230,8 @@ void TVolumeActor::SendRequestToPartition(
     const typename TMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
     TBlockRange64 blockRange,
-    ui64 traceTime)
+    ui64 traceTime,
+    TThrottlingRequestInfo throttlingRequestInfo)
 {
     STORAGE_VERIFY_C(
         State->IsDiskRegistryMediaKind() || State->GetPartitions(),
@@ -240,6 +246,12 @@ void TVolumeActor::SendRequestToPartition(
         partActorId = State->GetDiskRegistryBasedPartitionActor();
     } else if (State->GetPartitions().size() == 1) {
         partActorId = State->GetPartitions()[0].GetTopActorId();
+    } else if constexpr (IsDescribeBlobMethod<TMethod>) {
+        const auto blobId =
+            NKikimr::LogoBlobIDFromLogoBlobID(ev->Get()->Record.GetBlobId());
+        if (auto* partition = State->GetPartition(blobId.TabletID())) {
+            partActorId = partition->GetTopActorId();
+        }
     } else {
         forkTraces = false;
         partActorId = State->GetMultiPartitionWrapperActor();
@@ -278,6 +290,7 @@ void TVolumeActor::SendRequestToPartition(
         volumeRequestId,
         blockRange,
         traceTime,
+        throttlingRequestInfo,
         forkTraces,
         isMultipartitionWriteOrZero);
 
@@ -315,8 +328,10 @@ void TVolumeActor::FillResponse(
             callContext.LWOrbit,
             startTime,
             GetCycleCount());
-        response.Record.MutableDeprecatedTrace()->CopyFrom(
-            response.Record.GetHeaders().GetTrace());
+        if constexpr (requires { response.Record.MutableDeprecatedTrace(); }) {
+            response.Record.MutableDeprecatedTrace()->CopyFrom(
+                response.Record.GetHeaders().GetTrace());
+        }
     }
 
     StoreThrottlerDelay<TMethod>(
@@ -439,6 +454,23 @@ bool TVolumeActor::ReplyToOriginalRequest(
             volumeRequest.ForkedContext->LWOrbit);
     }
 
+    TDuration shapingDelay;
+    if (success && volumeRequest.ThrottlingRequestInfo.ByteCount > 0) {
+        const ui64 now = GetCycleCount();
+        const TDuration executionTime =
+            CyclesToDurationSafe(now - volumeRequest.ExecutionStartTime);
+        shapingDelay = State->AccessShapingThrottler().SuggestDelay(
+            ctx.Now(),
+            volumeRequest.ThrottlingRequestInfo.ByteCount,
+            static_cast<EVolumeThrottlingOpType>(
+                volumeRequest.ThrottlingRequestInfo.OpType),
+            executionTime);
+
+        volumeRequest.CallContext->AddTime(
+            EProcessingStage::Shaping,
+            shapingDelay);
+    }
+
     FillResponse<TMethod>(
         *response,
         *volumeRequest.CallContext,
@@ -451,7 +483,11 @@ bool TVolumeActor::ReplyToOriginalRequest(
         response.release(),
         flags,
         volumeRequest.CallerCookie);
-    ctx.Send(std::move(event));
+    if (shapingDelay.GetValue() > 0) {
+        ctx.Schedule(shapingDelay, std::move(event), /*cookie=*/nullptr);
+    } else {
+        ctx.Send(std::move(event));
+    }
 
     if (volumeRequest.IsMultipartitionWriteOrZero) {
         Y_DEBUG_ABORT_UNLESS(MultipartitionWriteAndZeroRequestsInProgress > 0);
@@ -580,7 +616,7 @@ void TVolumeActor::ForwardRequest(
     }
 
     auto* msg = ev->Get();
-    auto now = GetCycleCount();
+    ui64 now = GetCycleCount();
 
     // Fill block range.
     TBlockRange64 blockRange;
@@ -748,10 +784,10 @@ void TVolumeActor::ForwardRequest(
             case ELeadershipStatus::Follower: {
                 if (!isCopyingClient) {
                     // Any operations on the follower disk are prohibited for
-                    // an ordinary client.
+                    // an ordinary client. Reconnect to the principal disk.
                     replyError(MakeError(
-                        E_PRECONDITION_FAILED,
-                        makeMessage(NLog::PRI_ERROR)));
+                        E_BS_INVALID_SESSION,
+                        makeMessage(NLog::PRI_INFO)));
                     return;
                 }
                 break;
@@ -847,8 +883,13 @@ void TVolumeActor::ForwardRequest(
         return;
     }
 
+    TThrottlingRequestInfo throttlingRequestInfo;
     {
-        auto error = Throttle<TMethod>(ctx, ev, throttlingDisabled);
+        auto error = Throttle<TMethod>(
+            ctx,
+            ev,
+            throttlingDisabled,
+            &throttlingRequestInfo);
         if (HasError(error)) {
             replyError(std::move(error));
             return;
@@ -1013,7 +1054,64 @@ void TVolumeActor::ForwardRequest(
     // prepared by the WrapRequest<TMethod>() method, which replaces the sender
     // and receiver.
 
-    SendRequestToPartition<TMethod>(ctx, ev, volumeRequestId, blockRange, now);
+    SendRequestToPartition<TMethod>(
+        ctx,
+        ev,
+        volumeRequestId,
+        blockRange,
+        now,
+        throttlingRequestInfo);
+}
+
+
+void TVolumeActor::HandleDescribeBlob(
+    const TEvVolume::TEvDescribeBlobRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    BLOCKSTORE_VOLUME_COUNTER(DescribeBlob);
+
+    auto* msg = ev->Get();
+
+    auto replyError = [&](NProto::TError error) {
+        auto response = std::make_unique<TEvVolume::TEvDescribeBlobResponse>(
+            std::move(error));
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
+    if (State->IsDiskRegistryMediaKind()) {
+        replyError(MakeError(
+            E_NOT_IMPLEMENTED,
+            "DescribeBlob is not implemented for DiskRegistry disks"));
+        return;
+    }
+
+    const auto blobId =
+        NKikimr::LogoBlobIDFromLogoBlobID(msg->Record.GetBlobId());
+    if (!blobId) {
+        replyError(
+            MakeError(E_ARGUMENT, "invalid blob id in DescribeBlob request"));
+        return;
+    }
+
+    if (State->GetPartitions().size() > 1 &&
+        !State->GetPartition(blobId.TabletID()))
+    {
+        replyError(MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "unknown partition tablet for blob id: "
+                << blobId.ToString()));
+        return;
+    }
+
+    ForwardRequest<TEvVolume::TDescribeBlobMethod>(ctx, ev);
+}
+
+void TVolumeActor::HandleDescribeBlobResponse(
+    const TEvVolume::TEvDescribeBlobResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ForwardResponse<TEvVolume::TDescribeBlobMethod>(ctx, ev);
 }
 
 #define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \

@@ -26,4 +26,5 @@ message ImagesConfig {
     // https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2757498035
     // TODO: remove it later.
     optional bool RetryBrokenDRBasedDiskCheckpoint = 9;
+    optional string S3DefaultStorageClass = 10;
 }

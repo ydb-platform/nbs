@@ -4,6 +4,8 @@
 
 namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 
+using namespace NPartition;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_FORWARD_TO_PARTITION(name, ns)                              \
@@ -16,7 +18,6 @@ namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
 // BLOCKSTORE_FORWARD_TO_PARTITION
 
     BLOCKSTORE_FORWARD_TO_PARTITION(ReadBlocks,               TEvService)
-    BLOCKSTORE_FORWARD_TO_PARTITION(ZeroBlocks,               TEvService)
     BLOCKSTORE_FORWARD_TO_PARTITION(CreateCheckpoint,         TEvService)
     BLOCKSTORE_FORWARD_TO_PARTITION(DeleteCheckpoint,         TEvService)
     BLOCKSTORE_FORWARD_TO_PARTITION(GetChangedBlocks,         TEvService)
@@ -35,6 +36,8 @@ namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter {
     BLOCKSTORE_FORWARD_TO_PARTITION(ScanDisk,                 TEvVolume)
     BLOCKSTORE_FORWARD_TO_PARTITION(GetScanDiskStatus,        TEvVolume)
     BLOCKSTORE_FORWARD_TO_PARTITION(CheckRange,               TEvVolume)
+
+    BLOCKSTORE_FORWARD_TO_PARTITION(StatPartition, TEvPartition)
 
     BLOCKSTORE_FORWARD_TO_PARTITION(GetPartCounters, TEvPartitionCommonPrivate)
 

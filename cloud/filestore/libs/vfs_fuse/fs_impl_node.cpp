@@ -37,12 +37,13 @@ void TFileSystem::Lookup(
     const ui64 nodeStateRefId =
         WriteBackCache ? WriteBackCache.AcquireNodeStateRef() : 0;
 
-    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (auto future) {
             if (auto self = ptr.lock()) {
-                NProto::TGetNodeAttrResponse response = future.ExtractValue();
+                NProto::TGetNodeAttrResponse response =
+                    UnsafeExtractValue(future);
                 const auto& error = response.GetError();
                 if (!HasError(response)) {
                     self->AdjustNodeSize(*response.MutableNode());
@@ -51,7 +52,8 @@ void TFileSystem::Lookup(
                         error,
                         req,
                         response.GetNode(),
-                        version);
+                        version,
+                        false /* newNodeCreated */);
                 } else if (error.GetCode() == E_FS_NAMETOOLONG) {
                     self->ReplyError(*callContext, error, req, ENAMETOOLONG);
                 } else {
@@ -134,7 +136,8 @@ void TFileSystem::MkDir(
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */);
+                    1 /* version */,
+                    true /* newNodeCreated */);
             }
         });
 }
@@ -152,7 +155,7 @@ void TFileSystem::RmDir(
     }
 
     auto request = StartRequest<NProto::TUnlinkNodeRequest>(parent);
-    request->SetName(std::move(name));
+    request->SetName(name);
     request->SetUnlinkDirectory(true);
 
     const auto reqId = callContext->RequestId;
@@ -170,6 +173,7 @@ void TFileSystem::RmDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntryInCache(parent, name);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });
@@ -238,7 +242,8 @@ void TFileSystem::MkNode(
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */);
+                    1 /* version */,
+                    true /* newNodeCreated */);
             }
         });
 }
@@ -256,7 +261,7 @@ void TFileSystem::Unlink(
     }
 
     auto request = StartRequest<NProto::TUnlinkNodeRequest>(parent);
-    request->SetName(std::move(name));
+    request->SetName(name);
     request->SetUnlinkDirectory(false);
 
     const auto reqId = callContext->RequestId;
@@ -274,6 +279,7 @@ void TFileSystem::Unlink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntryInCache(parent, name);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });
@@ -298,8 +304,8 @@ void TFileSystem::Rename(
     }
 
     auto request = StartRequest<NProto::TRenameNodeRequest>(parent);
-    request->SetName(std::move(name));
-    request->SetNewName(std::move(newname));
+    request->SetName(name);
+    request->SetNewName(newname);
     request->SetNewParentId(newparent);
     request->SetFlags(protoFlags);
 
@@ -318,6 +324,8 @@ void TFileSystem::Rename(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateDirectoryEntryInCache(parent, name);
+                self->InvalidateDirectoryEntryInCache(newparent, newname);
                 // TODO: update tree
                 self->ReplyError(*callContext, error, req, 0);
             }
@@ -364,7 +372,8 @@ void TFileSystem::SymLink(
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */);
+                    1 /* version */,
+                    true /* newNodeCreated */);
             }
         });
 }
@@ -408,7 +417,8 @@ void TFileSystem::Link(
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */);
+                    1 /* version */,
+                    false /* newNodeCreated */);
             }
         });
 }

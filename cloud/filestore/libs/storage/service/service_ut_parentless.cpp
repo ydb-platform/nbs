@@ -145,7 +145,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceParentlessTest)
         NProto::TStorageConfig config;
         TShardedFileSystemConfig fsConfig;
 
-        config.SetMultiTabletForwardingEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetAutomaticallyCreatedShardSize(

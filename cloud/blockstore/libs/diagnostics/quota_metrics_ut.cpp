@@ -372,25 +372,25 @@ Y_UNIT_TEST_SUITE(TQuotaMetricsTest)
         usedQuotaMetrics.UpdateQuota(5);
         usedQuotaMetrics.UpdateMaxQuota();
 
-        UNIT_ASSERT_VALUES_EQUAL(5, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(10, maxUsedQuotaCounter->Val());
 
         usedQuotaMetrics.UpdateQuota(15);
         usedQuotaMetrics.UpdateMaxQuota();
 
-        UNIT_ASSERT_VALUES_EQUAL(15, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(15, maxUsedQuotaCounter->Val());
 
         usedQuotaMetrics.UpdateQuota(5);
         usedQuotaMetrics.UpdateMaxQuota();
 
-        UNIT_ASSERT_VALUES_EQUAL(5, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(35, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(15, maxUsedQuotaCounter->Val());
 
         usedQuotaMetrics.UpdateQuota(10);
         usedQuotaMetrics.UpdateMaxQuota();
 
-        UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(45, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(15, maxUsedQuotaCounter->Val());
     }
 
@@ -421,25 +421,25 @@ Y_UNIT_TEST_SUITE(TQuotaMetricsTest)
         usedQuotaMetrics.UpdateQuota(5);
         usedQuotaMetrics.UpdateMaxQuota(25);
 
-        UNIT_ASSERT_VALUES_EQUAL(5, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(25, maxUsedQuotaCounter->Val());
 
         usedQuotaMetrics.UpdateQuota(15);
         usedQuotaMetrics.UpdateMaxQuota();
 
-        UNIT_ASSERT_VALUES_EQUAL(15, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(15, maxUsedQuotaCounter->Val());
 
         usedQuotaMetrics.UpdateQuota(5);
         usedQuotaMetrics.UpdateMaxQuota(35);
 
-        UNIT_ASSERT_VALUES_EQUAL(5, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(35, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(35, maxUsedQuotaCounter->Val());
 
         usedQuotaMetrics.UpdateQuota(10);
         usedQuotaMetrics.UpdateMaxQuota();
 
-        UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(45, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(15, maxUsedQuotaCounter->Val());
 
         for (ui32 i = 0; i < 12; ++i) {
@@ -450,19 +450,19 @@ Y_UNIT_TEST_SUITE(TQuotaMetricsTest)
         usedQuotaMetrics.UpdateQuota(5);
         usedQuotaMetrics.UpdateMaxQuota();
 
-        UNIT_ASSERT_VALUES_EQUAL(5, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(170, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(10, maxUsedQuotaCounter->Val());
 
         usedQuotaMetrics.UpdateQuota(1);
         usedQuotaMetrics.UpdateMaxQuota(40);
 
-        UNIT_ASSERT_VALUES_EQUAL(1, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(171, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(40, maxUsedQuotaCounter->Val());
 
         usedQuotaMetrics.UpdateQuota(7);
         usedQuotaMetrics.UpdateMaxQuota();
 
-        UNIT_ASSERT_VALUES_EQUAL(7, usedQuotaCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(178, usedQuotaCounter->Val());
         UNIT_ASSERT_VALUES_EQUAL(10, maxUsedQuotaCounter->Val());
     }
 

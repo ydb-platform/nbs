@@ -29,7 +29,7 @@ public:
             response.PrintJSON(Cout);
         } else {
             for (const auto& endpoint: response.GetEndpoints()) {
-                Cout << DumpMessage(endpoint) << Endl;
+                Cout << ProtoMessagePrinter.ToString(endpoint) << Endl;
             }
         }
 

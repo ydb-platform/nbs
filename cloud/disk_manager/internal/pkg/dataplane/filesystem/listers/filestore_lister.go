@@ -8,29 +8,43 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type filestoreLister struct {
-	session           nfs.Session
+type FilestoreLister struct {
+	Session           nfs.Session
 	listNodesMaxBytes uint32
 	unsafe            bool
+	ignoreNotFound    bool
 }
 
-func (l *filestoreLister) ListNodes(
+func (l *FilestoreLister) ListNodes(
 	ctx context.Context,
 	nodeID uint64,
 	cookie string,
 ) ([]nfs.Node, string, error) {
 
-	return l.session.ListNodes(
+	nodes, nextCookie, err := l.Session.ListNodes(
 		ctx,
 		nodeID,
 		cookie,
 		l.listNodesMaxBytes,
 		l.unsafe,
 	)
+	if err == nil {
+		return nodes, nextCookie, nil
+	}
+
+	if !l.ignoreNotFound {
+		return nil, "", err
+	}
+
+	if nfs.IsEnoEntError(err) {
+		return []nfs.Node{}, "", nil
+	}
+
+	return nil, "", err
 }
 
-func (l *filestoreLister) Close(ctx context.Context) error {
-	return l.session.Close(ctx)
+func (l *FilestoreLister) Close(ctx context.Context) error {
+	return l.Session.Close(ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,6 +54,7 @@ type filestoreListerFactory struct {
 	listNodesMaxBytes uint32
 	readOnly          bool
 	unsafe            bool
+	ignoreNotFound    bool
 }
 
 func NewFilestoreListerFactory(
@@ -47,6 +62,7 @@ func NewFilestoreListerFactory(
 	listNodesMaxBytes uint32,
 	readOnly bool,
 	unsafe bool,
+	ignoreNotFound bool,
 ) FilesystemListerFactory {
 
 	return &filestoreListerFactory{
@@ -54,6 +70,7 @@ func NewFilestoreListerFactory(
 		listNodesMaxBytes: listNodesMaxBytes,
 		readOnly:          readOnly,
 		unsafe:            unsafe,
+		ignoreNotFound:    ignoreNotFound,
 	}
 }
 
@@ -73,9 +90,10 @@ func (o *filestoreListerFactory) CreateLister(
 		return nil, err
 	}
 
-	return &filestoreLister{
-		session:           session,
+	return &FilestoreLister{
+		Session:           session,
 		listNodesMaxBytes: o.listNodesMaxBytes,
 		unsafe:            o.unsafe,
+		ignoreNotFound:    o.ignoreNotFound,
 	}, nil
 }

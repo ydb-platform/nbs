@@ -200,7 +200,7 @@ func TestSnapshotServiceCancelCreateSnapshotFromDisk(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	testcommon.CancelOperation(t, ctx, client, operation.Id)
-	testcommon.WaitOperationEnded(t, ctx, operation.Id)
+	testcommon.WaitOperationEnded(t, ctx, operation.Id, 10*time.Second)
 
 	snapshotMeta, err := testcommon.GetSnapshotMeta(ctx, snapshotID)
 

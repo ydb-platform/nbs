@@ -31,10 +31,24 @@ void TDiskRegistryActor::HandlePurgeHostCms(
         msg->DryRun ? "true" : "false",
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
+    const ui32 maxInFlight = Config->GetMaxInFlightCmsRequests();
+    if (maxInFlight > 0 &&
+        TransactionTimeTracker.GetInFlightOperationsCountByTransactionName(
+            TPurgeHostCms::Name) >= maxInFlight)
+    {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvDiskRegistryPrivate::TEvPurgeHostCmsResponse>(
+                MakeError(E_REJECTED, "too many inflight transactions")));
+        return;
+    }
+
     ExecuteTx<TPurgeHostCms>(
         ctx,
         std::move(requestInfo),
         std::move(msg->Host),
+        std::move(msg->CustomMessage),
         msg->DryRun);
 }
 
@@ -61,6 +75,7 @@ void TDiskRegistryActor::ExecutePurgeHostCms(
     args.Error = State->PurgeHost(
         db,
         args.Host,
+        args.CustomMessage,
         ctx.Now(),
         args.DryRun,
         args.AffectedDisks);

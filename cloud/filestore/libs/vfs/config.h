@@ -50,9 +50,11 @@ public:
     ui32 GetWriteBackCacheFlushMaxWriteRequestSize() const;
     ui32 GetWriteBackCacheFlushMaxWriteRequestsCount() const;
     ui32 GetWriteBackCacheFlushMaxSumWriteRequestsSize() const;
+    ui32 GetWriteBackCacheMaxQueuedFlushBatchesPerNode() const;
 
     TString GetDirectoryHandlesStoragePath() const;
     ui64 GetDirectoryHandlesInitialDataSize() const;
+    ui64 GetDirectoryHandlesMaxDataAreaStepSize() const;
 
     bool GetGuestKeepCacheAllowed() const;
 

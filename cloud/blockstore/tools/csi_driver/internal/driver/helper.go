@@ -1,8 +1,8 @@
 package driver
 
 import (
-	"hash/fnv"
-
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	storagecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 )
 
@@ -48,13 +48,41 @@ func isDiskRegistryMediaKind(mediaKind storagecoreapi.EStorageMediaKind) bool {
 	}
 }
 
-func getNfsClientIndex(instanceId string, nfsVhostReplicaCount uint) uint {
-	if nfsVhostReplicaCount < 2 {
-		return 0
+func hasReadOnlyVolumeAccess(
+	accessMode *csi.VolumeCapability_AccessMode,
+	readonly bool,
+) bool {
+	if accessMode != nil {
+		switch accessMode.GetMode() {
+		case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+			csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+			return true
+		}
 	}
 
-	h := fnv.New64a()
-	h.Write([]byte(instanceId))
-	index := h.Sum64() % uint64(nfsVhostReplicaCount)
-	return uint(index)
+	return readonly
+}
+
+func getNbsVolumeAccessMode(
+	accessMode *csi.VolumeCapability_AccessMode,
+	readonly bool,
+) nbsapi.EVolumeAccessMode {
+	if hasReadOnlyVolumeAccess(accessMode, readonly) {
+		return nbsapi.EVolumeAccessMode_VOLUME_ACCESS_USER_READ_ONLY
+	}
+
+	return nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE
+}
+
+func getNbsVolumeMountMode(
+	accessMode *csi.VolumeCapability_AccessMode,
+) nbsapi.EVolumeMountMode {
+	if accessMode != nil {
+		switch accessMode.GetMode() {
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+			return nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE
+		}
+	}
+
+	return nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL
 }

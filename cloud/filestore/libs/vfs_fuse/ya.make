@@ -17,13 +17,14 @@ PEERDIR(
 END()
 
 RECURSE(
-    bench
+    counters
     protos
     vhost
     write_back_cache
 )
 
 RECURSE_FOR_TESTS(
+    bench
     fuzz
     ut
 )

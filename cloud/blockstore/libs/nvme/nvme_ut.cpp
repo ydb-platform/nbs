@@ -44,7 +44,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             CreateLoggingService("console", {.FiltrationLevel = TLOG_DEBUG});
         Logging->Start();
 
-        NvmeManager = CreateNvmeManager(Logging, 15s);
+        NvmeManager = CreateNvmeManager(Logging, 15s, 1s);
 
         DeviceLocker = TDeviceLocker::CreateFromEnv(Logging);
         DevicePath = GetDevice();

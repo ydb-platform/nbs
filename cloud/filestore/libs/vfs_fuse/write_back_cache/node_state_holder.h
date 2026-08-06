@@ -1,13 +1,18 @@
 #pragma once
 
 #include "node_state.h"
-#include "write_back_cache_stats.h"
+#include "node_state_holder_stats.h"
+
+#include <cloud/storage/core/libs/common/public.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
-#include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TNodeStatePin = ui64;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -23,7 +28,8 @@ private:
         ui64 DeletionSequenceId = 0;
     };
 
-    const IWriteBackCacheStatsPtr Stats;
+    const ITimerPtr Timer;
+    const INodeStateHolderStatsPtr Stats;
 
     // Monotonic sequence counter used to assign unique ids for:
     //  - deletion events (DeletionSequenceId)
@@ -37,13 +43,13 @@ private:
     // DeletionSequenceId -> NodeId
     TMap<ui64, ui64> Deletions;
 
-    // Set of active pin ids (the tokens returned by Pin()).
+    // PinId (token returned by Pin()) -> pin creation time
     // A pin with lower id prevents deletion of logically deleted states
     // with higher id.
-    TSet<ui64> Pins;
+    TMap<ui64, TInstant> Pins;
 
 public:
-    explicit TNodeStateHolder(IWriteBackCacheStatsPtr stats);
+    TNodeStateHolder(ITimerPtr timer, INodeStateHolderStatsPtr stats);
 
     // Retrieve an existing node state or create a new empty one if it
     // does not exist. The returned reference is stored inside the holder
@@ -68,8 +74,10 @@ public:
     // than DeletionSequenceId.
     void DeleteNodeState(ui64 nodeId);
 
-    [[nodiscard]] ui64 Pin();
-    void Unpin(ui64 pinId);
+    [[nodiscard]] TNodeStatePin Pin();
+    void Unpin(TNodeStatePin pinId);
+
+    void UpdateStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

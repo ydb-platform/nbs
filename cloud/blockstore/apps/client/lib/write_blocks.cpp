@@ -349,8 +349,8 @@ private:
             auto error = SafeExecute<NProto::TError>([&] {
                 auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
                 request->SetStartIndex(writeRange->StartIndex);
+                request->SetBlockSize(Volume.GetBlockSize());
                 request->BlocksCount = writeRange->BlocksCount;
-                request->BlockSize = Volume.GetBlockSize();
                 request->Sglist = writeRange->SgList;
                 PrepareHeaders(*request->MutableHeaders());
 

@@ -9,7 +9,7 @@ namespace NCloud::NFileStore {
 NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
     const NProto::TCreateSessionRequest& request)
 {
-    STORAGE_INFO("CreateSession " << DumpMessage(request));
+    STORAGE_INFO("CreateSession " << ProtoMessagePrinter.ToString(request));
 
     const auto& clientId = GetClientId(request);
     const auto& sessionId = GetSessionId(request);
@@ -20,16 +20,19 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
     auto session = FindSession(clientId, sessionId, sessionSeqNo);
 
-    const auto makeResponse = [&sessionSeqNo, this](const TSessionPtr& session)
+    const auto& cloudId = Store.GetCloudId();
+    const auto& folderId = Store.GetFolderId();
+    const auto& fsId = Store.GetFileSystemId();
+    const bool guestPosixAclEnabled =
+        Config->GetGuestPosixAclEnabled(cloudId, folderId, fsId);
+
+    const auto makeResponse = [&sessionSeqNo, &cloudId, &folderId, &fsId, this](
+                                  const TSessionPtr& session)
     {
         NProto::TCreateSessionResponse response;
         session->GetInfo(*response.MutableSession(), sessionSeqNo);
 
         *response.MutableFileStore() = Store;
-
-        const auto& cloudId = Store.GetCloudId();
-        const auto& folderId = Store.GetFolderId();
-        const auto& fsId = Store.GetFileSystemId();
 
         auto* features = response.MutableFileStore()->MutableFeatures();
         features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
@@ -38,13 +41,24 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             Config->GetGuestWriteBackCacheEnabled());
         features->SetAsyncDestroyHandleEnabled(
             Config->GetAsyncDestroyHandleEnabled());
+        features->SetAsyncDestroyReadOnlyHandleEnabled(
+            Config->GetAsyncDestroyReadOnlyHandleEnabled());
         features->SetAsyncHandleOperationPeriod(
             Config->GetAsyncHandleOperationPeriod().MilliSeconds());
+        // The local service publishes only the legacy ZeroCopyEnabled feature,
+        // which the FUSE config translates into both ZeroCopyReadEnabled and
+        // ZeroCopyWriteEnabled (see BuildFileSystemConfig in vfs_fuse/loop.cpp).
+        // Local zero-copy is therefore all-or-nothing for now.
+        //
+        // Do NOT remove this until the local service grows explicit
+        // ZeroCopyReadEnabled / ZeroCopyWriteEnabled config knobs and publishes
+        // them as features - otherwise VFS would lose the only signal that
+        // enables zero-copy for the local service.
         features->SetZeroCopyEnabled(Config->GetZeroCopyEnabled());
         features->SetGuestPageCacheDisabled(
             Config->GetGuestPageCacheDisabled());
         features->SetExtendedAttributesDisabled(
-            Config->GetExtendedAttributesDisabled());
+            Config->GetExtendedAttributesDisabled(cloudId, folderId, fsId));
         features->SetServerWriteBackCacheEnabled(
             Config->GetServerWriteBackCacheEnabled());
         features->SetMaxBackground(Config->GetMaxBackground());
@@ -60,16 +74,24 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetXAttrCacheTimeout(
             Config->GetXAttrCacheTimeout(cloudId, folderId, fsId)
                 .MilliSeconds());
-        const bool directoryHandlesStorageEnabled =
+        // The local service may reuse inode ids, so the FUSE xattr cache must
+        // be invalidated when a create path returns a newly created inode.
+        // The ydb-based backend never reuses ids and leaves this disabled.
+        features->SetXAttrCacheInvalidateOnCreateEnabled(
+            !features->GetExtendedAttributesDisabled());
+        const bool directoryHandleStorageEnabled =
             Config->GetDirectoryHandlesStorageEnabled(cloudId, folderId, fsId);
         features->SetDirectoryHandlesStorageEnabled(
-            directoryHandlesStorageEnabled);
-        if (directoryHandlesStorageEnabled) {
+            directoryHandleStorageEnabled);
+        if (directoryHandleStorageEnabled) {
             features->SetDirectoryHandlesTableSize(
                 Config->GetDirectoryHandlesTableSize());
+            features->SetDirectoryHandlesPersistentHandleMaxSize(
+                Config->GetDirectoryHandlesPersistentHandleMaxSize());
         }
         features->SetGuestHandleKillPrivV2Enabled(
-            Config->GetGuestHandleKillPrivV2Enabled());
+            Config->GetGuestHandleKillPrivV2Enabled(cloudId, folderId, fsId));
+        features->SetGuestPosixAclEnabled(session->GuestPosixAclEnabled);
         return response;
     };
 
@@ -108,10 +130,13 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         Config->GetMaxHandlePerSessionCount(),
         Config->GetOpenNodeByHandleEnabled(),
         Config->GetNodeCleanupBatchSize(),
-        Config->GetSnapshotsDirEnabled(),
+        Config->GetSnapshotsDirEnabled(cloudId, folderId, fsId),
         Config->GetSnapshotsDirRefreshInterval(),
         Logging);
 
+    // For local service, features are fixed for the lifetime of the process,
+    // so it is enough to cache the resolved value when the session is created.
+    session->GuestPosixAclEnabled = guestPosixAclEnabled;
     session->Init(request.GetRestoreClientSession());
     session->AddSubSession(sessionSeqNo, readOnly);
 
@@ -144,7 +169,7 @@ NProto::TPingSessionResponse TLocalFileSystem::PingSession(
 NProto::TDestroySessionResponse TLocalFileSystem::DestroySession(
     const NProto::TDestroySessionRequest& request)
 {
-    STORAGE_TRACE("DestroySession " << DumpMessage(request));
+    STORAGE_TRACE("DestroySession " << ProtoMessagePrinter.ToString(request));
 
     const auto& sessionId = request.GetHeaders().GetSessionId();
     const auto sessionSeqNo = request.GetHeaders().GetSessionSeqNo();
@@ -159,7 +184,7 @@ NProto::TDestroySessionResponse TLocalFileSystem::DestroySession(
 NProto::TResetSessionResponse TLocalFileSystem::ResetSession(
     const NProto::TResetSessionRequest& request)
 {
-    STORAGE_TRACE("ResetSession " << DumpMessage(request));
+    STORAGE_TRACE("ResetSession " << ProtoMessagePrinter.ToString(request));
 
     TWriteGuard guard(SessionsLock);
     auto session = GetSession(request);

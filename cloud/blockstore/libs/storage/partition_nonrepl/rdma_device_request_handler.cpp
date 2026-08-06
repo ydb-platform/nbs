@@ -12,7 +12,9 @@ void ConvertRdmaErrorIfNeeded(ui32 rdmaStatus, NProto::TError& err)
     // submitted, we will cancel that request. We can  receive a message
     // indicating that the agent is unavailable only on the mirror disk, so we
     // convert the error to E_REJECTED and try again immediately.
-    if (rdmaStatus == NRdma::RDMA_PROTO_FAIL && err.GetCode() == E_CANCELLED) {
+    if (rdmaStatus == NCloud::NStorage::NRdma::RDMA_PROTO_FAIL &&
+        err.GetCode() == E_CANCELLED)
+    {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_INSTANT_RETRIABLE);
         err = MakeError(

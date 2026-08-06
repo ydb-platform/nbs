@@ -12,7 +12,6 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
@@ -40,6 +39,7 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/protos/trace.pb.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blockstore/core/blockstore.h>
@@ -152,6 +152,8 @@ class TVolumeActor final
         const TCallContextPtr CallContext;
         const TCallContextPtr ForkedContext;
         const ui64 ReceiveTime;
+        const ui64 ExecutionStartTime;
+        TThrottlingRequestInfo ThrottlingRequestInfo;
         TCancelRoutine* const CancelRoutine;
         const bool IsMultipartitionWriteOrZero;
 
@@ -161,6 +163,8 @@ class TVolumeActor final
                 TCallContextPtr callContext,
                 TCallContextPtr forkedContext,
                 ui64 receiveTime,
+                ui64 executionStartTime,
+                TThrottlingRequestInfo throttlingRequestInfo,
                 TCancelRoutine cancelRoutine,
                 bool isMultipartitionWriteOrZero)
             : Caller(caller)
@@ -168,6 +172,8 @@ class TVolumeActor final
             , CallContext(std::move(callContext))
             , ForkedContext(std::move(forkedContext))
             , ReceiveTime(receiveTime)
+            , ExecutionStartTime(executionStartTime)
+            , ThrottlingRequestInfo(std::move(throttlingRequestInfo))
             , CancelRoutine(cancelRoutine)
             , IsMultipartitionWriteOrZero(isMultipartitionWriteOrZero)
         {}
@@ -205,12 +211,14 @@ private:
     bool HasPerformanceProfileModifications = false;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
-    const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const ITraceSerializerPtr TraceSerializer;
-    const NRdma::IClientPtr RdmaClient;
+    const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
+
+    IBlockDigestGeneratorPtr BlockDigestGenerator;
     TLogTitle LogTitle;
     TVolumeThrottlerLogger ThrottlerLogger;
 
@@ -328,6 +336,9 @@ private:
 
     NProto::TError StorageAllocationResult;
     bool DiskAllocationScheduled = false;
+
+    THashMap<TString, TInstant> DeviceUUIDToBrokenAt;
+    NActors::TActorId VolumeHealthSyncActorId;
 
     TVolumeRequestMap VolumeRequests;
     TRequestsInFlight WriteAndZeroRequestsInFlight;
@@ -468,9 +479,9 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
+        IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         ITraceSerializerPtr traceSerializer,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode,
@@ -538,6 +549,7 @@ private:
     void RenderUptime(IOutputStream& out) const;
     void RenderScrubbingStatus(IOutputStream& out) const;
     void RenderMigrationStatus(IOutputStream& out) const;
+    void RenderAvailableAgentsStatus(IOutputStream& out) const;
     void RenderResyncStatus(IOutputStream& out) const;
     void RenderLaggingStatus(IOutputStream& out) const;
     void RenderAppliedVolumeThrottlingRule(IOutputStream& out) const;
@@ -615,7 +627,7 @@ private:
     TString GetVolumeStatusString(EStatus status) const;
     EStatus GetVolumeStatus() const;
 
-    NRdma::IClientPtr GetRdmaClient() const;
+    NCloud::NStorage::NRdma::IClientPtr GetRdmaClient() const;
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
@@ -701,20 +713,27 @@ private:
 
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
 
-    void SendStatisticRequests(const NActors::TActorContext& ctx);
+    void SendStatisticRequestsForYDBBasedPartitions(const NActors::TActorContext& ctx);
 
     void SendStatisticRequestForDiskRegistryBasedPartition(
         const NActors::TActorContext& ctx);
 
+    bool CanRequestStatisticsFromPartitions() const;
+
     void CleanupHistory(
         const NActors::TActorContext& ctx,
-        const NActors::TActorId& sender,
-        ui64 cookie,
-        TCallContextPtr callContext);
+        TRequestInfoPtr requestInfo);
 
     void UpdateDiskRegistryBasedPartCounters(
         const NActors::TActorContext& ctx,
         TDataForUpdatingDiskRegistryBasedPartCounters data);
+
+    void SendEnableVhostDiscardFlagIfNeeded(
+        const NActors::TActorContext& ctx);
+
+    void HandleSetVhostDiscardFlagResponse(
+        const TEvService::TEvSetVhostDiscardFlagResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     const TString& GetDiskId() const;
 
@@ -724,8 +743,10 @@ private:
     TEvStatsService::TVolumeSelfCounters GetVolumeSelfCounters(
         const NActors::TActorContext& ctx);
 
-    void SendStatsToServiceStatisticsCollectorActor(
+    void ReplyToServiceStatisticsCollectorActor(
         const NActors::TActorContext& ctx);
+
+    bool IsFreshBlocksWriterEnabled(ui64 partTabletId) const;
 
 private:
     STFUNC(StateBoot);
@@ -861,16 +882,12 @@ private:
         const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    std::optional<TTxVolume::TSavePartStats> UpdatePartCounters(
+    std::optional<TVolumeDatabase::TPartStats> UpdatePartCounters(
         const NActors::TActorContext& ctx,
         TPartCountersData& partCountersData);
 
     void HandlePartCounters(
         const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandlePartStatsSaved(
-        const TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleScrubberCounters(
@@ -1120,6 +1137,7 @@ private:
         ui64 volumeRequestId,
         TBlockRange64 blockRange,
         ui64 traceTime,
+        TThrottlingRequestInfo throttlingRequestInfo,
         bool forkTraces,
         bool isMultipartition);
 
@@ -1129,7 +1147,8 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,
         TBlockRange64 blockRange,
-        ui64 traceTs);
+        ui64 traceTs,
+        TThrottlingRequestInfo throttlingRequestInfo);
 
     template <typename TMethod>
     NProto::TError ProcessAndValidateReadFromCheckpoint(
@@ -1158,7 +1177,8 @@ private:
     NProto::TError Throttle(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        bool throttlingDisabled);
+        bool throttlingDisabled,
+        TThrottlingRequestInfo* throttlingRequestInfo);
 
     template <typename TMethod>
     void ForwardResponse(
@@ -1170,6 +1190,10 @@ private:
 
     void HandleDescribeBlocksResponse(
         const TEvVolume::TEvDescribeBlocksResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDescribeBlobResponse(
+        const TEvVolume::TEvDescribeBlobResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleGetUsedBlocksResponse(
@@ -1252,9 +1276,27 @@ private:
         const TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleBrokenDeviceNotification(
+        const TEvNonreplPartitionPrivate::TEvBrokenDeviceNotification::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDeviceRecoveredNotification(
+        const TEvNonreplPartitionPrivate::TEvDeviceRecoveredNotification::TPtr&
+            ev,
+        const NActors::TActorContext& ctx);
+
     void HandleCheckRangeResponse(
         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void CleanupStaleBrokenDevices(const NActors::TActorContext& ctx);
+
+    void RegisterVolumeHealthSyncActorIfNeeded(
+        const NActors::TActorContext& ctx);
+
+    void SendVolumeHealthNotification(
+        const NActors::TActorContext& ctx,
+        NProto::EVolumeHealth volumeHealth);
 
     void CreateCheckpointLightRequest(
         const NActors::TActorContext& ctx,

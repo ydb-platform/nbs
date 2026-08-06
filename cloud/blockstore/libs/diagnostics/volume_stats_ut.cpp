@@ -117,7 +117,8 @@ void Mount(
     const TString& name,
     const TString& client,
     const TString& instance,
-    NCloud::NProto::EStorageMediaKind mediaKind)
+    NCloud::NProto::EStorageMediaKind mediaKind =
+        NCloud::NProto::STORAGE_MEDIA_SSD)
 {
     NProto::TVolume volume;
     volume.SetDiskId(name);
@@ -806,8 +807,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto requestDuration = TDuration::MilliSeconds(400) +
             diagConfig->GetExpectedIoParallelism() * CostPerIO(
-                diagConfig->GetSsdPerfSettings().WriteIops,
-                diagConfig->GetSsdPerfSettings().WriteBandwidth,
+                diagConfig->GetSsdPerfSettings().Write.Iops,
+                diagConfig->GetSsdPerfSettings().Write.Bandwidth,
                 1_MB);
         auto durationInCycles = DurationToCyclesSafe(requestDuration);
         auto now = GetCycleCount();
@@ -1193,6 +1194,432 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetCounter("DownDisks")->Val());
     }
 
+    Y_UNIT_TEST(ShouldTrackAvailabilityCounters)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+        auto available = availabilityCounters->GetCounter("AvailableSeconds");
+        auto healthy = availabilityCounters->GetCounter("HealthySeconds");
+
+        // A healthy, served volume advances all three counters by the real time
+        // elapsed since it was mounted (seeded at mount time).
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+
+        // Accumulation happens on every tick, not only on the publish tick, so
+        // updateIntervalFinished == false must still advance the counters.
+        timer->AdvanceTime(TDuration::Seconds(1));
+        volumeStats->UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(16, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, healthy->Val());
+
+        // A tick with no elapsed time credits nothing.
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(16, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, healthy->Val());
+
+        timer->AdvanceTime(TDuration::Seconds(14));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, healthy->Val());
+    }
+
+    Y_UNIT_TEST(ShouldCreditAvailabilityFromMountTime)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(volumeStats, "test1", "client1", "instance1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        // The service has already ticked for a while on the first volume.
+        timer->AdvanceTime(TDuration::Seconds(10));
+        volumeStats->UpdateStats(true);
+
+        // A second volume is mounted mid-interval, well after the previous tick.
+        Mount(volumeStats, "test2", "client2", "instance2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto observed2 = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test2")
+            ->GetSubgroup("instance", "instance2")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd")
+            ->GetCounter("ObservedSeconds");
+
+        // Five seconds later the new volume must be credited only for the 5s it
+        // was actually served, not for the whole tick interval.
+        timer->AdvanceTime(TDuration::Seconds(5));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(5, observed2->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotCreditLargeGapAsAvailability)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+
+        // A gap larger than the publish interval (e.g. stats were not updated
+        // for a long time / the clock jumped forward) must not be credited as
+        // availability: the increment is dropped and the timestamp resynced.
+        timer->AdvanceTime(TDuration::Seconds(60));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, observed->Val());
+
+        // A normal tick after the resync is accounted as usual.
+        timer->AdvanceTime(TDuration::Seconds(10));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(10, observed->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotAdvanceAvailableSecondsDuringDowntime)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volumeInfo = volumeStats->GetVolumeInfo("test1", "client1");
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+        auto available = availabilityCounters->GetCounter("AvailableSeconds");
+        auto healthy = availabilityCounters->GetCounter("HealthySeconds");
+
+        // One healthy interval: everything advances.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+
+        // Force downtime: a completed request whose measured duration exceeds
+        // the downtime threshold (requestStarted set far in the past in cycle
+        // terms), same trick as the DownDisks tests above.
+        volumeInfo->RequestCompleted(
+            EBlockStoreRequest::WriteBlocks,
+            timer->Now().MicroSeconds(),
+            TDuration::Zero(),   // postponedTime
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
+            1024,
+            {},
+            NCloud::NProto::EF_NONE,
+            false,
+            0);
+
+        // During downtime observed still advances, but available and healthy
+        // freeze.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+    }
+
+    Y_UNIT_TEST(ShouldFreezeHealthySecondsDuringCriticalSuffering)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+
+        NProto::TDiagnosticsConfig cfg;
+        cfg.MutableSsdPerfSettings()->MutableWrite()->SetIops(4200);
+        cfg.MutableSsdPerfSettings()->MutableWrite()->SetBandwidth(342000000);
+        cfg.MutableSsdPerfSettings()->MutableRead()->SetIops(4200);
+        cfg.MutableSsdPerfSettings()->MutableRead()->SetBandwidth(342000000);
+        auto config = std::make_shared<TDiagnosticsConfig>(std::move(cfg));
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volumeInfo = volumeStats->GetVolumeInfo("test1", "client1");
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+        auto available = availabilityCounters->GetCounter("AvailableSeconds");
+        auto healthy = availabilityCounters->GetCounter("HealthySeconds");
+
+        // One healthy interval: everything advances.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+
+        // A single, heavily over-latency write drives critical suffering (but
+        // stays well below the 5s SSD downtime threshold, so the volume is
+        // still "available").
+        auto requestDuration = TDuration::MilliSeconds(400) +
+            config->GetExpectedIoParallelism() * CostPerIO(
+                config->GetSsdPerfSettings().Write.Iops,
+                config->GetSsdPerfSettings().Write.Bandwidth,
+                1_MB);
+        auto durationInCycles = DurationToCyclesSafe(requestDuration);
+        auto now = GetCycleCount();
+        volumeInfo->RequestCompleted(
+            EBlockStoreRequest::WriteBlocks,
+            now - Min(now, durationInCycles),
+            TDuration::Zero(),   // postponedTime
+            TDuration::Zero(),   // backoffTime
+            TDuration::Zero(),   // shapingTime
+            1_MB,
+            {},
+            NCloud::NProto::EF_NONE,
+            false,
+            0);
+
+        // During critical suffering observed and available advance, but
+        // healthy freezes.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(30, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+    }
+
+    Y_UNIT_TEST(ShouldStopAccruingAvailabilityAfterVolumeTrimmed)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        // Finite inactivity timeout so that TrimVolumes() actually removes the
+        // instance. NOTE: UnmountVolume() is intentionally a no-op for this
+        // class (an instance may back several endpoints / live migration), so a
+        // volume keeps accruing during the grace period until it is trimmed —
+        // this mirrors the existing HasDowntime/RequestCounters behaviour.
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Seconds(10),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+
+        // One accounted interval while served.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+
+        // Unmount alone is a no-op for this class: the instance (and therefore
+        // its counter) is not removed until TrimVolumes fires, so it must
+        // still be present and still accrue on the next tick.
+        volumeStats->UnmountVolume("test1", "client1");
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT(availabilityCounters->FindCounter("ObservedSeconds"));
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
+
+        // The instance has now been inactive longer than the timeout
+        // (now - LastRemountTime = 30s > 10s), so TrimVolumes removes it and
+        // the counter stops advancing.
+        volumeStats->TrimVolumes();
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(30, observed->Val());
+    }
+
+    Y_UNIT_TEST(ShouldTrackClientAvailabilityCountersInSliVolume)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        const auto config =
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig());
+
+        auto monitoring = CreateMonitoringServiceStub();
+
+        // Client-side stats must place the cumulative availability counters in
+        // the same narrow component=sli_volume tree as the server, so a
+        // monitoring agent on the compute host can scrape only these sensors.
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EClientStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto observed = availabilityCounters->GetCounter("ObservedSeconds");
+        auto available = availabilityCounters->GetCounter("AvailableSeconds");
+        auto healthy = availabilityCounters->GetCounter("HealthySeconds");
+
+        // A healthy, served volume advances all three counters by the real
+        // time elapsed since it was mounted, exactly like the server path.
+        timer->AdvanceTime(TDuration::Seconds(15));
+        volumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(15, observed->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, available->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, healthy->Val());
+
+        // The counters must live in the narrow sli_volume tree, not nested in
+        // the wide component=client_volume per-volume group.
+        auto clientVolume = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "client_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId);
+        UNIT_ASSERT(!clientVolume->FindCounter("ObservedSeconds"));
+    }
+
     Y_UNIT_TEST(ShouldAlterVolume)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);
@@ -1245,7 +1672,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRemoveVolumeInfoByTimeoutIfEnabled)
+    Y_UNIT_TEST(ShouldRemoveVolumeInfoByTimeoutIfNotPinned)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
@@ -1335,7 +1762,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotRemoveVolumeInfoByTimeoutIfDisabled)
+    Y_UNIT_TEST(ShouldNotRemoveVolumeInfoByTimeoutIfPinned)
     {
         auto inactivityTimeout = TDuration::MilliSeconds(10);
 
@@ -1344,10 +1771,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             ->GetSubgroup("counters", "blockstore")
                             ->GetSubgroup("component", "server_volume");
 
+        NProto::TDiagnosticsConfig config;
+        config.SetEnableDurableVolumeInfo(true);
+
         std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
+            std::make_shared<TDiagnosticsConfig>(config),
             inactivityTimeout,
             EVolumeStatsType::EServerStats,
             Timer);
@@ -1358,7 +1789,6 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "client-1",
             "instance-1",
             NCloud::NProto::STORAGE_MEDIA_SSD);
-
         {
             UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
                             ->GetSubgroup("volume", "disk-1")
@@ -1367,8 +1797,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             ->FindSubgroup("folder", DefaultFolderId));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
         }
-        volumeStats->GetVolumeInfo("disk-1", "client-1")
-            ->SetRemoveByInactivityTimeoutEnabled(false);
+
+        auto pin1_1 = volumeStats->PinVolumeInfo("disk-1", "client-1");
 
         Timer->AdvanceTime(inactivityTimeout * 0.5);
 
@@ -1394,12 +1824,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                             ->FindSubgroup("folder", DefaultFolderId));
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
         }
-        volumeStats->GetVolumeInfo("disk-2", "client-2")
-            ->SetRemoveByInactivityTimeoutEnabled(false);
 
+        auto pin2_1 = volumeStats->PinVolumeInfo("disk-2", "client-2");
+
+        // Must not remove pinned VolumeInfos by timeout
         Timer->AdvanceTime(inactivityTimeout * 0.6);
         volumeStats->TrimVolumes();
-
         {
             UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
                             ->GetSubgroup("volume", "disk-1")
@@ -1416,9 +1846,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
         }
 
+        // Must not remove pinned VolumeInfos by timeout
         Timer->AdvanceTime(inactivityTimeout * 0.6);
         volumeStats->TrimVolumes();
-
         {
             UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
                             ->GetSubgroup("volume", "disk-1")
@@ -1435,9 +1865,91 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
         }
 
+        // Must not remove pinned VolumeInfos
         volumeStats->UnmountVolume("disk-1", "client-1");
         volumeStats->UnmountVolume("disk-2", "client-2");
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
 
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Must not remove multiple pinned VolumeInfos by timeout
+        auto pin1_2 = volumeStats->PinVolumeInfo("disk-1", "client-1");
+        auto pin1_3 = volumeStats->PinVolumeInfo("disk-1", "client-1");
+        auto pin2_2 = volumeStats->PinVolumeInfo("disk-2", "client-2");
+        auto pin2_3 = volumeStats->PinVolumeInfo("disk-2", "client-2");
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Remounts must not affect Pin count (next checks)
+        for (size_t i = 0; i < 10; i++) {
+            Mount(
+                volumeStats,
+                "disk-1",
+                "client-1",
+                "instance-1",
+                NCloud::NProto::STORAGE_MEDIA_SSD);
+            Mount(
+                volumeStats,
+                "disk-2",
+                "client-2",
+                "instance-2",
+                NCloud::NProto::STORAGE_MEDIA_SSD);
+        }
+        Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+        // Must not remove partially unpinned VolumeInfos regardless of
+        // pin/unpin order
+        pin1_1.Reset();
+        pin1_2.Reset();
+        pin2_3.Reset();
+        pin2_2.Reset();
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-2")
+                            ->GetSubgroup("instance", "instance-2")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+
+        // Must remove fully unpinned VolumeInfos by timeout
+        pin1_3.Reset();
+        pin2_1.Reset();
+        volumeStats->TrimVolumes();
         {
             UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
                              ->GetSubgroup("volume", "disk-1")
@@ -1452,6 +1964,63 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                              ->GetSubgroup("cloud", DefaultCloudId)
                              ->FindSubgroup("folder", DefaultFolderId));
             UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-2"));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRespectEnableDurableVolumeInfoConfig)
+    {
+        auto inactivityTimeout = TDuration::MilliSeconds(10);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        NProto::TDiagnosticsConfig config;
+        // false by default until ensured safe
+        UNIT_ASSERT(!config.GetEnableDurableVolumeInfo());
+
+        std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            std::make_shared<TDiagnosticsConfig>(config),
+            inactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+
+        Mount(
+            volumeStats,
+            "disk-1",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        {
+            UNIT_ASSERT(counters->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "disk-1")
+                            ->GetSubgroup("instance", "instance-1")
+                            ->GetSubgroup("cloud", DefaultCloudId)
+                            ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+        }
+
+        auto pin = volumeStats->PinVolumeInfo("disk-1", "client-1");
+
+        Timer->AdvanceTime(inactivityTimeout * 0.5);
+        // Timeout not expired - must not remove VolumeInfo
+        volumeStats->TrimVolumes();
+
+        Timer->AdvanceTime(inactivityTimeout * 0.6);
+        // Timeout expired - must remove VolumeInfo despite pinned
+        volumeStats->TrimVolumes();
+        {
+            UNIT_ASSERT(!counters->GetSubgroup("host", "cluster")
+                             ->GetSubgroup("volume", "disk-1")
+                             ->GetSubgroup("instance", "instance-1")
+                             ->GetSubgroup("cloud", DefaultCloudId)
+                             ->FindSubgroup("folder", DefaultFolderId));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
         }
     }
 
@@ -1495,7 +2064,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->FindSubgroup("folder", DefaultFolderId));
 
         {
-            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
+            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-1");
             auto client2Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
             UNIT_ASSERT_EQUAL(client1Info.get(), client2Info.get());
             UNIT_ASSERT(client1Info);
@@ -1520,6 +2089,17 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("cloud", DefaultCloudId)
             ->FindSubgroup("folder", DefaultFolderId));
 
+        {
+            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-1");
+            auto client2Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
+            // Note: information about all volume clients is kept until volume
+            // is unmounted (trimmed) even if there are no mount requests form
+            // some clients during inactivityTimeout, and VolumeInfo can be
+            // obtained for such inactive client while exists
+            UNIT_ASSERT_EQUAL(client1Info.get(), client2Info.get());
+            UNIT_ASSERT(client1Info);
+        }
+
         Timer->AdvanceTime(inactivityTimeout * 1.1);
         volumeStats->TrimVolumes();
 
@@ -1531,11 +2111,265 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->FindSubgroup("folder", DefaultFolderId));
 
         {
-            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
+            auto client1Info = volumeStats->GetVolumeInfo("Disk-1", "Client-1");
             auto client2Info = volumeStats->GetVolumeInfo("Disk-1", "Client-2");
-            UNIT_ASSERT_EQUAL(client1Info.get(), client2Info.get());
             UNIT_ASSERT(!client1Info);
+            UNIT_ASSERT(!client2Info);
         }
+    }
+
+    Y_UNIT_TEST(ShouldProperlyAccountSeveralVolumesForSameClient)
+    {
+        auto inactivityTimeout = TDuration::MilliSeconds(10);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        NProto::TDiagnosticsConfig config;
+
+        std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            std::make_shared<TDiagnosticsConfig>(config),
+            inactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+
+        // clang-format off
+
+        // Initial mount
+        {
+            Mount(volumeStats, "disk-1", "client-1", "instance-1");
+            Mount(volumeStats, "disk-2", "client-1", "instance-2");
+            Mount(volumeStats, "disk-3", "client-1", "instance-3");
+
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-3", "client-1"));
+        }
+
+        // Remove volumes one by one by timeout, the rest must remain
+
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            Mount(volumeStats, "disk-2", "client-1", "instance-1");
+            Mount(volumeStats, "disk-3", "client-1", "instance-1");
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
+        }
+
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            Mount(volumeStats, "disk-2", "client-1", "instance-1");
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-1"));
+        }
+
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-1"));
+        }
+        // clang-format on
+    }
+
+    Y_UNIT_TEST(ShouldProperlyAccountSeveralVolumesForSameAndDifferentClients)
+    {
+        auto inactivityTimeout = TDuration::MilliSeconds(10);
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring
+                            ->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume");
+
+        NProto::TDiagnosticsConfig config;
+
+        std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            std::make_shared<TDiagnosticsConfig>(config),
+            inactivityTimeout,
+            EVolumeStatsType::EServerStats,
+            Timer);
+
+        // clang-format off
+
+        // Initial mount
+        {
+            Mount(volumeStats, "disk-1", "client-1", "" );
+            Mount(volumeStats, "disk-2", "client-1", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
+            Mount(volumeStats, "disk-1", "client-2", "" );
+            Mount(volumeStats, "disk-2", "client-2", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-2", "instance-2" );
+
+            Mount(volumeStats, "disk-1", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-3", "instance-1" );
+
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-3", "client-1"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-2"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-2"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(volumeStats->GetVolumeInfo("disk-3", "client-3"));
+        }
+
+        // Remove some volumes by timeout,
+        // every still existing [diskId, instanceId] combination must remain
+
+        // Note: information about all volume clients is kept until volume
+        // is unmounted (trimmed) even if there are no mount requests form
+        // some clients during inactivityTimeout, and VolumeInfo can be obtained
+        // for such inactive client while exists
+
+        // Keep:
+        //  - all
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            Mount(volumeStats, "disk-1", "client-1", "" );
+            Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
+            Mount(volumeStats, "disk-1", "client-2", ""           );
+            Mount(volumeStats, "disk-2", "client-2", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-2", "instance-2" );
+
+            Mount(volumeStats, "disk-1", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-3", "instance-1" );
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-1", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-3"));
+        }
+
+        // Keep:
+        //  - [disk-3, instance-2]
+        //  - [disk-2, instance-1]
+        //  - [disk-1, instance-1]
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
+            Mount(volumeStats, "disk-2", "client-2", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-2", "instance-2" );
+
+            Mount(volumeStats, "disk-1", "client-3", "instance-1" );
+            Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-3"));
+        }
+
+        // Keep:
+        //  - [disk-3, instance-2]
+        //  - [disk-2, instance-1]
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
+            Mount(volumeStats, "disk-2", "client-2", "instance-1" );
+            Mount(volumeStats, "disk-3", "client-2", "instance-2" );
+
+            Mount(volumeStats, "disk-2", "client-3", "instance-1" );
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-3"));
+        }
+
+        // Keep:
+        //  - [disk-3, instance-2]
+        //  - [disk-2, instance-1]
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            Mount(volumeStats, "disk-3", "client-1", "instance-2" );
+
+            Mount(volumeStats, "disk-2", "client-2", "instance-1" );
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-2"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT( volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-3"));
+        }
+
+        // Keep none
+        {
+            Timer->AdvanceTime(inactivityTimeout * 1.1);
+
+            volumeStats->TrimVolumes();
+
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-1"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-2"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-2"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-2"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-1", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-2", "client-3"));
+            UNIT_ASSERT(!volumeStats->GetVolumeInfo("disk-3", "client-3"));
+        }
+
+        // clang-format on
     }
 
     Y_UNIT_TEST(ShouldSkipReportingZeroBlocksMetricsForYDBBasedDisks)

@@ -4,10 +4,23 @@ import json
 import logging
 import argparse
 import requests
+import re
+import asyncio
+import functools
+import inspect
+import time
 from dataclasses import dataclass
 import datetime
-from typing import List, Tuple
+from typing import Any, Callable, List, Tuple
+from urllib.parse import quote, urlparse
 
+from github import Auth as GithubAuth, Github
+from github.GithubException import GithubException
+from github.GitRelease import GitRelease
+from github.NamedUser import NamedUser
+from github.PullRequest import PullRequest
+from github.Team import Team
+from github.WorkflowJob import WorkflowJob
 
 SENSITIVE_DATA_VALUES = {}
 if os.environ.get("GITHUB_TOKEN"):
@@ -26,7 +39,7 @@ COMPONENTS: List[Tuple[str, str, str]] = [
 SAN_COMPONENTS = {"blockstore", "filestore", "storage"}
 SAN_TYPES = ("asan", "tsan", "msan", "ubsan")
 
-TEST_TYPE_REGULAR = "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+TEST_TYPE_REGULAR = "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
 TEST_TYPE_SAN = "unittest,clang_tidy,gtest,py3test,py2test,pytest"
 
 SAN_PRESET = {
@@ -38,6 +51,7 @@ SAN_PRESET = {
 
 SAN_PRESETS = {"release-asan", "release-tsan", "release-msan", "release-ubsan"}
 SAN_SUFFIX = {"asan": "-asan", "tsan": "-tsan", "msan": "-msan", "ubsan": "-ubsan"}
+BUILD_AND_TEST_JOB_NAME_PREFIX = "Build and test"
 SAN_PRESET_BY_SAN = {
     "asan": "release-asan",
     "tsan": "release-tsan",
@@ -46,10 +60,136 @@ SAN_PRESET_BY_SAN = {
 }
 
 
+def get_build_preset_from_workflow_name(workflow_name: str) -> str | None:
+    normalized = workflow_name.strip().lower()
+    if normalized in ("nightly.yaml", "nightly build"):
+        return "relwithdebinfo"
+
+    match = re.fullmatch(
+        r"nightly(?: build)? \((?P<san>asan|tsan|msan|ubsan)\)", normalized
+    )
+    if match is not None:
+        return SAN_PRESET_BY_SAN[match.group("san")]
+
+    match = re.fullmatch(r"nightly-(?P<san>asan|tsan|msan|ubsan)\.yaml", normalized)
+    if match is not None:
+        return SAN_PRESET_BY_SAN[match.group("san")]
+
+    return None
+
+
+def get_s3_website_origin(
+    bucket: str | None = None, website_suffix: str | None = None
+) -> str:
+    bucket = (bucket or os.environ.get("S3_BUCKET") or "").strip()
+    website_suffix = (
+        website_suffix or os.environ.get("S3_WEBSITE_SUFFIX") or ""
+    ).strip()
+    if not bucket or not website_suffix:
+        return ""
+    return f"https://{bucket}.{website_suffix}"
+
+
+def get_s3_report_uri(path: str, bucket: str | None = None) -> str:
+    bucket = (bucket or os.environ.get("S3_BUCKET") or "").strip()
+    if not bucket or not path:
+        return ""
+    return f"s3://{bucket}/{path}"
+
+
+def get_s3_report_url(
+    path: str,
+    bucket: str | None = None,
+    website_suffix: str | None = None,
+) -> str:
+    origin = get_s3_website_origin(bucket=bucket, website_suffix=website_suffix)
+    if not origin or not path:
+        return ""
+    return f"{origin}/{quote(path, safe='/')}"
+
+
+def get_s3_workflow_reports_path(
+    *,
+    repository: str,
+    workflow_file: str,
+    run_id: int | str,
+    run_attempt: int | str,
+    relative_path: str = "",
+) -> str:
+    return (
+        f"reports/{repository}/{workflow_file}/{run_id}/{run_attempt}/"
+        f"{relative_path.lstrip('/')}"
+    )
+
+
+def get_run_url() -> str:
+    return f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+
+
+def job_name_matches(expected_name: str, actual_name: str) -> bool:
+    if actual_name == expected_name:
+        return True
+
+    reusable_prefix = f"/ {expected_name}"
+    if actual_name.endswith(reusable_prefix):
+        return True
+
+    return False
+
+
+def find_current_job_url(current_job_name: str, runner_name: str) -> str:
+    try:
+        jobs = get_jobs_raw(
+            os.environ["GITHUB_TOKEN"],
+            os.environ["GITHUB_REPOSITORY"],
+            int(os.environ["GITHUB_RUN_ID"]),
+        )
+    except PYGITHUB_RETRY_EXCEPTIONS:
+        return get_run_url()
+
+    matching_jobs = [
+        job
+        for job in jobs
+        if job_name_matches(current_job_name, job.name or "")
+        and job.status in ("queued", "in_progress", "completed")
+    ]
+
+    if runner_name:
+        for job in matching_jobs:
+            if job.runner_name != runner_name:
+                continue
+            html_url = job.html_url
+            if html_url:
+                return html_url
+
+    for job in matching_jobs:
+        html_url = job.html_url
+        if html_url:
+            return html_url
+
+    return get_run_url()
+
+
 DEFAULT_BUILD_TARGET = "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
 DEFAULT_TEST_TARGET = (
     "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
 )
+
+GITHUB_API_RETRY_ATTEMPTS = 3
+GITHUB_API_RETRY_INTERVAL_SEC = 5
+GITHUB_API_TIMEOUT_SEC = 30
+GITHUB_RUNNER_LATEST_VERSION = "latest"
+PYGITHUB_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    GithubException,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+)
+
+
+@dataclass(frozen=True)
+class GithubRunnerRelease:
+    version: str
+    sha256_by_arch: dict[str, str]
 
 
 def truthy(v: str | None) -> bool:
@@ -72,8 +212,420 @@ def json_obj(obj) -> str:
     return json.dumps(obj, separators=(",", ":"))
 
 
+def retry(
+    attempts: int,
+    interval_sec: int,
+    retry_exceptions: tuple[type[BaseException], ...] = (Exception,),
+    retry_result: Callable[[object], bool] | None = None,
+    attempt_arg: str | None = None,
+    on_final_exception: Callable[..., None] | None = None,
+) -> callable:
+    def decorator(func: callable) -> callable:
+        func_signature = inspect.signature(func)
+
+        def build_call_kwargs(kwargs: dict, attempt: int) -> dict:
+            call_kwargs = dict(kwargs)
+            if attempt_arg:
+                call_kwargs[attempt_arg] = attempt - 1
+            return call_kwargs
+
+        def should_retry_result(result) -> bool:
+            return retry_result is not None and retry_result(result)
+
+        logger = logging.getLogger(func.__module__)
+        operation = func.__name__
+
+        def log_final_exception(exception: BaseException) -> None:
+            logger.error(
+                "%s failed after %d attempts: %s",
+                operation,
+                attempts,
+                exception,
+            )
+
+        def log_retry_exception(attempt: int, exception: BaseException) -> None:
+            logger.warning(
+                "%s failed on attempt %d/%d: %s. Retrying in %d seconds",
+                operation,
+                attempt,
+                attempts,
+                exception,
+                interval_sec,
+            )
+            logger.debug("%s retryable failure details", operation, exc_info=True)
+
+        def log_retry_result(attempt: int) -> None:
+            logger.info(
+                "%s returned retryable result on attempt %d/%d. Retrying in %d seconds",
+                operation,
+                attempt,
+                attempts,
+                interval_sec,
+            )
+
+        def call_final_exception_handler(
+            exception: BaseException, args: tuple, kwargs: dict
+        ) -> None:
+            if not on_final_exception:
+                return
+
+            parameters = inspect.signature(on_final_exception).parameters
+            if len(parameters) == 1:
+                on_final_exception(exception)
+            else:
+                on_final_exception(
+                    exception, func_signature.bind_partial(*args, **kwargs)
+                )
+
+        if asyncio.iscoroutinefunction(func):
+
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                for attempt in range(1, attempts + 1):
+                    try:
+                        result = await func(*args, **build_call_kwargs(kwargs, attempt))
+                    except retry_exceptions as e:
+                        if attempt == attempts:
+                            log_final_exception(e)
+                            call_final_exception_handler(e, args, kwargs)
+                            raise
+
+                        log_retry_exception(attempt, e)
+                        await asyncio.sleep(interval_sec)
+                        continue
+
+                    if not should_retry_result(result):
+                        return result
+
+                    if attempt == attempts:
+                        logger.error(
+                            "%s did not produce expected result after %d attempts",
+                            operation,
+                            attempts,
+                        )
+                        return result
+
+                    log_retry_result(attempt)
+                    await asyncio.sleep(interval_sec)
+
+            return async_wrapper
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(1, attempts + 1):
+                try:
+                    result = func(*args, **build_call_kwargs(kwargs, attempt))
+                except retry_exceptions as e:
+                    if attempt == attempts:
+                        log_final_exception(e)
+                        call_final_exception_handler(e, args, kwargs)
+                        raise
+
+                    log_retry_exception(attempt, e)
+                    time.sleep(interval_sec)
+                    continue
+
+                if not should_retry_result(result):
+                    return result
+
+                if attempt == attempts:
+                    logger.error(
+                        "%s did not produce expected result after %d attempts",
+                        operation,
+                        attempts,
+                    )
+                    return result
+
+                log_retry_result(attempt)
+                time.sleep(interval_sec)
+
+        return wrapper
+
+    return decorator
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_repo_variable(github_client, github_repository: str, variable_name: str):
+    repo = github_client.get_repo(github_repository)
+    return repo, repo.get_variable(variable_name)
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_github_team(github: Github, github_org: str, team_slug: str) -> Team:
+    org = github.get_organization(github_org)
+    return org.get_team_by_slug(team_slug)
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_github_team_members(team: Team) -> list[NamedUser]:
+    return [member for member in team.get_members()]
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def fetch_github_member_public_keys(member: NamedUser) -> list[str]:
+    return [key.key for key in member.get_keys()]
+
+
+def fetch_github_team_public_keys(
+    github: Github, github_org: str, team_slug: str
+) -> list[str]:
+    logger = logging.getLogger(__name__)
+    team = fetch_github_team(github, github_org, team_slug)
+    members: list[NamedUser] = fetch_github_team_members(team)
+
+    ssh_keys: list[str] = []
+    logger.info(
+        "Fetching SSH keys for members: %s",
+        ", ".join([member.login for member in members]),
+    )
+    for member in members:
+        member_keys: list[str] = fetch_github_member_public_keys(member)
+        ssh_keys.extend(member_keys)
+
+        logger.debug("Fetched %d SSH keys for %s", len(member_keys), member.login)
+
+    logger.debug("Fetched SSH keys: %s", ssh_keys)
+    return ssh_keys
+
+
+def format_github_response_debug(response: requests.Response) -> str:
+    content_type = response.headers.get("content-type", "<missing>")
+    body_preview = response.text[:1000].replace("\n", "\\n")
+    return (
+        f"status={response.status_code}, reason={response.reason!r}, "
+        f"content_type={content_type!r}, body_preview={body_preview!r}"
+    )
+
+
+def normalize_github_runner_version(version: str) -> str:
+    version = (version or "").strip()
+    if not version:
+        raise ValueError("GitHub runner version is empty")
+    return version.removeprefix("v")
+
+
+def extract_github_runner_sha256_from_body(body: str, platform: str) -> str:
+    pattern = (
+        rf"<!--\s*BEGIN SHA {re.escape(platform)}\s*-->\s*"
+        r"([0-9a-fA-F]{64})"
+        rf"\s*<!--\s*END SHA {re.escape(platform)}\s*-->"
+    )
+    match = re.search(pattern, body or "")
+    if not match:
+        raise ValueError(
+            f"GitHub runner release body is missing SHA-256 marker for {platform}"
+        )
+    return match.group(1).lower()
+
+
+def extract_github_runner_release(payload: dict) -> GithubRunnerRelease:
+    tag_name = payload.get("tag_name")
+    if not tag_name:
+        raise ValueError("GitHub runner release response is missing tag_name")
+
+    version = normalize_github_runner_version(tag_name)
+    body = payload.get("body", "")
+    sha256_by_arch = {}
+    platforms_by_arch = {
+        "x64": "linux-x64",
+        "arm64": "linux-arm64",
+    }
+    for arch, platform in platforms_by_arch.items():
+        asset_name = f"actions-runner-linux-{arch}-{version}.tar.gz"
+        matching_asset = next(
+            (
+                asset
+                for asset in payload.get("assets", [])
+                if asset.get("name") == asset_name
+            ),
+            None,
+        )
+        if matching_asset is None:
+            raise ValueError(
+                f"GitHub runner release {version} is missing asset {asset_name}"
+            )
+
+        sha256_by_arch[arch] = extract_github_runner_sha256_from_body(body, platform)
+
+    return GithubRunnerRelease(version=version, sha256_by_arch=sha256_by_arch)
+
+
+def github_client(github_token: str | None = None) -> Github:
+    if github_token:
+        return Github(auth=GithubAuth.Token(github_token))
+    return Github()
+
+
+def github_client_from_env() -> Github:
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token is None or not github_token.strip():
+        raise Exception("GITHUB_TOKEN environment variable is not set")
+
+    return github_client(github_token)
+
+
+def github_runner_repo(github: Github):
+    return github.get_repo("actions/runner")
+
+
+def load_github_event() -> dict[str, Any]:
+    with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as fp:
+        return json.load(fp)
+
+
+def pull_request_from_event(github: Github, event: dict[str, Any]) -> PullRequest:
+    return github.create_from_raw_data(PullRequest, event["pull_request"])
+
+
+def git_release_payload(release: GitRelease) -> dict:
+    return {
+        "tag_name": release.tag_name,
+        "body": release.body,
+        "assets": [{"name": asset.name} for asset in release.get_assets()],
+    }
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def get_github_runner_release(github: Github, version: str) -> GithubRunnerRelease:
+    normalized_version = normalize_github_runner_version(version)
+    repo = github_runner_repo(github)
+    release = repo.get_release(f"v{normalized_version}")
+    return extract_github_runner_release(git_release_payload(release))
+
+
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def get_latest_github_runner_release(
+    github: Github,
+) -> GithubRunnerRelease:
+    repo = github_runner_repo(github)
+    release = repo.get_latest_release()
+    return extract_github_runner_release(git_release_payload(release))
+
+
+def get_latest_github_runner_version(github: Github) -> str:
+    return get_latest_github_runner_release(github).version
+
+
+def resolve_github_runner_version(github: Github, version: str) -> str:
+    return resolve_github_runner_release(github, version).version
+
+
+def resolve_github_runner_release(github: Github, version: str) -> GithubRunnerRelease:
+    if (version or "").strip().lower() in ("", GITHUB_RUNNER_LATEST_VERSION):
+        return get_latest_github_runner_release(github)
+    return get_github_runner_release(github, version)
+
+
 def vm_suffix_for_component(component: str) -> str:
     return f"-{component}"
+
+
+TEST_TIMEOUT_COMPONENT_DEFAULT = "default"
+TEST_TIMEOUT_COMPONENTS_BY_KEY = {
+    "blockstore": frozenset({"blockstore"}),
+    "filestore": frozenset({"filestore"}),
+    "disk_manager": frozenset({"disk_manager"}),
+    "tasks": frozenset({"tasks"}),
+    "storage": frozenset({"storage"}),
+    "tasks_storage": frozenset({"tasks", "storage"}),
+}
+TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
+    "large": {
+        "blockstore": 300,
+        "filestore": 300,
+        "disk_manager": 120,
+        "tasks": 60,
+        "storage": 60,
+        "tasks_storage": 60,
+        TEST_TIMEOUT_COMPONENT_DEFAULT: 300,
+    },
+    "medium": {
+        "blockstore": 90,
+        "filestore": 90,
+        "disk_manager": 60,
+        "tasks": 60,
+        "storage": 60,
+        "tasks_storage": 60,
+        TEST_TIMEOUT_COMPONENT_DEFAULT: 120,
+    },
+    "small": {
+        TEST_TIMEOUT_COMPONENT_DEFAULT: 60,
+    },
+}
+TEST_TIMEOUT_SIZE_PRIORITY = ("large", "medium", "small")
+
+
+def test_timeout_minutes_for(
+    test_size: str, test_target: str, component: str = ""
+) -> int:
+    size = _test_timeout_size_key(test_size)
+    component_key = _test_timeout_component_key(test_target, component)
+    component_timeouts = TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT[size]
+    return component_timeouts.get(
+        component_key,
+        component_timeouts[TEST_TIMEOUT_COMPONENT_DEFAULT],
+    )
+
+
+def _test_timeout_size_key(test_size: str) -> str:
+    sizes = set(split_csv(test_size))
+    for size in TEST_TIMEOUT_SIZE_PRIORITY:
+        if size in sizes:
+            return size
+    return "small"
+
+
+def _test_timeout_component_key(test_target: str, component: str = "") -> str:
+    if component in TEST_TIMEOUT_COMPONENTS_BY_KEY:
+        return component
+
+    components = _components_for_test_timeout(test_target, component)
+    for key, key_components in TEST_TIMEOUT_COMPONENTS_BY_KEY.items():
+        if components == key_components:
+            return key
+
+    return TEST_TIMEOUT_COMPONENT_DEFAULT
+
+
+def _components_for_test_timeout(
+    test_target: str, component: str = ""
+) -> frozenset[str]:
+    if component in TEST_TIMEOUT_COMPONENTS_BY_KEY:
+        return TEST_TIMEOUT_COMPONENTS_BY_KEY[component]
+
+    targets = split_csv(test_target)
+    components: set[str] = set()
+    for name, _, test_root in COMPONENTS:
+        if test_root in targets or any(
+            target.startswith(test_root) for target in targets
+        ):
+            components.add(name)
+
+    return frozenset(components)
 
 
 def is_san_preset(build_preset: str) -> bool:
@@ -110,26 +662,91 @@ class MaskingFormatter(logging.Formatter):
         return self.mask_sensitive_data(original)
 
 
-def setup_logger(loglevel=logging.INFO):
-    formatter = MaskingFormatter("%(asctime)s: %(levelname)s: %(message)s")
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(loglevel)
-    console_handler.setFormatter(formatter)
-
-    logger = logging.getLogger()
+def setup_logger(
+    loglevel=logging.INFO,
+    name: str | None = None,
+    fmt: str = "%(asctime)s: %(levelname)s: %(message)s",
+):
+    formatter = MaskingFormatter(fmt)
+    logger = logging.getLogger(name)
     logger.setLevel(loglevel)
-    logger.addHandler(console_handler)
+    logger.propagate = False
+
+    if not logger.handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(loglevel)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+    else:
+        for handler in logger.handlers:
+            handler.setLevel(loglevel)
+            handler.setFormatter(formatter)
+
     return logger
+
+
+def set_logging_level(
+    verbosity: int, fmt: str = "%(asctime)s - %(levelname)s - %(message)s"
+):
+    level = max(10, 40 - 10 * verbosity)
+    return setup_logger(level, fmt=fmt)
+
+
+def write_to_file_from_env(
+    logger: logging.Logger,
+    key: str,
+    value: str,
+    env_var: str,
+    is_secret: bool = False,
+):
+    output_path = os.environ.get(env_var)
+    if output_path:
+        with open(output_path, "a") as fp:
+            fp.write(f"{key}={value}\n")
+    logger.info(
+        'echo "%s=%s" >> $%s',
+        key,
+        "******" if is_secret else value,
+        env_var,
+    )
 
 
 def github_output(
     logger: logging.Logger, key: str, value: str, is_secret: bool = False
 ):
-    output_path = os.environ.get("GITHUB_OUTPUT")
-    if output_path:
-        with open(output_path, "a") as fp:
-            fp.write(f"{key}={value}\n")
-    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if is_secret else value)
+    write_to_file_from_env(logger, key, value, "GITHUB_OUTPUT", is_secret)
+
+
+def github_env(logger: logging.Logger, key: str, value: str, is_secret: bool = False):
+    write_to_file_from_env(logger, key, value, "GITHUB_ENV", is_secret)
+
+
+def ttl_to_days(ttl_str: str) -> int:
+    seconds = ttl_to_seconds(ttl_str)
+    return max(1, (seconds + 86399) // 86400)
+
+
+def ttl_to_seconds(ttl_str: str) -> int:
+    pattern = (
+        r"((?P<days>\d+)d)?((?P<hours>\d+)h)?((?P<minutes>\d+)m)?((?P<seconds>\d+)s)?"
+    )
+    matches = re.match(pattern, ttl_str)
+    time_parts = {
+        name: int(value) for name, value in matches.groupdict(default="0").items()
+    }
+    return (
+        time_parts["days"] * 86400  # noqa: W503
+        + time_parts["hours"] * 3600  # noqa: W503
+        + time_parts["minutes"] * 60  # noqa: W503
+        + time_parts["seconds"]  # noqa: W503
+    )
+
+
+def parse_s3_path(s3_path: str) -> tuple[str, str]:
+    parsed_url = urlparse(s3_path)
+    if parsed_url.scheme != "s3" or not parsed_url.netloc:
+        raise ValueError("URL must be an S3 URL (s3://bucket[/prefix])")
+    return parsed_url.netloc, parsed_url.path.lstrip("/")
 
 
 def convert_size(size_bytes):
@@ -157,8 +774,8 @@ def classify_runner(labels):
 
 def compact_job_name(job_name: str) -> str:
     """Convert a job name to a compact format."""
-    if job_name.startswith("Build and test"):
-        return job_name.replace("Build and test", "").strip()
+    if job_name.startswith(BUILD_AND_TEST_JOB_NAME_PREFIX):
+        return job_name.replace(BUILD_AND_TEST_JOB_NAME_PREFIX, "").strip()
     if "(" in job_name:
         return job_name.split("(")[0].strip()
     if ".yaml" in job_name or ".yml" in job_name:
@@ -190,52 +807,25 @@ def date_to_hms(date: datetime.datetime) -> str:
         return f"{age_minutes}m"
 
 
-@dataclass
-class Job:
-    workflow: str
-    id: int
-    run_id: int
-    name: str
-    runner_name: str
-    runner_type: str
-    created_at: datetime.datetime
-    completed_at: datetime.datetime
-    started_at: datetime.datetime
-    conclusion: str
-    status: str
-    labels: list[str] = None
+def parse_actions_job_url(job_url: str) -> tuple[int, int] | None:
+    if not job_url:
+        return None
+
+    match = re.search(
+        r"/actions/runs/(?P<run_id>\d+)/job/(?P<job_id>\d+)",
+        urlparse(job_url).path,
+    )
+    if match is None:
+        return None
+
+    return int(match.group("run_id")), int(match.group("job_id"))
 
 
-def get_jobs_raw(token, repo_full_name, run_id) -> list[Job]:
-    result = []
-    url = f"https://api.github.com/repos/{repo_full_name}/actions/runs/{run_id}/jobs"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-    }
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    jobs = response.json()["jobs"]
-
-    for job in jobs:
-        for t in ["created_at", "started_at", "completed_at"]:
-            if job[t] is not None:
-                job[t] = datetime.datetime.fromisoformat(job[t].replace("Z", "+00:00"))
-
-        result.append(
-            Job(
-                workflow=job["name"],
-                id=job["id"],
-                run_id=run_id,
-                name=job["name"],
-                runner_name=job["runner_name"],
-                runner_type=classify_runner(job.get("labels", [])),
-                created_at=job.get("created_at"),
-                started_at=job.get("started_at"),
-                completed_at=job.get("completed_at"),
-                conclusion=job["conclusion"],
-                status=job["status"],
-                labels=job.get("labels", []),
-            )
-        )
-    return result
+@retry(
+    attempts=GITHUB_API_RETRY_ATTEMPTS,
+    interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
+    retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
+)
+def get_jobs_raw(token, repo_full_name, run_id) -> list[WorkflowJob]:
+    repo = github_client(token).get_repo(repo_full_name)
+    return list(repo.get_workflow_run(run_id).jobs())

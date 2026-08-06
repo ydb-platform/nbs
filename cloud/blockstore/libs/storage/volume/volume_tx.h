@@ -28,7 +28,6 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReadHistory,                    __VA_ARGS__)                           \
     xxx(CleanupHistory,                 __VA_ARGS__)                           \
     xxx(SavePartStats,                  __VA_ARGS__)                           \
-    xxx(SaveMultiplePartStats,          __VA_ARGS__)                           \
     xxx(SaveCheckpointRequest,          __VA_ARGS__)                           \
     xxx(UpdateCheckpointRequest,        __VA_ARGS__)                           \
     xxx(UpdateShadowDiskState,          __VA_ARGS__)                           \
@@ -48,6 +47,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(RemoveFollower,                 __VA_ARGS__)                           \
     xxx(UpdateLeader,                   __VA_ARGS__)                           \
     xxx(RemoveLeader,                   __VA_ARGS__)                           \
+    xxx(UpdateBrokenDevice,             __VA_ARGS__)                           \
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -93,6 +93,7 @@ struct TTxVolume
         TMaybe<NProto::TStorageServiceConfig> StorageConfig;
         TFollowerDisks FollowerDisks;
         TLeaderDisks LeaderDisks;
+        TVector<TVolumeDatabase::TBrokenDeviceInfo> BrokenDevices;
 
         explicit TLoadState(TInstant oldestLogEntry)
             : OldestLogEntry(oldestLogEntry)
@@ -116,6 +117,7 @@ struct TTxVolume
             StorageConfig.Clear();
             FollowerDisks.clear();
             LeaderDisks.clear();
+            BrokenDevices.clear();
         }
     };
 
@@ -421,27 +423,13 @@ struct TTxVolume
     struct TSavePartStats
     {
         const TRequestInfoPtr RequestInfo;
-        const TVolumeDatabase::TPartStats PartStats;
+        const TVector<TVolumeDatabase::TPartStats> PartStats;
 
         TSavePartStats(
-                TRequestInfoPtr requestInfo,
-                TVolumeDatabase::TPartStats partStats)
+            TRequestInfoPtr requestInfo,
+            TVector<TVolumeDatabase::TPartStats> partStats)
             : RequestInfo(std::move(requestInfo))
             , PartStats(std::move(partStats))
-        {}
-
-        void Clear()
-        {
-            // nothing to do
-        }
-    };
-
-    struct TSaveMultiplePartStats
-    {
-        const TVector<TSavePartStats> PartStats;
-
-        explicit TSaveMultiplePartStats(TVector<TSavePartStats> partStats)
-            : PartStats(std::move(partStats))
         {}
 
         void Clear()
@@ -863,6 +851,31 @@ struct TTxVolume
         TRemoveLeader(TRequestInfoPtr requestInfo, TLeaderFollowerLink link)
             : RequestInfo(std::move(requestInfo))
             , Link(std::move(link))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // UpdateBrokenDevice
+    //
+
+    struct TUpdateBrokenDevice
+    {
+        struct TDeviceEntry
+        {
+            TString DeviceUUID;
+            TInstant BrokenTs;
+            bool Add;
+        };
+
+        TVector<TDeviceEntry> Entries;
+
+        explicit TUpdateBrokenDevice(TVector<TDeviceEntry> entries)
+            : Entries(std::move(entries))
         {}
 
         void Clear()

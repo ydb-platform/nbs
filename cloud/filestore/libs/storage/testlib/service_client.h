@@ -174,7 +174,8 @@ public:
         bool force = false,
         ui32 shardCount = 0,
         bool enableStrictSizeMode = false,
-        bool directoryCreationInShards = false)
+        bool directoryCreationInShards = false,
+        bool forceDirectoryCreationInShards = false)
     {
         auto request = std::make_unique<TEvService::TEvResizeFileStoreRequest>();
         request->Record.SetFileSystemId(fileSystemId);
@@ -185,6 +186,8 @@ public:
             enableStrictSizeMode);
         request->Record.SetEnableDirectoryCreationInShards(
             directoryCreationInShards);
+        request->Record.SetForceDirectoryCreationInShards(
+            forceDirectoryCreationInShards);
         return request;
     }
 

@@ -25,7 +25,7 @@ class FilestoreCliClient:
         vhost_port=None,
         verbose=False,
         cwd=".",
-        timeout=60,
+        timeout=200,
         config_path=None,
         auth_token=None,
         check_exit_code=True,
@@ -75,6 +75,16 @@ class FilestoreCliClient:
 
         return result
 
+    def describe(self, fs):
+        cmd = [
+            self.__binary_path, "describe",
+            "--filesystem", fs,
+            "--json",
+        ] + self.__cmd_opts()
+
+        logger.info("describing filestore: " + " ".join(cmd))
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def destroy(self, fs):
         cmd = [
             self.__binary_path, "destroy",
@@ -121,6 +131,7 @@ class FilestoreCliClient:
         shard_count=None,
         enable_strict=False,
         enable_directory_creation_in_shards=False,
+        force_directory_creation_in_shards=False,
     ):
         cmd = [
             self.__binary_path, "resize",
@@ -139,6 +150,9 @@ class FilestoreCliClient:
 
         if enable_directory_creation_in_shards:
             cmd.append("--enable-directory-creation-in-shards")
+
+        if force_directory_creation_in_shards:
+            cmd.append("--force-directory-creation-in-shards")
 
         logger.info("resizing filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
@@ -286,6 +300,23 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def diagnose_filesystem(self, fs, top=None, sort_by="load"):
+        cmd = [
+            self.__binary_path, "diagnosefilesystem",
+            "--filesystem", fs,
+            "--json",
+        ]
+
+        if top is not None:
+            cmd += ["--top", str(top)]
+
+        if sort_by is not None:
+            cmd += ["--sort-by", sort_by]
+
+        cmd += self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def find(self, fs, depth, glob=None, root_node_id=None):
         cmd = [
             self.__binary_path, "find",
@@ -323,6 +354,13 @@ class FilestoreCliClient:
         res = common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code)
         os.unlink(request_file.name)
         return res.stdout
+
+    def change_storage_service_config(self, fs_id, config):
+        req = {"FileSystemId": fs_id, "StorageConfig": config}
+
+        resp = self.execute_action("changestorageconfig", req)
+
+        return json.loads(resp)
 
     def get_storage_service_config(self, fs_id=None):
         req = {"FileSystemId": "" if fs_id is None else fs_id}
@@ -364,7 +402,8 @@ class FilestoreCliClient:
                     "--filesystem", fs,
                     "--path", path,
                 ] + self.__cmd_opts() + [*custom_opts]
-                logger.info("executing" + input_arg + ": " + " ".join(cmd))
+                cmd_str = " ".join(cmd).encode("utf-8", errors="backslashreplace").decode("utf-8")
+                logger.info("executing" + input_arg + ": " + cmd_str)
                 return function(self, cmd)
 
             return wrapper
@@ -397,6 +436,18 @@ class FilestoreCliClient:
 
     @standard_command("ln")
     def ln(self, cmd):
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def readlink(self, fs, path=None, node=None):
+        cmd = [
+            self.__binary_path, "readlink",
+            "--filesystem", fs,
+        ]
+        if path is not None:
+            cmd += ["--path", path]
+        if node is not None:
+            cmd += ["--node", str(node)]
+        cmd += self.__cmd_opts()
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
 

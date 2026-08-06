@@ -1,0 +1,31 @@
+#locks-container {
+    font-family: monospace;
+    font-size: 13px;
+    padding: 10px;
+}
+#locks-container ul {
+    list-style: none;
+    padding-left: 18px;
+    margin: 0;
+}
+#locks-container li {
+    margin: 2px 0;
+    white-space: nowrap;
+}
+.lock-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: default;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+.lock-entry:hover {
+    background: #f0f0f0;
+}
+.lock-icon {
+    font-size: 14px;
+}
+.lock-name {
+    color: #222;
+}

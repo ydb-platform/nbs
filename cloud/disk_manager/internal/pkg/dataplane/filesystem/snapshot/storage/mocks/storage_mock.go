@@ -75,6 +75,15 @@ func (s *StorageMock) CheckFilesystemSnapshotAlive(
 	return args.Error(0)
 }
 
+func (s *StorageMock) CheckFilesystemSnapshotReady(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Error(0)
+}
+
 func (s *StorageMock) GetFilesystemSnapshotCount(ctx context.Context) (uint64, error) {
 	args := s.Called(ctx)
 	return args.Get(0).(uint64), args.Error(1)
@@ -125,6 +134,11 @@ func (s *StorageMock) ListFilesystemSnapshots(
 
 	args := s.Called(ctx)
 	return args.Get(0).(tasks_common.StringSet), args.Error(1)
+}
+
+func (s *StorageMock) TablesEmpty(ctx context.Context) (bool, error) {
+	args := s.Called(ctx)
+	return args.Bool(0), args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

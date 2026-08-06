@@ -63,7 +63,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             Y_UNUSED(ctx);
 
             UNIT_ASSERT_VALUES_EQUAL(1_MB / 4_KB, request->BlocksCount);
-            UNIT_ASSERT_VALUES_EQUAL(4_KB, request->BlockSize);
+            UNIT_ASSERT_VALUES_EQUAL(4_KB, request->GetBlockSize());
 
             auto guard = request->Sglist.Acquire();
             UNIT_ASSERT(guard);
@@ -132,7 +132,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             Y_UNUSED(ctx);
 
             UNIT_ASSERT_VALUES_EQUAL(1_MB / 4_KB, request->BlocksCount);
-            UNIT_ASSERT_VALUES_EQUAL(4_KB, request->BlockSize);
+            UNIT_ASSERT_VALUES_EQUAL(4_KB, request->GetBlockSize());
 
             auto guard = request->Sglist.Acquire();
             UNIT_ASSERT(guard);
@@ -448,7 +448,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
 
             const ui64 requestByteCount =
                 static_cast<ui64>(request->GetBlocksCount()) *
-                request->BlockSize;
+                request->GetBlockSize();
 
             TString data;
             data.resize(requestByteCount, 0);

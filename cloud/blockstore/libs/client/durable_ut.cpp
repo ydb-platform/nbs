@@ -7,7 +7,9 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -58,6 +60,26 @@ struct TPostponedTimeTestService
     }
 };
 
+struct TStoredLogRecord
+{
+    ELogPriority Priority;
+    TString Message;
+};
+
+struct TTestLogBackend final
+    : TLogBackend
+{
+    TVector<TStoredLogRecord> Records;
+
+    void WriteData(const TLogRecord& rec) override
+    {
+        Records.push_back({rec.Priority, TString(rec.Data, rec.Len)});
+    }
+
+    void ReopenLog() override
+    {}
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,7 +95,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 NProto::TPingResponse response;
 
@@ -130,7 +152,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
         {
-            Y_UNUSED(request);
+            UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
             NProto::TPingResponse response;
 
@@ -195,7 +217,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
         {
-            Y_UNUSED(request);
+            UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
             NProto::TPingResponse response;
 
@@ -269,7 +291,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
         {
-            Y_UNUSED(request);
+            UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
             NProto::TPingResponse response;
 
@@ -331,7 +353,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
+
                 ++requestsCount;
 
                 NProto::TPingResponse response;
@@ -376,6 +399,76 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         UNIT_ASSERT(FAILED(response.GetError().GetCode()));
 
         UNIT_ASSERT_EQUAL(requestsCount, 1);
+    }
+
+    Y_UNIT_TEST(ShouldLogEIoSilentNoRetryErrorsAsWarnings)
+    {
+        auto runRequest = [] (ui32 errorCode) {
+            auto client = std::make_shared<TTestService>();
+
+            client->PingHandler =
+                [=] (std::shared_ptr<NProto::TPingRequest> request)
+                {
+                    UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
+
+                    NProto::TPingResponse response;
+                    *response.MutableError() = MakeError(
+                        errorCode,
+                        "test error");
+                    return MakeFuture(std::move(response));
+                };
+
+            auto config = std::make_shared<TClientAppConfig>();
+
+            auto policy = CreateRetryPolicy(
+                config,
+                NProto::STORAGE_MEDIA_DEFAULT);
+
+            auto timer = CreateCpuCycleTimer();
+            auto scheduler = CreateScheduler(timer);
+            scheduler->Start();
+            Y_SCOPE_EXIT(=) {
+                scheduler->Stop();
+            };
+
+            auto requestStats = CreateRequestStatsStub();
+            auto volumeStats = CreateVolumeStatsStub();
+            auto logBackend = std::make_shared<TTestLogBackend>();
+
+            auto logging = CreateLoggingService(logBackend);
+
+            auto durable = CreateDurableClient(
+                config,
+                client,
+                std::move(policy),
+                std::move(logging),
+                std::move(timer),
+                std::move(scheduler),
+                std::move(requestStats),
+                std::move(volumeStats));
+
+            auto future = durable->Ping(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TPingRequest>());
+
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_EQUAL(response.GetError().GetCode(), errorCode);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, logBackend->Records.size());
+            return logBackend->Records.back();
+        };
+
+        const auto silentRecord = runRequest(E_IO_SILENT);
+        UNIT_ASSERT_VALUES_EQUAL(TLOG_WARNING, silentRecord.Priority);
+        UNIT_ASSERT(silentRecord.Message.Contains("WARN"));
+        UNIT_ASSERT(silentRecord.Message.Contains("E_IO_SILENT"));
+        UNIT_ASSERT(silentRecord.Message.Contains("will not retry error"));
+
+        const auto errorRecord = runRequest(E_IO);
+        UNIT_ASSERT_VALUES_EQUAL(TLOG_ERR, errorRecord.Priority);
+        UNIT_ASSERT(errorRecord.Message.Contains("ERROR"));
+        UNIT_ASSERT(errorRecord.Message.Contains("E_IO"));
+        UNIT_ASSERT(errorRecord.Message.Contains("will not retry error"));
     }
 
     Y_UNIT_TEST(ShouldClosePreviousLocalRequestWhenRetry)
@@ -502,7 +595,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto client = std::make_shared<TTestService>();
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
                 return promise.GetFuture();
             };
 
@@ -559,7 +652,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto client = std::make_shared<TTestService>();
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 NProto::TPingResponse response;
                 auto& error = *response.MutableError();
@@ -668,7 +761,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
                 request->Clear();
                 request->CommitId = 0;
-                request->BlockSize = 0;
+                request->SetBlockSize(0);
                 request->Sglist = TGuardedSgList();
 
                 NProto::TReadBlocksLocalResponse response;
@@ -693,7 +786,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
                 request->Clear();
                 request->BlocksCount = 0;
-                request->BlockSize = 0;
+                request->SetBlockSize(0);
                 request->Sglist = TGuardedSgList();
 
                 NProto::TWriteBlocksLocalResponse response;
@@ -779,7 +872,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             request->SetDiskId(diskId);
             request->SetStartIndex(startIndex);
             request->SetBlocksCount(blocksCount);
-            request->BlockSize = DefaultBlockSize;
+            request->SetBlockSize(DefaultBlockSize);
             request->Sglist = TGuardedSgList(sglist);
 
             auto future = durable->ReadBlocksLocal(
@@ -795,7 +888,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             request->SetDiskId(diskId);
             request->SetStartIndex(startIndex);
             request->BlocksCount = blocksCount;
-            request->BlockSize = DefaultBlockSize;
+            request->SetBlockSize(DefaultBlockSize);
             request->Sglist = TGuardedSgList(sglist);
 
             auto future = durable->WriteBlocksLocal(
@@ -1245,7 +1338,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 return MakeFuture<NProto::TPingResponse>(
                     TErrorResponse(E_REJECTED));
@@ -1355,7 +1448,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 NProto::TPingResponse response;
                 if (!requestCount++) {
@@ -1432,7 +1525,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
 
                 NProto::TPingResponse response;
                 if (!requestCount++) {
@@ -1493,6 +1586,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         client->PingHandler =
             [&] (std::shared_ptr<NProto::TPingRequest> request) {
+                UNIT_ASSERT_UNEQUAL(0, GetRequestId(*request));
+
                 const auto& headers = request->GetHeaders();
                 const auto requestTimeoutMsec = headers.GetRequestTimeout();
                 UNIT_ASSERT_EQUAL(

@@ -38,9 +38,12 @@ public:
         : Args(args)
     {}
 
-    void Visit(const TBlock& block, TStringBuf blockContent) override
+    void Visit(
+        const TBlock& block,
+        TStringBuf blockContent,
+        const TPartialBlobId& blobId) override
     {
-        Args.MarkBlock(block.BlockIndex, block.MinCommitId, blockContent);
+        Args.MarkBlock(block.BlockIndex, block.MinCommitId, blockContent, blobId);
     }
 
     void Visit(
@@ -60,7 +63,8 @@ void TPartitionActor::DescribeBlocks(
     const TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     ui64 commitId,
-    const TBlockRange32& describeRange)
+    const TBlockRange32& describeRange,
+    bool indexOnly)
 {
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] Start describe blocks @%lu (range: %s)",
@@ -74,7 +78,8 @@ void TPartitionActor::DescribeBlocks(
         ctx,
         requestInfo,
         commitId,
-        describeRange);
+        describeRange,
+        indexOnly);
 }
 
 void TPartitionActor::HandleDescribeBlocks(
@@ -167,7 +172,9 @@ void TPartitionActor::HandleDescribeBlocks(
         return;
     }
 
-    DescribeBlocks(ctx, requestInfo, *commitId, ConvertRangeSafe(range));
+    DescribeBlocks(
+        ctx, requestInfo, *commitId, ConvertRangeSafe(range),
+        msg->Record.GetIndexOnly());
 }
 
 bool TPartitionActor::PrepareDescribeBlocks(
@@ -263,7 +270,17 @@ void TPartitionActor::FillDescribeBlocksResponse(
         range->SetStartIndex(mark.BlockIndex);
         // TODO(svartmetal): should be optimized.
         range->SetBlocksCount(1);
-        range->SetBlocksContent(std::move(mark.Content));
+        if (!args.IndexOnly) {
+            range->SetBlocksContent(std::move(mark.Content));
+        }
+        if (mark.BlobId) {
+            if (args.IndexOnly) {
+                LogoBlobIDFromLogoBlobID(
+                    MakeBlobId(TabletID(), mark.BlobId),
+                    range->MutableBlobId());
+            }
+            mark.BlobId = {};
+        }
     }
 
     EraseIf(

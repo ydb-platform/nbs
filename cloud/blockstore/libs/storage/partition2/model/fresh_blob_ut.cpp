@@ -32,6 +32,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
 
             auto error = ParseFreshBlobContent(
                 commitId,
+                {},  // BlobId
                 blockSize,
                 blobContent,
                 result,
@@ -100,6 +101,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
 
         auto error = ParseFreshBlobContent(
             commitId,
+            {},  // BlobId
             blockSize,
             oldBlobContent,
             result,

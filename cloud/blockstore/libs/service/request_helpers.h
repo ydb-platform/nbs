@@ -66,6 +66,18 @@ ui64 GetRequestId(const T& request)
     return request.GetHeaders().GetRequestId();
 }
 
+template <typename T>
+ui64 EnsureRequestId(T& request)
+{
+    auto& headers = *request.MutableHeaders();
+
+    if (!headers.GetRequestId()) {
+        headers.SetRequestId(CreateRequestId());
+    }
+
+    return headers.GetRequestId();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // NBS-2966. We can't get BlocksCount for TWriteBlocksRequest.
@@ -375,6 +387,5 @@ consteval bool ShouldBeThrottled()
 {
     return IsReadWriteRequest(GetBlockStoreRequest<T>());
 }
-
 
 }   // namespace NCloud::NBlockStore

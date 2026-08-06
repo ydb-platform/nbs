@@ -45,6 +45,30 @@ func (s *privateService) ScheduleBlankOperation(
 	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
+func (s *privateService) AcquireBaseDisk(
+	ctx context.Context,
+	req *api.AcquireBaseDiskRequest,
+) (*disk_manager.Operation, error) {
+
+	taskID, err := s.poolService.AcquireBaseDisk(
+		ctx,
+		&pools_protos.AcquireBaseDiskRequest{
+			SrcImageId: req.SrcImageId,
+			OverlayDisk: &types.Disk{
+				ZoneId: req.OverlayDiskId.ZoneId,
+				DiskId: req.OverlayDiskId.DiskId,
+			},
+			OverlayDiskKind: types.DiskKind(req.OverlayDiskKind),
+			OverlayDiskSize: req.OverlayDiskSize,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return getOperation(ctx, s.taskScheduler, taskID)
+}
+
 func (s *privateService) ReleaseBaseDisk(
 	ctx context.Context,
 	req *api.ReleaseBaseDiskRequest,

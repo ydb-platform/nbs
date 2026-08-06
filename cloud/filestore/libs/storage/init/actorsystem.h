@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/diagnostics/user_counter.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/libs/storage/fastshard/server/server.h>
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -35,6 +36,8 @@ struct TActorSystemArgs
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
 
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
+
+    NFastShard::IServerPtr FastShardServer;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

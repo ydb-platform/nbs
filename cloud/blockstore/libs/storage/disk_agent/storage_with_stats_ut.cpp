@@ -99,7 +99,7 @@ void ReadBlocksLocal(IStoragePtr storage)
 {
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetBlocksCount(DefaultBlockCount);
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
 
     TVector<TString> blocks;
     request->Sglist.SetSgList(ResizeBlocks(
@@ -117,7 +117,7 @@ void WriteBlocksLocal(IStoragePtr storage)
 {
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->BlocksCount = DefaultBlockCount;
-    request->BlockSize = DefaultBlockSize;
+    request->SetBlockSize(DefaultBlockSize);
 
     TVector<TString> blocks;
     request->Sglist.SetSgList(ResizeBlocks(

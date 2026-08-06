@@ -39,6 +39,18 @@ func (s *SchedulerMock) ScheduleZonalTask(
 	return args.String(0), args.Error(1)
 }
 
+func (s *SchedulerMock) ScheduleNonCancellableTask(
+	ctx context.Context,
+	taskType string,
+	description string,
+	zoneID string,
+	request proto.Message,
+) (string, error) {
+
+	args := s.Called(ctx, taskType, description, zoneID, request)
+	return args.String(0), args.Error(1)
+}
+
 func (s *SchedulerMock) ScheduleRegularTasks(
 	ctx context.Context,
 	taskType string,
@@ -87,6 +99,16 @@ func (s *SchedulerMock) WaitTaskEnded(
 	return args.Error(0)
 }
 
+func (s *SchedulerMock) WaitTaskEndedWithTimeout(
+	ctx context.Context,
+	taskID string,
+	timeout time.Duration,
+) error {
+
+	args := s.Called(ctx, taskID, timeout)
+	return args.Error(0)
+}
+
 func (s *SchedulerMock) GetTaskMetadata(
 	ctx context.Context,
 	taskID string,
@@ -115,6 +137,15 @@ func (s *SchedulerMock) GetOperation(
 	args := s.Called(ctx, taskID)
 	res, _ := args.Get(0).(*operation.Operation)
 	return res, args.Error(1)
+}
+
+func (s *SchedulerMock) GetTaskError(
+	ctx context.Context,
+	taskID string,
+) error {
+
+	args := s.Called(ctx, taskID)
+	return args.Error(0)
 }
 
 func (s *SchedulerMock) WaitTaskSync(

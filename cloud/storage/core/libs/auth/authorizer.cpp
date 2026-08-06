@@ -177,6 +177,7 @@ private:
     const TString Token;
     const TVector<TString> Permissions;
     const TVector<std::pair<TString, TString>> Attributes;
+    const TString PeerName;
     IEventHandlePtr OriginalRequest;
     const TAuthCountersPtr Counters;
 
@@ -187,6 +188,7 @@ public:
             TString token,
             TVector<TString> permissions,
             TVector<std::pair<TString, TString>> attributes,
+            TString peerName,
             IEventHandlePtr originalRequest,
             TAuthCountersPtr counters)
         : Component(component)
@@ -194,6 +196,7 @@ public:
         , Token(std::move(token))
         , Permissions(std::move(permissions))
         , Attributes(std::move(attributes))
+        , PeerName(std::move(peerName))
         , OriginalRequest(std::move(originalRequest))
         , Counters(std::move(counters))
     {}
@@ -208,9 +211,11 @@ public:
             ctx,
             MakeTicketParserID(),
             std::make_unique<TEvTicketParser::TEvAuthorizeTicket>(
-                Token,
-                Attributes,
-                Permissions));
+                TEvTicketParser::TEvAuthorizeTicket::TInitializationFields{
+                    .Ticket = Token,
+                    .PeerName = PeerName,
+                    .Entries = {{Permissions, Attributes}}
+                }));
 
         TThis::Become(&TThis::StateWork);
     }
@@ -425,6 +430,7 @@ private:
                 msg->Token,
                 GetPermissionStrings(msg->Permissions),
                 BuildAttributes(FolderId),
+                msg->PeerName,
                 IEventHandlePtr(ev.Release()),
                 Counters));
     }

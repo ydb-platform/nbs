@@ -16,6 +16,7 @@ struct IClientFactory
     virtual ~IClientFactory() = default;
 
     virtual IFileStoreServicePtr CreateClient() = 0;
+    virtual IShmControlPtr CreateShmControl() = 0;
 };
 
 }   // namespace NCloud::NFileStore::NLoadTest

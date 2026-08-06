@@ -1,11 +1,11 @@
 import os
-import time
 
 from retrying import retry
 
 import cloud.filestore.tools.testing.profile_log.common as profile
 import yatest.common as common
 
+from cloud.filestore.tests.python.lib.common import flush_logs
 from cloud.storage.core.tools.testing.qemu.lib.common import SshToGuest
 
 RETRY_COUNT = 3
@@ -50,10 +50,7 @@ def test_guest_cache_enty_timeout(expected_dir_stat_count: int,
     mkdir(ssh, f"{mount_dir}/dirname")
     create_file(ssh, mount_dir, "dirname/filename")
 
-    # Sleep for a while to ensure that the profile log is flushed
-    # before we start analyzing it
-    # The default value of ProfileLogTimeThreshold for tests is 100ms
-    time.sleep(2)
+    flush_logs()
 
     # Collect counters after setup
     initial_dir_stat_count = get_vhost_request_count_for_node("dirname")
@@ -61,7 +58,7 @@ def test_guest_cache_enty_timeout(expected_dir_stat_count: int,
 
     stat(ssh, mount_dir, "dirname/filename")
 
-    time.sleep(2)
+    flush_logs()
 
     # Count GetNodeAttr requests executed for the directory and the file
     final_dir_stat_count = get_vhost_request_count_for_node("dirname")

@@ -27,6 +27,7 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
         .PipeClientMaxRetryTime = Config->GetPipeClientMaxRetryTime(),
         .SchemeShardDir = Config->GetSchemeShardDir(),
         .PathDescriptionBackupFilePath = Config->GetPathDescriptionBackupFilePath(),
+        .UseSchemeCache = Config->GetUseSchemeCache(),
     });
     StorageSSProxy = NCloud::Register(ctx, std::move(actor));
 }
@@ -80,6 +81,23 @@ void TSSProxyActor::HandleBackupPathDescriptions(
     const TActorContext& ctx)
 {
     ctx.Send(ev->Forward(StorageSSProxy));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TranslateSchemeShardError(const NProto::TError& e)
+{
+    ui32 code = e.GetCode();
+    switch (code) {
+        case MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist): {
+            code = E_NOT_FOUND;
+            break;
+        }
+
+        default: return e;
+    }
+
+    return MakeError(code, TStringBuilder() << "ss error: " << FormatError(e));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

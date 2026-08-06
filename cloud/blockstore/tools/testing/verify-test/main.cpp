@@ -14,9 +14,11 @@ int main(int argc, char** argv)
     auto options = std::make_shared<TOptions>();
     try {
         options->Parse(argc, argv);
+
+        return AppMain(options);
     } catch (...) {
         Cerr << CurrentExceptionMessage() << Endl;
-        return 1;
     }
-    return AppMain(options);
+
+    return 1;
 }

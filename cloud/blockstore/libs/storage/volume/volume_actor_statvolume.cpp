@@ -88,6 +88,7 @@ void Merge(const NProto::TVolumeStats& source, NProto::TVolumeStats& target)
     MERGE_FIELD(CheckpointBlocksCount);
 
     MERGE_FIELD_MAX(CompactionGarbageScore);
+    MERGE_FIELD_MAX(CompactionIgnoringZeroedScore);
 
     MERGE_FIELD(GarbageQueueSize);
 

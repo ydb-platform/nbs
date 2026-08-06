@@ -98,15 +98,6 @@ NProto::TError TIndexTabletActor::HandleCrossShardRenameNodeImpl(
         return MakeError(E_ARGUMENT, std::move(message));
     }
 
-    if (newParentShardNo == 0 && record.GetNewParentId() != RootNodeId) {
-        auto message = ReportInvalidShardNo(
-            TStringBuilder() << "RenameNode: "
-                << record.ShortDebugString() << " newParentShardNo"
-                << ": " << newParentShardNo << ", NewParentId: "
-                << record.GetNewParentId());
-        return MakeError(E_ARGUMENT, std::move(message));
-    }
-
     ExecuteTx<TPrepareRenameNodeInSource>(
         ctx,
         std::move(requestInfo),
@@ -260,6 +251,22 @@ void TIndexTabletActor::HandleDoRenameNode(
         auto response =
             std::make_unique<TMethod::TResponse>(std::move(msg->Error));
         NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+
+        //
+        // Cleaning up AbortUnlink OpLogEntry after the response is fine. We
+        // only need to make sure that this transaction completes before any
+        // other transactions. If it doesn't complete then it means that the
+        // tablet rebooted => the transactions that were issued after this one
+        // also haven't completed.
+        //
+
+        if (msg->OpLogEntryId) {
+            ExecuteTx<TDeleteOpLogEntry>(
+                ctx,
+                nullptr /* requestInfo */,
+                msg->OpLogEntryId);
+        }
+
         return;
     }
 
@@ -284,12 +291,12 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
     FILESTORE_VALIDATE_DUPTX_SESSION(RenameNode, args);
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
     // validate parent node exists
-    if (!ReadNode(db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
+    if (!ReadNode(*db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
         return false;   // not ready
     }
 
@@ -302,7 +309,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
     // validate old ref exists
     if (!ReadNodeRef(
-            db,
+            *db,
             args.ParentNodeId,
             args.CommitId,
             args.Name,
@@ -313,13 +320,13 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
     // read old node
     if (!args.ChildRef) {
-        args.Error = ErrorInvalidTarget(args.ParentNodeId);
+        args.Error = ErrorInvalidTarget(args.ParentNodeId, args.Name);
         return true;
     }
 
     if (!args.ChildRef->IsExternal()) {
         if (!ReadNode(
-                db,
+                *db,
                 args.ChildRef->ChildNodeId,
                 args.CommitId,
                 args.ChildNode))
@@ -339,7 +346,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
     // validate new parent node exists
     if (!ReadNode(
-            db,
+            *db,
             args.NewParentNodeId,
             args.CommitId,
             args.NewParentNode))
@@ -361,7 +368,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
 
     // check if new ref exists
     if (!ReadNodeRef(
-            db,
+            *db,
             args.NewParentNodeId,
             args.CommitId,
             args.NewName,
@@ -379,7 +386,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         if (!args.NewChildRef->IsExternal()) {
             // read new child node to unlink it
             if (!ReadNode(
-                    db,
+                    *db,
                     args.NewChildRef->ChildNodeId,
                     args.CommitId,
                     args.NewChildNode))
@@ -413,19 +420,6 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         // EXCHANGE allows to rename any nodes
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
             return true;
-        }
-
-        // oldpath directory: newpath must either not exist, or it must specify
-        // an empty directory.
-        if (args.ChildNode
-                && args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE)
-        {
-            if (!args.NewChildNode || args.NewChildNode->Attrs.GetType()
-                    != NProto::E_DIRECTORY_NODE)
-            {
-                args.Error = ErrorIsNotDirectory(args.NewChildNode->NodeId);
-                return true;
-            }
         }
 
         bool childIsDir = false;
@@ -473,9 +467,9 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
                 args.NewChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE;
             if (newChildIsDir) {
                 // 1 entry is enough to prevent rename
-                TVector<IIndexTabletDatabase::TNodeRef> refs;
+                TVector<INodeIndexTabletDatabase::TNodeRef> refs;
                 if (!ReadNodeRefs(
-                        db,
+                        *db,
                         args.NewChildNode->NodeId,
                         args.CommitId,
                         {},
@@ -503,6 +497,9 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
                 args.Error = ErrorIsNotEmpty(newChildNodeId);
                 return true;
             }
+        } else if (childIsDir) {
+            args.Error = ErrorIsNotDirectory(newChildNodeId);
+            return true;
         }
     } else if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
         args.Error = ErrorInvalidTarget(args.NewParentNodeId, args.NewName);
@@ -526,7 +523,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -536,7 +533,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
     // remove existing source ref
     RemoveNodeRef(
-        db,
+        *db,
         args.ParentNodeId,
         args.ChildRef->MinCommitId,
         args.CommitId,
@@ -549,7 +546,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
             // remove existing target ref
             RemoveNodeRef(
-                db,
+                *db,
                 args.NewParentNodeId,
                 args.NewChildRef->MinCommitId,
                 args.CommitId,
@@ -560,7 +557,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
             // create source ref to target node
             CreateNodeRef(
-                db,
+                *db,
                 args.ParentNodeId,
                 args.CommitId,
                 args.Name,
@@ -577,7 +574,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
             // remove target ref and unlink target node
             auto e = UnlinkNode(
-                db,
+                *db,
                 args.NewParentNode->NodeId,
                 args.NewName,
                 *args.NewChildNode,
@@ -587,7 +584,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
             if (HasError(e)) {
                 const auto nodeId = args.NewChildNode->NodeId;
-                WriteOrphanNode(db, TStringBuilder()
+                WriteOrphanNode(*db, TStringBuilder()
                     << "RenameNode: " << args.SessionId
                     << ", ParentNodeId: " << args.NewParentNode->NodeId
                     << ", NodeId: " << nodeId
@@ -595,12 +592,12 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             }
         } else {
             if (args.AbortUnlinkOpLogEntryId) {
-                db.DeleteOpLogEntry(args.AbortUnlinkOpLogEntryId);
+                DeleteOpLogEntry(*db, args.AbortUnlinkOpLogEntryId);
             }
 
             // remove target ref
             UnlinkExternalNode(
-                db,
+                *db,
                 args.NewParentNode->NodeId,
                 args.NewName,
                 args.NewChildRef->ShardId,
@@ -622,14 +619,14 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             shardRequest->SetUnlinkDirectory(
                 args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE);
 
-            db.WriteOpLogEntry(args.OpLogEntry);
+            WriteOpLogEntry(*db, args.OpLogEntry);
         }
     }
 
     // update old parent timestamps
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
-        db,
+        *db,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,
@@ -638,7 +635,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
     // create target ref to source node
     CreateNodeRef(
-        db,
+        *db,
         args.NewParentNodeId,
         args.CommitId,
         args.NewName,
@@ -648,7 +645,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
 
     auto newParent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
-        db,
+        *db,
         args.NewParentNode->NodeId,
         args.NewParentNode->MinCommitId,
         args.CommitId,
@@ -664,7 +661,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
     }
 
     AddDupCacheEntry(
-        db,
+        *db,
         session,
         args.RequestId,
         NProto::TRenameNodeResponse{},
@@ -768,8 +765,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     if (!HasError(args.Error)) {
         auto& op = args.OpLogEntry;
         if (op.HasUnlinkNodeInShardRequest()) {
-            // rename + unlink is pretty rare so let's keep INFO level here
-            LOG_INFO(
+            LOG_DEBUG(
                 ctx,
                 TFileStoreComponents::TABLET,
                 "%s Unlinking node in shard upon RenameNode: %s, %s",
@@ -811,7 +807,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
 
     RemoveInFlightRequest(*args.RequestInfo);
 
-    Metrics.RenameNode.Update(
+    Metrics->RenameNode.Update(
         1,
         0,
         ctx.Now() - args.RequestInfo->StartedTs);

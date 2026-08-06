@@ -280,6 +280,9 @@ _DISK_CONFIGS = {
             placement_group_name='eternal-pg',
             encrypted=True),
     'eternal-relocation-network-ssd': DiskCreateConfig(size=32, bs=4096, type='network-ssd'),
+
+    'eternal-320gb-32k-block-size-ssd': DiskCreateConfig(320, 32768, 'network-ssd'),
+    'eternal-320gb-32k-block-size-hdd': DiskCreateConfig(320, 32768, 'network-hdd'),
 }
 
 _FS_CONFIGS = {
@@ -354,6 +357,10 @@ _LOAD_CONFIGS = {
     'eternal-320gb-encrypted': LoadConfig(False, True, 32, 50, 320, 4096),
     'eternal-1023gb-nonrepl-encrypted': LoadConfig(False, False, 32, 50, 1023, 4096),
     'eternal-relocation-network-ssd': LoadConfig(False, False, 32, 50, 32, 4096, run_in_systemd=True),
+
+    'eternal-320gb-32k-block-size-ssd': LoadConfig(False, True, 32, 50, 320, 32768),
+
+    'eternal-320gb-32k-block-size-hdd': LoadConfig(False, True, 32, 50, 320, 32768),
 
     # NFS
 

@@ -21,7 +21,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
         TRequestInfoPtr requestInfo,
-        TString diskId,
+        const TChildLogTitle& logTitle,
         ui32 blockSize,
         TBlockRange64 range,
         TGuardedSgList sgList,
@@ -29,7 +29,9 @@ TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
         TString clientId,
         bool optimizeFastPathReadsOnResync)
     : RequestInfo(std::move(requestInfo))
-    , DiskId(std::move(diskId))
+    , LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"r", range}}))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
@@ -69,7 +71,7 @@ void TMirrorPartitionResyncFastPathActor::ReadBlocks(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    request->Record.BlockSize = BlockSize;
+    request->Record.SetBlockSize(BlockSize);
     request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
@@ -123,10 +125,8 @@ NProto::TError TMirrorPartitionResyncFastPathActor::CompareChecksums(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION_WORKER,
-            "[%s] Resync range %s: checksum mismatch, %u (data) != %u "
-            "(%u), %s",
-            DiskId.c_str(),
-            DescribeRange(Range).c_str(),
+            "%s Resync range: checksum mismatch, %u (data) != %u (%u), %s",
+            LogTitle.GetWithTime().c_str(),
             *DataChecksum,
             checksum,
             mismatchedReplica,

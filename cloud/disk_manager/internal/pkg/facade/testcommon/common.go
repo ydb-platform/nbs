@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/hashicorp/go-retryablehttp"
 	prometheus_client "github.com/prometheus/client_model/go"
@@ -26,6 +27,8 @@ import (
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	filesystem_scrubbing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
+	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
+	filesystem_snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
@@ -64,6 +67,12 @@ var (
 		0x57, 0x6a, 0x35, 0x53, 0x43, 0x69, 0x2f, 0x51,
 	}
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func IsNemesisEnabled() bool {
+	return os.Getenv("NEMESIS_ENABLED") == "true"
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -356,7 +365,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS_SECURE_PORT"),
 					),
 				},
 			},
@@ -364,7 +373,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS_SECURE_PORT"),
 					),
 				},
 			},
@@ -372,7 +381,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS2_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS2_SECURE_PORT"),
 					),
 				},
 			},
@@ -380,7 +389,7 @@ func newNfsClientConfig() *nfs_config.ClientConfig {
 				Endpoints: []string{
 					fmt.Sprintf(
 						"localhost:%v",
-						os.Getenv("DISK_MANAGER_RECIPE_NFS3_PORT"),
+						os.Getenv("DISK_MANAGER_RECIPE_NFS3_SECURE_PORT"),
 					),
 				},
 			},
@@ -624,7 +633,19 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	)
 }
 
-func newResourceStorage(ctx context.Context) (resources.Storage, error) {
+type storageWithDB[T any] struct {
+	storage T
+	db      *persistence.YDBClient
+}
+
+func (s *storageWithDB[T]) close(ctx context.Context) error {
+	return s.db.Close(ctx)
+}
+
+func newResourceStorage(
+	ctx context.Context,
+) (*storageWithDB[resources.Storage], error) {
+
 	db, err := newYDB(ctx)
 	if err != nil {
 		return nil, err
@@ -632,6 +653,7 @@ func newResourceStorage(ctx context.Context) (resources.Storage, error) {
 
 	endedMigrationExpirationTimeout, err := time.ParseDuration("30m")
 	if err != nil {
+		_ = db.Close(ctx)
 		return nil, err
 	}
 
@@ -645,11 +667,56 @@ func newResourceStorage(ctx context.Context) (resources.Storage, error) {
 		db,
 		endedMigrationExpirationTimeout,
 	)
+	if err != nil {
+		_ = db.Close(ctx)
+		return nil, err
+	}
 
-	return resourcesStorage, err
+	return &storageWithDB[resources.Storage]{
+		storage: resourcesStorage,
+		db:      db,
+	}, nil
 }
 
-func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
+func newFilesystemSnapshotStorage(
+	ctx context.Context,
+) (*storageWithDB[filesystem_snapshot_storage.Storage], error) {
+
+	endpoint := fmt.Sprintf(
+		"localhost:%v",
+		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
+	)
+	database := "/Root"
+	// Should be in sync with FilesystemConfig.PersistenceConfig in test recipe.
+	rootPath := "disk_manager/recipe/filesystem"
+
+	db, err := persistence.NewYDBClient(
+		ctx,
+		&persistence_config.PersistenceConfig{
+			Endpoint: &endpoint,
+			Database: &database,
+			RootPath: &rootPath,
+		},
+		metrics.NewEmptyRegistry(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Should be in sync with FilesystemSnapshotConfig.NodesStorageFolder.
+	return &storageWithDB[filesystem_snapshot_storage.Storage]{
+		storage: filesystem_snapshot_storage.NewStorage(
+			db,
+			"filesystem/snapshot/nodes",
+		),
+		db: db,
+	}, nil
+}
+
+func newPoolStorage(
+	ctx context.Context,
+) (*storageWithDB[pools_storage.Storage], error) {
+
 	db, err := newYDB(ctx)
 	if err != nil {
 		return nil, err
@@ -659,22 +726,40 @@ func newPoolStorage(ctx context.Context) (pools_storage.Storage, error) {
 	cloudID := "cloud"
 	folderID := "pools"
 
-	return pools_storage.NewStorage(&pools_config.PoolsConfig{
+	storage, err := pools_storage.NewStorage(&pools_config.PoolsConfig{
 		CloudId:  &cloudID,
 		FolderId: &folderID,
 	}, db, metrics.NewEmptyRegistry())
+	if err != nil {
+		_ = db.Close(ctx)
+		return nil, err
+	}
+
+	return &storageWithDB[pools_storage.Storage]{
+		storage: storage,
+		db:      db,
+	}, nil
 }
 
-func newCellStorage(ctx context.Context) (cells_storage.Storage, error) {
+func newCellStorage(
+	ctx context.Context,
+) (*storageWithDB[cells_storage.Storage], error) {
+
 	db, err := newYDB(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return cells_storage.NewStorage(&cells_config.CellsConfig{}, db), nil
+	return &storageWithDB[cells_storage.Storage]{
+		storage: cells_storage.NewStorage(&cells_config.CellsConfig{}, db),
+		db:      db,
+	}, nil
 }
 
-func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {
+func newSnapshotStorage(
+	ctx context.Context,
+) (*storageWithDB[snapshot_storage.Storage], error) {
+
 	// Should be in sync with settings from SnapshotConfig in test recipe.
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
@@ -697,12 +782,21 @@ func newSnapshotStorage(ctx context.Context) (snapshot_storage.Storage, error) {
 		return nil, err
 	}
 
-	return snapshot_storage.NewStorage(
+	storage, err := snapshot_storage.NewStorage(
 		config,
 		metrics.NewEmptyRegistry(),
 		db,
 		nil, // do not need s3 here
 	)
+	if err != nil {
+		_ = db.Close(ctx)
+		return nil, err
+	}
+
+	return &storageWithDB[snapshot_storage.Storage]{
+		storage: storage,
+		db:      db,
+	}, nil
 }
 
 func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
@@ -720,6 +814,16 @@ func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
 
 func newScheduler(ctx context.Context) (tasks.Scheduler, error) {
 	taskRegistry := tasks.NewRegistry()
+	err := filesystem_scrubbing.Register(taskRegistry)
+	if err != nil {
+		return nil, err
+	}
+
+	err = filesystem_snapshot.Register(taskRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	taskStorage, err := NewTaskStorage(ctx)
 	if err != nil {
 		return nil, err
@@ -740,13 +844,41 @@ func WaitOperationEnded(
 	t *testing.T,
 	ctx context.Context,
 	operationID string,
+	timeout time.Duration,
 ) {
 
 	scheduler, err := newScheduler(ctx)
 	require.NoError(t, err)
 
-	err = scheduler.WaitTaskEnded(ctx, operationID)
+	err = scheduler.WaitTaskEndedWithTimeout(ctx, operationID, timeout)
 	require.NoError(t, err)
+}
+
+func RequireTaskHasNoError(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+) {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	err = scheduler.GetTaskError(ctx, taskID)
+	require.NoError(t, err)
+}
+
+func GetTaskMetadata(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+) proto.Message {
+
+	scheduler, err := newScheduler(ctx)
+	require.NoError(t, err)
+
+	metadata, err := scheduler.GetTaskMetadata(ctx, taskID)
+	require.NoError(t, err)
+	return metadata
 }
 
 func ScheduleFilesystemScrubbing(
@@ -794,8 +926,11 @@ func CheckBaseDiskSlotReleased(
 
 	poolStorage, err := newPoolStorage(ctx)
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, poolStorage.close(ctx))
+	}()
 
-	err = poolStorage.CheckBaseDiskSlotReleased(ctx, overlayDiskID)
+	err = poolStorage.storage.CheckBaseDiskSlotReleased(ctx, overlayDiskID)
 	require.NoError(t, err)
 }
 
@@ -842,8 +977,11 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 
 	poolStorage, err := newPoolStorage(ctx)
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, poolStorage.close(ctx))
+	}()
 
-	err = poolStorage.CheckConsistency(ctx)
+	err = poolStorage.storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
 	// TODO: validate internal YDB tables (tasks, pools etc.) consistency.
@@ -860,8 +998,9 @@ func GetIncremental(
 	if err != nil {
 		return "", "", err
 	}
+	defer storage.close(ctx)
 
-	return storage.GetIncremental(ctx, disk)
+	return storage.storage.GetIncremental(ctx, disk)
 }
 
 func GetDiskMeta(
@@ -873,8 +1012,9 @@ func GetDiskMeta(
 	if err != nil {
 		return nil, err
 	}
+	defer storage.close(ctx)
 
-	return storage.GetDiskMeta(ctx, diskID)
+	return storage.storage.GetDiskMeta(ctx, diskID)
 }
 
 func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) {
@@ -897,8 +1037,37 @@ func GetSnapshotMeta(
 	if err != nil {
 		return nil, err
 	}
+	defer storage.close(ctx)
 
-	return storage.GetSnapshotMeta(ctx, snapshotID)
+	return storage.storage.GetSnapshotMeta(ctx, snapshotID)
+}
+
+func GetFilesystemSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*resources.FilesystemSnapshotMeta, error) {
+
+	storage, err := newResourceStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer storage.close(ctx)
+
+	return storage.storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
+}
+
+func GetDataplaneFilesystemSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*filesystem_snapshot_storage.FilesystemSnapshotMeta, error) {
+
+	storage, err := newFilesystemSnapshotStorage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer storage.close(ctx)
+
+	return storage.storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
 }
 
 func UpdateClusterCapacities(
@@ -911,8 +1080,13 @@ func UpdateClusterCapacities(
 	if err != nil {
 		return err
 	}
+	defer cellStorage.close(ctx)
 
-	return cellStorage.UpdateClusterCapacities(ctx, capacities, deleteOlderThan)
+	return cellStorage.storage.UpdateClusterCapacities(
+		ctx,
+		capacities,
+		deleteOlderThan,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -985,11 +1159,71 @@ func GetCounters(
 	return result
 }
 
+func GetGauges(
+	t *testing.T,
+	ports []string,
+	name string,
+	labels map[string]string,
+) []float64 {
+
+	result := make([]float64, 0)
+	for _, port := range ports {
+		value, ok := GetGauge(
+			t,
+			port,
+			name,
+			labels,
+		)
+		if ok {
+			result = append(result, value)
+		}
+	}
+
+	return result
+}
+
 func GetCounter(
 	t *testing.T,
 	port string,
 	name string,
 	labels map[string]string,
+) (float64, bool) {
+
+	return getMetric(
+		t,
+		port,
+		name,
+		labels,
+		func(metric *prometheus_client.Metric) float64 {
+			return metric.GetCounter().GetValue()
+		},
+	)
+}
+
+func GetGauge(
+	t *testing.T,
+	port string,
+	name string,
+	labels map[string]string,
+) (float64, bool) {
+
+	return getMetric(
+		t,
+		port,
+		name,
+		labels,
+		func(metric *prometheus_client.Metric) float64 {
+			return metric.GetGauge().GetValue()
+		},
+	)
+}
+
+func getMetric(
+	t *testing.T,
+	port string,
+	name string,
+	labels map[string]string,
+	getValue func(metric *prometheus_client.Metric) float64,
 ) (float64, bool) {
 
 	resp, err := httpGetWithRetries(
@@ -1006,13 +1240,20 @@ func GetCounter(
 	require.NoError(t, err)
 
 	retrievedMetrics, ok := metricFamilies[name]
-	require.True(t, ok)
+	if !ok {
+		t.Logf("metric with name %s is not found", name)
+		t.Logf("Metric families: %v", metricFamilies)
+		return 0, false
+	}
+
 	for _, metricValue := range retrievedMetrics.GetMetric() {
 		if metricMatchesLabel(labels, metricValue) {
-			return metricValue.GetCounter().GetValue(), true
+			return getValue(metricValue), true
 		}
 	}
 
+	t.Logf("metric with name %s, labels %v is not found", name, labels)
+	t.Logf("Metric families: %v", metricFamilies)
 	return 0, false
 }
 
@@ -1070,4 +1311,38 @@ func GetCountersDataplane(
 		name,
 		labels,
 	)
+}
+
+func WaitGaugePresentDataplane(
+	t *testing.T,
+	name string,
+	labels map[string]string,
+	timeout time.Duration,
+) []float64 {
+
+	ports := parseMetricsPorts(
+		os.Getenv("DISK_MANAGER_RECIPE_DATAPLANE_MON_PORT"),
+	)
+	deadline := time.Now().Add(timeout)
+
+	for {
+		result := GetGauges(t, ports, name, labels)
+		if len(result) != 0 {
+			return result
+		}
+
+		if time.Now().After(deadline) {
+			require.Failf(
+				t,
+				"Gauge not found",
+				"No gauge with name %s, labels %v within %v",
+				name,
+				labels,
+				timeout,
+			)
+			return nil
+		}
+
+		time.Sleep(time.Second)
+	}
 }

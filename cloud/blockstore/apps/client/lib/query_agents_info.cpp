@@ -18,10 +18,22 @@ namespace {
 
 class TQueryAgentsInfoCommand final: public TCommand
 {
+private:
+    TVector<TString> AgentIds;
+    TVector<ui32> States;
+
 public:
     explicit TQueryAgentsInfoCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
-    {}
+    {
+        Opts.AddLongOption("agent-id", "agent id (several agents can be added at a time)")
+            .RequiredArgument("STR")
+            .AppendTo(&AgentIds);
+
+        Opts.AddLongOption("state", "agent state (0=online, 1=warning, 2=unavailable)")
+            .RequiredArgument("NUM")
+            .AppendTo(&States);
+    }
 
 protected:
     bool DoExecute() override
@@ -33,6 +45,15 @@ protected:
         auto request = std::make_shared<NProto::TQueryAgentsInfoRequest>();
         if (Proto) {
             ParseFromTextFormat(input, *request);
+        } else {
+            auto* filter = request->MutableFilter();
+            filter->MutableAgentIds()->Assign(
+                AgentIds.begin(),
+                AgentIds.end());
+            for (auto state: States) {
+                filter->MutableStates()->Add(
+                    static_cast<NProto::EAgentState>(state));
+            }
         }
 
         STORAGE_DEBUG("Sending QueryAgentsInfo request");

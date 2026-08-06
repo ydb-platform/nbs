@@ -58,7 +58,7 @@ public:
 
     bool ShouldImmediatelyProcessQueue() override;
 
-    bool ShouldFailOnError() override;
+    bool ShouldFailOnError(const NProto::TError& error) override;
 
     void Advance();
 

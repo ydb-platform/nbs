@@ -1159,7 +1159,36 @@ func (s *storageYDB) releaseBaseDiskSlot(
 	defer res.Close()
 
 	if !res.NextResultSet(ctx) || !res.NextRow() {
-		// Should be idempotent.
+		// Create a tombstone slot entry to avoid race conditions between
+		// concurrent overlay disk deletion and overlay disk creation
+		// operations. The tombstone prevents a new slot with the same
+		// overlay disk ID from being acquired.
+		slotTombstone := slot{
+			overlayDiskID: overlayDiskID,
+			baseDiskID:    "",
+			status:        slotStatusReleased,
+			releasedAt:    time.Now(),
+		}
+
+		err = s.updateSlot(
+			ctx,
+			tx,
+			slotTransition{
+				oldState: nil,
+				state:    &slotTombstone,
+			},
+		)
+		if err != nil {
+			return BaseDisk{}, err
+		}
+
+		logging.Info(
+			ctx,
+			"Created tombstone %+v while releasing base disk slot in zone %v",
+			slotTombstone,
+			overlayDisk.ZoneId,
+		)
+
 		return BaseDisk{}, tx.Commit(ctx)
 	}
 
@@ -1989,7 +2018,7 @@ func (s *storageYDB) getPoolConfigsWithNonZeroCapacity(
 		pragma TablePathPrefix = "%v";
 
 		select *
-		from configs 
+		from configs
 		where capacity > 0
 	`, s.tablesPath,
 	))
@@ -3572,4 +3601,89 @@ func (s *storageYDB) unlockPool(
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) getIdleBaseDisks(
+	ctx context.Context,
+	imageID string,
+	zoneID string,
+	session *persistence.Session,
+	idleDuration time.Duration,
+	limit uint64,
+) ([]BaseDisk, error) {
+
+	idleBefore := time.Now().Add(-idleDuration)
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $image_id as Utf8;
+		declare $zone_id as Utf8;
+		declare $idle_before as Timestamp;
+		declare $status as Int64;
+		declare $limit as Uint64;
+
+		select bd.*
+		from free as f
+		join base_disks as bd
+			on f.image_id = bd.image_id
+			and f.zone_id = bd.zone_id
+			and f.base_disk_id = bd.id
+		where bd.image_id = $image_id
+			and bd.zone_id = $zone_id
+			and bd.active_units = 0
+			and bd.status = $status
+			and bd.idle_since IS NOT NULL
+			and bd.idle_since != cast(0 as Timestamp)
+			and bd.idle_since < $idle_before
+		limit $limit
+	`, s.tablesPath),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+		persistence.ValueParam("$idle_before", persistence.TimestampValue(idleBefore)),
+		persistence.ValueParam("$status", persistence.Int64Value(int64(baseDiskStatusReady))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	baseDisks, err := scanBaseDisks(ctx, res)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []BaseDisk
+	for _, d := range baseDisks {
+		result = append(result, d.toBaseDisk())
+	}
+
+	return result, nil
+}
+
+func (s *storageYDB) initializeIdleTimestamps(
+	ctx context.Context,
+	session *persistence.Session,
+) error {
+
+	now := time.Now()
+
+	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $now as Timestamp;
+		declare $status as Int64;
+
+		update base_disks
+		set idle_since = $now
+		where from_pool = true
+			and active_units = 0
+			and status = $status
+			and (idle_since IS NULL OR idle_since = cast(0 as Timestamp))
+	`, s.tablesPath),
+		persistence.ValueParam("$now", persistence.TimestampValue(now)),
+		persistence.ValueParam("$status", persistence.Int64Value(int64(baseDiskStatusReady))),
+	)
+	return err
 }

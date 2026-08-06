@@ -2,8 +2,6 @@ RECURSE(
     bin
     build
     build-image
-    image
     image-noble
-    image-plucky
     lib
 )

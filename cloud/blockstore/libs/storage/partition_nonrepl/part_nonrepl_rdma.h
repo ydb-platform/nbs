@@ -4,8 +4,9 @@
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -17,7 +18,7 @@ NActors::IActorPtr CreateNonreplicatedPartitionRdma(
     TStorageConfigPtr config,
     TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
-    NRdma::IClientPtr rdmaClient,
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     NActors::TActorId volumeActorId,
     NActors::TActorId statActorId);
 

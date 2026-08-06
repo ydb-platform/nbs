@@ -5,6 +5,7 @@
 #include "config.h"
 #include "part_nonrepl_events_private.h"
 
+#include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -48,6 +49,7 @@ struct TRequestTimeoutPolicy
 
 class TNonreplicatedPartitionActor final
     : public NActors::TActorBootstrapped<TNonreplicatedPartitionActor>
+    , public IDeviceStatObserver
 {
 private:
     using EDeviceStatus = TDeviceStat::EDeviceStatus;
@@ -57,6 +59,7 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
+    const NProto::ERequestSplitterPolicy SplitterPolicy;
 
     TVector<TDeviceStat> DeviceStats;
 
@@ -100,6 +103,10 @@ public:
     ~TNonreplicatedPartitionActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
+
+    // IDeviceStatObserver
+    void OnDeviceBroken(const TString& deviceUUID, TInstant brokenTs) override;
+    void OnDeviceRecovered(const TString& deviceUUID) override;
 
 private:
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;

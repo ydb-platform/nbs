@@ -57,7 +57,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TMigrations migrations,
         TVector<TDevices> replicas,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TPartitionBudgetManagerPtr partitionBudgetManager,
         TActorId volumeActorId,
         TActorId statActorId,
@@ -177,7 +177,7 @@ void TMirrorPartitionActor::StartScrubbingRange(
 
 void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 {
-    const auto& checksums = ChecksumRangeActorCompanion.GetChecksums();
+    const auto& checksums = ChecksumRangeActorCompanion->GetChecksums();
     THashMap<ui64, ui32> checksumCount;
     ui32 majorCount = 0;
     for (size_t i = 0; i < checksums.size(); i++) {
@@ -193,8 +193,8 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Reschedule scrubbing for range %s due to inflight write",
-                DiskId.c_str(),
+                "%s Reschedule scrubbing for range %s due to inflight write",
+                LogTitle.GetWithTime().c_str(),
                 DescribeRange(GetScrubbingRange()).c_str());
         }
         StartScrubbingRange(ctx, ScrubbingRangeId);
@@ -203,11 +203,11 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 
     ProfileLog->Write(
         {.DiskId = DiskId,
-         .Ts = ChecksumRangeActorCompanion.GetChecksumStartTs(),
+         .Ts = ChecksumRangeActorCompanion->GetChecksumStartTs(),
          .Request = IProfileLog::TSysReadWriteRequestWithChecksums{
              .RequestType = ESysRequestType::Scrubbing,
-             .Duration = ChecksumRangeActorCompanion.GetChecksumDuration(),
-             .RangeInfo = ChecksumRangeActorCompanion.GetRangeInfo()}});
+             .Duration = ChecksumRangeActorCompanion->GetChecksumDuration(),
+             .RangeInfo = ChecksumRangeActorCompanion->GetRangeInfo()}});
 
     if (!equal) {
         if (ctx.Now() - ScrubbingRangeStarted <
@@ -217,8 +217,8 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
                 LOG_WARN(
                     ctx,
                     TBlockStoreComponents::PARTITION,
-                    "[%s] Checksum mismatch for range %s, reschedule scrubbing",
-                    DiskId.c_str(),
+                    "%s Checksum mismatch for range %s, reschedule scrubbing",
+                    LogTitle.GetWithTime().c_str(),
                     DescribeRange(GetScrubbingRange()).c_str());
             }
 
@@ -229,8 +229,8 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Checksum mismatch for range %s",
-            DiskId.c_str(),
+            "%s Checksum mismatch for range %s",
+            LogTitle.GetWithTime().c_str(),
             DescribeRange(GetScrubbingRange()).c_str());
 
         if (Config
@@ -245,8 +245,8 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
             LOG_ERROR(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Replica %lu range %s checksum %lu",
-                DiskId.c_str(),
+                "%s Replica %lu range %s checksum %lu",
+                LogTitle.GetWithTime().c_str(),
                 i,
                 DescribeRange(GetScrubbingRange()).c_str(),
                 checksums[i]);
@@ -279,8 +279,8 @@ void TMirrorPartitionActor::StartResyncRange(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Resyncing range %s",
-        DiskId.c_str(),
+        "%s Resyncing range %s",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(GetScrubbingRange()).c_str());
     ResyncRangeStarted = true;
 
@@ -310,7 +310,7 @@ void TMirrorPartitionActor::StartResyncRange(
                                 : Config->GetScrubbingResyncPolicy();
     auto resyncActor = MakeResyncRangeActor(
         std::move(requestInfo),
-        DiskId,
+        LogTitle,
         State.GetBlockSize(),
         GetScrubbingRange(),
         std::move(replicas),
@@ -462,8 +462,8 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Reschedule scrubbing for range %s due to inflight write",
-            DiskId.c_str(),
+            "%s Reschedule scrubbing for range %s due to inflight write",
+            LogTitle.GetWithTime().c_str(),
             DescribeRange(scrubbingRange).c_str());
 
         StartScrubbingRange(ctx, ScrubbingRangeId);
@@ -483,8 +483,8 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Skipping scrubbing for range %s, devices not ready for reading",
-            DiskId.c_str(),
+            "%s Skipping scrubbing for range %s, devices not ready for reading",
+            LogTitle.GetWithTime().c_str(),
             DescribeRange(scrubbingRange).c_str());
 
         StartScrubbingRange(ctx, ScrubbingRangeId + 1);
@@ -494,14 +494,16 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Scrubbing range %s",
-        DiskId.c_str(),
+        "%s Scrubbing range %s",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(scrubbingRange).c_str());
 
     ScrubbingThroughput += scrubbingRange.Size() * State.GetBlockSize();
     ChecksumRangeActorCompanion =
-        TChecksumRangeActorCompanion(DiskId, std::move(replicas));
-    ChecksumRangeActorCompanion.CalculateChecksums(ctx, scrubbingRange);
+        std::make_unique<TChecksumRangeActorCompanion>(
+            LogTitle.GetChild(GetCycleCount()),
+            std::move(replicas));
+    ChecksumRangeActorCompanion->CalculateChecksums(ctx, scrubbingRange);
 }
 
 void TMirrorPartitionActor::HandleChecksumUndelivery(
@@ -510,15 +512,15 @@ void TMirrorPartitionActor::HandleChecksumUndelivery(
 {
     Y_UNUSED(ev);
 
-    ChecksumRangeActorCompanion.HandleChecksumUndelivery(ctx);
-    if (ChecksumRangeActorCompanion.IsFinished()) {
+    ChecksumRangeActorCompanion->HandleChecksumUndelivery(ctx);
+    if (ChecksumRangeActorCompanion->IsFinished()) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Reschedule scrubbing for range %s due to checksum error %s",
-            DiskId.c_str(),
+            "%s Reschedule scrubbing for range %s due to checksum error %s",
+            LogTitle.GetWithTime().c_str(),
             DescribeRange(GetScrubbingRange()).c_str(),
-            FormatError(ChecksumRangeActorCompanion.GetError()).c_str());
+            FormatError(ChecksumRangeActorCompanion->GetError()).c_str());
         ScheduleScrubbingNextRange(ctx);
     }
 }
@@ -527,20 +529,20 @@ void TMirrorPartitionActor::HandleChecksumResponse(
     const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    ChecksumRangeActorCompanion.HandleChecksumResponse(ev, ctx);
+    ChecksumRangeActorCompanion->HandleChecksumResponse(ev, ctx);
 
-    if (!ChecksumRangeActorCompanion.IsFinished()) {
+    if (!ChecksumRangeActorCompanion->IsFinished()) {
         return;
     }
 
-    if (HasError(ChecksumRangeActorCompanion.GetError())) {
+    if (HasError(ChecksumRangeActorCompanion->GetError())) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Reschedule scrubbing for range %s due to checksum error %s",
-            DiskId.c_str(),
+            "%s Reschedule scrubbing for range %s due to checksum error %s",
+            LogTitle.GetWithTime().c_str(),
             DescribeRange(GetScrubbingRange()).c_str(),
-            FormatError(ChecksumRangeActorCompanion.GetError()).c_str());
+            FormatError(ChecksumRangeActorCompanion->GetError()).c_str());
         StartScrubbingRange(ctx, ScrubbingRangeId);
         return;
     }
@@ -565,8 +567,8 @@ void TMirrorPartitionActor::HandleRangeResynced(
     }
 
     LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Range %s resync finished: %s %s",
-        DiskId.c_str(),
+        "%s Range %s resync finished: %s %s",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(msg->Range).c_str(),
         FormatError(msg->GetError()).c_str(),
         ToString(msg->Status).c_str());
@@ -605,8 +607,8 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Adding lagging agent: %s, replica index: %u",
-        DiskId.c_str(),
+        "%s Adding lagging agent: %s, replica index: %u",
+        LogTitle.GetWithTime().c_str(),
         msg->LaggingAgent.GetAgentId().c_str(),
         replicaIndex);
 
@@ -626,7 +628,8 @@ void TMirrorPartitionActor::HandleAddLaggingAgent(
                 BlockDigestGenerator,
                 State.GetRWClientId(),
                 State.GetReplicaActorsBypassingProxies()[replicaIndex],
-                SelfId()));
+                SelfId(),
+                LogTitle.GetChild(GetCycleCount())));
         State.SetLaggingReplicaProxy(replicaIndex, proxyActorId);
     }
 
@@ -648,8 +651,8 @@ void TMirrorPartitionActor::HandleRemoveLaggingAgent(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Removing lagging agent: %s, replica index: %u",
-        DiskId.c_str(),
+        "%s Removing lagging agent: %s, replica index: %u",
+        LogTitle.GetWithTime().c_str(),
         msg->LaggingAgent.GetAgentId().Quote().c_str(),
         msg->LaggingAgent.GetReplicaIndex());
 
@@ -674,8 +677,8 @@ void TMirrorPartitionActor::HandleInconsistentDiskAgent(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Disable multi-agent writes due to bad response from %s.",
-        DiskId.c_str(),
+        "%s Disable multi-agent writes due to bad response from %s.",
+        LogTitle.GetWithTime().c_str(),
         msg->AgentId.Quote().c_str());
 
     ReportDiskAgentInconsistentMultiWriteResponse(
@@ -718,8 +721,8 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
     LOG_WARN(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] %s tag added for disk",
-        DiskId.c_str(),
+        "%s %s tag added for disk",
+        LogTitle.GetWithTime().c_str(),
         IntermediateWriteBufferTagName);
 }
 
@@ -752,8 +755,8 @@ void TMirrorPartitionActor::HandleLockAndDrainRange(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Range %s is locked for writing requests",
-        DiskId.c_str(),
+        "%s Range %s is locked for writing requests",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(msg->Range).c_str());
 }
 
@@ -768,8 +771,8 @@ void TMirrorPartitionActor::HandleReleaseRange(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "[%s] Range %s unlocked for writing requests",
-        DiskId.c_str(),
+        "%s Range %s unlocked for writing requests",
+        LogTitle.GetWithTime().c_str(),
         DescribeRange(msg->Range).c_str());
 }
 

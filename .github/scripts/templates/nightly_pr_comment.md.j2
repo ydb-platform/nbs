@@ -1,0 +1,22 @@
+{{ comment_marker }}
+> [!TIP]
+> Nightly workflows are **{{ workflow_status }}**.
+
+{% if collector_url -%}
+Collector: [nightly-builds job]({{ collector_url }})
+
+{% endif -%}
+{% for run in runs -%}
+- {{ run.icon }} {{ run.workflow }} - `{{ run.status }}`
+{% endfor -%}
+{% if summaries %}
+
+Summaries:
+{% for summary in summaries -%}
+`{{ summary.get("label", "summary") }}`
+{{ summary.summary_markdown }}
+{% endfor -%}
+{% if omitted_summary_count > 0 -%}
+- ... and {{ omitted_summary_count }} more summaries
+{% endif -%}
+{% endif -%}

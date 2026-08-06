@@ -298,7 +298,6 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
     localRequest->SetCheckpointId(request->GetCheckpointId());
     localRequest->SetSessionId(request->GetSessionId());
     localRequest->SetBlockSize(StorageBlockSize);
-    localRequest->BlockSize = StorageBlockSize;
 
     auto response = std::make_shared<NProto::TReadBlocksResponse>();
 
@@ -443,7 +442,6 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
     localRequest->SetSessionId(request->GetSessionId());
     localRequest->SetBlockSize(StorageBlockSize);
     localRequest->BlocksCount = localBlocksCount;
-    localRequest->BlockSize = StorageBlockSize;
     if (request->ChecksumsSize() > 0) {
         localRequest->MutableChecksums()->CopyFrom(request->GetChecksums());
     }

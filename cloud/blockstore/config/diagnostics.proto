@@ -42,20 +42,21 @@ message TVolumePerfThreshold
 ////////////////////////////////////////////////////////////////////////////////
 // Volume performance measurements settings
 
-message TOperationCoefficients
-{
-    optional uint32 Iops = 1;
-    optional uint64 Bandwidth = 2;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-// Volume performance measurements settings
-
 message TVolumePerfSettings
 {
-    optional TOperationCoefficients Write = 1;
-    optional TOperationCoefficients Read = 2;
+    optional NCloud.NProto.TPerformanceProfile Write = 1;
+    optional NCloud.NProto.TPerformanceProfile Read = 2;
     optional uint32 CriticalFactor = 3;
+
+    // Multiplier that applies to volume's performance profile limits.
+    optional double ThrottlerOvercommit = 4;
+
+    // Minimum effective limits for write/read. After applying clamping by the
+    // volume performance profile (optionally scaled by ThrottlerOvercommit),
+    // the resulting IOPS/BW will not go below these values.
+    optional NCloud.NProto.TPerformanceProfile MinWrite = 5;
+    optional NCloud.NProto.TPerformanceProfile MinRead = 6;
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -272,4 +273,8 @@ message TDiagnosticsConfig
 
     // Enables passing trace id to blobstorage.
     optional bool PassTraceIdToBlobstorage = 58;
+
+    // Makes VolumeInfo stats for endpoints durable by pinning the VolumeInfo
+    // object (not removed by InactiveClientsTimeout while the endpoint exists)
+    optional bool EnableDurableVolumeInfo = 59;
 }

@@ -8,7 +8,6 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
-    cloud/blockstore/libs/rdma/iface
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
@@ -35,6 +34,7 @@ PEERDIR(
     cloud/storage/core/libs/hive_proxy
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/user_stats
+    cloud/storage/core/libs/rdma/iface
 
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/util

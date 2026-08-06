@@ -8,6 +8,12 @@ import yatest.common
 import yatest.common.network
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
+from .common import (
+    get_chardev_reconnect,
+    get_qemu_bios,
+    get_virtiofs_migration,
+    is_arm as is_arm_host,
+)
 from .qmp import QmpClient
 
 logger = logging.getLogger(__name__)
@@ -70,7 +76,7 @@ class QemuException(Exception):
 
 class Qemu:
     def __init__(self,
-                 qemu_kmv,
+                 qemu_kvm,
                  qemu_firmware,
                  rootfs,
                  kernel,
@@ -86,7 +92,11 @@ class Qemu:
                  inst_index=0,
                  shared_nic_port=0,
                  use_virtiofs_server=False,
-                 num_request_queues=1):
+                 num_request_queues=1,
+                 is_arm=None,
+                 chardev_reconnect=None,
+                 virtiofs_migration=None,
+                 qemu_bios=None):
 
         self.ssh_port = 0
         self.qmp = None
@@ -94,8 +104,12 @@ class Qemu:
         self.seqno = 0
         self.qemu_bin = None
 
-        self.qemu_kmv = qemu_kmv
+        self.qemu_kvm = qemu_kvm
         self.qemu_firmware = qemu_firmware
+        self.is_arm = is_arm_host() if is_arm is None else is_arm
+        self.qemu_bios = qemu_bios
+        if self.qemu_bios is None:
+            self.qemu_bios = get_qemu_bios(self.is_arm)
         self.rootfs = rootfs
         self.kernel = kernel
         self.kcmdline = kcmdline
@@ -105,6 +119,15 @@ class Qemu:
         self.virtio = virtio
         self.qemu_options = qemu_options
         self.num_request_queues = num_request_queues
+
+        if chardev_reconnect is None:
+            chardev_reconnect = get_chardev_reconnect()
+        if virtiofs_migration is None:
+            virtiofs_migration = get_virtiofs_migration()
+
+        self.chardev_reconnect_option = f",reconnect={chardev_reconnect}" if chardev_reconnect else ""
+        self.virtiofs_migration_option = f",migration={virtiofs_migration}" if virtiofs_migration else ""
+
         self.virtio_options = self._get_virtio_options(self.virtio, vhost_socket)
         self.enable_kvm = enable_kvm
         self.backup_rootfs = backup_rootfs
@@ -143,11 +166,15 @@ class Qemu:
         if vhost_socket is None:
             raise QemuException("Cannot find nfs vhost socket path")
 
-        cmd = ["-chardev",
-               "socket,id=vhost0,path={},reconnect=1".format(vhost_socket)]
-        cmd += ["-device",
-                "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,num-request-queues=%s,queue-size=512,migration=external"
-                % self.num_request_queues]
+        cmd = [
+            "-chardev",
+            f"socket,id=vhost0,path={vhost_socket}{self.chardev_reconnect_option}",
+        ]
+        cmd += [
+            "-device",
+            "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,"
+            f"num-request-queues={self.num_request_queues},queue-size=512{self.virtiofs_migration_option}",
+        ]
         return cmd
 
     def _get_virtioblk_options(self, vhost_socket):
@@ -183,7 +210,7 @@ class Qemu:
             logger.info("migrate_status {}".format(json.dumps(status)))
 
         if status['status'] != "completed":
-            raise self.QemuException(status['status'])
+            raise QemuException(status['status'])
 
         self.qmp.close()
         self.qemu_bin.kill()
@@ -210,8 +237,10 @@ class Qemu:
             status = self.qmp.command("query-status")
         self.qmp.command("cont")
 
-    def migrate(self, id, vhost_socket):
+    def migrate(self, id, vhost_socket, before_restore=None):
         self._save_to_file()
+        if before_restore:
+            before_restore()
         self._restore_from_file(id, vhost_socket)
         self.seqno += 1
 
@@ -222,7 +251,7 @@ class Qemu:
         self.qmp_socket = create_qmp_socket()
 
         cmd = [
-            self.qemu_kmv,
+            self.qemu_kvm,
             "-nodefaults",
             "-msg", "timestamp=on",
             "-smp", str(self.proc),
@@ -239,6 +268,12 @@ class Qemu:
             "-L", self.qemu_firmware,
             "-qmp", "unix:{},server,nowait".format(self.qmp_socket),
         ]
+
+        if self.qemu_bios:
+            cmd += ["-bios", self.qemu_bios]
+
+        if self.is_arm:
+            cmd += ["-machine", "virt"]
 
         if self.shared_nic_port:
             nic_mac = "52:54:00:12:56:{:02x}".format(self.inst_index)
@@ -268,10 +303,15 @@ class Qemu:
 
         for tag, path, vhost_socket in self.mount_paths:
             if self.use_virtiofs_server:
-                cmd += ["-chardev",
-                        "socket,id={},path={},reconnect=1".format(tag, vhost_socket)]
-                cmd += ["-device",
-                        "vhost-user-fs-pci,chardev={},id=vhost-user-{},tag={},queue-size=512,migration=external".format(tag, tag, tag)]
+                cmd += [
+                    "-chardev",
+                    f"socket,id={tag},path={vhost_socket}{self.chardev_reconnect_option}",
+                ]
+                cmd += [
+                    "-device",
+                    f"vhost-user-fs-pci,chardev={tag},id=vhost-user-{tag},tag={tag},"
+                    f"queue-size=512{self.virtiofs_migration_option}",
+                ]
             else:
                 cmd += ["-virtfs",
                         "local,path={path},mount_tag={tag},security_model=none".format(tag=tag, path=path)]
@@ -314,7 +354,22 @@ class Qemu:
             **daemon_log_files(prefix="qemu-bin", id=0, cwd=yatest.common.output_path()))
         self.qemu_bin.start()
 
-        self.qmp = QmpClient(self.qmp_socket)
+        try:
+            self.qmp = QmpClient(
+                self.qmp_socket,
+                vm_proc=self.qemu_bin.daemon.process,
+            )
+        except Exception:
+            logger.exception("Failed to initialize QMP; killing qemu")
+            try:
+                self.qemu_bin.kill()
+            except Exception:
+                logger.exception("Failed to kill qemu after QMP initialization failure")
+            finally:
+                # A failed start must not make a later call return the pid of a
+                # dead or only partially initialized process.
+                self.qemu_bin = None
+            raise
 
         return self.qemu_bin.daemon.process.pid
 

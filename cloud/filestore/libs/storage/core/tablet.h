@@ -2,6 +2,9 @@
 
 #include "public.h"
 
+#include "cpu_timer.h"
+#include "tablet_tx_rescheduler.h"
+
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 
@@ -93,12 +96,17 @@ class TTabletBase
     : public NKikimr::NTabletFlatExecutor::TTabletExecutedFlat
 {
 public:
-    TTabletBase(const NActors::TActorId& owner,
-                NKikimr::TTabletStorageInfoPtr storage)
+    TTabletBase(
+            const NActors::TActorId& owner,
+            NKikimr::TTabletStorageInfoPtr storage,
+            ITxReschedulerPtr txRescheduler)
         : TTabletExecutedFlat(storage.Get(), owner, NewMiniKQLFactory())
+        , TxRescheduler(std::move(txRescheduler))
     {}
 
 protected:
+    ITxReschedulerPtr TxRescheduler;
+
     template <typename TTx>
     class TTransaction final
         : public ITransactionBase
@@ -148,6 +156,27 @@ protected:
 
                 Args.Clear();
                 Args.OnRestart();
+
+                // Reschedules the transaction from PrepareTx assuming the
+                // rescheduler was triggered during PrepareTx() call.
+                if (Y_UNLIKELY(
+                        Self->TxRescheduler &&
+                        Self->TxRescheduler->IsTriggered()))
+                {
+                    Self->TxRescheduler->Reset();
+                    LOG_DEBUG(
+                        ctx,
+                        T::LogComponent,
+                        "[%lu] Forced reschedule of %s (gen: %u, step: %u, "
+                        "random seed=%lu)",
+                        Self->TabletID(),
+                        TTx::Name,
+                        Generation,
+                        Step,
+                        Self->TxRescheduler->GetSeed());
+                    tx.Reschedule();
+                }
+
                 return false;
             }
 
@@ -246,6 +275,7 @@ protected:
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
             Args& args)                                                        \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             return target.PrepareTx_##name(ctx, tx, args);                     \
         }                                                                      \
                                                                                \
@@ -256,6 +286,7 @@ protected:
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
             Args& args)                                                        \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             target.ExecuteTx_##name(ctx, tx, args);                            \
         }                                                                      \
                                                                                \
@@ -265,6 +296,7 @@ protected:
             const NActors::TActorContext& ctx,                                 \
             Args& args)                                                        \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             target.CompleteAndUpdateState(ctx, args);                          \
             if constexpr (std::is_base_of_v<TErrorAware, Args>) {              \
                 if (args.CommitIdOverflow) {                                   \
@@ -306,7 +338,7 @@ protected:
 //
 // This macro also provides TryExecuteTx function that will run the whole
 // transaction and call CompleteTx_ if it was successful.
-#define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbType, dbIfaceType)      \
+#define FILESTORE_IMPLEMENT_RO_TRANSACTION(name, ns, dbIfaceType)              \
     struct T##name                                                             \
     {                                                                          \
         using TArgs = ns::T##name;                                             \
@@ -322,9 +354,11 @@ protected:
             NKikimr::NTabletFlatExecutor::TTransactionContext& tx,             \
             ns::T##name& args)                                                 \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             if (target.ValidateTx_##name(ctx, args)) {                         \
-                dbType db(tx.DB, args.NodeUpdates);                            \
-                return target.PrepareTx_##name(ctx, db, args);                 \
+                auto db = target.CreateIndexTabletDatabaseProxy(               \
+                    tx.DB, args.NodeUpdates);                                  \
+                return target.PrepareTx_##name(ctx, *db, args);                \
             }                                                                  \
             return true;                                                       \
         }                                                                      \
@@ -345,6 +379,7 @@ protected:
             const NActors::TActorContext& ctx,                                 \
             ns::T##name& args)                                                 \
         {                                                                      \
+            TCPUUsageTimerGuard t(target.AccessCPUUsageTimer());               \
             target.CompleteAndUpdateState(ctx, args);                          \
         }                                                                      \
     };                                                                         \

@@ -4,25 +4,20 @@
 #include <cloud/filestore/libs/client/probes.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 
+#include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/datetime/base.h>
-#include <util/folder/dirut.h>
-#include <util/folder/path.h>
 #include <util/generic/guid.h>
-#include <util/stream/file.h>
-#include <util/string/strip.h>
 #include <util/system/env.h>
 #include <util/system/fs.h>
-#include <util/system/hostname.h>
 #include <util/system/sysstat.h>
-
-#include <filesystem>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -34,37 +29,25 @@ namespace {
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(1);
 
-const TString DefaultConfigFile = "/Berkanavt/nfs-server/cfg/nfs-client.txt";
+const TString DefaultServerConfigFile = "/Berkanavt/nfs-server/cfg/nfs-client.txt";
+const TString DefaultVhostConfigFile = "/Berkanavt/nfs-vhost/cfg/nfs-client.txt";
+const TString DefaultVhostLocalConfigFile =
+    "/Berkanavt/nfs-vhost/cfg/nfs-client-local.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nfs-server/cfg/nfs-iam.txt";
-const TString DefaultIamTokenFile = "~/.nfs-client/iam-token";
 
-////////////////////////////////////////////////////////////////////////////////
-
-TString GetIamTokenFromFile(const TString& iamTokenFile)
+ICertificateProviderPtr CreateClientCertificateProvider(
+    const TClientConfigPtr& config)
 {
-    auto path = TFsPath(iamTokenFile).RealPath();
-    TFile file;
-    try {
-        file = TFile(
-            path.GetPath(),
-            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-    } catch (...) {
-        return {};
-    }
+    TVector<NCloud::TCertificateFiles> certPathList {
+        {
+            .PrivateKeyPath = config->GetCertPrivateKeyFile(),
+            .CertChainPath = config->GetCertFile()
+        }
+    };
 
-    auto stats = std::filesystem::status(
-            std::filesystem::path(path.GetPath().c_str()));
-    auto perms = stats.permissions();
-
-    Y_ENSURE(
-        (perms & std::filesystem::perms::others_all) == std::filesystem::perms::none,
-        TStringBuilder() << "bad Mode: " << static_cast<ui32>(perms));
-
-    if (!file.IsOpen()) {
-        return {};
-    }
-
-    return Strip(TFileInput(file).ReadAll());
+    return CreateStaticCertificateProvider(
+        config->GetRootCertsFile(),
+        std::move(certPathList));
 }
 
 }   // namespace
@@ -78,7 +61,7 @@ TCommand::TCommand()
 
     Opts.AddLongOption("verbose")
         .OptionalArgument("STR")
-        .DefaultValue("warn")
+        .DefaultValue("info")
         .StoreResult(&VerboseLevel);
 
     Opts.AddLongOption("mon-address")
@@ -112,16 +95,15 @@ TCommand::TCommand()
     Opts.AddLongOption("skip-cert-verification", "skip server certificate verification")
         .StoreTrue(&SkipCertVerification);
 
-    Opts.AddLongOption("iam-token-file", "path to iam token")
-        .RequiredArgument("STR")
-        .StoreResult(&IamTokenFile);
-
     Opts.AddLongOption("config")
         .Help(TStringBuilder()
             << "config file name. Default is "
-            << DefaultConfigFile)
-        .RequiredArgument("STR")
-        .DefaultValue(DefaultConfigFile)
+            << DefaultServerConfigFile
+            << " and "
+            << DefaultVhostConfigFile
+            << " and "
+            << DefaultVhostLocalConfigFile)
+        .OptionalArgument("STR")
         .StoreResult(&ConfigFile);
 
     Opts.AddLongOption("iam-config")
@@ -200,9 +182,24 @@ void TCommand::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
 
+    TString configFile;
+
     NProto::TClientAppConfig appConfig;
-    if (NFs::Exists(ConfigFile)) {
-        ParseFromTextFormat(ConfigFile, appConfig);
+    if (ConfigFile && NFs::Exists(ConfigFile)) {
+        configFile = ConfigFile;
+    } else if (NFs::Exists(DefaultServerConfigFile)) {
+        configFile = DefaultServerConfigFile;
+    } else if (NFs::Exists(DefaultVhostConfigFile)) {
+        configFile = DefaultVhostConfigFile;
+    } else if (NFs::Exists(DefaultVhostLocalConfigFile)) {
+        configFile = DefaultVhostLocalConfigFile;
+    }
+
+    if (configFile) {
+        STORAGE_INFO("Using config file " << configFile);
+        ParseFromTextFormat(configFile, appConfig);
+    } else {
+        STORAGE_WARN("Config file is not found");
     }
 
     auto& config = *appConfig.MutableClientConfig();
@@ -222,7 +219,14 @@ void TCommand::Init()
         config.GetSecurePort() != 0)
     {
         // With TLS on transform localhost into fully qualified domain name.
-        config.SetHost(FQDNHostName());
+        config.SetHost(
+            GetFqdnHostNameWithRetries(
+                [this] (const yexception&) {
+                    STORAGE_ERROR(
+                        "FQDNHostName failed: " << CurrentExceptionMessage()
+                        << "\n");
+                }));
+
     }
     if (SkipCertVerification) {
         config.SetSkipCertVerification(SkipCertVerification);
@@ -230,21 +234,9 @@ void TCommand::Init()
 
     InitIamTokenClient();
 
-    if (!IamTokenFile) {
-        auto& authConfig = appConfig.GetAuthConfig();
-        if (authConfig.HasIamTokenFile()) {
-            IamTokenFile = authConfig.GetIamTokenFile();
-        } else {
-            IamTokenFile = DefaultIamTokenFile;
-        }
-    }
-
     // Do not send token via insecure channel.
     if (config.GetSecurePort() != 0) {
         auto iamToken = GetEnv("IAM_TOKEN");
-        if (!iamToken) {
-            iamToken = GetIamTokenFromFile(IamTokenFile);
-        }
         if (!iamToken) {
             iamToken = GetIamTokenFromClient();
         }
@@ -252,6 +244,8 @@ void TCommand::Init()
     }
 
     ClientConfig = std::make_shared<TClientConfig>(config);
+
+    CertificateProvider = CreateClientCertificateProvider(ClientConfig);
 }
 
 void TCommand::Start()
@@ -267,12 +261,20 @@ void TCommand::Start()
     if (Monitoring) {
         Monitoring->Start();
     }
+
+    if (CertificateProvider) {
+        CertificateProvider->Start();
+    }
 }
 
 void TCommand::Stop()
 {
     if (IamClient) {
         IamClient->Stop();
+    }
+
+    if (CertificateProvider) {
+        CertificateProvider->Stop();
     }
 
     if (Monitoring) {
@@ -350,7 +352,10 @@ void TFileStoreServiceCommand::Init()
         Timer,
         Scheduler,
         CreateRetryPolicy(ClientConfig),
-        CreateFileStoreClient(ClientConfig, Logging));
+        CreateFileStoreClient(
+            ClientConfig,
+            Logging,
+            CertificateProvider));
 }
 
 void TFileStoreServiceCommand::Start()
@@ -454,6 +459,7 @@ NProto::TNodeAttr TFileStoreCommand::ResolveNode(
     }
 
     auto request = CreateRequest<NProto::TGetNodeAttrRequest>();
+    request->MutableHeaders()->SetDisableMultiTabletForwarding(false);
     request->SetNodeId(parentNodeId);
     request->SetName(std::move(name));
 
@@ -572,7 +578,10 @@ void TEndpointCommand::Init()
         Timer,
         Scheduler,
         CreateRetryPolicy(ClientConfig),
-        CreateEndpointManagerClient(ClientConfig, Logging));
+        CreateEndpointManagerClient(
+            ClientConfig,
+            Logging,
+            CreateClientCertificateProvider(ClientConfig)));
 }
 
 void TEndpointCommand::Start()

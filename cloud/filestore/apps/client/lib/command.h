@@ -18,6 +18,7 @@
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/public.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
@@ -48,6 +49,7 @@ protected:
     ui32 MonitoringPort = 0;
     ui32 MonitoringThreads = 0;
     IMonitoringServicePtr Monitoring;
+    ICertificateProviderPtr CertificateProvider;
 
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
@@ -57,7 +59,6 @@ protected:
     ui32 SecurePort = 0;
     TString ServerUnixSocketPath;
     bool SkipCertVerification = false;
-    TString IamTokenFile;
     TString ConfigFile;
 
     TClientConfigPtr ClientConfig;
@@ -72,6 +73,8 @@ protected:
     std::shared_ptr<TClientFactories> ClientFactories;
     TString IamConfigFile;
     NCloud::NIamClient::IIamTokenClientPtr IamClient;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TCommand();
@@ -116,7 +119,7 @@ protected:
                 return TErrorResponse(E_REJECTED, "request cancelled");
             }
         }
-        return extract ? future.ExtractValue() : future.GetValue();
+        return extract ? UnsafeExtractValue(future) : future.GetValue();
     }
 
 private:

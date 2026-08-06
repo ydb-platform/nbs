@@ -1,11 +1,11 @@
 #pragma once
 
 #include <cloud/blockstore/config/rdma.pb.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <util/system/hostname.h>
 
@@ -45,7 +45,7 @@ IStartablePtr CreateBlockstoreServerRdmaTarget(
     TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
     ILoggingServicePtr logging,
     ITraceSerializerPtr traceSerializer,
-    NRdma::IServerPtr server,
+    NCloud::NStorage::NRdma::IServerPtr server,
     IBlockStorePtr service);
 
 }   // namespace NCloud::NBlockStore::NStorage

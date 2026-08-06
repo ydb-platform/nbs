@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
+#include <cloud/storage/core/libs/grpc/public.h>
+
 #include <library/cpp/logger/log.h>
 
 #include <util/network/socket.h>
@@ -33,6 +35,7 @@ private:
     IVolumeStatsPtr VolumeStats;
     IServerStatsPtr ClientStats;
     IStatsUpdaterPtr StatsUpdater;
+    ICertificateProviderPtr CertificateProvider;
 
     NClient::IClientPtr Client;
     IBlockStorePtr ClientEndpoint;

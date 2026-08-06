@@ -347,7 +347,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         request->SetStartIndex(startIndex);
         request->SetBlocksCount(blocksCount);
         request->SetCheckpointId(TString());
-        request->BlockSize = blockSize;
+        request->SetBlockSize(blockSize);
         request->Sglist = TGuardedSgList(std::move(sglist));
 
         return session->ReadBlocksLocal(
@@ -379,7 +379,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         request->SetStartIndex(startIndex);
         request->BlocksCount = blocksCount;
-        request->BlockSize = blockSize;
+        request->SetBlockSize(blockSize);
         request->Sglist = TGuardedSgList(std::move(sglist));
 
         return session->WriteBlocksLocal(

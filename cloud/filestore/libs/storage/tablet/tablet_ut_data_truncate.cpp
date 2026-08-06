@@ -326,6 +326,103 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Truncate)
         UNIT_ASSERT_VALUES_EQUAL(data, TString(5_KB, 0));
     }
 
+    Y_UNIT_TEST(ShouldNotReadTruncatedFreshBytesAfterFlushBytesStarts)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // aligned
+        tablet.WriteData(handle, 0, 8_KB, '1');
+        // non aligned for each block
+        tablet.WriteData(handle, 0, 1_KB, '2');
+        tablet.WriteData(handle, 4_KB, 1_KB, '2');
+
+        TString expected(8_KB, '1');
+
+        TString pattern(1_KB, '2');
+        memcpy(&expected[0], &pattern[0], 1_KB);
+        memcpy(&expected[4_KB], &pattern[0], 1_KB);
+
+        //
+        // Blocking FlushBytes completion.
+        //
+
+        TAutoPtr<IEventHandle> writeBlob;
+        env.GetRuntime().SetEventFilter([&](auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvWriteBlobRequest: {
+                    writeBlob = event.Release();
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        tablet.SendFlushBytesRequest();
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(writeBlob);
+
+        //
+        // Now previous FreshBytes should be stored in FreshBytes chunk 0 and
+        // new FreshBytes deletion markers should go to chunk 1.
+        //
+        // Truncating the file to generate a FreshBytes deletion marker.
+        //
+
+        TSetNodeAttrArgs args(id);
+        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+
+        args.SetSize(4_KB);
+        tablet.SetNodeAttr(args);
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, GetNodeAttrs(tablet, id).GetSize());
+
+        //
+        // And restoring the size of the file back to 8KiB - the last 4KiB
+        // should contain zeroes now.
+        //
+
+        args.SetSize(8_KB);
+        tablet.SetNodeAttr(args);
+        UNIT_ASSERT_VALUES_EQUAL(8_KB, GetNodeAttrs(tablet, id).GetSize());
+
+        auto data = ReadData(tablet, handle, 4_KB, 0);
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(expected.substr(0, 4_KB), data);
+
+        data = ReadData(tablet, handle, 4_KB, 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(TString(4_KB, 0), data);
+
+        //
+        // After FlushBytes completion the read should keep returning the same
+        // data.
+        //
+
+        env.GetRuntime().Send(writeBlob, nodeIdx);
+        auto response = tablet.RecvFlushBytesResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        data = ReadData(tablet, handle, 4_KB, 0);
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(expected.substr(0, 4_KB), data);
+
+        data = ReadData(tablet, handle, 4_KB, 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(TString(4_KB, 0), data);
+    }
+
     Y_UNIT_TEST(ShouldTruncateEmptyFile)
     {
         TTestEnv env;

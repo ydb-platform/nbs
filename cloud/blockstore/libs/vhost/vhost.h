@@ -29,6 +29,7 @@ struct TVhostRequest
     ui64 Length = 0;
     TGuardedSgList SgList;
     void* Cookie = nullptr;
+    bool IsDiscardRequest = false;
 
     virtual ~TVhostRequest() = default;
 
@@ -62,6 +63,7 @@ struct IVhostQueue
         ui64 blocksCount,
         ui32 queuesCount,
         bool discardEnabled,
+        bool writeZeroesEnabled,
         ui32 optimalIoSize,
         void* cookie,
         const TVhostCallbacks& callbacks) = 0;

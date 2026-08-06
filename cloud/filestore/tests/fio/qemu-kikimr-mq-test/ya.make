@@ -9,7 +9,7 @@ ENDIF()
 DEPENDS(
     cloud/filestore/tools/analytics/profile_tool
     cloud/storage/core/tools/testing/fio/bin
-    cloud/storage/core/tools/testing/qemu/image-plucky
+    cloud/storage/core/tools/testing/qemu/image-noble
 )
 
 PEERDIR(
@@ -28,8 +28,9 @@ SET(
 )
 
 SET(QEMU_VIRTIO fs)
-SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-plucky/rootfs.img)
+SET(QEMU_ROOTFS cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img)
 SET(QEMU_NUM_REQUEST_QUEUES 8)
+SET(QEMU_MEM 6G)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)

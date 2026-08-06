@@ -61,42 +61,58 @@ ui16 ProcessCompactionCounter(ui32 value)
     return value > Max<ui16>() ? Max<ui16>() : value;
 }
 
+ui32 UnifyBlobOffsetAndCompactionRangeCount(
+    ui16 blobOffset,
+    ui8 compactionRangeCount)
+{
+    return ui32{compactionRangeCount} << 16 | blobOffset;
+}
+
+std::pair<ui16, ui8> SplitBlobOffsetAndCompactionRangeCount(ui32 value)
+{
+    return {value & Max<ui16>(), value >> 16};
+}
+
+#define COUNT_METHOD_CALL Counters(__PRETTY_FUNCTION__);
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::InitSchema()
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::InitSchema()
 {
     Materialize<TPartitionSchema>();
 
-    TSchemaInitializer<TPartitionSchema::TTables>::InitStorage(Database.Alter());
+    TSchemaInitializer<TPartitionSchema::TTables>::InitStorage(
+        Database.Alter());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteMeta(const NProto::TPartitionMeta& meta)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteMeta(
+    const NProto::TPartitionMeta& meta)
 {
     using TTable = TPartitionSchema::Meta;
 
-    Table<TTable>()
-        .Key(1)
-        .Update(NIceDb::TUpdate<TTable::PartitionMeta>(meta));
+    Table<TTable>().Key(1).Update(NIceDb::TUpdate<TTable::PartitionMeta>(meta));
 }
 
-bool TPartitionDatabase::ReadMeta(TMaybe<NProto::TPartitionMeta>& meta)
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadMeta(
+    TMaybe<NProto::TPartitionMeta>& meta)
 {
     using TTable = TPartitionSchema::Meta;
 
-    auto it = Table<TTable>()
-        .Key(1)
-        .Select();
+    auto it = Table<TTable>().Key(1).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     if (it.IsValid()) {
-        meta = it.GetValue<TTable::PartitionMeta>();
+        meta = it.template GetValue<TTable::PartitionMeta>();
     }
 
     return true;
@@ -104,7 +120,8 @@ bool TPartitionDatabase::ReadMeta(TMaybe<NProto::TPartitionMeta>& meta)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteFreshBlock(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteFreshBlock(
     ui32 blockIndex,
     ui64 commitId,
     TBlockDataRef blockContent)
@@ -113,25 +130,27 @@ void TPartitionDatabase::WriteFreshBlock(
 
     Table<TTable>()
         .Key(blockIndex, ReverseCommitId(commitId))
-        .Update(NIceDb::TUpdate<TTable::BlockContent>(blockContent.AsStringBuf()));
+        .Update(
+            NIceDb::TUpdate<TTable::BlockContent>(blockContent.AsStringBuf()));
 }
 
-void TPartitionDatabase::DeleteFreshBlock(ui32 blockIndex, ui64 commitId)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteFreshBlock(
+    ui32 blockIndex,
+    ui64 commitId)
 {
     using TTable = TPartitionSchema::FreshBlocksIndex;
 
-    Table<TTable>()
-        .Key(blockIndex, ReverseCommitId(commitId))
-        .Delete();
+    Table<TTable>().Key(blockIndex, ReverseCommitId(commitId)).Delete();
 }
 
-bool TPartitionDatabase::ReadFreshBlocks(TVector<TOwningFreshBlock>& blocks)
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadFreshBlocks(
+    TVector<TOwningFreshBlock>& blocks)
 {
     using TTable = TPartitionSchema::FreshBlocksIndex;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -140,11 +159,12 @@ bool TPartitionDatabase::ReadFreshBlocks(TVector<TOwningFreshBlock>& blocks)
     while (it.IsValid()) {
         blocks.emplace_back(
             TBlock{
-                it.GetValue<TTable::BlockIndex>(),
-                ReverseCommitId(it.GetValue<TTable::CommitId>()),
-                true  // isStoredInDb
-            },
-            TString{it.GetValue<TTable::BlockContent>()}
+                it.template GetValue<TTable::BlockIndex>(),
+                ReverseCommitId(it.template GetValue<TTable::CommitId>()),
+                true   // isStoredInDb
+            },         /* meta */
+            TString{it.template GetValue<TTable::BlockContent>()}, /* content */
+            TPartialBlobId{}                                       /* blobId*/
         );
 
         if (!it.Next()) {
@@ -157,54 +177,72 @@ bool TPartitionDatabase::ReadFreshBlocks(TVector<TOwningFreshBlock>& blocks)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteMixedBlock(TMixedBlock block)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteMixedBlock(TMixedBlock block)
 {
     using TTable = TPartitionSchema::MixedBlocksIndex;
+
+    const ui32 blobOffsetAndCompactionRangeCount =
+        UnifyBlobOffsetAndCompactionRangeCount(
+            block.BlobOffset,
+            block.CompactionRangeCount);
 
     if (block.CommitId == block.BlobId.CommitId()) {
         Table<TTable>()
             .Key(block.BlockIndex, ReverseCommitId(block.CommitId))
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
-                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset));
+                NIceDb::TUpdate<TTable::BlobOffsetAndCompactionRangeCount>(
+                    blobOffsetAndCompactionRangeCount));
     } else {
         Table<TTable>()
             .Key(block.BlockIndex, ReverseCommitId(block.CommitId))
             .Update(
                 NIceDb::TUpdate<TTable::BlobCommitId>(block.BlobId.CommitId()),
                 NIceDb::TUpdate<TTable::BlobId>(block.BlobId.UniqueId()),
-                NIceDb::TUpdate<TTable::BlobOffset>(block.BlobOffset));
+                NIceDb::TUpdate<TTable::BlobOffsetAndCompactionRangeCount>(
+                    blobOffsetAndCompactionRangeCount));
     }
 }
 
-void TPartitionDatabase::WriteMixedBlocks(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteMixedBlocks(
     const TPartialBlobId& blobId,
-    const TVector<ui32>& blocks)
+    const TVector<ui32>& blocks,
+    ui8 compactionRangeCount)
 {
     using TTable = TPartitionSchema::MixedBlocksIndex;
 
     ui16 blobOffset = 0;
     for (ui32 blockIndex: blocks) {
+        const ui32 blobOffsetAndCompactionRangeCount =
+            UnifyBlobOffsetAndCompactionRangeCount(
+                blobOffset,
+                compactionRangeCount);
+
         Table<TTable>()
             .Key(blockIndex, ReverseCommitId(blobId.CommitId()))
             .Update(
                 NIceDb::TUpdate<TTable::BlobId>(blobId.UniqueId()),
-                NIceDb::TUpdate<TTable::BlobOffset>(blobOffset));
+                NIceDb::TUpdate<TTable::BlobOffsetAndCompactionRangeCount>(
+                    blobOffsetAndCompactionRangeCount));
         ++blobOffset;
     }
 }
 
-void TPartitionDatabase::DeleteMixedBlock(ui32 blockIndex, ui64 commitId)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteMixedBlock(
+    ui32 blockIndex,
+    ui64 commitId)
 {
     using TTable = TPartitionSchema::MixedBlocksIndex;
 
-    Table<TTable>()
-        .Key(blockIndex, ReverseCommitId(commitId))
-        .Delete();
+    Table<TTable>().Key(blockIndex, ReverseCommitId(commitId)).Delete();
 }
 
-bool TPartitionDatabase::FindMixedBlocks(
-    IBlocksIndexVisitor& visitor,
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindMixedBlocks(
+    IMixedBlocksIndexVisitor& visitor,
     const TBlockRange32& readRange,
     bool precharge,
     ui64 maxCommitId)
@@ -212,8 +250,8 @@ bool TPartitionDatabase::FindMixedBlocks(
     using TTable = TPartitionSchema::MixedBlocksIndex;
 
     auto query = Table<TTable>()
-        .GreaterOrEqual(readRange.Start)
-        .LessOrEqual(readRange.End);
+                     .GreaterOrEqual(readRange.Start)
+                     .LessOrEqual(readRange.End);
 
     if (precharge && !query.Precharge()) {
         return false;
@@ -228,24 +266,35 @@ bool TPartitionDatabase::FindMixedBlocks(
     }
 
     while (it.IsValid()) {
-        ui32 blockIndex = it.GetValue<TTable::BlockIndex>();
+        ui32 blockIndex = it.template GetValue<TTable::BlockIndex>();
         Y_DEBUG_ABORT_UNLESS(blockIndex >= readRange.Start);
 
         if (blockIndex > readRange.End) {
-            break;  // out of range
+            break;   // out of range
         }
 
-        ui64 commitId = ReverseCommitId(it.GetValue<TTable::CommitId>());
+        ui64 commitId =
+            ReverseCommitId(it.template GetValue<TTable::CommitId>());
         if (commitId <= maxCommitId) {
-            ui64 blobCommitId = it.GetValue<TTable::BlobCommitId>();
+            ui64 blobCommitId = it.template GetValue<TTable::BlobCommitId>();
             auto blobId = MakePartialBlobId(
                 blobCommitId ? blobCommitId : commitId,
-                it.GetValue<TTable::BlobId>());
+                it.template GetValue<TTable::BlobId>());
 
-            ui16 blobOffset = it.GetValue<TTable::BlobOffset>();
+            ui32 blobOffsetAndCompactionRangeCount = it.template GetValue<
+                TTable::BlobOffsetAndCompactionRangeCount>();
+            auto [blobOffset, compactionRangeCount] =
+                SplitBlobOffsetAndCompactionRangeCount(
+                    blobOffsetAndCompactionRangeCount);
 
-            if (!visitor.Visit(blockIndex, commitId, blobId, blobOffset)) {
-                return true;    // interrupted
+            if (!visitor.VisitBlock(
+                    blockIndex,
+                    commitId,
+                    blobId,
+                    blobOffset,
+                    compactionRangeCount))
+            {
+                return true;   // interrupted
             }
         }
 
@@ -259,8 +308,9 @@ bool TPartitionDatabase::FindMixedBlocks(
     return true;
 }
 
-bool TPartitionDatabase::FindMixedBlocks(
-    IBlocksIndexVisitor& visitor,
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindMixedBlocks(
+    IMixedBlocksIndexVisitor& visitor,
     const TVector<ui32>& blocks,
     ui64 maxCommitId)
 {
@@ -273,9 +323,9 @@ bool TPartitionDatabase::FindMixedBlocks(
     size_t i = 0;
     for (const auto& readRange: ranges) {
         auto it = Table<TTable>()
-            .GreaterOrEqual(readRange.Start)
-            .LessOrEqual(readRange.End)
-            .Select();
+                      .GreaterOrEqual(readRange.Start)
+                      .LessOrEqual(readRange.End)
+                      .Select();
 
         if (!it.IsReady()) {
             ready = false;
@@ -283,7 +333,7 @@ bool TPartitionDatabase::FindMixedBlocks(
         }
 
         while (it.IsValid()) {
-            ui32 blockIndex = it.GetValue<TTable::BlockIndex>();
+            ui32 blockIndex = it.template GetValue<TTable::BlockIndex>();
             while (blocks[i] < blockIndex) {
                 // skip blocks
                 ++i;
@@ -291,17 +341,30 @@ bool TPartitionDatabase::FindMixedBlocks(
 
             Y_DEBUG_ABORT_UNLESS(blockIndex <= blocks[i]);
             if (blockIndex == blocks[i]) {
-                ui64 commitId = ReverseCommitId(it.GetValue<TTable::CommitId>());
+                ui64 commitId =
+                    ReverseCommitId(it.template GetValue<TTable::CommitId>());
                 if (commitId <= maxCommitId) {
-                    ui64 blobCommitId = it.GetValue<TTable::BlobCommitId>();
+                    ui64 blobCommitId =
+                        it.template GetValue<TTable::BlobCommitId>();
                     auto blobId = MakePartialBlobId(
                         blobCommitId ? blobCommitId : commitId,
-                        it.GetValue<TTable::BlobId>());
+                        it.template GetValue<TTable::BlobId>());
 
-                    ui16 blobOffset = it.GetValue<TTable::BlobOffset>();
+                    ui32 blobOffsetAndCompactionRangeCount =
+                        it.template GetValue<
+                            TTable::BlobOffsetAndCompactionRangeCount>();
+                    auto [blobOffset, compactionRangeCount] =
+                        SplitBlobOffsetAndCompactionRangeCount(
+                            blobOffsetAndCompactionRangeCount);
 
-                    if (!visitor.Visit(blockIndex, commitId, blobId, blobOffset)) {
-                        return true;    // interrupted
+                    if (!visitor.VisitBlock(
+                            blockIndex,
+                            commitId,
+                            blobId,
+                            blobOffset,
+                            compactionRangeCount))
+                    {
+                        return true;   // interrupted
                     }
                 }
             }
@@ -320,8 +383,8 @@ bool TPartitionDatabase::FindMixedBlocks(
     if (!ready) {
         for (const auto& readRange: ranges) {
             auto query = Table<TTable>()
-                .GreaterOrEqual(readRange.Start)
-                .LessOrEqual(readRange.End);
+                             .GreaterOrEqual(readRange.Start)
+                             .LessOrEqual(readRange.End);
 
             query.Precharge();
         }
@@ -330,17 +393,67 @@ bool TPartitionDatabase::FindMixedBlocks(
     return ready;
 }
 
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindMixedBlocks(
+    IMixedBlocksIndexVisitor& visitor,
+    const TVector<TBlock>& blocks)
+{
+    using TTable = TPartitionSchema::MixedBlocksIndex;
+
+    bool ready = true;
+    for (const auto& [blockIndex, commitId, _]: blocks) {
+        auto query =
+            TNiceDb::Table<TTable>().Key(blockIndex, ReverseCommitId(commitId));
+
+        auto it = query.Select();
+
+        if (!it.IsReady()) {
+            query.Precharge();
+            ready = false;
+            continue;
+        }
+
+        if (!it.IsValid()) {
+            continue;
+        }
+
+        ui64 blobCommitId = it.template GetValue<TTable::BlobCommitId>();
+        auto blobId = MakePartialBlobId(
+            blobCommitId ? blobCommitId : commitId,
+            it.template GetValue<TTable::BlobId>());
+
+        ui32 blobOffsetAndCompactionRangeCount =
+            it.template GetValue<TTable::BlobOffsetAndCompactionRangeCount>();
+        auto [blobOffset, compactionRangeCount] =
+            SplitBlobOffsetAndCompactionRangeCount(
+                blobOffsetAndCompactionRangeCount);
+
+        if (!visitor.VisitBlock(
+                blockIndex,
+                commitId,
+                blobId,
+                blobOffset,
+                compactionRangeCount))
+        {
+            return true;   // interrupted
+        }
+    }
+
+    return ready;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteMergedBlocks(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
     const TBlockMask& skipMask)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
-    auto value = Table<TTable>()
-        .Key(blockRange.End, ReverseCommitId(blobId.CommitId()));
+    auto value =
+        Table<TTable>().Key(blockRange.End, ReverseCommitId(blobId.CommitId()));
 
     value.Update(
         NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start),
@@ -352,7 +465,8 @@ void TPartitionDatabase::WriteMergedBlocks(
     }
 }
 
-void TPartitionDatabase::DeleteMergedBlocks(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteMergedBlocks(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange)
 {
@@ -363,8 +477,10 @@ void TPartitionDatabase::DeleteMergedBlocks(
         .Delete();
 }
 
-bool TPartitionDatabase::FindMergedBlocks(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
     IBlocksIndexVisitor& visitor,
+    IBlobsVisitor& blobsVisitor,
     const TBlockRange32& readRange,
     bool precharge,
     ui32 maxBlocksInBlob,
@@ -373,8 +489,8 @@ bool TPartitionDatabase::FindMergedBlocks(
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
     auto query = Table<TTable>()
-        .GreaterOrEqual(readRange.Start)
-        .LessOrEqual(SafeAdd(readRange.End, maxBlocksInBlob));
+                     .GreaterOrEqual(readRange.Start)
+                     .LessOrEqual(SafeAdd(readRange.End, maxBlocksInBlob));
 
     if (precharge && !query.Precharge()) {
         return false;
@@ -390,14 +506,14 @@ bool TPartitionDatabase::FindMergedBlocks(
 
     while (it.IsValid()) {
         auto range = TBlockRange32::MakeClosedInterval(
-            it.GetValue<TTable::RangeStart>(),
-            it.GetValue<TTable::RangeEnd>());
+            it.template GetValue<TTable::RangeStart>(),
+            it.template GetValue<TTable::RangeEnd>());
 
         Y_DEBUG_ABORT_UNLESS(range.End >= readRange.Start);
         Y_DEBUG_ABORT_UNLESS(range.Size() <= maxBlocksInBlob);
 
         if (SafeDistance(readRange.End, range.End) > maxBlocksInBlob) {
-            break;  // out of range
+            break;   // out of range
         }
 
         ui32 start = Max(range.Start, readRange.Start);
@@ -405,20 +521,27 @@ bool TPartitionDatabase::FindMergedBlocks(
 
         // if there is no intersection - just skip range
         if (start <= end) {
-            ui64 commitId = ReverseCommitId(it.GetValue<TTable::CommitId>());
+            ui64 commitId =
+                ReverseCommitId(it.template GetValue<TTable::CommitId>());
             if (commitId <= maxCommitId) {
                 auto blobId = MakePartialBlobId(
                     commitId,
-                    it.GetValue<TTable::BlobId>());
+                    it.template GetValue<TTable::BlobId>());
 
                 const auto holeMask = BlockMaskFromString(
-                    it.GetValueOrDefault<TTable::HoleMask>());
+                    it.template GetValueOrDefault<TTable::HoleMask>());
 
                 const auto skipMask = BlockMaskFromString(
-                    it.GetValueOrDefault<TTable::SkipMask>());
+                    it.template GetValueOrDefault<TTable::SkipMask>());
+
+                if (!blobsVisitor.Visit(range, blobId, skipMask.Count())) {
+                    return true;   // interrupted
+                }
 
                 ui32 skipped = 0;
-                for (ui32 blockIndex = range.Start; blockIndex < start; ++blockIndex) {
+                for (ui32 blockIndex = range.Start; blockIndex < start;
+                     ++blockIndex)
+                {
                     ui16 pos = blockIndex - range.Start;
                     skipped += skipMask.Get(pos);
                 }
@@ -437,8 +560,10 @@ bool TPartitionDatabase::FindMergedBlocks(
                         continue;
                     }
 
-                    if (!visitor.Visit(blockIndex, commitId, blobId, blobOffset)) {
-                        return true;    // interrupted
+                    if (!visitor
+                             .Visit(blockIndex, commitId, blobId, blobOffset))
+                    {
+                        return true;   // interrupted
                     }
                 }
             }
@@ -454,7 +579,41 @@ bool TPartitionDatabase::FindMergedBlocks(
     return true;
 }
 
-bool TPartitionDatabase::FindMergedBlocks(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
+    IBlocksIndexVisitor& visitor,
+    const TBlockRange32& readRange,
+    bool precharge,
+    ui32 maxBlocksInBlob,
+    ui64 maxCommitId)
+{
+    struct TNoOpBlobsVisitor final: public IBlobsVisitor
+    {
+        bool Visit(
+            TBlockRange32 blockRange,
+            const TPartialBlobId& blobId,
+            ui32 skippedBlocksCount) override
+        {
+            Y_UNUSED(blockRange);
+            Y_UNUSED(blobId);
+            Y_UNUSED(skippedBlocksCount);
+            return true;
+        }
+    };
+
+    TNoOpBlobsVisitor noOpBlobsVisitor;
+
+    return FindMergedBlocks(
+        visitor,
+        noOpBlobsVisitor,
+        readRange,
+        precharge,
+        maxBlocksInBlob,
+        maxCommitId);
+}
+
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
     IBlocksIndexVisitor& visitor,
     const TVector<ui32>& blocks,
     ui32 maxBlocksInBlob,
@@ -468,9 +627,9 @@ bool TPartitionDatabase::FindMergedBlocks(
     // read ranges
     for (const auto& readRange: ranges) {
         auto it = Table<TTable>()
-            .GreaterOrEqual(readRange.Start)
-            .LessOrEqual(SafeAdd(readRange.End, maxBlocksInBlob))
-            .Select();
+                      .GreaterOrEqual(readRange.Start)
+                      .LessOrEqual(SafeAdd(readRange.End, maxBlocksInBlob))
+                      .Select();
 
         if (!it.IsReady()) {
             ready = false;
@@ -479,8 +638,8 @@ bool TPartitionDatabase::FindMergedBlocks(
 
         while (it.IsValid()) {
             auto range = TBlockRange32::MakeClosedInterval(
-                it.GetValue<TTable::RangeStart>(),
-                it.GetValue<TTable::RangeEnd>());
+                it.template GetValue<TTable::RangeStart>(),
+                it.template GetValue<TTable::RangeEnd>());
 
             Y_DEBUG_ABORT_UNLESS(range.End >= readRange.Start);
             Y_DEBUG_ABORT_UNLESS(range.Size() <= maxBlocksInBlob);
@@ -490,20 +649,23 @@ bool TPartitionDatabase::FindMergedBlocks(
 
             // if there is no intersection - just skip range
             if (start != end) {
-                ui64 commitId = ReverseCommitId(it.GetValue<TTable::CommitId>());
+                ui64 commitId =
+                    ReverseCommitId(it.template GetValue<TTable::CommitId>());
                 if (commitId <= maxCommitId) {
                     auto blobId = MakePartialBlobId(
                         commitId,
-                        it.GetValue<TTable::BlobId>());
+                        it.template GetValue<TTable::BlobId>());
 
                     const auto holeMask = BlockMaskFromString(
-                        it.GetValueOrDefault<TTable::HoleMask>());
+                        it.template GetValueOrDefault<TTable::HoleMask>());
 
                     const auto skipMask = BlockMaskFromString(
-                        it.GetValueOrDefault<TTable::SkipMask>());
+                        it.template GetValueOrDefault<TTable::SkipMask>());
 
                     ui32 skipped = 0;
-                    for (ui32 blockIndex = range.Start; blockIndex < *start; ++blockIndex) {
+                    for (ui32 blockIndex = range.Start; blockIndex < *start;
+                         ++blockIndex)
+                    {
                         ui16 pos = blockIndex - range.Start;
                         skipped += skipMask.Get(pos);
                     }
@@ -523,7 +685,7 @@ bool TPartitionDatabase::FindMergedBlocks(
                         }
 
                         if (!visitor.Visit(*it, commitId, blobId, blobOffset)) {
-                            return true;    // interrupted
+                            return true;   // interrupted
                         }
                     }
                 }
@@ -542,9 +704,10 @@ bool TPartitionDatabase::FindMergedBlocks(
 
     if (!ready) {
         for (const auto& readRange: ranges) {
-            auto query = Table<TTable>()
-                .GreaterOrEqual(readRange.Start)
-                .LessOrEqual(SafeAdd(readRange.End, maxBlocksInBlob));
+            auto query =
+                Table<TTable>()
+                    .GreaterOrEqual(readRange.Start)
+                    .LessOrEqual(SafeAdd(readRange.End, maxBlocksInBlob));
 
             query.Precharge();
         }
@@ -555,7 +718,8 @@ bool TPartitionDatabase::FindMergedBlocks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteBlobMeta(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteBlobMeta(
     const TPartialBlobId& blobId,
     const NProto::TBlobMeta& blobMeta)
 {
@@ -563,47 +727,47 @@ void TPartitionDatabase::WriteBlobMeta(
 
     Table<TTable>()
         .Key(blobId.CommitId(), blobId.UniqueId())
-        .Update<TTable::BlobMeta>(blobMeta);
+        .template Update<TTable::BlobMeta>(blobMeta);
 }
 
-void TPartitionDatabase::DeleteBlobMeta(const TPartialBlobId& blobId)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteBlobMeta(const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::BlobsIndex;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
-bool TPartitionDatabase::ReadBlobMeta(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadBlobMeta(
     const TPartialBlobId& blobId,
     TMaybe<NProto::TBlobMeta>& meta)
 {
+    COUNT_METHOD_CALL;
     using TTable = TPartitionSchema::BlobsIndex;
 
-    auto it = Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Select();
+    auto it =
+        Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     if (it.IsValid()) {
-        meta = it.GetValue<TTable::BlobMeta>();
+        meta = it.template GetValue<TTable::BlobMeta>();
     }
 
     return true;
 }
 
-bool TPartitionDatabase::ReadNewBlobs(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadNewBlobs(
     TVector<TPartialBlobId>& blobIds,
     ui64 minCommitId)
 {
     using TTable = TPartitionSchema::BlobsIndex;
 
-    auto query = Table<TTable>()
-        .GreaterOrEqual(minCommitId);
+    auto query = Table<TTable>().GreaterOrEqual(minCommitId);
 
     if (!query.Precharge()) {
         return false;
@@ -618,8 +782,8 @@ bool TPartitionDatabase::ReadNewBlobs(
 
     while (it.IsValid()) {
         auto blobId = MakePartialBlobId(
-            it.GetValue<TTable::CommitId>(),
-            it.GetValue<TTable::BlobId>());
+            it.template GetValue<TTable::CommitId>(),
+            it.template GetValue<TTable::BlobId>());
 
         // we are not interested in deletion markers here
         if (!IsDeletionMarker(blobId)) {
@@ -635,7 +799,8 @@ bool TPartitionDatabase::ReadNewBlobs(
     return true;
 }
 
-void TPartitionDatabase::WriteBlockMask(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteBlockMask(
     const TPartialBlobId& blobId,
     const TBlockMask& blockMask)
 {
@@ -647,15 +812,17 @@ void TPartitionDatabase::WriteBlockMask(
             NIceDb::TUpdate<TTable::BlockMask>(BlockMaskAsString(blockMask)));
 }
 
-bool TPartitionDatabase::ReadBlockMask(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadBlockMask(
     const TPartialBlobId& blobId,
     TMaybe<TBlockMask>& blockMask)
 {
+    COUNT_METHOD_CALL;
     using TTable = TPartitionSchema::BlobsIndex;
 
     auto it = Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Select<TTable::BlockMask>();
+                  .Key(blobId.CommitId(), blobId.UniqueId())
+                  .template Select<TTable::BlockMask>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -663,8 +830,35 @@ bool TPartitionDatabase::ReadBlockMask(
 
     if (it.IsValid()) {
         blockMask = BlockMaskFromString(
-            it.GetValueOrDefault<TTable::BlockMask>());
+            it.template GetValueOrDefault<TTable::BlockMask>());
     }
+
+    return true;
+}
+
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadBlobInfo(
+    const TPartialBlobId& blobId,
+    TMaybe<TBlockMask>& blockMask,
+    TMaybe<NProto::TBlobMeta>& blobMeta)
+{
+    COUNT_METHOD_CALL;
+    using TTable = TPartitionSchema::BlobsIndex;
+
+    auto it =
+        Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    if (!it.IsValid()) {
+        return true;
+    }
+
+    blockMask =
+        BlockMaskFromString(it.template GetValueOrDefault<TTable::BlockMask>());
+    blobMeta = it.template GetValue<TTable::BlobMeta>();
 
     return true;
 }
@@ -676,8 +870,9 @@ enum class EIndexProcResult
     Interrupted,
 };
 
+template <typename TCounters>
 static EIndexProcResult FindBlocksInBlobIndex(
-    TPartitionDatabase& db,
+    TPartitionDatabaseImpl<TCounters>& db,
     IExtendedBlocksIndexVisitor& visitor,
     const ui32 maxBlocksInBlob,
     const TPartialBlobId& blobId,
@@ -685,15 +880,13 @@ static EIndexProcResult FindBlocksInBlobIndex(
     const TBlockMask& blockMask,
     const TBlockRange32& blockRange)
 {
-    auto visit = [&] (
-        ui32 blockIndex,
-        ui64 commitId,
-        const TPartialBlobId& blobId,
-        ui16 blobOffset)
+    auto visit = [&](ui32 blockIndex,
+                     ui64 commitId,
+                     const TPartialBlobId& blobId,
+                     ui16 blobOffset)
     {
-        ui16 maskedBlobOffset = blockMask.Get(blobOffset)
-            ? InvalidBlobOffset
-            : blobOffset;
+        ui16 maskedBlobOffset =
+            blockMask.Get(blobOffset) ? InvalidBlobOffset : blobOffset;
 
         return visitor.Visit(
             blockIndex,
@@ -723,7 +916,8 @@ static EIndexProcResult FindBlocksInBlobIndex(
             }
         } else {
             // each block has its own commitId
-            Y_ABORT_UNLESS(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
+            Y_ABORT_UNLESS(
+                mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
 
             ui16 blobOffset = 0;
             for (size_t i = 0; i < mixedBlocks.BlocksSize(); ++i) {
@@ -737,7 +931,6 @@ static EIndexProcResult FindBlocksInBlobIndex(
                 }
                 ++blobOffset;
             }
-
         }
     } else if (blobMeta.HasMergedBlocks()) {
         const auto& mergedBlocks = blobMeta.GetMergedBlocks();
@@ -755,8 +948,7 @@ static EIndexProcResult FindBlocksInBlobIndex(
             ui16 BlobOffset = InvalidBlobOffset;
         };
 
-        struct TVisitor final
-            : public IBlocksIndexVisitor
+        struct TVisitor final: public IBlocksIndexVisitor
         {
             TBlockRange32 Intersection;
             TPartialBlobId BlobId;
@@ -767,8 +959,7 @@ static EIndexProcResult FindBlocksInBlobIndex(
                 : Intersection(intersection)
                 , BlobId(blobId)
                 , Marks(intersection.Size())
-            {
-            }
+            {}
 
             bool Visit(
                 ui32 blockIndex,
@@ -816,16 +1007,15 @@ static EIndexProcResult FindBlocksInBlobIndex(
     return EIndexProcResult::Ok;
 }
 
-bool TPartitionDatabase::FindBlocksInBlobsIndex(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindBlocksInBlobsIndex(
     IExtendedBlocksIndexVisitor& visitor,
     const ui32 maxBlocksInBlob,
     const TBlockRange32& blockRange)
 {
     using TTable = TPartitionSchema::BlobsIndex;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -833,13 +1023,13 @@ bool TPartitionDatabase::FindBlocksInBlobsIndex(
 
     while (it.IsValid()) {
         auto blobId = MakePartialBlobId(
-            it.GetValue<TTable::CommitId>(),
-            it.GetValue<TTable::BlobId>());
+            it.template GetValue<TTable::CommitId>(),
+            it.template GetValue<TTable::BlobId>());
 
-        auto blobMeta = it.GetValue<TTable::BlobMeta>();
+        auto blobMeta = it.template GetValue<TTable::BlobMeta>();
 
         auto blockMask = BlockMaskFromString(
-            it.GetValueOrDefault<TTable::BlockMask>());
+            it.template GetValueOrDefault<TTable::BlockMask>());
 
         const auto res = FindBlocksInBlobIndex(
             *this,
@@ -851,9 +1041,12 @@ bool TPartitionDatabase::FindBlocksInBlobsIndex(
             blockRange);
 
         switch (res) {
-            case EIndexProcResult::Ok: break;
-            case EIndexProcResult::NotReady: return false;
-            case EIndexProcResult::Interrupted: return true;
+            case EIndexProcResult::Ok:
+                break;
+            case EIndexProcResult::NotReady:
+                return false;
+            case EIndexProcResult::Interrupted:
+                return true;
         }
 
         if (!it.Next()) {
@@ -864,26 +1057,26 @@ bool TPartitionDatabase::FindBlocksInBlobsIndex(
     return true;
 }
 
-bool TPartitionDatabase::FindBlocksInBlobsIndex(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindBlocksInBlobsIndex(
     IExtendedBlocksIndexVisitor& visitor,
     const ui32 maxBlocksInBlob,
     const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::BlobsIndex;
 
-    auto it = Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Select();
+    auto it =
+        Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     if (it.IsValid()) {
-        auto blobMeta = it.GetValue<TTable::BlobMeta>();
+        auto blobMeta = it.template GetValue<TTable::BlobMeta>();
 
         auto blockMask = BlockMaskFromString(
-            it.GetValueOrDefault<TTable::BlockMask>());
+            it.template GetValueOrDefault<TTable::BlockMask>());
 
         const auto res = FindBlocksInBlobIndex(
             *this,
@@ -895,16 +1088,21 @@ bool TPartitionDatabase::FindBlocksInBlobsIndex(
             TBlockRange32::Max());
 
         switch (res) {
-            case EIndexProcResult::Ok: break;
-            case EIndexProcResult::NotReady: return false;
-            case EIndexProcResult::Interrupted: return true;
+            case EIndexProcResult::Ok:
+                break;
+            case EIndexProcResult::NotReady:
+                return false;
+            case EIndexProcResult::Interrupted:
+                return true;
         }
     }
 
     return true;
 }
 
-TPartitionDatabase::EBlobIndexScanProgress TPartitionDatabase::FindBlocksInBlobsIndex(
+template <typename TCounters>
+typename TPartitionDatabaseImpl<TCounters>::EBlobIndexScanProgress
+TPartitionDatabaseImpl<TCounters>::FindBlocksInBlobsIndex(
     IBlobsIndexVisitor& visitor,
     TPartialBlobId startBlobId,
     TPartialBlobId finalBlobId,
@@ -913,8 +1111,8 @@ TPartitionDatabase::EBlobIndexScanProgress TPartitionDatabase::FindBlocksInBlobs
     using TTable = TPartitionSchema::BlobsIndex;
 
     auto q = Table<TTable>()
-        .GreaterOrEqual(startBlobId.CommitId(), startBlobId.UniqueId())
-        .LessOrEqual(finalBlobId.CommitId(), finalBlobId.UniqueId());
+                 .GreaterOrEqual(startBlobId.CommitId(), startBlobId.UniqueId())
+                 .LessOrEqual(finalBlobId.CommitId(), finalBlobId.UniqueId());
 
     if (!q.Precharge(prechargeRowCount)) {
         return EBlobIndexScanProgress::NotReady;
@@ -930,16 +1128,15 @@ TPartitionDatabase::EBlobIndexScanProgress TPartitionDatabase::FindBlocksInBlobs
     auto result = EBlobIndexScanProgress::Completed;
 
     while (it.IsValid()) {
-        auto commitId = it.GetValue<TTable::CommitId>();
-        auto uniqId = it.GetValue<TTable::BlobId>();
+        auto commitId = it.template GetValue<TTable::CommitId>();
+        auto uniqId = it.template GetValue<TTable::BlobId>();
 
-        auto blobMeta = it.GetValue<TTable::BlobMeta>();
+        auto blobMeta = it.template GetValue<TTable::BlobMeta>();
 
-        auto blockMask =
-            it.GetValueOrDefault<TTable::BlockMask>();
+        auto blockMask = it.template GetValueOrDefault<TTable::BlockMask>();
 
         if (!visitor.Visit(commitId, uniqId, blobMeta, blockMask)) {
-            break ; // interrupted
+            break;   // interrupted
         }
 
         if (!it.Next()) {
@@ -954,7 +1151,8 @@ TPartitionDatabase::EBlobIndexScanProgress TPartitionDatabase::FindBlocksInBlobs
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteCompactionMap(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteCompactionMap(
     ui32 blockIndex,
     ui32 blobCount,
     ui32 blockCount)
@@ -967,16 +1165,16 @@ void TPartitionDatabase::WriteCompactionMap(
         .Update(NIceDb::TUpdate<TTable::BlockCount>(blockCount));
 }
 
-void TPartitionDatabase::DeleteCompactionMap(ui32 blockIndex)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteCompactionMap(ui32 blockIndex)
 {
     using TTable = TPartitionSchema::CompactionMap;
 
-    Table<TTable>()
-        .Key(blockIndex)
-        .Delete();
+    Table<TTable>().Key(blockIndex).Delete();
 }
 
-bool TPartitionDatabase::ReadCompactionMap(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadCompactionMap(
     TVector<TCompactionCounter>& compactionMap)
 {
     using TTable = TPartitionSchema::CompactionMap;
@@ -989,10 +1187,12 @@ bool TPartitionDatabase::ReadCompactionMap(
 
     while (it.IsValid()) {
         compactionMap.emplace_back(
-            it.GetValue<TTable::BlockIndex>(),
+            it.template GetValue<TTable::BlockIndex>(),
             TRangeStat{
-                ProcessCompactionCounter(it.GetValue<TTable::BlobCount>()),
-                ProcessCompactionCounter(it.GetValue<TTable::BlockCount>()),
+                ProcessCompactionCounter(
+                    it.template GetValue<TTable::BlobCount>()),
+                ProcessCompactionCounter(
+                    it.template GetValue<TTable::BlockCount>()),
                 0,
                 0,
                 0,
@@ -1008,7 +1208,8 @@ bool TPartitionDatabase::ReadCompactionMap(
     return true;
 }
 
-bool TPartitionDatabase::ReadCompactionMap(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadCompactionMap(
     TBlockRange32 rangeBlockIndices,
     TVector<TCompactionCounter>& compactionMap)
 {
@@ -1021,15 +1222,17 @@ bool TPartitionDatabase::ReadCompactionMap(
     }
 
     while (it.IsValid()) {
-        const auto blockIndex = it.GetValue<TTable::BlockIndex>();
+        const auto blockIndex = it.template GetValue<TTable::BlockIndex>();
         if (blockIndex > rangeBlockIndices.End) {
             break;
         }
         compactionMap.emplace_back(
             blockIndex,
             TRangeStat{
-                ProcessCompactionCounter(it.GetValue<TTable::BlobCount>()),
-                ProcessCompactionCounter(it.GetValue<TTable::BlockCount>()),
+                ProcessCompactionCounter(
+                    it.template GetValue<TTable::BlobCount>()),
+                ProcessCompactionCounter(
+                    it.template GetValue<TTable::BlockCount>()),
                 0,
                 0,
                 0,
@@ -1047,7 +1250,8 @@ bool TPartitionDatabase::ReadCompactionMap(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteUsedBlocks(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteUsedBlocks(
     const TCompressedBitmap::TSerializedChunk& chunk)
 {
     using TTable = TPartitionSchema::UsedBlocks;
@@ -1057,30 +1261,31 @@ void TPartitionDatabase::WriteUsedBlocks(
         .Update(NIceDb::TUpdate<TTable::Bitmap>(chunk.Data));
 }
 
-bool TPartitionDatabase::ReadUsedBlocks(TCompressedBitmap& usedBlocks)
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadUsedBlocks(
+    TCompressedBitmap& usedBlocks)
 {
-    return ReadUsedBlocksRaw([&usedBlocks](TCompressedBitmap::TSerializedChunk chunk) {
-        usedBlocks.Update(chunk);
-    });
+    return ReadUsedBlocksRaw(
+        [&usedBlocks](TCompressedBitmap::TSerializedChunk chunk)
+        { usedBlocks.Update(chunk); });
 }
 
-bool TPartitionDatabase::ReadUsedBlocksRaw(std::function<void(TCompressedBitmap::TSerializedChunk)> onChunk)
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadUsedBlocksRaw(
+    std::function<void(TCompressedBitmap::TSerializedChunk)> onChunk)
 {
     using TTable = TPartitionSchema::UsedBlocks;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        onChunk({
-            it.GetValue<TTable::RangeIndex>(),
-            it.GetValue<TTable::Bitmap>()
-        });
+        onChunk(
+            {it.template GetValue<TTable::RangeIndex>(),
+             it.template GetValue<TTable::Bitmap>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1092,7 +1297,8 @@ bool TPartitionDatabase::ReadUsedBlocksRaw(std::function<void(TCompressedBitmap:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteLogicalUsedBlocks(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteLogicalUsedBlocks(
     const TCompressedBitmap::TSerializedChunk& chunk)
 {
     using TTable = TPartitionSchema::LogicalUsedBlocks;
@@ -1102,7 +1308,8 @@ void TPartitionDatabase::WriteLogicalUsedBlocks(
         .Update(NIceDb::TUpdate<TTable::Bitmap>(chunk.Data));
 }
 
-bool TPartitionDatabase::ReadLogicalUsedBlocks(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadLogicalUsedBlocks(
     TCompressedBitmap& usedBlocks,
     bool& read)
 {
@@ -1110,9 +1317,7 @@ bool TPartitionDatabase::ReadLogicalUsedBlocks(
 
     read = false;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1123,10 +1328,9 @@ bool TPartitionDatabase::ReadLogicalUsedBlocks(
     }
 
     while (it.IsValid()) {
-        usedBlocks.Update({
-            it.GetValue<TTable::RangeIndex>(),
-            it.GetValue<TTable::Bitmap>()
-        });
+        usedBlocks.Update(
+            {it.template GetValue<TTable::RangeIndex>(),
+             it.template GetValue<TTable::Bitmap>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1139,7 +1343,10 @@ bool TPartitionDatabase::ReadLogicalUsedBlocks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteCheckpoint(const TCheckpoint& checkpoint, bool withoutData)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteCheckpoint(
+    const TCheckpoint& checkpoint,
+    bool withoutData)
 {
     using TTable = TPartitionSchema::Checkpoints;
 
@@ -1148,12 +1355,16 @@ void TPartitionDatabase::WriteCheckpoint(const TCheckpoint& checkpoint, bool wit
         .Update(
             NIceDb::TUpdate<TTable::CommitId>(checkpoint.CommitId),
             NIceDb::TUpdate<TTable::IdempotenceId>(checkpoint.IdempotenceId),
-            NIceDb::TUpdate<TTable::DateCreated>(checkpoint.DateCreated.MicroSeconds()),
+            NIceDb::TUpdate<TTable::DateCreated>(
+                checkpoint.DateCreated.MicroSeconds()),
             NIceDb::TUpdate<TTable::Stats>(checkpoint.Stats),
             NIceDb::TUpdate<TTable::DataDeleted>(withoutData));
 }
 
-void TPartitionDatabase::DeleteCheckpoint(const TString& checkpointId, bool deleteOnlyData)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteCheckpoint(
+    const TString& checkpointId,
+    bool deleteOnlyData)
 {
     using TTable = TPartitionSchema::Checkpoints;
 
@@ -1162,30 +1373,27 @@ void TPartitionDatabase::DeleteCheckpoint(const TString& checkpointId, bool dele
             .Key(checkpointId)
             .Update(NIceDb::TUpdate<TTable::DataDeleted>(true));
     } else {
-        Table<TTable>()
-            .Key(checkpointId)
-            .Delete();
+        Table<TTable>().Key(checkpointId).Delete();
     }
 }
 
-bool TPartitionDatabase::ReadCheckpoints(
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadCheckpoints(
     TVector<TCheckpoint>& checkpoints,
     THashMap<TString, ui64>& checkpointId2CommitId)
 {
     using TTable = TPartitionSchema::Checkpoints;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        auto checkpointId = it.GetValue<TTable::CheckpointId>();
-        auto commitId = it.GetValue<TTable::CommitId>();
-        bool isDataDeleted = it.GetValue<TTable::DataDeleted>();
+        auto checkpointId = it.template GetValue<TTable::CheckpointId>();
+        auto commitId = it.template GetValue<TTable::CommitId>();
+        bool isDataDeleted = it.template GetValue<TTable::DataDeleted>();
 
         checkpointId2CommitId.emplace(checkpointId, commitId);
 
@@ -1193,9 +1401,10 @@ bool TPartitionDatabase::ReadCheckpoints(
             checkpoints.emplace_back(
                 checkpointId,
                 commitId,
-                it.GetValue<TTable::IdempotenceId>(),
-                TInstant::MicroSeconds(it.GetValue<TTable::DateCreated>()),
-                it.GetValue<TTable::Stats>());
+                it.template GetValue<TTable::IdempotenceId>(),
+                TInstant::MicroSeconds(
+                    it.template GetValue<TTable::DateCreated>()),
+                it.template GetValue<TTable::Stats>());
         }
 
         if (!it.Next()) {
@@ -1208,7 +1417,8 @@ bool TPartitionDatabase::ReadCheckpoints(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteCleanupQueue(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteCleanupQueue(
     const TPartialBlobId& blobId,
     ui64 commitId)
 {
@@ -1219,7 +1429,8 @@ void TPartitionDatabase::WriteCleanupQueue(
         .Update();
 }
 
-void TPartitionDatabase::DeleteCleanupQueue(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteCleanupQueue(
     const TPartialBlobId& blobId,
     ui64 commitId)
 {
@@ -1230,24 +1441,24 @@ void TPartitionDatabase::DeleteCleanupQueue(
         .Delete();
 }
 
-bool TPartitionDatabase::ReadCleanupQueue(TVector<TCleanupQueueItem>& items)
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadCleanupQueue(
+    TVector<TCleanupQueueItem>& items)
 {
     using TTable = TPartitionSchema::CleanupQueue;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        ui64 commitId = it.GetValue<TTable::DeletionCommitId>();
+        ui64 commitId = it.template GetValue<TTable::DeletionCommitId>();
 
         auto blobId = MakePartialBlobId(
-            it.GetValue<TTable::CommitId>(),
-            it.GetValue<TTable::BlobId>());
+            it.template GetValue<TTable::CommitId>(),
+            it.template GetValue<TTable::BlobId>());
 
         items.emplace_back(blobId, commitId);
 
@@ -1261,31 +1472,31 @@ bool TPartitionDatabase::ReadCleanupQueue(TVector<TCleanupQueueItem>& items)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteGarbageBlob(const TPartialBlobId& blobId)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteGarbageBlob(
+    const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::GarbageBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Update();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Update();
 }
 
-void TPartitionDatabase::DeleteGarbageBlob(const TPartialBlobId& blobId)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteGarbageBlob(
+    const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::GarbageBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
-bool TPartitionDatabase::ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds)
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadGarbageBlobs(
+    TVector<TPartialBlobId>& blobIds)
 {
     using TTable = TPartitionSchema::GarbageBlobs;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1293,8 +1504,8 @@ bool TPartitionDatabase::ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds)
 
     while (it.IsValid()) {
         auto blobId = MakePartialBlobId(
-            it.GetValue<TTable::CommitId>(),
-            it.GetValue<TTable::BlobId>());
+            it.template GetValue<TTable::CommitId>(),
+            it.template GetValue<TTable::BlobId>());
 
         blobIds.push_back(blobId);
 
@@ -1308,7 +1519,8 @@ bool TPartitionDatabase::ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionDatabase::WriteUnconfirmedBlob(
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteUnconfirmedBlob(
     const TPartialBlobId& blobId,
     const TBlobToConfirm& blob)
 {
@@ -1319,37 +1531,36 @@ void TPartitionDatabase::WriteUnconfirmedBlob(
         .Key(blobId.CommitId(), blobId.UniqueId())
         .Update(
             NIceDb::TUpdate<TTable::RangeStart>(blob.BlockRange.Start),
-            NIceDb::TUpdate<TTable::RangeEnd>(blob.BlockRange.End)
-        );
+            NIceDb::TUpdate<TTable::RangeEnd>(blob.BlockRange.End));
 }
 
-void TPartitionDatabase::DeleteUnconfirmedBlob(const TPartialBlobId& blobId)
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteUnconfirmedBlob(
+    const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::UnconfirmedBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
-bool TPartitionDatabase::ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs)
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadUnconfirmedBlobs(
+    TCommitIdToBlobsToConfirm& blobs)
 {
     using TTable = TPartitionSchema::UnconfirmedBlobs;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select();
+    auto it = Table<TTable>().Range().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        auto commitId = it.GetValue<TTable::CommitId>();
-        auto uniqueId = it.GetValue<TTable::BlobId>();
+        auto commitId = it.template GetValue<TTable::CommitId>();
+        auto uniqueId = it.template GetValue<TTable::BlobId>();
         auto blockRange = TBlockRange32::MakeClosedInterval(
-            it.GetValue<TTable::RangeStart>(),
-            it.GetValue<TTable::RangeEnd>());
+            it.template GetValue<TTable::RangeStart>(),
+            it.template GetValue<TTable::RangeEnd>());
 
         blobs[commitId].emplace_back(
             uniqueId,
@@ -1364,5 +1575,10 @@ bool TPartitionDatabase::ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs)
 
     return true;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+template class TPartitionDatabaseImpl<TNoOpCounter>;
+template class TPartitionDatabaseImpl<TMethodCallCounter>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

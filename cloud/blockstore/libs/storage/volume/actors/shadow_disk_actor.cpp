@@ -547,7 +547,7 @@ TShadowDiskActor::TShadowDiskActor(
         TChildLogTitle logTitle,
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticConfig,
-        NRdma::IClientPtr rdmaClient,
+        NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString sourceDiskClientId,

@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
+
 #include <cloud/storage/core/libs/features/features_config.h>
 
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
@@ -32,13 +34,12 @@ class TVolumeBalancerState
         TString Host;
 
         TInstant NextPullAttempt;
-        TDuration PullInterval;
+        TBackoffDelayProvider BackoffDelayProvider;
+        TInstant LastSuccessfulPull;
 
         ui32 SufferCount = 0;
 
-        TVolumeInfo(TDuration pullInterval)
-            : PullInterval(pullInterval)
-        {}
+        TVolumeInfo(TDuration pullInterval);
     };
 
 public:
@@ -61,6 +62,8 @@ private:
 
     const NProto::EVolumePreemptionType InitialVolumePreemptionType;
     NProto::EVolumePreemptionType OverridenVolumePreemptionType;
+
+    TDuration PullDelayResetTimespan;
 
 public:
     TVolumeBalancerState(TStorageConfigPtr storageConfig);

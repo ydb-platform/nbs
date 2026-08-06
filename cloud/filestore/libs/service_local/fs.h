@@ -109,6 +109,8 @@ private:
 
     std::atomic<ui64> XattrVersion = 0;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
 public:
     TLocalFileSystem(
         TLocalFileStoreConfigPtr config,
@@ -133,8 +135,6 @@ public:
 
     FILESTORE_SERVICE_LOCAL_SYNC(FILESTORE_DECLARE_METHOD_SYNC)
     FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_DECLARE_METHOD_ASYNC)
-    FILESTORE_DECLARE_METHOD_ASYNC(ReadDataLocal)
-    FILESTORE_DECLARE_METHOD_ASYNC(WriteDataLocal)
 
 #undef FILESTORE_DECLARE_METHOD_SYNC
 #undef FILESTORE_DECLARE_METHOD_ASYNC

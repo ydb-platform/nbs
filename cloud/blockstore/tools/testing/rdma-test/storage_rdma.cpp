@@ -5,19 +5,21 @@
 
 #include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
 
-#include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <util/datetime/base.h>
 
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
+using namespace NCloud::NStorage;
 
 LWTRACE_USING(BLOCKSTORE_TEST_PROVIDER);
 

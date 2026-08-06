@@ -54,6 +54,15 @@ func (s *CellSelectorMock) SelectCellForLocalDisk(
 	return args.Get(0).(nbs.Client), args.Error(1)
 }
 
+func (s *CellSelectorMock) SelectCellForPlacementGroup(
+	ctx context.Context,
+	zoneID string,
+) (nbs.Client, error) {
+
+	args := s.Called(ctx, zoneID)
+	return args.Get(0).(nbs.Client), args.Error(1)
+}
+
 func (s *CellSelectorMock) SelectCellForFilesystem(
 	ctx context.Context,
 	zoneID string,
@@ -67,4 +76,9 @@ func (s *CellSelectorMock) SelectCellForFilesystem(
 func (s *CellSelectorMock) ZoneContainsCell(zoneID string, cellID string) bool {
 	args := s.Called(zoneID, cellID)
 	return args.Bool(0)
+}
+
+func (s *CellSelectorMock) ResolveCells(zoneID string) ([]string, error) {
+	args := s.Called(zoneID)
+	return args.Get(0).([]string), args.Error(1)
 }

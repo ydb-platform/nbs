@@ -49,7 +49,7 @@ void TIOCompanion::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
     while (auto request = ChannelsState.DequeueIORequest(channel)) {
         auto actorId = NCloud::Register(ctx, std::move(request->Actor));
-        LOG_DEBUG(
+        LOG_TRACE(
             ctx,
             TBlockStoreComponents::PARTITION,
             "%s registered request actor with id [%lu]",
@@ -109,6 +109,35 @@ bool TIOCompanion::HandleRequests(STFUNC_SIG, const NActors::TActorContext& ctx)
             TEvPartitionCommonPrivate::TEvPatchBlobCompleted,
             HandlePatchBlobCompleted,
             ctx);
+
+        default:
+            return false;
+    }
+
+    return true;
+}
+
+bool TIOCompanion::RejectRequests(STFUNC_SIG, const NActors::TActorContext& ctx)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvWriteBlobRequest,
+            RejectWriteBlob,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvReadBlobRequest,
+            RejectReadBlob,
+            ctx);
+
+        HFuncCtx(
+            TEvPartitionCommonPrivate::TEvPatchBlobRequest,
+            RejectPatchBlob,
+            ctx);
+
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteBlobCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted);
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvPatchBlobCompleted);
 
         default:
             return false;

@@ -5,6 +5,7 @@
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -75,6 +76,8 @@ struct TTestEnv
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         TDuration MaxTimedOutDeviceStateDuration = TDuration::Seconds(20);
+        NProto::ERequestSplitterPolicy SplitterPolicy =
+            NProto::ERequestSplitterPolicy::RSP_ENABLE;
 
         TDevices Devices;
     };
@@ -120,6 +123,7 @@ struct TTestEnv
         storageConfig.SetNonReplicatedAgentMaxTimeout(300'000);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(true);
         storageConfig.SetLaggingDeviceTimeoutThreshold(3'000);
+        storageConfig.SetRequestSplitterPolicy(params.SplitterPolicy);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -2141,6 +2145,88 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSendBrokenDeviceNotificationOnTimeout)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            {.MaxTimedOutDeviceStateDuration = TDuration::Seconds(3)});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        env.KillDiskAgent();
+
+        std::optional<TString> brokenDeviceUUID;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvBrokenDeviceNotification)
+                {
+                    auto* msg = event->Get<TEvNonreplPartitionPrivate::
+                                               TEvBrokenDeviceNotification>();
+                    brokenDeviceUUID = msg->DeviceUUID;
+                    return true;
+                }
+                return false;
+            });
+
+        for (int i = 0; i < 4; ++i) {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            client.RecvReadBlocksResponse();
+        }
+
+        UNIT_ASSERT(brokenDeviceUUID.has_value());
+        UNIT_ASSERT_VALUES_EQUAL("vasya", *brokenDeviceUUID);
+    }
+
+    Y_UNIT_TEST(ShouldSendDeviceRecoveredNotificationAfterRecovery)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            {.MaxTimedOutDeviceStateDuration = TDuration::Seconds(3)});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        env.DiskAgentState->ResponseDelay = TDuration::Max();
+
+        std::optional<TString> recoveredDeviceUUID;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvDeviceRecoveredNotification)
+                {
+                    auto* msg =
+                        event->Get<TEvNonreplPartitionPrivate::
+                                       TEvDeviceRecoveredNotification>();
+                    recoveredDeviceUUID = msg->DeviceUUID;
+                    return true;
+                }
+                return false;
+            });
+
+        for (int i = 0; i < 4; ++i) {
+            client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
+            runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            client.RecvReadBlocksResponse();
+        }
+
+        UNIT_ASSERT(!recoveredDeviceUUID.has_value());
+
+        env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(10);
+        client.ReadBlocks(TBlockRange64::WithLength(0, 1024));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(recoveredDeviceUUID.has_value());
+        UNIT_ASSERT_VALUES_EQUAL("vasya", *recoveredDeviceUUID);
+    }
+
     Y_UNIT_TEST(ShouldIgnoreTimeoutsAfterLastSuccessfulRequest)
     {
         TTestBasicRuntime runtime;
@@ -2492,6 +2578,50 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             DescribeRange(range),
             response->Record.FailInfo.FailedRanges[0]);
+    }
+
+    Y_UNIT_TEST(ShouldReportCrossDeviceRequestDetected)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            {.SplitterPolicy =
+                 NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto crossDeviceCounter = counters->GetCounter(
+            "AppCriticalEvents/CrossPartitionRequestDetected",
+            true);
+
+        client.WriteBlocks(TBlockRange64::WithLength(2000, 100), 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, crossDeviceCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotReportCrossDeviceRequestDetectedForSingleDevice)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            {.SplitterPolicy =
+                 NProto::ERequestSplitterPolicy::RSP_ENABLE_WITH_CRIT_EVENT});
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto crossDeviceCounter = counters->GetCounter(
+            "AppCriticalEvents/CrossPartitionRequestDetected",
+            true);
+
+        client.WriteBlocks(TBlockRange64::WithLength(0, 100), 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, crossDeviceCounter->Val());
     }
 }
 

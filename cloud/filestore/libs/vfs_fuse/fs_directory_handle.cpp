@@ -129,18 +129,24 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     size_t size,
     size_t offset,
     const TBufferPtr& content,
-    ui64 attrVersion,
+    ui64 cacheVersion,
     TString cookie)
 {
     size_t end = offset + content->size();
     TDirectoryHandleChunk chunk{
         .Key = end,
         .Index = Index,
-        .DirectoryContent = {content, 0, size}};
+        .DirectoryContent = {
+            .Content = content,
+            .Offset = 0,
+            .Size = size,
+            .CacheVersion = cacheVersion,
+        },
+    };
 
     with_lock (Lock) {
         Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
-        Content[end] = {.Buffer = content, .AttrVersion = attrVersion};
+        Content[end] = {.Buffer = content, .CacheVersion = cacheVersion};
         Cookie = std::move(cookie);
         chunk.Cookie = Cookie;
         chunk.UpdateVersion = ++UpdateVersion;
@@ -155,14 +161,14 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
 {
     size_t end = 0;
     TBufferPtr content = nullptr;
-    ui64 attrVersion = 0;
+    ui64 cacheVersion = 0;
 
     with_lock (Lock) {
         auto it = Content.upper_bound(offset);
         if (it != Content.end()) {
             end = it->first;
             content = it->second.Buffer;
-            attrVersion = it->second.AttrVersion;
+            cacheVersion = it->second.CacheVersion;
         } else if (Cookie) {
             return Nothing();
         }
@@ -179,7 +185,7 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
             .Content = content,
             .Offset = offset,
             .Size = size,
-            .AttrVersion = attrVersion};
+            .CacheVersion = cacheVersion};
     }
 
     return result;
@@ -195,6 +201,14 @@ void TDirectoryHandle::ResetContent()
     }
 }
 
+bool TDirectoryHandle::IsEmpty() const
+{
+    with_lock (Lock) {
+        return Content.empty() && Cookie.empty() && UpdateVersion == 0 &&
+               SerializedSize == BaseSerializedSize;
+    }
+}
+
 TString TDirectoryHandle::GetCookie()
 {
     with_lock (Lock) {
@@ -202,19 +216,36 @@ TString TDirectoryHandle::GetCookie()
     }
 }
 
-size_t TDirectoryHandle::GetSerializedSize() const
+TDirectoryHandleStats TDirectoryHandle::GetStats() const
 {
-    return SerializedSize;
+    with_lock (Lock) {
+        return {
+            .SerializedSize = SerializedSize,
+            .ChunkCount = UpdateVersion + 1,
+        };
+    }
 }
 
-size_t TDirectoryHandle::GetChunkCount() const
-{
-    return UpdateVersion + 1;
-}
-
-void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk)
+void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log)
 {
     Y_ABORT_UNLESS(Index == chunk.Index);
+
+    const size_t chunkSize = chunk.GetSerializedSize();
+    size_t serializedSizeDelta = 0;
+    // The handle already counts BaseSerializedSize for the first chunk.
+    // Add only the extra bytes for the first chunk. Count later chunks in full.
+    if (chunk.UpdateVersion == 0) {
+        Y_ABORT_UNLESS(
+            chunkSize >= BaseSerializedSize,
+            "Chunk size %zu is smaller than base serialized size %zu",
+            chunkSize,
+            BaseSerializedSize);
+        serializedSizeDelta = chunkSize - BaseSerializedSize;
+    } else {
+        serializedSizeDelta = chunkSize;
+    }
+
+    SerializedSize += serializedSizeDelta;
 
     if (chunk.UpdateVersion > UpdateVersion) {
         UpdateVersion = chunk.UpdateVersion;
@@ -222,9 +253,15 @@ void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk)
     }
 
     if (chunk.Key) {
-        Content.emplace(
+        const auto insertResult = Content.emplace(
             chunk.Key.value(),
             std::move(chunk.DirectoryContent.Content));
+        if (!insertResult.second) {
+            STORAGE_WARN(
+                "directory handle " << Index << " already contains chunk key "
+                                    << chunk.Key.value() << ", update version "
+                                    << chunk.UpdateVersion);
+        }
     }
 }
 

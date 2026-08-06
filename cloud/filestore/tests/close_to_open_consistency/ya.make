@@ -17,6 +17,7 @@ SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
 )
+SET(NFS_BS_FAILURE_PROBABILITY 0.001)
 
 SET(QEMU_VIRTIO fs)
 SET(QEMU_INSTANCE_COUNT 2)
@@ -28,5 +29,8 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
+
+DEFAULT(FILESTORE_TABLETS_RESTART_INTERVAL 5)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/tablets-restarter.inc)
 
 END()

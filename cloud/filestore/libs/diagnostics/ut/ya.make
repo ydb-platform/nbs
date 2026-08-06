@@ -7,10 +7,19 @@ SRCS(
     profile_log_events_ut.cpp
     profile_log_ut.cpp
     request_stats_ut.cpp
+    restart_count_ut.cpp
     user_counter_ut.cpp
 )
 
+# Sanitizer builds use the system allocator, so tcmalloc specific counters stay empty
+IF (NOT SANITIZER_TYPE)
+    SRCS(
+        tcmalloc_stats_ut.cpp
+    )
+ENDIF()
+
 PEERDIR(
+    cloud/filestore/libs/diagnostics/metrics
     library/cpp/eventlog/dumper
 )
 

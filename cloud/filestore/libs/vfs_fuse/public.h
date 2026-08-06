@@ -23,7 +23,11 @@ using ICompletionQueuePtr = std::shared_ptr<ICompletionQueue>;
 class THandleOpsQueue;
 using THandleOpsQueuePtr = std::unique_ptr<THandleOpsQueue>;
 
-class TDirectoryHandlesStorage;
-using TDirectoryHandlesStoragePtr = std::unique_ptr<TDirectoryHandlesStorage>;
+class TDirectoryHandleStorage;
+using TDirectoryHandleStoragePtr = std::unique_ptr<TDirectoryHandleStorage>;
+
+class TDirectoryEntryVersionCache;
+using TDirectoryEntryVersionCachePtr =
+    std::shared_ptr<TDirectoryEntryVersionCache>;
 
 }   // namespace NCloud::NFileStore::NFuse

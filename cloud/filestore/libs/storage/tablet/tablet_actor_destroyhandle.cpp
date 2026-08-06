@@ -13,6 +13,8 @@ void TIndexTabletActor::HandleDestroyHandle(
     const TEvService::TEvDestroyHandleRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    using TMethod = TEvService::TDestroyHandleMethod;
+
     if (auto error = IsDataOperationAllowed(); HasError(error)) {
         NCloud::Reply(
             ctx,
@@ -23,18 +25,33 @@ void TIndexTabletActor::HandleDestroyHandle(
         return;
     }
 
-    if (!AcceptRequest<TEvService::TDestroyHandleMethod>(ev, ctx)) {
+    if (!AcceptRequest<TMethod>(ev, ctx, {} /* validator */)) {
         return;
     }
 
     auto* msg = ev->Get();
 
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::DestroyHandle,
+        msg->Record,
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
+
     auto& request = msg->Record;
     auto* handle = FindHandle(request.GetHandle());
     if (!handle || handle->GetSessionId() != GetSessionId(request)) {
+        auto error = MakeError(S_FALSE, "Invalid handle");
         auto response = std::make_unique<TEvService::TEvDestroyHandleResponse>(
-            MakeError(S_FALSE, "Invalid handle"));
+            error);
         NCloud::Reply(ctx, *ev, std::move(response));
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
         return;
     }
 
@@ -44,12 +61,13 @@ void TIndexTabletActor::HandleDestroyHandle(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvService::TDestroyHandleMethod>(*requestInfo);
+    AddInFlightRequest<TMethod>(*requestInfo);
 
     ExecuteTx<TDestroyHandle>(
         ctx,
         std::move(requestInfo),
-        request);
+        request,
+        std::move(profileLogRequest));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72,8 +90,8 @@ bool TIndexTabletActor::PrepareTx_DestroyHandle(
 
     auto commitId = GetCurrentCommitId();
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
-    if (!ReadNode(db, handle->GetNodeId(), commitId, args.Node)) {
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
+    if (!ReadNode(*db, handle->GetNodeId(), commitId, args.Node)) {
         return false;
     }
 
@@ -100,16 +118,16 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
         return;
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
-    DestroyHandle(db, handle);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
+    DestroyHandle(*db, handle);
 
     if (args.Node->Attrs.GetLinks() == 0 && !HasOpenHandles(args.Node->NodeId))
     {
-        auto e = RemoveNode(db, *args.Node, args.Node->MinCommitId, commitId);
+        auto e = RemoveNode(*db, *args.Node, args.Node->MinCommitId, commitId);
 
         if (HasError(e)) {
             WriteOrphanNode(
-                db,
+                *db,
                 TStringBuilder() << "DestroyHandle: " << args.SessionId
                                  << ", Handle: " << args.Request.GetHandle()
                                  << ", RemoveNode: " << args.Node->NodeId
@@ -119,16 +137,31 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
     }
 
     EnqueueTruncateIfNeeded(ctx);
+
+    if (Config->GetTabletUnsafeAsyncDestroyHandleEnabled()) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Async destroy handle: @%lu -> %lu",
+            LogTag.c_str(),
+            args.Node->NodeId,
+            args.Request.GetHandle());
+        CompleteDestroyHandle(ctx, args);
+    }
 }
 
-void TIndexTabletActor::CompleteTx_DestroyHandle(
+void TIndexTabletActor::CompleteDestroyHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroyHandle& args)
 {
+    Y_DEFER {
+        args.Completed = true;
+    };
+
     RemoveInFlightRequest(*args.RequestInfo);
 
     if (!HasError(args.Error)) {
-        Metrics.DestroyHandle.Update(
+        Metrics->DestroyHandle.Update(
             1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
@@ -142,6 +175,24 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
         ctx);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    FinalizeProfileLogRequestInfo(
+        std::move(args.ProfileLogRequest),
+        ctx.Now(),
+        GetFileSystemId(),
+        args.Error,
+        ProfileLog);
+}
+
+void TIndexTabletActor::CompleteTx_DestroyHandle(
+    const TActorContext& ctx,
+    TTxIndexTablet::TDestroyHandle& args)
+{
+    if (args.Completed) {
+        return;
+    }
+
+    CompleteDestroyHandle(ctx, args);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

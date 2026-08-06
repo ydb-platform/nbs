@@ -104,4 +104,24 @@ message TFileSystemConfig
     // Inode entry timeout for regular entries (e.g. files)
     // Only applies if set. Not set by default
     optional uint32 RegularFileEntryTimeout = 31;
+
+    // Enable FUSE_POSIX_ACL on guest (FUSE client)
+    optional bool GuestPosixAclEnabled = 32;
+
+    // Maximum serialized size of one persistent handle.
+    optional uint64 DirectoryHandlesPersistentHandleMaxSize = 33;
+
+    // Allows flushing WriteData requests to the underlying storage in parallel.
+    // This significantly improves flushing performance but an external reader
+    // may observe the effects of newer writes before older ones.
+    // With parallel writes off, only sequential writes will be optimized.
+    optional bool ServerWriteBackCacheFlushWritesInParallelEnabled = 34;
+
+    // Invalidate the xattr cache when a create path returns a newly created
+    // inode. Needed only for backends that may reuse inode ids (local
+    // filestore); not needed for the ydb-based backend.
+    optional bool XAttrCacheInvalidateOnCreateEnabled = 35;
+
+    // Async processing of destroy handle requests only for read only handles.
+    optional bool AsyncDestroyReadOnlyHandleEnabled = 36;
 }

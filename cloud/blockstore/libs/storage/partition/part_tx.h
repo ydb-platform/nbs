@@ -43,6 +43,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(ReadBlocks,                 __VA_ARGS__)                               \
     xxx(AddBlobs,                   __VA_ARGS__)                               \
     xxx(Compaction,                 __VA_ARGS__)                               \
+    xxx(CompactionReadBlobInfo,     __VA_ARGS__)                               \
     xxx(Cleanup,                    __VA_ARGS__)                               \
     xxx(CollectGarbage,             __VA_ARGS__)                               \
     xxx(AddGarbage,                 __VA_ARGS__)                               \
@@ -413,7 +414,7 @@ struct TTxPartition
             ab.Offsets.push_back(blobOffset);
 
             if (keepTrackOfAffectedBlocks) {
-                ab.AffectedBlockIndices.push_back(blockIndex);
+                ab.AffectedBlocks.push_back({ blockIndex, commitId });
                 AffectedBlocks.push_back({ blockIndex, commitId });
             }
         }
@@ -438,17 +439,26 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
         const ui64 CommitId;
         const TCompactionOptions CompactionOptions;
+        const bool SplitCompactionTxEnabled;
 
         TVector<TRangeCompaction> RangeCompactions;
+        TInstant TxStarted;
+
+        THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlockMasks;
+        THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlobMetas;
 
         TCompaction(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
                 TCompactionOptions compactionOptions,
-                const TVector<std::pair<ui32, TBlockRange32>>& ranges)
+                bool splitCompactionTxEnabled,
+                const TVector<std::pair<ui32, TBlockRange32>>& ranges,
+                TInstant txStarted)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , CompactionOptions(compactionOptions)
+            , SplitCompactionTxEnabled(splitCompactionTxEnabled)
+            , TxStarted(txStarted)
         {
             RangeCompactions.reserve(ranges.size());
             for (const auto& range: ranges) {
@@ -461,6 +471,48 @@ struct TTxPartition
             for (auto& range: RangeCompactions) {
                 range.Clear();
             }
+            BlobsToReadBlockMasks.clear();
+            BlobsToReadBlobMetas.clear();
+        }
+    };
+
+    //
+    // CompactionReadBlobInfo
+    //
+
+    struct TCompactionReadBlobInfo
+    {
+        struct TOutputIndex
+        {
+            std::optional<ui32> BlockMaskIndex;
+            std::optional<ui32> BlobMetaIndex;
+        };
+
+        const TRequestInfoPtr RequestInfo;
+        const THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash>
+            BlobsToOutputIndices;
+        const size_t BlockMaskCount;
+        const size_t BlobMetaCount;
+
+        TVector<TBlockMask> BlockMasks;
+        TVector<NProto::TBlobMeta> BlobMetas;
+
+        TCompactionReadBlobInfo(
+                TRequestInfoPtr requestInfo,
+                THashMap<TPartialBlobId, TOutputIndex, TPartialBlobIdHash>
+                    blobsToOutputIndices,
+                size_t blockMaskCount,
+                size_t blobMetaCount)
+            : RequestInfo(std::move(requestInfo))
+            , BlobsToOutputIndices(std::move(blobsToOutputIndices))
+            , BlockMaskCount(blockMaskCount)
+            , BlobMetaCount(blobMetaCount)
+        {}
+
+        void Clear()
+        {
+            BlockMasks.clear();
+            BlobMetas.clear();
         }
     };
 
@@ -478,6 +530,7 @@ struct TTxPartition
             bool Filled = false;
             ui64 MaxCommitId = 0;
         };
+
         TVector<TBlockInfo> BlockInfos;
         ui32 FilledBlockCount = 0;
 
@@ -584,21 +637,42 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
 
         const ui64 CommitId;
-        const TVector<TCleanupQueueItem> CleanupQueue;
+        const bool UseRecreatedBlobMeta;
+        const bool VerifyRecreatedBlobMetasOnCleanup;
+
+        TVector<TCleanupQueueItem> CleanupQueue;
+
+        const bool WithCheckpoint;
+        const ui64 MinCheckpointCommitId;
+        const ui64 MaxCheckpointCommitId;
 
         TVector<NProto::TBlobMeta> BlobsMeta;
 
+        ui64 ReadBlobMetasCount = 0;
+
         TCleanup(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId,
-                TVector<TCleanupQueueItem> cleanupQueue)
+            TRequestInfoPtr requestInfo,
+            ui64 commitId,
+            bool useRecreatedBlobMeta,
+            bool verifyRecreatedBlobMetasOnCleanup,
+            TVector<TCleanupQueueItem> cleanupQueue,
+            bool withCheckpoint,
+            ui64 minCheckpointCommitId,
+            ui64 maxCheckpointCommitId)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
+            , UseRecreatedBlobMeta(useRecreatedBlobMeta)
+            , VerifyRecreatedBlobMetasOnCleanup(
+                  verifyRecreatedBlobMetasOnCleanup)
             , CleanupQueue(std::move(cleanupQueue))
+            , WithCheckpoint(withCheckpoint)
+            , MinCheckpointCommitId(minCheckpointCommitId)
+            , MaxCheckpointCommitId(maxCheckpointCommitId)
         {}
 
         void Clear()
         {
+            ReadBlobMetasCount = 0;
             BlobsMeta.clear();
         }
     };
@@ -826,6 +900,7 @@ struct TTxPartition
     struct TDescribeBlob
     {
         const TRequestInfoPtr RequestInfo;
+        const bool HttpInfo;
 
         const TPartialBlobId BlobId;
 
@@ -841,8 +916,10 @@ struct TTxPartition
 
         TDescribeBlob(
                 TRequestInfoPtr requestInfo,
-                const TPartialBlobId& blobId)
+                const TPartialBlobId& blobId,
+                bool httpInfo)
             : RequestInfo(std::move(requestInfo))
+            , HttpInfo(httpInfo)
             , BlobId(blobId)
         {}
 
@@ -985,60 +1062,49 @@ struct TTxPartition
         const TRequestInfoPtr RequestInfo;
         const ui64 CommitId;
         const TBlockRange32 DescribeRange;
+        const bool IndexOnly;
 
-        struct TBlockMark
+        struct TEmptyMark
         {
-            TBlockMark() = default;
+            ui32 BlockIndex = 0;
+        };
 
-            TBlockMark(
-                    ui32 blockIndex,
-                    ui64 commitId,
-                    TString content)
-                : BlockIndex(blockIndex)
-                , CommitId(commitId)
-                , Content(std::move(content))
-            {}
-
-            TBlockMark(
-                    ui32 blockIndex,
-                    ui64 commitId,
-                    const TPartialBlobId& blobId,
-                    ui16 blobOffset)
-                : BlockIndex(blockIndex)
-                , CommitId(commitId)
-                , BlobId(blobId)
-                , BlobOffset(blobOffset)
-            {}
-
-            bool operator <(const TBlockMark& other) const
-            {
-                return BlobId < other.BlobId ||
-                    (BlobId == other.BlobId && BlobOffset < other.BlobOffset);
-            }
-
+        struct TBlobMark
+        {
             ui32 BlockIndex = 0;
             ui64 CommitId = 0;
             TPartialBlobId BlobId;
             ui16 BlobOffset = 0;
+        };
+
+        struct TFreshMark
+        {
+            ui32 BlockIndex = 0;
+            ui64 CommitId = 0;
+            TPartialBlobId BlobId;
             TString Content;
         };
+
+        using TBlockMark = std::variant<TEmptyMark, TBlobMark, TFreshMark>;
 
         TVector<TBlockMark> Marks;
         bool Interrupted = false;
 
         TDescribeBlocks(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId,
-                const TBlockRange32& describeRange)
+            TRequestInfoPtr requestInfo,
+            ui64 commitId,
+            const TBlockRange32& describeRange,
+            bool indexOnly)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , DescribeRange(describeRange)
-            , Marks(DescribeRange.Size())
+            , IndexOnly(indexOnly)
+            , Marks(DescribeRange.Size(), TEmptyMark{})
         {}
 
         void Clear()
         {
-            std::fill(Marks.begin(), Marks.end(), TBlockMark());
+            std::fill(Marks.begin(), Marks.end(), TEmptyMark());
         }
 
         ui32 GetBlockMarkIndex(ui32 blockIndex)
@@ -1047,28 +1113,50 @@ struct TTxPartition
             return blockIndex - DescribeRange.Start;
         }
 
-        void MarkBlock(
+        static ui64 GetMarkCommitId(const TBlockMark& mark)
+        {
+            return std::visit(
+                [](const auto& m) -> ui64
+                {
+                    using T = std::decay_t<decltype(m)>;
+                    if constexpr (std::is_same_v<T, TEmptyMark>) {
+                        return 0;
+                    } else {
+                        return m.CommitId;
+                    }
+                },
+                mark);
+        }
+
+        void MarkWithFreshBlock(
             ui32 blockIndex,
             ui64 commitId,
+            TPartialBlobId blobId,
             TStringBuf content)
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
-
-            if (mark.CommitId < commitId) {
-                mark = TBlockMark(blockIndex, commitId, TString{content});
+            if (GetMarkCommitId(mark) < commitId) {
+                mark = TFreshMark{
+                    .BlockIndex = blockIndex,
+                    .CommitId = commitId,
+                    .BlobId = blobId,
+                    .Content = TString(content)};
             }
         }
 
-        void MarkBlock(
+        void MarkWithBlob(
             ui32 blockIndex,
             ui64 commitId,
-            const TPartialBlobId& blobId,
+            TPartialBlobId blobId,
             ui16 blobOffset)
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
-
-            if (mark.CommitId < commitId) {
-                mark = TBlockMark(blockIndex, commitId, blobId, blobOffset);
+            if (GetMarkCommitId(mark) < commitId) {
+                mark = TBlobMark{
+                    .BlockIndex = blockIndex,
+                    .CommitId = commitId,
+                    .BlobId = blobId,
+                    .BlobOffset = blobOffset};
             }
         }
     };

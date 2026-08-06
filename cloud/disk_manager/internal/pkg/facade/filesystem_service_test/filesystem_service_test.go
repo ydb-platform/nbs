@@ -60,6 +60,179 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestDeleteExistingFilesystem(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	filesystemID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateFilesystem(
+		reqCtx,
+		&disk_manager.CreateFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-a",
+				FilesystemId: filesystemID,
+			},
+			BlockSize: 4096,
+			Size:      4096000,
+			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
+			CloudId:   "cloud",
+			FolderId:  "folder",
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteFilesystem(
+		reqCtx,
+		&disk_manager.DeleteFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				FilesystemId: filesystemID,
+				ZoneId:       "zone-a",
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDeleteNonExistingFilesystem(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	filesystemID := t.Name() + "_NonExistent"
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.DeleteFilesystem(
+		reqCtx,
+		&disk_manager.DeleteFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				FilesystemId: filesystemID,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	// Should be idempotent.
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteFilesystem(
+		reqCtx,
+		&disk_manager.DeleteFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				FilesystemId: filesystemID,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDeleteFilesystemInCell(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	filesystemID := t.Name()
+	operation, err := client.CreateFilesystem(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-c",
+				FilesystemId: filesystemID,
+			},
+			BlockSize: 4096,
+			Size:      4096000,
+			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
+			CloudId:   "cloud",
+			FolderId:  "folder-with-cells",
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteFilesystem(
+		reqCtx,
+		&disk_manager.DeleteFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-c", // pass zone id, not cell id
+				FilesystemId: filesystemID,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	cellNfsClient := testcommon.NewNfsTestingClient(t, ctx, "zone-c-shard1")
+	defer cellNfsClient.Close()
+
+	_, err = cellNfsClient.CreateSession(
+		ctx,
+		filesystemID,
+		"",
+		true,
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Path not found")
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestResizeNonExistingFilesystemReturnsError(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	filesystemID := t.Name() + "_NonExistent"
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.ResizeFilesystem(
+		reqCtx,
+		&disk_manager.ResizeFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-a",
+				FilesystemId: filesystemID,
+			},
+			Size: 8192000,
+		},
+	)
+	require.Error(t, err)
+	require.Empty(t, operation)
+	require.Contains(t, err.Error(), "no such filesystem")
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 func TestCreateFilesystemInCells(t *testing.T) {
 	ctx := testcommon.NewContext()
 
@@ -112,6 +285,102 @@ func TestCreateFilesystemInCells(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "Path not found")
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestResizeFilesystemInCellsByZoneID(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	filesystemID := t.Name()
+	operation, err := client.CreateFilesystem(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-c",
+				FilesystemId: filesystemID,
+			},
+			BlockSize: 4096,
+			Size:      4096000,
+			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD,
+			CloudId:   "cloud",
+			FolderId:  "folder-with-cells",
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err = client.ResizeFilesystem(
+		reqCtx,
+		&disk_manager.ResizeFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-c",
+				FilesystemId: filesystemID,
+			},
+			Size: 8192000,
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestResizeFilesystem(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	filesystemID := t.Name()
+	operation, err := client.CreateFilesystem(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-a",
+				FilesystemId: filesystemID,
+			},
+			BlockSize: 4096,
+			Size:      4096000,
+			Kind:      disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD,
+			CloudId:   "cloud",
+			FolderId:  "folder",
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err = client.ResizeFilesystem(
+		reqCtx,
+		&disk_manager.ResizeFilesystemRequest{
+			FilesystemId: &disk_manager.FilesystemId{
+				ZoneId:       "zone-a",
+				FilesystemId: filesystemID,
+			},
+			Size: 8192000,
+		},
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
 }

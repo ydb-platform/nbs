@@ -1,6 +1,10 @@
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/core/config.h>
+
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
+
+#include <util/generic/size_literals.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -38,6 +42,18 @@ NProto::TNode CreateAttrs(NProto::ENodeType type, int mode, ui64 size, ui64 uid,
 }
 
 } // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsValidPerformanceProfile(
+    const NProto::TFileStorePerformanceProfile& profile)
+{
+    return profile.GetMaxReadIops()
+        && profile.GetMaxReadBandwidth()
+        && profile.GetMaxPostponedWeight()
+        && profile.GetMaxPostponedTime()
+        && profile.GetDefaultPostponedRequestWeight();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -322,6 +338,53 @@ void Convert(
         l.MaxPostponedTime = TDuration::MilliSeconds(src.GetMaxPostponedTime());
         l.MaxWriteCostMultiplier = src.GetMaxWriteCostMultiplier();
     }
+}
+
+void ApplySoftBackpressureParameters(
+    const TStorageConfig& storageConfig,
+    TDefaultParameters& parameters)
+{
+    const ui64 maxWriteBandwidth =
+        storageConfig.GetSoftBackpressureMaxWriteBandwidth();
+    if (maxWriteBandwidth) {
+        parameters.MaxWriteBandwidth = maxWriteBandwidth * 1_MB;
+    }
+
+    const ui64 maxReadBandwidth =
+        storageConfig.GetSoftBackpressureMaxReadBandwidth();
+    if (maxReadBandwidth) {
+        parameters.MaxReadBandwidth = maxReadBandwidth * 1_MB;
+    }
+
+    const ui32 maxWriteIops =
+        storageConfig.GetSoftBackpressureMaxWriteIops();
+    if (maxWriteIops) {
+        parameters.MaxWriteIops = maxWriteIops;
+    }
+
+    const ui32 maxReadIops =
+        storageConfig.GetSoftBackpressureMaxReadIops();
+    if (maxReadIops) {
+        parameters.MaxReadIops = maxReadIops;
+    }
+}
+
+TThrottlerConfig BuildThrottlerConfig(
+    const TStorageConfig& storageConfig,
+    const NProto::TFileStorePerformanceProfile& performanceProfile)
+{
+    TThrottlerConfig config;
+    if (IsValidPerformanceProfile(performanceProfile)) {
+        Convert(performanceProfile, config);
+    }
+
+    const bool throttlingEnabled =
+        storageConfig.GetThrottlingEnabled() && config.ThrottlingEnabled;
+    if (storageConfig.GetSoftBackpressureEnabled() && !throttlingEnabled) {
+        ApplySoftBackpressureParameters(storageConfig, config.DefaultParameters);
+    }
+
+    return config;
 }
 
 bool IsLockingAllowed(

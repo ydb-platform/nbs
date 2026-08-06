@@ -1,5 +1,6 @@
 #include "tablet.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -400,6 +401,621 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         // check that state is properly updated
         create = tablet.CreateSession("client", "session");
         UNIT_ASSERT_VALUES_EQUAL(create->Record.GetSessionState(), "");
+    }
+
+    Y_UNIT_TEST(ShouldResetSessionInBatches)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(2);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle1 = CreateHandle(tablet, id1);
+        CreateHandle(tablet, id1);
+        tablet.AcquireLock(handle1, 1, 0, 1_KB);
+
+        auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "xxx"));
+        CreateHandle(tablet, id2);
+        CreateHandle(tablet, id2);
+        tablet.UnlinkNode(RootNodeId, "xxx", false);
+
+        auto id3 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "yyy"));
+        CreateHandle(tablet, id3);
+        tablet.UnlinkNode(RootNodeId, "yyy", false);
+
+        auto statsBefore = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(5, statsBefore.GetUsedHandlesCount());
+
+        ui32 commitCount = 0;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<NActors::IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == NKikimr::TEvTablet::EvCommit &&
+                    event->Get<NKikimr::TEvTablet::TEvCommit>()->TabletID ==
+                        tabletId)
+                {
+                    ++commitCount;
+                }
+                return NKikimr::TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        tablet.ResetSession("client", "session", 0, "state");
+
+        env.GetRuntime().SetObserverFunc(
+            NKikimr::TTestActorRuntime::DefaultObserverFunc);
+
+        // 5 handles, 2 per tx => 3 chained transactions
+        UNIT_ASSERT_VALUES_EQUAL(3, commitCount);
+
+        auto statsAfter = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.GetUsedHandlesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.GetUsedLocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            statsBefore.GetUsedNodesCount() - 2,
+            statsAfter.GetUsedNodesCount());
+
+        // check that unlinked nodes are cleaned up
+        tablet.AssertAccessNodeFailed(id2);
+        tablet.AssertAccessNodeFailed(id3);
+
+        // check that handles and locks are invalidated
+        auto lock = tablet.AssertAcquireLockFailed(handle1, 1, 0, 1_KB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_BADHANDLE,
+            lock->Record.GetError().GetCode());
+
+        // check that state is properly returned
+        auto create = tablet.CreateSession("client", "session");
+        UNIT_ASSERT_VALUES_EQUAL("state", create->Record.GetSessionState());
+    }
+
+    Y_UNIT_TEST(ShouldResumeResetSessionInterruptedByReboot)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        for (ui32 i = 0; i < 10; ++i) {
+            CreateHandle(tablet, id);
+        }
+
+        // drop commits after the first 3 to freeze reset progress
+        ui32 commitCount = 0;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<NActors::IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == NKikimr::TEvTablet::EvCommit &&
+                    event->Get<NKikimr::TEvTablet::TEvCommit>()->TabletID ==
+                        tabletId &&
+                    ++commitCount > 3)
+                {
+                    return NKikimr::TTestActorRuntime::EEventAction::DROP;
+                }
+                return NKikimr::TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        tablet.SendResetSessionRequest("client", "session", 0, "state");
+
+        env.GetRuntime().DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&] { return commitCount > 3; }});
+
+        env.GetRuntime().SetObserverFunc(
+            NKikimr::TTestActorRuntime::DefaultObserverFunc);
+
+        tablet.RebootTablet();
+
+        // interrupted reset is rejected upon tablet shutdown
+        auto response = tablet.RecvResetSessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            response->Record.GetError().GetCode());
+
+        tablet.InitSession("client", "session");
+
+        // 3 committed batches => 3 of 10 handles destroyed before the reboot
+        UNIT_ASSERT_VALUES_EQUAL(
+            7,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        // interrupted reset must not update session state
+        auto create = tablet.CreateSession("client", "session");
+        UNIT_ASSERT_VALUES_EQUAL("", create->Record.GetSessionState());
+        UNIT_ASSERT_VALUES_EQUAL(
+            7,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        tablet.ResetSession("client", "session", 0, "state");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        create = tablet.CreateSession("client", "session");
+        UNIT_ASSERT_VALUES_EQUAL("state", create->Record.GetSessionState());
+    }
+
+    Y_UNIT_TEST(ShouldRejectResetSessionInterruptedBySessionRecovery)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        for (ui32 i = 0; i < 10; ++i) {
+            CreateHandle(tablet, id);
+        }
+
+        // hold commits after the first 3 to freeze reset progress
+        ui32 commitCount = 0;
+        TVector<TAutoPtr<NActors::IEventHandle>> heldCommits;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<NActors::IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == NKikimr::TEvTablet::EvCommit &&
+                    event->Get<NKikimr::TEvTablet::TEvCommit>()->TabletID ==
+                        tabletId &&
+                    ++commitCount > 3)
+                {
+                    heldCommits.push_back(std::move(event));
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendResetSessionRequest("client", "session", 0, "state");
+
+        env.GetRuntime().DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&] { return !heldCommits.empty(); }});
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto resetSessionInterrupted = counters->GetCounter(
+            "AppCriticalEvents/ResetSessionInterrupted",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, resetSessionInterrupted->Val());
+
+        // migration: the session is recovered with a newer seq no while
+        // the reset is frozen mid-chain
+        tablet.SendCreateSessionRequest("client", "session", "", 1, false);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        env.GetRuntime().SetEventFilter(
+            NKikimr::TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto& ev: heldCommits) {
+            env.GetRuntime().Send(ev.Release(), nodeIdx);
+        }
+
+        {
+            auto response = tablet.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                response->GetError().GetCode());
+        }
+
+        auto response = tablet.RecvResetSessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            response->Record.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, resetSessionInterrupted->Val());
+
+        // batches 1-4 committed => 4 of 10 handles destroyed
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        // interrupted reset must not update session state
+        auto create = tablet.CreateSession("client", "session", "", 1, false);
+        UNIT_ASSERT_VALUES_EQUAL("", create->Record.GetSessionState());
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        tablet.ResetSession("client", "session", 1, "state");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        create = tablet.CreateSession("client", "session", "", 1, false);
+        UNIT_ASSERT_VALUES_EQUAL("state", create->Record.GetSessionState());
+    }
+
+    Y_UNIT_TEST(ShouldRejectResetSessionInterruptedByDestroySession)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        for (ui32 i = 0; i < 10; ++i) {
+            CreateHandle(tablet, id);
+        }
+
+        // hold commits after the first 3 to freeze destroy progress
+        ui32 commitCount = 0;
+        TVector<TAutoPtr<NActors::IEventHandle>> heldCommits;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<NActors::IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == NKikimr::TEvTablet::EvCommit &&
+                    event->Get<NKikimr::TEvTablet::TEvCommit>()->TabletID ==
+                        tabletId &&
+                    ++commitCount > 3)
+                {
+                    heldCommits.push_back(std::move(event));
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendDestroySessionRequest();
+
+        env.GetRuntime().DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&] { return !heldCommits.empty(); }});
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto resetSessionInterrupted = counters->GetCounter(
+            "AppCriticalEvents/ResetSessionInterrupted",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, resetSessionInterrupted->Val());
+
+        // the reset joins while the destroy is frozen mid-chain, the destroy
+        // wins the race and removes the session from under the reset
+        tablet.SendResetSessionRequest("client", "session", 0, "state");
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        env.GetRuntime().SetEventFilter(
+            NKikimr::TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto& ev: heldCommits) {
+            env.GetRuntime().Send(ev.Release(), nodeIdx);
+        }
+
+        {
+            auto response = tablet.RecvDestroySessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                response->GetError().GetCode());
+        }
+
+        auto response = tablet.RecvResetSessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            response->Record.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, resetSessionInterrupted->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        auto create = tablet.CreateSession("client", "session");
+        UNIT_ASSERT_VALUES_EQUAL("", create->Record.GetSessionState());
+    }
+
+    Y_UNIT_TEST(ShouldDestroySessionInBatches)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(2);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id1 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle1 = CreateHandle(tablet, id1);
+        CreateHandle(tablet, id1);
+        tablet.AcquireLock(handle1, 1, 0, 1_KB);
+
+        auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "xxx"));
+        CreateHandle(tablet, id2);
+        CreateHandle(tablet, id2);
+        tablet.UnlinkNode(RootNodeId, "xxx", false);
+
+        auto id3 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "yyy"));
+        CreateHandle(tablet, id3);
+        tablet.UnlinkNode(RootNodeId, "yyy", false);
+
+        auto statsBefore = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(5, statsBefore.GetUsedHandlesCount());
+
+        ui32 commitCount = 0;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<NActors::IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == NKikimr::TEvTablet::EvCommit &&
+                    event->Get<NKikimr::TEvTablet::TEvCommit>()->TabletID ==
+                        tabletId)
+                {
+                    ++commitCount;
+                }
+                return NKikimr::TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        tablet.DestroySession();
+
+        env.GetRuntime().SetObserverFunc(
+            NKikimr::TTestActorRuntime::DefaultObserverFunc);
+
+        // 5 handles, 2 per tx => 3 chained transactions
+        UNIT_ASSERT_VALUES_EQUAL(3, commitCount);
+
+        auto statsAfter = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.GetUsedHandlesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.GetUsedLocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.GetUsedSessionsCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            statsBefore.GetUsedNodesCount() - 2,
+            statsAfter.GetUsedNodesCount());
+
+        // check that unlinked nodes are cleaned up
+        tablet.InitSession("client", "session");
+        tablet.AssertAccessNodeFailed(id2);
+        tablet.AssertAccessNodeFailed(id3);
+    }
+
+    Y_UNIT_TEST(ShouldResumeDestroySessionInterruptedByReboot)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        for (ui32 i = 0; i < 10; ++i) {
+            CreateHandle(tablet, id);
+        }
+
+        // drop commits after the first 3 to freeze destroy progress
+        ui32 commitCount = 0;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<NActors::IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == NKikimr::TEvTablet::EvCommit &&
+                    event->Get<NKikimr::TEvTablet::TEvCommit>()->TabletID ==
+                        tabletId &&
+                    ++commitCount > 3)
+                {
+                    return NKikimr::TTestActorRuntime::EEventAction::DROP;
+                }
+                return NKikimr::TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        tablet.SendDestroySessionRequest();
+
+        env.GetRuntime().DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&] { return commitCount > 3; }});
+
+        env.GetRuntime().SetObserverFunc(
+            NKikimr::TTestActorRuntime::DefaultObserverFunc);
+
+        tablet.RebootTablet();
+
+        // interrupted destroy is rejected upon tablet shutdown
+        auto response = tablet.RecvDestroySessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            response->GetError().GetCode());
+
+        tablet.InitSession("client", "session");
+
+        // 3 committed batches => 3 of 10 handles destroyed before the reboot
+        UNIT_ASSERT_VALUES_EQUAL(
+            7,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        tablet.DestroySession();
+
+        auto stats = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedHandlesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedSessionsCount());
+    }
+
+    Y_UNIT_TEST(ShouldRejectDestroySessionInterruptedBySessionRecovery)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        for (ui32 i = 0; i < 10; ++i) {
+            CreateHandle(tablet, id);
+        }
+
+        // hold commits after the first 3 to freeze destroy progress
+        ui32 commitCount = 0;
+        TVector<TAutoPtr<NActors::IEventHandle>> heldCommits;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<NActors::IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == NKikimr::TEvTablet::EvCommit &&
+                    event->Get<NKikimr::TEvTablet::TEvCommit>()->TabletID ==
+                        tabletId &&
+                    ++commitCount > 3)
+                {
+                    heldCommits.push_back(std::move(event));
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendDestroySessionRequest();
+
+        env.GetRuntime().DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&] { return !heldCommits.empty(); }});
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto destroySessionInterrupted = counters->GetCounter(
+            "AppCriticalEvents/DestroySessionInterrupted",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, destroySessionInterrupted->Val());
+
+        // migration: the session is recovered with a newer seq no while
+        // the destroy is frozen mid-chain
+        tablet.SendCreateSessionRequest("client", "session", "", 1, false);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        env.GetRuntime().SetEventFilter(
+            NKikimr::TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto& ev: heldCommits) {
+            env.GetRuntime().Send(ev.Release(), nodeIdx);
+        }
+
+        {
+            auto response = tablet.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                response->GetError().GetCode());
+        }
+
+        auto response = tablet.RecvDestroySessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            response->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, destroySessionInterrupted->Val());
+
+        // batches 1-4 committed => 4 of 10 handles destroyed
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        // the recovered session must survive the interrupted destroy
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            GetStorageStats(tablet).GetUsedSessionsCount());
+
+        tablet.WithSessionSeqNo(1);
+        tablet.DestroySession();
+
+        auto stats = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedHandlesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedSessionsCount());
+    }
+
+    Y_UNIT_TEST(ShouldRejectDestroySessionInterruptedByAnotherDestroySession)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        for (ui32 i = 0; i < 10; ++i) {
+            CreateHandle(tablet, id);
+        }
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto destroySessionInterrupted = counters->GetCounter(
+            "AppCriticalEvents/DestroySessionInterrupted",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, destroySessionInterrupted->Val());
+
+        ui32 commitCount = 0;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<NActors::IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == NKikimr::TEvTablet::EvCommit &&
+                    event->Get<NKikimr::TEvTablet::TEvCommit>()->TabletID ==
+                        tabletId)
+                {
+                    ++commitCount;
+                }
+                return NKikimr::TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        tablet.SendDestroySessionRequest();
+
+        env.GetRuntime().DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&] { return commitCount >= 3; }});
+
+        env.GetRuntime().SetObserverFunc(
+            NKikimr::TTestActorRuntime::DefaultObserverFunc);
+
+        // the second destroy interleaves with the first one, the loser
+        // observes the session destroyed by the winner mid-chain
+        tablet.SendDestroySessionRequest();
+
+        TVector<ui32> codes;
+        codes.push_back(
+            tablet.RecvDestroySessionResponse()->GetError().GetCode());
+        codes.push_back(
+            tablet.RecvDestroySessionResponse()->GetError().GetCode());
+        Sort(codes);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, codes[0]);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, codes[1]);
+        UNIT_ASSERT_VALUES_EQUAL(1, destroySessionInterrupted->Val());
+
+        auto stats = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedHandlesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedSessionsCount());
     }
 
     Y_UNIT_TEST(ShouldCleanupHandlesAndLocksKeptBySession)
@@ -808,6 +1424,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             TDuration::MilliSeconds(50).MilliSeconds());
         features.SetHasXAttrs(true);
         features.SetMaxFuseLoopThreads(1);
+        features.SetTabletDirectRdmaEnabled(false);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
@@ -820,19 +1437,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
         config.SetPreferredBlockSizeMultiplier(2);
         config.SetAsyncDestroyHandleEnabled(true);
+        config.SetAsyncDestroyReadOnlyHandleEnabled(true);
         config.SetAsyncHandleOperationPeriod(
             TDuration::MilliSeconds(100).MilliSeconds());
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
+        config.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
+        config.SetDirectoryHandlesStorageEnabled(true);
+        config.SetDirectoryHandlesTableSize(1000);
+        config.SetDirectoryHandlesPersistentHandleMaxSize(4_GB);
         config.SetZeroCopyWriteEnabled(true);
         config.SetGuestHandleKillPrivV2Enabled(true);
+        config.SetGuestPosixAclEnabled(true);
         config.SetZeroCopyReadEnabled(true);
         config.SetBlockChecksumsInProfileLogEnabled(true);
         config.SetReadBlobDisabled(true);
         config.SetWriteBlobDisabled(true);
+        config.SetUseCustomReadDataResponseParser(true);
+        config.SetExternalReadDataPayload(true);
+        config.SetTabletDirectRdmaEnabled(true);
 
         features.SetTwoStageReadEnabled(true);
         features.SetTwoStageReadThreshold(64_KB);
@@ -843,19 +1469,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetThreeStageWriteThreshold(10_MB);
         features.SetPreferredBlockSize(4_KB * 2);
         features.SetAsyncDestroyHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
         features.SetAsyncHandleOperationPeriod(
             TDuration::MilliSeconds(100).MilliSeconds());
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);
+        features.SetDirectoryHandlesStorageEnabled(true);
+        features.SetDirectoryHandlesTableSize(1000);
+        features.SetDirectoryHandlesPersistentHandleMaxSize(4_GB);
         features.SetZeroCopyWriteEnabled(true);
         features.SetGuestHandleKillPrivV2Enabled(true);
+        features.SetGuestPosixAclEnabled(false);
         features.SetZeroCopyReadEnabled(true);
         features.SetBlockChecksumsInProfileLogEnabled(true);
         features.SetReadBlobDisabled(true);
         features.SetWriteBlobDisabled(true);
+        features.SetUseCustomReadDataResponseParser(true);
+        features.SetExternalReadDataPayload(true);
+        features.SetTabletDirectRdmaEnabled(true);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }
@@ -923,6 +1558,72 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         UNIT_ASSERT(destroySessionFailed);
     }
 
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInDestroySessionInBatches)
+    {
+        const ui32 maxTabletStep = 16;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                tablet.RecoverSession();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        TString sessionId = "good_session";
+        tablet.InitSession("client", sessionId);
+
+        auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, sessionId));
+        for (ui32 i = 0; i < 10; ++i) {
+            CreateHandle(tablet, id);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        bool destroySessionFailed = false;
+
+        do {
+            tablet.SendDestroySessionRequest();
+            auto response = tablet.RecvDestroySessionResponse();
+            reconnectIfNeeded();
+
+            if (!HasError(response->GetError())) {
+                break;
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                response->GetError().GetCode());
+            destroySessionFailed = true;
+        } while (true);
+
+        auto stats = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedHandlesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedSessionsCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, rebootTracker.GetGenerationCount());
+        UNIT_ASSERT(destroySessionFailed);
+    }
+
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInResetSession)
     {
         const ui32 maxTabletStep = 4;
@@ -985,6 +1686,74 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         UNIT_ASSERT(resetSessionFailed);
     }
 
+    Y_UNIT_TEST(ShouldHandleCommitIdOverflowInResetSessionInBatches)
+    {
+        const ui32 maxTabletStep = 16;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxTabletStep(maxTabletStep);
+        storageConfig.SetMaxDeleteSessionHandlesPerTx(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TTabletRebootTracker rebootTracker;
+        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        auto reconnectIfNeeded = [&]()
+        {
+            if (rebootTracker.IsPipeDestroyed()) {
+                tablet.ReconnectPipe();
+                tablet.WaitReady();
+                rebootTracker.ClearPipeDestroyed();
+            }
+        };
+
+        TString sessionId = "good_session";
+        tablet.InitSession("client", sessionId);
+
+        auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, sessionId));
+        for (ui32 i = 0; i < 10; ++i) {
+            CreateHandle(tablet, id);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        bool resetSessionFailed = false;
+
+        do {
+            tablet.SendResetSessionRequest("client", sessionId, 0, "state");
+            auto response = tablet.RecvResetSessionResponse();
+            reconnectIfNeeded();
+
+            if (!HasError(response->GetError())) {
+                break;
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                response->GetError().GetCode());
+            resetSessionFailed = true;
+        } while (true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetStorageStats(tablet).GetUsedHandlesCount());
+
+        auto create = tablet.CreateSession("client", sessionId);
+        UNIT_ASSERT_VALUES_EQUAL("state", create->Record.GetSessionState());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, rebootTracker.GetGenerationCount());
+        UNIT_ASSERT(resetSessionFailed);
+    }
+
     Y_UNIT_TEST(ShardShouldNotCheckSessionUponCreateNodeAndUnlinkNode)
     {
         TTestEnv env;
@@ -996,7 +1765,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         const ui64 requestId = 111;
         const ui32 shardNo = 222;
-        tablet.ConfigureAsShard(shardNo);
+        const TString mainFsId = "main_fs";
+        const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
+        tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
 
         {
             tablet.SendCreateNodeRequest(

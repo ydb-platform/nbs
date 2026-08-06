@@ -5,6 +5,7 @@ import "cloud/storage/core/protos/media.proto";
 import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/headers.proto";
 import "cloud/filestore/public/api/protos/node.proto";
+import "cloud/filestore/public/api/protos/quota.proto";
 import "cloud/filestore/config/storage.proto";
 
 import "contrib/ydb/core/protos/base.proto";
@@ -51,6 +52,9 @@ message TCreateSessionRequest
     bool ReadOnly = 5;
 
     uint64 MountSeqNumber = 6;
+
+    // Don't return FileStore in the response.
+    bool NoFileStoreInfo = 7;
 }
 
 message TCreateSessionResponse
@@ -66,6 +70,13 @@ message TCreateSessionResponse
 
     // Filestore description.
     NProto.TFileStore FileStore = 4;
+
+    // Tablet generation and owner generation
+    // for the accepted subsession owner.
+    uint64 OwnerGeneration = 5;
+
+    // True if this tablet is configured to run in adapter mode.
+    bool AdapterModeEnabled = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -104,6 +115,7 @@ message TShardStats
     uint64 TotalBlocksCount = 3;
     uint64 CurrentLoad = 4;
     uint32 Suffer = 5;
+    uint64 UsedNodesCount = 6;
 }
 
 message TStorageStats
@@ -161,7 +173,7 @@ message TStorageStats
     repeated TShardStats ShardStats = 6001;
 }
 
-enum StatsRequestMode
+enum EStatsRequestMode
 {
     // Statistics form shards is fetched for a main filesystem and not fetched
     // for shards.
@@ -187,13 +199,17 @@ message TGetStorageStatsRequest
     // The same but for garbage score.
     uint32 CompactionRangeCountByGarbageScore = 5;
 
-    // Use cached data, don't require up-to-date stats.
-    bool AllowCache = 6;
+    // AllowCache used to take this place.
+    reserved 6;
+    reserved "AllowCache";
 
     // Statitics fetching mode: DEFAULT/FORCE_FETCH_SHARDS/GET_ONLY_SELF.
     // By default requests to shards do not fetch other shards, requests
     // to the main tablet fetch all the shards.
-    StatsRequestMode Mode = 8;
+    EStatsRequestMode Mode = 8;
+
+    // If the cache is older than Now() - CacheTTL, it is not used.
+    uint64 CacheTTL = 9; // in ms
 }
 
 message TGetStorageStatsResponse
@@ -206,6 +222,9 @@ message TGetStorageStatsResponse
 
     // Storage media kind.
     NCloud.NProto.EStorageMediaKind MediaKind = 3;
+
+    // Time since tablet start.
+    uint64 TabletUptimeMs = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -379,7 +398,10 @@ message TDescribeDataResponse
     repeated TFreshDataRange FreshDataRanges = 2;
     repeated TBlobPiece BlobPieces = 3;
 
-    // File size.
+    // File size. When the response is served from the read-ahead cache, the
+    // actual file size may already be bigger (e.g. an unconfirmed write is
+    // extending the file). Suitable only for clamping the read range, not as
+    // the actual file size.
     uint64 FileSize = 4;
 
     // This constitutes a “fake” response, meaning it is not related to real
@@ -448,6 +470,9 @@ message TGenerateBlobIdsRequest
     // Unaligned head/tail data for internal AddData (used when tablet does
     // AddData internally in the unconfirmed flow).
     repeated TFreshDataRange UnalignedDataRanges = 7;
+
+    // If true, the service is ready to use the unconfirmed data flow.
+    bool UnconfirmedFlowRequested = 8;
 }
 
 message TGeneratedBlob
@@ -655,64 +680,6 @@ message TForcedOperationStatusResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ConfigureShards request/response.
-
-message TConfigureShardsRequest
-{
-    // FileSystem identifier.
-    string FileSystemId = 1;
-
-    // Shard FileSystem identifiers.
-    repeated string ShardFileSystemIds = 2;
-
-    // Override shard list validation.
-    bool Force = 3;
-
-    // Make it possible to create directories in shards.
-    bool DirectoryCreationInShardsEnabled = 4;
-
-    // Allow shards aggregate statistics from all other shards and strictly
-    // enforce filesystem size.
-    bool StrictFileSystemSizeEnforcementEnabled = 5;
-}
-
-message TConfigureShardsResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// ConfigureShards request/response.
-
-message TConfigureAsShardRequest
-{
-    // FileSystem identifier.
-    string FileSystemId = 1;
-
-    // ShardNo (will be used for the high bits of NodeId and HandleId)
-    uint32 ShardNo = 2;
-
-    // Shard FileSystem identifiers and main FileSystem identifier (manages
-    // RootNode). Needed for directory creation in shards.
-    repeated string ShardFileSystemIds = 3;
-    string MainFileSystemId = 4;
-
-    // Make it possible to create directories in shards.
-    bool DirectoryCreationInShardsEnabled = 5;
-
-    // Allow shards aggregate statistics from all other shards and strictly
-    // enforce filesystem size.
-    bool StrictFileSystemSizeEnforcementEnabled = 6;
-}
-
-message TConfigureAsShardResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // GetStorageConfig request/response.
 
 message TGetStorageConfigRequest
@@ -723,6 +690,9 @@ message TGetStorageConfigRequest
     // FileSystem identifier to query its storage config. Or empty to
     // query server storage config.
     string FileSystemId = 2;
+
+    // If set, only tablet-level overrides will be reported
+    bool OnlyOverride = 3;
 }
 
 message TGetStorageConfigResponse
@@ -779,18 +749,6 @@ message TWriteCompactionMapResponse
 ////////////////////////////////////////////////////////////////////////////////
 // Direct inode and node ref manipulation.
 
-message TUnsafeCreateNodeRequest
-{
-    string FileSystemId = 1;
-    NProto.TNodeAttr Node = 2;
-}
-
-message TUnsafeCreateNodeResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-}
-
 message TUnsafeDeleteNodeRequest
 {
     string FileSystemId = 1;
@@ -826,22 +784,6 @@ message TUnsafeGetNodeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
     NProto.TNodeAttr Node = 2;
-}
-
-message TUnsafeCreateNodeRefRequest
-{
-    string FileSystemId = 1;
-    uint64 ParentId = 2;
-    bytes Name = 3;
-    uint64 ChildId = 4;
-    string ShardId = 5;
-    string ShardNodeName = 6;
-}
-
-message TUnsafeCreateNodeRefResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
 }
 
 message TUnsafeDeleteNodeRefRequest
@@ -935,6 +877,13 @@ message TGetFileSystemTopologyResponse
     bool StrictFileSystemSizeEnforcementEnabled = 5;
 
     uint32 MaxShardCount = 6;
+
+    bool ForceDirectoryCreationInShards = 7;
+
+    // Shard FileSystem identifiers for regular files.
+    repeated string FileShardFileSystemIds = 8;
+
+    bool CompressNodeRef = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1130,11 +1079,7 @@ message TWriteResponseLogEntryRequest
     // FileSystem (shard) identifier.
     string FileSystemId = 2;
 
-    // Client tablet (the tablet that issued the original request) identifier.
-    uint64 ClientTabletId = 3;
-
-    // Request id of that request.
-    uint64 RequestId = 4;
+    reserved 3, 4;
 
     // The entry.
     TResponseLogEntry Entry = 5;
@@ -1255,4 +1200,102 @@ message TMarkNodeRefsExhaustiveResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ListNodesInternal request/response
+
+message TListNodesInternalRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Original request.
+    NProto.TListNodesRequest OriginalRequest = 3;
+}
+
+message TListNodesInternalResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    bytes NameBuffer = 2;
+    repeated uint32 NameSizes = 3;
+    bytes ExternalRefBuffer = 4;
+    repeated uint32 ShardIdSizes = 5;
+    repeated uint32 ShardNodeNameSizes = 6;
+    repeated NProto.TNodeAttr Nodes = 7;
+    repeated uint32 ExternalRefIndices = 8;
+
+    bytes Cookie = 9;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Quota management requests/responses
+
+message TSetQuotaRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Quota identifier, chosen by the caller.
+    uint32 QuotaId = 3;
+
+    // Byte and node limits, 0 means unlimited.
+    uint64 MaxBytes = 4;
+    uint64 MaxNodes = 5;
+}
+
+message TSetQuotaResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Resulting quota.
+    NProto.TQuota Quota = 2;
+}
+
+message TDeleteQuotaRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Quota identifier.
+    uint32 QuotaId = 3;
+}
+
+message TDeleteQuotaResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TListQuotasRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TListQuotasResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // All quotas defined on this filesystem.
+    repeated NProto.TQuota Quotas = 2;
 }

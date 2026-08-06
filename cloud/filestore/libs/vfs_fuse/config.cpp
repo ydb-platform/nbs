@@ -23,12 +23,14 @@ namespace {
                                                                                \
     xxx(XAttrCacheLimit,        ui32,           512                           )\
     xxx(XAttrCacheTimeout,      TDuration,      TDuration::Seconds(15)        )\
+    xxx(XAttrCacheInvalidateOnCreateEnabled,    bool, false                   )\
                                                                                \
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
                                                                                \
     xxx(PreferredBlockSize,     ui32,           0                             )\
                                                                                \
-    xxx(AsyncDestroyHandleEnabled,  bool,       false                         )\
+    xxx(AsyncDestroyHandleEnabled,          bool,       false                 )\
+    xxx(AsyncDestroyReadOnlyHandleEnabled,  bool,       false                 )\
     xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::MilliSeconds(50)   )\
                                                                                \
     xxx(DirectIoEnabled,            bool,       false                         )\
@@ -40,11 +42,13 @@ namespace {
     xxx(GuestPageCacheDisabled,     bool,       false                         )\
     xxx(ExtendedAttributesDisabled, bool,       false                         )\
                                                                                \
-    xxx(ServerWriteBackCacheEnabled,  bool,     false                         )\
+    xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
+    xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(DirectoryHandlesStorageEnabled, bool,   false                         )\
                                                                                \
     xxx(DirectoryHandlesTableSize,      ui64,   100'000                       )\
+    xxx(DirectoryHandlesPersistentHandleMaxSize, ui64, 2_GB                   )\
                                                                                \
     xxx(GuestKeepCacheAllowed,        bool,     false                         )\
     xxx(MaxBackground,                ui32,     0                             )\
@@ -52,6 +56,7 @@ namespace {
     xxx(ZeroCopyWriteEnabled,         bool,     false                         )\
     xxx(FSyncQueueDisabled,           bool,     false                         )\
     xxx(GuestHandleKillPrivV2Enabled, bool,     false                         )\
+    xxx(GuestPosixAclEnabled,         bool,     false                         )\
     xxx(ZeroCopyReadEnabled,          bool,     false                         )\
 // FILESTORE_FUSE_CONFIG
 

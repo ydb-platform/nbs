@@ -2,14 +2,15 @@
 
 #include "persistent_storage.h"
 #include "sequence_id_generator.h"
-#include "write_back_cache_stats.h"
 #include "write_data_request.h"
+#include "write_data_request_manager_stats.h"
 
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/function_ref.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -23,19 +24,22 @@ private:
     ISequenceIdGeneratorPtr SequenceIdGenerator;
     IPersistentStoragePtr PersistentStorage;
     ITimerPtr Timer;
-    IWriteBackCacheStatsPtr Stats;
+    IWriteDataRequestManagerStatsPtr Stats;
 
     TIntrusiveList<TPendingWriteDataRequest> PendingRequests;
     TIntrusiveList<TCachedWriteDataRequest> UnflushedRequests;
     TIntrusiveList<TCachedWriteDataRequest> FlushedRequests;
+
+    THashSet<ui64> NodesWithBackpressure;
 
 public:
     using TAddRequestResult = std::variant<
         std::unique_ptr<TPendingWriteDataRequest>,
         std::unique_ptr<TCachedWriteDataRequest>>;
 
-    using TCachedRequestVisitor =
-        TFunctionRef<void(std::unique_ptr<TCachedWriteDataRequest> request)>;
+    using TCachedRequestVisitor = TFunctionRef<void(
+        std::unique_ptr<TCachedWriteDataRequest> request,
+        bool handleReleased)>;
 
     TWriteDataRequestManager() = default;
     TWriteDataRequestManager(TWriteDataRequestManager&&) = default;
@@ -45,7 +49,7 @@ public:
         ISequenceIdGeneratorPtr sequenceIdGenerator,
         IPersistentStoragePtr persistentStorage,
         ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats);
+        IWriteDataRequestManagerStatsPtr stats);
 
     // Reads state from the persistent storage
     bool Init(const TCachedRequestVisitor& visitor);
@@ -69,7 +73,8 @@ public:
      * successfully stored in the persistent storage.
      *
      * Returns std::unique_ptr<TPendingWriteDataRequest> when the storage is
-     * full and the request is added to the pending queue.
+     * full or backpressure is in effect, and the request is added to the
+     * pending queue.
      */
     TAddRequestResult AddRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
@@ -82,9 +87,13 @@ public:
      * successfully processed.
      *
      * Returns nullptr if there are no pending requests or the persistent
-     * storage is full.
+     * storage is full or backpressure is in effect.
      */
     std::unique_ptr<TCachedWriteDataRequest> TryProcessPendingRequest();
+
+    // Takes and removes front request from the pending queue.
+    // Returns the removed request or nullptr if there are no pending requests.
+    TPendingWriteDataRequest* TryPopFrontPendingRequest();
 
     // Removes the request from the pending queue
     void Remove(std::unique_ptr<TPendingWriteDataRequest> request);
@@ -95,10 +104,32 @@ public:
      */
     void SetFlushed(TCachedWriteDataRequest* request);
 
+    /**
+     * Marks the request as related to a released handle and stores this in
+     * the persistent storage.
+     * This allows the request to be properly handled after restart.
+     */
+    void SetHandleReleased(TCachedWriteDataRequest* request);
+
     // Removes previously flushed request from the persistent storage
     void Evict(std::unique_ptr<TCachedWriteDataRequest> request);
 
+    // Prevent from adding new requests to the unflushed queue for the node
+    // Returns true if backpressure was not previously set, false otherwise
+    bool SetBackpressureStatusForNode(ui64 nodeId);
+
+    // Allows adding new requests to the unflushed queue for the node
+    // Returns true if backpressure was previously set, false otherwise
+    bool ClearBackpressureStatusForNode(ui64 nodeId);
+
+    void UpdateStats() const;
+
 private:
+    std::unique_ptr<TCachedWriteDataRequest> TryStoreRequestInPersistentStorage(
+        ui64 sequenceId,
+        TInstant time,
+        const NProto::TWriteDataRequest& request);
+
     // Access methods that triggers stats update
     void PendingRequestsPushBack(TPendingWriteDataRequest* request);
     void PendingRequestsRemove(TPendingWriteDataRequest* request);

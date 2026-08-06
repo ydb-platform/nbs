@@ -1,6 +1,6 @@
 PROGRAM(blockstore-client)
 
-ALLOCATOR(TCMALLOC_TC)
+ALLOCATOR(TCMALLOC_256K)
 
 SRCS(
     main.cpp
@@ -8,9 +8,9 @@ SRCS(
 
 PEERDIR(
     library/cpp/getopt
-    library/cpp/terminate_handler
     cloud/blockstore/apps/client/lib
     cloud/storage/core/libs/iam/iface
+    cloud/storage/core/libs/terminate_handler
 )
 
 END()

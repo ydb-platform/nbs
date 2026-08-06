@@ -83,13 +83,15 @@ auto FindDeviceRange(
 
 TDeviceList::TDeviceList()
     : AlwaysAllocateLocalDisks(false)
+    , AttachDetachPathsEnabled(false)
 {}
 
 TDeviceList::TDeviceList(
         TVector<TDeviceId> dirtyDevices,
         TVector<NProto::TSuspendedDevice> suspendedDevices,
         TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices,
-        bool alwaysAllocateLocalDisks)
+        bool alwaysAllocateLocalDisks,
+        bool attachDetachPathsEnabled)
     : AllocatedDevices(
           std::make_move_iterator(allocatedDevices.begin()),
           std::make_move_iterator(allocatedDevices.end()))
@@ -97,6 +99,7 @@ TDeviceList::TDeviceList(
           std::make_move_iterator(dirtyDevices.begin()),
           std::make_move_iterator(dirtyDevices.end()))
     , AlwaysAllocateLocalDisks(alwaysAllocateLocalDisks)
+    , AttachDetachPathsEnabled(attachDetachPathsEnabled)
 {
     for (auto& device: suspendedDevices) {
         auto id = device.GetId();
@@ -162,11 +165,10 @@ void TDeviceList::UpdateDevices(
 
         const ui64 deviceSize = device.GetBlockSize() * device.GetBlocksCount();
 
-        const bool isFree =
-            DevicesAllocationAllowed(device.GetPoolKind(), agent.GetState()) &&
-            device.GetState() == NProto::DEVICE_STATE_ONLINE &&
-            !AllocatedDevices.contains(uuid) && !DirtyDevices.contains(uuid) &&
-            !SuspendedDevices.contains(uuid);
+        const bool isFree = IsDeviceAllocationAllowed(device, agent) &&
+                            !AllocatedDevices.contains(uuid) &&
+                            !DirtyDevices.contains(uuid) &&
+                            !SuspendedDevices.contains(uuid);
 
         const auto* poolConfig = poolConfigs.FindPtr(device.GetPoolName());
         if (!poolConfig || poolConfig->GetKind() != device.GetPoolKind() ||
@@ -251,12 +253,27 @@ TDeviceList::TDiskId TDeviceList::FindDiskId(const TDeviceId& id) const
     return {};
 }
 
-bool TDeviceList::DevicesAllocationAllowed(
-    NProto::EDevicePoolKind poolKind,
-    NProto::EAgentState agentState) const
+bool TDeviceList::IsDeviceAllocationAllowed(
+    const NProto::TDeviceConfig& device,
+    const NProto::TAgentConfig& agent) const
 {
+    const NProto::EAgentState agentState = agent.GetState();
+
     if (agentState == NProto::AGENT_STATE_UNAVAILABLE) {
         return false;
+    }
+
+    if (device.GetState() != NProto::DEVICE_STATE_ONLINE) {
+        return false;
+    }
+
+    if (AttachDetachPathsEnabled) {
+        auto it = agent.GetPathAttachStates().find(device.GetDeviceName());
+        if (it == agent.GetPathAttachStates().end() ||
+            it->second != NProto::PATH_ATTACH_STATE_ATTACHED)
+        {
+            return false;
+        }
     }
 
     if (agentState == NProto::AGENT_STATE_ONLINE) {
@@ -264,7 +281,7 @@ bool TDeviceList::DevicesAllocationAllowed(
     }
 
     Y_DEBUG_ABORT_UNLESS(agentState == NProto::AGENT_STATE_WARNING);
-    if (poolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
+    if (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL) {
         return AlwaysAllocateLocalDisks;
     }
 

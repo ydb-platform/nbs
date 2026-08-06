@@ -93,19 +93,26 @@ private:
     template <typename T>
     bool WaitForI(const NThreading::TFuture<T>& future)
     {
-        auto* executor = GetContExecutor();
-        TContSimpleEvent event(executor);
+        auto event = std::make_shared<TContSimpleEvent>(GetContExecutor());
+        std::weak_ptr<TContSimpleEvent> weakEvent(event);
 
-        auto weakPtr = weak_from_this();
+        future.Subscribe(
+            [weakEvent = std::move(weakEvent),
+             weakPtr = weak_from_this()](const auto&)
+            {
+                if (auto ptr = weakPtr.lock()) {
+                    // switch to executor thread
+                    ptr->ExecuteSimple(
+                        [weakEvent]
+                        {
+                            if (auto event = weakEvent.lock()) {
+                                event->Signal();
+                            }
+                        });
+                }
+            });
 
-        future.Subscribe([&, weakPtr = std::move(weakPtr)] (const auto&) {
-            if (auto ptr = weakPtr.lock()) {
-                // switch to executor thread
-                ptr->ExecuteSimple([&] { event.Signal(); });
-            }
-        });
-
-        int result = event.WaitI();
+        int result = event->WaitI();
         return (result != ECANCELED);
     }
 };

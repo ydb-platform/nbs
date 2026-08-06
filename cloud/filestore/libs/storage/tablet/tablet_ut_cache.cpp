@@ -150,21 +150,24 @@ TListNodesTxStats GetListNodesTxStats(
 
     visitor.ValidateExpectedCountersWithPredicate({
         {{{"filesystem", "test"},
-          {"sensor", "ListNodes.RequestedBytesPrecharge"}},
+          {"sensor", "RequestedBytesPrecharge"},
+          {"request", "ListNodes"}},
          [&stats](i64 value)
          {
              stats.BytesPrecharge = value;
              return true;
          }},
         {{{"filesystem", "test"},
-          {"sensor", "ListNodes.PrepareAttempts"}},
+          {"sensor", "PrepareAttempts"},
+          {"request", "ListNodes"}},
          [&stats](i64 value)
          {
             stats.PrepareAttempts = value;
             return true;
          }},
         {{{"filesystem", "test"},
-          {"sensor", "ListNodes.ResponseNodeRefs"}},
+          {"sensor", "ResponseNodeRefs"},
+          {"request", "ListNodes"}},
          [&stats](i64 value)
          {
             stats.ResponseNodeRefs = value;
@@ -1203,8 +1206,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             statsBefore = statsAfter;
         }
 
-        // Let us evict information about RootNodeId by creating an empty
-        // directory and listing it.
+        // Creating an empty directory marks it as exhaustive immediately,
+        // evicting RootNodeId from the per-node exhaustiveness info (capacity
+        // is 1). Both listings of the empty directory are cache hits.
         {
             auto emptyDirId =
                 tablet
@@ -1218,13 +1222,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 tablet.ListNodes(emptyDirId)->Record.NodesSize());
-            // First listing is a miss, second is a hit
+            // Both listings are cache hits since the directory is marked
+            // exhaustive upon creation
             auto statsAfter = GetTxStats(env, tablet);
             UNIT_ASSERT_VALUES_EQUAL(
-                1,
+                2,
                 statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
             UNIT_ASSERT_VALUES_EQUAL(
-                1,
+                0,
                 statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
             statsBefore = statsAfter;
         }
@@ -1266,6 +1271,46 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
                 statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
             statsBefore = statsAfter;
         }
+    }
+
+    Y_UNIT_TEST(ShouldMarkDirectoryExhaustiveOnCreation)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(10);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        // Create a directory and populate it — no explicit listing before
+        auto dirId =
+            tablet.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                ->Record.GetNode()
+                .GetId();
+        tablet.CreateNode(TCreateNodeArgs::File(dirId, "child1"));
+        tablet.CreateNode(TCreateNodeArgs::File(dirId, "child2"));
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // The directory was marked exhaustive on creation, so listing it
+        // (even without a prior explicit list) should be a cache hit.
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet.ListNodes(dirId)->Record.NodesSize());
+
+        auto statsAfter = GetTxStats(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
     }
 
     Y_UNIT_TEST(ShouldUseCacheForNonExistentChildrenOfExhaustiveParents)
@@ -1423,6 +1468,152 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
               {"sensor", "InMemoryIndexStateNodeRefsExhaustivenessCapacity"}},
              123},
         });
+    }
+
+    Y_UNIT_TEST(ShouldUseNodeRefsCacheIfOneIsExhaustiveWithUnlimitedBTree)
+    {
+        const ui64 nodeCount = 128;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(nodeCount + 1);
+        storageConfig.SetUseUnlimitedBTreeNodeRefsCacheInMainTablet(true);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(5); // shouldn't
+                                                                // matter
+        storageConfig.SetInMemoryIndexCacheLoadOnTabletStart(true);
+        storageConfig.SetInMemoryIndexCacheLoadOnTabletStartRowsPerTx(
+            nodeCount + 1);
+        storageConfig.SetInMemoryIndexCacheLoadSchedulePeriod(1);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        TVector<TString> names;
+        for (ui32 i = 0; i < nodeCount; ++i) {
+            auto name = TStringBuilder() << "test" << i;
+            tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, name));
+            names.push_back(std::move(name));
+        }
+
+        auto statsBefore = GetTxStats(env, tablet);
+
+        // The noderefs cache is exhaustive thus list nodes should be a cache
+        // hit
+        UNIT_ASSERT_VALUES_EQUAL(
+            names.size(),
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+        auto statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+        UNIT_ASSERT(statsAfter.IsExhaustive);
+
+        const ui64 loadNodeRefsCounterPrev = env.GetRuntime().GetCounter(
+            TEvIndexTabletPrivate::EEvents::EvLoadNodeRefs);
+        const ui64 loadNodesCounterPrev = env.GetRuntime().GetCounter(
+            TEvIndexTabletPrivate::EEvents::EvLoadNodes);
+
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        ui64 loadNodeRefsCounter = 0;
+        ui64 loadNodesCounter = 0;
+
+        for (int i = 0; i < 100; ++i) {
+            tablet.AdvanceTime(TDuration::MilliSeconds(10));
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(10));
+
+            loadNodeRefsCounter = env.GetRuntime().GetCounter(
+                TEvIndexTabletPrivate::EEvents::EvLoadNodeRefs)
+                - loadNodeRefsCounterPrev;
+            loadNodesCounter = env.GetRuntime().GetCounter(
+                TEvIndexTabletPrivate::EEvents::EvLoadNodes)
+                - loadNodesCounterPrev;
+
+            // It will take 1 iteration to load all the nodeRefs
+            // It also will take 1 iteration to load all the nodes
+            if (loadNodeRefsCounter >= 1 && loadNodesCounter >= 1) {
+                break;
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, loadNodeRefsCounter);
+        UNIT_ASSERT_VALUES_EQUAL(1, loadNodesCounter);
+
+        statsBefore = GetTxStats(env, tablet);
+
+        // The noderefs cache is exhaustive thus list nodes should be a cache
+        // hit
+        UNIT_ASSERT_VALUES_EQUAL(
+            names.size(),
+            tablet.ListNodes(RootNodeId)->Record.NodesSize());
+
+        statsAfter = GetTxStats(env, tablet);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            statsAfter.ROCacheHitCount - statsBefore.ROCacheHitCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsAfter.RWCount - statsBefore.RWCount);
+        UNIT_ASSERT(statsAfter.IsExhaustive);
+    }
+
+    Y_UNIT_TEST(ShouldLoadNodeRefsOnlyForShardOnTabletStart)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetInMemoryIndexCacheNodesCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsCapacity(100);
+        storageConfig.SetInMemoryIndexCacheNodeRefsLoadOnTabletStartInShards(
+            true);
+        storageConfig.SetInMemoryIndexCacheLoadOnTabletStartRowsPerTx(1);
+        storageConfig.SetInMemoryIndexCacheLoadSchedulePeriod(
+            TDuration::Seconds(1).MilliSeconds());
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"));
+
+        tablet.ConfigureAsShard(1, "fs", "fs");
+
+        env.GetRuntime().ClearCounters();
+        tablet.RebootTablet();
+
+        for (int i = 0; i < 10; ++i) {
+            tablet.AdvanceTime(TDuration::Seconds(1));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        }
+
+        tablet.InitSession("client", "session");
+
+        // It will take 1 iteration to load all the nodeRefs (root -> test1)
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.GetRuntime().GetCounter(
+                TEvIndexTabletPrivate::EEvents::EvLoadNodeRefs));
+        // Nodes should NOT be loaded: the flag only enables node refs load for
+        // shards
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.GetRuntime().GetCounter(
+                TEvIndexTabletPrivate::EEvents::EvLoadNodes));
     }
 
     Y_UNIT_TEST(ShouldUseInMemoryCacheAndMixedBlocksCacheForReads)

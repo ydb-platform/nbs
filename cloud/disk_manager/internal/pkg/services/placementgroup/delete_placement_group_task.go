@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/protos"
@@ -17,10 +18,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deletePlacementGroupTask struct {
-	storage    resources.Storage
-	nbsFactory nbs.Factory
-	request    *protos.DeletePlacementGroupRequest
-	state      *protos.DeletePlacementGroupTaskState
+	storage      resources.Storage
+	nbsFactory   nbs.Factory
+	cellSelector cells.CellSelector
+	request      *protos.DeletePlacementGroupRequest
+	state        *protos.DeletePlacementGroupTaskState
 }
 
 func (t *deletePlacementGroupTask) Save() ([]byte, error) {
@@ -43,7 +45,14 @@ func (t *deletePlacementGroupTask) deletePlacementGroup(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.ZoneId)
+	client, err := selectClientByGroup(
+		ctx,
+		t.storage,
+		t.nbsFactory,
+		t.cellSelector,
+		t.request.GroupId,
+		t.request.ZoneId,
+	)
 	if err != nil {
 		return err
 	}

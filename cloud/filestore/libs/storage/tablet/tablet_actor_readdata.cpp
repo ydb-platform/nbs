@@ -189,6 +189,15 @@ void FillDescribeDataResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void MoveBufferToPayload(TEvService::TEvReadDataResponse& response)
+{
+    response.Record.SetLength(response.Record.GetBuffer().size());
+    response.AddPayload(TRope(std::move(*response.Record.MutableBuffer())));
+    response.Record.MutableBuffer()->clear();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadDataVisitor final
     : public IFreshBlockVisitor
     , public IMixedBlockVisitor
@@ -345,6 +354,7 @@ private:
     IProfileLogPtr ProfileLog;
     NProto::TBackendInfo BackendInfo;
     NProto::TProfileLogRequestInfo ProfileLogRequest;
+    const bool ExternalReadDataPayload;
 
 public:
     TReadDataActor(
@@ -365,7 +375,8 @@ public:
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TBackendInfo backendInfo,
-        NProto::TTProfileLogRequestInfo profileLogRequest);
+        NProto::TTProfileLogRequestInfo profileLogRequest,
+        bool externalReadDataPayload);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -406,7 +417,8 @@ TReadDataActor::TReadDataActor(
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TBackendInfo backendInfo,
-        NProto::TTProfileLogRequestInfo profileLogRequest)
+        NProto::TTProfileLogRequestInfo profileLogRequest,
+        bool externalReadDataPayload)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
@@ -425,6 +437,7 @@ TReadDataActor::TReadDataActor(
     , ProfileLog(std::move(profileLog))
     , BackendInfo(std::move(backendInfo))
     , ProfileLogRequest(std::move(profileLogRequest))
+    , ExternalReadDataPayload(externalReadDataPayload)
 {
     TABLET_VERIFY(ActualRange.IsAligned());
 }
@@ -537,6 +550,10 @@ void TReadDataActor::ReplyAndDie(
                     true /* ignoreBufferOverflow */,
                     FileSystemId,
                     ProfileLogRequest);
+            }
+
+            if (ExternalReadDataPayload) {
+                MoveBufferToPayload(*response);
             }
         }
 
@@ -688,9 +705,9 @@ void TIndexTabletActor::HandleReadDataCompleted(
     TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
     WorkerActors.erase(ev->Sender);
 
-    Metrics.ReadData.Update(msg->Count, msg->Size, msg->Time);
+    Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
     if (msg->IsOverloaded) {
-        Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+        Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -758,10 +775,15 @@ void TIndexTabletActor::HandleDescribeData(
 
     auto* handle = FindHandle(msg->Record.GetHandle());
     const ui64 nodeId = handle ? handle->GetNodeId() : InvalidNodeId;
+    const ui64 commitId = handle
+        ? handle->GetCommitId()
+        : GetCurrentCommitId();
+
     NProtoPrivate::TDescribeDataResponse result;
     const bool filled = TryFillDescribeResult(
         nodeId,
         msg->Record.GetHandle(),
+        commitId,
         byteRange,
         &result);
 
@@ -779,8 +801,8 @@ void TIndexTabletActor::HandleDescribeData(
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
 
-        Metrics.ReadAheadCacheHitCount.fetch_add(1, std::memory_order_relaxed);
-        Metrics.DescribeData.Update(
+        Metrics->ReadAheadCacheHitCount.fetch_add(1, std::memory_order_relaxed);
+        Metrics->DescribeData.Update(
             1,
             byteRange.Length,
             ctx.Now() - requestInfo->StartedTs);
@@ -894,7 +916,7 @@ bool TIndexTabletActor::ValidateTx_ReadData(
 
 bool TIndexTabletActor::PrepareTx_ReadData(
     const TActorContext& ctx,
-    IIndexTabletDatabase& db,
+    INodeIndexTabletDatabase& db,
     TTxIndexTablet::TReadData& args)
 {
     Y_UNUSED(ctx);
@@ -1033,7 +1055,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-        Metrics.DescribeData.Update(
+        Metrics->DescribeData.Update(
             1,
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
@@ -1104,6 +1126,10 @@ void TIndexTabletActor::CompleteTx_ReadData(
                 args.ProfileLogRequest);
         }
 
+        if (Config->GetExternalReadDataPayload()) {
+            MoveBufferToPayload(*response);
+        }
+
         CompleteResponse<TEvService::TReadDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
@@ -1127,7 +1153,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
     BuildBackendInfo(
         *Config,
         *SystemCounters,
-        Metrics.CPUUsageRate,
+        GetFileSystemId(),
+        Metrics->CPUUsageRate,
         &backendInfo);
 
     auto actor = std::make_unique<TReadDataActor>(
@@ -1148,7 +1175,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
         std::move(args.MixedBlocksRanges),
         ProfileLog,
         std::move(backendInfo),
-        std::move(args.ProfileLogRequest));
+        std::move(args.ProfileLogRequest),
+        Config->GetExternalReadDataPayload());
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
@@ -1165,6 +1193,12 @@ void TIndexTabletActor::HandleFakeDescribeData(
     auto* msg = ev->Get();
 
     ReportFakeDescribeDataHappened();
+
+    const TByteRange byteRange(
+        msg->Record.GetOffset(),
+        msg->Record.GetLength(),
+        GetBlockSize()
+    );
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -1209,11 +1243,6 @@ void TIndexTabletActor::HandleFakeDescribeData(
         std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
     response->Record = std::move(result);
 
-    CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
-        response->Record,
-        requestInfo->CallContext,
-        ctx);
-
     constexpr ui32 MaxLatencyUs = 100;
     const ui32 latencyUs = ClampVal(
         Config->GetFakeDescribeDataLatencyUs(),
@@ -1226,7 +1255,17 @@ void TIndexTabletActor::HandleFakeDescribeData(
     // Spin until deadline
     while (GetCycleCount() < deadlineCycles) {}
 
+    CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
+        response->Record,
+        requestInfo->CallContext,
+        ctx);
+
     NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+    Metrics->DescribeData.Update(
+        1,
+        byteRange.Length,
+        ctx.Now() - requestInfo->StartedTs);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

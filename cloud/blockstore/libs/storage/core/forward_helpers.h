@@ -39,6 +39,10 @@ template <typename T>
 constexpr bool IsDescribeBlocksMethod =
     std::is_same_v<T, TEvVolume::TDescribeBlocksMethod>;
 
+template <typename T>
+constexpr bool IsDescribeBlobMethod =
+    std::is_same_v<T, TEvVolume::TDescribeBlobMethod>;
+
 template <typename TMethod>
 constexpr bool IsCheckpointMethod =
     std::is_same_v<TMethod, TEvService::TCreateCheckpointMethod> ||
@@ -76,6 +80,7 @@ constexpr bool RejectRequestIfNotReady =
       std::is_same_v<TMethod, TEvService::TDeleteCheckpointMethod> ||
       std::is_same_v<TMethod, TEvVolume::TDeleteCheckpointDataMethod> ||
       std::is_same_v<TMethod, TEvVolume::TDescribeBlocksMethod> ||
+      std::is_same_v<TMethod, TEvVolume::TDescribeBlobMethod> ||
       std::is_same_v<TMethod, TEvVolume::TGetPartitionInfoMethod> ||
       std::is_same_v<TMethod, TEvVolume::TCompactRangeMethod> ||
       std::is_same_v<TMethod, TEvVolume::TGetCompactionStatusMethod>);

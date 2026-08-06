@@ -56,7 +56,7 @@ IProfileLog::TReplicaChecksums MakeChecksums(
 
 TResyncRangeActor::TResyncRangeActor(
         TRequestInfoPtr requestInfo,
-        TString diskId,
+        const TChildLogTitle& logTitle,
         ui32 blockSize,
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas,
@@ -66,7 +66,9 @@ TResyncRangeActor::TResyncRangeActor(
         NActors::TActorId volumeActorId,
         bool assignVolumeRequestId)
     : RequestInfo(std::move(requestInfo))
-    , DiskId(std::move(diskId))
+    , LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"r", range}}))
     , BlockSize(blockSize)
     , Range(range)
     , Replicas(std::move(replicas))
@@ -136,18 +138,17 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         LOG_WARN(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "[%s] Can't resync range %s with major error due to policy "
-            "restrictions",
-            DiskId.c_str(),
-            DescribeRange(Range).c_str());
+            "%s Can't resync range with major error due to policy restrictions",
+            LogTitle.GetWithTime().c_str());
         Done(ctx);
         return;
     }
 
-    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Resync range %s: majority replica %lu, checksum %lu, count %u of %u",
-        DiskId.c_str(),
-        DescribeRange(Range).c_str(),
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Resync range: majority replica %lu, checksum %lu, count %u of %u",
+        LogTitle.GetWithTime().c_str(),
         majorIdx,
         majorChecksum,
         majorCount,
@@ -156,11 +157,12 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
     for (size_t i = 0; i < checksums.size(); i++) {
         ui64 checksum = checksums[i];
         if (checksum != majorChecksum) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-                "[%s] Replica %lu block range %s checksum %lu differs from majority checksum %lu",
-                DiskId.c_str(),
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s Replica %lu checksum %lu differs from majority checksum %lu",
+                LogTitle.GetWithTime().c_str(),
                 Replicas[i].ReplicaIndex,
-                DescribeRange(Range).c_str(),
                 checksum,
                 majorChecksum);
 
@@ -188,7 +190,7 @@ void TResyncRangeActor::ReadBlocks(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    request->Record.BlockSize = BlockSize;
+    request->Record.SetBlockSize(BlockSize);
     request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
@@ -232,7 +234,7 @@ void TResyncRangeActor::WriteReplicaBlocks(
     auto clientId =
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
     request->Record.BlocksCount = Range.Size();
-    request->Record.BlockSize = BlockSize;
+    request->Record.SetBlockSize(BlockSize);
     request->Record.Sglist = SgList;
     if (readResponse.HasChecksum()) {
         *request->Record.MutableChecksums()->Add() = readResponse.GetChecksum();
@@ -265,11 +267,12 @@ void TResyncRangeActor::WriteReplicaBlocks(
         &ctx.SelfID   // forwardOnNondelivery
     );
 
-    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Replica %lu Overwrite block range %s during resync",
-        DiskId.c_str(),
-        Replicas[idx].ReplicaIndex,
-        DescribeRange(Range).c_str());
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Replica %lu Overwrite block range during resync",
+        LogTitle.GetWithTime().c_str(),
+        Replicas[idx].ReplicaIndex);
 
     ctx.Send(event.release());
 }

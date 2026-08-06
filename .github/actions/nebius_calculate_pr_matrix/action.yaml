@@ -10,6 +10,18 @@ outputs:
   matrix_include:
     description: "JSON for strategy.matrix (include)"
     value: ${{ steps.plan.outputs.matrix_include }}
+  matrix_include_asan:
+    description: "JSON for ASAN strategy.matrix (include)"
+    value: ${{ steps.plan.outputs.matrix_include_asan }}
+  matrix_include_tsan:
+    description: "JSON for TSAN strategy.matrix (include)"
+    value: ${{ steps.plan.outputs.matrix_include_tsan }}
+  matrix_include_msan:
+    description: "JSON for MSAN strategy.matrix (include)"
+    value: ${{ steps.plan.outputs.matrix_include_msan }}
+  matrix_include_ubsan:
+    description: "JSON for UBSAN strategy.matrix (include)"
+    value: ${{ steps.plan.outputs.matrix_include_ubsan }}
 
 runs:
   using: "composite"
@@ -40,5 +52,6 @@ runs:
           HAS_HYBRID_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'hybrid') && 'true' || 'false' }}
 
           HAS_LARGE_TESTS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'true' || 'false' }}
+          HAS_ARM64_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'arm64') && 'true' || 'false' }}
 
           SCHEDULING_TYPE: ${{ inputs.scheduling_type }}

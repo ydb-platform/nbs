@@ -16,7 +16,7 @@ IActorPtr CreateNonreplicatedPartition(
     TNonreplicatedPartitionConfigPtr partConfig,
     TActorId volumeActorId,
     TActorId statActorId,
-    NRdma::IClientPtr rdmaClient)
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient)
 {
     if (rdmaClient) {
         return CreateNonreplicatedPartitionRdma(

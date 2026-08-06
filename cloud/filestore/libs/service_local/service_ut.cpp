@@ -314,6 +314,8 @@ struct TTestBootstrap
 
     THeaders Headers;
 
+    TProtoMessagePrinter ProtoMessagePrinter;
+
     static constexpr pid_t DefaultPid = 123;
 
     TTestBootstrap(
@@ -842,7 +844,7 @@ struct TTestBootstrap
 
         UNIT_ASSERT_C(
             SUCCEEDED(response.GetError().GetCode()),
-            DumpMessage(response.GetError()) + "@" + dbg);
+            ProtoMessagePrinter.ToString(response.GetError()) + "@" + dbg);
 
         return response;
     }
@@ -1572,6 +1574,192 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(buffer, "bbbb");
     }
 
+    Y_UNIT_TEST(ShouldWriteDataFromMultipleIovecs)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        TString part1 = "aaaabbbb";
+        TString part2 = "ccccdddd";
+
+        auto request = bootstrap.CreateWriteDataRequest(handle, 0, "");
+        auto* iov1 = request->MutableIovecs()->Add();
+        iov1->SetBase(reinterpret_cast<ui64>(part1.data()));
+        iov1->SetLength(part1.size());
+        auto* iov2 = request->MutableIovecs()->Add();
+        iov2->SetBase(reinterpret_cast<ui64>(part2.data()));
+        iov2->SetLength(part2.size());
+
+        auto response =
+            bootstrap.Store->WriteData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+
+        auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(buffer, part1 + part2);
+    }
+
+    Y_UNIT_TEST(ShouldWriteDataWithZeroLengthIovecs)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        TString part1 = "aaaa";
+        TString empty;
+        TString part2 = "bbbb";
+
+        auto request = bootstrap.CreateWriteDataRequest(handle, 0, "");
+        auto* iov1 = request->MutableIovecs()->Add();
+        iov1->SetBase(reinterpret_cast<ui64>(part1.data()));
+        iov1->SetLength(part1.size());
+        auto* iovEmpty = request->MutableIovecs()->Add();
+        iovEmpty->SetBase(reinterpret_cast<ui64>(empty.data()));
+        iovEmpty->SetLength(0);
+        auto* iov2 = request->MutableIovecs()->Add();
+        iov2->SetBase(reinterpret_cast<ui64>(part2.data()));
+        iov2->SetLength(part2.size());
+
+        auto response =
+            bootstrap.Store->WriteData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+
+        auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(buffer, "aaaabbbb");
+    }
+
+    Y_UNIT_TEST(ShouldReadDataIntoMultipleIovecs)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        bootstrap.WriteData(handle, 0, "aaaabbbbcccc");
+
+        TVector<char> buf1(4);
+        TVector<char> buf2(8);
+
+        auto request = bootstrap.CreateReadDataRequest(handle, 0, 12);
+        auto* iov1 = request->MutableIovecs()->Add();
+        iov1->SetBase(reinterpret_cast<ui64>(buf1.data()));
+        iov1->SetLength(buf1.size());
+        auto* iov2 = request->MutableIovecs()->Add();
+        iov2->SetBase(reinterpret_cast<ui64>(buf2.data()));
+        iov2->SetLength(buf2.size());
+
+        auto response =
+            bootstrap.Store->ReadData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+
+        // Zero-copy reads report the read size via Length and leave Buffer
+        // empty.
+        UNIT_ASSERT_VALUES_EQUAL(12, response.GetLength());
+        UNIT_ASSERT(response.GetBuffer().empty());
+        UNIT_ASSERT_VALUES_EQUAL(TStringBuf(buf1.data(), buf1.size()), "aaaa");
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuf(buf2.data(), buf2.size()),
+            "bbbbcccc");
+    }
+
+    Y_UNIT_TEST(ShouldCapReadLengthWhenIovecCapacityIsLarger)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        bootstrap.WriteData(handle, 0, "aaaabbbb");
+
+        // The caller supplies a much larger iovec than the requested length -
+        // we should only expose request.GetLength() bytes.
+        TVector<char> buf(100, 'x');
+
+        auto request = bootstrap.CreateReadDataRequest(handle, 0, 4);
+        auto* iov = request->MutableIovecs()->Add();
+        iov->SetBase(reinterpret_cast<ui64>(buf.data()));
+        iov->SetLength(buf.size());
+
+        auto response =
+            bootstrap.Store->ReadData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(TStringBuf(buf.data(), 4), "aaaa");
+        // Bytes beyond the requested length must be left untouched.
+        UNIT_ASSERT_VALUES_EQUAL('x', buf[4]);
+    }
+
+    Y_UNIT_TEST(ShouldShortReadWhenIovecCapacityIsSmallerThanLength)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        bootstrap.WriteData(handle, 0, "aaaabbbb");
+
+        // The caller supplies less iovec capacity than the requested length -
+        // the read is capped to the available capacity (a short read).
+        TVector<char> buf(4);
+
+        auto request = bootstrap.CreateReadDataRequest(handle, 0, 100);
+        auto* iov = request->MutableIovecs()->Add();
+        iov->SetBase(reinterpret_cast<ui64>(buf.data()));
+        iov->SetLength(buf.size());
+
+        auto response =
+            bootstrap.Store->ReadData(bootstrap.Ctx, std::move(request))
+                .GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            response.GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(TStringBuf(buf.data(), buf.size()), "aaaa");
+    }
+
+    Y_UNIT_TEST(ShouldReturnBufferForBufferedRead)
+    {
+        TTestBootstrap bootstrap("fs");
+
+        ui64 handle =
+            bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+                .GetHandle();
+
+        bootstrap.WriteData(handle, 0, "aaaabbbb");
+
+        // A read request without iovecs must keep the buffered behavior and
+        // return the data via Buffer.
+        auto response = bootstrap.ReadData(handle, 0, 100);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "aaaabbbb",
+            response.GetBuffer().substr(response.GetBufferOffset()));
+    }
+
     Y_UNIT_TEST(ShouldAllocateData)
     {
         TTestBootstrap bootstrap("fs");
@@ -1873,16 +2061,58 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto id = CreateFile(bootstrap, RootNodeId, "file");
         auto nonexistent = id + 100500;
 
-        bootstrap.AssertListNodeXAttrFailed(nonexistent);
+        {
+            auto response = bootstrap.AssertListNodeXAttrFailed(nonexistent);
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT),
+                response.GetError().GetCode());
+        }
 
-        bootstrap.AssertSetNodeXAttrFailed(id, "invalid", "value");
-        bootstrap.AssertSetNodeXAttrFailed(nonexistent, "user.xattr", "value");
+        {
+            auto response =
+                bootstrap.AssertSetNodeXAttrFailed(id, "invalid", "value");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOTSUPP),
+                response.GetError().GetCode());
+        }
+        {
+            auto response = bootstrap.AssertSetNodeXAttrFailed(
+                nonexistent,
+                "user.xattr",
+                "value");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT),
+                response.GetError().GetCode());
+        }
 
-        bootstrap.AssertGetNodeXAttrFailed(id, "user.xattr");
-        bootstrap.AssertGetNodeXAttrFailed(nonexistent, "user.xattr");
+        {
+            auto response = bootstrap.AssertGetNodeXAttrFailed(id, "user.xattr");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOXATTR),
+                response.GetError().GetCode());
+        }
+        {
+            auto response =
+                bootstrap.AssertGetNodeXAttrFailed(nonexistent, "user.xattr");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT),
+                response.GetError().GetCode());
+        }
 
-        bootstrap.AssertRemoveNodeXAttrFailed(nonexistent, "user.xattr");
-        bootstrap.AssertRemoveNodeXAttrFailed(id, "user.xattr");
+        {
+            auto response =
+                bootstrap.AssertRemoveNodeXAttrFailed(nonexistent, "user.xattr");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT),
+                response.GetError().GetCode());
+        }
+        {
+            auto response =
+                bootstrap.AssertRemoveNodeXAttrFailed(id, "user.xattr");
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_FILESTORE_ERROR(NProto::E_FS_NOXATTR),
+                response.GetError().GetCode());
+        }
     }
 
     Y_UNIT_TEST(ShouldResetSessionStateAndRestoreByClient)
@@ -2393,6 +2623,57 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
                 response.GetFileStore().GetFeatures().GetEntryTimeout(),
                 defaultTimeout);
         }
+    }
+
+    Y_UNIT_TEST(ShouldApplyRequestUmaskWhenGuestPosixAclEnabledViaFeaturesConfig)
+    {
+        TTestBootstrap bootstrap;
+        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("GuestPosixAclEnabled");
+        f->SetValue("true");
+        *f->MutableWhitelist()->AddEntityIds() = "fs";
+        bootstrap.SetFeaturesConfig(fc);
+
+        auto session = bootstrap.CreateSession("fs", "client", "");
+        UNIT_ASSERT(session.GetFileStore().GetFeatures().GetGuestPosixAclEnabled());
+        bootstrap.SwitchToSession({
+            .FileSystemId = "fs",
+            .ClientId = "client",
+            .SessionId = session.GetSession().GetSessionId()});
+
+        auto createNode = bootstrap.CreateCreateNodeRequest(
+            TCreateNodeArgs::File(RootNodeId, "node-created", 0666));
+        createNode->SetUmask(0022);
+        auto createNodeResponse =
+            bootstrap.Store->CreateNode(bootstrap.Ctx, std::move(createNode))
+                .GetValueSync();
+        UNIT_ASSERT_C(
+            SUCCEEDED(createNodeResponse.GetError().GetCode()),
+            createNodeResponse.GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0644,
+            bootstrap.GetNodeAttr(RootNodeId, "node-created").GetNode().GetMode());
+
+        auto createHandle = bootstrap.CreateCreateHandleRequest(
+            RootNodeId,
+            "handle-created",
+            TCreateHandleArgs::CREATE);
+        createHandle->SetMode(0666);
+        createHandle->SetUmask(0022);
+        auto createHandleResponse =
+            bootstrap.Store->CreateHandle(bootstrap.Ctx, std::move(createHandle))
+                .GetValueSync();
+        UNIT_ASSERT_C(
+            SUCCEEDED(createHandleResponse.GetError().GetCode()),
+            createHandleResponse.GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            bootstrap.GetNodeAttr(RootNodeId, "handle-created").GetNode().GetMode(),
+            0644);
     }
 };
 

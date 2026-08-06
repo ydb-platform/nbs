@@ -2,9 +2,12 @@
 
 #include "tablet_schema.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
+
+#include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -513,22 +516,18 @@ bool TIndexTabletDatabase::ReadNodeAttrVers(
 // NodeRefs
 
 void TIndexTabletDatabase::WriteNodeRef(
-    ui64 nodeId,
-    ui64 commitId,
-    const TString& name,
-    ui64 childNodeId,
-    const TString& shardId,
-    const TString& shardNodeName)
+    const TNodeRef& nodeRef,
+    bool /*markExhaustive*/)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
     Table<TTable>()
-        .Key(nodeId, name)
+        .Key(nodeRef.NodeId, nodeRef.Name)
         .Update(
-            NIceDb::TUpdate<TTable::CommitId>(commitId),
-            NIceDb::TUpdate<TTable::ChildId>(childNodeId),
-            NIceDb::TUpdate<TTable::ShardId>(shardId),
-            NIceDb::TUpdate<TTable::ShardNodeName>(shardNodeName)
+            NIceDb::TUpdate<TTable::CommitId>(nodeRef.MinCommitId),
+            NIceDb::TUpdate<TTable::ChildId>(nodeRef.ChildNodeId),
+            NIceDb::TUpdate<TTable::ShardId>(nodeRef.ShardId),
+            NIceDb::TUpdate<TTable::ShardNodeName>(nodeRef.ShardNodeName)
         );
 }
 
@@ -562,15 +561,14 @@ bool TIndexTabletDatabase::ReadNodeRef(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            ref = TNodeRef {
+            ref.ConstructInPlace(
                 nodeId,
                 name,
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
                 it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            };
+                maxCommitId);
         }
     }
 
@@ -588,7 +586,6 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
     ui32* skippedRefs,
     NProto::EListNodesSizeMode sizeMode)
 {
-
     using TTableBase = typename TIndexTabletSchema::NodeRefs;
     auto it = Table<TTable>()
         .GreaterOrEqual(nodeId, cookie)
@@ -606,15 +603,14 @@ bool TIndexTabletDatabase::ReadNodeRefsBase(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            refs.emplace_back(TNodeRef {
+            refs.emplace_back(
                 nodeId,
                 it.template GetValue<TTableBase::Name>(),
                 it.template GetValue<TTableBase::ChildId>(),
                 it.template GetValue<TTableBase::ShardId>(),
                 it.template GetValue<TTableBase::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            });
+                maxCommitId);
 
             const auto& ref = refs.back();
             // TODO(#5148): consider other size calculation modes
@@ -723,14 +719,14 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     }
 
     while (it.IsValid() && maxCount > 0) {
-        refs.emplace_back(TNodeRef{
+        refs.emplace_back(
             it.GetValue<TTable::NodeId>(),
             it.GetValue<TTable::Name>(),
             it.GetValue<TTable::ChildId>(),
             it.GetValue<TTable::ShardId>(),
             it.GetValue<TTable::ShardNodeName>(),
             it.GetValue<TTable::CommitId>(),
-            InvalidCommitId});
+            InvalidCommitId);
         --maxCount;
 
         if (!it.Next()) {
@@ -1731,6 +1727,102 @@ bool TIndexTabletDatabase::ReadCheckpoints(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Quotas
+
+void TIndexTabletDatabase::WriteQuota(const NProto::TQuota& quota)
+{
+    using TTable = TIndexTabletSchema::Quotas;
+
+    Table<TTable>()
+        .Key(quota.GetQuotaId())
+        .Update(NIceDb::TUpdate<TTable::Proto>(quota));
+}
+
+void TIndexTabletDatabase::DeleteQuota(ui32 quotaId)
+{
+    using TTable = TIndexTabletSchema::Quotas;
+
+    Table<TTable>()
+        .Key(quotaId)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadQuotas(TVector<NProto::TQuota>& quotas)
+{
+    using TTable = TIndexTabletSchema::Quotas;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        quotas.emplace_back(it.GetValue<TTable::Proto>());
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// QuotaUsage
+
+void TIndexTabletDatabase::WriteQuotaUsage(
+    ui32 quotaId,
+    ui64 usedBytes,
+    ui64 usedNodes)
+{
+    using TTable = TIndexTabletSchema::QuotaUsage;
+
+    Table<TTable>()
+        .Key(quotaId)
+        .Update(
+            NIceDb::TUpdate<TTable::UsedBytes>(usedBytes),
+            NIceDb::TUpdate<TTable::UsedNodes>(usedNodes)
+        );
+}
+
+void TIndexTabletDatabase::DeleteQuotaUsage(ui32 quotaId)
+{
+    using TTable = TIndexTabletSchema::QuotaUsage;
+
+    Table<TTable>()
+        .Key(quotaId)
+        .Delete();
+}
+
+bool TIndexTabletDatabase::ReadQuotaUsages(TVector<TQuotaUsage>& usages)
+{
+    using TTable = TIndexTabletSchema::QuotaUsage;
+
+    auto it = Table<TTable>()
+        .Select();
+
+    if (!it.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (it.IsValid()) {
+        TQuotaUsage usage;
+        usage.QuotaId = it.GetValue<TTable::QuotaId>();
+        usage.UsedBytes = it.GetValue<TTable::UsedBytes>();
+        usage.UsedNodes = it.GetValue<TTable::UsedNodes>();
+        usages.push_back(usage);
+
+        if (!it.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // CheckpointNodes
 
 void TIndexTabletDatabase::WriteCheckpointNode(ui64 checkpointId, ui64 nodeId)
@@ -2141,7 +2233,7 @@ bool TIndexTabletDatabase::ReadResponseLog(
 
 TIndexTabletDatabaseProxy::TIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
-        TVector<TInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
+        TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
     : TIndexTabletDatabase(database)
     , NodeUpdates(nodeUpdates)
 {}
@@ -2155,7 +2247,7 @@ bool TIndexTabletDatabaseProxy::ReadNode(
     if (result && node) {
         // If ReadNode was successful, it is reasonable to update the cache with
         // the value that has just been read.
-        NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
+        NodeUpdates.emplace_back(IInMemoryIndexState::TWriteNodeRequest{
             .NodeId = nodeId,
             .Row = {.CommitId = node->MinCommitId, .Node = node->Attrs}});
     }
@@ -2177,7 +2269,7 @@ bool TIndexTabletDatabaseProxy::ReadNodes(
         // If ReadNodes was successful, it is reasonable to update the cache
         // with the values that have just been read.
         for (const auto& node: nodes) {
-            NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
+            NodeUpdates.emplace_back(IInMemoryIndexState::TWriteNodeRequest{
                 .NodeId = node.NodeId,
                 .Row = {.CommitId = node.MinCommitId, .Node = node.Attrs}});
         }
@@ -2191,7 +2283,7 @@ void TIndexTabletDatabaseProxy::WriteNode(
     const NProto::TNode& attrs)
 {
     TIndexTabletDatabase::WriteNode(nodeId, commitId, attrs);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRequest{
+    NodeUpdates.emplace_back(IInMemoryIndexState::TWriteNodeRequest{
         .NodeId = nodeId,
         .Row = {.CommitId = commitId, .Node = attrs}});
 }
@@ -2200,7 +2292,7 @@ void TIndexTabletDatabaseProxy::DeleteNode(ui64 nodeId)
 {
     TIndexTabletDatabase::DeleteNode(nodeId);
     NodeUpdates.emplace_back(
-        TInMemoryIndexState::TDeleteNodeRequest{.NodeId = nodeId});
+        IInMemoryIndexState::TDeleteNodeRequest{.NodeId = nodeId});
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeVer(
@@ -2230,7 +2322,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeAttr(
     if (result && attr) {
         // If ReadNodeAttr  was successful, it is reasonable to update the cache
         // with the value that has just been read.
-        NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeAttrsRequest{
+        NodeUpdates.emplace_back(IInMemoryIndexState::TWriteNodeAttrsRequest{
             .NodeAttrsKey = {nodeId, name},
             .NodeAttrsRow = {
                 .CommitId = attr->MinCommitId,
@@ -2248,7 +2340,7 @@ void TIndexTabletDatabaseProxy::WriteNodeAttr(
     ui64 version)
 {
     TIndexTabletDatabase::WriteNodeAttr(nodeId, commitId, name, value, version);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeAttrsRequest{
+    NodeUpdates.emplace_back(IInMemoryIndexState::TWriteNodeAttrsRequest{
         .NodeAttrsKey = {nodeId, name},
         .NodeAttrsRow =
             {.CommitId = commitId, .Value = value, .Version = version}});
@@ -2258,7 +2350,7 @@ void TIndexTabletDatabaseProxy::DeleteNodeAttr(ui64 nodeId, const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeAttr(nodeId, name);
     NodeUpdates.emplace_back(
-        TInMemoryIndexState::TDeleteNodeAttrsRequest{nodeId, name});
+        IInMemoryIndexState::TDeleteNodeAttrsRequest{nodeId, name});
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeAttrVer(
@@ -2346,7 +2438,7 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
         // 2. All refs.size() fit into the underlying cache
         if (next && next->empty() && cookie.empty() && *skippedRefs == 0) {
             NodeUpdates.emplace_back(
-                TInMemoryIndexState::TMarkNodeRefsAsCachedRequest{
+                IInMemoryIndexState::TMarkNodeRefsAsCachedRequest{
                     .NodeId = nodeId,
                     .RefsSize = refs.size()});
         }
@@ -2380,34 +2472,30 @@ bool TIndexTabletDatabaseProxy::ReadNodeRefs(
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeRef(
-    ui64 nodeId,
-    ui64 commitId,
-    const TString& name,
-    ui64 childNode,
-    const TString& shardId,
-    const TString& shardNodeName)
+    const TNodeRef& nodeRef,
+    bool markExhaustive)
 {
-    TIndexTabletDatabase::WriteNodeRef(
-        nodeId,
-        commitId,
-        name,
-        childNode,
-        shardId,
-        shardNodeName);
-    NodeUpdates.emplace_back(TInMemoryIndexState::TWriteNodeRefsRequest{
-        .NodeRefsKey = {nodeId, name},
+    TIndexTabletDatabase::WriteNodeRef(nodeRef, markExhaustive);
+    NodeUpdates.emplace_back(IInMemoryIndexState::TWriteNodeRefsRequest{
+        .NodeRefsKey = {nodeRef.NodeId, nodeRef.Name},
         .NodeRefsRow = {
-            .CommitId = commitId,
-            .ChildId = childNode,
-            .ShardId = shardId,
-            .ShardNodeName = shardNodeName}});
+            .CommitId = nodeRef.MinCommitId,
+            .ChildId = nodeRef.ChildNodeId,
+            .ShardId = nodeRef.ShardId,
+            .ShardNodeName = nodeRef.ShardNodeName}});
+    if (markExhaustive) {
+        NodeUpdates.emplace_back(
+            IInMemoryIndexState::TMarkNodeRefsAsCachedRequest{
+                .NodeId = nodeRef.ChildNodeId,
+                .RefsSize = 0});
+    }
 }
 
 void TIndexTabletDatabaseProxy::DeleteNodeRef(ui64 nodeId, const TString& name)
 {
     TIndexTabletDatabase::DeleteNodeRef(nodeId, name);
     NodeUpdates.emplace_back(
-        TInMemoryIndexState::TDeleteNodeRefsRequest{nodeId, name});
+        IInMemoryIndexState::TDeleteNodeRefsRequest{nodeId, name});
 }
 
 void TIndexTabletDatabaseProxy::WriteNodeRefVer(
@@ -2439,10 +2527,10 @@ void TIndexTabletDatabaseProxy::DeleteNodeRefVer(
     // TODO(#1146): _Ver tables not yet supported
 }
 
-TInMemoryIndexState::TWriteNodeRefsRequest
+IInMemoryIndexState::TWriteNodeRefsRequest
 TIndexTabletDatabaseProxy::ExtractWriteNodeRefsFromNodeRef(const TNodeRef& ref)
 {
-    return TInMemoryIndexState::TWriteNodeRefsRequest{
+    return IInMemoryIndexState::TWriteNodeRefsRequest{
         .NodeRefsKey = {ref.NodeId, ref.Name},
         .NodeRefsRow = {
             .CommitId = ref.MinCommitId,

@@ -139,7 +139,7 @@ public:
     void InsertBlockIfHot(ui32 rangeIdx, TMixedBlock block);
     void EraseBlockIfHot(ui32 rangeIdx, TBlockKey blockKey);
 
-    bool VisitBlocksIfHot(ui32 rangeIdx, IBlocksIndexVisitor& visitor);
+    bool VisitBlocksIfHot(ui32 rangeIdx, IMixedBlocksIndexVisitor& visitor);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -228,7 +228,7 @@ void TMixedIndexCache::TImpl::EraseBlockIfHot(
 
 bool TMixedIndexCache::TImpl::VisitBlocksIfHot(
     ui32 rangeIdx,
-    IBlocksIndexVisitor& visitor)
+    IMixedBlocksIndexVisitor& visitor)
 {
     auto it = Index.find(rangeIdx);
     if (it == Index.end() || it->second.Temperature != ERangeTemperature::Hot) {
@@ -236,7 +236,13 @@ bool TMixedIndexCache::TImpl::VisitBlocksIfHot(
     }
 
     for (const auto& b: it->second.Blocks) {
-        if (!visitor.Visit(b.BlockIndex, b.CommitId, b.BlobId, b.BlobOffset)) {
+        if (!visitor.VisitBlock(
+                b.BlockIndex,
+                b.CommitId,
+                b.BlobId,
+                b.BlobOffset,
+                b.CompactionRangeCount))
+        {
             // interrupted
             return true;
         }
@@ -286,7 +292,7 @@ void TMixedIndexCache::EraseBlockIfHot(
 
 bool TMixedIndexCache::VisitBlocksIfHot(
     ui32 rangeIdx,
-    IBlocksIndexVisitor& visitor)
+    IMixedBlocksIndexVisitor& visitor)
 {
     return Impl->VisitBlocksIfHot(rangeIdx, visitor);
 }

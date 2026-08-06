@@ -37,6 +37,10 @@ on:
         type: boolean
         default: true
         description: "run tests"
+      target_platform:
+        type: string
+        default: ""
+        description: "ya make target platform"
       sleep_after_tests:
         type: string
         default: "0"
@@ -46,7 +50,7 @@ on:
         default: "small,medium,large"
       test_type:
         type: string
-        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
       folder_prefix:
         type: string
         default: "nebius-"
@@ -78,6 +82,10 @@ on:
         type: string
         default: "1"
         description: "Number of retries for tests"
+      test_timeout_minutes:
+        type: string
+        default: ""
+        description: "Per ya make test attempt timeout in minutes"
 
 jobs:
   calculate-runs-on:
@@ -98,14 +106,13 @@ jobs:
           LABELS_LIST=$(echo "${LABELS_LIST}" | jq -c --arg gh_label "self-hosted" '. + [$gh_label]')
           LABELS_LIST=$(echo "${LABELS_LIST}" | jq -c --arg gh_label "runner_${RUNNER_FLAVOR}" '. + [$gh_label]')
           if [ "${RUNNER_LABEL}" != "none" ]; then
-            LABELS_LIST=$(echo "${LABELS_LIST}" | jq  -c --arg gh_label "${RUNNER_LABEL}" '. + [$gh_label]')
+              LABELS_LIST=$(echo "${LABELS_LIST}" | jq -c --arg gh_label "${RUNNER_LABEL}" '. + [$gh_label]')
           fi
           echo "LABELS_LIST=${LABELS_LIST}" | tee -a "$GITHUB_OUTPUT"
-
   build-and-test:
-    name: Build and test ${{ inputs.build_preset }}
+    name: Build and test [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
-    timeout-minutes: 420
+    timeout-minutes: 480
     needs: calculate-runs-on
     outputs:
       # outcome failure and test_failed is null -> vm is broken
@@ -114,12 +121,9 @@ jobs:
       test_failed: ${{ steps.test.outputs.test_failed || 'null' }}
       test_run_outcome: ${{ steps.test.outcome }}
     steps:
-    - name: Prepare workspace
-      shell: bash --noprofile --norc -eo pipefail -x {0}
-      run: |
-        chown -R root:root $GITHUB_WORKSPACE
     - name: Checkout PR
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
+      timeout-minutes: 10
       if: github.event.pull_request.head.sha != ''
       with:
         submodules: true
@@ -130,14 +134,18 @@ jobs:
       if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
       shell: bash
       run: |
-        [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
+        if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
+            echo "Removing stale rebase state left on runner checkout"
+            rm -rf .git/rebase-merge .git/rebase-apply
+        fi
         git config user.email "robot-nbs@nebius.com"
         git config user.name "Robot NBS"
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git rebase origin/${{ github.event.pull_request.base.ref }}
         git submodule update --init --recursive
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
+      timeout-minutes: 10
       if: github.event.pull_request.head.sha == ''
       with:
         submodules: true
@@ -148,7 +156,7 @@ jobs:
       id: cli
       uses: ./.github/actions/nebius_cli
       with:
-        sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+        config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
     - name: set up gh cli
       id: gh
       uses: ./.github/actions/gh_cli
@@ -164,13 +172,12 @@ jobs:
         LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
         VM_PRESET=$(jq -r '.spec.resources.preset' instance.json)
         {
-          echo "LABEL=${LABEL}"
-          echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
-          echo "INSTANCE_ID=${INSTANCE_ID}"
-          echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
-          echo "VM_PRESET=${VM_PRESET}"
+            echo "LABEL=${LABEL}"
+            echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
+            echo "INSTANCE_ID=${INSTANCE_ID}"
+            echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
+            echo "VM_PRESET=${VM_PRESET}"
         } | tee -a "$GITHUB_OUTPUT"
-
     - name: Calculate threads
       id: calculate-threads
       if: always()
@@ -179,7 +186,21 @@ jobs:
         vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
         tests_size: ${{ inputs.test_size }}
 
-    - name: Prepare s3cmd
+    - name: mark workload as running
+      id: workload-comment
+      if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: running
+        current_job_name: Build and test [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
+        runner_name: ${{ runner.name }}
+        add_summary_link: yes
+
+    - name: Prepare AWS CLI
       uses: ./.github/actions/s3cmd
       with:
         s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
@@ -189,17 +210,11 @@ jobs:
         s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
         folder_prefix: nebius-
         build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
         install: false
 
-    # TODO: remove after this step is added to base image
-    - name: install unattended-upgrades
-      shell: bash --noprofile --norc -eo pipefail -x {0}
-      run: |
-        [ -f /etc/apt/apt.conf.d/50unattended-upgrades ] && echo "unattended-upgrades already installed" && exit 0
-        sudo apt-get -o Dpkg::Lock::Timeout=600 update
-        sudo apt-get install -y unattended-upgrades
-
     - name: Build
+      id: build
       uses: ./.github/actions/build
       if: inputs.run_build
       with:
@@ -214,6 +229,8 @@ jobs:
         link_threads: ${{ steps.calculate-threads.outputs.link_threads }}
         clean_ya_dir: ${{ inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
+        target_platform: ${{ inputs.target_platform }}
+        ya_registry_endpoint: ${{ vars.NEBIUS_YA_TOOL_MIRROR || 'https://devtools-registry.s3.yandex.net' }}
 
     - name: Run tests
       uses: ./.github/actions/test
@@ -236,7 +253,22 @@ jobs:
         clean_ya_dir: ${{ inputs.run_build && 'no' || inputs.clean_ya_dir }}
         use_network_cache: ${{ inputs.use_network_cache }}
         number_of_retries: ${{ inputs.number_of_retries }}
+        test_timeout_minutes: ${{ inputs.test_timeout_minutes || '390' }}
+        build_duration_seconds: ${{ steps.build.outputs.build_duration_seconds || '0' }}
         truncate_enabled: ${{ inputs.truncate_enabled }}
+        ya_registry_endpoint: ${{ vars.NEBIUS_YA_TOOL_MIRROR || 'https://devtools-registry.s3.yandex.net' }}
+
+    - name: mark workload build failed
+      if: ${{ failure() && steps.build.outcome == 'failure' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: failed_build
+        build_error_log_url: ${{ steps.build.outputs.build_error_log_url }}
+
     - id: sleep
       name: Sleep after failed tests
       if: ${{ inputs.sleep_after_tests != '0' && failure() }}
@@ -245,10 +277,29 @@ jobs:
         SLEEP_AFTER_TESTS: ${{ inputs.sleep_after_tests || '7200' }}
       run: |
         sleep "$SLEEP_AFTER_TESTS"
+    - name: mark workload as cancelled
+      if: ${{ cancelled() && steps.build.outcome != 'failure' && steps.test.outputs.report_generated != 'yes' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: cancelled
+
+    - name: mark workload as completed
+      if: ${{ always() && steps.build.outcome != 'failure' && (steps.test.outputs.report_generated == 'yes' || (!cancelled() && !inputs.run_tests)) && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: completed
   debug:
     name: Debug
     runs-on: [self-hosted, "self-hosted", "runner_light"]
-    needs: 
+    needs:
       - calculate-runs-on
       - build-and-test
     if: ${{ !cancelled() }}
@@ -270,7 +321,6 @@ jobs:
           echo "Test failed is empty: ${{ needs.build-and-test.outputs.test_failed == '' }}"
           echo "Condition: ${{ needs.build-and-test.outputs.test_failed == null && needs.build-and-test.outputs.test_run_outcome == null }}"
           echo "Condition: ${{ needs.build-and-test.outputs.test_failed == '' && needs.build-and-test.outputs.test_run_outcome == '' }}"
-          
         env:
           test_run_outcome: ${{ needs.build-and-test.outputs.test_run_outcome }}
           test_failed: ${{ needs.build-and-test.outputs.test_failed }}
@@ -284,22 +334,20 @@ jobs:
           test_run_outcome_is_cancelled: ${{ needs.build-and-test.outputs.test_run_outcome == 'cancelled' }}
           test_run_outcome_is_empty: ${{ needs.build-and-test.outputs.test_run_outcome == '' }}
           test_failed_is_empty: ${{ needs.build-and-test.outputs.test_failed == '' }}
-    
+
   test-retry:
-    name: Retry tests
+    name: Retry tests [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     runs-on: ${{ fromJson(needs.calculate-runs-on.outputs.runs-on) }}
-    needs: 
+    timeout-minutes: 480
+    needs:
       - calculate-runs-on
       - build-and-test
     # we can only rely on fact that test_failed can be null
-    if: ${{ failure() && vars.POOLED_ENABLE_FAILED_TESTS_RETRY_ON_NODE_FAILURE == 'yes' && (needs.build-and-test.outputs.test_failed == null && needs.build-and-test.outputs.test_run_outcome == null) }}
+    if: ${{ inputs.run_tests && failure() && vars.POOLED_ENABLE_FAILED_TESTS_RETRY_ON_NODE_FAILURE == 'yes' && (needs.build-and-test.outputs.test_failed == null && needs.build-and-test.outputs.test_run_outcome == null) }}
     steps:
-      - name: Prepare workspace
-        shell: bash --noprofile --norc -eo pipefail -x {0}
-        run: |
-          chown -R root:root $GITHUB_WORKSPACE
       - name: Checkout PR
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
+        timeout-minutes: 10
         if: github.event.pull_request.head.sha != ''
         with:
           submodules: true
@@ -310,14 +358,18 @@ jobs:
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
         run: |
-          [ -f ".git/rebase-merge" ] && echo "Already rebasing, skipping rebase step" && exit 0 || true
+          if [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; then
+              echo "Removing stale rebase state left on runner checkout"
+              rm -rf .git/rebase-merge .git/rebase-apply
+          fi
           git config user.email "robot-nbs@nebius.com"
           git config user.name "Robot NBS"
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git rebase origin/${{ github.event.pull_request.base.ref }}
           git submodule update --init --recursive
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
+        timeout-minutes: 10
         if: github.event.pull_request.head.sha == ''
         with:
           submodules: true
@@ -328,7 +380,7 @@ jobs:
         id: cli
         uses: ./.github/actions/nebius_cli
         with:
-          sa_json: ${{ secrets.POOLED_HEAVY_SA_JSON }}
+          config_yaml: ${{ secrets.POOLED_HEAVY_NEBIUS_CONFIG_YAML }}
       - name: set up gh cli
         id: gh
         uses: ./.github/actions/gh_cli
@@ -345,14 +397,13 @@ jobs:
           LOCAL_IPV4=$(jq -r '.status.network_interfaces[0].ip_address.address' instance.json | sed -e 's/\/32//g')
           VM_PRESET=$(jq -r '.spec.resources.preset' instance.json)
           {
-            echo "LABEL=${LABEL}"
-            echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
-            echo "INSTANCE_ID=${INSTANCE_ID}"
-            echo "RUNNER_IPV4=${EXTERNAL_IPV4}"
-            echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
-            echo "VM_PRESET=${VM_PRESET}"
+              echo "LABEL=${LABEL}"
+              echo "RUNNER_FLAVOR=${RUNNER_FLAVOR}"
+              echo "INSTANCE_ID=${INSTANCE_ID}"
+              echo "RUNNER_IPV4=${EXTERNAL_IPV4}"
+              echo "RUNNER_LOCAL_IPV4=${LOCAL_IPV4}"
+              echo "VM_PRESET=${VM_PRESET}"
           } | tee -a "$GITHUB_OUTPUT"
-
       - name: Calculate threads
         id: calculate-threads
         if: always()
@@ -361,7 +412,21 @@ jobs:
           vm_preset: ${{ steps.get-runner.outputs.VM_PRESET }}
           tests_size: ${{ inputs.test_size }}
 
-      - name: Prepare s3cmd
+      - name: mark workload retry as running
+        id: workload-comment
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+        uses: ./.github/actions/workload_comment
+        with:
+          command: update
+          build_preset: ${{ inputs.build_preset }}
+          target_platform: ${{ inputs.target_platform }}
+          component: ${{ inputs.component == '' && 'all' || inputs.component }}
+          workload_check_status: running
+          current_job_name: Retry tests [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
+          runner_name: ${{ runner.name }}
+          add_summary_link: yes
+
+      - name: Prepare AWS CLI
         uses: ./.github/actions/s3cmd
         with:
           s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
@@ -371,6 +436,7 @@ jobs:
           s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
           folder_prefix: nebius-
           build_preset: ${{ inputs.build_preset }}
+          target_platform: ${{ inputs.target_platform }}
           install: false
       - name: Run tests
         uses: ./.github/actions/test
@@ -390,3 +456,25 @@ jobs:
           clean_ya_dir: ${{ inputs.clean_ya_dir }}
           use_network_cache: ${{ inputs.use_network_cache }}
           number_of_retries: ${{ inputs.number_of_retries }}
+          test_timeout_minutes: ${{ inputs.test_timeout_minutes || '390' }}
+          ya_registry_endpoint: ${{ vars.NEBIUS_YA_TOOL_MIRROR || 'https://devtools-registry.s3.yandex.net' }}
+
+      - name: mark workload retry as cancelled
+        if: ${{ cancelled() && steps.test.outputs.report_generated != 'yes' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+        uses: ./.github/actions/workload_comment
+        with:
+          command: update
+          build_preset: ${{ inputs.build_preset }}
+          target_platform: ${{ inputs.target_platform }}
+          component: ${{ inputs.component == '' && 'all' || inputs.component }}
+          workload_check_status: cancelled
+
+      - name: mark workload retry as completed
+        if: ${{ always() && steps.test.outputs.report_generated == 'yes' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+        uses: ./.github/actions/workload_comment
+        with:
+          command: update
+          build_preset: ${{ inputs.build_preset }}
+          target_platform: ${{ inputs.target_platform }}
+          component: ${{ inputs.component == '' && 'all' || inputs.component }}
+          workload_check_status: completed

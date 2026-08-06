@@ -4,6 +4,7 @@ RECURSE_FOR_TESTS(
     qemu-kikimr-multishard-nemesis-test
     qemu-kikimr-multishard-tablets-restart-test
     qemu-kikimr-multishard-test
+    qemu-kikimr-mq-test
     qemu-kikimr-nemesis-test
     qemu-kikimr-test
     qemu-local-test

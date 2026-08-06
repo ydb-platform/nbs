@@ -31,7 +31,7 @@ struct TEnvironment
 
     TFSyncQueue Queue = TFSyncQueue(FileSystemId, Logging);
 
-    TFSyncCache::TRequestId CurrentRequestId = 1ul;
+    IFSyncQueue::TRequestId CurrentRequestId = 1ul;
     TNodeId::TUnderlyingType CurrentNodeId = 1ul;
 
     std::mt19937_64 eng = CreateRandomEngine();
@@ -43,7 +43,7 @@ struct TEnvironment
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {}
 
-    TFSyncCache::TRequestId GetNextRequestId()
+    IFSyncQueue::TRequestId GetNextRequestId()
     {
         return CurrentRequestId++;
     }
@@ -191,6 +191,31 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
         Queue.Dequeue(thirdMetaReqId, {}, thirdNodeId);
     }
 
+    Y_UNIT_TEST_F(ShouldTreatGlobalMetaShardScanAsOrderingPoint, TEnvironment)
+    {
+        const TNodeId earlyScannedNodeId {16}; // shard 0
+        const TNodeId laterScannedNodeId {1};  // shard 1
+
+        const auto blockerReqId = 100ul;
+        const auto fsyncReqId = 200ul;
+        const auto lateLowerReqId = 150ul;
+
+        Queue.Enqueue(blockerReqId, laterScannedNodeId);
+
+        const auto future = Queue.WaitForRequests(fsyncReqId);
+        UNIT_ASSERT(!future.HasValue());
+
+        // This request has a lower reqId, but it was admitted after the global
+        // fsync had already scanned its shard.
+        Queue.Enqueue(lateLowerReqId, earlyScannedNodeId);
+
+        Queue.Dequeue(blockerReqId, {}, laterScannedNodeId);
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(!HasError(future.GetValueSync()));
+
+        Queue.Dequeue(lateLowerReqId, {}, earlyScannedNodeId);
+    }
+
     Y_UNIT_TEST_F(ShouldWorkWithLocalDataRequests, TEnvironment)
     {
         const auto firstNodeId = GetNextNodeId();
@@ -260,6 +285,33 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
 
         Queue.Dequeue(thirdDataReqId, {}, thirdNodeId, thirdHandle);
         Queue.Dequeue(firstMetaReqId, {}, firstNodeId);
+    }
+
+    Y_UNIT_TEST_F(ShouldTreatGlobalDataShardScanAsOrderingPoint, TEnvironment)
+    {
+        const TNodeId earlyScannedNodeId {16}; // shard 0
+        const TNodeId laterScannedNodeId {1};  // shard 1
+        const THandle earlyHandle {1};
+        const THandle laterHandle {2};
+
+        const auto blockerReqId = 100ul;
+        const auto fsyncReqId = 200ul;
+        const auto lateLowerReqId = 150ul;
+
+        Queue.Enqueue(blockerReqId, laterScannedNodeId, laterHandle);
+
+        const auto future = Queue.WaitForDataRequests(fsyncReqId);
+        UNIT_ASSERT(!future.HasValue());
+
+        // This request has a lower reqId, but it was admitted after the global
+        // fsync had already scanned its shard.
+        Queue.Enqueue(lateLowerReqId, earlyScannedNodeId, earlyHandle);
+
+        Queue.Dequeue(blockerReqId, {}, laterScannedNodeId, laterHandle);
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(!HasError(future.GetValueSync()));
+
+        Queue.Dequeue(lateLowerReqId, {}, earlyScannedNodeId, earlyHandle);
     }
 
     Y_UNIT_TEST_F(ShouldWorkWithSimpleOrder, TEnvironment)

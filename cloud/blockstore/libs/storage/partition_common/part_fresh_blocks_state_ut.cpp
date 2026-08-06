@@ -39,6 +39,16 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetUntrimmedFreshBlobByteCount());
     }
+
+    Y_UNIT_TEST(ShouldAllowIncrementingFlushCountersToMaxValue)
+    {
+        TPartitionFlushState state;
+
+        state.IncrementUnflushedFreshBlobCount(Max<ui32>());
+        UNIT_ASSERT_VALUES_EQUAL(
+            Max<ui32>(),
+            state.GetUnflushedFreshBlobCount());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

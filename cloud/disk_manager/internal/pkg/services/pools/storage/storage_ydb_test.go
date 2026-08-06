@@ -86,7 +86,13 @@ func newStorage(
 	db *persistence.YDBClient,
 ) Storage {
 
-	return newStorageWithConfig(t, ctx, db, makeDefaultConfig(), metrics.NewEmptyRegistry())
+	return newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		makeDefaultConfig(),
+		metrics.NewEmptyRegistry(),
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -145,6 +151,20 @@ func relocateOverlayDisk(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func normalizeBaseDisk(disk BaseDisk) BaseDisk {
+	disk.FreeSlots = 0
+	return disk
+}
+
+func normalizeBaseDisks(disks []BaseDisk) []BaseDisk {
+	for i := range disks {
+		disks[i].FreeSlots = 0
+	}
+	return disks
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestStorageYDBReleaseNonExistent(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
@@ -162,8 +182,18 @@ func TestStorageYDBReleaseNonExistent(t *testing.T) {
 		},
 	}
 
+	// Must add a tombstone slot to the database.
 	baseDisk, err := storage.ReleaseBaseDiskSlot(ctx, slot.OverlayDisk)
 	require.NoError(t, err)
+	require.Empty(t, baseDisk)
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, baseDisk))
+
+	// Must see the tombstone slot => must not acquire a slot.
+	baseDisk, err = storage.AcquireBaseDiskSlot(ctx, "image", slot)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.True(t, errors.IsSilent(err))
+	require.ErrorContains(t, err, "already released")
 	require.Empty(t, baseDisk)
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, baseDisk))
 
@@ -283,6 +313,17 @@ func TestStorageYDBCreateBaseDisksPool(t *testing.T) {
 	require.Equal(t, uint64(0), poolInfos[0].ImageSize)
 	require.NotZero(t, poolInfos[0].CreatedAt)
 
+	disks := make([]BaseDisk, 0)
+	disks, err = storage.GetIdleBaseDisks(
+		ctx,
+		poolInfos[0].ImageID,
+		poolInfos[0].ZoneID,
+		0,
+		100,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(disks))
+
 	for _, disk := range baseDisks[2:5] {
 		err = storage.BaseDiskCreated(ctx, disk)
 		require.NoError(t, err)
@@ -292,6 +333,19 @@ func TestStorageYDBCreateBaseDisksPool(t *testing.T) {
 	for i := 0; i < len(scheduled); i++ {
 		scheduled[i].CreateTaskID = "create"
 	}
+
+	disks, err = storage.GetIdleBaseDisks(
+		ctx,
+		poolInfos[0].ImageID,
+		poolInfos[0].ZoneID,
+		0,
+		100,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 3, len(disks))
+	require.Equal(t, baseDisks[2].ImageID, disks[0].ImageID)
+	require.Equal(t, baseDisks[3].ImageID, disks[1].ImageID)
+	require.Equal(t, baseDisks[4].ImageID, disks[2].ImageID)
 
 	err = storage.BaseDisksScheduled(ctx, scheduled)
 	require.NoError(t, err)
@@ -421,22 +475,22 @@ func TestStorageYDBPoolReusage1(t *testing.T) {
 
 	actual, err := storage.AcquireBaseDiskSlot(ctx, "image", slot1)
 	require.NoError(t, err)
-	require.Equal(t, baseDisks[0], actual)
+	require.Equal(t, normalizeBaseDisk(baseDisks[0]), normalizeBaseDisk(actual))
 
 	actual, err = storage.ReleaseBaseDiskSlot(ctx, slot1.OverlayDisk)
 	require.NoError(t, err)
-	require.Equal(t, baseDisks[0], actual)
+	require.Equal(t, normalizeBaseDisk(baseDisks[0]), normalizeBaseDisk(actual))
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, actual))
 
 	// Check idempotency.
 	actual, err = storage.ReleaseBaseDiskSlot(ctx, slot1.OverlayDisk)
 	require.NoError(t, err)
-	require.Equal(t, baseDisks[0], actual)
+	require.Equal(t, normalizeBaseDisk(baseDisks[0]), normalizeBaseDisk(actual))
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, actual))
 
 	actual, err = storage.AcquireBaseDiskSlot(ctx, "image", slot2)
 	require.NoError(t, err)
-	require.Equal(t, baseDisks[0], actual)
+	require.Equal(t, normalizeBaseDisk(baseDisks[0]), normalizeBaseDisk(actual))
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
@@ -479,13 +533,17 @@ func TestStorageYDBPoolReusage2(t *testing.T) {
 			Slot{OverlayDisk: overlayDisks[i]},
 		)
 		require.NoError(t, err)
-		require.Equal(t, baseDisks[0], actual)
+		require.Equal(
+			t,
+			normalizeBaseDisk(baseDisks[0]),
+			normalizeBaseDisk(actual),
+		)
 	}
 
 	// Release one slot.
 	actual, err := storage.ReleaseBaseDiskSlot(ctx, overlayDisks[0])
 	require.NoError(t, err)
-	require.Equal(t, baseDisks[0], actual)
+	require.Equal(t, normalizeBaseDisk(baseDisks[0]), normalizeBaseDisk(actual))
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, actual))
 
 	// Acquire slot for last overlay disk.
@@ -495,7 +553,7 @@ func TestStorageYDBPoolReusage2(t *testing.T) {
 		Slot{OverlayDisk: overlayDisks[len(overlayDisks)-1]},
 	)
 	require.NoError(t, err)
-	require.Equal(t, baseDisks[0], actual)
+	require.Equal(t, normalizeBaseDisk(baseDisks[0]), normalizeBaseDisk(actual))
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
@@ -554,7 +612,11 @@ func TestStorageYDBDeletePool(t *testing.T) {
 	toDelete, err := storage.GetBaseDisksToDelete(ctx, 100500)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(toDelete))
-	require.Equal(t, baseDiskFromZone1, toDelete[0])
+	require.Equal(
+		t,
+		normalizeBaseDisk(baseDiskFromZone1),
+		normalizeBaseDisk(toDelete[0]),
+	)
 
 	// Check idempotency.
 	err = storage.DeletePool(ctx, "image", "zone1")
@@ -563,7 +625,11 @@ func TestStorageYDBDeletePool(t *testing.T) {
 	toDelete, err = storage.GetBaseDisksToDelete(ctx, 100500)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(toDelete))
-	require.Equal(t, baseDiskFromZone1, toDelete[0])
+	require.Equal(
+		t,
+		normalizeBaseDisk(baseDiskFromZone1),
+		normalizeBaseDisk(toDelete[0]),
+	)
 
 	toSchedule, err := storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
@@ -623,7 +689,7 @@ func TestStorageYDBImageDeleting(t *testing.T) {
 
 	actual, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Equal(t, scheduled[0], actual)
+	require.Equal(t, normalizeBaseDisk(scheduled[0]), normalizeBaseDisk(actual))
 
 	err = storage.ImageDeleting(ctx, "image")
 	require.NoError(t, err)
@@ -635,7 +701,11 @@ func TestStorageYDBImageDeleting(t *testing.T) {
 	toDelete, err := storage.GetBaseDisksToDelete(ctx, 100500)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(toDelete))
-	require.Equal(t, baseDisks[1], toDelete[0])
+	require.Equal(
+		t,
+		normalizeBaseDisk(baseDisks[1]),
+		normalizeBaseDisk(toDelete[0]),
+	)
 
 	// Check idempotency.
 	err = storage.ImageDeleting(ctx, "image")
@@ -644,7 +714,11 @@ func TestStorageYDBImageDeleting(t *testing.T) {
 	toDelete, err = storage.GetBaseDisksToDelete(ctx, 100500)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(toDelete))
-	require.Equal(t, baseDisks[1], toDelete[0])
+	require.Equal(
+		t,
+		normalizeBaseDisk(baseDisks[1]),
+		normalizeBaseDisk(toDelete[0]),
+	)
 
 	toSchedule, err := storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
@@ -715,7 +789,7 @@ func TestStorageYDBBaseDisksDeleted(t *testing.T) {
 
 	actual, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Equal(t, scheduled[0], actual)
+	require.Equal(t, normalizeBaseDisk(scheduled[0]), normalizeBaseDisk(actual))
 
 	err = storage.ImageDeleting(ctx, "image")
 	require.NoError(t, err)
@@ -723,13 +797,21 @@ func TestStorageYDBBaseDisksDeleted(t *testing.T) {
 	toDelete, err := storage.GetBaseDisksToDelete(ctx, 100500)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(toDelete))
-	require.ElementsMatch(t, []BaseDisk{baseDisks[1], baseDisks[2]}, toDelete)
+	require.ElementsMatch(
+		t,
+		normalizeBaseDisks([]BaseDisk{baseDisks[1], baseDisks[2]}),
+		normalizeBaseDisks(toDelete),
+	)
 
 	// Check idempotency.
 	toDelete, err = storage.GetBaseDisksToDelete(ctx, 100500)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(toDelete))
-	require.ElementsMatch(t, []BaseDisk{baseDisks[1], baseDisks[2]}, toDelete)
+	require.ElementsMatch(
+		t,
+		normalizeBaseDisks([]BaseDisk{baseDisks[1], baseDisks[2]}),
+		normalizeBaseDisks(toDelete),
+	)
 
 	err = storage.BaseDisksDeleted(ctx, toDelete)
 	require.NoError(t, err)
@@ -797,7 +879,11 @@ func TestStorageYDBBaseDiskCreationFailed(t *testing.T) {
 	actual, err := storage.GetBaseDisksToDelete(ctx, 100500)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(actual))
-	require.Equal(t, baseDisks1[0], actual[0])
+	require.Equal(
+		t,
+		normalizeBaseDisk(baseDisks1[0]),
+		normalizeBaseDisk(actual[0]),
+	)
 
 	baseDisks2, err := storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
@@ -825,7 +911,11 @@ func TestStorageYDBBaseDiskCreationFailed(t *testing.T) {
 	actual, err = storage.GetBaseDisksToDelete(ctx, 100500)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(actual))
-	require.Equal(t, baseDisks1[0], actual[0])
+	require.Equal(
+		t,
+		normalizeBaseDisk(baseDisks1[0]),
+		normalizeBaseDisk(actual[0]),
+	)
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
@@ -956,7 +1046,7 @@ func TestStorageYDBRebaseOverlayDisk1(t *testing.T) {
 
 	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Contains(t, baseDisks, source)
+	require.Contains(t, normalizeBaseDisks(baseDisks), normalizeBaseDisk(source))
 
 	var target BaseDisk
 
@@ -1036,11 +1126,11 @@ func TestStorageYDBRebaseOverlayDisk1(t *testing.T) {
 
 	actual, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Equal(t, target, actual)
+	require.Equal(t, normalizeBaseDisk(target), normalizeBaseDisk(actual))
 
 	actual, err = storage.ReleaseBaseDiskSlot(ctx, slot.OverlayDisk)
 	require.NoError(t, err)
-	require.Equal(t, target, actual)
+	require.Equal(t, normalizeBaseDisk(target), normalizeBaseDisk(actual))
 
 	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
 		OverlayDisk:      slot.OverlayDisk,
@@ -1097,7 +1187,7 @@ func TestStorageYDBRebaseOverlayDisk2(t *testing.T) {
 
 	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Contains(t, baseDisks, source)
+	require.Contains(t, normalizeBaseDisks(baseDisks), normalizeBaseDisk(source))
 
 	var target BaseDisk
 	for _, baseDisk := range baseDisks {
@@ -1115,7 +1205,7 @@ func TestStorageYDBRebaseOverlayDisk2(t *testing.T) {
 	// Release slot before rebase is finished.
 	actual, err := storage.ReleaseBaseDiskSlot(ctx, slot.OverlayDisk)
 	require.NoError(t, err)
-	require.Equal(t, source, actual)
+	require.Equal(t, normalizeBaseDisk(source), normalizeBaseDisk(actual))
 
 	err = storage.OverlayDiskRebased(ctx, RebaseInfo{
 		OverlayDisk:      slot.OverlayDisk,
@@ -1182,7 +1272,7 @@ func TestStorageYDBRelocateOverlayDisk(t *testing.T) {
 
 	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Contains(t, baseDisks, source)
+	require.Contains(t, normalizeBaseDisks(baseDisks), normalizeBaseDisk(source))
 
 	for _, baseDisk := range baseDisks {
 		err = storage.BaseDiskCreated(ctx, baseDisk)
@@ -1288,7 +1378,7 @@ func TestStorageYDBRelocateOverlayDiskWithoutPool(t *testing.T) {
 
 	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Contains(t, baseDisks, source)
+	require.Contains(t, normalizeBaseDisks(baseDisks), normalizeBaseDisk(source))
 
 	for _, baseDisk := range baseDisks {
 		err = storage.BaseDiskCreated(ctx, baseDisk)
@@ -1357,7 +1447,7 @@ func TestStorageYDBRebaseOverlayDiskDuringRelocating(t *testing.T) {
 
 	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Contains(t, baseDisks, source)
+	require.Contains(t, normalizeBaseDisks(baseDisks), normalizeBaseDisk(source))
 
 	for _, baseDisk := range baseDisks {
 		err = storage.BaseDiskCreated(ctx, baseDisk)
@@ -1464,7 +1554,11 @@ func TestStorageYDBRetiringOverlayDiskDuringRelocating(t *testing.T) {
 
 	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Contains(t, baseDisks, source)
+	require.Contains(
+		t,
+		normalizeBaseDisks(baseDisks),
+		normalizeBaseDisk(source),
+	)
 
 	for _, baseDisk := range baseDisks {
 		err = storage.BaseDiskCreated(ctx, baseDisk)
@@ -1580,7 +1674,11 @@ func TestStorageYDBRelocatingOverlayDiskAfterRelocatingToAnotherZone(
 
 	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Contains(t, baseDisks, source)
+	require.Contains(
+		t,
+		normalizeBaseDisks(baseDisks),
+		normalizeBaseDisk(source),
+	)
 
 	for _, baseDisk := range baseDisks {
 		err = storage.BaseDiskCreated(ctx, baseDisk)
@@ -1708,7 +1806,11 @@ func TestStorageYDBAbortOverlayDiskRebasing(t *testing.T) {
 
 	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 	require.NoError(t, err)
-	require.Contains(t, baseDisks, source)
+	require.Contains(
+		t,
+		normalizeBaseDisks(baseDisks),
+		normalizeBaseDisk(source),
+	)
 
 	var target BaseDisk
 	var anotherTarget BaseDisk
@@ -1890,7 +1992,11 @@ func TestStorageYDBRetireBaseDisks(t *testing.T) {
 
 		for i := 0; i < len(toSchedule); i++ {
 			toSchedule[i].CreateTaskID = "create"
-			require.NotContains(t, oldBaseDisks, toSchedule[i])
+			require.NotContains(
+				t,
+				normalizeBaseDisks(oldBaseDisks),
+				normalizeBaseDisk(toSchedule[i]),
+			)
 		}
 
 		err = storage.BaseDisksScheduled(ctx, toSchedule)
@@ -1921,13 +2027,21 @@ func TestStorageYDBRetireBaseDisks(t *testing.T) {
 
 	toDelete, err := storage.GetBaseDisksToDelete(ctx, 100500)
 	require.NoError(t, err)
-	require.ElementsMatch(t, oldBaseDisks, toDelete)
+	require.ElementsMatch(
+		t,
+		normalizeBaseDisks(oldBaseDisks),
+		normalizeBaseDisks(toDelete),
+	)
 
 	for _, slot := range slots {
 		baseDisk, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
 		require.NoError(t, err)
 		require.NotEmpty(t, baseDisk.ID)
-		require.Contains(t, newBaseDisks, baseDisk)
+		require.Contains(
+			t,
+			normalizeBaseDisks(newBaseDisks),
+			normalizeBaseDisk(baseDisk),
+		)
 
 		id, ok := baseDiskIDs[slot.OverlayDisk.DiskId]
 		require.True(t, ok)
@@ -2144,6 +2258,93 @@ func TestStorageYDBCreatePoolWithImageSize(t *testing.T) {
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+}
+
+func TestStorageYDBCreatePoolWithImageSizeAndAdjustBaseDiskSizeToMinBaseDiskUnits(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	maxActiveSlots := uint32(640)
+	maxBaseDisksInflight := uint32(1)
+	maxBaseDiskUnits := uint32(640)
+	adjustBaseDiskSizeToMinBaseDiskUnits := true
+	config := &pools_config.PoolsConfig{
+		MaxActiveSlots:       &maxActiveSlots,
+		MaxBaseDisksInflight: &maxBaseDisksInflight,
+		MaxBaseDiskUnits:     &maxBaseDiskUnits,
+
+		AdjustBaseDiskSizeToMinBaseDiskUnits: &adjustBaseDiskSizeToMinBaseDiskUnits,
+	}
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	imageSize := uint64(10)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, imageSize)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+	require.Equal(t, 6*baseDiskUnitSize, baseDisks[0].Size)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBCreatePoolWithLargerImageSize(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	maxActiveSlots := uint32(640)
+	maxBaseDisksInflight := uint32(1)
+	maxBaseDiskUnits := uint32(640)
+	config := &pools_config.PoolsConfig{
+		MaxActiveSlots:       &maxActiveSlots,
+		MaxBaseDisksInflight: &maxBaseDisksInflight,
+		MaxBaseDiskUnits:     &maxBaseDiskUnits,
+	}
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	imageSize := uint64(7 * baseDiskUnitSize)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, imageSize)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+	require.Equal(t, 7*baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, uint64(70), baseDisks[0].Units)
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
@@ -2624,4 +2825,19 @@ func TestStorageYDBBaseDisksShouldHavePrefix(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
 	require.True(t, strings.HasPrefix(baseDisks[0].ID, prefix))
+}
+
+func TestStorageYDBGetIdleBaseDisksEmpty(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	idleDisks, err := storage.GetIdleBaseDisks(ctx, "image", "zone", time.Hour, 100)
+	require.NoError(t, err)
+	require.Empty(t, idleDisks)
 }

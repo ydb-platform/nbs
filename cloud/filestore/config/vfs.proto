@@ -79,6 +79,16 @@ message TVFSConfig
     // (and a subdirectory with session id as name) if not present.
     optional string DirectoryHandlesStoragePath = 22;
 
-    // Initial data area size for DirectoryHandles persistent table.
+    // Initial data area size for DirectoryHandles persistent table. Should be power of 2
     optional uint64 DirectoryHandlesInitialDataSize = 23;
+
+    // Max single growth step for DirectoryHandles persistent table data area.
+    optional uint64 DirectoryHandlesMaxDataAreaStepSize = 24;
+
+    // This threshold limits WriteBackCache queue growth to avoid excessive
+    // latency for operations that must wait for cached writes to be flushed,
+    // such as SetNodeAttr, ReleaseHandle, data requests with O_DIRECT flag.
+    // The value is compared with the number of flush batches needed to drain
+    // unflushed WriteData requests.
+    optional uint32 WriteBackCacheMaxQueuedFlushBatchesPerNode = 25;
 }

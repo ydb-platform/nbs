@@ -38,16 +38,16 @@ struct TConfigInitializerYdbBase
 
     virtual void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig& config) = 0;
 
-protected:
-    NKikimrConfig::TLogConfig GetLogConfig() const;
-    NKikimrConfig::TMonitoringConfig GetMonitoringConfig() const;
-    TString GetFullSchemeShardDir() const;
-
     void ApplyActorSystemConfig(const TString& text);
     void ApplyInterconnectConfig(const TString& text);
     void ApplyAuthConfig(const TString& text);
     void ApplyLogConfig(const TString& text);
     void ApplyMonitoringConfig(const TString& text);
+
+protected:
+    NKikimrConfig::TLogConfig GetLogConfig() const;
+    NKikimrConfig::TMonitoringConfig GetMonitoringConfig() const;
+    TString GetFullSchemeShardDir() const;
 };
 
 }   // namespace NCloud::NServer

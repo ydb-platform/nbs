@@ -2,10 +2,10 @@
 import os
 import asyncio
 import argparse
-from github import Github
 from tabulate import tabulate
 from .helpers import (
     setup_logger,
+    github_client,
     get_jobs_raw,
     compact_workflow_name,
     compact_job_name,
@@ -15,6 +15,7 @@ import datetime
 from typing import List
 
 from nebius.sdk import SDK
+from nebius.aio.cli_config import Config
 from nebius.aio.service_error import RequestError
 from nebius.api.nebius.compute.v1 import (
     InstanceServiceClient,
@@ -36,11 +37,6 @@ def parse_args():
         "--api-endpoint",
         default="api.ai.nebius.cloud",
         help="Cloud API Endpoint",
-    )
-    parser.add_argument(
-        "--service-account-key",
-        required=True,
-        help="Path to the service account key file",
     )
     parser.add_argument("--owner", required=True, help="GitHub organization or user")
     parser.add_argument("--repo", required=True, help="GitHub repository name")
@@ -65,11 +61,11 @@ async def main():
         )
         exit(1)
 
-    sdk = SDK(credentials_file_name=args.service_account_key)
+    sdk = SDK(config_reader=Config())
     service = InstanceServiceClient(sdk)
     operation_service = service.operation_service()
 
-    g = Github(token)
+    g = github_client(token)
     repo = g.get_repo(f"{args.owner}/{args.repo}")
 
     # Fetch self-hosted runners

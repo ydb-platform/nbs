@@ -545,9 +545,9 @@ public:
 
         auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
         request->Record.SetStartIndex(writeRange.Start);
+        request->Record.SetBlockSize(blockContent.size() / writeRange.Size());
         request->Record.Sglist = TGuardedSgList(std::move(sglist));
         request->Record.BlocksCount = writeRange.Size();
-        request->Record.BlockSize = blockContent.size() / writeRange.Size();
         return request;
     }
 
@@ -627,9 +627,9 @@ public:
         request->Record.SetCheckpointId(checkpointId);
         request->Record.SetStartIndex(readRange.Start);
         request->Record.SetBlocksCount(readRange.Size());
+        request->Record.SetBlockSize(SgListGetSize(sglist) / readRange.Size());
 
         request->Record.Sglist = TGuardedSgList(sglist);
-        request->Record.BlockSize = SgListGetSize(sglist) / readRange.Size();
         return request;
     }
 
@@ -761,6 +761,14 @@ public:
         const TBlockRange32& range, const TString& checkpointId = "")
     {
         return CreateDescribeBlocksRequest(range.Start, range.Size(), checkpointId);
+    }
+
+    std::unique_ptr<TEvVolume::TEvDescribeBlobRequest> CreateDescribeBlobRequest(
+        const NKikimr::TLogoBlobID& blobId)
+    {
+        auto request = std::make_unique<TEvVolume::TEvDescribeBlobRequest>();
+        LogoBlobIDFromLogoBlobID(blobId, request->Record.MutableBlobId());
+        return request;
     }
 
     std::unique_ptr<TEvVolume::TEvGetUsedBlocksRequest> CreateGetUsedBlocksRequest()
@@ -1024,6 +1032,10 @@ private:
     void HandleGetChangedBlocksRequest(
         const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
         const TActorContext& ctx);
+
+    void HandlePingRequest(
+        const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1149,11 +1161,25 @@ void TTestVolumeProxyActor::HandleGetChangedBlocksRequest(
     ctx.Send(ev->Sender, response.release());
 }
 
+void TTestVolumeProxyActor::HandlePingRequest(
+    const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    UNIT_ASSERT_VALUES_EQUAL(BaseDiskId, msg->DiskId);
+
+    ctx.Send(
+        ev->Sender,
+        std::make_unique<TEvVolumeProxy::TEvKeepAliveResponse>().release());
+}
+
 STFUNC(TTestVolumeProxyActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocksRequest);
         HFunc(TEvService::TEvGetChangedBlocksRequest, HandleGetChangedBlocksRequest);
+        HFunc(TEvVolumeProxy::TEvKeepAliveRequest, HandlePingRequest);
 
         default:
             HandleUnexpectedEvent(
@@ -1244,12 +1270,13 @@ TPartitionWithRuntime SetupOverlayPartition(
     ui64 baseTabletId,
     const TPartitionContent& basePartitionContent = {},
     TMaybe<ui32> channelsCount = {},
-    ui32 blockSize = DefaultBlockSize)
+    ui32 blockSize = DefaultBlockSize,
+    const NProto::TStorageServiceConfig& config = DefaultConfig())
 {
     TPartitionWithRuntime result;
 
     result.Runtime = PrepareTestActorRuntime(
-        DefaultConfig(),
+        config,
         10240,
         channelsCount,
         {
@@ -7831,6 +7858,212 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(
             expectedTraceId.GetTimeToLive(),
             traceId->GetTimeToLive());
+    }
+
+    Y_UNIT_TEST(ShouldKeepBaseDiskPipeAliveWhenEnabled)
+    {
+        auto config = DefaultConfig();
+        config.SetBaseDiskPipeKeepAliveEnabled(true);
+
+        const auto keepAliveInterval = TDuration::Seconds(2);
+        config.SetVolumeProxyPipeInactivityTimeout(
+            keepAliveInterval.MilliSeconds() * 2);
+
+        auto setup = SetupOverlayPartition(
+            TestTabletId,
+            TestTabletId2,
+            {},   // basePartitionContent
+            {},   // channelsCount
+            DefaultBlockSize,
+            config);
+        auto& runtime = *setup.Runtime;
+
+        ui64 pingCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvVolumeProxy::EvKeepAliveRequest) {
+                    ++pingCount;
+                }
+                return false;
+            });
+
+        // Drive simulated time across several intervals; the keep-alive actor
+        // must keep pinging the base-disk volume periodically.
+        for (ui32 i = 0; i < 3; ++i) {
+            runtime.AdvanceCurrentTime(keepAliveInterval);
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT_GE(pingCount, 2u);
+    }
+
+    Y_UNIT_TEST(ShouldNotKeepBaseDiskPipeAliveWhenDisabled)
+    {
+        auto config = DefaultConfig();
+        config.SetBaseDiskPipeKeepAliveEnabled(false);
+
+        const auto pipeInactivityInterval = TDuration::Seconds(5);
+        config.SetVolumeProxyPipeInactivityTimeout(
+            pipeInactivityInterval.MilliSeconds());
+
+        auto setup = SetupOverlayPartition(
+            TestTabletId,
+            TestTabletId2,
+            {},
+            {},
+            DefaultBlockSize,
+            config);
+        auto& runtime = *setup.Runtime;
+
+        ui64 pingCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvVolumeProxy::EvKeepAliveRequest) {
+                    ++pingCount;
+                }
+                return false;
+            });
+
+        runtime.AdvanceCurrentTime(
+            pipeInactivityInterval + TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+
+        UNIT_ASSERT_VALUES_EQUAL(0u, pingCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotReturnBlobIdForFreshBlocksInDescribeWhenIndexOnlyIsOff)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::MakeOneBlock(0);
+        partition.WriteBlocks(range, char(1));
+
+        NKikimr::TLogoBlobID blobIdFromContent;
+        {
+            const auto response = partition.DescribeBlocks(range);
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.FreshBlockRangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.BlobPiecesSize());
+            const auto& fr = response->Record.GetFreshBlockRanges(0);
+            UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(char(1)), fr.GetBlocksContent());
+            blobIdFromContent = LogoBlobIDFromLogoBlobID(fr.GetBlobId());
+            UNIT_ASSERT_VALUES_EQUAL(false, blobIdFromContent.IsValid());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReturnBlobIdForFreshBlocksInDescribeWhenIndexOnlyIsTrue)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const ui32 channelCount = DataChannelOffset + 2;
+        const ui32 freshChannelNo = channelCount - 1;
+
+        NKikimr::TLogoBlobID blobIdFromContent;
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::TEvWriteBlobRequest>();
+                        if (msg->BlobId.Channel() != freshChannelNo) {
+                            break;
+                        }
+
+                        blobIdFromContent = NKikimr::TLogoBlobID(
+                            TestTabletId,
+                            msg->BlobId.Generation(),
+                            msg->BlobId.Step(),
+                            msg->BlobId.Channel(),
+                            msg->BlobId.BlobSize(),
+                            msg->BlobId.Cookie());
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto range = TBlockRange32::MakeOneBlock(0);
+        partition.WriteBlocks(range, char(1));
+
+        auto request = partition.CreateDescribeBlocksRequest(range);
+        request->Record.SetIndexOnly(true);
+        partition.SendToPipe(std::move(request));
+        const auto response =
+            partition.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, response->Record.FreshBlockRangesSize());
+        const auto& fr = response->Record.GetFreshBlockRanges(0);
+        UNIT_ASSERT(fr.GetBlocksContent().empty());
+        UNIT_ASSERT(LogoBlobIDFromLogoBlobID(fr.GetBlobId()).IsValid());
+        UNIT_ASSERT_VALUES_EQUAL(
+            blobIdFromContent,
+            LogoBlobIDFromLogoBlobID(fr.GetBlobId()));
+    }
+
+    Y_UNIT_TEST(ShouldHandleDescribeBlobRequestForFreshBlob)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::MakeOneBlock(0);
+        partition.WriteBlocks(range, char(1));
+
+        auto request = partition.CreateDescribeBlocksRequest(range);
+        request->Record.SetIndexOnly(true);
+        partition.SendToPipe(std::move(request));
+        const auto describeResponse =
+            partition.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, describeResponse->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, describeResponse->Record.FreshBlockRangesSize());
+
+        const auto freshBlobId = LogoBlobIDFromLogoBlobID(
+            describeResponse->Record.GetFreshBlockRanges(0).GetBlobId());
+        UNIT_ASSERT(freshBlobId.IsValid());
+
+        const auto response = partition.DescribeBlob(freshBlobId);
+        UNIT_ASSERT_VALUES_EQUAL(1, response->Record.BlocksSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetBlocks(0).GetBlockIndex());
+    }
+
+    Y_UNIT_TEST(ShouldHandleDescribeBlobRequestForMergedBlob)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(11, 4);
+        partition.WriteBlocks(range, char(1));
+        partition.Flush();
+
+        const auto describeBlocks = partition.DescribeBlocks(range);
+        UNIT_ASSERT_VALUES_EQUAL(1, describeBlocks->Record.BlobPiecesSize());
+
+        const auto blobId = LogoBlobIDFromLogoBlobID(
+            describeBlocks->Record.GetBlobPieces(0).GetBlobId());
+        UNIT_ASSERT(blobId.IsValid());
+
+        const auto response = partition.DescribeBlob(blobId);
+        UNIT_ASSERT_VALUES_EQUAL(range.Size(), response->Record.BlocksSize());
+
+        for (ui32 i = 0; i < range.Size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                range.Start + i,
+                response->Record.GetBlocks(i).GetBlockIndex());
+            UNIT_ASSERT_VALUES_EQUAL(i, response->Record.GetBlocks(i).GetBlobOffset());
+        }
     }
 }
 

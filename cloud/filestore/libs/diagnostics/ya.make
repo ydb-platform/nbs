@@ -9,6 +9,8 @@ SRCS(
     profile_log.cpp
     profile_log_events.cpp
     request_stats.cpp
+    restart_count.cpp
+    tcmalloc_stats.cpp
     throttler_info_serializer.cpp
     trace_serializer.cpp
     user_counter.cpp
@@ -27,6 +29,8 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/user_stats
     cloud/storage/core/libs/version
+
+    contrib/ydb/core/mon_alloc
 
     library/cpp/digest/crc32c
     library/cpp/eventlog

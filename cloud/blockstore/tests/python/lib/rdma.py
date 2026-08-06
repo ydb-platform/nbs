@@ -58,6 +58,25 @@ class GuestClient:
             "cloud/blockstore/tools/testing/rdma-test/rdma-test"
         )
 
+    def get_last_interface(self):
+        result = self.execute(
+            "ip -o link show | "
+            "sed -n 's/^[0-9]\\+: \\([^:@]*\\).*/\\1/p' | "
+            "grep -v '^lo$' | "
+            "tail -n 1"
+        )
+
+        output = result.stdout
+        if isinstance(output, bytes):
+            output = output.decode("utf-8")
+
+        interface = output.strip()
+        if not interface:
+            raise RuntimeError("Failed to determine guest network interface")
+
+        logger.info("Use guest interface %s for RDMA setup", interface)
+        return interface
+
 
 def setup_rdma():
     ssh_key = os.getenv("QEMU_SSH_KEY")
@@ -70,13 +89,14 @@ def setup_rdma():
                 local_ip=local_ip, ssh_user="qemu", ssh_port=port, ssh_key=ssh_key
             )
         )
+        interface = clients[-1].get_last_interface()
 
         setup_cmds = [
-            f"netplan set ethernets.ens5.addresses=[{local_ip}/24]",
+            "ip address",
+            f"netplan set ethernets.{interface}.addresses=[{local_ip}/24]",
             "netplan apply",
-            "rdma link add rxe0 type rxe netdev ens5",
-            "ln -s /usr/lib/x86_64-linux-gnu/libibverbs.so.1 /usr/lib/libibverbs.so",
-            "ln -s /usr/lib/x86_64-linux-gnu/librdmacm.so.1 /usr/lib/librdmacm.so",
+            f"rdma link add rxe0 type rxe netdev {interface}",
+            "ip address",
         ]
 
         for cmd in setup_cmds:

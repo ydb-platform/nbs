@@ -1457,6 +1457,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto disksInTemporarilyUnavailableState =
             diskRegistryGroup->GetCounter("DisksInTemporarilyUnavailableState");
         auto disksInErrorState = diskRegistryGroup->GetCounter("DisksInErrorState");
+        auto disksToCleanup = diskRegistryGroup->GetCounter("DisksToCleanup");
         auto placementGroups = diskRegistryGroup->GetCounter("PlacementGroups");
         auto fullPlacementGroups = diskRegistryGroup->GetCounter("FullPlacementGroups");
         auto allocatedDisksInGroups = diskRegistryGroup->GetCounter("AllocatedDisksInGroups");
@@ -1609,6 +1610,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, disksInOnlineState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInTemporarilyUnavailableState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInErrorState->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, disksToCleanup->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, placementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, allocatedDisksInGroups->Val());
@@ -1806,9 +1808,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             disableFullGroupsCountCalculation ? 0 : 1,
             fullPlacementGroups->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisksInGroups->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, disksToCleanup->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT(state.MarkDeviceAsDirty(db, "uuid-5"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
         });
 
         state.PublishCounters(Now());
@@ -1851,6 +1855,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, localPool.BrokenBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, localPool.DecommissionedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(10_GB, localPool.DirtyBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, disksToCleanup->Val());
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+        });
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, allocatedDisks->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, disksToCleanup->Val());
     }
 
     Y_UNIT_TEST(ShouldUpdateCounters)
@@ -6010,6 +6024,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agent1.GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString("test-message"),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -6019,6 +6034,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 storageConfig->GetNonReplicatedInfraTimeout(),
                 cmsTimeout);
+
+            const NProto::TAgentConfig* agentPtr =
+                state.FindAgent(agent1.GetNodeId());
+            UNIT_ASSERT(agentPtr);
+            UNIT_ASSERT_VALUES_EQUAL(
+                "cms action (test-message)",
+                agentPtr->GetStateMessage());
 
             Sort(affectedDisks);
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
@@ -6079,6 +6101,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 UNIT_ASSERT_VALUES_EQUAL(ts, *res);
             }
 
+            const NProto::TAgentConfig* agentPtr =
+                state.FindAgent(agent1.GetNodeId());
+            UNIT_ASSERT(agentPtr);
+            UNIT_ASSERT_VALUES_EQUAL(
+                "state message",
+                agentPtr->GetStateMessage());
+
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
         });
@@ -6093,6 +6122,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agent1.GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts + TDuration::Seconds(10),
                 false, // dryRun
                 affectedDisks,
@@ -6117,6 +6147,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agent1.GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts + TDuration::Seconds(10),
                 false, // dryRun
                 affectedDisks,
@@ -6194,6 +6225,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agent1.GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -6230,6 +6262,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agent1.GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -6253,6 +6286,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agent1.GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts + TDuration::Seconds(10),
                 false, // dryRun
                 affectedDisks,
@@ -6300,6 +6334,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 agent1.GetAgentId(),
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false,   // shouldResumeDevice
                 false);  // dryRun
@@ -6358,6 +6393,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 agent1.GetAgentId(),
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts + TDuration::Seconds(10),
                 false,  // shouldResumeDevice
                 false); // dryRun
@@ -6662,6 +6698,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agents[0].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -6696,6 +6733,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agents[1].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -6726,6 +6764,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agents[2].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -6788,6 +6827,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agents[2].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -6819,6 +6859,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agents[2].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -6854,6 +6895,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agents[2].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -7123,6 +7165,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agents[0].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -7154,6 +7197,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 agents[1].GetAgentId(),
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false, // dryRun
                 affectedDisks,
@@ -7633,6 +7677,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 agent1.GetAgentId(),
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false,  // shouldResumeDevice
                 false); // dryRun
@@ -7648,6 +7693,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 agent1.GetAgentId(),
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts + TDuration::Seconds(10),
                 false,   // shouldResumeDevice
                 true);   // dryRun
@@ -7686,6 +7732,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 agent1.GetAgentId(),
                 "dev-2",
                 desiredState,
+                /*customMessage=*/TString(),
                 Now(),
                 false,    // shouldResumeDevice
                 false);   // dryRun
@@ -7781,6 +7828,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 "agent-1",
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts,
                 false,
                 affectedDisks,
@@ -7798,6 +7846,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 db,
                 "agent-1",
                 NProto::AGENT_STATE_WARNING,
+                /*customMessage=*/TString(),
                 ts + TDuration::Seconds(10),
                 true,
                 affectedDisks,
@@ -12742,6 +12791,33 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 // Cannot allocate disk of 1 device
                 UNIT_ASSERT(!canAllocateLater(1));
             });
+    }
+
+    Y_UNIT_TEST(ShouldPreserveDeviceModelAfterRegisterAgent)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        TDeviceConfig dev = Device("dev-1", "uuid-1", "rack-1");
+        dev.SetSerialNumber("SN-001");
+        dev.SetDeviceModel("SAMSUNG-980PRO");
+
+        const auto agentConfig = AgentConfig(1, {dev});
+
+        auto statePtr = TDiskRegistryStateBuilder().Build();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UpdateConfig(state, db, {agentConfig});
+            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agentConfig));
+        });
+
+        const auto* device = state.FindDevice("uuid-1");
+        UNIT_ASSERT(device);
+        UNIT_ASSERT_VALUES_EQUAL("SAMSUNG-980PRO", device->GetDeviceModel());
+        UNIT_ASSERT_VALUES_EQUAL("SN-001", device->GetSerialNumber());
     }
 }
 

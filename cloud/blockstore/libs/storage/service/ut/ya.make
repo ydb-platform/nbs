@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 SRCS(
     service_state_ut.cpp
     service_ut_actions.cpp
+    service_ut_get_tablet_boot_infos.cpp
     service_ut_alter.cpp
     service_ut_create_from_device.cpp
     service_ut_create.cpp
@@ -23,11 +24,13 @@ SRCS(
     service_ut_start.cpp
     service_ut_stats.cpp
     service_ut_update_config.cpp
+    service_ut_vhost_discard.cpp
     service_ut.cpp
 )
 
 PEERDIR(
     cloud/blockstore/libs/storage/testlib
+    cloud/storage/core/libs/hive_proxy
 )
 
 YQL_LAST_ABI_VERSION()

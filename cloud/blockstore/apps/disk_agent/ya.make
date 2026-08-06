@@ -1,6 +1,6 @@
 PROGRAM(diskagentd)
 
-ALLOCATOR(TCMALLOC_TC)
+ALLOCATOR(TCMALLOC_256K)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
 
@@ -10,10 +10,11 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/disk_agent
-    cloud/blockstore/libs/rdma/impl
+    cloud/blockstore/libs/rdma
     cloud/blockstore/libs/spdk/iface
 
     cloud/storage/core/libs/daemon
+    cloud/storage/core/libs/rdma/impl
 
     contrib/ydb/core/security
     contrib/ydb/library/keys
@@ -23,10 +24,6 @@ PEERDIR(
 
 IF (BUILD_TYPE != "PROFILE" AND BUILD_TYPE != "DEBUG" AND BUILD_TYPE != "RELWITHDEBINFO")
     SPLIT_DWARF()
-ELSE()
-    PEERDIR(
-        library/cpp/terminate_handler
-    )
 ENDIF()
 
 IF (SANITIZER_TYPE)

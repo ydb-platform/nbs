@@ -25,8 +25,32 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPartitionDatabase
-    : public NKikimr::NIceDb::TNiceDb
+class TNoOpCounter
+{
+public:
+    void operator()(TStringBuf)
+    {}
+};
+
+class TMethodCallCounter
+{
+private:
+    THashMap<TString, ui64> MethodCallCounts;
+
+public:
+    void operator()(TStringBuf methodName)
+    {
+        MethodCallCounts[methodName]++;
+    }
+
+    [[nodiscard]] const THashMap<TString, ui64>& GetMethodCallCounts() const
+    {
+        return MethodCallCounts;
+    }
+};
+
+template <typename TCounters>
+class TPartitionDatabaseImpl: public NKikimr::NIceDb::TNiceDb
 {
 public:
     enum class EBlobIndexScanProgress
@@ -36,10 +60,18 @@ public:
         Partial
     };
 
+private:
+    TCounters Counters;
+
 public:
-    TPartitionDatabase(NKikimr::NTable::TDatabase& database)
+    TPartitionDatabaseImpl(NKikimr::NTable::TDatabase& database)
         : NKikimr::NIceDb::TNiceDb(database)
     {}
+
+    [[nodiscard]] const TCounters& GetCounters() const
+    {
+        return Counters;
+    }
 
     void InitSchema();
 
@@ -71,21 +103,25 @@ public:
 
     void WriteMixedBlocks(
         const TPartialBlobId& blobId,
-        const TVector<ui32>& blocks);
+        const TVector<ui32>& blocks,
+        ui8 compactionRangeCount);
 
     void DeleteMixedBlock(ui32 blockIndex, ui64 commitId);
 
     bool FindMixedBlocks(
-        IBlocksIndexVisitor& visitor,
+        IMixedBlocksIndexVisitor& visitor,
         const TBlockRange32& readRange,
         bool precharge,
         ui64 maxCommitId = Max());
 
     bool FindMixedBlocks(
-        IBlocksIndexVisitor& visitor,
+        IMixedBlocksIndexVisitor& visitor,
         const TVector<ui32>& blocks,
         ui64 maxCommitId = Max());
 
+    bool FindMixedBlocks(
+        IMixedBlocksIndexVisitor& visitor,
+        const TVector<TBlock>& blocks);
     //
     // MergedBlocksIndex
     //
@@ -98,6 +134,14 @@ public:
     void DeleteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange);
+
+    bool FindMergedBlocks(
+        IBlocksIndexVisitor& visitor,
+        IBlobsVisitor& blobsVisitor,
+        const TBlockRange32& readRange,
+        bool precharge,
+        ui32 maxBlocksInBlob,
+        ui64 maxCommitId = Max());
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,
@@ -137,6 +181,11 @@ public:
     bool ReadBlockMask(
         const TPartialBlobId& blobId,
         TMaybe<TBlockMask>& blockMask);
+
+    bool ReadBlobInfo(
+        const TPartialBlobId& blobId,
+        TMaybe<TBlockMask>& blockMask,
+        TMaybe<NProto::TBlobMeta>& blobMeta);
 
     bool FindBlocksInBlobsIndex(
         IExtendedBlocksIndexVisitor& visitor,
@@ -219,5 +268,9 @@ public:
 
     bool ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs);
 };
+
+using TPartitionDatabase = TPartitionDatabaseImpl<TNoOpCounter>;
+using TPartitionDatabaseWithCounters =
+    TPartitionDatabaseImpl<TMethodCallCounter>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

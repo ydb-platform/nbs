@@ -6,6 +6,7 @@ SRCS(
     auth_provider_kikimr_ut.cpp
     kikimr_test_env.cpp
     service_ut.cpp
+    side_channel_ut.cpp
 )
 
 PEERDIR(

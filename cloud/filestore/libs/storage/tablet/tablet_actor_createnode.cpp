@@ -103,10 +103,8 @@ private:
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TCreateNodeInShardResult Result;
-
-    static constexpr ui32 MaxSyncSessionsAttempts = 10;
-
-    ui32 SyncSessionsAttempts = 0;
+    bool NodeAlreadyExists = false;
+    ui32 CreateNodeRetryCount = 0;
 
 public:
     TCreateNodeInShardActor(
@@ -133,10 +131,6 @@ private:
 
     void HandleGetNodeAttrResponse(
         const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleSyncSessionsResponse(
-        const TEvIndexTabletPrivate::TEvSyncSessionsResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -197,6 +191,7 @@ void TCreateNodeInShardActor::GetNodeAttr(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
     *request->Record.MutableHeaders() = Request.GetHeaders();
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
     request->Record.SetFileSystemId(Request.GetFileSystemId());
     request->Record.SetNodeId(Request.GetNodeId());
     request->Record.SetName(Request.GetName());
@@ -257,6 +252,8 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
 
     if (msg->GetError().GetCode() == E_FS_EXIST) {
         // EXIST can arrive after a successful operation is retried, it's ok
+        NodeAlreadyExists = true;
+
         LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET_WORKER,
@@ -274,6 +271,8 @@ void TCreateNodeInShardActor::HandleCreateNodeResponse(
 
     if (HasError(msg->GetError())) {
         if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            ++CreateNodeRetryCount;
+
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::TABLET_WORKER,
@@ -343,35 +342,6 @@ void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
             return;
         }
 
-        if (msg->GetError().GetCode() == E_FS_INVALID_SESSION &&
-            SyncSessionsAttempts < MaxSyncSessionsAttempts)
-        {
-            // E_FS_INVALID_SESSION can happen if the shard tablet restarted and
-            // no longer recognizes the session. Force session recreation using
-            // the same mechanism ScheduleSyncSessions uses to propagate
-            // sessions to shards.
-            //
-            // MaxSyncSessionsAttempts should be enough for the session to
-            // become valid. If we still get E_FS_INVALID_SESSION after that,
-            // propagate the error to the client and report a critical event.
-
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::TABLET_WORKER,
-                "%s Shard GetNodeAttr failed for %s, %s with error %s"
-                ", recreating session and retrying",
-                LogTag.c_str(),
-                Request.GetFileSystemId().c_str(),
-                Request.GetName().c_str(),
-                FormatError(msg->GetError()).Quote().c_str());
-            ctx.Send(
-                ParentId,
-                new TEvIndexTabletPrivate::TEvSyncSessionsRequest());
-
-            ++SyncSessionsAttempts;
-            return;
-        }
-
         const auto message = Sprintf(
             "Shard GetNodeAttr failed for %s, %s with error %s, will not "
             "retry. Original CreateNodeRequest: %s",
@@ -403,20 +373,6 @@ void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
 
     ProcessNodeAttr(*msg->Record.MutableNode());
     ReplyAndDie(ctx, {});
-}
-
-void TCreateNodeInShardActor::HandleSyncSessionsResponse(
-    const TEvIndexTabletPrivate::TEvSyncSessionsResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET_WORKER,
-        "%s Received SyncSessionsResponse from parent. Retrying GetNodeAttr",
-        LogTag.c_str());
-
-    GetNodeAttr(ctx);
 }
 
 void TCreateNodeInShardActor::HandlePoisonPill(
@@ -453,7 +409,10 @@ void TCreateNodeInShardActor::ReplyAndDie(
         OpLogEntryId,
         std::move(*Request.MutableName()),
         std::move(Result),
-        std::move(ProfileLogRequest)));
+        std::move(ProfileLogRequest),
+        NodeAlreadyExists,
+        CreateNodeRetryCount,
+        TNodeRefKey{Request.GetOriginalNodeId(), Request.GetOriginalName()}));
 
     Die(ctx);
 }
@@ -465,9 +424,6 @@ STFUNC(TCreateNodeInShardActor::StateWork)
 
         HFunc(TEvService::TEvCreateNodeResponse, HandleCreateNodeResponse);
         HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
-        HFunc(
-            TEvIndexTabletPrivate::TEvSyncSessionsResponse,
-            HandleSyncSessionsResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -486,15 +442,31 @@ void TIndexTabletActor::HandleCreateNode(
     const TEvService::TEvCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    using TMethod = TEvService::TCreateNodeMethod;
     auto* msg = ev->Get();
 
     const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
 
-    auto* session = AcceptRequest<TEvService::TCreateNodeMethod>(
-        ev,
-        ctx,
-        ValidateRequest,
-        !behaveAsShard /* validateSession */);
+    TSession* session = nullptr;
+    if (behaveAsShard) {
+        const bool accepted = AcceptRequestNoSession<TMethod>(
+            ev,
+            ctx,
+            ValidateRequest);
+
+        if (!accepted) {
+            return;
+        }
+    } else {
+        session = AcceptRequest<TMethod>(
+            ev,
+            ctx,
+            ValidateRequest);
+
+        if (!session) {
+            return;
+        }
+    }
 
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
@@ -506,10 +478,6 @@ void TIndexTabletActor::HandleCreateNode(
 
     // DupCache isn't needed for Create/UnlinkNode requests in shards
     if (!behaveAsShard) {
-        if (!session) {
-            return;
-        }
-
         const auto requestId = GetRequestId(msg->Record);
         if (const auto* e = session->LookupDupEntry(requestId)) {
             auto response =
@@ -554,7 +522,7 @@ void TIndexTabletActor::HandleCreateNode(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvService::TCreateNodeMethod>(*requestInfo);
+    AddInFlightRequest<TMethod>(*requestInfo);
 
     ExecuteTx<TCreateNode>(
         ctx,
@@ -580,18 +548,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     const bool isParentNodeLinkRequest =
         args.Request.HasLink() && args.Request.GetLink().GetShardNodeName();
 
-    //
-    // If directory creation in shards is enabled we cannot allow the service
-    // layer to decide where to create the node because we need to perform some
-    // extra checks which the service layer is unable to do.
-    //
-
-    const bool shardIdSelectionEnabled =
-        Config->GetShardIdSelectionInLeaderEnabled()
-        || GetFileSystem().GetDirectoryCreationInShardsEnabled();
-
     if (!BehaveAsShard(args.Request.GetHeaders())
-            && shardIdSelectionEnabled
             && !GetFileSystem().GetShardFileSystemIds().empty()
             && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
                 || GetFileSystem().GetDirectoryCreationInShardsEnabled()
@@ -600,9 +557,13 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
                 && !isParentNodeLinkRequest
                 // otherwise there might be some local nodes which breaks
                 // current cross-shard RenameNode implementation
-                && !isMainWithLocalNodes))
+                && (!isMainWithLocalNodes
+                    || GetFileSystem().GetForceDirectoryCreationInShards())))
     {
-        args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
+        args.Error = SelectShard(
+            static_cast<NProto::ENodeType>(args.Attrs.GetType()),
+            args.Attrs.GetSize(),
+            &args.ShardId);
         if (HasError(args.Error)) {
             return true;
         }
@@ -635,22 +596,25 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
             args.Request.GetName().c_str());
     }
 
-    if (!BehaveAsShard(args.Request.GetHeaders())) {
+    const bool behaveAsShard = BehaveAsShard(args.Request.GetHeaders());
+
+    if (!behaveAsShard) {
         FILESTORE_VALIDATE_DUPTX_SESSION(CreateNode, args);
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GetCurrentCommitId();
 
-    // validate there are enough free inodes
-    if (!HasNodesLeft()) {
+    // Validate there are enough free inodes. The restriction is not enforced if
+    // the request comes from the main FS to the shard.
+    if (!HasNodesLeft() && !behaveAsShard) {
         args.Error = ErrorNoSpaceLeft();
         return true;
     }
 
     // validate parent node exists
-    if (!ReadNode(db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
+    if (!ReadNode(*db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
         return false;   // not ready
     }
 
@@ -690,10 +654,10 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         // If the filesystem is configured to check for nodeRefs
 
         // validate target node doesn't exist
-        TMaybe<IIndexTabletDatabase::TNodeRef> childRef;
+        TMaybe<INodeIndexTabletDatabase::TNodeRef> childRef;
 
         if (!ReadNodeRef(
-                db,
+                *db,
                 args.ParentNodeId,
                 args.CommitId,
                 args.Name,
@@ -721,7 +685,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         //
         // Note: for the cases where the ShardId is set, the target node
         // already exists and its link count is updated, no need to validate it
-        if (!ReadNode(db, args.TargetNodeId, args.CommitId, args.ChildNode)) {
+        if (!ReadNode(*db, args.TargetNodeId, args.CommitId, args.ChildNode)) {
             return false;   // not ready
         }
 
@@ -772,7 +736,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         }
     }
 
-    TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
+    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -782,17 +746,27 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     if (args.TargetNodeId == InvalidNodeId) {
         if (args.ShardId.empty()) {
             args.ChildNodeId = CreateNode(
-                db,
+                *db,
                 args.CommitId,
                 args.Attrs);
 
-            args.ChildNode = IIndexTabletDatabase::TNode {
+            args.ChildNode = INodeIndexTabletDatabase::TNode {
                 args.ChildNodeId,
                 args.Attrs,
                 args.CommitId,
                 InvalidCommitId
             };
         } else {
+            // When the NodeRef references a node in a shard we need to lock it
+            // to prevent the node from being unlinked and to avoid races with
+            // other concurrent CreateHandle/CreateNode requests.
+            if (!TryLockNodeRef({args.ParentNodeId, args.Name})) {
+                args.Error = MakeError(E_REJECTED, TStringBuilder()
+                        << "node ref " << args.ParentNodeId << " " << args.Name
+                        << " is locked for CreateNode");
+                return;
+            }
+
             // OpLogEntryId doesn't have to be a CommitId - it's just convenient to
             // use CommitId here in order not to generate some other unique ui64
             args.OpLogEntry.SetEntryId(args.CommitId);
@@ -804,6 +778,8 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             shardRequest->SetNodeId(RootNodeId);
             shardRequest->SetName(args.ShardNodeName);
             shardRequest->ClearShardFileSystemId();
+            shardRequest->SetOriginalNodeId(args.ParentNodeId);
+            shardRequest->SetOriginalName(args.Name);
             const bool serialized = args.ProfileLogRequest.SerializeToString(
                 args.OpLogEntry.MutableProfileLogRequest());
             if (!serialized) {
@@ -812,7 +788,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
                     << args.OpLogEntry.ShortUtf8DebugString().Quote());
             }
 
-            db.WriteOpLogEntry(args.OpLogEntry);
+            WriteOpLogEntry(*db, args.OpLogEntry);
         }
     } else {
         // hard link
@@ -823,7 +799,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             auto attrs =
                 CopyAttrs(args.ChildNode->Attrs, E_CM_CMTIME | E_CM_REF);
             UpdateNode(
-                db,
+                *db,
                 args.ChildNodeId,
                 args.ChildNode->MinCommitId,
                 args.CommitId,
@@ -837,7 +813,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     // update parents cmtime
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
-        db,
+        *db,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,
@@ -845,14 +821,19 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         args.ParentNode->Attrs);
 
     if (!Config->GetParentlessFilesOnly()) {
+        const bool isNewlyCreatedDirectory =
+            args.Attrs.GetType() == NProto::E_DIRECTORY_NODE;
+        // If this NodeRef is for a newly created directory, we can say that its
+        // contents are exhaustively stored in the in-memory state
         CreateNodeRef(
-            db,
+            *db,
             args.ParentNodeId,
             args.CommitId,
             args.Name,
             args.ChildNodeId,
             args.ShardId,
-            args.ShardNodeName);
+            args.ShardNodeName,
+            isNewlyCreatedDirectory /* markExhaustive */);
     }
 
     if (args.ShardId.empty()) {
@@ -867,6 +848,13 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
             *args.Response.MutableNode(),
             args.ChildNodeId,
             args.ChildNode->Attrs);
+    } else if (args.TargetNodeId != InvalidNodeId) {
+        // Cross-shard hard link: shard node was created by TLinkActor before
+        // this request reached the leader. The shard node attrs are forwarded
+        // in the request so the DupCache entry gets a non-zero Id and returns
+        // the correct response on retry.
+        // TODO(#2667): remove once TLinkActor has a proper retry mechanism.
+        *args.Response.MutableNode() = args.Request.GetShardNodeAttr();
     }
 
     // shards shouldn't commit CreateNode DupCache entries since:
@@ -875,7 +863,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     //  dupcache
     if (!BehaveAsShard(args.Request.GetHeaders())) {
         AddDupCacheEntry(
-            db,
+            *db,
             session,
             args.RequestId,
             args.Response,
@@ -954,7 +942,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         ctx);
 
     auto& requestMetrics = args.ProfileLogRequest.GetBehaveAsShard()
-        ? Metrics.CreateNodeInShard : Metrics.CreateNode;
+        ? Metrics->CreateNodeInShard : Metrics->CreateNode;
     requestMetrics.Update(
         1,
         0,
@@ -987,6 +975,15 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
 
     EndNodeCreateInShard(msg->NodeName);
 
+    UnlockNodeRef(msg->OriginalNodeRefKey);
+
+    Metrics->NodeExistsWhileCreatingInShardCount.fetch_add(
+        msg->NodeAlreadyExists,
+        std::memory_order_relaxed);
+    Metrics->CreateNodeInShardRetryCount.fetch_add(
+        msg->CreateNodeRetryCount,
+        std::memory_order_relaxed);
+
     NProto::TError error;
     if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&res)) {
         error = x->GetError();
@@ -1006,7 +1003,7 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 ctx);
 
             auto& requestMetrics = msg->ProfileLogRequest.GetBehaveAsShard()
-                ? Metrics.CreateNodeInShard : Metrics.CreateNode;
+                ? Metrics->CreateNodeInShard : Metrics->CreateNode;
             requestMetrics.Update(
                 1,
                 0,
@@ -1037,7 +1034,7 @@ void TIndexTabletActor::HandleNodeCreatedInShard(
                 ctx);
 
             auto& requestMetrics = msg->ProfileLogRequest.GetBehaveAsShard()
-                ? Metrics.CreateHandleInShard : Metrics.CreateHandle;
+                ? Metrics->CreateHandleInShard : Metrics->CreateHandle;
             requestMetrics.Update(
                 1,
                 0,
@@ -1085,13 +1082,13 @@ void TIndexTabletActor::ExecuteTx_CommitNodeCreationInShard(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
     PatchDupCacheEntry(
-        db,
+        *db,
         args.SessionId,
         args.RequestId,
         std::move(args.Response));
-    db.DeleteOpLogEntry(args.EntryId);
+    DeleteOpLogEntry(*db, args.EntryId);
 }
 
 void TIndexTabletActor::CompleteTx_CommitNodeCreationInShard(

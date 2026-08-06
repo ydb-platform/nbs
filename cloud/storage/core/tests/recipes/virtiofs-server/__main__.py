@@ -23,7 +23,7 @@ def _get_mount_paths():
         toolchain = os.path.dirname(os.path.dirname(
             os.environ['ASAN_SYMBOLIZER_PATH']))
 
-    mounts = [("source_path", common.source_path()),  # need to mound original source root as test environment has links into it
+    mounts = [("source_path", common.source_path()),  # need to mount the original source root as test environment has links into it
               ("build_path", common.build_path()),
               ("toolchain", toolchain)]
 
@@ -33,6 +33,11 @@ def _get_mount_paths():
 
     if common.ram_drive_path():
         mounts.append(tuple(("tmpfs_path", common.ram_drive_path())))
+
+    if common.runtime.gdb_path():
+        tool_dir = os.path.dirname(os.path.dirname(os.path.dirname(
+            common.runtime.gdb_path())))
+        mounts.append(("gdb", tool_dir))
 
     return mounts
 
@@ -71,9 +76,10 @@ def start_server(args, index):
         append_recipe_err_files(
             ERR_LOG_FILE_NAMES_FILE, virtiofs.daemon.stderr_file_name
         )
+        virtiofs.wait_for_socket(tag)
 
         recipe_set_env("VIRTIOFS_PID_{}".format(tag),
-                       str(virtiofs.virtiofs_server.daemon.process.pid),
+                       str(virtiofs.pid),
                        index)
 
 
@@ -97,6 +103,9 @@ def stop_server(args, index):
             logger.info("will kill virtiofs-server with pid `%s`", pid)
             try:
                 os.kill(int(pid), signal.SIGTERM)
+            except ProcessLookupError:
+                logger.info("virtiofs-server pid `%s` already exited", pid)
+                continue
             except OSError:
                 logger.exception("While killing pid `%s`", pid)
                 raise

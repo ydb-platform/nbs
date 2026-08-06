@@ -15,6 +15,8 @@ SRCS(
     create_volume_from_device.cpp
     create_volume_link.cpp
     delete_checkpoint.cpp
+    describe_blob.cpp
+    describe_blocks.cpp
     describe_disk_registry_config.cpp
     describe_endpoint.cpp
     describe_placement_group.cpp
@@ -52,6 +54,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/config
+    cloud/blockstore/private/api/protos
     cloud/blockstore/public/api/protos
 
     cloud/blockstore/libs/client
@@ -70,6 +73,7 @@ PEERDIR(
     library/cpp/threading/blocking_queue
     library/cpp/json
 
+    contrib/ydb/core/base
     contrib/ydb/library/actors/util
 )
 

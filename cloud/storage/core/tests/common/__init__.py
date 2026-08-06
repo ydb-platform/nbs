@@ -6,6 +6,9 @@ import yatest.common as common
 
 yatest_logger = logging.getLogger("ya.test")
 
+SANITIZER_SCAN_CHUNK_SIZE = 1024 * 1024
+SANITIZER_SCAN_TAIL_SIZE = 4096
+
 
 def append_recipe_err_files(common_file_name: str, err_file_path: str) -> None:
     """
@@ -18,6 +21,30 @@ def append_recipe_err_files(common_file_name: str, err_file_path: str) -> None:
     with open(common_file_name, "a") as f:
         f.write(err_file_path + "\n")
         yatest_logger.debug("Appended: %s", err_file_path)
+
+
+def find_sanitizer_error(file_path: str):
+    """
+    Search for a sanitizer error in the given file.
+
+    Reads the file in chunks to avoid loading large recipe logs into memory.
+    """
+    tail = b""
+    with open(file_path, "rb") as f:
+        while True:
+            chunk = f.read(SANITIZER_SCAN_CHUNK_SIZE)
+            if not chunk:
+                return None, b""
+
+            buffer = tail + chunk
+            match = re.search(common.SANITIZER_ERROR_PATTERN, buffer)
+            if match:
+                context_start = match.end()
+                context = buffer[context_start:context_start + common.process.MAX_OUT_LEN]
+                context += f.read(common.process.MAX_OUT_LEN - len(context))
+                return match, context
+
+            tail = buffer[-SANITIZER_SCAN_TAIL_SIZE:]
 
 
 def process_recipe_err_files(common_file_name: str) -> list[str]:
@@ -41,16 +68,14 @@ def process_recipe_err_files(common_file_name: str) -> list[str]:
             continue
         file_path = file_path.strip()
 
-        with open(file_path, "rb") as f:
-            std_err = f.read()
-
-        match = re.search(common.SANITIZER_ERROR_PATTERN, std_err)
+        match, ctx = find_sanitizer_error(file_path)
         if not match:
             yatest_logger.debug("No sanitizer errors found in %s", file_path)
             continue
 
         truncated_std_err = common.process.truncate(
-            str(std_err).split("Sanitizer")[1], common.process.MAX_OUT_LEN
+            ctx.decode("utf-8", errors="backslashreplace"),
+            common.process.MAX_OUT_LEN,
         )
         sanitizer_name = str(match.group(1)).strip()
         yatest_logger.error(
@@ -64,3 +89,14 @@ def process_recipe_err_files(common_file_name: str) -> list[str]:
         )
 
     return errors
+
+
+def expand_placeholders(text: str) -> str:
+    """
+    Replace placeholders in the input string with actual values.
+
+    Currently supports replacing {output_path} with the common output path.
+    """
+    if "{output_path}" in text:
+        return text.replace("{output_path}", common.output_path())
+    return text

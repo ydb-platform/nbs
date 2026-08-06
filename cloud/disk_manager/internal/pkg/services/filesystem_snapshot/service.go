@@ -3,9 +3,10 @@ package filesystem_snapshot
 import (
 	"context"
 
-	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
@@ -20,7 +21,8 @@ func (s *service) CreateFilesystemSnapshot(
 	req *disk_manager.CreateFilesystemSnapshotRequest,
 ) (string, error) {
 
-	if len(req.Src.ZoneId) == 0 ||
+	if req.Src == nil ||
+		len(req.Src.ZoneId) == 0 ||
 		len(req.Src.FilesystemId) == 0 ||
 		len(req.FilesystemSnapshotId) == 0 {
 
@@ -34,7 +36,15 @@ func (s *service) CreateFilesystemSnapshot(
 		ctx,
 		"filesystem_snapshot.CreateFilesystemSnapshot",
 		"",
-		&empty.Empty{},
+		&protos.CreateFilesystemSnapshotRequest{
+			SrcFilesystem: &types.Filesystem{
+				ZoneId:       req.Src.ZoneId,
+				FilesystemId: req.Src.FilesystemId,
+			},
+			DstSnapshotId: req.FilesystemSnapshotId,
+			FolderId:      req.FolderId,
+			NodeId:        req.NodeId,
+		},
 	)
 }
 
@@ -50,11 +60,14 @@ func (s *service) DeleteFilesystemSnapshot(
 		)
 	}
 
-	return s.taskScheduler.ScheduleTask(
+	return s.taskScheduler.ScheduleNonCancellableTask(
 		ctx,
 		"filesystem_snapshot.DeleteFilesystemSnapshot",
-		"",
-		&empty.Empty{},
+		"", // description
+		"", // zoneID
+		&protos.DeleteFilesystemSnapshotRequest{
+			SnapshotId: req.FilesystemSnapshotId,
+		},
 	)
 }
 

@@ -34,14 +34,17 @@ private:
     NActors::TChannelsConfig ChannelsConfig;
     TPortManager PortManager;
     TIntrusivePtr<NLog::TSettings> LoggerSettings;
+    TNode::TLogBackendFactory LogBackendFactory;
 
 public:
     TTestICCluster(ui32 numNodes = 1, NActors::TChannelsConfig channelsConfig = NActors::TChannelsConfig(),
-                   TTrafficInterrupterSettings* tiSettings = nullptr, TIntrusivePtr<NLog::TSettings> loggerSettings = nullptr, Flags flags = EMPTY)
+                   TTrafficInterrupterSettings* tiSettings = nullptr, TIntrusivePtr<NLog::TSettings> loggerSettings = nullptr, Flags flags = EMPTY,
+                   TNode::TLogBackendFactory logBackendFactory = {})
         : NumNodes(numNodes)
         , Counters(new NMonitoring::TDynamicCounters)
         , ChannelsConfig(channelsConfig)
         , LoggerSettings(loggerSettings)
+        , LogBackendFactory(std::move(logBackendFactory))
     {
         THashMap<ui32, ui16> nodeToPortMap;
         THashMap<ui32, THashMap<ui32, ui16>> specificNodePortMap;
@@ -71,12 +74,16 @@ public:
             Nodes.emplace(i, MakeHolder<TNode>(i, NumNodes, portMap, Address, Counters, DeadPeerTimeout, ChannelsConfig,
                 /*numDynamicNodes=*/0, /*numThreads=*/1, LoggerSettings, TNode::DefaultInflight(),
                 flags & USE_ZC ? ESocketSendOptimization::IC_MSG_ZEROCOPY : ESocketSendOptimization::DISABLED,
-                flags & USE_TLS));
+                flags & USE_TLS, logBackendFactory));
         }
     }
 
     TNode* GetNode(ui32 id) {
         return Nodes[id].Get();
+    }
+
+    void StopNode(ui32 nodeId) {
+        Nodes.at(nodeId)->Stop();
     }
 
     ~TTestICCluster() {

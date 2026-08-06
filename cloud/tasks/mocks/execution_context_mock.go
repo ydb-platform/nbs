@@ -39,6 +39,11 @@ func (c *ExecutionContextMock) GetTaskID() string {
 	return args.String(0)
 }
 
+func (c *ExecutionContextMock) IsNonCancellable() bool {
+	args := c.Called()
+	return args.Bool(0)
+}
+
 func (c *ExecutionContextMock) AddTaskDependency(
 	ctx context.Context,
 	taskID string,

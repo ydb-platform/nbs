@@ -275,6 +275,21 @@ void TPartitionActor::HandleZeroBlocks(
         return;
     }
 
+    const auto requestSize = writeRange.Size() * State->GetBlockSize();
+    const bool isFreshRequest = IsFreshRequest(
+        *Config,
+        PartitionConfig.GetStorageMediaKind(),
+        requestSize);
+
+    if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
+        // small writes will be accumulated in FreshBlocks table
+        ZeroFreshBlocks(
+            ctx,
+            requestInfo,
+            ConvertRangeSafe(writeRange));
+        return;
+    }
+
     ui64 commitId = State->GenerateCommitId();
     if (commitId == InvalidCommitId) {
         requestInfo->CancelRequest(ctx);
@@ -282,28 +297,10 @@ void TPartitionActor::HandleZeroBlocks(
         return;
     }
 
-    const auto requestSize = writeRange.Size() * State->GetBlockSize();
-    const bool isFreshRequest = IsFreshRequest(
-        *Config,
-        PartitionConfig.GetStorageMediaKind(),
-        requestSize);
-
-    if (!Config->GetFreshBlocksWriterEnabled() &&
-        isFreshRequest)
-    {
-        // small writes will be accumulated in FreshBlocks table
-        ZeroFreshBlocks(
-            ctx,
-            requestInfo,
-            ConvertRangeSafe(writeRange),
-            commitId);
-        return;
-    }
-
     // all small zero requests should be handled by TFreshBlocksWriter
     STORAGE_VERIFY(!isFreshRequest, TWellKnownEntityTypes::TABLET, TabletID());
 
-    ++WriteAndZeroRequestsInProgress;
+    SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
     LOG_TRACE(
         ctx,
@@ -313,7 +310,7 @@ void TPartitionActor::HandleZeroBlocks(
         commitId,
         DescribeRange(writeRange).c_str());
 
-    State->AccessCommitQueue().AcquireBarrier(commitId);
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
 
     // large writes could skip FreshBlocks table completely
     TVector<TAddMergedBlob> requests(
@@ -403,20 +400,18 @@ void TPartitionActor::HandleZeroBlocksCompletedImpl(
     auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->AccessCommitQueue().ReleaseBarrier(commitId);
-
-    if (freshBlocksRequest && HasError(error)) {
-        State->AccessTrimFreshLogBarriers().ReleaseBarrierN(
-            commitId,
-            blocksCount);
+    if (freshBlocksRequest) {
+        SharedState->FinishFreshWrite(ctx, commitId, blocksCount, HasError(error));
+    } else {
+        State->AccessCommitQueue()->ReleaseBarrier(commitId);
     }
 
     Actors.Erase(sender);
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
-    --WriteAndZeroRequestsInProgress;
+    Y_DEBUG_ABORT_UNLESS(SharedState->WriteAndZeroRequestsInProgress.load() > 0);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
 
-    DrainActorCompanion.ProcessDrainRequests(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
 }
 
@@ -503,13 +498,13 @@ void TPartitionActor::CompleteZeroBlocks(
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->AccessCommitQueue().ReleaseBarrier(args.CommitId);
+    State->AccessCommitQueue()->ReleaseBarrier(args.CommitId);
 
-    Y_DEBUG_ABORT_UNLESS(WriteAndZeroRequestsInProgress > 0);
-    --WriteAndZeroRequestsInProgress;
+    Y_DEBUG_ABORT_UNLESS(SharedState->WriteAndZeroRequestsInProgress.load() > 0);
+    SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
 
     EnqueueFlushIfNeeded(ctx);
-    DrainActorCompanion.ProcessDrainRequests(ctx);
+    SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
 }
 

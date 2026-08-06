@@ -73,7 +73,8 @@ public:
             internal.GetAuthToken(),
             TMethod::BlockStoreRequest,
             TDuration::MilliSeconds(headers.GetRequestTimeout()),
-            GetDiskId(*request));
+            GetDiskId(*request),
+            internal.GetPeer());
 
         return HandleAuthResponse<TMethod>(
             std::move(authResponse),

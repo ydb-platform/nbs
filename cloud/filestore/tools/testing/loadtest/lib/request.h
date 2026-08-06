@@ -1,8 +1,10 @@
 #pragma once
 
 #include "public.h"
+#include "shm_client.h"
 
 #include <cloud/filestore/tools/testing/loadtest/protos/loadtest.pb.h>
+#include <cloud/filestore/tools/testing/loadtest/lib/count_limiter.h>
 
 #include <cloud/filestore/libs/client/public.h>
 #include <cloud/filestore/libs/service/public.h>
@@ -23,13 +25,19 @@ struct TCompletedRequest
 {
     NProto::EAction Action{};
     TDuration Elapsed;
+    ui64 RequestBytes = 0;
     NProto::TError Error;
 
     TCompletedRequest() = default;
 
-    TCompletedRequest(NProto::EAction action, TInstant start, NProto::TError error) noexcept
+    TCompletedRequest(
+            NProto::EAction action,
+            TInstant start,
+            NProto::TError error,
+            ui64 requestBytes = 0) noexcept
         : Action(action)
         , Elapsed(TInstant::Now() - start)
+        , RequestBytes(requestBytes)
         , Error(std::move(error))
     {}
 };
@@ -50,8 +58,9 @@ struct IRequestGenerator
         return false;
     }
 
-    virtual bool ShouldFailOnError()
+    virtual bool ShouldFailOnError(const NProto::TError& error)
     {
+        Y_UNUSED(error);
         return true;
     }
 };
@@ -61,16 +70,19 @@ struct IRequestGenerator
 IRequestGeneratorPtr CreateIndexRequestGenerator(
     NProto::TIndexLoadSpec spec,
     ILoggingServicePtr logging,
+    IFileStoreServicePtr client,
     NClient::ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers);
+    NProto::THeaders headers,
+    TCountLimiterPtr countLimiter);
 
 IRequestGeneratorPtr CreateDataRequestGenerator(
     NProto::TDataLoadSpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers);
+    NProto::THeaders headers,
+    TCountLimiterPtr countLimiter);
 
 IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
     NProto::TReplaySpec spec,
@@ -86,11 +98,19 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
     TString filesystemId,
     NProto::THeaders headers);
 
+IRequestGeneratorPtr CreateFastShardRequestGenerator(
+    NProto::TFastShardLoadSpec spec,
+    ui32 maxParallelism,
+    ILoggingServicePtr logging,
+    TCountLimiterPtr countLimiter);
+
 IRequestGeneratorPtr CreateDatashardLikeRequestGenerator(
     NProto::TDatashardLikeLoadSpec spec,
     ILoggingServicePtr logging,
     NClient::ISessionPtr session,
+    IShmDataClientPtr dataClient,
     TString filesystemId,
-    NProto::THeaders headers);
+    NProto::THeaders headers,
+    TCountLimiterPtr countLimiter);
 
 }   // namespace NCloud::NFileStore::NLoadTest

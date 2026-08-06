@@ -2,13 +2,14 @@
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
-#include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
+#include <cloud/storage/core/libs/rdma/iface/protocol.h>
+#include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 
 #include <util/generic/map.h>
 #include <util/generic/string.h>
@@ -63,6 +64,7 @@ private:
 public:
     using TRequestContext = TDeviceChecksumRequestContext;
     using TResponseProto = NProto::TChecksumDeviceBlocksResponse;
+    static constexpr ui32 ExpectedMsgId = TBlockStoreProtocol::ChecksumDeviceBlocksResponse;
 
     using TBase::TBase;
 
@@ -160,8 +162,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 
     struct TDeviceRequestInfo
     {
-        NRdma::IClientEndpointPtr Endpoint;
-        NRdma::TClientRequestPtr ClientRequest;
+        NCloud::NStorage::NRdma::IClientEndpointPtr Endpoint;
+        NCloud::NStorage::NRdma::TClientRequestPtr ClientRequest;
     };
 
     TVector<TDeviceRequestInfo> requests;
@@ -187,7 +189,9 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         auto [req, err] = ep->AllocateRequest(
             requestContext,
             std::move(dc),
-            NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                deviceRequest,
+                0),
             4_KB);
 
         if (HasError(err)) {
@@ -206,7 +210,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
             return;
         }
 
-        NRdma::TProtoMessageSerializer::Serialize(
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ChecksumDeviceBlocksRequest,
             0,   // flags

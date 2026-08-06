@@ -1,7 +1,10 @@
 #include "fresh_blocks_companion.h"
 
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
+
+using namespace NPartition;
 
 using namespace NActors;
 
@@ -15,7 +18,7 @@ TFreshBlocksCompanion::TFreshBlocksCompanion(
         TPartitionChannelsState& channelsState,
         TPartitionFreshBlobState& freshBlobState,
         TPartitionFlushState& flushState,
-        TPartitionTrimFreshLogState& trimFreshLogState,
+        TPartitionThreadSafeStatePtr threadSafeState,
         TPartitionFreshBlocksState& freshBlocksState,
         TLogTitle logTitle)
     : StorageAccessMode(storageAccessMode)
@@ -25,7 +28,7 @@ TFreshBlocksCompanion::TFreshBlocksCompanion(
     , ChannelsState(channelsState)
     , FreshBlobState(freshBlobState)
     , FlushState(flushState)
-    , TrimFreshLogState(trimFreshLogState)
+    , ThreadSafeState(std::move(threadSafeState))
     , FreshBlocksState(freshBlocksState)
     , LogTitle(std::move(logTitle))
 {}

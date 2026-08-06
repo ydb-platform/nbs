@@ -1,6 +1,7 @@
 PY3_LIBRARY()
 
 PY_SRCS(
+    backtrace.py
     common.py
     __init__.py
     qemu_with_migration.py
@@ -11,6 +12,7 @@ PY_SRCS(
 
 PEERDIR(
     cloud/storage/core/tests/common
+    cloud/storage/core/tools/testing/virtiofs_server/lib
 
     contrib/python/PyYAML
     contrib/python/retrying
@@ -21,3 +23,5 @@ PEERDIR(
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)

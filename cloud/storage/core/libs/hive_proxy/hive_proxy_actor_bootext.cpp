@@ -239,9 +239,8 @@ void THiveProxyActor::HandleBootExternal(
     const auto* msg = ev->Get();
 
     ui64 tabletId = msg->TabletId;
-    ui64 hive = GetHive(ctx, tabletId);
 
-    auto clientId = ClientCache->Prepare(ctx, hive);
+    auto clientId = ClientCache->Prepare(ctx, HiveTabletId);
     auto requestId = NCloud::Register<TBootRequestActor>(
         ctx,
         SelfId(),
@@ -252,7 +251,7 @@ void THiveProxyActor::HandleBootExternal(
         TabletBootInfoBackup,
         msg->RequestTimeout
     );
-    HiveStates[hive].Actors.insert(requestId);
+    HiveState.Actors.insert(requestId);
 }
 
 }   // namespace NCloud::NStorage

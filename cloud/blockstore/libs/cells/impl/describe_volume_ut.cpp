@@ -78,8 +78,8 @@ std::shared_ptr<TTestServiceClient> CreateService()
     {
         UNIT_ASSERT_C(
             req.GetHeaders().HasInternal(),
-            "Internal should not be set");
-        UNIT_ASSERT_VALUES_EQUAL("", req.GetHeaders().GetCellId());
+            "Internal should be set");
+        UNIT_ASSERT_VALUES_UNEQUAL("", req.GetHeaders().GetCellId());
     };
 
     service->OnDescribeVolume = describeCheck;

@@ -25,7 +25,10 @@ struct TDirectoryContent
     TBufferPtr Content = nullptr;
     size_t Offset = 0;
     size_t Size = 0;
-    ui64 AttrVersion = 0;
+    // GlobalCacheVersion starts from 1
+    // so this starting value is used to identify values
+    // recovered after restart from persistent storage
+    ui64 CacheVersion = 0;
 
     const char* GetData() const
     {
@@ -57,13 +60,21 @@ struct TDirectoryHandleChunk
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDirectoryHandleStats
+{
+    size_t SerializedSize = 0;
+    size_t ChunkCount = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDirectoryHandle
 {
 private:
     struct TContent
     {
         TBufferPtr Buffer;
-        ui64 AttrVersion = 0;
+        ui64 CacheVersion = 0;
     };
 
     TString Cookie;
@@ -71,7 +82,7 @@ private:
     ui64 UpdateVersion = 0;
     ui64 SerializedSize = 0;
 
-    TMutex Lock;
+    mutable TMutex Lock;
 
 public:
     const fuse_ino_t Index;
@@ -83,7 +94,7 @@ public:
         size_t size,
         size_t offset,
         const TBufferPtr& content,
-        ui64 attrVersion,
+        ui64 cacheVersion,
         TString cookie);
 
     TMaybe<TDirectoryContent>
@@ -91,14 +102,12 @@ public:
     void ResetContent();
     TString GetCookie();
 
-    // Get total size of serialized content in bytes
-    size_t GetSerializedSize() const;
-
-    // Get number of chunks (UpdateVersion + 1)
-    size_t GetChunkCount() const;
+    // Returns the handle's current serialized size and chunk count.
+    TDirectoryHandleStats GetStats() const;
+    bool IsEmpty() const;
 
     // not thread safe, use only during restoration from storage
-    void ConsumeChunk(TDirectoryHandleChunk& chunk);
+    void ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,6 +47,15 @@ func (s *SessionMock) CreateNode(
 	return args.Get(0).(uint64), args.Error(1)
 }
 
+func (s *SessionMock) CreateNodeIdempotent(
+	ctx context.Context,
+	node nfs.Node,
+) (uint64, error) {
+
+	args := s.Called(ctx, node)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
 func (s *SessionMock) ReadLink(
 	ctx context.Context,
 	nodeID uint64,
@@ -67,9 +77,29 @@ func (s *SessionMock) GetNodeAttr(
 	return res, args.Error(1)
 }
 
+func (s *SessionMock) UnlinkNode(
+	ctx context.Context,
+	parentNodeID uint64,
+	name string,
+	unlinkDirectory bool,
+) error {
+
+	args := s.Called(ctx, parentNodeID, name, unlinkDirectory)
+	return args.Error(0)
+}
+
 func (s *SessionMock) Close(ctx context.Context) error {
 	args := s.Called(ctx)
 	return args.Error(0)
+}
+
+func (s *SessionMock) SetSession(nfsSession nfs_client.Session) {
+	s.Called(nfsSession)
+}
+
+func (s *SessionMock) GetID() string {
+	args := s.Called()
+	return args.String(0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

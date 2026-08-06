@@ -264,7 +264,7 @@ protected:
         request->SetStartIndex(startIndex);
         request->SetBlocksCount(blocksCount);
         request->SetCheckpointId(CheckpointId);
-        request->BlockSize = BlockSize;
+        request->SetBlockSize(BlockSize);
         request->Sglist = holder.GetGuardedSgList();
 
         auto future = SrcSession->ReadBlocksLocal(
@@ -293,8 +293,8 @@ protected:
         TGuardedBuffer holder(std::move(buffer));
         auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
         request->SetStartIndex(startIndex);
+        request->SetBlockSize(BlockSize);
         request->BlocksCount = blocksCount;
-        request->BlockSize = BlockSize;
         request->Sglist = holder.GetGuardedSgList();
 
         Write[bucket] = DstSession->WriteBlocksLocal(

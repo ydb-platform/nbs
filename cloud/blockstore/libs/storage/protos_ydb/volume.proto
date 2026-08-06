@@ -108,6 +108,9 @@ message TDescribeBlocksRequest
 
     // Additional flags. Do we need it?
     uint32 Flags = 7;
+
+    // If true, return only index information (no BlocksContent in FreshBlockRanges).
+    bool IndexOnly = 8;
 }
 
 // Represents blocks range with content.
@@ -116,6 +119,7 @@ message TFreshBlockRange
     uint32 StartIndex = 1;
     uint32 BlocksCount = 2;
     bytes BlocksContent = 3;
+    NKikimrProto.TLogoBlobID BlobId = 4;
 }
 
 // Represents range of consecutive blocks inside some blob.
@@ -154,6 +158,40 @@ message TDescribeBlocksResponse
 
     // Throttler delay. Deprecated. Use Headers.Throttler.Delay instead.
     uint64 DeprecatedThrottlerDelay = 5;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeBlob request/response.
+
+message TDescribeBlobRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to describe from.
+    string DiskId = 2;
+
+    // Blob id to inspect.
+    NKikimrProto.TLogoBlobID BlobId = 3;
+}
+
+message TBlockInBlob
+{
+    uint32 BlockIndex = 1;
+    uint64 CommitId = 2;
+    uint32 BlobOffset = 3;
+    uint32 Checksum = 4;
+}
+
+message TDescribeBlobResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    repeated TBlockInBlob Blocks = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

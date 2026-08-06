@@ -1,0 +1,15 @@
+<meta charset="UTF-8"/>
+
+<style>{{ STYLE }}</style>
+<script>{{ JS }}</script>
+
+<h3>Directory Viewer</h3>
+
+<div class='dv-container'>
+    <div id='dv-legend' class='dv-legend'></div>
+    <div class='dv-tree' id='dv-root'></div>
+</div>
+
+<script>
+    dvInit("{{ TABLET_ID }}", "{{ ROOT_NODE_ID }}");
+</script>

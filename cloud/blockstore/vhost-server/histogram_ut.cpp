@@ -14,7 +14,7 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
 {
     Y_UNIT_TEST(ShouldCollectEmptyBuckets)
     {
-        THistogram<> hist;
+        THistogram<ui64> hist;
 
         int count = 0;
         hist.IterateBuckets([&count] (auto, auto, auto) {
@@ -30,7 +30,7 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
 
         const ui64 dt = 1ull << 63;
 
-        THistogram<> hist;
+        THistogram<ui64> hist;
 
         hist.Increment(dt);
 
@@ -53,7 +53,7 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
     {
         using TBucket = std::tuple<ui64, ui64, ui64>;
 
-        THistogram<> hist;
+        THistogram<ui64> hist;
 
         for (int i = 0; i != 1000; ++i) {
             hist.Increment(1000);
@@ -99,7 +99,7 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
     {
         using TBucket = std::pair<ui64, ui64>;
 
-        THistogram<> hist;
+        THistogram<ui64> hist;
 
         hist.Increment(1);
         hist.Increment(1_KB, 2);
@@ -120,7 +120,7 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
             UNIT_ASSERT_EQUAL(TBucket(1_GB, 4), buckets[3]);
         }
 
-        THistogram<> newHist = hist;
+        THistogram<ui64> newHist = hist;
 
         {
             TVector<TBucket> buckets;

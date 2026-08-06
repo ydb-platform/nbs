@@ -407,18 +407,18 @@ TFuture<NProto::TReadBlocksLocalResponse> TEncryptionClient::ReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
-    if (request->GetBlocksCount() == 0 || request->BlockSize == 0) {
+    if (request->GetBlocksCount() == 0 || request->GetBlockSize() == 0) {
         return MakeFutureErrorResponse<NProto::TReadBlocksLocalResponse>(
             E_ARGUMENT,
             "Request size should not be zero");
     }
 
     ui64 bufferSize = static_cast<ui64>(request->GetBlocksCount()) *
-        request->BlockSize;
+        request->GetBlockSize();
     auto buffer = AllocateStorageBuffer(*Client, bufferSize);
     auto sgListOrError = SgListNormalize(
         { buffer.get(), bufferSize },
-        request->BlockSize);
+        request->GetBlockSize());
 
     if (HasError(sgListOrError)) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(
@@ -478,7 +478,7 @@ NProto::TReadBlocksLocalResponse TEncryptionClient::HandleReadBlocksLocalRespons
             "failed to acquire sglist in EncryptionClient");
     }
 
-    auto sgListOrError = SgListNormalize(guard.Get(), request.BlockSize);
+    auto sgListOrError = SgListNormalize(guard.Get(), request.GetBlockSize());
     if (HasError(sgListOrError)) {
         return TErrorResponse(sgListOrError.GetError());
     }
@@ -508,7 +508,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
-    if (request->BlocksCount == 0 || request->BlockSize == 0) {
+    if (request->BlocksCount == 0 || request->GetBlockSize() == 0) {
         return MakeFutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
             E_ARGUMENT,
             "Request size should not be zero");
@@ -522,14 +522,14 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
     }
 
     ui64 bufferSize = static_cast<ui64>(request->BlocksCount) *
-        request->BlockSize;
+        request->GetBlockSize();
     auto buffer = AllocateStorageBuffer(*Client, bufferSize);
 
     TSgList encryptedSglist;
     {
         auto sgListOrError = SgListNormalize(
             { buffer.get(), bufferSize },
-            request->BlockSize);
+            request->GetBlockSize());
 
         if (HasError(sgListOrError)) {
             return MakeFuture<NProto::TWriteBlocksLocalResponse>(
@@ -540,7 +540,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
 
     TSgList srcSglist;
     {
-        auto sgListOrError = SgListNormalize(guard.Get(), request->BlockSize);
+        auto sgListOrError =
+            SgListNormalize(guard.Get(), request->GetBlockSize());
         if (HasError(sgListOrError)) {
             return MakeFuture<NProto::TWriteBlocksLocalResponse>(
                 TErrorResponse(sgListOrError.GetError()));
@@ -560,8 +561,9 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
 
     TGuardedSgList guardedSgList(std::move(encryptedSglist));
 
-    auto encryptedRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
-    *encryptedRequest = request->CreateDependentRequest();
+    auto encryptedRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>(
+        *request,
+        NProto::TWriteBlocksLocalRequest::TDependentTag{});
     encryptedRequest->Sglist = guardedSgList;
 
     auto future = Client->WriteBlocksLocal(
@@ -606,8 +608,8 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     writeRequest->SetStartIndex(request->GetStartIndex());
     writeRequest->SetFlags(request->GetFlags());
     writeRequest->SetSessionId(request->GetSessionId());
+    writeRequest->SetBlockSize(BlockSize);
     writeRequest->BlocksCount = request->GetBlocksCount();
-    writeRequest->BlockSize = BlockSize;
     writeRequest->Sglist = guardedSgList;
 
     auto future = WriteBlocksLocal(
@@ -877,6 +879,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The client writes and reads the data as-is, without encryption/decryption.
+// When reading, if a block has been read from the base disk, this block will be
+// zeroed, and the client will read zeros from the block.
+// During mounting, the hash sum of the key provided by the client is compared
+// to the hash of the encrypted disk. This ensures that the correct key was
+// used, but the actual encryption key is not transmitted, so it is impossible
+// to encrypt/decrypt the data.
 class TSnapshotEncryptionClient final
     : public TClientWrapper
 {
@@ -906,10 +915,6 @@ public:
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override;
-
-    TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TZeroBlocksRequest> request) override;
 
 private:
     static NProto::TReadBlocksResponse HandleReadBlocksResponse(
@@ -976,7 +981,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TSnapshotEncryptionClient::ReadBlocksL
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
     auto requestSglist = request->Sglist;
-    auto blockSize = request->BlockSize;
+    auto blockSize = request->GetBlockSize();
 
     auto future = Client->ReadBlocksLocal(
         std::move(callContext),
@@ -1018,18 +1023,6 @@ NProto::TReadBlocksLocalResponse TSnapshotEncryptionClient::HandleReadBlocksLoca
         response.GetUnencryptedBlockMask());
 
     return response;
-}
-
-TFuture<NProto::TZeroBlocksResponse> TSnapshotEncryptionClient::ZeroBlocks(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TZeroBlocksRequest> request)
-{
-    Y_UNUSED(callContext);
-    Y_UNUSED(request);
-
-    return MakeFutureErrorResponse<NProto::TZeroBlocksResponse>(
-        E_NOT_IMPLEMENTED,
-        "ZeroBlocks requests not supported by snapshot encryption client");
 }
 
 ////////////////////////////////////////////////////////////////////////////////

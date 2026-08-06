@@ -22,7 +22,12 @@ ELogPriority GetErrorPriority(ui32 code)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 NODE_CACHE_SHARD_COUNT = 16;
+constexpr ui32 CACHE_SHARD_COUNT = 16;
+
+ui64 GenerateCacheVersion(std::atomic<ui64>& version)
+{
+    return version.fetch_add(1, std::memory_order_release) + 1;
+}
 
 }   // namespace
 
@@ -36,10 +41,10 @@ TFileSystem::TFileSystem(
         TFileSystemConfigPtr config,
         IFileStorePtr session,
         IRequestStatsPtr stats,
-        TDirectoryHandlesStatsPtr directoryHandlesStats,
+        TDirectoryHandleModuleStatsPtr directoryHandleStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
-        TDirectoryHandlesStoragePtr directoryHandlesStorage,
+        TDirectoryHandleStoragePtr directoryHandleStorage,
         TWriteBackCache writeBackCache)
     : Logging(std::move(logging))
     , ProfileLog(std::move(profileLog))
@@ -47,34 +52,31 @@ TFileSystem::TFileSystem(
     , Scheduler(std::move(scheduler))
     , Session(std::move(session))
     , Config(std::move(config))
+    , Log(Logging->CreateLog("NFS_FUSE"))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
-    , NodeCache(Config->GetFileSystemId(), NODE_CACHE_SHARD_COUNT)
-    , DirectoryHandlesStats(std::move(directoryHandlesStats))
+    , NodeCache(Config->GetFileSystemId(), CACHE_SHARD_COUNT)
+    , DirectoryEntryVersionCache(
+          std::make_shared<TDirectoryEntryVersionCache>(
+              CACHE_SHARD_COUNT,
+              directoryHandleStats))
+    , DirectoryHandleCache(std::make_unique<TDirectoryHandleCache>(
+          Log,
+          std::move(directoryHandleStats),
+          std::move(directoryHandleStorage),
+          DirectoryEntryVersionCache))
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),
         Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
-    , DirectoryHandlesStorage(std::move(directoryHandlesStorage))
     , WriteBackCache(std::move(writeBackCache))
 {
-    Log = Logging->CreateLog("NFS_FUSE");
     if (Config->GetFSyncQueueDisabled()) {
         FSyncQueue = std::make_unique<TFSyncQueueStub>();
     } else {
         FSyncQueue =
             std::make_unique<TFSyncQueue>(Config->GetFileSystemId(), Logging);
-    }
-
-    if (DirectoryHandlesStorage) {
-        DirectoryHandlesStorage->LoadHandles(DirectoryHandles);
-
-        for (const auto& [_, handle]: DirectoryHandles) {
-            DirectoryHandlesStats->IncreaseCacheSize(
-                handle->GetSerializedSize());
-            DirectoryHandlesStats->IncreaseChunkCount(handle->GetChunkCount());
-        }
     }
 }
 
@@ -92,27 +94,20 @@ void TFileSystem::Init()
 void TFileSystem::Reset()
 {
     STORAGE_INFO("resetting filesystem cache");
-    with_lock (DirectoryHandlesLock) {
-        STORAGE_DEBUG("clear directory cache of size %lu",
-            DirectoryHandles.size());
-        DirectoryHandles.clear();
-
-        if (DirectoryHandlesStorage) {
-            DirectoryHandlesStorage->Clear();
-        }
-    }
+    DirectoryHandleCache->Reset();
 }
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
 {
-    if (Config->GetAsyncDestroyHandleEnabled()) {
+    if (HandleOpsQueue) {
         Scheduler->Schedule(
-        Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
-        [=, ptr = weak_from_this()] () {
-            if (auto self = ptr.lock()) {
-                self->ProcessHandleOpsQueue();
-            }
-        });
+            Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
+            [=, ptr = weak_from_this()]()
+            {
+                if (auto self = ptr.lock()) {
+                    self->ProcessHandleOpsQueue();
+                }
+            });
     }
 }
 
@@ -160,9 +155,9 @@ TDuration TFileSystem::GetEntryCacheTimeout(
 void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
 {
     if (WriteBackCache) {
-        const auto cachedNodeSize =
-            WriteBackCache.GetCachedNodeSize(attrs.GetId());
-        attrs.SetSize(Max(attrs.GetSize(), cachedNodeSize));
+        const auto maxWrittenOffset =
+            WriteBackCache.GetMaxWrittenOffset(attrs.GetId());
+        attrs.SetSize(Max(attrs.GetSize(), maxWrittenOffset));
     }
 }
 
@@ -171,7 +166,8 @@ bool TFileSystem::UpdateNodeAttrsInCache(
     fuse_entry_param& entry,
     ui64 version)
 {
-    STORAGE_TRACE("updating node attrs: " << DumpMessage(attrs)
+    STORAGE_TRACE("updating node attrs: "
+        << ProtoMessagePrinter.ToString(attrs)
         << ", version: " << version);
 
     entry.ino = attrs.GetId();
@@ -198,13 +194,31 @@ bool TFileSystem::UpdateNodeAttrsInCache(
 
 void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
 {
-    const ui64 newVersion =
-        GlobalAttrVersion.fetch_add(1, std::memory_order_release) + 1;
+    const ui64 newVersion = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_TRACE("invalidating node: " << nodeId
         << ", version: " << newVersion);
 
     NodeCache.InvalidateNode(nodeId, newVersion);
+}
+
+void TFileSystem::InvalidateDirectoryEntryInCache(
+    fuse_ino_t parent,
+    const TString& name)
+{
+    const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("invalidating directory entry: " << parent
+        << " " << name.Quote()
+        << ", version: " << version);
+
+    DirectoryEntryVersionCache->AdvanceVersion(parent, name, version);
+}
+
+void TFileSystem::InvalidateXAttrCache(ui64 ino)
+{
+    TGuard g{XAttrCacheLock};
+    XAttrCache.Invalidate(ino);
 }
 
 void TFileSystem::UpdateXAttrCache(
@@ -231,14 +245,22 @@ void TFileSystem::ReplyCreateWithCache(
     fuse_req_t req,
     ui64 handle,
     const NProto::TNodeAttr& attrs,
-    ui64 version)
+    ui64 version,
+    bool newNodeCreated)
 {
-    STORAGE_TRACE("inserting node: " << DumpMessage(attrs)
+    STORAGE_TRACE("inserting node: "
+        << ProtoMessagePrinter.ToString(attrs)
         << ", version: " << version);
 
     if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
+    }
+
+    if (Config->GetXAttrCacheInvalidateOnCreateEnabled() && newNodeCreated &&
+        !HasError(error))
+    {
+        InvalidateXAttrCache(attrs.GetId());
     }
 
     fuse_entry_param entry = {};
@@ -259,14 +281,22 @@ void TFileSystem::ReplyEntryWithCache(
     const NCloud::NProto::TError& error,
     fuse_req_t req,
     const NProto::TNodeAttr& attrs,
-    ui64 version)
+    ui64 version,
+    bool newNodeCreated)
 {
-    STORAGE_TRACE("inserting node: " << DumpMessage(attrs)
+    STORAGE_TRACE("inserting node: "
+        << ProtoMessagePrinter.ToString(attrs)
         << ", version: " << version);
 
     if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
         return;
+    }
+
+    if (Config->GetXAttrCacheInvalidateOnCreateEnabled() && newNodeCreated &&
+        !HasError(error))
+    {
+        InvalidateXAttrCache(attrs.GetId());
     }
 
     fuse_entry_param entry = {};
@@ -306,7 +336,8 @@ void TFileSystem::ReplyAttrWithCache(
     const NProto::TNodeAttr& attrs,
     ui64 version)
 {
-    STORAGE_TRACE("returning node: " << DumpMessage(attrs)
+    STORAGE_TRACE("returning node: "
+        << ProtoMessagePrinter.ToString(attrs)
         << ", version: " << version);
 
     if (attrs.GetId() == InvalidNodeId) {

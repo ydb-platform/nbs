@@ -163,6 +163,21 @@ NActors::IActorPtr TStorageServiceActor::CreateUnsafeCreateHandleActor(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// UnsafeChangeTabletState
+
+NActors::IActorPtr TStorageServiceActor::CreateUnsafeChangeTabletStateActor(
+        TRequestInfoPtr requestInfo,
+        TString input)
+{
+    using TUnsafeChangeTabletStateActor = TTabletActionActor<
+        TEvIndexTablet::TEvUnsafeChangeTabletStateRequest,
+        TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>;
+    return std::make_unique<TUnsafeChangeTabletStateActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // RestartTablet
 
 IActorPtr TStorageServiceActor::CreateRestartTabletActionActor(
@@ -235,6 +250,99 @@ IActorPtr TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor(
         TEvIndexTablet::TEvMarkNodeRefsExhaustiveResponse>;
 
     return std::make_unique<TMarkNodeRefsExhaustiveActionActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ResponseLog ops
+
+IActorPtr TStorageServiceActor::CreateWriteResponseLogEntryActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TWriteResponseLogEntryActor = TTabletActionActor<
+        TEvIndexTablet::TEvWriteResponseLogEntryRequest,
+        TEvIndexTablet::TEvWriteResponseLogEntryResponse>;
+    return std::make_unique<TWriteResponseLogEntryActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateDeleteResponseLogEntryActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TDeleteResponseLogEntryActor = TTabletActionActor<
+        TEvIndexTablet::TEvDeleteResponseLogEntryRequest,
+        TEvIndexTablet::TEvDeleteResponseLogEntryResponse>;
+    return std::make_unique<TDeleteResponseLogEntryActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateGetResponseLogEntryActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TGetResponseLogEntryActor = TTabletActionActor<
+        TEvIndexTablet::TEvGetResponseLogEntryRequest,
+        TEvIndexTablet::TEvGetResponseLogEntryResponse>;
+    return std::make_unique<TGetResponseLogEntryActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ListNodes[Internal]
+
+IActorPtr TStorageServiceActor::CreateListNodesInternalActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TListNodesInternalActor = TTabletActionActor<
+        TEvIndexTablet::TEvListNodesInternalRequest,
+        TEvIndexTablet::TEvListNodesInternalResponse>;
+    return std::make_unique<TListNodesInternalActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Quotas
+
+IActorPtr TStorageServiceActor::CreateSetQuotaActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TSetQuotaActor = TTabletActionActor<
+        TEvIndexTablet::TEvSetQuotaRequest,
+        TEvIndexTablet::TEvSetQuotaResponse>;
+    return std::make_unique<TSetQuotaActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateDeleteQuotaActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TDeleteQuotaActor = TTabletActionActor<
+        TEvIndexTablet::TEvDeleteQuotaRequest,
+        TEvIndexTablet::TEvDeleteQuotaResponse>;
+    return std::make_unique<TDeleteQuotaActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+IActorPtr TStorageServiceActor::CreateListQuotasActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TListQuotasActor = TTabletActionActor<
+        TEvIndexTablet::TEvListQuotasRequest,
+        TEvIndexTablet::TEvListQuotasResponse>;
+    return std::make_unique<TListQuotasActor>(
         std::move(requestInfo),
         std::move(input));
 }

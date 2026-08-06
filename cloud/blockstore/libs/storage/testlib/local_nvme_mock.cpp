@@ -36,27 +36,35 @@ public:
             Devices);
     }
 
-    [[nodiscard]] auto AcquireNVMeDevice(const TString& serialNumber)
-        -> TFuture<NProto::TError> final
+    [[nodiscard]] auto AcquireNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId)
+        -> TFuture<TResultOrError<NProto::TNVMeDevice>> final
     {
+        Y_UNUSED(idempotenceId);
+
         const auto* disk = FindIfPtr(
             Devices,
             [&](const auto& disk)
             { return disk.GetSerialNumber() == serialNumber; });
 
         if (disk) {
-            return MakeFuture(NProto::TError());
+            return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(
+                NProto::TError());
         }
 
-        return MakeFuture(MakeError(
+        return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(MakeError(
             E_NOT_FOUND,
             TStringBuilder()
                 << "Disk " << serialNumber.Quote() << " not found"));
     }
 
-    [[nodiscard]] auto ReleaseNVMeDevice(const TString& serialNumber)
-        -> TFuture<NProto::TError> final
+    [[nodiscard]] auto ReleaseNVMeDevice(
+        const TString& serialNumber,
+        const TString& idempotenceId) -> TFuture<NProto::TError> final
     {
+        Y_UNUSED(idempotenceId);
+
         const auto* disk = FindIfPtr(
             Devices,
             [&](const auto& disk)

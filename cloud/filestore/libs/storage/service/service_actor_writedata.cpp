@@ -1,16 +1,16 @@
 #include "service_actor.h"
 
 #include "rope_utils.h"
+#include "verify.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
-#include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/byte_range.h>
@@ -79,25 +79,45 @@ ui64 CopyBufferFromRope(
 }
 
 /**
- * @brief Copies a slice of data from the iovecs in the request into the buffer
- *        in the same request and cleanup iovecs.
+ * @brief Prepares a WriteData request to be sent to the tablet.
  *
- * @param request The write request containing iovecs as the source of data
+ * If the request payload is represented by iovecs, this function copies the
+ * required data slice from the iovecs into the request buffer, or into the
+ * request payload when @p useExternalPayload is set. The iovecs are then
+ * cleared from the request.
+ *
+ * @param request The write request containing iovecs used as the data source.
+ * @param useExternalPayload If true, stores the copied data as an external
+ * payload; otherwise, stores it in the request buffer.
  */
-void MoveIovecsToBuffer(NProto::TWriteDataRequest& request)
+void PrepareWriteDataRequestPayload(
+    TEvService::TEvWriteDataRequest& request,
+    bool useExternalPayload)
 {
-    if (request.GetIovecs().empty()) {
+    auto& record = request.Record;
+    if (record.GetIovecs().empty()) {
+        if (useExternalPayload) {
+            auto& buffer = *record.MutableBuffer();
+            request.AddPayload(TRope(std::move(buffer)));
+            buffer.clear();
+        }
         return;
     }
 
-    auto rope = CreateRope(request.GetIovecs());
-    auto* buffer = request.MutableBuffer();
-    const auto bytesToCopy = NFileStore::CalculateByteCount(request);
-    buffer->ReserveAndResize(bytesToCopy);
+    auto rope = CreateRope(record.GetIovecs());
+    TString buffer;
+    const auto bytesToCopy = NFileStore::CalculateByteCount(record);
+    buffer.ReserveAndResize(bytesToCopy);
     auto bytesCopied =
-        TRopeUtils::SafeMemcpy(&(*buffer)[0], rope.Begin(), bytesToCopy);
-    request.MutableIovecs()->Clear();
+        TRopeUtils::SafeMemcpy(buffer.begin(), rope.Begin(), bytesToCopy);
+    record.MutableIovecs()->Clear();
     Y_ABORT_UNLESS(bytesCopied == bytesToCopy);
+
+    if (useExternalPayload) {
+        request.AddPayload(TRope(std::move(buffer)));
+    } else {
+        record.SetBuffer(std::move(buffer));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -152,6 +172,9 @@ private:
     const NCloud::NProto::EStorageMediaKind MediaKind;
     TRope Rope;
 
+    const bool UseThreeStageWrite = false;
+    const bool ExternalWriteDataPayloadEnabled = false;
+
 public:
     TWriteDataActor(
         NProto::TWriteDataRequest request,
@@ -163,7 +186,9 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool useThreeStageWrite,
+        bool externalWriteDataPayloadEnabled)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -175,10 +200,30 @@ public:
         , ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
         , MediaKind(mediaKind)
+        , UseThreeStageWrite(useThreeStageWrite)
+        , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
     {}
 
     void Bootstrap(const TActorContext& ctx)
     {
+        if (!UseThreeStageWrite) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Forwarding WriteData request to tablet");
+
+            WriteData(ctx, false /* isFallback */);
+            Become(&TThis::StateWork);
+            return;
+        }
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s Using three-stage write for request, size: %lu",
+            LogTag.c_str(),
+            Range.Length);
+
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
             RequestInfo->CallContext,
@@ -195,6 +240,7 @@ public:
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(BlobRange.Offset);
         request->Record.SetLength(BlobRange.Length);
+        request->Record.SetUnconfirmedFlowRequested(UseUnconfirmedFlow);
 
         if (UseUnconfirmedFlow) {
             FillUnalignedDataRanges(
@@ -206,6 +252,7 @@ public:
             EFileStoreRequest::GenerateBlobIds,
             request->Record,
             false /* addWriteRangeInfo */);
+        request->CallContext = InFlightRequest->CallContext;
 
         LOG_DEBUG(
             ctx,
@@ -263,22 +310,19 @@ private:
         auto* msg = ev->Get();
         const auto& error = msg->GetError();
 
-        TABLET_VERIFY(InFlightRequest);
+        SERVICE_VERIFY(InFlightRequest);
 
+        RequestInfo->CallContext->LWOrbit.Join(
+            InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
         InFlightRequest->Complete(ctx.Now(), error);
-        HandleServiceTraceInfo(
-            "GenerateBlobIds",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(error)) {
             if (error.GetCode() != E_FS_THROTTLED) {
-                WriteData(ctx, error);
+                LogFallbackToWriteData(ctx, error);
+                WriteData(ctx, true /* isFallback */);
             } else {
                 HandleError(ctx, error);
             }
@@ -294,7 +338,7 @@ private:
             LogTag.c_str(),
             GenerateBlobIdsResponse.DebugString().Quote().c_str());
 
-        TABLET_VERIFY(
+        SERVICE_VERIFY(
             UseUnconfirmedFlow ||
             !GenerateBlobIdsResponse.GetUnconfirmedFlowEnabled());
 
@@ -367,7 +411,7 @@ private:
                     &putData[0],
                     ropeIt,
                     blobId.BlobSize());
-                TABLET_VERIFY(bytesCopied == blobId.BlobSize());
+                SERVICE_VERIFY(bytesCopied == blobId.BlobSize());
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
                     std::move(putData),
@@ -429,6 +473,15 @@ private:
         const auto* msg = ev->Get();
         RequestInfo->CallContext->LWOrbit.Join(msg->Orbit);
 
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s TEvPutResult response received: %s",
+            LogTag.c_str(),
+            msg->ToString().c_str());
+
+        ui64 blobIdx = msg->Id.Cookie();
+
         if (msg->Status != NKikimrProto::OK) {
             const auto error =
                 MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason);
@@ -436,9 +489,12 @@ private:
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "%s WriteData error: %s",
+                "%s WriteData error: %s, group: %lu",
                 LogTag.c_str(),
-                msg->ErrorReason.Quote().c_str());
+                msg->ErrorReason.Quote().c_str(),
+                blobIdx < GenerateBlobIdsResponse.BlobsSize()
+                    ? GenerateBlobIdsResponse.GetBlobs(blobIdx).GetBSGroupId()
+                    : 0);
             // We still may receive some responses, but we do not want to
             // process them
             for (auto& inFlight: InFlightBSRequests) {
@@ -451,22 +507,14 @@ private:
                 return CancelAddData(ctx);
             }
 
-            return WriteData(ctx, error);
+            return WriteData(ctx, true /* isFallback */);
         }
 
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "%s TEvPutResult response received: %s",
-            LogTag.c_str(),
-            msg->ToString().c_str());
-
-        ui64 blobIdx = msg->Id.Cookie();
         // It is implicitly expected that cookies are generated in increasing
         // order starting from 0.
-        // TODO: replace this TABLET_VERIFY with a critical event + WriteData
+        // TODO: replace this SERVICE_VERIFY with a critical event + WriteData
         // fallback
-        TABLET_VERIFY(
+        SERVICE_VERIFY(
             blobIdx < InFlightBSRequests.size() &&
             InFlightBSRequests[blobIdx] &&
             !InFlightBSRequests[blobIdx]->IsCompleted());
@@ -510,6 +558,12 @@ private:
             RequestInfo->CallContext->RequestId);
         callContext->SetRequestStartedCycles(GetCycleCount());
         callContext->RequestType = requestType;
+        if (!RequestInfo->CallContext->LWOrbit.Fork(callContext->LWOrbit)) {
+            FILESTORE_TRACK(
+                ForkFailed,
+                RequestInfo->CallContext,
+                GetFileStoreRequestName(requestType));
+        }
         InFlightRequest.ConstructInPlace(
             TRequestInfo(
                 RequestInfo->Sender,
@@ -568,6 +622,7 @@ private:
             EFileStoreRequest::AddData,
             request->Record,
             false /* addWriteRangeInfo */);
+        request->CallContext = InFlightRequest->CallContext;
 
         LOG_DEBUG(
             ctx,
@@ -585,20 +640,17 @@ private:
     {
         auto* msg = ev->Get();
 
-        TABLET_VERIFY(InFlightRequest);
+        SERVICE_VERIFY(InFlightRequest);
+        RequestInfo->CallContext->LWOrbit.Join(
+            InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
-        HandleServiceTraceInfo(
-            "AddData",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(msg->GetError())) {
-            WriteData(ctx, msg->GetError());
+            LogFallbackToWriteData(ctx, msg->GetError());
+            WriteData(ctx, true /* isFallback */);
             return;
         }
 
@@ -627,6 +679,7 @@ private:
             EFileStoreRequest::ConfirmAddData,
             request->Record,
             true);
+        request->CallContext = InFlightRequest->CallContext;
 
         LOG_DEBUG(
             ctx,
@@ -657,6 +710,7 @@ private:
             EFileStoreRequest::CancelAddData,
             request->Record,
             true);
+        request->CallContext = InFlightRequest->CallContext;
 
         LOG_DEBUG(
             ctx,
@@ -674,17 +728,13 @@ private:
     {
         auto* msg = ev->Get();
 
-        TABLET_VERIFY(InFlightRequest);
+        SERVICE_VERIFY(InFlightRequest);
+        RequestInfo->CallContext->LWOrbit.Join(
+            InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
-        HandleServiceTraceInfo(
-            "ConfirmAddData",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(msg->GetError())) {
             if (ev->Sender == MakeIndexTabletProxyServiceId()) {
@@ -696,7 +746,8 @@ private:
             }
 
             ResetTabletProxyRetryState();
-            return WriteData(ctx, msg->GetError());
+            LogFallbackToWriteData(ctx, msg->GetError());
+            return WriteData(ctx, true /* isFallback */);
         }
 
         ResetTabletProxyRetryState();
@@ -709,17 +760,13 @@ private:
     {
         auto* msg = ev->Get();
 
-        TABLET_VERIFY(InFlightRequest);
+        SERVICE_VERIFY(InFlightRequest);
+        RequestInfo->CallContext->LWOrbit.Join(
+            InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
             msg->Record);
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
-        HandleServiceTraceInfo(
-            "CancelAddData",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(msg->GetError())) {
             if (ev->Sender == MakeIndexTabletProxyServiceId()) {
@@ -732,7 +779,8 @@ private:
         }
 
         ResetTabletProxyRetryState();
-        WriteData(ctx, WriteBlobError);
+        LogFallbackToWriteData(ctx, WriteBlobError);
+        WriteData(ctx, true /* isFallback */);
     }
 
     void HandleWakeup(
@@ -770,7 +818,7 @@ private:
         ++TabletProxyRetries;
 
         if (TabletProxyRetries % ProxyCriticalRetryThreshold == 0) {
-            TABLET_VERIFY(retryRequest != ETabletRetryRequest::None);
+            SERVICE_VERIFY(retryRequest != ETabletRetryRequest::None);
 
             const auto requestType =
                 retryRequest == ETabletRetryRequest::ConfirmAddData
@@ -795,18 +843,10 @@ private:
         TabletProxyRetryDelayProvider.Reset();
     }
 
-    /**
-     * @brief Fallback to regular write if two-stage write fails for any reason
-     */
-    void WriteData(const TActorContext& ctx, const NProto::TError& error)
+    inline void LogFallbackToWriteData(
+        const TActorContext& ctx,
+        const NProto::TError& error)
     {
-        FILESTORE_TRACK(
-            RequestReceived_ServiceWorker,
-            RequestInfo->CallContext,
-            "WriteData");
-
-        MoveIovecsToBuffer(WriteRequest);
-
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -818,10 +858,30 @@ private:
             WriteRequest.GetOffset(),
             NFileStore::CalculateByteCount(WriteRequest),
             FormatError(error).Quote().c_str());
+    }
+
+    /**
+     * @brief Use regular write if three-stage write fails for any reason or
+     * disabled in filesystem configuration
+     * @param isFallback true if this is a fallback write after three-stage
+     * write failed
+     */
+    void WriteData(const TActorContext& ctx, bool isFallback)
+    {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            RequestInfo->CallContext,
+            "WriteData");
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
-        request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+        PrepareWriteDataRequestPayload(
+            *request,
+            ExternalWriteDataPayloadEnabled);
+        if (isFallback) {
+            request->Record.MutableHeaders()->SetThrottlingDisabled(true);
+        }
+        request->CallContext = RequestInfo->CallContext;
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
         TraceSerializer->BuildTraceRequest(
@@ -837,12 +897,6 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
-        HandleServiceTraceInfo(
-            "WriteData",
-            ctx,
-            TraceSerializer,
-            RequestInfo->CallContext,
-            msg->Record);
 
         if (HasError(msg->GetError())) {
             HandleError(ctx, msg->GetError());
@@ -908,7 +962,7 @@ private:
             } else {
                 TString buffer;
                 auto bytesCopied = CopyBufferFromRope(Rope, buffer, 0, length);
-                TABLET_VERIFY(bytesCopied == length);
+                SERVICE_VERIFY(bytesCopied == length);
                 unalignedHead.SetContent(std::move(buffer));
             }
         }
@@ -925,7 +979,7 @@ private:
                 TString buffer;
                 auto bytesCopied =
                     CopyBufferFromRope(Rope, buffer, offset, length);
-                TABLET_VERIFY(bytesCopied == length);
+                SERVICE_VERIFY(bytesCopied == length);
                 unalignedTail.SetContent(std::move(buffer));
             }
         }
@@ -996,14 +1050,6 @@ void TStorageServiceActor::HandleWriteData(
 
     const auto threeStageWriteAllowed = IsThreeStageWriteEnabled(filestore);
 
-    if (!threeStageWriteAllowed) {
-        // If three-stage write is disabled, forward the request to the tablet
-        // in the same way as all other requests.
-        MoveIovecsToBuffer(msg->Record);
-        ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
-        return;
-    }
-
     ui32 blockSize = filestore.GetBlockSize();
 
     const auto bytesCount = NFileStore::CalculateByteCount(msg->Record);
@@ -1018,55 +1064,38 @@ void TStorageServiceActor::HandleWriteData(
         filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled() ||
         StorageConfig->GetBlockChecksumsInProfileLogEnabled();
 
-    if (threeStageWriteEnabled) {
-        auto logTag = filestore.GetFileSystemId();
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "%s Using three-stage write for request, size: %lu",
-            logTag.c_str(),
-            bytesCount);
+    auto logTag = filestore.GetFileSystemId();
+    auto [cookie, inflight] = CreateInFlightRequest(
+        TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        session->MediaKind,
+        session->RequestStats,
+        startTime);
 
-        auto [cookie, inflight] = CreateInFlightRequest(
-            TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-            session->MediaKind,
-            session->RequestStats,
-            startTime);
-
-        InitProfileLogRequestInfo(
-            inflight->AccessProfileLogRequest(),
-            msg->Record);
-        inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
-        if (blockChecksumsEnabled) {
-            CalculateWriteDataRequestChecksums(
-                msg->Record,
-                blockSize,
-                inflight->AccessProfileLogRequest());
-        }
-
-        auto requestInfo =
-            CreateRequestInfo(SelfId(), cookie, msg->CallContext);
-
-        auto actor = std::make_unique<TWriteDataActor>(
-            std::move(msg->Record),
-            range,
-            std::move(requestInfo),
-            std::move(logTag),
-            filestore.GetFeatures().GetWriteBlobDisabled(),
-            filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
-            session->RequestStats,
-            ProfileLog,
-            TraceSerializer,
-            session->MediaKind);
-        NCloud::Register(ctx, std::move(actor));
-    } else {
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "Forwarding WriteData request to tablet");
-        MoveIovecsToBuffer(msg->Record);
-        ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
+    inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
+    if (blockChecksumsEnabled) {
+        CalculateWriteDataRequestChecksums(
+            msg->Record,
+            blockSize,
+            inflight->AccessProfileLogRequest());
     }
+
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
+
+    auto actor = std::make_unique<TWriteDataActor>(
+        std::move(msg->Record),
+        range,
+        std::move(requestInfo),
+        std::move(logTag),
+        filestore.GetFeatures().GetWriteBlobDisabled(),
+        filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
+        session->RequestStats,
+        ProfileLog,
+        TraceSerializer,
+        session->MediaKind,
+        threeStageWriteEnabled,
+        filestore.GetFeatures().GetExternalWriteDataPayloadEnabled());
+    NCloud::Register(ctx, std::move(actor));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

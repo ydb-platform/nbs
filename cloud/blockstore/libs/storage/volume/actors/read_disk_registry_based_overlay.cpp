@@ -159,7 +159,7 @@ bool TReadDiskRegistryBasedOverlayActor<TMethod>::InitRequest(
         static_cast<const NProto::TReadBlocksRequest&>(OriginalRequest);
     request.SetStartIndex(blockIndices.front());
     request.SetBlocksCount(resultSgList.size());
-    request.BlockSize = BlockSize;
+    request.SetBlockSize(BlockSize);
     request.Sglist = sgList.Create(std::move(resultSgList));
 
     if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>) {

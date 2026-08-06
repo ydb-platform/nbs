@@ -28,6 +28,7 @@ namespace {
     xxx(DirectIoAlign,               ui32,          4_KB                      )\
     xxx(GuestWriteBackCacheEnabled,  bool,          false                     )\
     xxx(AsyncDestroyHandleEnabled,   bool,          false                     )\
+    xxx(AsyncDestroyReadOnlyHandleEnabled, bool,    false                     )\
     xxx(AsyncHandleOperationPeriod,  TDuration,     50ms                      )\
     xxx(OpenNodeByHandleEnabled,     bool,          false                     )\
     xxx(NodeCleanupBatchSize,        ui32,          1000                      )\
@@ -47,7 +48,9 @@ namespace {
     xxx(XAttrCacheTimeout,           TDuration,     TDuration::Seconds(15)    )\
     xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
     xxx(DirectoryHandlesTableSize,      ui64,       100'000                   )\
+    xxx(DirectoryHandlesPersistentHandleMaxSize, ui64, 2_GB                   )\
     xxx(GuestHandleKillPrivV2Enabled,   bool,       false                     )\
+    xxx(GuestPosixAclEnabled,           bool,       false                     )\
     xxx(SnapshotsDirEnabled,            bool,       false                     )\
     xxx(SnapshotsDirRefreshInterval,    TDuration,  TDuration::Seconds(5)     )\
 // FILESTORE_SERVICE_CONFIG
@@ -65,6 +68,7 @@ namespace {
     xxx(MaxKernelWorkersCount,       ui32,          0                         )\
     xxx(ForceAsyncIO,                bool,          false                     )\
     xxx(PropagateAffinityToKernelWorkers, bool,     false                     )\
+    xxx(SQKernelPollingEnabled,      bool,          false                     )\
 // FILESTORE_SERVICE_IO_URING_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \
@@ -139,6 +143,10 @@ FILESTORE_SERVICE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #define FILESTORE_BINARY_FEATURES(xxx)                                         \
     xxx(DirectoryHandlesStorageEnabled)                                        \
+    xxx(ExtendedAttributesDisabled)                                            \
+    xxx(SnapshotsDirEnabled)                                                   \
+    xxx(GuestHandleKillPrivV2Enabled)                                          \
+    xxx(GuestPosixAclEnabled)                                                  \
 
 // FILESTORE_BINARY_FEATURES
 
@@ -160,11 +168,13 @@ bool TLocalFileStoreConfig::Get##name(                                         \
         return Get##name();                                                    \
     }                                                                          \
                                                                                \
-    return FeaturesConfig->IsFeatureEnabled(                                   \
-        cloudId,                                                               \
-        folderId,                                                              \
-        fsId,                                                                  \
-        #name);                                                                \
+    if (!FeaturesConfig->IsFeatureEnabled(cloudId, folderId, fsId, #name)) {   \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    auto val = FeaturesConfig->GetFeatureValue(cloudId, folderId, fsId, #name);\
+    val.to_lower();                                                            \
+    return val != "false";                                                     \
 }                                                                              \
 
 // FILESTORE_BINARY_FEATURE_GETTER

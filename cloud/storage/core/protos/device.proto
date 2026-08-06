@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+import "cloud/storage/core/protos/error.proto";
+
+package NCloud.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Headers.
+
+message TDeviceRequestHeaders
+{
+    // Client identifier for client detection.
+    string ClientId = 1;
+
+    // Request timeout (in milliseconds).
+    uint32 RequestTimeout = 2;
+}
+
+message TDeviceResponseHeaders
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Acquire request/response.
+
+message TAcquireDevicesRequest
+{
+    // Headers.
+    TDeviceRequestHeaders Headers = 1;
+
+    // List of device UUIDs to acquire.
+    repeated string DeviceUUIDs = 2;
+
+    // Access mode.
+    // Let's just assume r/w access for now.
+    // EAccessMode AccessMode = 2;
+}
+
+message TAcquireDevicesResponse
+{
+    // Headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Release request/response.
+
+message TReleaseDevicesRequest
+{
+    // Headers.
+    TDeviceRequestHeaders Headers = 1;
+
+    // List of device UUIDs to release.
+    repeated string DeviceUUIDs = 2;
+}
+
+message TReleaseDevicesResponse
+{
+    // Headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Read request/response.
+
+message TDevicePageGroupRef
+{
+    // The number of the first page in the response relative to the start of
+    // the device, starts from 0.
+    uint64 FirstPageNo = 1;
+
+    // The number of consecutive pages.
+    uint64 PageCount = 2;
+
+    // Logical page size.
+    uint32 PageSize = 3;
+}
+
+message TReadPagesRequest
+{
+    // Headers.
+    TDeviceRequestHeaders Headers = 1;
+
+    // UUID of the device to read from.
+    string DeviceUUID = 2;
+
+    // Requested pages.
+    repeated TDevicePageGroupRef PageGroupRefs = 3;
+}
+
+message TDevicePageGroup
+{
+    // The number of the first page in the response relative to the start of
+    // the device, starts from 0.
+    uint64 FirstPageNo = 1;
+
+    // Page data for each of the response pages.
+    repeated bytes Content = 2;
+}
+
+message TReadPagesResponse
+{
+    // Headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+
+    // Requested pages.
+    repeated TDevicePageGroup PageGroups = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Write request/response.
+
+message TWriteLogRecordRequest
+{
+    // Headers.
+    TDeviceRequestHeaders Headers = 1;
+
+    // UUID of device to write to.
+    string DeviceUUID = 2;
+
+    // Pages to write.
+    repeated TDevicePageGroup PageGroups = 3;
+
+    // Log sequence number used to order the writes.
+    uint64 LogSequenceNumber = 4;
+}
+
+message TWriteLogRecordResponse
+{
+    // Headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Device protocol request/response wrappers.
+
+message TDeviceProtocolRequest
+{
+    // Request identifier.
+    uint64 RequestId = 1;
+
+    oneof Request {
+        TAcquireDevicesRequest AcquireDevices = 2;
+        TReleaseDevicesRequest ReleaseDevices = 3;
+        TReadPagesRequest ReadPages = 4;
+        TWriteLogRecordRequest WriteLogRecord = 5;
+    }
+}
+
+message TDeviceProtocolResponse
+{
+    // Request identifier - used to match this response with its request.
+    uint64 RequestId = 1;
+
+    oneof Response {
+        NCloud.NProto.TError ProtocolError = 2;
+
+        TAcquireDevicesResponse AcquireDevices = 3;
+        TReleaseDevicesResponse ReleaseDevices = 4;
+        TReadPagesResponse ReadPages = 5;
+        TWriteLogRecordResponse WriteLogRecord = 6;
+    }
+}

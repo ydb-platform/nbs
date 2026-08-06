@@ -368,6 +368,7 @@ void TVolumeActor::CompleteUpdateConfig(
             // TODO: will it get updated later?
             {},   // volume params
             throttlerConfig,
+            0.0,                           // spentShapingBudgetShare
             {},                            // clients
             TCachedVolumeMountHistory{},   // history
             {},                            // checkpoint requests
@@ -389,6 +390,8 @@ void TVolumeActor::CompleteUpdateConfig(
     if (CurrentState == STATE_INIT) {
         BecomeAux(ctx, STATE_WORK);
     }
+
+    RegisterVolumeHealthSyncActorIfNeeded(ctx);
 
     LOG_INFO(
         ctx,

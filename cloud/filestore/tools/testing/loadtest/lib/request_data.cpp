@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
@@ -105,6 +106,7 @@ private:
     const NProto::TDataLoadSpec Spec;
     const TString FileSystemId;
     const NProto::THeaders Headers;
+    const TCountLimiterPtr CountLimiter;
 
     TLog Log;
 
@@ -133,10 +135,12 @@ public:
             ILoggingServicePtr logging,
             ISessionPtr session,
             TString filesystemId,
-            NProto::THeaders headers)
+            NProto::THeaders headers,
+            TCountLimiterPtr countLimiter)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
+        , CountLimiter(std::move(countLimiter))
         , Session(std::move(session))
     {
         Log = logging->CreateLog(Headers.GetClientId());
@@ -237,6 +241,12 @@ private:
 
         auto started = TInstant::Now();
         TGuard<TMutex> guard(StateLock);
+        if (!CountLimiter->TryReserveHandle()) {
+            return MakeFuture<TCompletedRequest>({
+                NProto::ACTION_CREATE_HANDLE,
+                started,
+                MakeError(S_FALSE)});
+        }
         auto name = GenerateNodeName();
 
         auto request = CreateRequest<NProto::TCreateHandleRequest>();
@@ -300,6 +310,7 @@ private:
                     return HandleResizeAfterCreateHandle(f, name, started);
                 });
         } catch (const TServiceError& e)  {
+            CountLimiter->Release();
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR("create handle for %s has failed: %s",
                 name.Quote().c_str(),
@@ -411,8 +422,7 @@ private:
                         future,
                         handleInfo,
                         started,
-                        byteOffset
-                    );
+                        byteOffset);
                 }
 
                 return TCompletedRequest{
@@ -440,6 +450,8 @@ private:
                 Y_ABORT_UNLESS(bufferOffset < buffer.size());
             }
 
+            const ui64 bytesRead = CalculateByteCount(response);
+
             ui64 segmentId = byteOffset / SEGMENT_SIZE;
             for (ui64 offset = 0; offset < ReadBytes; offset += SEGMENT_SIZE) {
                 const TSegment* segment = reinterpret_cast<const TSegment*>(
@@ -464,7 +476,11 @@ private:
                 HandleInfos.emplace_back(std::move(handleInfo));
             }
 
-            return {NProto::ACTION_READ, started, response.GetError()};
+            return {
+                NProto::ACTION_READ,
+                started,
+                response.GetError(),
+                bytesRead};
         } catch (const TServiceError& e)  {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR("read for %s has failed: %s",
@@ -527,11 +543,17 @@ private:
         }
         *request->MutableBuffer() = std::move(buffer);
 
+        const auto requestBytes = CalculateByteCount(*request);
+
         auto self = weak_from_this();
         return Session->WriteData(CreateCallContext(), std::move(request)).Apply(
             [=] (const TFuture<NProto::TWriteDataResponse>& future){
                 if (auto ptr = self.lock()) {
-                    return ptr->HandleWrite(future, handleInfo, started);
+                    return ptr->HandleWrite(
+                        future,
+                        handleInfo,
+                        started,
+                        requestBytes);
                 }
 
                 return TCompletedRequest{
@@ -545,7 +567,8 @@ private:
     TCompletedRequest HandleWrite(
         const TFuture<NProto::TWriteDataResponse>& future,
         THandleInfo handleInfo,
-        TInstant started)
+        TInstant started,
+        ui64 requestBytes)
     {
         try {
             const auto& response = future.GetValue();
@@ -555,7 +578,11 @@ private:
                 HandleInfos.emplace_back(std::move(handleInfo));
             }
 
-            return {NProto::ACTION_WRITE, started, response.GetError()};
+            return {
+                NProto::ACTION_WRITE,
+                started,
+                response.GetError(),
+                requestBytes};
         } catch (const TServiceError& e)  {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
             STORAGE_ERROR("write on %s has failed: %s",
@@ -629,14 +656,16 @@ IRequestGeneratorPtr CreateDataRequestGenerator(
     ILoggingServicePtr logging,
     ISessionPtr session,
     TString filesystemId,
-    NProto::THeaders headers)
+    NProto::THeaders headers,
+    TCountLimiterPtr countLimiter)
 {
     return std::make_shared<TDataRequestGenerator>(
         std::move(spec),
         std::move(logging),
         std::move(session),
         std::move(filesystemId),
-        std::move(headers));
+        std::move(headers),
+        std::move(countLimiter));
 }
 
 }   // namespace NCloud::NFileStore::NLoadTest

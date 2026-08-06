@@ -11,8 +11,6 @@ PEERDIR(
 
     library/cpp/getopt
     library/cpp/json
-
-    util
 )
 
 END()

@@ -37,24 +37,37 @@ func (s *StorageMock) ListNodes(
 	return res, args.String(1), args.Error(2)
 }
 
+func (s *StorageMock) ListNodesByShard(
+	ctx context.Context,
+	snapshotID string,
+	shardFilesystemID string,
+	limit uint64,
+	cookie *nodes.NodeRefsByShardCookie,
+) ([]nfs.Node, *nodes.NodeRefsByShardCookie, error) {
+
+	args := s.Called(ctx, snapshotID, shardFilesystemID, limit, cookie)
+	res, _ := args.Get(0).([]nfs.Node)
+	nextCookie, _ := args.Get(1).(*nodes.NodeRefsByShardCookie)
+	return res, nextCookie, args.Error(2)
+}
+
 func (s *StorageMock) DeleteSnapshotData(
 	ctx context.Context,
 	snapshotID string,
-) (bool, error) {
+) error {
 
 	args := s.Called(ctx, snapshotID)
-	return args.Bool(0), args.Error(1)
+	return args.Error(0)
 }
 
 func (s *StorageMock) UpdateRestorationNodeIDMapping(
 	ctx context.Context,
 	srcSnapshotID string,
 	dstSnapshotID string,
-	srcNodeIds []uint64,
-	dstNodeIds []uint64,
+	nodeIDMapping map[uint64]uint64,
 ) error {
 
-	args := s.Called(ctx, srcSnapshotID, dstSnapshotID, srcNodeIds, dstNodeIds)
+	args := s.Called(ctx, srcSnapshotID, dstSnapshotID, nodeIDMapping)
 	return args.Error(0)
 }
 
@@ -80,6 +93,16 @@ func (s *StorageMock) ListHardLinks(
 	args := s.Called(ctx, snapshotID, limit, offset)
 	res, _ := args.Get(0).([]nfs.Node)
 	return res, args.Error(1)
+}
+
+func (s *StorageMock) CleanupRestorationNodeIDsMapping(
+	ctx context.Context,
+	snapshotID string,
+	destinationFilesystemID string,
+) error {
+
+	args := s.Called(ctx, snapshotID, destinationFilesystemID)
+	return args.Error(0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

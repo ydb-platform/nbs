@@ -46,6 +46,26 @@ void CheckDescribe(auto endpoint, TString cellId, ui32 errorCode)
 
 Y_UNIT_TEST_SUITE(TServerTest)
 {
+    Y_UNIT_TEST(ShouldPrepareRequestHeaders)
+    {
+        NProto::THeaders headers;
+
+        NImpl::PrepareRequestHeaders(
+            NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL,
+            "ipv6:%5Bfe80::1%2542%5D:12345",
+            "test-auth-token",
+            headers);
+
+        const auto& internal = headers.GetInternal();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL),
+            static_cast<ui32>(internal.GetRequestSource()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "ipv6:[fe80::1%42]:12345",
+            internal.GetPeer());
+        UNIT_ASSERT_VALUES_EQUAL("test-auth-token", internal.GetAuthToken());
+    }
+
     Y_UNIT_TEST(ShouldHandleRequests)
     {
         TPortManager portManager;
@@ -575,6 +595,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         ui16 dataPort = portManager.GetPort(9002);
 
         auto writePromise = NewPromise<NProto::TWriteBlocksResponse>();
+        auto writeRequestReceivedPromise = NewPromise<void>();
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
@@ -585,6 +606,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         service->WriteBlocksHandler =
             [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
                 Y_UNUSED(request);
+                writeRequestReceivedPromise.SetValue();
                 return writePromise;   // will hang until value is set
             };
 
@@ -618,15 +640,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             std::make_shared<NProto::TWriteBlocksRequest>()
         );
 
-        // control request to ensure client and server completely started
-        {
-            auto future = endpoint->Ping(
-                MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TPingRequest>()
-            );
-            const auto& response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(!HasError(response), response.GetError());
-        }
+        // wait until server receive write request
+        writeRequestReceivedPromise.GetFuture().GetValue(TDuration::Seconds(5));
 
         server->Stop();
 
@@ -959,6 +974,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
                     int(NProto::SOURCE_FD_CONTROL_CHANNEL),
                     int(request->GetHeaders().GetInternal().GetRequestSource())
                 );
+                UNIT_ASSERT(!request->GetHeaders().GetInternal().GetPeer().empty());
                 return MakeFuture<NProto::TListEndpointsResponse>();
             };
 
@@ -1310,7 +1326,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetBlocksCount(blocksCount);
-            request->BlockSize = blockSize;
+            request->SetBlockSize(blockSize);
             request->Sglist = TGuardedSgList(sglist);
 
             auto future = endpoint->ReadBlocksLocal(
@@ -1332,8 +1348,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             memset(const_cast<char*>(buffer.data()), content, blocksCount * blockSize);
 
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+            request->SetBlockSize(blockSize);
             request->BlocksCount = blocksCount;
-            request->BlockSize = blockSize;
             request->Sglist = TGuardedSgList({{buffer.data(), buffer.size()}});
 
             auto future = endpoint->WriteBlocksLocal(

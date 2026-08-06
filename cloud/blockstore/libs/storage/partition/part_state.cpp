@@ -47,7 +47,6 @@ double BPFeature(const TBackpressureFeatureConfig& c, double x)
 
 TPartitionState::TPartitionState(
         NProto::TPartitionMeta meta,
-        ui32 generation,
         ICompactionPolicyPtr compactionPolicy,
         ui32 compactionScoreHistorySize,
         ui32 cleanupScoreHistorySize,
@@ -58,13 +57,15 @@ TPartitionState::TPartitionState(
         ui32 reassignFreshChannelsPercentageThreshold,
         ui32 reassignMixedChannelsPercentageThreshold,
         bool reassignSystemChannelsImmediately,
-        ui32 lastCommitId,
         ui32 channelCount,
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
         ui32 maxBlobsPerRange,
-        ui32 compactionRangeCountPerRun)
+        ui32 compactionRangeCountPerRun,
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui64 tabletId,
+        const bool mixedBlocksFilterEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -74,13 +75,14 @@ TPartitionState::TPartitionState(
           reassignMixedChannelsPercentageThreshold,
           reassignSystemChannelsImmediately,
           channelCount)
-    , TCommitIdsState(generation, lastCommitId)
-    , TPartitionTrimFreshLogState(static_cast<TCommitIdsState&>(*this))
-    , TPartitionFreshBlocksState(*this, *this, *this)
+    , TCommitIdsState()
+    , TPartitionTrimFreshLogState()
+    , TPartitionFreshBlocksState(*this, *this, threadSafeState)
     , Meta(std::move(meta))
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
+    , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
     , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
@@ -96,6 +98,12 @@ TPartitionState::TPartitionState(
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
 {
+    if (mixedBlocksFilterEnabled) {
+        MixedBlocksFilter.emplace(
+            tabletId,
+            GetMaxBlocksInBlob(),
+            Config.GetBlocksCount());
+    }
     InitChannels();
 }
 
@@ -139,6 +147,8 @@ ui64 TPartitionState::GetCleanupCommitId() const
     // should not cleanup after any checkpoint
     commitId =
         Min(commitId, GetCheckpoints().GetMinCommitId() - 1);
+
+    commitId = Min(commitId, GetCheckpointsInFlight()->GetMinCommitId() - 1);
 
     return commitId;
 }
@@ -191,7 +201,7 @@ void TPartitionState::InitUnconfirmedBlobs(
 
     for (const auto& [commitId, blobs]: UnconfirmedBlobs) {
         UnconfirmedBlobCount += blobs.size();
-        AccessCommitQueue().AcquireBarrier(commitId);
+        AccessCommitQueue()->AcquireBarrier(commitId);
         GarbageQueue.AcquireBarrier(commitId);
     }
 }
@@ -248,7 +258,7 @@ void TPartitionState::ConfirmedBlobsAdded(
     ConfirmedBlobCount -= blobCount;
 
     GarbageQueue.ReleaseBarrier(commitId);
-    AccessCommitQueue().ReleaseBarrier(commitId);
+    AccessCommitQueue()->ReleaseBarrier(commitId);
 }
 
 void TPartitionState::BlobsConfirmed(
@@ -311,7 +321,7 @@ void TPartitionState::ConfirmBlobs(
         UnconfirmedBlobs.erase(it);
 
         GarbageQueue.ReleaseBarrier(commitId);
-        AccessCommitQueue().ReleaseBarrier(commitId);
+        AccessCommitQueue()->ReleaseBarrier(commitId);
     }
 
     ConfirmedBlobs = std::move(UnconfirmedBlobs);
@@ -411,35 +421,45 @@ void TPartitionState::DeleteFreshBlockFromDb(
 ////////////////////////////////////////////////////////////////////////////////
 // Mixed blocks
 
-void TPartitionState::WriteMixedBlock(
-    TPartitionDatabase& db,
-    TMixedBlock block)
+void TPartitionState::WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block)
 {
     const ui32 rangeIdx = CompactionMap.GetRangeIndex(block.BlockIndex);
     MixedIndexCache.InsertBlockIfHot(rangeIdx, block);
+
     db.WriteMixedBlock(block);
+
+    if (MixedBlocksFilter) {
+        MixedBlocksFilter->BlocksAddedToMixedIndex(
+            block.BlockIndex,
+            block.CommitId);
+    }
 }
 
 void TPartitionState::WriteMixedBlocks(
     TPartitionDatabase& db,
     const TPartialBlobId& blobId,
-    const TVector<ui32>& blockIndices)
+    const TVector<ui32>& blockIndices,
+    ui8 compactionRangeCount)
 {
     const ui64 commitId = blobId.CommitId();
     ui16 blobOffset = 0;
 
     for (const ui32 blockIndex: blockIndices) {
         const ui32 rangeIdx = CompactionMap.GetRangeIndex(blockIndex);
-        MixedIndexCache.InsertBlockIfHot(rangeIdx, {
-            blobId,
-            commitId,
-            blockIndex,
-            blobOffset
-        });
+        MixedIndexCache.InsertBlockIfHot(
+            rangeIdx,
+            {blobId, commitId, blockIndex, blobOffset, compactionRangeCount});
+
         ++blobOffset;
     }
 
-    db.WriteMixedBlocks(blobId, blockIndices);
+    db.WriteMixedBlocks(blobId, blockIndices, compactionRangeCount);
+
+    if (MixedBlocksFilter) {
+        for (const ui32 blockIndex: blockIndices) {
+            MixedBlocksFilter->BlocksAddedToMixedIndex(blockIndex, commitId);
+        }
+    }
 }
 
 void TPartitionState::DeleteMixedBlock(
@@ -454,7 +474,7 @@ void TPartitionState::DeleteMixedBlock(
 
 bool TPartitionState::FindMixedBlocksForCompaction(
     TPartitionDatabase& db,
-    IBlocksIndexVisitor& visitor,
+    IMixedBlocksIndexVisitor& visitor,
     ui32 rangeIdx)
 {
     if (MixedIndexCache.VisitBlocksIfHot(rangeIdx, visitor)) {
@@ -464,29 +484,39 @@ bool TPartitionState::FindMixedBlocksForCompaction(
 
     auto cacheInserter = MixedIndexCache.GetInserterForRange(rangeIdx);
 
-    struct TVisitorAndCacheInserter final
-        : public IBlocksIndexVisitor
+    struct TVisitorAndCacheInserter final: public IMixedBlocksIndexVisitor
     {
-        IBlocksIndexVisitor& Visitor;
+        IMixedBlocksIndexVisitor& Visitor;
         TMixedIndexCache::TInserterPtr CacheInserter;
 
         TVisitorAndCacheInserter(
-                IBlocksIndexVisitor& visitor,
-                TMixedIndexCache::TInserterPtr cacheInserter)
+            IMixedBlocksIndexVisitor& visitor,
+            TMixedIndexCache::TInserterPtr cacheInserter)
             : Visitor(visitor)
             , CacheInserter(std::move(cacheInserter))
         {}
 
-        bool Visit(
+        bool VisitBlock(
             ui32 blockIndex,
             ui64 commitId,
             const TPartialBlobId& blobId,
-            ui16 blobOffset) override
+            ui16 blobOffset,
+            ui8 compactionRangeCount) override
         {
-            bool ok = Visitor.Visit(blockIndex, commitId, blobId, blobOffset);
+            bool ok = Visitor.VisitBlock(
+                blockIndex,
+                commitId,
+                blobId,
+                blobOffset,
+                compactionRangeCount);
             Y_ABORT_UNLESS(ok);
 
-            CacheInserter->Insert({blobId, commitId, blockIndex, blobOffset});
+            CacheInserter->Insert(
+                {blobId,
+                 commitId,
+                 blockIndex,
+                 blobOffset,
+                 compactionRangeCount});
             return true;
         }
 
@@ -645,6 +675,19 @@ void TPartitionState::UnsetUsedBlocks(
             WriteUsedBlocksToDB(db, *first, *std::prev(last) + 1);
         }
     }
+}
+
+ui32 TPartitionState::CalculateNewlyZeroedBlocks(
+    ui32 blockIndex,
+    ui64 usedBlockCount) const
+{
+    const auto& prevRangeStat = CompactionMap.Get(blockIndex);
+    const i64 usedBlockCountDiff =
+        static_cast<i64>(usedBlockCount) - prevRangeStat.UsedBlockCount;
+
+    return SafeIntegerCast<ui32>(std::max(
+        static_cast<i64>(prevRangeStat.NewlyZeroedBlocks) - usedBlockCountDiff,
+        0L));
 }
 
 void TPartitionState::WriteUsedBlocksToDB(

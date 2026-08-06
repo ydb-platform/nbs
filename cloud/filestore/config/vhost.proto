@@ -18,6 +18,14 @@ message TServiceEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum ESideChannelType
+{
+    SCT_NONE = 0;
+    SCT_TCP = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TVhostServiceConfig
 {
     // Endpoints mapping.
@@ -81,12 +89,33 @@ message TVhostServiceConfig
     // (and a subdirectory with session id as name) if not present.
     optional string DirectoryHandlesStoragePath = 19;
 
-    // Initial data area size for DirectoryHandles persistent table.
+    // Initial data area size for DirectoryHandles persistent table. Should be power of 2
     optional uint64 DirectoryHandlesInitialDataSize = 20;
 
-    // If true, a permanent THandler actor will be used instead of one
-    // TRequestActor per each request.
-    optional bool UsePermanentActor = 21;
+    // If nonzero, multiple permanent THandler actors will be used instead of
+    // one TRequestActor per each request.
+    optional uint32 PermanentActorCount = 21;
+
+    // Max single growth step for DirectoryHandles persistent table data area.
+    optional uint64 DirectoryHandlesMaxDataAreaStepSize = 22;
+
+    // Shared memory limit, in bytes, for file-map-backed caches.
+    // Consumers like DirectoryHandlesCache and WriteBackCache can
+    // use this limit as a growth guard and may reclaim, drop or restrict
+    // cached state instead of expanding file mappings.
+    // Value 0 disables the limit and uses a permissive stub limiter.
+    optional uint64 FileMapMemoryLimit = 23;
+
+    // Whether to use a direct service <-> shard side-channel for
+    // latency-critical requests instead of actor system.
+    optional ESideChannelType SideChannelType = 24;
+
+    // This threshold limits WriteBackCache queue growth to avoid excessive
+    // latency for operations that must wait for cached writes to be flushed,
+    // such as SetNodeAttr, ReleaseHandle, data requests with O_DIRECT flag.
+    // The value is compared with the number of flush batches needed to drain
+    // unflushed WriteData requests.
+    optional uint32 WriteBackCacheMaxQueuedFlushBatchesPerNode = 25;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

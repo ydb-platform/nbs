@@ -47,10 +47,12 @@ struct TFreshBlock
 {
     TBlock Meta;
     TStringBuf Content;
+    TPartialBlobId BlobId;
 
-    TFreshBlock(TBlock meta, TStringBuf content)
+    TFreshBlock(TBlock meta, TStringBuf content, TPartialBlobId blobId)
         : Meta(meta)
         , Content(content)
+        , BlobId(blobId)
     {
     }
 };
@@ -61,12 +63,26 @@ struct TOwningFreshBlock
 {
     TBlock Meta;
     TString Content;
+    TPartialBlobId BlobId;
 
-    TOwningFreshBlock(TBlock meta, TString content)
+    TOwningFreshBlock(TBlock meta, TString content, TPartialBlobId blobId)
         : Meta(meta)
         , Content(std::move(content))
+        , BlobId(blobId)
     {
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IBlobsVisitor
+{
+    virtual ~IBlobsVisitor() = default;
+
+    virtual bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        ui32 skippedBlocksCount) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -80,6 +96,18 @@ struct IBlocksIndexVisitor
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset) = 0;
+};
+
+struct IMixedBlocksIndexVisitor
+{
+    virtual ~IMixedBlocksIndexVisitor() = default;
+
+    virtual bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) = 0;
 };
 
 struct IExtendedBlocksIndexVisitor

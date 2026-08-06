@@ -9,6 +9,8 @@
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 
+#include <util/string/builder.h>
+
 #include <google/protobuf/text_format.h>
 
 #include <type_traits>
@@ -29,11 +31,12 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(PipeClientMinRetryTime,        TDuration, TDuration::Seconds(1)       )\
     xxx(PipeClientMaxRetryTime,        TDuration, TDuration::Seconds(4)       )\
                                                                                \
+    xxx(TabletDirectRdmaEnabled,       bool,      false                       )\
+                                                                               \
     xxx(EstablishSessionTimeout,       TDuration, TDuration::Seconds(30)      )\
     xxx(IdleSessionTimeout,            TDuration, TDuration::Hours(1)         )\
+    xxx(MaxDeleteSessionHandlesPerTx,  ui32,      1'000'000                   )\
                                                                                \
-    xxx(WriteBatchEnabled,             bool,      false                       )\
-    xxx(WriteBatchTimeout,             TDuration, TDuration::MilliSeconds(0)  )\
     xxx(WriteBlobThreshold,            ui32,      128_KB                      )\
                                                                                \
     xxx(MaxBlobSize,                        ui32,   4_MB                      )\
@@ -69,14 +72,16 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AutomaticallyCreatedShardSize,                          ui64,   5_TB  )\
     xxx(EnforceCorrectFileSystemShardCountUponSessionCreation,  bool,   false )\
                                                                                \
-    xxx(ShardIdSelectionInLeaderEnabled,                        bool,   false )\
     xxx(ShardBalancerDesiredFreeSpaceReserve,                   ui64,   1_TB  )\
     xxx(ShardBalancerMinFreeSpaceReserve,                       ui64,   1_MB  )\
     xxx(ShardBalancerPolicy,                                                   \
             NProto::EShardBalancerPolicy,                                      \
             NProto::SBP_ROUND_ROBIN                                           )\
+    xxx(ShardBalancerPrecisionBytes,                            ui64,   1_GB  )\
                                                                                \
     xxx(DirectoryCreationInShardsEnabled,                       bool,   false )\
+                                                                               \
+    xxx(MaxShardManagementRequestsInFlight,                     ui32,   0     )\
                                                                                \
     xxx(MaxFileBlocks,                                  ui32,   300_GB / 4_KB )\
     xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
@@ -96,6 +101,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
     xxx(CompactionThresholdForBackpressure, ui32,      200                    )\
     xxx(FlushBytesThresholdForBackpressure, ui64,      128_MB                 )\
+    xxx(FlushBytesItemCountThresholdForBackpressure,   ui64,    500'000       )\
+    xxx(CollectGarbageThresholdForBackpressure,        ui64,    1_TB          )\
     xxx(BackpressureThresholdPercentageForBackgroundOpsPriority,  ui32,   90  )\
                                                                                \
     xxx(HDDSystemChannelPoolKind,      TString,   "rot"                       )\
@@ -213,7 +220,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         TDuration,                                                             \
         TDuration::Seconds(10)                                                )\
     xxx(PreferredBlockSizeMultiplier,                   ui32,      1          )\
-    xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
     xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
     xxx(AllowFileStoreDestroyWithOrphanSessions,        bool,      false      )\
     xxx(TrimBytesItemCount,                             ui64,      100'000    )\
@@ -241,21 +247,29 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         ui64,                                                                  \
         0                                                                     )\
     xxx(InMemoryIndexCacheLoadOnTabletStart,            bool,       false     )\
-    xxx(InMemoryIndexCacheLoadOnTabletStartRowsPerTx,   ui64,       1000      )\
+    xxx(InMemoryIndexCacheNodeRefsLoadOnTabletStartInShards,                   \
+        bool,                                                                  \
+        false                                                                 )\
+    xxx(InMemoryIndexCacheLoadOnTabletStartRowsPerTx,   ui64,       100'000   )\
     xxx(InMemoryIndexCacheLoadSchedulePeriod,                                  \
         TDuration,                                                             \
         TDuration::Seconds(0)                                                 )\
+    xxx(UseUnlimitedBTreeNodeRefsCacheInMainTablet,     bool,       false     )\
+    xxx(UseUnlimitedBTreeNodeRefsCacheInShards,         bool,       false     )\
                                                                                \
-    xxx(NonNetworkMetricsBalancingFactor,               ui32,      1_KB       )\
+    xxx(NonNetworkMetricsBalancingFactor,               ui32,       1_KB      )\
                                                                                \
-    xxx(AsyncDestroyHandleEnabled,     bool,       false                      )\
+    xxx(AsyncDestroyHandleEnabled,                      bool,       false     )\
+    xxx(AsyncDestroyReadOnlyHandleEnabled,              bool,       false     )\
+    xxx(TabletUnsafeAsyncReadOnlyCreateHandleEnabled,   bool,       false     )\
+    xxx(TabletUnsafeAsyncDestroyHandleEnabled,          bool,       false     )\
     xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
                                                                                \
     xxx(NodeRegistrationMaxAttempts,         ui32,      10                    )\
     xxx(NodeRegistrationTimeout,             TDuration, TDuration::Seconds(5) )\
     xxx(NodeRegistrationErrorTimeout,        TDuration, TDuration::Seconds(1) )\
                                                                                \
-    xxx(MultipleStageRequestThrottlingEnabled,          bool,      false      )\
+    xxx(MultipleStageRequestThrottlingEnabled,          bool,       false     )\
                                                                                \
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
@@ -272,7 +286,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(GuestPageCacheDisabled,                    bool,     false            )\
     xxx(ExtendedAttributesDisabled,                bool,     false            )\
                                                                                \
-    xxx(ServerWriteBackCacheEnabled,    bool,      false                      )\
+    xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
+    xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
     xxx(GuestCachingType,                                                      \
@@ -298,13 +313,16 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(DirectoryHandlesStorageEnabled,    bool,      false                   )\
     xxx(DirectoryHandlesTableSize,         ui64,      100'000                 )\
+    xxx(DirectoryHandlesPersistentHandleMaxSize, ui64, 2_GB                   )\
     xxx(GuestHandleKillPrivV2Enabled,      bool,      false                   )\
+    xxx(GuestPosixAclEnabled,              bool,      false                   )\
     xxx(AllowAdditionalSystemTablets,      bool,      false                   )\
                                                                                \
     xxx(ZeroCopyReadEnabled,               bool,      false                   )\
                                                                                \
     xxx(BlockChecksumsInProfileLogEnabled, bool,      false                   )\
                                                                                \
+    xxx(MinShardCount,                     ui32,      0                       )\
     xxx(MaxShardCount,                     ui32,      254                     )\
                                                                                \
     xxx(ReadBlobDisabled,                  bool,      false                   )\
@@ -312,6 +330,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(CpuLackOverloadThreshold,               ui32,      101                )\
     xxx(TabletActorCpuUsageOverloadThreshold,   ui32,      101                )\
+    xxx(AllowTabletOverload,                    bool,      false              )\
                                                                                \
     xxx(MaxTabletStep,                     ui32,      Max<ui32>()             )\
                                                                                \
@@ -324,14 +343,52 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ListNodesSizeMode,                                                     \
         NProto::EListNodesSizeMode,                                            \
         NProto::LNSM_NAME_ONLY                                                )\
+    xxx(UseListNodesInternal,              bool,      false                   )\
                                                                                \
     xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
                                                                                \
-    xxx(ForceDestroySizeThreshold,          ui32,       0                     )\
+    xxx(ForceDestroySizeThreshold,          ui64,       0                     )\
+                                                                               \
+    xxx(RestartTabletUptimeThresholdDuringDestroy,                             \
+        TDuration,                                                             \
+        TDuration::Zero()                                                     )\
                                                                                \
     xxx(AddingUnconfirmedDataEnabled,      bool,      false                   )\
     xxx(UnconfirmedDataCountHardLimit,     ui32,      0                       )\
+                                                                               \
+    xxx(HideFileNamesInTabletDirectoryViewer,   bool,   false                 )\
+                                                                               \
+    xxx(UseCustomReadDataResponseParser,        bool,   false                 )\
+                                                                               \
+    xxx(UseSchemeCache,                         bool,   false                 )\
+                                                                               \
+    xxx(FastShardServerPort,                    ui32,   0                     )\
+    xxx(FastShardRuntimeEnabled,                bool,   false                 )\
+                                                                               \
+    xxx(EnableNodeRefCompression,               bool,   false                 )\
+                                                                               \
+    xxx(SoftBackpressureEnabled,                bool,   false                 )\
+    xxx(FlushThresholdForBackpressureSoft,             ui32,    32_MB         )\
+    xxx(CleanupThresholdForBackpressureSoft,           ui32,    8192          )\
+    xxx(CompactionThresholdForBackpressureSoft,        ui32,    50            )\
+    xxx(FlushBytesThresholdForBackpressureSoft,        ui64,    32_MB         )\
+    xxx(FlushBytesItemCountThresholdForBackpressureSoft,                       \
+                                                       ui64,    125'000       )\
+    xxx(CollectGarbageThresholdForBackpressureSoft,    ui64,    256_GB        )\
+                                                                               \
+    xxx(StatFileStoreCacheTTL,              TDuration,  TDuration::Zero()     )\
+                                                                               \
+    xxx(ExternalReadDataPayload,                bool,   false                 )\
+    xxx(SoftBackpressureMaxWriteBandwidth,             ui32,    10 * 1024     )\
+    xxx(SoftBackpressureMaxReadBandwidth,              ui32,    30 * 1024     )\
+    xxx(SoftBackpressureMaxWriteIops,                  ui32,    10'000        )\
+    xxx(SoftBackpressureMaxReadIops,                   ui32,    100'000       )\
+                                                                               \
+    xxx(ExternalWriteDataPayloadEnabled,               bool,    false         )\
+    xxx(FakeTxPageFaultsProbability,                   double,   0            )\
+                                                                               \
+    xxx(FanoutStatsCollectionInShardsDisabled,         bool,    false         )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
@@ -578,7 +635,7 @@ void TStorageConfig::SetFeaturesConfig(
     FeaturesConfig = std::move(featuresConfig);
 }
 
-void TStorageConfig::SetCloudFolderEntity(
+NProto::TError TStorageConfig::SetCloudFolderEntity(
     const TString& cloudId,
     const TString& folderId,
     const TString& entityId)
@@ -587,25 +644,112 @@ void TStorageConfig::SetCloudFolderEntity(
         ProtoConfig.GetDescriptor();
     const auto* reflection = ProtoConfig.GetReflection();
 
+    TString errorMessage;
     for (int i = 0; i < descriptor->field_count(); ++i) {
         const google::protobuf::FieldDescriptor* field = descriptor->field(i);
-        if (field->cpp_type() ==
-                google::protobuf::FieldDescriptor::CPPTYPE_BOOL &&
-            !field->is_repeated())
+        const TString featureName = field->name();
+
+        if (field->is_repeated() &&
+            FeaturesConfig
+                .IsFeatureEnabled(cloudId, folderId, entityId, featureName))
         {
-            const auto& name = field->name();
-            if (FeaturesConfig
-                    .IsFeatureEnabled(cloudId, folderId, entityId, name))
-            {
-                reflection->SetBool(&ProtoConfig, field, true);
-            }
+            errorMessage += TStringBuilder()
+                            << "Setting repeated field '" << featureName
+                            << "' is not supported via the feature config. ";
+            continue;
+        }
+
+        auto getFeatureValue = [&](auto& featureValue) -> bool
+        {
+            return FeaturesConfig.TryGetFeatureValue(
+                cloudId,
+                folderId,
+                entityId,
+                featureName,
+                featureValue,
+                errorMessage);
+        };
+
+        switch (field->cpp_type()) {
+            case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
+                if (i32 value; getFeatureValue(value)) {
+                    reflection->SetInt32(&ProtoConfig, field, value);
+                }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
+                if (i64 value; getFeatureValue(value)) {
+                    reflection->SetInt64(&ProtoConfig, field, value);
+                }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_UINT32:
+                if (ui32 value; getFeatureValue(value)) {
+                    reflection->SetUInt32(&ProtoConfig, field, value);
+                }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_UINT64:
+                if (ui64 value; getFeatureValue(value)) {
+                    reflection->SetUInt64(&ProtoConfig, field, value);
+                }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE:
+                if (double value; getFeatureValue(value)) {
+                    reflection->SetDouble(&ProtoConfig, field, value);
+                }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT:
+                if (float value; getFeatureValue(value)) {
+                    reflection->SetFloat(&ProtoConfig, field, value);
+                }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
+                if (bool value; getFeatureValue(value)) {
+                    reflection->SetBool(&ProtoConfig, field, value);
+                }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
+                if (TString value; getFeatureValue(value)) {
+                    const auto* enumValue =
+                        field->enum_type()->FindValueByName(value);
+                    if (enumValue) {
+                        reflection->SetEnum(&ProtoConfig, field, enumValue);
+                    } else {
+                        errorMessage += TStringBuilder()
+                                << "Unknown enum value '" << value
+                                << "' of '" << featureName << "' ";
+                    }
+                }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+                if (TString value; getFeatureValue(value)) {
+                    reflection->SetString(&ProtoConfig, field, value);
+                }
+                break;
+            case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE:
+                if (TString value; getFeatureValue(value)) {
+                    errorMessage +=
+                        TStringBuilder()
+                        << "Setting values to fields of CPPTYPE_MESSAGE is not "
+                           "supported. field: '"
+                        << featureName << "' ";
+                }
+                break;
         }
     }
+
+    if (errorMessage) {
+        return MakeError(E_ARGUMENT, errorMessage);
+    }
+    return {};
 }
 
 void TStorageConfig::Merge(const NProto::TStorageConfig& storageConfig)
 {
     ProtoConfig.MergeFrom(storageConfig);
+}
+
+void TStorageConfig::Reset(const NProto::TStorageConfig& storageConfig)
+{
+    ProtoConfig = storageConfig;
 }
 
 TStorageConfig::TValueByName TStorageConfig::GetValueByName(

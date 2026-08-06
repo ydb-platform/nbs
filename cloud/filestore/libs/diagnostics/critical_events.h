@@ -37,6 +37,8 @@ namespace NCloud::NFileStore{
     xxx(WriteBackCacheCreatingOrDeletingError)                                 \
     xxx(WriteBackCacheCorruptionError)                                         \
     xxx(WriteBackCacheDataLossError)                                           \
+    xxx(WriteBackCacheImpossibleState)                                         \
+    xxx(WriteBackCacheWritingNotAllowedInDrainingMode)                         \
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \
     xxx(CalculateChecksumsBufferOverflow)                                      \
@@ -54,6 +56,13 @@ namespace NCloud::NFileStore{
     xxx(NodeCacheInvalidNode)                                                  \
     xxx(ConfirmBlobsFailed)                                                    \
     xxx(UnconfirmedFlowProxyRetryThresholdReached)                             \
+    xxx(HardLinkFromShardDirToMainTabletNode)                                  \
+    xxx(ReadDataResponseParserFailed)                                          \
+    xxx(MalformedShardNodeRef)                                                 \
+    xxx(MalformedEncodedShardNodeRef)                                          \
+    xxx(BadValueInFeatureConfig)                                               \
+    xxx(ResetSessionInterrupted)                                               \
+    xxx(DestroySessionInterrupted)                                             \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
@@ -87,6 +96,9 @@ namespace NCloud::NFileStore{
     xxx(BrokenProfileLogRequest)                                               \
     xxx(UnconfirmedDataNotInProgress)                                          \
     xxx(InvalidCommitIdInUnconfirmedAddBlobSafePoint)                          \
+    xxx(ListNodesInternalFailedToAddNodeRef)                                   \
+    xxx(InMemoryIndexStateNotInitialized)                                      \
+    xxx(WriteDataRequestWithBufferAndPayload)                                  \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

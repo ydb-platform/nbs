@@ -1,9 +1,11 @@
 #include "tablet_actor.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
-
+#include <cloud/filestore/libs/storage/tablet/tablet_database_failure_injection.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -23,10 +25,36 @@ using namespace NCloud::NStorage;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+double CalculateBackpressureFeature(
+    ui64 softLimit,
+    ui64 hardLimit,
+    ui64 value)
+{
+    if (value >= hardLimit) {
+        return 1.0;
+    }
+
+    if (softLimit >= hardLimit || value <= softLimit) {
+        return 0.0;
+    }
+
+    return static_cast<double>(value - softLimit) /
+        static_cast<double>(hardLimit - softLimit);
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 const TIndexTabletActor::TStateInfo TIndexTabletActor::States[STATE_MAX] = {
     { "Boot",   (IActor::TReceiveFunc)&TIndexTabletActor::StateBoot   },
     { "Init",   (IActor::TReceiveFunc)&TIndexTabletActor::StateInit   },
     { "Work",   (IActor::TReceiveFunc)&TIndexTabletActor::StateWork   },
+    { "Adapter",(IActor::TReceiveFunc)&TIndexTabletActor::StateAdapter},
     { "Zombie", (IActor::TReceiveFunc)&TIndexTabletActor::StateZombie },
     { "Broken", (IActor::TReceiveFunc)&TIndexTabletActor::StateBroken },
 };
@@ -41,10 +69,13 @@ TIndexTabletActor::TIndexTabletActor(
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         TSystemCountersPtr systemCounters,
-        NMetrics::IMetricsRegistryPtr metricsRegistry)
+        NMetrics::IMetricsRegistryPtr metricsRegistry,
+        NFastShard::IServerPtr fastShardServer,
+        ITxReschedulerPtr txRescheduler)
     : TActor(&TThis::StateBoot)
-    , TTabletBase(owner, std::move(storage))
-    , Metrics{std::move(metricsRegistry)}
+    , TTabletBase(owner, std::move(storage), std::move(txRescheduler))
+    , Metrics(MakeIntrusive<TTabletMetrics>(std::move(metricsRegistry)))
+    , CPUUsageTimer(Metrics->CPUUsageMicros)
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))
     , SystemCounters(std::move(systemCounters))
@@ -57,7 +88,9 @@ TIndexTabletActor::TIndexTabletActor(
     )
     , Config(std::make_shared<TStorageConfig>(*config))
     , DiagConfig(std::move(diagConfig))
+    , BaseStorageConfig(Config->GetStorageConfigProto())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , FastShardServer(std::move(fastShardServer))
 {
     UpdateLogTag();
 }
@@ -186,7 +219,7 @@ void TIndexTabletActor::ReassignDataChannelsIfNeeded(
             sb.c_str());
     }
 
-    Metrics.ReassignCount.fetch_add(
+    Metrics->ReassignCount.fetch_add(
         channels.size(),
         std::memory_order_relaxed);
 
@@ -204,6 +237,106 @@ bool TIndexTabletActor::CheckSessionForDestroy(const TSession* session, ui64 seq
 {
     return session->GetSessionSeqNo() == seqNo &&
         session->GetSessionRwSeqNo() == seqNo;
+}
+
+bool TIndexTabletActor::ReadNodesToRemoveForSessionHandles(
+    IIndexTabletDatabase& db,
+    const TSession& session,
+    ui32 maxHandlesPerTx,
+    TNodeSet& nodesToRemove)
+{
+    bool ready = true;
+    auto commitId = GetCurrentCommitId();
+    ui32 handleCount = 0;
+    for (const auto& handle: session.Handles) {
+        if (maxHandlesPerTx && ++handleCount > maxHandlesPerTx) {
+            break;
+        }
+
+        if (nodesToRemove.contains(handle.GetNodeId())) {
+            continue;
+        }
+
+        TMaybe<INodeIndexTabletDatabase::TNode> node;
+        if (!ReadNode(db, handle.GetNodeId(), commitId, node)) {
+            ready = false;
+        } else {
+            TABLET_VERIFY(node);
+            if (node->Attrs.GetLinks() == 0) {
+                // candidate to be removed
+                nodesToRemove.insert(*node);
+            }
+        }
+    }
+
+    return ready;
+}
+
+void TIndexTabletActor::DestroySessionHandlesAndRemoveNodes(
+    IIndexTabletDatabase& db,
+    const TActorContext& ctx,
+    TSession* session,
+    ui64 commitId,
+    ui32 maxHandlesPerTx,
+    bool isContinuation,
+    const TNodeSet& nodesToRemove,
+    const char* operation)
+{
+    ui64 destroyedHandleCount = 0;
+    ui64 removedNodeCount = 0;
+    auto handle = session->Handles.begin();
+    while (handle != session->Handles.end()) {
+        if (maxHandlesPerTx && destroyedHandleCount >= maxHandlesPerTx) {
+            break;
+        }
+
+        auto nodeId = handle->GetNodeId();
+        DestroyHandle(db, &*(handle++));
+        ++destroyedHandleCount;
+
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s Removing handle upon %s s:%s n:%lu",
+            LogTag.c_str(),
+            operation,
+            session->GetSessionId().c_str(),
+            nodeId);
+
+        auto it = nodesToRemove.find(nodeId);
+        if (it != nodesToRemove.end() && !HasOpenHandles(nodeId)) {
+            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+                "%s Removing node upon %s s:%s n:%lu (size %lu)",
+                LogTag.c_str(),
+                operation,
+                session->GetSessionId().c_str(),
+                nodeId,
+                it->Attrs.GetSize());
+
+            auto e = RemoveNode(
+                db,
+                *it,
+                it->MinCommitId,
+                commitId);
+
+            if (HasError(e)) {
+                WriteOrphanNode(db, TStringBuilder()
+                    << "DestroySession: " << session->GetSessionId()
+                    << ", RemoveNode: " << nodeId
+                    << ", Error: " << FormatError(e), nodeId);
+            } else {
+                ++removedNodeCount;
+            }
+        }
+    }
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Destroyed %lu handles, removed %lu nodes upon %s s:%s"
+        " (continuation: %u)",
+        LogTag.c_str(),
+        destroyedHandleCount,
+        removedNodeCount,
+        operation,
+        session->GetSessionId().c_str(),
+        isContinuation);
 }
 
 bool TIndexTabletActor::OnRenderAppHtmlPage(
@@ -239,14 +372,12 @@ void TIndexTabletActor::OnTabletDead(
         ctx.Send(actor, new TEvents::TEvPoisonPill());
     }
 
-    auto writeBatch = DequeueWriteBatch();
-    for (const auto& request: writeBatch) {
-        TRequestInfo& requestInfo = *request.RequestInfo;
-        requestInfo.CancelRoutine(ctx, requestInfo);
-    }
-
     WorkerActors.clear();
     UnregisterFileStore(ctx);
+
+    if (FastShardServer) {
+        FastShardServer->UnregisterShard(GetFileSystemId());
+    }
 
     Die(ctx);
 }
@@ -300,26 +431,106 @@ using TThresholds = TIndexTabletState::TBackpressureThresholds;
 TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
 {
     return {
-        Config->GetFlushThresholdForBackpressure(),
-        Config->GetFlushBytesThresholdForBackpressure(),
-        ScaleCompactionThreshold(
+        .Flush = Config->GetFlushThresholdForBackpressure(),
+        .FlushBytes = Config->GetFlushBytesThresholdForBackpressure(),
+        .FlushBytesItemCount =
+            Config->GetFlushBytesItemCountThresholdForBackpressure(),
+        .CompactionScore = ScaleCompactionThreshold(
             Config->GetCompactionThresholdForBackpressure()),
-        Config->GetCleanupThresholdForBackpressure(),
+        .CleanupScore = Config->GetCleanupThresholdForBackpressure(),
+        .CollectGarbage = Config->GetCollectGarbageThresholdForBackpressure(),
+    };
+}
+
+TThresholds TIndexTabletActor::BuildBackpressureSoftThresholds() const
+{
+    return {
+        .Flush = Config->GetFlushThresholdForBackpressureSoft(),
+        .FlushBytes = Config->GetFlushBytesThresholdForBackpressureSoft(),
+        .FlushBytesItemCount =
+            Config->GetFlushBytesItemCountThresholdForBackpressureSoft(),
+        .CompactionScore =
+            ScaleCompactionThreshold(
+                Config->GetCompactionThresholdForBackpressureSoft()),
+        .CleanupScore = Config->GetCleanupThresholdForBackpressureSoft(),
+        .CollectGarbage =
+            Config->GetCollectGarbageThresholdForBackpressureSoft(),
     };
 }
 
 TIndexTabletState::TBackpressureValues
 TIndexTabletActor::GetBackpressureValues() const
 {
+    // explicitly checking this because CollectGarbageThresholdForBackpressure
+    // can be really big
+    static_assert(sizeof(GetGarbageQueueSize()) == sizeof(ui64));
+
     return {
-        GetFreshBlocksCount() * GetBlockSize(),
-        GetFreshBytesCount(),
-        GetRangeToCompact().Score,
-        GetRangeToCleanup().Score,
+        .Flush = GetFreshBlocksCount() * GetBlockSize(),
+        .FlushBytes = GetFreshBytesCount(),
+        .FlushBytesItemCount = GetFreshBytesItemCount(),
+        .CompactionScore = GetRangeToCompact().Score,
+        .CleanupScore = GetRangeToCleanup().Score,
+        .CollectGarbage = GetGarbageQueueSize(),
     };
 }
 
-////////////////////////////////////////////////////////////////////////////////
+double TIndexTabletActor::CalculateWriteCostMultiplierBackpressure() const
+{
+    if (!Config->GetSoftBackpressureEnabled()) {
+        return 0.0;
+    }
+
+    const auto bpThresholds = BuildBackpressureThresholds();
+    const auto bpSoftThresholds = BuildBackpressureSoftThresholds();
+    const auto bpValues = GetBackpressureValues();
+
+    double backpressure = 0.0;
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.Flush,
+            bpThresholds.Flush,
+            bpValues.Flush));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.FlushBytes,
+            bpThresholds.FlushBytes,
+            bpValues.FlushBytes));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.FlushBytesItemCount,
+            bpThresholds.FlushBytesItemCount,
+            bpValues.FlushBytesItemCount));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.CompactionScore,
+            bpThresholds.CompactionScore,
+            bpValues.CompactionScore));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.CleanupScore,
+            bpThresholds.CleanupScore,
+            bpValues.CleanupScore));
+    backpressure = Max(
+        backpressure,
+        CalculateBackpressureFeature(
+            bpSoftThresholds.CollectGarbage,
+            bpThresholds.CollectGarbage,
+            bpValues.CollectGarbage));
+
+    return backpressure;
+}
+
+void TIndexTabletActor::UpdateWriteCostMultiplierDueToBackpressure()
+{
+    AccessThrottlingPolicy().UpdateWriteCostMultiplierDueToBackpressure(
+        CalculateWriteCostMultiplierBackpressure());
+}
 
 void TIndexTabletActor::ResetThrottlingPolicy()
 {
@@ -333,8 +544,6 @@ void TIndexTabletActor::ResetThrottlingPolicy()
         Throttler->ResetPolicy(AccessThrottlingPolicy());
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 template <typename TRequest>
 NProto::TError TIndexTabletActor::ValidateWriteRequest(
@@ -430,6 +639,10 @@ TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TAddDataRequest>(
 
 NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
 {
+    if (GetFileSystem().GetIsFastShard()) {
+        return {};
+    }
+
     if (!CompactionStateLoadStatus.Finished) {
         return MakeError(E_REJECTED, "compaction state not loaded yet");
     }
@@ -457,6 +670,15 @@ bool TIndexTabletActor::CanUseUnconfirmedData() const
     }
 
     return true;
+}
+
+bool TIndexTabletActor::IsTabletConsideredOverloaded() const
+{
+    if (Config->GetAllowTabletOverload()) {
+        return false;
+    }
+
+    return IsTabletOverloaded(*Config, *SystemCounters, Metrics->CPUUsageRate);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -652,7 +874,7 @@ bool TIndexTabletActor::ShouldThrottleCleanup(
 
     const auto now = ctx.Now();
     const double cleanupCpu =
-        Metrics.Cleanup.AverageSecondsPerSecond(now) * 100.0;
+        Metrics->Cleanup.AverageSecondsPerSecond(now) * 100.0;
     return cleanupCpu > Config->GetCleanupCpuThrottlingThresholdPercentage();
 }
 
@@ -678,18 +900,24 @@ TBackgroundOpsBackpressureStatus
     const auto bpThresholds = BuildBackpressureThresholds();
     const auto bpValues = GetBackpressureValues();
     return {
-        GetBackgroundOpBackpressureStatus(
+        .Flush = GetBackgroundOpBackpressureStatus(
             bpThresholds.Flush,
             bpValues.Flush),
-        GetBackgroundOpBackpressureStatus(
+        .FlushBytes = GetBackgroundOpBackpressureStatus(
             bpThresholds.FlushBytes,
             bpValues.FlushBytes),
-        GetBackgroundOpBackpressureStatus(
+        .FlushBytesItemCount = GetBackgroundOpBackpressureStatus(
+            bpThresholds.FlushBytesItemCount,
+            bpValues.FlushBytesItemCount),
+        .Compaction = GetBackgroundOpBackpressureStatus(
             bpThresholds.CompactionScore,
             bpValues.CompactionScore),
-        GetBackgroundOpBackpressureStatus(
+        .Cleanup = GetBackgroundOpBackpressureStatus(
             bpThresholds.CleanupScore,
             bpValues.CleanupScore),
+        .CollectGarbage = GetBackgroundOpBackpressureStatus(
+            bpThresholds.CollectGarbage,
+            bpValues.CollectGarbage),
     };
 }
 
@@ -743,20 +971,39 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
 {
     const auto& msg = *ev->Get();
 
+    // TODO (#4962): once owner-to-session relation is tracked properly, use
+    // the session id directly and simplify this split session/pipe cleanup.
+    const auto& sessionIds = FindSessionIdsByPipeServer(msg.ServerId);
+
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s Server disconnected, sender: %s, client: %s, server: %s",
+        "%s Server disconnected, sender: %s, client: %s, server: %s, "
+        "matchedSessions: %zu",
         LogTag.c_str(),
         ev->Sender.ToString().c_str(),
         msg.ClientId.ToString().c_str(),
-        msg.ServerId.ToString().c_str());
+        msg.ServerId.ToString().c_str(),
+        sessionIds.size());
 
-    // TODO (#4962) use proper session id
-    const auto& sessionIds = FindSessionIdsByPipeServer(msg.ServerId);
+    // The disconnected pipe may be the control pipe, while unconfirmed writes
+    // for the same logical session can be tracked with a separate data pipe
+    // server id. Delete by session too.
     for (const auto& sessionId: sessionIds) {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Deleting unconfirmed data for session: sessionId=%s",
+            LogTag.c_str(),
+            sessionId.Quote().c_str());
+
         DeleteUnconfirmedDataForSession(sessionId, ctx);
     }
+
+    // msg.ServerId is the tablet-pipe server actor that received requests
+    // from this client connection. Unconfirmed data keeps this actor id from
+    // GenerateBlobIds, so clean it up when the pipe disconnects.
+    DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
     RemoveSessionByPipeServer(msg.ServerId);
 }
 
@@ -807,7 +1054,15 @@ void TIndexTabletActor::HandleGetStorageConfig(
 {
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
-    *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
+
+    const auto* msg = ev->Get();
+
+    if (msg->Record.GetOnlyOverride()) {
+        *response->Record.MutableStorageConfig() = StorageConfigOverride;
+    } else {
+        *response->Record.MutableStorageConfig() =
+            Config->GetStorageConfigProto();
+    }
 
     NCloud::Reply(
         ctx,
@@ -827,9 +1082,12 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
     response->Record.SetDirectoryCreationInShardsEnabled(
         GetFileSystem().GetDirectoryCreationInShardsEnabled());
+    response->Record.SetForceDirectoryCreationInShards(
+        GetFileSystem().GetForceDirectoryCreationInShards());
     response->Record.SetStrictFileSystemSizeEnforcementEnabled(
         GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled());
     response->Record.SetMaxShardCount(Config->GetMaxShardCount());
+    response->Record.SetCompressNodeRef(GetCompressNodeRef());
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
@@ -981,7 +1239,36 @@ bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
         FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_HANDLE_REQUEST, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTabletPrivate)
+
+        default:
+            return false;
+    }
+
+    return true;
+}
+
+bool TIndexTabletActor::HandleRequestsByFrozenTablet(STFUNC_SIG)
+{
+    switch (ev->GetTypeRewrite()) {
+        //
+        // Unsafe ops may be required to repair a broken filesystem.
+        //
+
+        FILESTORE_UNSAFE_TABLET_REQUESTS(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTablet)
+
+        //
+        // Without WaitReady and CreateSession we won't even be able to connect
+        // to the filesystem properly so they're also required.
+        //
+
+        FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
+        FILESTORE_HANDLE_REQUEST(CreateSession, TEvIndexTablet)
+
 
         default:
             return false;
@@ -993,7 +1280,9 @@ bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
 bool TIndexTabletActor::HandleCompletions(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_HANDLE_COMPLETION, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+            FILESTORE_HANDLE_COMPLETION,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1005,7 +1294,9 @@ bool TIndexTabletActor::HandleCompletions(STFUNC_SIG)
 bool TIndexTabletActor::IgnoreCompletions(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IGNORE_COMPLETION, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+            FILESTORE_IGNORE_COMPLETION,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1020,7 +1311,9 @@ bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
         FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_REJECT_REQUEST,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1032,10 +1325,16 @@ bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
 bool TIndexTabletActor::RejectRequestsByBrokenTablet(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvService)
+        FILESTORE_SERVICE_REQUESTS(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvService)
 
-        FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTablet)
-        FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTabletPrivate)
+        FILESTORE_TABLET_REQUESTS(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvIndexTablet)
+        FILESTORE_TABLET_REQUESTS_PRIVATE(
+            FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET,
+            TEvIndexTabletPrivate)
 
         default:
             return false;
@@ -1059,6 +1358,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
@@ -1084,47 +1384,6 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
-        HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
-        HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
-        IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
-        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
-        HFunc(
-            TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
-            HandleForcedRangeOperationProgress);
-        HFunc(
-            TEvIndexTabletPrivate::TEvNodeCreatedInShard,
-            HandleNodeCreatedInShard);
-        HFunc(
-            TEvIndexTabletPrivate::TEvNodeUnlinkedInShard,
-            HandleNodeUnlinkedInShard);
-        HFunc(
-            TEvIndexTabletPrivate::TEvUnlinkDirectoryNodeAbortedInShard,
-            HandleUnlinkDirectoryNodeAbortedInShard);
-        HFunc(
-            TEvIndexTabletPrivate::TEvDoRenameNodeInDestination,
-            HandleDoRenameNodeInDestination);
-        HFunc(TEvIndexTabletPrivate::TEvDoRenameNode, HandleDoRenameNode);
-        HFunc(
-            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
-            HandleNodeRenamedInDestination);
-        HFunc(
-            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
-            HandleResponseLogEntryDeleted);
-        HFunc(
-            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
-            HandleAggregateStatsCompleted);
-        HFunc(
-            TEvIndexTabletPrivate::TEvShardRequestCompleted,
-            HandleShardRequestCompleted);
-        HFunc(
-            TEvIndexTabletPrivate::TEvLoadNodeRefsRequest,
-            HandleLoadNodeRefsRequest);
-        HFunc(
-            TEvIndexTabletPrivate::TEvLoadNodesRequest,
-            HandleLoadNodesRequest);
-        HFunc(
-            TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded,
-            HandleEnqueueBlobIndexOpIfNeeded);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -1143,8 +1402,21 @@ STFUNC(TIndexTabletActor::StateInit)
 
 STFUNC(TIndexTabletActor::StateWork)
 {
-    // user related requests & events completion
-    if (HandleRequests(ev) || HandleCompletions(ev)) {
+    TCPUUsageTimerGuard t(CPUUsageTimer);
+
+    if (GetFileSystem().GetFrozen()) {
+        if (HandleRequestsByFrozenTablet(ev)) {
+            return;
+        }
+
+        if (RejectRequests(ev)) {
+            return;
+        }
+    } else if (HandleRequests(ev)) {
+        return;
+    }
+
+    if (HandleCompletions(ev)) {
         return;
     }
 
@@ -1161,6 +1433,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
 
         HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
+        HFunc(
+            TEvIndexTabletPrivate::TEvCancelUnconfirmedData,
+            HandleCancelUnconfirmedData);
         HFunc(
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
             HandleForcedRangeOperationProgress);
@@ -1227,6 +1502,91 @@ STFUNC(TIndexTabletActor::StateWork)
     }
 }
 
+bool TIndexTabletActor::HandleRequestsByAdapter(STFUNC_SIG)
+{
+    switch (ev->GetTypeRewrite()) {
+        FILESTORE_SERVICE_ADAPTER_REQUESTS_PLAIN(
+            FILESTORE_HANDLE_REQUEST,
+            TEvService)
+        FILESTORE_SERVICE_ADAPTER_REQUESTS(
+            FILESTORE_HANDLE_ADAPTER_REQUEST,
+            TEvService)
+
+        FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTablet)
+        FILESTORE_TABLET_ADAPTER_REQUESTS(
+            FILESTORE_HANDLE_ADAPTER_REQUEST,
+            TEvIndexTablet)
+        FILESTORE_TABLET_ADAPTER_REQUESTS_PRIVATE(
+            FILESTORE_HANDLE_REQUEST,
+            TEvIndexTabletPrivate)
+
+        default:
+            return false;
+    }
+
+    return true;
+}
+
+STFUNC(TIndexTabletActor::StateAdapter)
+{
+    TCPUUsageTimerGuard t(CPUUsageTimer);
+
+    if (GetFileSystem().GetFrozen()) {
+        if (HandleRequestsByFrozenTablet(ev)) {
+            return;
+        }
+
+        if (RejectRequests(ev)) {
+            return;
+        }
+    } else if (HandleRequestsByAdapter(ev)) {
+        return;
+    }
+
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
+        HFunc(TEvIndexTabletPrivate::TEvRunRegularTasks, HandleRunRegularTasks);
+        HFunc(
+            TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters,
+            HandleUpdateLeakyBucketCounters);
+
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeRenamedInDestination,
+            HandleNodeRenamedInDestination);
+        HFunc(
+            TEvIndexTabletPrivate::TEvResponseLogEntryDeleted,
+            HandleResponseLogEntryDeleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
+            HandleAggregateStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvShardRequestCompleted,
+            HandleShardRequestCompleted);
+
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        IgnoreFunc(TEvTabletPipe::TEvServerConnected);
+        HFunc(
+            TEvTabletPipe::TEvServerDisconnected,
+            HandleSessionDisconnectedInWork);
+
+        HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
+        HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
+
+        default:
+            if (!HandleDefaultEvents(ev, SelfId())) {
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET,
+                    __PRETTY_FUNCTION__);
+            }
+            break;
+    }
+}
+
 STFUNC(TIndexTabletActor::StateZombie)
 {
     // user related requests & events completion
@@ -1255,6 +1615,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
@@ -1321,6 +1682,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
@@ -1445,12 +1807,12 @@ bool TIndexTabletActor::HasBlocksLeft(ui64 blocksRequired) const
     } else {
         // A new way to count available space that always takes into account the
         // byte count aggregated by all shards.
-        TABLET_VERIFY(Metrics.AggregateUsedBytesCount >= 0);
-        TABLET_VERIFY(Metrics.TotalBytesCount >= 0);
+        TABLET_VERIFY(Metrics->AggregateUsedBytesCount >= 0);
+        TABLET_VERIFY(Metrics->TotalBytesCount >= 0);
         const ui64 aggregateBytes =
-            static_cast<ui64>(Max<i64>(0, Metrics.AggregateUsedBytesCount));
+            static_cast<ui64>(Max<i64>(0, Metrics->AggregateUsedBytesCount));
         const ui64 totalBytes =
-            static_cast<ui64>(Max<i64>(0, Metrics.TotalBytesCount));
+            static_cast<ui64>(Max<i64>(0, Metrics->TotalBytesCount));
         // It makes sense for shardless filesystems, as it eliminates 15s delay
         // in AggregateUsedBytesCount calculation.
         const ui64 usedBytes =
@@ -1484,7 +1846,7 @@ bool TIndexTabletActor::HasNodesLeft() const
     // A new way to count available nodes uses the count aggregated across all
     // shards.
 
-    if (Metrics.AggregateUsedNodesCount < 0) {
+    if (Metrics->AggregateUsedNodesCount < 0) {
         ReportCounterIsNegative(
             TStringBuilder() << "FileSystem: " << GetFileSystemId()
                              << ". TMetrics::AggregateUsedNodesCount should "
@@ -1495,7 +1857,7 @@ bool TIndexTabletActor::HasNodesLeft() const
     // It makes sense for shardless filesystems, as it eliminates 15s delay
     // in AggregateUsedNodesCount calculation.
     const ui64 usedNodes = Max<ui64>(
-        static_cast<ui64>(Metrics.AggregateUsedNodesCount.load()),
+        static_cast<ui64>(Metrics->AggregateUsedNodesCount.load()),
         GetUsedNodesCount());
 
     return usedNodes < GetNodesCount();
@@ -1552,6 +1914,38 @@ void TIndexTabletActor::HandleRunRegularTasks(
     Y_UNUSED(ev);
 
     RunRegularTasks(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Factories
+
+std::unique_ptr<IIndexTabletDatabase>
+TIndexTabletActor::CreateIndexTabletDatabase(
+    NKikimr::NTable::TDatabase& database)
+{
+    std::unique_ptr<IIndexTabletDatabase> db =
+        std::make_unique<TIndexTabletDatabase>(database);
+    if (TxRescheduler) {
+        db = std::make_unique<TIndexTabletDatabaseWithFailureInjection>(
+            std::move(db),
+            TxRescheduler);
+    }
+    return db;
+}
+
+std::unique_ptr<IIndexTabletDatabase>
+TIndexTabletActor::CreateIndexTabletDatabaseProxy(
+    NKikimr::NTable::TDatabase& database,
+    TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
+{
+    std::unique_ptr<IIndexTabletDatabase> db =
+        std::make_unique<TIndexTabletDatabaseProxy>(database, nodeUpdates);
+    if (TxRescheduler) {
+        db = std::make_unique<TIndexTabletDatabaseWithFailureInjection>(
+            std::move(db),
+            TxRescheduler);
+    }
+    return db;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

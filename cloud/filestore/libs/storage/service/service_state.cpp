@@ -180,6 +180,7 @@ TSessionInfo* TStorageServiceState::CreateSession(
     NCloud::NProto::EStorageMediaKind mediaKind,
     IRequestStatsPtr requestStats,
     const TActorId& sessionActor,
+    ui64 ownerGeneration,
     ui64 tabletId)
 {
     TSessionInfo* sessionInfo;
@@ -205,7 +206,7 @@ TSessionInfo* TStorageServiceState::CreateSession(
         sessionInfo = it->second;
     }
 
-    sessionInfo->AddSubSession(seqNo, readOnly);
+    sessionInfo->AddSubSession(seqNo, readOnly, ownerGeneration);
 
     return sessionInfo;
 }

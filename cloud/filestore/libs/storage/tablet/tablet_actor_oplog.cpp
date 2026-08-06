@@ -31,11 +31,25 @@ void TIndexTabletActor::ReplayOpLog(
         if (serializedRequest
                 && !profileLogRequest.ParseFromString(serializedRequest))
         {
-            ReportBrokenProfileLogRequest(TStringBuilder() << "Replayed"
-                << " OpLogEntry: " << op.ShortUtf8DebugString().Quote());
+            ReportBrokenProfileLogRequest(TStringBuilder()
+                << "Replayed OpLogEntry: "
+                << op.ShortUtf8DebugString().Quote());
         }
 
         if (op.HasCreateNodeRequest()) {
+            const auto& request = op.GetCreateNodeRequest();
+            if (!TryLockNodeRef(
+                    {request.GetOriginalNodeId(), request.GetOriginalName()}))
+            {
+                ReportFailedToLockNodeRef(
+                    TStringBuilder() << "CreateNodeInShardRequset: "
+                                     << request.ShortUtf8DebugString().Quote());
+            }
+
+            Metrics->ReplayedCreateNodeInShardRequestsCount.fetch_add(
+                1,
+                std::memory_order_relaxed);
+
             RegisterCreateNodeInShardActor(
                 ctx,
                 nullptr, // requestInfo
@@ -71,19 +85,23 @@ void TIndexTabletActor::ReplayOpLog(
                 false   // shouldUnlockUponCompletion
             );
         } else if (op.HasUnlinkNodeInShardRequest()) {
-            bool shouldUnlockUponCompletion =
-                GetFileSystem().GetDirectoryCreationInShardsEnabled();
+            const auto& request = op.GetUnlinkNodeInShardRequest();
+            // UnlinkNodeInShardRequests originating from
+            // RenameNode[InDestination] ops don't have OriginalRequest and
+            // don't require any post-unlink NodeRef deletion.
+            bool hasOriginalRequest = request.HasOriginalRequest();
+            bool shouldUnlockUponCompletion = hasOriginalRequest
+                && GetFileSystem().GetDirectoryCreationInShardsEnabled();
             if (shouldUnlockUponCompletion) {
                 // There is a need to unlock the node ref after the operation is
                 // completed, because the node ref should have been locked
-                const auto& originalRequest =
-                    op.GetUnlinkNodeInShardRequest().GetOriginalRequest();
+                const auto& originalRequest = request.GetOriginalRequest();
                 const bool locked = TryLockNodeRef(
                     {originalRequest.GetNodeId(), originalRequest.GetName()});
                 if (!locked) {
-                    ReportFailedToLockNodeRef(
-                        TStringBuilder()
-                        << "Request: " << op.ShortUtf8DebugString());
+                    ReportFailedToLockNodeRef(TStringBuilder()
+                        << "UnlinkNodeInShardRequest: "
+                        << request.ShortUtf8DebugString().Quote());
                 }
             }
 
@@ -102,8 +120,9 @@ void TIndexTabletActor::ReplayOpLog(
                 request.GetOriginalRequest().GetNodeId(),
                 request.GetOriginalRequest().GetName()});
             if (!locked) {
-                ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
-                    << request.GetOriginalRequest().ShortUtf8DebugString());
+                ReportFailedToLockNodeRef(TStringBuilder()
+                    << "RenameNodeInDestinationRequest: "
+                    << request.ShortUtf8DebugString().Quote());
             }
 
             NProto::TProfileLogRequestInfo profileLogRequest;
@@ -129,8 +148,9 @@ void TIndexTabletActor::ReplayOpLog(
                 request.GetOriginalRequest().GetNewParentId(),
                 request.GetOriginalRequest().GetNewName()});
             if (!locked) {
-                ReportFailedToLockNodeRef(TStringBuilder() << "Request: "
-                    << request.GetOriginalRequest().ShortUtf8DebugString());
+                ReportFailedToLockNodeRef(TStringBuilder()
+                    << "AbortUnlinkDirectoryNodeInShardRequest: "
+                    << request.ShortUtf8DebugString().Quote());
             }
 
             NProto::TProfileLogRequestInfo profileLogRequest;
@@ -152,8 +172,8 @@ void TIndexTabletActor::ReplayOpLog(
                 false // isLocalRename - doesn't matter w/o requestInfo
             );
         } else {
-            const TString message = ReportUnknownOpLogEntry(
-                TStringBuilder() << "OpLogEntry: " << op.DebugString().Quote());
+            const TString message = ReportUnknownOpLogEntry(TStringBuilder()
+                << "OpLogEntry: " << op.DebugString().Quote());
 
             LOG_ERROR(
                 ctx,
@@ -208,8 +228,8 @@ void TIndexTabletActor::ExecuteTx_DeleteOpLogEntry(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
-    db.DeleteOpLogEntry(args.EntryId);
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    DeleteOpLogEntry(*db, args.EntryId);
 }
 
 void TIndexTabletActor::CompleteTx_DeleteOpLogEntry(
@@ -260,8 +280,8 @@ bool TIndexTabletActor::PrepareTx_GetOpLogEntry(
 {
     Y_UNUSED(ctx);
 
-    TIndexTabletDatabase db(tx.DB);
-    return db.ReadOpLogEntry(args.EntryId, args.Entry);
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    return db->ReadOpLogEntry(args.EntryId, args.Entry);
 }
 
 void TIndexTabletActor::ExecuteTx_GetOpLogEntry(
@@ -291,6 +311,65 @@ void TIndexTabletActor::CompleteTx_GetOpLogEntry(
     auto response =
         std::make_unique<TEvIndexTabletPrivate::TEvGetOpLogEntryResponse>();
     response->OpLogEntry = std::move(args.Entry);
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleListOpLogEntries(
+    const TEvIndexTabletPrivate::TEvListOpLogEntriesRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    AddInFlightRequest<TEvIndexTabletPrivate::TListOpLogEntriesMethod>(
+        *requestInfo);
+
+    ExecuteTx<TListOpLogEntries>(ctx, std::move(requestInfo));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_ListOpLogEntries(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TListOpLogEntries& args)
+{
+    Y_UNUSED(ctx);
+
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    return db->ReadOpLog(args.Entries);
+}
+
+void TIndexTabletActor::ExecuteTx_ListOpLogEntries(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TListOpLogEntries& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+}
+
+void TIndexTabletActor::CompleteTx_ListOpLogEntries(
+    const TActorContext& ctx,
+    TTxIndexTablet::TListOpLogEntries& args)
+{
+    RemoveInFlightRequest(*args.RequestInfo);
+
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s ListOpLogEntries completed: %lu",
+        LogTag.c_str(),
+        args.Entries.size());
+
+    auto response =
+        std::make_unique<TEvIndexTabletPrivate::TEvListOpLogEntriesResponse>();
+    response->OpLogEntries = std::move(args.Entries);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
@@ -343,9 +422,9 @@ void TIndexTabletActor::ExecuteTx_WriteOpLogEntry(
         return;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    auto db = CreateIndexTabletDatabase(tx.DB);
     args.Entry.SetEntryId(commitId);
-    db.WriteOpLogEntry(args.Entry);
+    WriteOpLogEntry(*db, args.Entry);
 }
 
 void TIndexTabletActor::CompleteTx_WriteOpLogEntry(

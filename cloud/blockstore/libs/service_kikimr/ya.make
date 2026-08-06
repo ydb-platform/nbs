@@ -18,6 +18,7 @@ PEERDIR(
     cloud/storage/core/libs/auth
 
     contrib/ydb/library/actors/core
+    library/cpp/string_utils/quote
 )
 
 END()

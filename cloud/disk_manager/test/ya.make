@@ -1,5 +1,6 @@
 RECURSE(
     acceptance
+    filestore_client
     images
     mocks
     recipe

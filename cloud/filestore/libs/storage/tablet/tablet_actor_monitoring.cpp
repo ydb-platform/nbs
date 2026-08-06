@@ -728,6 +728,7 @@ void DumpSessions(
                     TABLEH() { out << "Recovery"; }
                     TABLEH() { out << "SeqNo"; }
                     TABLEH() { out << "ReadOnly"; }
+                    TABLEH() { out << "OwnerGeneration"; }
                     TABLEH() { out << "Owner"; }
                     TABLEH() { out << "Deadline"; }
                 }
@@ -750,6 +751,7 @@ void DumpSessions(
                         }
                         TABLED() { out << ss.SeqNo; }
                         TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
+                        TABLED() { out << ss.OwnerGeneration; }
                         TABLED() { out << ToString(ss.Owner); }
                         TABLED() { out << session.InactivityDeadline.ToString(); }
                     }
@@ -988,6 +990,8 @@ void TIndexTabletActor::HandleHttpInfo(
 
     static const THttpHandlers getActions {{
         {"dumpRange",       &TIndexTabletActor::HandleHttpInfo_DumpCompactionRange },
+        {"dirViewer",       &TIndexTabletActor::HandleHttpInfo_DirViewer },
+        {"locks",           &TIndexTabletActor::HandleHttpInfo_Locks },
     }};
 
     const auto* msg = ev->Get();
@@ -1045,15 +1049,17 @@ void TIndexTabletActor::HandleHttpInfo(
         std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str())));
 }
 
-void TIndexTabletActor::HandleHttpInfo_Default(
+void TIndexTabletActor::RenderHttpInfo_OverviewTab(
     const NActors::TActorContext& ctx,
     const TCgiParameters& params,
-    TRequestInfoPtr requestInfo)
+    IOutputStream& out)
 {
-    TStringStream out;
-
     HTML(out) {
         DumpDefaultHeader(out, TabletID(), SelfId().NodeId());
+
+        if (GetFileSystem().GetFrozen()) {
+            TAG(TH3) { out << "This tablet is frozen"; }
+        }
 
         TAG(TH3) { out << "Info"; }
         DIV() { out << "Filesystem Id: " << GetFileSystemId(); }
@@ -1062,6 +1068,16 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             FormatByteSize(GetBlocksCount() * GetBlockSize()) << ")";
         }
         DIV() { out << "Tablet host: " << FQDNHostName(); }
+
+        TAG(TH3) {
+            out << "<a href='?TabletID=" << TabletID()
+                << "&action=dirViewer'>Directory Viewer</a>";
+        }
+
+        TAG(TH3) {
+            out << "<a href='?TabletID=" << TabletID()
+                << "&action=locks'>Locks</a>";
+        }
 
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
         if (shardIds.size()) {
@@ -1072,6 +1088,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                         TABLEH() { out << "ShardNo"; }
                         TABLEH() { out << "FileSystemId"; }
                         TABLEH() { out << "UsedBytesCount"; }
+                        TABLEH() { out << "UsedNodesCount"; }
                         TABLEH() { out << "FreeBytesCount"; }
                         TABLEH() { out << "CurrentLoad"; }
                         TABLEH() { out << "Suffer"; }
@@ -1080,9 +1097,9 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
                 ui32 shardNo = 0;
                 for (const auto& shardId: shardIds) {
-                    TShardStats ss;
-                    if (shardNo < CachedShardStats.size()) {
-                        ss = CachedShardStats[shardNo];
+                    NProtoPrivate::TShardStats ss;
+                    if (shardNo < CachedAggregateStats.ShardStatsSize()) {
+                        ss = CachedAggregateStats.GetShardStats(shardNo);
                     }
                     TABLER() {
                         TABLED() { out << ++shardNo; }
@@ -1092,14 +1109,18 @@ void TIndexTabletActor::HandleHttpInfo_Default(
                                 << shardId << "</a>";
                         }
                         TABLED() {
-                            out << ss.UsedBlocksCount * GetBlockSize();
+                            out << ss.GetUsedBlocksCount() * GetBlockSize();
                         }
                         TABLED() {
-                            out << (ss.TotalBlocksCount - ss.UsedBlocksCount)
-                                * GetBlockSize();
+                            out << ss.GetUsedNodesCount();
                         }
-                        TABLED() { out << ss.CurrentLoad; }
-                        TABLED() { out << ss.Suffer; }
+                        TABLED() {
+                            out << (ss.GetTotalBlocksCount() -
+                                    ss.GetUsedBlocksCount()) *
+                                       GetBlockSize();
+                        }
+                        TABLED() { out << ss.GetCurrentLoad(); }
+                        TABLED() { out << ss.GetSuffer(); }
                     }
                 }
             }
@@ -1113,6 +1134,11 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
         TAG(TH3) { out << "Stats"; }
         PRE() { DumpStats(out); }
+
+        TAG(TH3) { out << "FileSystem info"; }
+        COLLAPSED_BUTTON_CONTENT("filesystem-info", "Show") {
+            PRE() { out << GetFileSystem().DebugString(); }
+        }
 
         const ui32 topSize = FromStringWithDefault(params.Get("top-size"), 1);
         TAG(TH3) { out << "CompactionMap"; }
@@ -1166,8 +1192,10 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
             DUMP_BACKPRESSURE_FIELD(Flush);
             DUMP_BACKPRESSURE_FIELD(FlushBytes);
+            DUMP_BACKPRESSURE_FIELD(FlushBytesItemCount);
             DUMP_BACKPRESSURE_FIELD(CompactionScore);
             DUMP_BACKPRESSURE_FIELD(CleanupScore);
+            DUMP_BACKPRESSURE_FIELD(CollectGarbage);
 
 #undef DUMP_BACKPRESSURE_FIELD
         }
@@ -1305,6 +1333,84 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         DumpSessionHistory(out, GetSessionHistoryList());
 
         GenerateActionsJS(out);
+    }
+}
+
+void TIndexTabletActor::RenderHttpInfo_QuotasTab(IOutputStream& out)
+{
+    HTML(out) {
+        const auto quotas = GetQuotas();
+        TAG(TH3) { out << "Quotas"; }
+        if (quotas.size()) {
+            TABLE_SORTABLE_CLASS("table table-bordered") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLEH() { out << "QuotaId"; }
+                        TABLEH() { out << "MaxBytes"; }
+                        TABLEH() { out << "MaxNodes"; }
+                        TABLEH() { out << "CreatedAt"; }
+                    }
+                }
+
+                for (const auto& quota: quotas) {
+                    TABLER() {
+                        TABLED() { out << quota.GetQuotaId(); }
+                        TABLED() { out << FormatByteSize(quota.GetMaxBytes()); }
+                        TABLED() { out << quota.GetMaxNodes(); }
+                        TABLED() {
+                            out << TInstant::MicroSeconds(
+                                quota.GetCreationTimestampUs());
+                        }
+                    }
+                }
+            }
+        } else {
+            out << "No quotas defined.";
+        }
+    }
+}
+
+void TIndexTabletActor::HandleHttpInfo_Default(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    TStringStream out;
+
+    const char* overviewTabName = "Overview";
+    const char* quotasTabName = "Quotas";
+
+    const char* activeTabClass = "tab-pane active";
+    const char* inactiveTabClass = "tab-pane";
+
+    const char* overviewTab = activeTabClass;
+    const char* quotasTab = inactiveTabClass;
+
+    if (params.Get("tab") == quotasTabName) {
+        overviewTab = inactiveTabClass;
+        quotasTab = activeTabClass;
+    }
+
+    HTML(out) {
+        DIV_CLASS_ID("container-fluid", "tabs") {
+            out << "<ul class='nav nav-tabs' id='Tabs'>"
+                << "<li class='active'>"
+                << "<a href='#" << overviewTabName << "' data-toggle='tab'>"
+                << overviewTabName << "</a></li>"
+                << "<li><a href='#" << quotasTabName << "' data-toggle='tab'>"
+                << quotasTabName << "</a></li>"
+                << "</ul>";
+
+            DIV_CLASS("tab-content") {
+                DIV_CLASS_ID(overviewTab, overviewTabName) {
+                    RenderHttpInfo_OverviewTab(ctx, params, out);
+                }
+
+                DIV_CLASS_ID(quotasTab, quotasTabName) {
+                    RenderHttpInfo_QuotasTab(out);
+                }
+            }
+        }
     }
 
     NCloud::Reply(

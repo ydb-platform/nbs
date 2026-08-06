@@ -142,6 +142,14 @@ NProto::TError ErrorIsPreparedForUnlink(ui64 nodeId)
         TStringBuilder() << "node #" << nodeId << " is prepared for unlink");
 }
 
+NProto::TError ErrorRenameNotSupported(ui64 parentId, ui64 newParentId)
+{
+    return MakeError(
+        E_FS_XDEV,
+        TStringBuilder() << "cannot move from " << parentId << " to "
+            << newParentId);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError ErrorNameTooLong(const TString& name)

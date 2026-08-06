@@ -216,7 +216,7 @@ class TestRunner:
                 config_version=None,
                 performance_profile=protos.TVolumePerformanceProfile(MaxPostponedWeight=weight))
         except ClientError as e:
-            self.logger(e)
+            self.logger.error(e)
             raise Error(f'Failed to change postponed weight to <weight={weight}>:\n{e}')
 
     def check_timeout(self, start) -> bool:

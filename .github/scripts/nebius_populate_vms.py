@@ -4,10 +4,12 @@ import os
 import asyncio
 import argparse
 import datetime
-from github import Github
 from grpc import StatusCode
+from github import Github
 from typing import List
+from .helpers import github_client
 from nebius.sdk import SDK
+from nebius.aio.cli_config import Config
 from nebius.api.nebius.compute.v1 import (
     InstanceServiceClient,
     ListInstancesRequest,
@@ -446,11 +448,6 @@ async def main():
     parser = argparse.ArgumentParser(description="Manage GitHub runners on Nebius.")
 
     parser.add_argument(
-        "--service-account-key",
-        required=True,
-        help="Path to the service account credentials file (JSON)",
-    )
-    parser.add_argument(
         "--github-repo-owner",
         required=True,
         default="ydb-platform",
@@ -518,8 +515,8 @@ async def main():
     if not github_token:
         raise RuntimeError("GITHUB_TOKEN environment variable is not set")
 
-    sdk = SDK(credentials_file_name=args.service_account_key)
-    github = Github(github_token)
+    sdk = SDK(config_reader=Config())
+    github = github_client(github_token)
 
     if args.loop:
         start_time = time.time()

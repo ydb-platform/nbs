@@ -73,10 +73,10 @@ TNodeRegistrationSettings
 {
     TNodeRegistrationSettings settings;
     settings.MaxAttempts = StorageConfig->GetNodeRegistrationMaxAttempts();
-    settings.LegacyRegistrationTimeout = StorageConfig->GetNodeRegistrationTimeout();
-    settings.LoadConfigsFromCmsRetryMinDelay = StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
-    settings.LoadConfigsFromCmsRetryMaxDelay = StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
-    settings.LoadConfigsFromCmsTotalTimeout = StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
+    settings.NodeRegistrationTimeout = StorageConfig->GetNodeRegistrationTimeout();
+    settings.LoadConfigsFromCmsRetryMinDelay = StorageConfig->GetLoadConfigsFromCmsRetryMinDelay();
+    settings.LoadConfigsFromCmsRetryMaxDelay = StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay();
+    settings.LoadConfigsFromCmsTotalTimeout = StorageConfig->GetLoadConfigsFromCmsTotalTimeout();
     settings.ErrorTimeout = StorageConfig->GetNodeRegistrationErrorTimeout();
     settings.PathToGrpcCaFile = StorageConfig->GetNodeRegistrationRootCertsFile();
     settings.NodeRegistrationToken = StorageConfig->GetNodeRegistrationToken();

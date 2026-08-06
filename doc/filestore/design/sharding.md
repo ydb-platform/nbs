@@ -18,7 +18,7 @@ The following aggregate metrics are exported:
 * AggregateUsedBytesCount - sum(UsedBytesCount) over all shards
 
 `GetStorageStats` requests are sent to the shards in background each 15 seconds.
-Cached shard metrics can be retrieved by using `AllowCache: true` flag in `TGetStorageStatsRequest`.
+Cached shard metrics can be retrieved by using `CacheTTL` property of `TGetStorageStatsRequest`.
 Shard metrics such as UsedBytesCount, CurrentLoad and Suffer are displayed on the main tablet monpage.
 Shard metrics are used by ShardBalancer in the main tablet to pessimize file creation in shards with low free space.
 

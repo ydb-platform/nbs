@@ -10,6 +10,7 @@ SRCS(
     caching_allocator.cpp
     device_path.cpp
     iovector.cpp
+    printable_params.cpp
     request_checksum_helpers.cpp
     safe_debug_print.cpp
     split_request_helpers.cpp

@@ -1,0 +1,29 @@
+name: Nightly PR check
+description: Dispatch nightly workflows for a PR and mirror their results back to the PR
+
+inputs:
+  mode:
+    required: false
+    default: "dispatch-and-collect"
+    description: "dispatch-and-collect or cancel"
+  github_token:
+    required: true
+    description: "GitHub token with actions:write and issues:write access"
+
+runs:
+  using: composite
+  steps:
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r .github/scripts/requirements.txt
+
+    - name: Run nightly PR check collector
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+        export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
+        python3 -m scripts.nightly_pr_check \
+            --mode "$MODE"

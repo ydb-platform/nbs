@@ -28,6 +28,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             TVector<TOwningFreshBlock> result;
             auto error = ParseFreshBlobContent(
                 commitId,
+                {},  // BlobId
                 blockSize,
                 blobContent,
                 result);
@@ -72,6 +73,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         TVector<TOwningFreshBlock> result;
         auto error = ParseFreshBlobContent(
             commitId,
+            {},  // BlobId
             blockSize,
             blobContent,
             result);
@@ -105,6 +107,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         TVector<TOwningFreshBlock> result;
         auto error = ParseFreshBlobContent(
             commitId,
+            {},  // BlobId
             blockSize,
             oldBlobContent,
             result);
@@ -155,6 +158,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         TVector<TOwningFreshBlock> result;
         auto error = ParseFreshBlobContent(
             commitId,
+            {},  // BlobId
             blockSize,
             oldBlobContent,
             result);

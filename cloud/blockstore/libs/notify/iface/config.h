@@ -20,6 +20,8 @@ private:
 public:
     explicit TNotifyConfig(NProto::TNotifyConfig config);
 
+    const NProto::TNotifyConfig* GetConfig() const;
+
     TString GetEndpoint() const;
     TString GetCaCertFilename() const;
     ui32 GetVersion() const;

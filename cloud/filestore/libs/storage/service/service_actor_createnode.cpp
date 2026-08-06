@@ -36,7 +36,6 @@ private:
 
     // Response data
     bool ShardResponded = false;
-    NProto::TCreateNodeResponse ShardResponse;
 
     // Stats for reporting
     IProfileLogPtr ProfileLog;
@@ -161,15 +160,20 @@ void TLinkActor::HandleShardResponse(
     CreateNodeRequest.MutableLink()->SetTargetNode(
         msg->Record.GetNode().GetId());
     CreateNodeRequest.MutableLink()->SetShardNodeName(ShardNodeName);
-    ShardResponse = std::move(msg->Record);
-
+    // Carry the shard node attrs so the leader can write a complete DupCache
+    // entry (non-zero Id). Without this the leader stores a zero-id entry and
+    // returns E_REJECTED on any retry of the same requestId.
+    // TODO(#2667): remove once TLinkActor has a proper retry mechanism.
+    auto shardResponse = std::move(msg->Record);
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
         "[%s] Creating nodeRef in leader for %s, %lu",
         LogTag.c_str(),
-        ShardResponse.ShortDebugString().Quote().c_str(),
+        shardResponse.ShortDebugString().Quote().c_str(),
         CreateNodeRequest.GetLink().GetTargetNode());
+
+    CreateNodeRequest.MutableShardNodeAttr()->Swap(shardResponse.MutableNode());
 
     request->Record = std::move(CreateNodeRequest);
 
@@ -205,10 +209,6 @@ void TLinkActor::HandleLeaderResponse(
         "[%s] NodeRef created in leader for %lu",
         LogTag.c_str(),
         msg->Record.GetNode().GetId());
-
-    // TODO(#2667): some attributes from the shard response could be invalid
-    // by the time the leader response is received
-    msg->Record.MutableNode()->Swap(ShardResponse.MutableNode());
 
     ReplyAndDie(ctx, std::move(msg->Record));
 }
@@ -368,6 +368,18 @@ void TStorageServiceActor::HandleCreateNode(
                 std::move(error));
             return NCloud::Reply(ctx, *ev, std::move(response));
         }
+        if (!shardId &&
+            ExtractShardNoSafe(filestore, msg->Record.GetNodeId()) != 0)
+        {
+            // TODO(#5826): remove this check and support hard links from shards
+            // directories to main filesystem
+            ReportHardLinkFromShardDirToMainTabletNode();
+            auto response = std::make_unique<TEvService::TEvCreateNodeResponse>(
+                ErrorNotSupported(
+                    "hard links from shard directories to main filesystem nodes"
+                    " are not supported"));
+            return NCloud::Reply(ctx, *ev, std::move(response));
+        }
         if (shardId) {
             // If the target node is located on a shard, start a worker actor
             // to separately increment the link count in the shard and insert
@@ -397,18 +409,6 @@ void TStorageServiceActor::HandleCreateNode(
             NCloud::Register(ctx, std::move(actor));
 
             return;
-        }
-    } else {
-        const bool multiTabletForwardingEnabled =
-            StorageConfig->GetMultiTabletForwardingEnabled() &&
-            !headers.GetDisableMultiTabletForwarding() &&
-            (msg->Record.HasFile() ||
-             filestore.GetFeatures().GetDirectoryCreationInShardsEnabled());
-
-        if (multiTabletForwardingEnabled) {
-            if (const auto& shardId = session->SelectShard()) {
-                msg->Record.SetShardFileSystemId(shardId);
-            }
         }
     }
 

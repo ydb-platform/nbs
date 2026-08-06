@@ -70,7 +70,8 @@ public:
             msg->Record,
             msg->Record.GetDiskId(),
             SelfId(),   // parentActorId
-            ++RequestIdentityKey);
+            ++RequestIdentityKey,
+            TLogTitle(0, TLogTitle::TPartitionMigration{}).GetChild(0));
     }
 };
 

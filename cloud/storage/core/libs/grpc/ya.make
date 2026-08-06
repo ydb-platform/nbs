@@ -9,9 +9,12 @@ SRCS(
     credentials.cpp
     init.cpp
     keepalive.cpp
+    periodic_tls_certificate_provider.cpp
     request.cpp
     threadpool.cpp
     time_point_specialization.cpp
+    tls_certificate_provider.cpp
+    tls_utils.cpp
     utils.cpp
 )
 
@@ -36,4 +39,7 @@ PEERDIR(
 
 END()
 
-RECURSE_FOR_TESTS(ut)
+RECURSE_FOR_TESTS(
+    ut
+    ut_shutdown
+)

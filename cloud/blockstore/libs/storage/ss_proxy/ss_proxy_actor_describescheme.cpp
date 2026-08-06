@@ -240,13 +240,14 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     if (record->ErrorCount > 0) {
         switch (entry.Status) {
             case NSchemeCache::TSchemeCacheNavigate::EStatus::PathErrorUnknown:
-            case NSchemeCache::TSchemeCacheNavigate::EStatus::RootUnknown:
-                HandleError(
-                    ctx,
-                    MakeSchemeShardError(
-                        NKikimrScheme::StatusPathDoesNotExist,
-                        "Path doesn't exist"));
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::RootUnknown: {
+                auto error = MakeSchemeShardError(
+                    NKikimrScheme::StatusPathDoesNotExist,
+                    "Path doesn't exist");
+                SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
+                HandleError(ctx, error);
                 return;
+            }
             default: {
                 HandleError(
                     ctx,
@@ -267,18 +268,16 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     }
     if (entry.ListNodeEntry) {
         for (const auto& child: entry.ListNodeEntry->Children) {
-            NKikimrSchemeOp::TDirEntry* entry =
-                pathDescription.MutableChildren()->Add();
             auto pathType = ConvertSchemeCacheKind(child.Kind);
             if (!pathType) {
-                HandleError(
-                    ctx,
-                    MakeError(
-                        E_REJECTED,
-                        TStringBuilder()
-                            << "Unknown child path kind: " << child.Kind));
-                return;
+                LOG_WARN(ctx, TBlockStoreComponents::SS_PROXY,
+                    "Skipping child with unknown kind: %d, name: %s",
+                    static_cast<int>(child.Kind),
+                    child.Name.c_str());
+                continue;
             }
+
+            auto* entry = pathDescription.MutableChildren()->Add();
             entry->SetPathType(*pathType);
             entry->SetName(child.Name);
             entry->SetPathId(child.PathId.LocalPathId);

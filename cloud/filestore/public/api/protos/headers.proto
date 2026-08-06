@@ -50,6 +50,22 @@ message THeaders
         // If this request is sent from another tablet, that tablet can put its
         // TabletId into this field.
         uint64 ClientTabletId = 4;
+
+        // Peer address of the request sender.
+        string Peer = 5;
+
+        enum ERequestOrigin
+        {
+            REQUEST_ORIGIN_UNSPECIFIED = 0;
+
+            // Internal caller; arguments are picked by us
+            REQUEST_ORIGIN_INTERNAL = 1;
+
+            // Came over the public gRPC API; arguments are client-supplied
+            REQUEST_ORIGIN_EXTERNAL = 2;
+        }
+
+        ERequestOrigin RequestOrigin = 6;
     }
 
     // Internal header, should not be used outside.
@@ -74,9 +90,19 @@ message THeaders
 
 message TBackendInfo
 {
-    // Using a single boolean flag for now. Maybe we'll add more details in the
-    // future but for now keeping it simple.
     bool IsOverloaded = 1;
+
+    // Host and port of the fastshard TCP server co-located with this backend.
+    // Non-empty only when the server has a fastshard port configured.
+    // The side channel in the vhost uses these to establish a direct TCP
+    // connection for latency-critical IO, bypassing the actor system.
+    string FastShardHost = 2;
+    uint32 FastShardPort = 3;
+
+    // The id of the filesystem shard if this response comes from the shard and
+    // the id of the filesystem itself if this response comes from the main
+    // tablet.
+    string ActualFileSystemId = 4;
 }
 
 message TResponseHeaders

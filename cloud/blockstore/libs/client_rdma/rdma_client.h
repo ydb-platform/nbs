@@ -2,12 +2,12 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -27,7 +27,7 @@ struct TRdmaEndpointConfig
 
 IBlockStorePtr CreateRdmaEndpointClient(
     ILoggingServicePtr logging,
-    NRdma::IClientPtr client,
+    NCloud::NStorage::NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
@@ -35,7 +35,7 @@ IBlockStorePtr CreateRdmaEndpointClient(
 
 NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsync(
     ILoggingServicePtr logging,
-    NRdma::IClientPtr client,
+    NCloud::NStorage::NRdma::IClientPtr client,
     IBlockStorePtr volumeClient,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
@@ -43,14 +43,14 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
 
 IBlockStorePtr CreateRdmaDataEndpoint(
     ILoggingServicePtr logging,
-    NRdma::IClientPtr client,
-    NRdma::IClientEndpointPtr clientEndpoint,
+    NCloud::NStorage::NRdma::IClientPtr client,
+    NCloud::NStorage::NRdma::IClientEndpointPtr clientEndpoint,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue);
 
 NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
     ILoggingServicePtr logging,
-    NRdma::IClientPtr client,
+    NCloud::NStorage::NRdma::IClientPtr client,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config);

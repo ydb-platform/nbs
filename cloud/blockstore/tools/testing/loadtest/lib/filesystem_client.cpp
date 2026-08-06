@@ -221,7 +221,7 @@ struct TClient: TClientBase
                 TErrorResponse(E_REJECTED));
         }
 
-        Y_ABORT_UNLESS(request->BlockSize == BlockSize);
+        Y_ABORT_UNLESS(request->GetBlockSize() == BlockSize);
         ui64 dataSize = 0;
         for (const auto& b: sglist.Get()) {
             dataSize += b.Size();
@@ -280,7 +280,7 @@ struct TClient: TClientBase
                 TErrorResponse(E_REJECTED));
         }
 
-        Y_ABORT_UNLESS(request->BlockSize == BlockSize);
+        Y_ABORT_UNLESS(request->GetBlockSize() == BlockSize);
         ui64 dataSize = 0;
         for (const auto& b: sglist.Get()) {
             dataSize += b.Size();

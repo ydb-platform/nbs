@@ -85,6 +85,7 @@ func (t *createImageFromURLTask) Run(
 			SrcURL:        t.request.SrcURL,
 			DstSnapshotId: t.request.DstImageId,
 			UseS3:         t.request.UseS3,
+			StorageClass:  t.request.StorageClass,
 		},
 	)
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"golang.org/x/sync/errgroup"
@@ -98,6 +99,19 @@ func (s *cellSelector) SelectCellForDisk(
 		kind,
 		requireExactCellIDMatch,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.nbsFactory.GetClient(ctx, cellID)
+}
+
+func (s *cellSelector) SelectCellForPlacementGroup(
+	ctx context.Context,
+	zoneID string,
+) (nbs.Client, error) {
+
+	cellID, err := s.selectCellForPlacementGroup(ctx, zoneID)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +220,14 @@ func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
 	return slices.Contains(s.getCells(zoneID), cellID)
 }
 
+func (s *cellSelector) ResolveCells(zoneID string) ([]string, error) {
+	if s.config == nil {
+		return []string{zoneID}, nil
+	}
+
+	return s.resolveCells(zoneID)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *cellSelector) getCells(zoneID string) []string {
@@ -255,6 +277,23 @@ func (s *cellSelector) isAgentAvailable(
 	return true
 }
 
+func (s *cellSelector) resolveCells(zoneID string) ([]string, error) {
+	cells := s.getCells(zoneID)
+
+	if len(cells) == 0 {
+		if s.isCell(zoneID) {
+			return []string{zoneID}, nil
+		}
+
+		return nil, errors.NewNonCancellableErrorf(
+			"incorrect zone ID provided: %q",
+			zoneID,
+		)
+	}
+
+	return cells, nil
+}
+
 func (s *cellSelector) selectCellForDisk(
 	ctx context.Context,
 	zoneID string,
@@ -298,6 +337,102 @@ func (s *cellSelector) selectCellForDisk(
 		if err != nil {
 			return "", err
 		}
+
+		if len(capacities) == 0 {
+			logging.Warn(
+				ctx,
+				"no capacities found for zone %v, "+
+					"using first cell in config: %v",
+				zoneID,
+				cells[0],
+			)
+
+			return cells[0], nil
+		}
+
+		mostFree := slices.MaxFunc(
+			capacities,
+			func(a, b storage.ClusterCapacity) int {
+				return cmp.Compare(a.FreeBytes, b.FreeBytes)
+			})
+
+		return mostFree.CellID, nil
+	default:
+		return "", errors.NewNonCancellableErrorf(
+			"unknown cell selection policy: %v",
+			s.config.GetCellSelectionPolicy().String(),
+		)
+	}
+}
+
+func (s *cellSelector) getRecentAggregatedClusterCapacities(
+	ctx context.Context,
+	zoneID string,
+) ([]storage.ClusterCapacity, error) {
+
+	diskKinds := util.GetAllDiskKinds()
+
+	aggregated := make(map[string]*storage.ClusterCapacity)
+
+	for _, kind := range diskKinds {
+		capacities, err := s.storage.GetRecentClusterCapacities(
+			ctx,
+			zoneID,
+			kind,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, c := range capacities {
+			if agg, ok := aggregated[c.CellID]; ok {
+				agg.TotalBytes += c.TotalBytes
+				agg.FreeBytes += c.FreeBytes
+			} else {
+				aggregated[c.CellID] = &storage.ClusterCapacity{
+					ZoneID:     c.ZoneID,
+					CellID:     c.CellID,
+					TotalBytes: c.TotalBytes,
+					FreeBytes:  c.FreeBytes,
+				}
+			}
+		}
+	}
+
+	result := make([]storage.ClusterCapacity, 0, len(aggregated))
+	for _, c := range aggregated {
+		result = append(result, *c)
+	}
+
+	return result, nil
+}
+
+func (s *cellSelector) selectCellForPlacementGroup(
+	ctx context.Context,
+	zoneID string,
+) (string, error) {
+
+	if s.config == nil {
+		return zoneID, nil
+	}
+
+	cells, err := s.ResolveCells(zoneID)
+	if err != nil {
+		return "", err
+	}
+
+	switch s.config.GetCellSelectionPolicy() {
+	case cells_config.CellSelectionPolicy_FIRST_IN_CONFIG:
+		return cells[0], nil
+	case cells_config.CellSelectionPolicy_MAX_FREE_BYTES:
+		capacities, err := s.getRecentAggregatedClusterCapacities(ctx, zoneID)
+		if err != nil {
+			return "", err
+		}
+
+		capacities = slices.DeleteFunc(capacities, func(c storage.ClusterCapacity) bool {
+			return !slices.Contains(cells, c.CellID)
+		})
 
 		if len(capacities) == 0 {
 			logging.Warn(

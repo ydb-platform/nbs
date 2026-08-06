@@ -9,8 +9,17 @@ message TDuration {
 }
 
 message TInterconnectConfig {
+
+    enum ESocketSendOptimization {
+        IC_SO_DISABLED = 0;
+        IC_SO_MSG_ZEROCOPY = 1;
+    };
+
     optional bool StartTcp = 1;
     optional uint32 MaxInflightAmountOfDataInKB = 2;
     optional bool MergePerPeerCounters = 3;
     optional TDuration HandshakeTimeoutDuration = 4;
+    optional bool EnableExternalDataChannel = 5;
+    optional ESocketSendOptimization SocketSendOptimization = 6;
+    optional bool UseRdma = 7;
 }

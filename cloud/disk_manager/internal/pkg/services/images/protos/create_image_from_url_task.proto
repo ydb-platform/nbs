@@ -16,6 +16,7 @@ message CreateImageFromURLRequest {
     string FolderId = 4;
     repeated types.DiskPool DiskPools = 5;
     bool UseS3 = 10;
+    string StorageClass = 12;
 }
 
 message CreateImageFromURLTaskState {

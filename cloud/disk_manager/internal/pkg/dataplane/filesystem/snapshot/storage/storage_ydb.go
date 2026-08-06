@@ -677,6 +677,61 @@ func (s *storageYDB) ClearDeletingFilesystemSnapshots(
 	return nil
 }
 
+func (s *storageYDB) tableEmpty(ctx context.Context, table string) (bool, error) {
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+
+			select count(*)
+			from %v
+		`, s.tablesPath, table))
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return false, res.Err()
+	}
+
+	var count uint64
+	err = res.Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	err = res.Err()
+	if err != nil {
+		return false, err
+	}
+
+	return count == 0, nil
+}
+
+func (s *storageYDB) TablesEmpty(ctx context.Context) (bool, error) {
+	// Used by tests to verify collection cleanup.
+	for _, table := range []string{
+		"filesystem_snapshots",
+		"deleting",
+		"node_refs",
+		"node_refs_by_shard",
+		"nodes",
+		"hardlinks",
+		"restoration_node_ids_mapping",
+	} {
+		empty, err := s.tableEmpty(ctx, table)
+		if err != nil {
+			return false, err
+		}
+
+		if !empty {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
 func (s *storageYDB) CheckFilesystemSnapshotAlive(
 	ctx context.Context,
 	snapshotID string,
@@ -699,6 +754,33 @@ func (s *storageYDB) CheckFilesystemSnapshotAlive(
 			"filesystem snapshot with id %v status %v is not alive",
 			snapshotID,
 			filesystemSnapshotStatusToString(state.status),
+		)
+	}
+
+	return nil
+}
+
+func (s *storageYDB) CheckFilesystemSnapshotReady(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	state, err := s.getFilesystemSnapshot(ctx, snapshotID)
+	if err != nil {
+		return err
+	}
+
+	if state == nil {
+		return task_errors.NewSilentNonRetriableErrorf(
+			"filesystem snapshot with id %v is not found",
+			snapshotID,
+		)
+	}
+
+	if state.status != filesystemSnapshotStatusReady {
+		return task_errors.NewSilentNonRetriableErrorf(
+			"filesystem snapshot with id %v is not ready",
+			snapshotID,
 		)
 	}
 

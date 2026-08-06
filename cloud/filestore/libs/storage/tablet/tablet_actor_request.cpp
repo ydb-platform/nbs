@@ -18,49 +18,14 @@ TSession* TIndexTabletActor::AcceptRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx,
     const std::function<NProto::TError(
-        const typename TMethod::TRequest::ProtoRecordType&)>& validator,
-    bool validateSession)
+        const typename TMethod::TRequest::ProtoRecordType&)>& validator)
 {
+    if (!AcceptRequestNoSession<TMethod>(ev, ctx, validator)) {
+        return nullptr;
+    }
+
     auto* msg = ev->Get();
     auto& request = msg->Record;
-
-    msg->CallContext->RequestId = GetRequestId(request);
-    if (!msg->CallContext->LWOrbit.HasShuttles()) {
-        msg->CallContext->SetRequestStartedCycles(GetCycleCount());
-        TraceSerializer->HandleTraceRequest(
-            request.GetHeaders().GetInternal().GetTrace(),
-            msg->CallContext->LWOrbit);
-    }
-
-    Metrics.BusyIdleCalc.OnRequestStarted();
-
-    FILESTORE_TRACK(
-        RequestReceived_Tablet,
-        msg->CallContext,
-        TMethod::Name,
-        msg->CallContext->FileSystemId,
-        GetFileSystem().GetStorageMediaKind());
-
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s %s: %s",
-        LogTag.c_str(),
-        TMethod::Name,
-        DumpMessage(request).c_str());
-
-    NProto::TError error;
-    if (validator) {
-        error = validator(request);
-    }
-
-    if (FAILED(error.GetCode())) {
-        auto response = std::make_unique<typename TMethod::TResponse>(error);
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return nullptr;
-    }
-
-    if (!validateSession) {
-        return nullptr;
-    }
 
     auto* session = FindSession(
          GetClientId(request),
@@ -81,10 +46,62 @@ TSession* TIndexTabletActor::AcceptRequest(
 }
 
 template <typename TMethod>
-void TIndexTabletActor::CompleteResponse(
+bool TIndexTabletActor::AcceptRequestNoSession(
+    const typename TMethod::TRequest::TPtr& ev,
+    const NActors::TActorContext& ctx,
+    const std::function<NProto::TError(
+        const typename TMethod::TRequest::ProtoRecordType&)>& validator)
+{
+    auto* msg = ev->Get();
+    auto& request = msg->Record;
+
+    msg->CallContext->RequestId = GetRequestId(request);
+    if (!msg->CallContext->LWOrbit.HasShuttles()) {
+        msg->CallContext->SetRequestStartedCycles(GetCycleCount());
+        TraceSerializer->HandleTraceRequest(
+            request.GetHeaders().GetInternal().GetTrace(),
+            msg->CallContext->LWOrbit);
+    }
+
+    Metrics->BusyIdleCalc.OnRequestStarted();
+
+    FILESTORE_TRACK(
+        RequestReceived_Tablet,
+        msg->CallContext,
+        TMethod::Name,
+        msg->CallContext->FileSystemId,
+        GetFileSystem().GetStorageMediaKind());
+
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s %s: %s",
+        LogTag.c_str(),
+        TMethod::Name,
+        ProtoMessagePrinter.ToString(request).c_str());
+
+    NProto::TError error;
+    if (validator) {
+        error = validator(request);
+    }
+
+    if (FAILED(error.GetCode())) {
+        auto response = std::make_unique<typename TMethod::TResponse>(error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return false;
+    }
+
+    return true;
+}
+
+template <typename TMethod>
+void CompleteResponse(
+    const TStorageConfig& config,
+    const ITraceSerializerPtr& traceSerializer,
+    TSystemCounters& systemCounters,
+    const TString& fileSystemId,
+    TTabletMetrics& metrics,
     typename TMethod::TResponse::ProtoRecordType& response,
     const TCallContextPtr& callContext,
-    const NActors::TActorContext& ctx)
+    bool* builtTraceInfo)
 {
     if (HasError(response.GetError())) {
         auto* e = response.MutableError();
@@ -97,10 +114,52 @@ void TIndexTabletActor::CompleteResponse(
         callContext,
         TMethod::Name);
 
-    const bool builtTraceInfo = BuildTraceInfo(
-        TraceSerializer,
+    *builtTraceInfo = BuildTraceInfo(
+        traceSerializer,
         callContext,
         response);
+    BuildThrottlerInfo(*callContext, response);
+    BuildBackendInfo(
+        config,
+        systemCounters,
+        fileSystemId,
+        metrics.CPUUsageRate,
+        response);
+    if constexpr (HasResponseHeaders<decltype(response)>()) {
+        const auto& responseHeaders = response.GetHeaders();
+        if (responseHeaders.GetBackendInfo().GetIsOverloaded()) {
+            metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
+    metrics.BusyIdleCalc.OnRequestCompleted();
+}
+
+template <typename TMethod>
+void TIndexTabletActor::CompleteResponse(
+    typename TMethod::TResponse::ProtoRecordType& response,
+    const TCallContextPtr& callContext,
+    bool* builtTraceInfo)
+{
+    NStorage::CompleteResponse<TMethod>(
+        *Config,
+        TraceSerializer,
+        *SystemCounters,
+        GetFileSystemId(),
+        *Metrics,
+        response,
+        callContext,
+        builtTraceInfo);
+}
+
+template <typename TMethod>
+void TIndexTabletActor::CompleteResponse(
+    typename TMethod::TResponse::ProtoRecordType& response,
+    const TCallContextPtr& callContext,
+    const NActors::TActorContext& ctx)
+{
+    bool builtTraceInfo = false;
+    CompleteResponse<TMethod>(response, callContext, &builtTraceInfo);
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s %s: #%lu completed (%s), trace-info: %d",
         LogTag.c_str(),
@@ -108,20 +167,6 @@ void TIndexTabletActor::CompleteResponse(
         callContext->RequestId,
         FormatError(response.GetError()).c_str(),
         builtTraceInfo);
-    BuildThrottlerInfo(*callContext, response);
-    BuildBackendInfo(
-        *Config,
-        *SystemCounters,
-        Metrics.CPUUsageRate,
-        response);
-    if constexpr (HasResponseHeaders<decltype(response)>()) {
-        const auto& responseHeaders = response.GetHeaders();
-        if (responseHeaders.GetBackendInfo().GetIsOverloaded()) {
-            Metrics.OverloadedCount.fetch_add(1, std::memory_order_relaxed);
-        }
-    }
-
-    Metrics.BusyIdleCalc.OnRequestCompleted();
 }
 
 #define FILESTORE_GENERATE_IMPL(name, ns)                                             \
@@ -129,8 +174,13 @@ template TSession* TIndexTabletActor::AcceptRequest<ns::T##name##Method>(       
     const ns::T##name##Method::TRequest::TPtr& ev,                                    \
     const TActorContext& ctx,                                                         \
     const std::function<NProto::TError(                                               \
-        const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& validator,  \
-    bool validateSession);                                                            \
+        const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& validator); \
+                                                                                      \
+template bool TIndexTabletActor::AcceptRequestNoSession<ns::T##name##Method>(         \
+    const ns::T##name##Method::TRequest::TPtr& ev,                                    \
+    const TActorContext& ctx,                                                         \
+    const std::function<NProto::TError(                                               \
+        const typename ns::T##name##Method::TRequest::ProtoRecordType&)>& validator); \
                                                                                       \
 template void TIndexTabletActor::CompleteResponse<ns::T##name##Method>(               \
     ns::TEv##name##Response::ProtoRecordType& response,                               \
@@ -149,6 +199,7 @@ FILESTORE_GENERATE_IMPL(GetNodeAttrBatch, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(RenameNodeInDestination, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(PrepareUnlinkDirectoryNodeInShard, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(AbortUnlinkDirectoryNodeInShard, TEvIndexTablet)
+FILESTORE_GENERATE_IMPL(ListNodesInternal, TEvIndexTablet)
 
 #undef FILESTORE_GENERATE_IMPL
 

@@ -1,0 +1,4 @@
+self-hosted-runner:
+  labels:
+    - runner_light
+    - runner_heavy

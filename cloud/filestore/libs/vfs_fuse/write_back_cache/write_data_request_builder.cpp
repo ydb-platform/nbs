@@ -1,3 +1,4 @@
+#include "flush_batch_write_request_counter.h"
 #include "write_data_request_builder.h"
 
 #include "disjoint_interval_builder.h"
@@ -129,56 +130,6 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteRequestCounter
-{
-private:
-    const ui64 MaxWriteRequestSize;
-    TDisjointIntervalMap<ui64, ui64> SeparatedIntervalsMap;
-    ui64 WriteRequestCount = 0;
-    ui64 SumWriteRequestsSize = 0;
-
-public:
-    explicit TWriteRequestCounter(ui64 maxSumWriteRequestSize)
-        : MaxWriteRequestSize(maxSumWriteRequestSize)
-    {}
-
-    void AddInterval(ui64 begin, ui64 end)
-    {
-        Y_ABORT_UNLESS(begin < end);
-
-        // Remove all overlapping and touching intervals
-        SeparatedIntervalsMap.VisitOverlapping(
-            begin > 0 ? begin - 1 : 0,
-            end < Max<ui64>() ? end + 1 : Max<ui64>(),
-            [this, &begin, &end](auto it)
-            {
-                const TDisjointIntervalMap<ui64, ui64>::TItem& e = it->second;
-                WriteRequestCount -= e.Value;
-                SumWriteRequestsSize -= e.End - e.Begin;
-                begin = Min(begin, e.Begin);
-                end = Max(end, e.End);
-                SeparatedIntervalsMap.Remove(it);
-            });
-
-        const ui64 count = ((end - begin - 1) / MaxWriteRequestSize) + 1;
-        SeparatedIntervalsMap.Add(begin, end, count);
-        WriteRequestCount += count;
-        SumWriteRequestsSize += end - begin;
-    }
-
-    ui64 GetWriteRequestCount() const
-    {
-        return WriteRequestCount;
-    }
-
-    ui64 GetSumWriteRequestsSize() const
-    {
-        return SumWriteRequestsSize;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 TVector<TWriteDataRequestPart> BuildDisjointRequestDataParts(
     const TVector<TWriteDataRequestPart>& data)
 {
@@ -211,9 +162,6 @@ private:
     const ui64 NodeId;
     const TWriteDataRequestBuilderConfig Config;
 
-    TWriteRequestCounter WriteDataRequestCounter;
-
-    ui64 Handle = 0;
     TVector<TWriteDataRequestPart> InputRequests;
 
 public:
@@ -222,30 +170,12 @@ public:
         TWriteDataRequestBuilderConfig config)
         : NodeId(nodeId)
         , Config(std::move(config))
-        , WriteDataRequestCounter(Config.MaxWriteRequestSize)
     {}
 
-    bool AddRequest(ui64 handle, ui64 offset, TStringBuf data) override
+    void AddRequest(ui64 offset, TStringBuf data) override
     {
         Y_ABORT_UNLESS(!data.empty(), "Empty requests are not allowed");
-
-        if (InputRequests.empty()) {
-            Handle = handle;
-        }
-
-        WriteDataRequestCounter.AddInterval(offset, offset + data.size());
-
-        if ((WriteDataRequestCounter.GetWriteRequestCount() >
-                 Config.MaxWriteRequestsCount ||
-             WriteDataRequestCounter.GetSumWriteRequestsSize() >
-                 Config.MaxSumWriteRequestsSize) &&
-            !InputRequests.empty())
-        {
-            return false;
-        }
-
         InputRequests.push_back({offset, data});
-        return true;
     }
 
     TWriteDataRequestBatch Build() override
@@ -287,15 +217,30 @@ private:
                 dataParts.begin() + partIndex,
                 dataParts.begin() + rangeEndIndex);
 
+            // TWriteDataRequestBatchBuilder accepts the first cached WriteData
+            // request for flushing even if it exceeds MaxWriteRequestsCount -
+            // this is a special case to allow processing requests without being
+            // blocked by the request limits. If this happens, it results in
+            // chopping the request and sending more requests in parallel.
+            //
+            // At the same time, the restriction MaxWriteRequestsCount == 1
+            // should be treated as a special case when the request must never
+            // be split and should be sent as is.
+
+            auto maxWriteRequestSize =
+                Config.FlushBatchLimits.MaxWriteRequestsCount > 1 &&
+                        Config.FlushBatchLimits.MaxWriteRequestSize > 0
+                    ? Config.FlushBatchLimits.MaxWriteRequestSize
+                    : Max<ui32>();
+
             while (reader.GetRemainingSize() > 0) {
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
                 request->SetFileSystemId(Config.FileSystemId);
                 request->SetNodeId(NodeId);
-                request->SetHandle(Handle);
                 request->SetOffset(reader.GetOffset());
 
                 if (Config.ZeroCopyWriteEnabled) {
-                    auto remainingBytes = Config.MaxWriteRequestSize;
+                    auto remainingBytes = maxWriteRequestSize;
                     while (remainingBytes > 0) {
                         auto part = reader.ReadInPlace(remainingBytes);
                         if (part.empty()) {
@@ -308,7 +253,7 @@ private:
                         iovec->SetLength(part.size());
                     }
                 } else {
-                    request->SetBuffer(reader.Read(Config.MaxWriteRequestSize));
+                    request->SetBuffer(reader.Read(maxWriteRequestSize));
                 }
 
                 res.push_back(std::move(request));

@@ -46,9 +46,10 @@ def start(argv):
     parser.add_argument("--restart-flag-on-demand", action="store_true", default=False)
     parser.add_argument("--storage-config-patch", action="store", default=None)
     parser.add_argument("--service-config-patch", action="store", default=None)
-    parser.add_argument("--local-service-config-patch", action="store", default=None)
+    parser.add_argument("--local-service-config-patch", action="append", default=[])
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
+    parser.add_argument("--bs-failure-probability", action="store", default=None, type=float)
 
     args = parser.parse_args(argv)
 
@@ -95,7 +96,7 @@ def start(argv):
     directory_handles_storage_path = common.work_path() + "/directoryhandlesstorage-" + uid
     pathlib.Path(directory_handles_storage_path).mkdir(parents=True, exist_ok=True)
     config.VhostServiceConfig.DirectoryHandlesStoragePath = directory_handles_storage_path
-    config.VhostServiceConfig.DirectoryHandlesInitialDataSize = 1000100
+    config.VhostServiceConfig.DirectoryHandlesInitialDataSize = 1048576
 
     service_type = args.service or "local"
     kikimr_port = 0
@@ -107,11 +108,9 @@ def start(argv):
         service_endpoint.ClientConfig.Port = int(os.getenv("NFS_SERVER_PORT"))
     elif service_type == "local-noserver":
         local_service_config = TLocalServiceConfig()
-        if args.local_service_config_patch:
-            with open(common.source_path(args.local_service_config_patch)) as p:
-                local_service_config = text_format.Parse(
-                    p.read(),
-                    TLocalServiceConfig())
+        for patch in args.local_service_config_patch:
+            with open(common.source_path(patch)) as p:
+                text_format.Merge(p.read(), local_service_config)
 
         fs_root_path = common.ram_drive_path()
         if fs_root_path:
@@ -174,6 +173,7 @@ def start(argv):
         storage_config=storage_config,
         access_service_type=access_service_type,
         trace_sampling_rate=args.trace_sampling_rate,
+        bs_failure_probability=args.bs_failure_probability,
     )
 
     filestore_vhost = FilestoreVhost(vhost_configurator)

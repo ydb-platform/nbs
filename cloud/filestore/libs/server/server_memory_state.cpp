@@ -11,6 +11,14 @@
 
 namespace NCloud::NFileStore::NServer {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr size_t MinPageSize = 4096;
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TServerState::TServerState(
@@ -32,10 +40,21 @@ TServerState::~TServerState()
 
 TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
     const TString& filePath,
-    size_t size)
+    size_t size,
+    ui32 pageSize,
+    bool mapPopulate)
 {
-    if (size == 0) {
-        return MakeError(E_ARGUMENT, "Size must be greater than zero");
+    if (size < MinPageSize) {
+        return MakeError(E_ARGUMENT, "Size must be greater or equal to 4 KB");
+    }
+
+    if (pageSize != 0 && size % pageSize != 0) {
+        return MakeError(
+            E_ARGUMENT,
+            Sprintf(
+                "Page size %u is not aligned with region size: %lu",
+                pageSize,
+                size));
     }
 
     TString fullPath;
@@ -71,11 +90,16 @@ TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
                 fullPath.c_str()));
     }
 
+    int flags = MAP_SHARED;
+    if (mapPopulate) {
+        flags |= MAP_POPULATE;
+    }
+
     void* addr = mmap(
         nullptr,
         size,
         PROT_READ | PROT_WRITE,
-        MAP_SHARED,
+        flags,
         file,
         0 /* offset */);
     if (addr == MAP_FAILED) {
@@ -88,7 +112,7 @@ TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
     }
 
     ui64 mmapId = ClampVal(RandomNumber<ui64>(), 1ul, Max<ui64>());
-    TMmapRegion region(std::move(fullPath), addr, size, mmapId);
+    TMmapRegion region(std::move(fullPath), addr, size, mmapId, pageSize);
 
     TLightWriteGuard guard(StateLock);
 
@@ -146,6 +170,144 @@ TResultOrError<TMmapRegionMetadata> TServerState::GetMmapRegion(ui64 mmapId)
             Sprintf("Mmap region not found: %lu", mmapId));
     }
     return it->second.ToMetadata();
+}
+
+TResultOrError<google::protobuf::RepeatedPtrField<NProto::TIovec>>
+TServerState::AdjustAndLockIovecs(
+    ui64 mmapId,
+    const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs)
+{
+    // The page state may be modified while holding a read lock because the
+    // state flag is atomic
+    TLightReadGuard guard(StateLock);
+    auto it = MmapRegions.find(mmapId);
+    if (it == MmapRegions.end()) {
+        return MakeError(
+            E_TRANSPORT_ERROR,
+            Sprintf("Mmap region not found: %lu", mmapId));
+    }
+
+    auto& region = it->second;
+    const ui64 regionAddress = region.GetAddress();
+    const ui64 regionSize = region.GetSize();
+
+    auto adjustedIovecs = iovecs;
+    for (auto& iovec: adjustedIovecs) {
+        ui64 offset = iovec.GetBase();
+        ui64 length = iovec.GetLength();
+
+        if (offset >= regionSize || length > regionSize - offset) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Iovec out of bounds: offset=" << offset
+                    << " length=" << length << " region_size=" << regionSize);
+        }
+
+        iovec.SetBase(offset + regionAddress);
+    }
+
+    const auto pageSize = region.GetPageSize();
+    // If page size is not specified, page size restrictions are currently not
+    // enforced. We plan to enable page size enforcement by default in the
+    // future.
+    if (!pageSize) {
+        return adjustedIovecs;
+    }
+
+    int i = 0;
+    NProto::TError err;
+    for (; i < adjustedIovecs.size(); ++i) {
+        const ui64& base = adjustedIovecs[i].GetBase() - regionAddress;
+        const ui64& length = adjustedIovecs[i].GetLength();
+        // The last iovec in a request may have a length smaller than PageSize.
+        if (base % pageSize != 0 || length > pageSize ||
+            (length < pageSize && i != adjustedIovecs.size() - 1))
+        {
+            err = MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Iovec is not aligned with page size: offset=" << base
+                    << " length=" << length << " page size=" << pageSize);
+            break;
+        }
+
+        ui64 index = base / pageSize;
+        if (!region.LockPage(index)) {
+            err = MakeError(
+                E_TRANSPORT_ERROR,
+                Sprintf("Address range is in use: [%lu, %lu]", base, length));
+            break;
+        }
+    }
+
+    if (HasError(err)) {
+        // Unlock previously locked pages in case of error
+        if (i > 0) {
+            for (int j = i - 1; j >= 0; --j) {
+                const ui64& base = adjustedIovecs[j].GetBase() - regionAddress;
+                ui64 index = base / pageSize;
+                auto ret = region.UnlockPage(index);
+                Y_DEBUG_ABORT_UNLESS(ret);
+            }
+        }
+
+        return err;
+    }
+
+    return {adjustedIovecs};
+}
+
+NProto::TError TServerState::UnlockIovecs(
+    ui64 mmapId,
+    const google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs)
+{
+    TLightReadGuard guard(StateLock);
+    auto it = MmapRegions.find(mmapId);
+    if (it == MmapRegions.end()) {
+        return MakeError(
+            E_TRANSPORT_ERROR,
+            Sprintf("Mmap region not found: %lu", mmapId));
+    }
+
+    auto& region = it->second;
+    const ui64 pageSize = region.GetPageSize();
+    const ui64 regionAddress = region.GetAddress();
+    if (!pageSize) {
+        return {};
+    }
+
+    NProto::TError err;
+    TString failedOffsets;
+    for (const auto& iovec: iovecs) {
+        bool failed = false;
+        if (iovec.GetBase() >= regionAddress) {
+            const ui64& base = iovec.GetBase() - regionAddress;
+            ui64 index = base / pageSize;
+            if (!region.UnlockPage(index)) {
+                failed = true;
+            }
+        } else {
+            failed = true;
+        }
+
+        if (failed) {
+            if (!failedOffsets.empty()) {
+                failedOffsets += ", ";
+            }
+            failedOffsets += std::to_string(iovec.GetBase());
+        }
+    }
+
+    if (!failedOffsets.empty()) {
+        return MakeError(
+            E_TRANSPORT_ERROR,
+            Sprintf(
+                "Failed to unlock pages with offsets: %s",
+                failedOffsets.c_str()));
+    }
+
+    return {};
 }
 
 NProto::TError TServerState::PingMmapRegion(ui64 mmapId)

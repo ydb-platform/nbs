@@ -3,22 +3,12 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
-
-#include <variant>
+#include <cloud/blockstore/libs/common/printable_params.h>
 
 namespace NCloud::NBlockStore {
 
-using TValue = std::variant<
-    TString,
-    int,
-    ui16,
-    ui32,
-    ui64,
-    TBlockRange64,
-    TStringBuf,
-    const char* const>;
-
-using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
+using TCritEventParams =
+    std::initializer_list<std::pair<TStringBuf, TPrintableValue>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -54,8 +44,6 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(EndpointStartingError)                                                 \
     xxx(ResyncFailed)                                                          \
     xxx(DiskRegistryBackupFailed)                                              \
-    xxx(FailedToParseRdmaError)                                                \
-    xxx(FailedToSerializeRdmaError)                                            \
     xxx(RegisterAgentWithEmptyRackName)                                        \
     xxx(AddConfirmedBlobsError)                                                \
     xxx(ConfirmBlobsError)                                                     \
@@ -84,11 +72,15 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(WrongCellIdInDescribeVolume)                                           \
     xxx(TrimFreshLogTimeout)                                                   \
     xxx(DiskRegistryStateIntegrityBroken)                                      \
+    xxx(AddFreshBlocksResultedInError)                                         \
+    xxx(OverlappingRequestsDetected)                                           \
+    xxx(CrossPartitionRequestDetected)                                         \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
     xxx(AcquiredDiskEraseAttempt)                                              \
     xxx(DiskAgentConfigMismatch)                                               \
+    xxx(DiskAgentDeviceSymlinkMismatch)                                        \
     xxx(DiskAgentIoDuringSecureErase)                                          \
     xxx(DiskAgentSecureEraseDuringIo)                                          \
     xxx(DiskAgentSessionCacheRestoreError)                                     \
@@ -137,9 +129,10 @@ using TCritEventParams = TVector<std::pair<TStringBuf, TValue>>;
     xxx(InflightRequestInvariantViolation)                                     \
     xxx(SetupChannelsOnWrongMediaKindVolume)                                   \
     xxx(DiskRegistryDetachPathWithDependentDisk)                               \
-    xxx(OverlappingRequestsDetected)                                           \
-    xxx(AddFreshBlocksResultedInError)                                         \
     xxx(DiskDevicesSizeViolation)                                              \
+    xxx(RdmaMessageTypeMismatch)                                               \
+    xxx(BlockChecksumAbsent)                                                   \
+    xxx(CleanupBlobMetaBlocksMismatch)                                         \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

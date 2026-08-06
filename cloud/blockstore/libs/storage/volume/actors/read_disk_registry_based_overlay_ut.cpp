@@ -185,7 +185,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         auto request = NProto::TReadBlocksLocalRequest();
         request.SetStartIndex(0);
         request.SetBlocksCount(10);
-        request.BlockSize = blockSize;
+        request.SetBlockSize(blockSize);
         request.Sglist = TGuardedSgList(std::move(sglist));
 
         ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
@@ -375,7 +375,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         auto request = NProto::TReadBlocksLocalRequest();
         request.SetStartIndex(0);
         request.SetBlocksCount(10);
-        request.BlockSize = blockSize;
+        request.SetBlockSize(blockSize);
         request.Sglist = TGuardedSgList(std::move(sglist));
 
         ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
@@ -434,7 +434,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         auto request = NProto::TReadBlocksLocalRequest();
         request.SetStartIndex(0);
         request.SetBlocksCount(1);
-        request.BlockSize = blockSize;
+        request.SetBlockSize(blockSize);
         request.Sglist = TGuardedSgList(std::move(sglist));
 
         ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<

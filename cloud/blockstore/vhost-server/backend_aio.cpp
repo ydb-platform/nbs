@@ -3,11 +3,14 @@
 #include "backend.h"
 #include "request_aio.h"
 
-#include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <cloud/contrib/vhost/include/vhost/server.h>
 
 #include <util/stream/file.h>
 #include <util/system/sanitizers.h>
@@ -25,13 +28,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void CompleteRequest(
+void CompleteRequestImpl(
     TLog& log,
     IEncryptor* encryptor,
     TAioRequestHolder req,
     vhd_bdev_io_result status,
-    TSimpleStats& stats,
-    TCpuCycles now)
+    TAtomicStats& stats)
 {
     auto* bio = vhd_get_bdev_io(req->Io);
     const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
@@ -41,11 +43,6 @@ void CompleteRequest(
     requestStat.Count += status == VHD_BDEV_SUCCESS;
     requestStat.Bytes += bytes;
     requestStat.Unaligned += req->Unaligned;
-
-    if (status == VHD_BDEV_SUCCESS) {
-        stats.Times[bio->type].Increment(now - req->SubmitTs);
-        stats.Sizes[bio->type].Increment(bytes);
-    }
 
     if (req->BufferAllocated || encryptor) {
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
@@ -63,16 +60,23 @@ void CompleteRequest(
             }
         }
     }
+
+    const TCpuCycles now = GetCycleCount();
+
+    if (status == VHD_BDEV_SUCCESS) {
+        stats.Times[bio->type].Increment(now - req->SubmitTs);
+        stats.Sizes[bio->type].Increment(bytes);
+    }
+
     vhd_complete_bio(req->Io, status);
 }
 
-void CompleteCompoundRequest(
+void CompleteCompoundRequestImpl(
     TLog& log,
     IEncryptor* encryptor,
     TAioSubRequestHolder sub,
     vhd_bdev_io_result status,
-    TSimpleStats& stats,
-    TCpuCycles now)
+    TAtomicStats& stats)
 {
     auto* req = sub->GetParentRequest();
 
@@ -91,11 +95,6 @@ void CompleteCompoundRequest(
         requestStat.Count += 1;
         requestStat.Bytes += bytes;
 
-        if (status == VHD_BDEV_SUCCESS) {
-            stats.Times[bio->type].Increment(now - req->SubmitTs);
-            stats.Sizes[bio->type].Increment(bytes);
-        }
-
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
             TBlockDataRef data = req->GetData();
             NSan::Unpoison(data.data(), data.size());
@@ -110,6 +109,14 @@ void CompleteCompoundRequest(
                 stats.EncryptorErrors++;
             }
         }
+
+        const TCpuCycles now = GetCycleCount();
+
+        if (status == VHD_BDEV_SUCCESS) {
+            stats.Times[bio->type].Increment(now - req->SubmitTs);
+            stats.Sizes[bio->type].Increment(bytes);
+        }
+
         vhd_complete_bio(req->Io, status);
     }
 }
@@ -135,8 +142,13 @@ private:
 
     ICompletionStatsPtr CompletionStats;
 
+    ITaskQueuePtr ThreadPool;
+
 public:
-    TAioBackend(IEncryptorPtr encryptor, ILoggingServicePtr logging);
+    TAioBackend(
+        IEncryptorPtr encryptor,
+        ILoggingServicePtr logging,
+        ui64 threadPoolSize);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -158,6 +170,16 @@ private:
         TCpuCycles now,
         TSimpleStats& queueStats);
 
+    void CompleteCompoundRequest(
+        TAioSubRequestHolder sub,
+        vhd_bdev_io_result result,
+        TAtomicStats& stats);
+
+    void CompleteRequest(
+        TAioRequestHolder req,
+        vhd_bdev_io_result result,
+        TAtomicStats& stats);
+
     void CompletionThreadFunc();
 
     void IoSetup();
@@ -166,14 +188,17 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAioBackend::TAioBackend(
-        IEncryptorPtr encryptor,
-        ILoggingServicePtr logging)
+    IEncryptorPtr encryptor,
+    ILoggingServicePtr logging,
+    ui64 threadPoolSize)
     : Logging{std::move(logging)}
+    , Log(Logging->CreateLog("AIO"))
     , Encryptor(std::move(encryptor))
     , CompletionStats(CreateCompletionStats())
-{
-    Log = Logging->CreateLog("AIO");
-}
+    , ThreadPool(
+          threadPoolSize > 0 ? CreateThreadPool("ENCRYPTION", threadPoolSize)
+                             : nullptr)
+{}
 
 void TAioBackend::IoSetup()
 {
@@ -323,6 +348,10 @@ void TAioBackend::Start()
 {
     STORAGE_INFO("Starting AIO backend");
 
+    if (ThreadPool) {
+        ThreadPool->Start();
+    }
+
     CompletionThread = std::thread([this] { CompletionThreadFunc(); });
 }
 
@@ -332,6 +361,10 @@ void TAioBackend::Stop()
 
     pthread_kill(CompletionThread.native_handle(), SIGUSR2);
     CompletionThread.join();
+
+    if (ThreadPool) {
+        ThreadPool->Stop();
+    }
 
     io_destroy(Io);
     Devices.clear();
@@ -373,23 +406,25 @@ void TAioBackend::ProcessQueue(
 
             ++queueStats.SubFailed;
 
+            TAtomicStats stats;
+
             if (batch[0]->data) {
-                CompleteCompoundRequest(
+                CompleteCompoundRequestImpl(
                     Log,
                     Encryptor.get(),
                     TAioSubRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
-                    queueStats,
-                    now);
+                    stats);
             } else {
-                CompleteRequest(
+                CompleteRequestImpl(
                     Log,
                     Encryptor.get(),
                     TAioRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
-                    queueStats,
-                    now);
+                    stats);
             }
+
+            queueStats += stats;
 
             ret = 1;
         }
@@ -431,6 +466,68 @@ size_t TAioBackend::PrepareBatch(
     return batch.size() - initialSize;
 }
 
+void TAioBackend::CompleteCompoundRequest(
+    TAioSubRequestHolder sub,
+    vhd_bdev_io_result result,
+    TAtomicStats& stats)
+{
+    const bool needToPostOnAnotherThread =
+        Encryptor &&
+        vhd_get_bdev_io(sub->GetParentRequest()->Io)->type == VHD_BDEV_READ &&
+        result == VHD_BDEV_SUCCESS && ThreadPool;
+
+    auto completeCompoundRequest =
+        [this, sub = std::move(sub), result, &stats]() mutable
+    {
+        CompleteCompoundRequestImpl(
+            Log,
+            Encryptor.get(),
+            std::move(sub),
+            result,
+            stats);
+        stats.Completed += 1;
+    };
+
+    if (needToPostOnAnotherThread) {
+        ThreadPool->ExecuteSimple(std::move(completeCompoundRequest));
+    } else {
+        completeCompoundRequest();
+    }
+}
+
+void TAioBackend::CompleteRequest(
+    TAioRequestHolder req,
+    vhd_bdev_io_result result,
+    TAtomicStats& stats)
+{
+    auto* bio = vhd_get_bdev_io(req->Io);
+
+    const bool needToPostOnAnotherThread =
+        Encryptor && bio->type == VHD_BDEV_READ && result == VHD_BDEV_SUCCESS &&
+        ThreadPool;
+
+    auto completeRequest =
+        [this,
+         req = std::move(req),
+         result,
+         &stats]() mutable
+    {
+        CompleteRequestImpl(
+            Log,
+            Encryptor.get(),
+            std::move(req),
+            result,
+            stats);
+        stats.Completed += 1;
+    };
+
+    if (needToPostOnAnotherThread) {
+        ThreadPool->ExecuteSimple(std::move(completeRequest));
+    } else {
+        completeRequest();
+    }
+}
+
 void TAioBackend::CompletionThreadFunc()
 {
     NCloud::SetCurrentThreadName("AIO");
@@ -443,8 +540,11 @@ void TAioBackend::CompletionThreadFunc()
 
     TVector<io_event> events(BatchSize);
 
-    TSimpleStats stats;
+    TAtomicStats stats;
+
     timespec timeout{.tv_sec = 1, .tv_nsec = 0};
+
+    ui64 ioFinishedCount = 0;
 
     for (;;) {
         // TODO: try AIO_RING_MAGIC trick
@@ -465,7 +565,7 @@ void TAioBackend::CompletionThreadFunc()
             continue;
         }
 
-        const TCpuCycles now = GetCycleCount();
+        ioFinishedCount += ret;
 
         for (int i = 0; i != ret; ++i) {
             if (events[i].data) {
@@ -487,13 +587,7 @@ void TAioBackend::CompletionThreadFunc()
                         strerror(-events[i].res));
                 }
 
-                CompleteCompoundRequest(
-                    Log,
-                    Encryptor.get(),
-                    std::move(sub),
-                    result,
-                    stats,
-                    now);
+                CompleteCompoundRequest(std::move(sub), result, stats);
 
                 continue;
             }
@@ -519,16 +613,13 @@ void TAioBackend::CompletionThreadFunc()
                     strerror(-events[i].res));
             }
 
-            CompleteRequest(
-                Log,
-                Encryptor.get(),
-                std::move(req),
-                result,
-                stats,
-                now);
+            CompleteRequest(std::move(req), result, stats);
         }
+    }
 
-        stats.Completed += ret;
+    TSpinWait spinWait;
+    while (ioFinishedCount != stats.Completed.load()) {
+        spinWait.Sleep();
     }
 }
 
@@ -538,11 +629,13 @@ void TAioBackend::CompletionThreadFunc()
 
 IBackendPtr CreateAioBackend(
     IEncryptorPtr encryptor,
-    ILoggingServicePtr logging)
+    ILoggingServicePtr logging,
+    ui64 threadPoolSize)
 {
     return std::make_shared<TAioBackend>(
         std::move(encryptor),
-        std::move(logging));
+        std::move(logging),
+        threadPoolSize);
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

@@ -20,7 +20,8 @@ struct ITestVhostDevice
         EBlockStoreRequest type,
         ui64 from,
         ui64 length,
-        TSgList sgList) = 0;
+        TSgList sgList,
+        bool isDiscardRequest = false) = 0;
 
     virtual void DisableAutostop(bool disable) = 0;
 

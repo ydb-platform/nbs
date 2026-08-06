@@ -15,6 +15,7 @@ RECURSE_FOR_TESTS(
     close_to_open_consistency
     config_dispatcher
     directory_handles
+    dirtree
     endpoints
     fio
     fio_index
@@ -23,9 +24,11 @@ RECURSE_FOR_TESTS(
     fmdtest
     fs_posix_compliance
     guest_cache
+    lease_expiration
     loadtest
     profile_log
     registration
+    scheme_cache
     service
     xfs_suite
 )

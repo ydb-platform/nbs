@@ -14,10 +14,10 @@ build-fio --co --git-tag v6.0.0-rc4 [--deps]
 
 \# Upload fio to sandbox
 ```
-ya upload --ttl inf -a linux -d 'fio static build' fio-static.tgz
+ya upload --ttl inf -a linux -d 'fio static build' fio-static-<version>-<arch>.tgz
 ```
 
-Update resource id and list of files from 'tar --list -f fio-static.tgz' in
+Update resource id and list of files from 'tar --list -f fio-static-<version>-<arch>.tgz' in
 ```
 ./tools/testing/fio/bin/ya.make
 ```

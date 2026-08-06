@@ -60,6 +60,8 @@ private:
 public:
     explicit TLogbrokerConfig(NProto::TLogbrokerConfig config = {});
 
+    const NProto::TLogbrokerConfig* GetConfig() const;
+
     TString GetAddress() const;
     ui32 GetPort() const;
     TString GetDatabase() const;

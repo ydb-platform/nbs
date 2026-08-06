@@ -1,5 +1,7 @@
 #pragma once
 
+#include "flush_batch_limits.h"
+#include "flush_batch_write_request_counter.h"
 #include "write_data_request.h"
 
 #include <cloud/storage/core/libs/common/disjoint_interval_map.h>
@@ -40,7 +42,7 @@ class TNodeCache
 {
 public:
     using TCachedWriteDataRequestVisitor =
-        TFunctionRef<bool(const TCachedWriteDataRequest* request)>;
+        TFunctionRef<void(const TCachedWriteDataRequest* request)>;
 
 private:
     TDeque<std::unique_ptr<TPendingWriteDataRequest>> PendingRequests;
@@ -48,13 +50,28 @@ private:
     TDeque<std::unique_ptr<TCachedWriteDataRequest>> FlushedRequests;
     TDisjointIntervalMap<ui64, TCachedWriteDataRequest*> CachedData;
 
+    // Requests from UnflushedRequests grouped by flush batches
+    // Invariant: sum of values == UnflushedRequests.size()
+    TDeque<ui64> FlushBatchRequestCountQueue;
+    TFlushBatchWriteRequestCounter IncompleteFlushBatchWriteRequestCounter;
+
+    // Cached data extends the node size but until the data is flushed,
+    // the changes are not visible to the tablet. FileSystem requests that
+    // return node attributes or rely on it (GetAttr, Lookup, Read, ReadDir)
+    // should have the node size adjusted to these values.
+    ui64 MaxWrittenOffset = 0;
+
 public:
     void EnqueuePendingRequest(
         std::unique_ptr<TPendingWriteDataRequest> request);
 
     std::unique_ptr<TPendingWriteDataRequest> DequeuePendingRequest();
 
+    // Flush batches are built when adding requests to unflushed queue
+    // Note: flushBatchLimits are passed to the function to avoid storing them
+    // in TNodeCache
     void EnqueueUnflushedRequest(
+        const TFlushBatchLimits& flushBatchLimits,
         std::unique_ptr<TCachedWriteDataRequest> request);
 
     TCachedWriteDataRequest* MoveFrontUnflushedRequestToFlushed();
@@ -77,10 +94,24 @@ public:
     ui64 GetMinFlushedSequenceId() const;
     ui64 GetMaxFlushedSequenceId() const;
 
-    void VisitUnflushedRequests(TCachedWriteDataRequestVisitor visitor) const;
+    size_t GetExpectedFlushBatchCount() const;
 
-    TCachedData GetCachedData(ui64 offset, ui64 byteCount) const;
-    ui64 GetCachedDataEndOffset() const;
+    void VisitUnflushedRequestsFromFrontFlushBatch(
+        const TCachedWriteDataRequestVisitor& visitor);
+
+    TCachedData GetCachedData(
+        ui64 offset,
+        ui64 byteCount,
+        ui64 maxEvictableSequenceId) const;
+
+    ui64 GetMaxWrittenOffset() const;
+    void ResetMaxWrittenOffset();
+
+private:
+    void AddUnflushedRequestToFlushBatch(
+        const TFlushBatchLimits& flushBatchLimits,
+        ui64 begin,
+        ui64 end);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -61,7 +61,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         VFIODriverPath = PrepareDriver("vfio-pci");
 
         Devices = PrepareDevices();
-        UNIT_ASSERT_VALUES_EQUAL(3, Devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(4, Devices.size());
 
         for (const auto& device: Devices) {
             const TFsPath devicePath = GetPCIDevicePath(device);
@@ -74,6 +74,11 @@ struct TFixture: public NUnitTest::TBaseFixture
 
             const TFsPath groupPath = PrepareIOMMUGroup(device.GetIOMMUGroup());
             NFs::SymLink(groupPath, devicePath / "iommu_group");
+
+            if (device.HasNumaNode()) {
+                TFileOutput(devicePath / "numa_node")
+                    .Write(ToString(device.GetNumaNode()));
+            }
         }
 
         // NVME_0 bound to the nvme driver
@@ -89,6 +94,8 @@ struct TFixture: public NUnitTest::TBaseFixture
 
             TFileOutput(ctrlPath / "serial").Write(device.GetSerialNumber());
             TFileOutput(ctrlPath / "model").Write(device.GetModel());
+            TFileOutput(ctrlPath / "firmware_rev")
+                .Write(device.GetFirmwareRev());
         }
 
         // NVME_1 bound to the vfio-pci driver
@@ -96,6 +103,25 @@ struct TFixture: public NUnitTest::TBaseFixture
             const auto& device = Devices[1];
             const TFsPath devicePath = GetPCIDevicePath(device);
             NFs::SymLink(VFIODriverPath, devicePath / "driver");
+
+            const TFsPath vfioDeviceDir =
+                devicePath / "vfio-dev" / device.GetVfioDevName();
+            NFs::MakeDirectoryRecursive(vfioDeviceDir);
+            TFileOutput(vfioDeviceDir / "dev").Write("501:0");
+        }
+
+        // NVME_2 not bound to any driver, nothing to setup
+
+        // NVME_3 bound to the vfio-pci driver but doesn't have VFIO device
+        // (VFIO_DEVICE_CDEV not supported by kernel or disabled)
+        {
+            const auto& device = Devices[3];
+            const TFsPath devicePath = GetPCIDevicePath(device);
+            NFs::SymLink(VFIODriverPath, devicePath / "driver");
+
+            const TFsPath vfioDeviceDir =
+                devicePath / "vfio-dev" / device.GetVfioDevName();
+            NFs::MakeDirectoryRecursive(vfioDeviceDir);
         }
     }
 
@@ -128,14 +154,18 @@ struct TFixture: public NUnitTest::TBaseFixture
                 VendorId: 0x100
                 DeviceId: 0x200
                 Model: "Test NVMe 1"
+                NumaNode: 0
+                FirmwareRev: "FW4242"
             }
             Devices {
                 SerialNumber: "NVME_1"
                 PCIAddress: "0000:31:00.0"
                 IOMMUGroup: 20
+                VfioDevName: "vfio0"
                 VendorId: 0x300
                 DeviceId: 0x400
                 Model: "Test NVMe 2"
+                NumaNode: 1
             }
             Devices {
                 SerialNumber: "NVME_2"
@@ -144,6 +174,16 @@ struct TFixture: public NUnitTest::TBaseFixture
                 VendorId: 0x500
                 DeviceId: 0x600
                 Model: "Test NVMe 3"
+                NumaNode: 1
+            }
+            Devices {
+                SerialNumber: "NVME_3"
+                PCIAddress: "0000:34:00.0"
+                IOMMUGroup: 40
+                VendorId: 0x700
+                DeviceId: 0x800
+                Model: "Test NVMe 4"
+                NumaNode: 1
             }
         )",
             list);
@@ -306,6 +346,17 @@ Y_UNIT_TEST_SUITE(TSysFsHelpersTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 expected.GetDeviceId(),
                 device.GetDeviceId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected.GetVfioDevName(),
+                device.GetVfioDevName());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected.HasNumaNode(),
+                device.HasNumaNode());
+            if (expected.HasNumaNode()) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetNumaNode(),
+                    device.GetNumaNode());
+            }
         }
     }
 }

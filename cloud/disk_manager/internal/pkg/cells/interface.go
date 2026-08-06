@@ -36,6 +36,13 @@ type CellSelector interface {
 		agentIDs []string,
 	) (nbs.Client, error)
 
+	// Returns an nbs Client for the most suitable cell in the specified zone
+	// for a placement group. Folder-based filtering is not applied.
+	SelectCellForPlacementGroup(
+		ctx context.Context,
+		zoneID string,
+	) (nbs.Client, error)
+
 	// Returns an nfs Client for the most suitable cell in the specified zone.
 	// If the Cells mechanism is not enabled for this folder, returns an
 	// nfs Client for specified zone.
@@ -46,4 +53,9 @@ type CellSelector interface {
 	) (nfs.Client, error)
 
 	ZoneContainsCell(zoneID string, cellID string) bool
+
+	// Returns all cell IDs that belong to the given zone.
+	// If no cells config is set, returns []string{zoneID}.
+	// If zoneId is cell ID, returns []string{zoneID}.
+	ResolveCells(zoneID string) ([]string, error)
 }

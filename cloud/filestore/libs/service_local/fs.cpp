@@ -37,7 +37,7 @@ TLocalFileSystem::TLocalFileSystem(
 NProto::TGetFileStoreInfoResponse TLocalFileSystem::GetFileStoreInfo(
     const NProto::TGetFileStoreInfoRequest& request)
 {
-    STORAGE_TRACE("GetFileStoreInfo " << DumpMessage(request));
+    STORAGE_TRACE("GetFileStoreInfo " << ProtoMessagePrinter.ToString(request));
 
     NProto::TGetFileStoreInfoResponse response;
     response.MutableFileStore()->CopyFrom(Store);
@@ -48,7 +48,7 @@ NProto::TGetFileStoreInfoResponse TLocalFileSystem::GetFileStoreInfo(
 NProto::TStatFileStoreResponse TLocalFileSystem::StatFileStore(
     const NProto::TStatFileStoreRequest& request)
 {
-    STORAGE_TRACE("StatFileStore " << DumpMessage(request));
+    STORAGE_TRACE("StatFileStore " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
     auto node = session->LookupNode(RootNodeId);
@@ -76,7 +76,7 @@ NProto::TStatFileStoreResponse TLocalFileSystem::StatFileStore(
 NProto::TCreateCheckpointResponse TLocalFileSystem::CreateCheckpoint(
     const NProto::TCreateCheckpointRequest& request)
 {
-    STORAGE_TRACE("CreateCheckpoint " << DumpMessage(request));
+    STORAGE_TRACE("CreateCheckpoint " << ProtoMessagePrinter.ToString(request));
 
     // TODO
     return {};
@@ -85,7 +85,8 @@ NProto::TCreateCheckpointResponse TLocalFileSystem::CreateCheckpoint(
 NProto::TDestroyCheckpointResponse TLocalFileSystem::DestroyCheckpoint(
     const NProto::TDestroyCheckpointRequest& request)
 {
-    STORAGE_TRACE("DestroyCheckpoint " << DumpMessage(request));
+    STORAGE_TRACE(
+        "DestroyCheckpoint " << ProtoMessagePrinter.ToString(request));
 
     // TODO
     return {};

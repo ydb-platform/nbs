@@ -28,7 +28,8 @@ struct IAuthProvider
         TCallContextPtr callContext,
         TPermissionList permissions,
         TString authToken,
-        TDuration requestTimeout) = 0;
+        TDuration requestTimeout,
+        TString peer) = 0;
 };
 
 }   // namespace NCloud::NFileStore

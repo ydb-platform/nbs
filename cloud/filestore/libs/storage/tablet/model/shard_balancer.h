@@ -15,8 +15,10 @@ namespace NCloud::NFileStore::NStorage {
 
 struct TShardStats
 {
+    TString ShardId;
     ui64 TotalBlocksCount = 0;
     ui64 UsedBlocksCount = 0;
+    ui64 UsedNodesCount = 0;
     ui64 CurrentLoad = 0;
     ui64 Suffer = 0;
 };
@@ -24,20 +26,6 @@ struct TShardStats
 ////////////////////////////////////////////////////////////////////////////////
 
 class IShardBalancer
-{
-public:
-    virtual ~IShardBalancer() = default;
-
-    virtual void Update(
-        const TVector<TShardStats>& stats,
-        std::optional<ui64> desiredFreeSpaceReserve,
-        std::optional<ui64> minFreeSpaceReserve) = 0;
-    virtual NProto::TError SelectShard(ui64 fileSize, TString* shardId) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TShardBalancerBase: public IShardBalancer
 {
 public:
     struct TShardMeta
@@ -51,20 +39,51 @@ public:
         {}
     };
 
+    virtual ~IShardBalancer() = default;
+
+    virtual NProto::TError Update(
+        const TVector<TShardStats>& stats,
+        std::optional<ui64> desiredFreeSpaceReserve,
+        std::optional<ui64> minFreeSpaceReserve) = 0;
+    virtual NProto::TError SelectShard(ui64 fileSize, TString* shardId) = 0;
+
+    NProto::TError Update(const TVector<TShardStats>& stats)
+    {
+        return Update(stats, {}, {});
+    }
+
+    /**
+     * @brief Builds and returns the shard list ordered from best to worst.
+     *
+     * This method builds a new vector with TShardStats so it's not supposed to
+     * be used often because it's expensive. The main intended use case is
+     * introspection - log this info with debug loglevel or show it on monpages.
+     *
+     * @return The list of shard TShardStats.
+     */
+    [[nodiscard]] virtual TVector<TShardStats> MakeOrderedShardList() const = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TShardBalancerBase: public IShardBalancer
+{
+public:
     TShardBalancerBase(
         ui32 blockSize,
+        ui64 precisionBytes,
         ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds);
 
 private:
-    const ui32 BlockSize = 4_KB;
+    const ui32 BlockSize;
+    const ui64 PrecisionBytes;
     ui64 DesiredFreeSpaceReserve = 0;
     ui64 MinFreeSpaceReserve = 0;
 
 protected:
-    TVector<TString> Ids;
     TVector<TShardMeta> Metas;
 
     /**
@@ -77,17 +96,21 @@ protected:
      * `MinFreeSpaceReserve`.
      *
      * @param fileSize The size of the file to fit.
-     * @return The number of shards that can fit the file size, or
-     * `std::nullopt` if no shard can fit the file size.
+     * @return The number of shards that can fit the file size, zero if no shard
+     * can fit the file size.
      */
-    [[nodiscard]] std::optional<size_t> FindUpperBoundAmongAllShardsToFitFile(
+    [[nodiscard]] size_t FindUpperBoundAmongAllShardsToFitFile(
         ui64 fileSize) const;
 
 public:
-    void Update(
+    using IShardBalancer::Update;
+
+    NProto::TError Update(
         const TVector<TShardStats>& stats,
-        std::optional<ui64> desiredFreeSpaceReserve = {},
-        std::optional<ui64> minFreeSpaceReserve = {}) override;
+        std::optional<ui64> desiredFreeSpaceReserve,
+        std::optional<ui64> minFreeSpaceReserve) override;
+
+    [[nodiscard]] TVector<TShardStats> MakeOrderedShardList() const override;
 };
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -99,10 +122,6 @@ private:
 
 public:
     using TShardBalancerBase::TShardBalancerBase;
-    void Update(
-        const TVector<TShardStats>& stats,
-        std::optional<ui64> desiredFreeSpaceReserve = {},
-        std::optional<ui64> minFreeSpaceReserve = {}) final;
     NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
 };
 
@@ -131,14 +150,20 @@ private:
 public:
     TShardBalancerWeightedRandom(
         ui32 blockSize,
+        ui64 precisionBytes,
         ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds);
-    void Update(
+
+public:
+    using IShardBalancer::Update;
+
+    NProto::TError Update(
         const TVector<TShardStats>& stats,
-        std::optional<ui64> desiredFreeSpaceReserve = {},
-        std::optional<ui64> minFreeSpaceReserve = {}) final;
+        std::optional<ui64> desiredFreeSpaceReserve,
+        std::optional<ui64> minFreeSpaceReserve) final;
+
     NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
 };
 
@@ -147,6 +172,7 @@ public:
 IShardBalancerPtr CreateShardBalancer(
     NProto::EShardBalancerPolicy policy,
     ui32 blockSize,
+    ui64 precisionBytes,
     ui32 maxFileBlocks,
     ui64 desiredFreeSpaceReserve,
     ui64 minFreeSpaceReserve,

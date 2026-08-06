@@ -10,6 +10,7 @@ SRCS(
     describe.cpp
     destroy.cpp
     destroy_session.cpp
+    diagnose_filesystem.cpp
     diff.cpp
     execute_action.cpp
     factory.cpp
@@ -28,6 +29,7 @@ SRCS(
     performance_profile_params.cpp
     ping.cpp
     read.cpp
+    readlink.cpp
     remove_cluster_node.cpp
     reset_session.cpp
     resize.cpp

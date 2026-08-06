@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -39,7 +40,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(Truncate,                               __VA_ARGS__)                   \
     xxx(ReadBlob,                               __VA_ARGS__)                   \
     xxx(WriteBlob,                              __VA_ARGS__)                   \
-    xxx(WriteBatch,                             __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, ...)                       \
@@ -58,12 +58,19 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CompleteUnlinkNode,                     __VA_ARGS__)                   \
     xxx(DeleteOpLogEntry,                       __VA_ARGS__)                   \
     xxx(GetOpLogEntry,                          __VA_ARGS__)                   \
+    xxx(ListOpLogEntries,                       __VA_ARGS__)                   \
     xxx(WriteOpLogEntry,                        __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
     FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(xxx, __VA_ARGS__)                  \
     FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx,  __VA_ARGS__)                  \
+// FILESTORE_TABLET_REQUESTS_PRIVATE
+
+#define FILESTORE_TABLET_ADAPTER_REQUESTS_PRIVATE(xxx, ...)                    \
+    xxx(SyncSessions,                           __VA_ARGS__)                   \
+    xxx(CleanupSessions,                        __VA_ARGS__)                   \
+    xxx(SyncShardSessions,                      __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_DECLARE_PRIVATE_EVENT_IDS(name, ...)                         \
@@ -144,7 +151,6 @@ enum class EAddBlobMode
 {
     Write,
     WriteUnconfirmed,
-    WriteBatch,
     Flush,
     FlushBytes,
     Compaction,
@@ -248,19 +254,6 @@ struct TEvIndexTabletPrivate
     };
 
     using TCleanupSessionsCompleted = TEmpty;
-
-    //
-    // WriteBatch
-    //
-    struct TWriteBatchRequest
-    {
-    };
-
-    struct TWriteBatchResponse
-    {
-    };
-
-    using TWriteBatchCompleted = TIndexOperationCompleted;
 
     //
     // ReadBlob
@@ -657,6 +650,9 @@ struct TEvIndexTabletPrivate
         const TString NodeName;
         TCreateNodeInShardResult Result;
         NProto::TProfileLogRequestInfo ProfileLogRequest;
+        const bool NodeAlreadyExists;
+        const ui32 CreateNodeRetryCount;
+        const TNodeRefKey OriginalNodeRefKey;
 
         TNodeCreatedInShard(
                 TRequestInfoPtr requestInfo,
@@ -665,7 +661,10 @@ struct TEvIndexTabletPrivate
                 ui64 opLogEntryId,
                 TString nodeName,
                 TCreateNodeInShardResult result,
-                NProto::TProfileLogRequestInfo profileLogRequest)
+                NProto::TProfileLogRequestInfo profileLogRequest,
+                bool nodeAlreadyExists,
+                ui32 createNodeRetryCount,
+                TNodeRefKey originalNodeRefKey)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
@@ -673,6 +672,9 @@ struct TEvIndexTabletPrivate
             , NodeName(std::move(nodeName))
             , Result(std::move(result))
             , ProfileLogRequest(std::move(profileLogRequest))
+            , NodeAlreadyExists(nodeAlreadyExists)
+            , CreateNodeRetryCount(createNodeRetryCount)
+            , OriginalNodeRefKey(std::move(originalNodeRefKey))
         {
         }
     };
@@ -937,6 +939,21 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // ListOpLogEntries
+    //
+    // NOTE: This event is not supposed to be sent outside of unit tests.
+    //
+
+    struct TListOpLogEntriesRequest
+    {
+    };
+
+    struct TListOpLogEntriesResponse
+    {
+        TVector<NProto::TOpLogEntry> OpLogEntries;
+    };
+
+    //
     // WriteOpLogEntry
     //
 
@@ -1139,6 +1156,19 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // Cancel unconfirmed data
+    //
+
+    struct TCancelUnconfirmedData
+    {
+        ui64 CommitId;
+
+        explicit TCancelUnconfirmedData(ui64 commitId)
+            : CommitId(commitId)
+        {}
+    };
+
+    //
     // Generate commit id
     //
 
@@ -1156,7 +1186,6 @@ struct TEvIndexTabletPrivate
     struct TAggregateStatsCompleted
     {
         NProtoPrivate::TStorageStats AggregateStats;
-        TVector<TShardStats> ShardStats;
         TInstant StartedTs;
         bool IsBackgroundRequest = false;
     };
@@ -1199,6 +1228,7 @@ struct TEvIndexTabletPrivate
         EvAddDataCompleted,
 
         EvReleaseCollectBarrier,
+        EvCancelUnconfirmedData,
 
         EvForcedRangeOperationProgress,
 
@@ -1238,6 +1268,9 @@ struct TEvIndexTabletPrivate
 
     using TEvReleaseCollectBarrier =
         TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
+    using TEvCancelUnconfirmedData = TRequestEvent<
+        TCancelUnconfirmedData,
+        EvCancelUnconfirmedData>;
 
     using TEvReadDataCompleted =
         TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;

@@ -1,5 +1,6 @@
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
 #include <google/protobuf/util/message_differencer.h>
@@ -7,6 +8,8 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
+
+#include <util/generic/size_literals.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -327,6 +330,45 @@ Y_UNIT_TEST_SUITE(THelpers)
         UNIT_ASSERT_VALUES_EQUAL(
             TargetThrottlerConfig.DefaultThresholds.MaxWriteCostMultiplier,
             config.DefaultThresholds.MaxWriteCostMultiplier);
+    }
+
+    Y_UNIT_TEST(ShouldApplySoftBackpressureParameters)
+    {
+        NProto::TStorageConfig protoConfig;
+        protoConfig.SetSoftBackpressureMaxWriteBandwidth(7);
+        protoConfig.SetSoftBackpressureMaxReadBandwidth(13);
+        protoConfig.SetSoftBackpressureMaxWriteIops(17);
+        protoConfig.SetSoftBackpressureMaxReadIops(19);
+
+        TDefaultParameters parameters;
+        ApplySoftBackpressureParameters(TStorageConfig(protoConfig), parameters);
+
+        UNIT_ASSERT_VALUES_EQUAL(7_MB, parameters.MaxWriteBandwidth);
+        UNIT_ASSERT_VALUES_EQUAL(13_MB, parameters.MaxReadBandwidth);
+        UNIT_ASSERT_VALUES_EQUAL(17, parameters.MaxWriteIops);
+        UNIT_ASSERT_VALUES_EQUAL(19, parameters.MaxReadIops);
+    }
+
+    Y_UNIT_TEST(ShouldNotApplyZeroSoftBackpressureParameters)
+    {
+        NProto::TStorageConfig protoConfig;
+        protoConfig.SetSoftBackpressureMaxWriteBandwidth(0);
+        protoConfig.SetSoftBackpressureMaxReadBandwidth(0);
+        protoConfig.SetSoftBackpressureMaxWriteIops(0);
+        protoConfig.SetSoftBackpressureMaxReadIops(0);
+
+        TDefaultParameters parameters;
+        parameters.MaxWriteBandwidth = 101;
+        parameters.MaxReadBandwidth = 102;
+        parameters.MaxWriteIops = 103;
+        parameters.MaxReadIops = 104;
+
+        ApplySoftBackpressureParameters(TStorageConfig(protoConfig), parameters);
+
+        UNIT_ASSERT_VALUES_EQUAL(101, parameters.MaxWriteBandwidth);
+        UNIT_ASSERT_VALUES_EQUAL(102, parameters.MaxReadBandwidth);
+        UNIT_ASSERT_VALUES_EQUAL(103, parameters.MaxWriteIops);
+        UNIT_ASSERT_VALUES_EQUAL(104, parameters.MaxReadIops);
     }
 }
 

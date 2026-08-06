@@ -100,6 +100,11 @@ TLogbrokerConfig::TLogbrokerConfig(
     : Config(std::move(config))
 {}
 
+const NProto::TLogbrokerConfig* TLogbrokerConfig::GetConfig() const
+{
+    return &Config;
+}
+
 TAuthConfig TLogbrokerConfig::GetAuthConfig() const
 {
     if (GetMetadataServerAddress()) {

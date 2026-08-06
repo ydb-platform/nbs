@@ -1,6 +1,7 @@
 #include <cloud/filestore/libs/client/session.h>
 
 #include <cloud/filestore/libs/client/config.h>
+#include <cloud/filestore/libs/client/durable.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -38,37 +39,52 @@ constexpr TDuration PingTimeout = TDuration::Seconds(1);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <bool Durable>
 struct TSessionSetup
 {
     ILoggingServicePtr Logging;
-    ITimerPtr Timer;
     std::shared_ptr<TTestScheduler> Scheduler;
-    std::shared_ptr<TFileStoreTest> FileStore;
     ISessionPtr Session;
 
     TSessionSetup()
     {
+        auto timer = CreateWallClockTimer();
+
         Logging = CreateLoggingService("console", { TLOG_RESOURCES });
-        Timer = CreateWallClockTimer();
         Scheduler = std::make_shared<TTestScheduler>();
 
-        FileStore = std::make_shared<TFileStoreTest>();
+        auto fileStore = std::make_shared<TFileStoreTest>();
 
-        FileStore->ReadDataHandler = [] (auto, auto) {
+        fileStore->ReadDataHandler = [] (auto, auto) {
             NProto::TReadDataResponse response;
             return MakeFuture(response);
         };
 
-        FileStore->WriteDataHandler = [] (auto, auto) {
+        fileStore->WriteDataHandler = [] (auto, auto) {
             NProto::TWriteDataResponse response;
             return MakeFuture(response);
         };
 
+        IFileStoreServicePtr client = fileStore;
+
+        if constexpr (Durable) {
+            NProto::TClientConfig clientConfigProto;
+            auto clientConfig = std::make_shared<NClient::TClientConfig>(
+                clientConfigProto);
+            auto retryPolicy = CreateRetryPolicy(std::move(clientConfig));
+            client = CreateDurableClient(
+                Logging,
+                timer,
+                Scheduler,
+                std::move(retryPolicy),
+                client);
+        }
+
         Session = CreateSession(
             Logging,
-            Timer,
+            timer,
             Scheduler,
-            FileStore,
+            std::move(client),
             CreateSessionConfig());
     }
 
@@ -124,21 +140,22 @@ struct TSessionSetup
     }
 };
 
-TSessionSetup* GetOrCreateSession()
+template <bool Durable>
+TSessionSetup<Durable>* GetOrCreateSession()
 {
-    return Singleton<TSessionSetup>();
+    return Singleton<TSessionSetup<Durable>>();
 }
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define SESSION_BENCH(method, threadCount)                                     \
-    Y_CPU_BENCHMARK(TSession##_##method##_##threadCount, iface)                \
+#define SESSION_BENCH(method, threadCount, durable)                            \
+    Y_CPU_BENCHMARK(TSession_##method##_##threadCount##_Durable_##durable, iface) \
     {                                                                          \
         auto iters = iface.Iterations();                                       \
                                                                                \
-        auto* session = GetOrCreateSession();                                  \
+        auto* session = GetOrCreateSession<durable>();                         \
                                                                                \
         std::atomic<ui32> counter;                                             \
         std::latch latch{threadCount + 1};                                     \
@@ -170,15 +187,17 @@ TSessionSetup* GetOrCreateSession()
     }                                                                          \
 // SESSION_BENCH
 
-#define SESSION_BENCH_SET(method)                                              \
-    SESSION_BENCH(method, 1)                                                   \
-    SESSION_BENCH(method, 2)                                                   \
-    SESSION_BENCH(method, 4)                                                   \
-    SESSION_BENCH(method, 8)                                                   \
-    SESSION_BENCH(method, 16)                                                  \
+#define SESSION_BENCH_SET(method, durable)                                     \
+    SESSION_BENCH(method, 1, durable)                                          \
+    SESSION_BENCH(method, 2, durable)                                          \
+    SESSION_BENCH(method, 4, durable)                                          \
+    SESSION_BENCH(method, 8, durable)                                          \
+    SESSION_BENCH(method, 16, durable)                                         \
 // SESSION_BENCH_SET
 
-SESSION_BENCH_SET(ReadData)
-SESSION_BENCH_SET(WriteData)
+SESSION_BENCH_SET(ReadData,  false /* durable */)
+SESSION_BENCH_SET(ReadData,  true  /* durable */)
+SESSION_BENCH_SET(WriteData, false /* durable */)
+SESSION_BENCH_SET(WriteData, true  /* durable */)
 
 }   // namespace NCloud::NFileStore::NClient

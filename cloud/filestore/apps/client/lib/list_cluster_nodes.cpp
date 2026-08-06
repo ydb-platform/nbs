@@ -30,7 +30,7 @@ public:
             response.PrintJSON(Cout);
         } else {
             for (const auto& node: response.GetNodes()) {
-                Cout << DumpMessage(node) << Endl;
+                Cout << ProtoMessagePrinter.ToString(node) << Endl;
             }
         }
 

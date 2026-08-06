@@ -75,7 +75,7 @@ void TFileSystem::SetAttr(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
-    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
     auto callback = [=, ptr = weak_from_this()](const auto& future)
     {
@@ -100,45 +100,13 @@ void TFileSystem::SetAttr(
         }
     };
 
-    const bool shouldSetSize =
-        (request->GetFlags() &
-         ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) != 0;
-
-    if (!shouldSetSize || !WriteBackCache) {
+    if (WriteBackCache) {
+        WriteBackCache.SetNodeAttr(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+    } else {
         Session->SetNodeAttr(callContext, std::move(request))
             .Subscribe(std::move(callback));
-        return;
     }
-
-    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
-
-    flushFuture.Subscribe(
-        [ptr = weak_from_this(),
-         callContext = std::move(callContext),
-         callback = std::move(callback),
-         request = std::move(request)](const auto& future) mutable
-        {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
-
-            // Propagate Flush error to SetAttr response
-            const NProto::TError& flushResult = future.GetValue();
-            if (HasError(flushResult)) {
-                NProto::TSetNodeAttrResponse response;
-                *response.MutableError() = flushResult;
-                callback(NThreading::MakeFuture(std::move(response)));
-                return;
-            }
-
-            self->WriteBackCache.SetCachedNodeSize(
-                request->GetNodeId(),
-                request->GetUpdate().GetSize());
-
-            self->Session->SetNodeAttr(callContext, std::move(request))
-                .Subscribe(std::move(callback));
-        });
 }
 
 void TFileSystem::GetAttr(
@@ -156,20 +124,21 @@ void TFileSystem::GetAttr(
     auto request = StartRequest<NProto::TGetNodeAttrRequest>(ino);
 
     // Take into account cached WriteData requests
-    const auto cachedNodeSize =
-        WriteBackCache ? WriteBackCache.GetCachedNodeSize(ino) : 0;
+    const auto maxWrittenOffset =
+        WriteBackCache ? WriteBackCache.GetMaxWrittenOffset(ino) : 0;
 
-    const ui64 version = GlobalAttrVersion.load(std::memory_order_acquire);
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe(
             [=, ptr = weak_from_this()](auto future)
             {
-                NProto::TGetNodeAttrResponse response = future.ExtractValue();
+                NProto::TGetNodeAttrResponse response =
+                    UnsafeExtractValue(future);
                 auto self = ptr.lock();
                 if (CheckResponse(self, *callContext, req, response)) {
                     auto* attr = response.MutableNode();
-                    attr->SetSize(Max(attr->GetSize(), cachedNodeSize));
+                    attr->SetSize(Max(attr->GetSize(), maxWrittenOffset));
                     self->ReplyAttrWithCache(
                         *callContext,
                         response.GetError(),

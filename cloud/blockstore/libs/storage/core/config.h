@@ -79,6 +79,7 @@ public:
     [[nodiscard]] NProto::TStorageServiceConfig GetStorageConfigProto() const;
 
     TString GetSchemeShardDir() const;
+    [[nodiscard]] ui32 GetListVolumesConcurrency() const;
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;
     [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;
@@ -91,6 +92,7 @@ public:
     NProto::ECompactionType GetSSDCompactionType() const;
     NProto::ECompactionType GetHDDCompactionType() const;
     bool GetV1GarbageCompactionEnabled() const;
+    bool GetIgnoringZeroedCompactionEnabled() const;
     ui32 GetCompactionGarbageThreshold() const;
     ui32 GetCompactionGarbageBlobLimit() const;
     ui32 GetCompactionGarbageBlockLimit() const;
@@ -99,10 +101,16 @@ public:
     TDuration GetMaxCompactionDelay() const;
     TDuration GetMinCompactionDelay() const;
     TDuration GetMaxCompactionExecTimePerSecond() const;
+    TDuration GetMaxCompactionExecTimePerSecondForZeroed() const;
+    TDuration GetMinGarbageCompactionExecTimePerSecond() const;
     ui32 GetCompactionScoreHistorySize() const;
     ui32 GetCompactionScoreLimitForThrottling() const;
+    bool GetEnableDynamicGarbageCompactionThrottling() const;
+    ui32 GetThrottleGarbageCompactionBelowFillPercentage() const;
+    ui32 GetStopGarbageCompactionThrottlingAboveFillPercentage() const;
     ui64 GetTargetCompactionBytesPerOp() const;
-    ui32 GetMaxSkippedBlobsDuringCompaction() const;
+    [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompaction() const;
+    [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompactionHDD() const;
     bool GetIncrementalCompactionEnabled() const;
     ui32 GetCompactionCountPerRunIncreasingThreshold() const;
     ui32 GetCompactionCountPerRunDecreasingThreshold() const;
@@ -165,6 +173,14 @@ public:
     ui32 GetSSDUnitWriteIops() const;
     ui32 GetSSDMaxReadIops() const;
     ui32 GetSSDMaxWriteIops() const;
+    ui32 GetSystemSSDUnitReadBandwidth() const;
+    ui32 GetSystemSSDUnitWriteBandwidth() const;
+    ui32 GetSystemSSDMaxReadBandwidth() const;
+    ui32 GetSystemSSDMaxWriteBandwidth() const;
+    ui32 GetSystemSSDUnitReadIops() const;
+    ui32 GetSystemSSDUnitWriteIops() const;
+    ui32 GetSystemSSDMaxReadIops() const;
+    ui32 GetSystemSSDMaxWriteIops() const;
     ui32 GetRealSSDUnitReadIops() const;
     ui32 GetRealSSDUnitWriteIops() const;
     ui32 GetSSDMaxBlobsPerRange() const;
@@ -396,6 +412,46 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsEnableVhostDiscardOnVolumeRestartFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsFreshBlocksWriterFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsReadBlockMaskOnCompactionOptimizationFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsSplitCompactionTxFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsVerifyRecreatedBlobMetasOnCleanupFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsUseRecreatedBlobMetasOnCleanupFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsMixedBlocksFilterFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -457,6 +513,7 @@ public:
     TDuration GetDeletedCheckpointHistoryLifetime() const;
     bool GetNonReplicatedMigrationStartAllowed() const;
     bool GetNonReplicatedVolumeMigrationDisabled() const;
+    [[nodiscard]] bool GetVolumeHealthNotificationEnabled() const;
     ui32 GetMigrationIndexCachingInterval() const;
     ui32 GetMaxMigrationBandwidth() const;
     ui32 GetMaxMigrationIoDepth() const;
@@ -530,6 +587,7 @@ public:
 
     TDuration GetNonReplicatedVolumeNotificationTimeout() const;
 
+    TDuration GetCoolDownTimeoutBeforeSecureErase() const;
     TDuration GetNonReplicatedSecureEraseTimeout() const;
     ui32 GetMaxDevicesToErasePerDeviceNameForDefaultPoolKind() const;
     ui32 GetMaxDevicesToErasePerDeviceNameForLocalPoolKind() const;
@@ -763,9 +821,13 @@ public:
 
     [[nodiscard]] bool GetEnableVhostDiscardForNewVolumes() const;
 
+    [[nodiscard]] bool GetEnableVhostDiscardOnVolumeRestart() const;
+
     [[nodiscard]] ui32 GetTabletExecutorRejectionThreshold() const;
 
     [[nodiscard]] TDuration GetVolumeProxyPipeInactivityTimeout() const;
+
+    [[nodiscard]] bool GetBaseDiskPipeKeepAliveEnabled() const;
 
     [[nodiscard]] bool GetFreshChannelZeroRequestsEnabled() const;
 
@@ -775,17 +837,41 @@ public:
 
     [[nodiscard]] bool GetSendErrorOnAddClientConflict() const;
 
+    [[nodiscard]] NProto::TShapingThrottlerConfig GetShapingThrottlerConfig() const;
+
     [[nodiscard]] bool GetFreshBlocksWriterEnabled() const;
 
     [[nodiscard]] ui64 GetMaxInflightAttachDetachPathRequestsProcessing() const;
+    [[nodiscard]] ui32 GetMaxInFlightCmsRequests() const;
 
     [[nodiscard]] NProto::EOverlappingRequestsPolicy
     GetOverlappingRequestsPolicy() const;
+
+    [[nodiscard]] NProto::ERequestSplitterPolicy
+    GetRequestSplitterPolicy() const;
 
     [[nodiscard]] TPoolKindToMediaKindMapping
     GetPoolKindToMediaKindMapping() const;
 
     [[nodiscard]] ui64 GetVolumeBalancerMaxInProgress() const;
+
+    [[nodiscard]] bool GetReadBlockMaskOnCompactionOptimizationEnabled() const;
+
+    [[nodiscard]] bool GetSplitCompactionTxEnabled() const;
+
+    [[nodiscard]] bool GetVolumeBalancerGentlePreemptionEnabled() const;
+
+    [[nodiscard]] TDuration GetVolumeBalancerGentlePreemptionTimeout() const;
+
+    [[nodiscard]] ui64 GetSplitByCompactionRangeMaxBlobCount() const;
+
+    [[nodiscard]] bool GetVerifyRecreatedBlobMetasOnCleanup() const;
+
+    [[nodiscard]] bool GetUseRecreatedBlobMetasOnCleanup() const;
+
+    [[nodiscard]] bool GetAllowGentlePreemptionForRebindVolumesAction() const;
+
+    [[nodiscard]] bool GetMixedBlocksFilterEnabled() const;
 };
 
 ui64 GetAllocationUnit(

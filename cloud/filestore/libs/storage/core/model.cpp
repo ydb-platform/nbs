@@ -5,7 +5,7 @@
 
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <util/string/printf.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -470,18 +470,19 @@ void SetupFileStorePerformanceAndChannels(
     OverrideStorageMediaKind(config, fileStore);
 
 #define SETUP_PARAMETER_SIMPLE(name, ...)                                      \
-    fileStore.SetPerformanceProfile##name(                                     \
-        clientProfile.Get##name()                                              \
-            ? clientProfile.Get##name()                                        \
-            : name(config, fileStore));                                        \
-// SETUP_PARAMETER_AU
+    if (clientProfile.Has##name()) {                                           \
+        fileStore.SetPerformanceProfile##name(clientProfile.Get##name());      \
+    } else if (!fileStore.HasPerformanceProfile##name()) {                     \
+        fileStore.SetPerformanceProfile##name(name(config, fileStore));        \
+    };                                                                         \
+// SETUP_PARAMETER_SIMPLE
 
 #define SETUP_PARAMETER_AU(name, ...)                                          \
     fileStore.SetPerformanceProfile##name(                                     \
         clientProfile.Get##name()                                              \
             ? clientProfile.Get##name()                                        \
             : name(config, fileStore, allocationUnitCount));                   \
-// SETUP_PARAMETER_SIMPLE
+// SETUP_PARAMETER_AU
 
     PERFORMANCE_PROFILE_PARAMETERS_SIMPLE(SETUP_PARAMETER_SIMPLE);
     PERFORMANCE_PROFILE_PARAMETERS_AU(SETUP_PARAMETER_AU);
@@ -504,17 +505,18 @@ ui32 ComputeShardCount(
     const ui64 blocksCount,
     const ui32 blockSize,
     const ui64 shardAllocationUnit,
+    const ui32 minShardCount,
     const ui32 maxShardCount)
 {
     const double fileStoreSize = blocksCount * blockSize;
 
-    if (fileStoreSize < shardAllocationUnit) {
+    if (!minShardCount && fileStoreSize < shardAllocationUnit) {
         // No need in using sharding for small enough filesystems
         return 0;
     }
 
     const ui32 shardCount = std::ceil(fileStoreSize / shardAllocationUnit);
-    return Min(shardCount, maxShardCount);
+    return Min(Max(shardCount, minShardCount), maxShardCount);
 }
 
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
@@ -537,6 +539,7 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
             fileStore.GetBlocksCount(),
             fileStore.GetBlockSize(),
             config.GetShardAllocationUnit(),
+            config.GetMinShardCount(),
             config.GetMaxShardCount());
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {
@@ -549,7 +552,8 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
                       fileStore.GetBlockSize();
         result.ShardConfigs[i].SetBlocksCount(shardBlockCount);
         result.ShardConfigs[i].SetFileSystemId(
-            Sprintf("%s_s%u", fileStore.GetFileSystemId().c_str(), i + 1));
+            TStringBuilder()
+            << fileStore.GetFileSystemId() << ShardNumPrefix << i + 1);
         SetupFileStorePerformanceAndChannels(
             false, // allocateMixed0Channel
             config,
@@ -559,6 +563,26 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     }
 
     return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError ValidateFilesystemId(const TString& fsId)
+{
+    if (IsFilesystemIdEncoded(fsId)) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Characters from "
+                << TString(MinShardIdEncodingVersion).Quote() << " to "
+                << TString(MaxShardIdEncodingVersion).Quote()
+                << " are reserved."
+                << " A filesystem ID can't start with a reserved character. "
+                   "File system identifier: "
+                << fsId.Quote());
+    }
+
+    return {};
 }
 
 }   // namespace NCloud::NFileStore::NStorage

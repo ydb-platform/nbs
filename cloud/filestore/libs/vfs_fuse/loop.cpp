@@ -1,10 +1,10 @@
 #include "loop.h"
 
 #include "config.h"
+#include "directory_handle_storage.h"
 #include "fs.h"
 #include "fuse.h"
 #include "handle_ops_queue.h"
-#include "directory_handles_storage.h"
 #include "log.h"
 
 #include <cloud/filestore/libs/client/session.h>
@@ -28,13 +28,12 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/threading/atomic/bool.h>
-
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
 #include <util/generic/bitops.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
+#include <util/system/event.h>
 #include "util/system/file_lock.h"
 #include <util/system/fs.h>
 #include <util/system/info.h>
@@ -43,9 +42,11 @@
 #include <util/system/thread.h>
 #include <util/thread/factory.h>
 
-#include <algorithm>
-#include <cerrno>
 #include <pthread.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -61,7 +62,7 @@ namespace {
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
-static constexpr TStringBuf DirectoryHandlesStorageFileName = "directory_handles_storage";
+static constexpr TStringBuf DirectoryHandleStorageFileName = "directory_handles_storage";
 
 NProto::TError CreateAndLockFile(
     const TString& dir,
@@ -127,7 +128,7 @@ private:
     TVector<TRequestBucket> RequestBuckets;
 
     enum fuse_cancelation_code CancelCode{};
-    NAtomic::TBool ShouldStop = false;
+    std::atomic<bool> ShouldStop = false;
 
     TPromise<void> StopPromise = NewPromise<void>();
 
@@ -541,13 +542,16 @@ class TFuseLoopThread final
     : public ISimpleThread
 {
 private:
+    static constexpr TDuration SignalInterruptInterval =
+        TDuration::MilliSeconds(100);
+
     TSession& Session;
     const ui32 FuseLoopIndex = 0;
     const ui32 BackendQueueIndex = 0;
-    bool InterruptSignaled = false;
     TLog Log;
 
     pthread_t ThreadId = 0;
+    TManualEvent LoopFinished;
 
 public:
     TFuseLoopThread(
@@ -563,17 +567,11 @@ public:
 
     void SignalInterrupt()
     {
-        if (InterruptSignaled) {
-            return;
-        }
-
         if (auto threadId = AtomicGet(ThreadId)) {
             // session loop may get stuck on sem_wait/read.
             // Interrupt it by sending the thread a signal.
             pthread_kill(threadId, SIGUSR1);
         }
-
-        InterruptSignaled = true;
     }
 
     void Stop()
@@ -582,7 +580,18 @@ public:
             "stopping FUSE loop thread " << FuseLoopIndex << "."
                                          << BackendQueueIndex);
 
+        // A single signal is not enough. The loop thread runs
+        // fuse_session_loop() (contrib/libs/fuse/lib/fuse_loop.c), which
+        // checks fuse_session_exited() and then calls
+        // fuse_session_receive_buf(), blocking in read() on /dev/fuse. A
+        // signal delivered after the exit flag check but before the thread
+        // has entered the syscall interrupts nothing, and the loop thread
+        // then blocks indefinitely, so keep signalling until the loop
+        // actually finishes.
         SignalInterrupt();
+        while (!LoopFinished.WaitT(SignalInterruptInterval)) {
+            SignalInterrupt();
+        }
         Join();
 
         STORAGE_INFO(
@@ -605,6 +614,7 @@ private:
         fuse_session_loop(Session);
 #endif
 
+        LoopFinished.Signal();
         return nullptr;
     }
 };
@@ -700,6 +710,7 @@ private:
     const ITimerPtr Timer;
     const IProfileLogPtr ProfileLog;
     const ISessionPtr Session;
+    const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
 
     TLog Log;
 
@@ -711,17 +722,17 @@ private:
     std::shared_ptr<TCompletionQueue> CompletionQueue;
     IRequestStatsPtr RequestStats;
     IFileSystemPtr FileSystem;
-    TDirectoryHandlesStatsPtr DirectoryHandlesStats;
+    TDirectoryHandleModuleStatsPtr DirectoryHandleStats;
     TFileSystemConfigPtr FileSystemConfig;
 
     THolder<TFileLock> HandleOpsQueueFileLock;
     THolder<TFileLock> WriteBackCacheFileLock;
-    THolder<TFileLock> DirectoryHandlesStorageFileLock;
+    THolder<TFileLock> DirectoryHandleStorageFileLock;
 
     TWriteBackCache WriteBackCache;
 
     bool HandleOpsQueueInitialized = false;
-    bool DirectoryHandlesStorageInitialized = false;
+    bool DirectoryHandleStorageInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -733,7 +744,8 @@ public:
             ISchedulerPtr scheduler,
             ITimerPtr timer,
             IProfileLogPtr profileLog,
-            ISessionPtr session)
+            ISessionPtr session,
+            IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , StatsRegistry(std::move(statsRegistry))
@@ -743,6 +755,7 @@ public:
         , Timer(std::move(timer))
         , ProfileLog(std::move(profileLog))
         , Session(std::move(session))
+        , FileMapMemoryLimiter(std::move(fileMapMemoryLimiter))
     {
         Log = Logging->CreateLog("NFS_FUSE");
     }
@@ -806,17 +819,21 @@ public:
             p->StopAsyncOnCompletionQueueStopped(std::move(s));
         };
 
-        CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
-            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
-                // this callback may be called from the same thread where the
-                // returned future is set => we shouldn't call onStop inside
-                // this callback directly to avoid a deadlock caused by the
-                // Join call which is done by SessionThread->Unmount()
-                SystemThreadFactory()->Run(
-                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
-                        onStop(f);
-                    });
-            });
+        CompletionQueue->StopAsync(FUSE_ERROR)
+            .Subscribe(
+                [onStop = std::move(onStop),
+                 scheduler = Scheduler](TFuture<void> f) mutable
+                {
+                    // this callback may be called from the same thread where
+                    // the returned future is set => we shouldn't call onStop
+                    // inside this callback directly to avoid a deadlock caused
+                    // by the Join call which is done by
+                    // SessionThread->Unmount()
+                    scheduler->Schedule(
+                        TInstant::Zero(),
+                        [onStop = std::move(onStop), f = std::move(f)]() mutable
+                        { onStop(f); });
+                });
 
         return s;
     }
@@ -847,24 +864,26 @@ public:
                 p->Config->GetFileSystemId(),
                 p->Config->GetClientId());
 
-            p->ModuleStatsRegistry->Unregister(
-                p->Config->GetFileSystemId(),
-                p->Config->GetClientId());
+            p->ModuleStatsRegistry->Unregister(p->SessionId);
 
             s.SetValue();
         };
 
-        CompletionQueue->StopAsync(FUSE_SUSPEND).Subscribe(
-            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
-                // this callback may be called from the same thread where the
-                // returned future is set => we shouldn't call onStop inside
-                // this callback directly to avoid a deadlock caused by the
-                // Join call which is done by SessionThread->StopThread()
-                SystemThreadFactory()->Run(
-                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
-                        onStop(f);
-                    });
-            });
+        CompletionQueue->StopAsync(FUSE_SUSPEND)
+            .Subscribe(
+                [onStop = std::move(onStop),
+                 scheduler = Scheduler](TFuture<void> f) mutable
+                {
+                    // this callback may be called from the same thread where
+                    // the returned future is set => we shouldn't call onStop
+                    // inside this callback directly to avoid a deadlock caused
+                    // by the Join call which is done by
+                    // SessionThread->StopThread()
+                    scheduler->Schedule(
+                        TInstant::Zero(),
+                        [onStop = std::move(onStop), f = std::move(f)]() mutable
+                        { onStop(f); });
+                });
 
         return s;
     }
@@ -973,12 +992,14 @@ private:
             SessionId = response.GetSession().GetSessionId();
 
             THandleOpsQueuePtr handleOpsQueue;
-            if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
-                if (Config->GetHandleOpsQueuePath()) {
-                    auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
-                        FileSystemConfig->GetFileSystemId() /
-                        SessionId;
-
+            const bool asyncDestroyEnabled =
+                FileSystemConfig->GetAsyncDestroyHandleEnabled() ||
+                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled();
+            if (Config->GetHandleOpsQueuePath()) {
+                const auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
+                                  FileSystemConfig->GetFileSystemId() /
+                                  SessionId;
+                if (path.Exists() || asyncDestroyEnabled) {
                     auto error = CreateAndLockFile(
                         path,
                         HandleOpsQueueFileName,
@@ -998,13 +1019,13 @@ private:
                         path / HandleOpsQueueFileName,
                         Config->GetHandleOpsQueueSize());
                     HandleOpsQueueInitialized = true;
-                } else {
-                    ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
-                        "[f:%s][c:%s] Error initializing HandleOpsQueue: "
-                        "HandleOpsQueuePath is not set",
-                        Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str()));
                 }
+            } else if (asyncDestroyEnabled) {
+                ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
+                    "[f:%s][c:%s] Error initializing HandleOpsQueue: "
+                    "HandleOpsQueuePath is not set",
+                    Config->GetFileSystemId().Quote().c_str(),
+                    Config->GetClientId().Quote().c_str()));
             }
 
             if (Config->GetWriteBackCachePath()) {
@@ -1033,8 +1054,7 @@ private:
                         {.Session = Session,
                          .Scheduler = Scheduler,
                          .Timer = Timer,
-                         .Stats =
-                             NWriteBackCache::CreateDummyWriteBackCacheStats(),
+                         .Stats = NWriteBackCache::CreateWriteBackCacheStats(),
                          .Log = Log,
                          .FileSystemId = Config->GetFileSystemId(),
                          .ClientId = Config->GetClientId(),
@@ -1053,8 +1073,29 @@ private:
                          .FlushMaxSumWriteRequestsSize =
                              Config
                                  ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
+                         .MaxQueuedFlushBatchesPerNode =
+                             Config
+                                 ->GetWriteBackCacheMaxQueuedFlushBatchesPerNode(),
                          .ZeroCopyWriteEnabled =
-                             FileSystemConfig->GetZeroCopyWriteEnabled()});
+                             FileSystemConfig->GetZeroCopyWriteEnabled(),
+                         .FlushWritesInParallelEnabled =
+                             FileSystemConfig
+                                 ->GetServerWriteBackCacheFlushWritesInParallelEnabled()});
+
+                    if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
+                        auto future = WriteBackCache.Drain();
+                        // Drain will run asynchronously in background
+                        // No need to wait for it
+                        Y_UNUSED(future);
+                    }
+
+                    ModuleStatsRegistry->Register(
+                        {.FileSystemId = Config->GetFileSystemId(),
+                         .ClientId = Config->GetClientId(),
+                         .CloudId = response.GetFileStore().GetCloudId(),
+                         .FolderId = response.GetFileStore().GetFolderId(),
+                         .SessionId = SessionId,
+                         .ModuleStats = WriteBackCache.CreateModuleStats()});
                 }
             } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1064,40 +1105,89 @@ private:
                     Config->GetClientId().Quote().c_str()));
             }
 
-            TDirectoryHandlesStoragePtr directoryHandlesStorage;
-            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled() &&
-                Config->GetDirectoryHandlesStoragePath())
-            {
+            IDirectoryHandleStorageStatsPtr directoryHandleStorageStats;
+            TDirectoryHandleStoragePtr directoryHandleStorage;
+            if (Config->GetDirectoryHandlesStoragePath()) {
                 auto path = TFsPath(Config->GetDirectoryHandlesStoragePath()) /
                             FileSystemConfig->GetFileSystemId() / SessionId;
+                auto filePath = path / DirectoryHandleStorageFileName;
 
-                auto error = CreateAndLockFile(
-                    path,
-                    DirectoryHandlesStorageFileName,
-                    DirectoryHandlesStorageFileLock);
+                if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
+                    auto error = CreateAndLockFile(
+                        path,
+                        DirectoryHandleStorageFileName,
+                        DirectoryHandleStorageFileLock);
 
-                if (HasError(error)) {
-                    ReportDirectoryHandlesStorageError(error.GetMessage());
-                    return error;
+                    if (HasError(error)) {
+                        ReportDirectoryHandlesStorageError(error.GetMessage());
+                        return error;
+                    }
+
+                    directoryHandleStorageStats =
+                        CreateDirectoryHandleStorageStats(Timer);
+
+                    directoryHandleStorage = CreateDirectoryHandleStorage(
+                        {.Log = Log,
+                         .FileMapMemoryLimiter = FileMapMemoryLimiter,
+                         .Stats = directoryHandleStorageStats,
+                         .FilePath = filePath,
+                         .MaxRecords =
+                             FileSystemConfig->GetDirectoryHandlesTableSize(),
+                         .InitialDataAreaSize =
+                             Config->GetDirectoryHandlesInitialDataSize(),
+                         .MaxDataAreaStepSize =
+                             Config->GetDirectoryHandlesMaxDataAreaStepSize(),
+                         .InitialDataMoveBufferSize =
+                             FileSystemConfig->GetMaxBufferSize(),
+                         .PersistentHandleMaxSize =
+                             FileSystemConfig
+                                 ->GetDirectoryHandlesPersistentHandleMaxSize()});
+
+                    DirectoryHandleStorageInitialized = true;
+                } else if (filePath.Exists()) {
+                    // The feature is disabled but a file from a previous
+                    // session with it enabled is still on disk. The file
+                    // holds only a derived view of the directory listing,
+                    // so it can be removed without any drain.
+                    try {
+                        NFs::Remove(filePath);
+                    } catch (const TSystemError& err) {
+                        ReportDirectoryHandlesStorageError(
+                            TStringBuilder()
+                            << "Failed to remove orphan directory handles "
+                            << filePath << ": " << err.AsStrBuf());
+                    }
                 }
-
-                directoryHandlesStorage = CreateDirectoryHandlesStorage(
-                    Log,
-                    path / DirectoryHandlesStorageFileName,
-                    FileSystemConfig->GetDirectoryHandlesTableSize(),
-                    Config->GetDirectoryHandlesInitialDataSize(),
-                    FileSystemConfig->GetMaxBufferSize());
-
-                DirectoryHandlesStorageInitialized = true;
+            } else if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
+                STORAGE_ERROR(
+                    "[f:%s][c:%s] Error initializing "
+                    "DirectoryHandleStorage: DirectoryHandlesStoragePath "
+                    "is not set",
+                    Config->GetFileSystemId().Quote().c_str(),
+                    Config->GetClientId().Quote().c_str());
             }
 
-            DirectoryHandlesStats = CreateDirectoryHandlesStats(
-                ModuleStatsRegistry,
+            DirectoryHandleStats = CreateDirectoryHandleStats(
                 Timer,
-                Config->GetFileSystemId(),
-                Config->GetClientId(),
-                response.GetFileStore().GetCloudId(),
-                response.GetFileStore().GetFolderId());
+                std::move(directoryHandleStorageStats));
+
+            ModuleStatsRegistry->Register(
+                {.FileSystemId = Config->GetFileSystemId(),
+                 .ClientId = Config->GetClientId(),
+                 .CloudId = response.GetFileStore().GetCloudId(),
+                 .FolderId = response.GetFileStore().GetFolderId(),
+                 .SessionId = SessionId,
+                 .ModuleStats = DirectoryHandleStats});
+
+            if (handleOpsQueue) {
+                ModuleStatsRegistry->Register(
+                    {.FileSystemId = Config->GetFileSystemId(),
+                     .ClientId = Config->GetClientId(),
+                     .CloudId = response.GetFileStore().GetCloudId(),
+                     .FolderId = response.GetFileStore().GetFolderId(),
+                     .SessionId = SessionId,
+                     .ModuleStats = handleOpsQueue->GetModuleStats()});
+            }
 
             FileSystem = CreateFileSystem(
                 Logging,
@@ -1107,10 +1197,10 @@ private:
                 FileSystemConfig,
                 Session,
                 RequestStats,
-                DirectoryHandlesStats,
+                DirectoryHandleStats,
                 CompletionQueue,
                 std::move(handleOpsQueue),
-                std::move(directoryHandlesStorage),
+                std::move(directoryHandleStorage),
                 WriteBackCache);
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
@@ -1148,6 +1238,7 @@ private:
                 SessionState,
                 this);
 
+            FileSystem->Init();
             FuseLoop->Start();
         } catch (const TServiceError& e) {
             error = MakeError(e.GetCode(), TString(e.GetMessage()));
@@ -1199,8 +1290,12 @@ private:
         if (features.GetXAttrCacheTimeout()) {
             config.SetXAttrCacheTimeout(features.GetXAttrCacheTimeout());
         }
+        config.SetXAttrCacheInvalidateOnCreateEnabled(
+            features.GetXAttrCacheInvalidateOnCreateEnabled());
         config.SetAsyncDestroyHandleEnabled(
             features.GetAsyncDestroyHandleEnabled());
+        config.SetAsyncDestroyReadOnlyHandleEnabled(
+            features.GetAsyncDestroyReadOnlyHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
             features.GetAsyncHandleOperationPeriod());
 
@@ -1212,14 +1307,22 @@ private:
 
         config.SetServerWriteBackCacheEnabled(
             features.GetServerWriteBackCacheEnabled());
+        config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
+            features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 
         config.SetDirectoryHandlesStorageEnabled(
             features.GetDirectoryHandlesStorageEnabled());
 
-        config.SetDirectoryHandlesTableSize(
-            features.GetDirectoryHandlesTableSize());
+        const ui64 directoryHandlesTableSize =
+            features.GetDirectoryHandlesTableSize();
+        if (directoryHandlesTableSize != 0) {
+            config.SetDirectoryHandlesTableSize(directoryHandlesTableSize);
+        }
 
-        config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
+        if (features.HasDirectoryHandlesPersistentHandleMaxSize()) {
+            config.SetDirectoryHandlesPersistentHandleMaxSize(
+                features.GetDirectoryHandlesPersistentHandleMaxSize());
+        }
 
         config.SetGuestPageCacheDisabled(features.GetGuestPageCacheDisabled());
         config.SetExtendedAttributesDisabled(
@@ -1229,13 +1332,20 @@ private:
         config.SetMaxBackground(features.GetMaxBackground());
         config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 
-        config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
-        config.SetZeroCopyReadEnabled(features.GetZeroCopyReadEnabled());
+        // The legacy ZeroCopyEnabled feature is a backward compatible alias
+        // that enables both read and write zero copy.
+        const bool zeroCopyEnabled = features.GetZeroCopyEnabled();
+        config.SetZeroCopyEnabled(zeroCopyEnabled);
+        config.SetZeroCopyWriteEnabled(
+            features.GetZeroCopyWriteEnabled() || zeroCopyEnabled);
+        config.SetZeroCopyReadEnabled(
+            features.GetZeroCopyReadEnabled() || zeroCopyEnabled);
 
         config.SetFSyncQueueDisabled(features.GetFSyncQueueDisabled());
 
         config.SetGuestHandleKillPrivV2Enabled(
             features.GetGuestHandleKillPrivV2Enabled());
+        config.SetGuestPosixAclEnabled(features.GetGuestPosixAclEnabled());
 
         return std::make_shared<TFileSystemConfig>(config);
     }
@@ -1278,24 +1388,27 @@ private:
             conn->want |= FUSE_CAP_HANDLE_KILLPRIV_V2;
         }
 
-        FileSystem->Init();
+        if (FileSystemConfig->GetGuestPosixAclEnabled()) {
+            conn->want |= FUSE_CAP_POSIX_ACL;
+            conn->want |= FUSE_CAP_DONT_MASK;
+        }
     }
 
     void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
     {
-        if (WriteBackCache && !WriteBackCache.IsEmpty()) {
+        if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
-                "[f:%s][c:%s] WriteBackCache is not empty, starting "
-                "FlushAllData",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
+                "executing Drain()",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
 
-            WriteBackCache.FlushAllData().Subscribe(
+            WriteBackCache.Drain().Subscribe(
                 [w = weak_from_this(),
                  s = std::move(stopCompleted)](const auto& f) mutable
                 {
                     if (auto p = w.lock()) {
-                        p->StopAsyncOnWriteBackCacheFlushed(
+                        p->StopAsyncOnWriteBackCacheDrained(
                             std::move(s),
                             f.GetValue());
                     } else {
@@ -1303,42 +1416,75 @@ private:
                     }
                 });
         } else {
-            StopAsyncDestroySession(std::move(stopCompleted));
+            StopAsyncFuseLoopUnmount(std::move(stopCompleted));
         }
     }
 
-    void StopAsyncOnWriteBackCacheFlushed(
+    void StopAsyncOnWriteBackCacheDrained(
         TPromise<void> stopCompleted,
         const NProto::TError& error)
     {
-        if (HasError(error)) {
+        if (WriteBackCache.IsDrained()) {
+            // It is possible for WriteBackCache to become drained after
+            // unsuccessful FlushAllData call. This may happen if the data is
+            // dropped by WriteBackCache itself (for example, if ReleaseHandle
+            // was called). In this case, we do not report FlushAllData error
+            // because it should have been already reported by WriteBackCache
+            STORAGE_INFO(
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is drained",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str());
+        } else if (HasError(error)) {
             STORAGE_WARN(
-                "[f:%s][c:%s] WriteBackCache::FlushAllData failed at "
-                "DestroySession, unflushed data will be lost. Error: %s",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained"
+                " because of Drain() error, unflushed data will be lost."
+                " Error: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 FormatError(error).c_str());
-        } else if (WriteBackCache && WriteBackCache.IsEmpty()) {
+        } else {
             ReportWriteBackCacheDataLossError(Sprintf(
-                "[f:%s][c:%s] WriteBackCache was not emptied after successful "
-                "FlushAllData at DestroySession, possible data loss",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained "
+                "after successful Drain(), unflushed data will be lost",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str()));
         }
 
-        STORAGE_INFO(
-            "[f:%s][c:%s] completed FlushAllData",
-            Config->GetFileSystemId().Quote().c_str(),
-            Config->GetClientId().Quote().c_str());
+        StopAsyncFuseLoopUnmount(std::move(stopCompleted));
+    }
 
-        StopAsyncDestroySession(std::move(stopCompleted));
+    void StopAsyncFuseLoopUnmount(TPromise<void> stopCompleted)
+    {
+        // Calling FuseLoop->Unmount() from the scheduler thread may result
+        // in deadlock because of synchronous wait in ResetSessionState()
+        SystemThreadFactory()->Run(
+            [w = weak_from_this(), s = std::move(stopCompleted)]() mutable
+            {
+                if (auto p = w.lock()) {
+                    p->FuseLoop->Unmount();
+                    p->FuseLoop = nullptr;
+
+                    // Continuing execution on a non-joinable thread may result
+                    // in a race when global singletons are destroyed while
+                    // TFileSystemLoop that depends on them is still alive
+                    p->Scheduler->Schedule(
+                        TInstant::Zero(),
+                        [w = std::move(w), s = std::move(s)]() mutable
+                        {
+                            if (auto p = w.lock()) {
+                                p->StopAsyncDestroySession(std::move(s));
+                            } else {
+                                s.SetValue();
+                            }
+                        });
+                } else {
+                    s.SetValue();
+                }
+            });
     }
 
     void StopAsyncDestroySession(TPromise<void> stopCompleted)
     {
-        FuseLoop->Unmount();
-        FuseLoop = nullptr;
-
         auto callContext = MakeIntrusive<TCallContext>(
             Config->GetFileSystemId(),
             CreateRequestId());
@@ -1376,9 +1522,7 @@ private:
             Config->GetFileSystemId(),
             Config->GetClientId());
 
-        ModuleStatsRegistry->Unregister(
-            Config->GetFileSystemId(),
-            Config->GetClientId());
+        ModuleStatsRegistry->Unregister(SessionId);
 
         // We need to cleanup HandleOpsQueue file and directories
         if (HandleOpsQueueInitialized) {
@@ -1404,11 +1548,11 @@ private:
             }
         }
 
-        if (DirectoryHandlesStorageInitialized) {
+        if (DirectoryHandleStorageInitialized) {
             auto error = UnlockAndDeleteFile(
                 TFsPath(Config->GetDirectoryHandlesStoragePath()) /
                     Config->GetFileSystemId() / SessionId,
-                DirectoryHandlesStorageFileLock);
+                DirectoryHandleStorageFileLock);
             if (HasError(error)) {
                 ReportDirectoryHandlesStorageError(error.GetMessage());
             }
@@ -1475,6 +1619,15 @@ private:
         callContext->RequestSize = requestSize;
         callContext->LoopThreadId = TThread::CurrentThreadNumericId();
 
+        FILESTORE_TRACK(
+            RequestReceived,
+            callContext,
+            name,
+            callContext->FileSystemId,
+            pThis->StorageMediaKind,
+            callContext->RequestSize);
+        pThis->RequestStats->RequestStarted(Log, *callContext);
+
         if (auto cancelCode = pThis->CompletionQueue->Enqueue(req, callContext)) {
             STORAGE_DEBUG("driver is stopping, cancel request");
             callContext->CancellationCode = *cancelCode;
@@ -1485,15 +1638,6 @@ private:
                 req);
             return;
         }
-
-        FILESTORE_TRACK(
-            RequestReceived,
-            callContext,
-            name,
-            callContext->FileSystemId,
-            pThis->StorageMediaKind,
-            callContext->RequestSize);
-        pThis->RequestStats->RequestStarted(Log, *callContext);
 
         try {
             auto* fs = pThis->FileSystem.get();
@@ -1741,7 +1885,8 @@ struct TFileSystemLoopFactory
 
     IFileSystemLoopPtr Create(
         TVFSConfigPtr config,
-        ISessionPtr session) override
+        ISessionPtr session,
+        IFileMapMemoryLimiterPtr fileMapMemoryLimiter) override
     {
         return CreateFuseLoop(
             std::move(config),
@@ -1752,7 +1897,8 @@ struct TFileSystemLoopFactory
             Scheduler,
             Timer,
             ProfileLog,
-            std::move(session));
+            std::move(session),
+            std::move(fileMapMemoryLimiter));
     }
 };
 
@@ -1769,7 +1915,8 @@ IFileSystemLoopPtr CreateFuseLoop(
     ISchedulerPtr scheduler,
     ITimerPtr timer,
     IProfileLogPtr profileLog,
-    ISessionPtr session)
+    ISessionPtr session,
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
 {
     return std::make_shared<TFileSystemLoop>(
         std::move(config),
@@ -1780,7 +1927,8 @@ IFileSystemLoopPtr CreateFuseLoop(
         std::move(scheduler),
         std::move(timer),
         std::move(profileLog),
-        std::move(session));
+        std::move(session),
+        std::move(fileMapMemoryLimiter));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

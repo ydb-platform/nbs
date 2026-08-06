@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/vfs_fuse/public.h>
 
@@ -64,9 +65,43 @@ struct TWriteBackCacheArgs
     // Note: the limit is applied per node.
     ui32 FlushMaxSumWriteRequestsSize = 0;
 
+    // This threshold limits WriteBackCache queue growth to avoid excessive
+    // latency for operations that must wait for cached writes to be flushed,
+    // such as SetNodeAttr, ReleaseHandle, data requests with O_DIRECT flag.
+    // The value is compared with the number of flush batches needed to drain
+    // unflushed WriteData requests.
+    ui32 MaxQueuedFlushBatchesPerNode = 0;
+
     // If the flag is enabled, WriteBackCache will generate WriteData requests
     // with iovecs.
     bool ZeroCopyWriteEnabled = false;
+
+    // Allows flushing WriteData requests to the underlying storage in parallel.
+    // This significantly improves flushing performance but an external reader
+    // may observe the effects of newer writes before older ones.
+    // With parallel writes off, only sequential writes will be optimized.
+    bool FlushWritesInParallelEnabled = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Only transition Normal -> Draining -> Drained is possible
+enum class EWriteBackCacheMode
+{
+    // WriteBackCache is used normally
+    // New cached WriteData requests are accepted
+    Normal,
+
+    // WriteBackCache was requested to drain and it contains unflushed data
+    // New cached WriteData requests are not accepted and will return E_REJECTED
+    // Clients should continue working with WriteBackCache but use
+    // WriteDataDirect instead of WriteData
+    Draining,
+
+    // WriteBackCache was requested to drain and all the data is flushed
+    // New cached WriteData requests are not accepted and will return E_REJECTED
+    // Since WriteBackCache contains no data, clients may safely stop using it
+    Drained
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -88,6 +123,37 @@ public:
     {
         return !!Impl;
     }
+
+    /* Returns current mode of WriteBackCache with weak memory ordering.
+     * The common EWriteBackCacheMode::Normal and EWriteBackCacheMode::Drained
+     * cases are returned without mutex acquisition and are suitable for hot
+     * paths. In order to ensure that WriteBackCache has been drained,
+     * IsDrained() should be used, as drained mode detection may require
+     * additional synchronization.
+     */
+    EWriteBackCacheMode GetMode() const;
+
+    /* Puts WriteBackCache into draining mode - it prevents new WriteData
+     * requests from being added to the cache and triggers flush
+     * (WriteDataDirect calls will still be allowed).
+     *
+     * WriteBackCache will remain in EWriteBackCacheMode::Draining mode until
+     * all pending and unflushed are flushed - then it will become
+     * EWriteBackCacheMode::Drained.
+     *
+     * The returned future is completed successfully when WriteBackCache become
+     * drained. An error is returned if flush is failed.
+     *
+     * The call has no effect if WriteBackCache is already drained and will
+     * return a completed future immediately.
+     *
+     * Note: the call is not reversible (WriteBackCache cannot be returned to
+     * EWriteBackCacheMode::Normal mode without restart).
+     */
+    [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> Drain();
+
+    // A reliable way to check that WriteBackCache has been drained
+    bool IsDrained() const;
 
     NThreading::TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
@@ -121,14 +187,13 @@ public:
     /* Ensures that the handle is safe to be destroyed.
      *
      * The method returns a future that is fulfilled when there are no unflushed
-     * or pending WriteData requests associated with the handle. Unlike
-     * FlushNodeData, it doesn't fail if flush fails and waits instead.
+     * or pending WriteData requests associated with the handle.
      *
-     * If all handles used by WriteBackCache for the node are requested for the
-     * release and flush fails:
-     * - unflushed WriteData requests are dropped;
-     * - pending WriteData requests are failed;
-     * - executing ReleaseHandle requests return an error.
+     * If an error occurs during flushing WriteData requests, returns the error
+     * (the same as for FlushNodeData) and tags unflushed WriteData requests
+     * associated with the handle - they will be attempted to be flushed again
+     * later via another known live handle. If there are no remaining live
+     * handles, all unflushed requests are dropped.
      *
      * Note: the method doesn't call Session::DestroyHandle
      */
@@ -136,14 +201,47 @@ public:
         ui64 nodeId,
         ui64 handle);
 
-    bool IsEmpty() const;
+    /* Read directly from the underlying storage under a barrier.
+     * An acquired barrier ensures that operation will not interfere with cache:
+     * - All cached WriteData requests prior to barrier acquisition are flushed
+     *   and evicted.
+     * - No flush may take place until the barrier is released.
+     * Note: the sequence point is barrier acquisition, not the request itself.
+     * It means that newer WriteData requests may be reordered and flushed while
+     * the barrier is in pending state.
+     */
+    NThreading::TFuture<NProto::TReadDataResponse> ReadDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request);
+
+    /* Write directly to the underlying storage under a barrier.
+     * An acquired barrier ensures that operation will not interfere with cache:
+     * - All cached WriteData requests prior to barrier acquisition are flushed
+     *   and evicted.
+     * - No flush may take place until the barrier is released.
+     * Note: the sequence point is barrier acquisition, not the request itself.
+     * It means that newer WriteData requests may be reordered and flushed while
+     * the barrier is in pending state.
+     */
+    NThreading::TFuture<NProto::TWriteDataResponse> WriteDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request);
+
+    /* Execute SetNodeAttr with taking awareness of changing node size under a
+     * barrier.
+     */
+    NThreading::TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TSetNodeAttrRequest> request);
 
     // Keep information about MinNodeSize for flushed nodes
     ui64 AcquireNodeStateRef();
     void ReleaseNodeStateRef(ui64 refId);
 
-    ui64 GetCachedNodeSize(ui64 nodeId) const;
-    void SetCachedNodeSize(ui64 nodeId, ui64 size);
+    // Used to adjust node size according to cached data
+    ui64 GetMaxWrittenOffset(ui64 nodeId) const;
+
+    IModuleStatsPtr CreateModuleStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse

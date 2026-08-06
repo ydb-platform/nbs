@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -12,6 +14,31 @@ using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr size_t MaxDeviceCountToPrintInLog = 100;
+
+TString MakeDevicesNamesString(const TVector<NProto::TDeviceConfig>& devices)
+{
+    TStringBuilder sb;
+    sb << "[";
+
+    size_t count = 0;
+    for (const auto& device: devices) {
+        if (count++ >= MaxDeviceCountToPrintInLog) {
+            sb << "...";
+            break;
+        }
+        if (count > 1) {
+            sb << ", ";
+        }
+        sb << device.GetDeviceUUID();
+    }
+
+    sb << "](" << devices.size() << ")";
+    return sb;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -32,7 +59,7 @@ private:
 
 public:
     TSecureEraseActor(
-        TChildLogTitle logTitle,
+        const TLogTitle& logTitle,
         const TActorId& owner,
         TRequestInfoPtr request,
         TDuration requestTimeout,
@@ -73,13 +100,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSecureEraseActor::TSecureEraseActor(
-        TChildLogTitle logTitle,
+        const TLogTitle& logTitle,
         const TActorId& owner,
         TRequestInfoPtr request,
         TDuration requestTimeout,
         TString poolName,
         TVector<NProto::TDeviceConfig> devicesToClean)
-    : LogTitle(std::move(logTitle))
+    : LogTitle(logTitle.GetChildWithTags(
+          GetCycleCount(),
+          {{"pool", TStringBuf(poolName)}}))
     , Owner(owner)
     , Request(std::move(request))
     , RequestTimeout(requestTimeout)
@@ -121,7 +150,7 @@ void TSecureEraseActor::ReplyAndDie(const TActorContext& ctx, NProto::TError err
     auto response = std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseResponse>(
         std::move(error),
         PoolName,
-        CleanDevices.size());
+        std::move(CleanDevices));
     NCloud::Reply(ctx, *Request, std::move(response));
 
     NCloud::Send(
@@ -322,7 +351,8 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
     auto dirtyDevices = State->GetDirtyDevices();
     EraseIf(
         dirtyDevices,
-        [this](auto& device) { return !State->CanSecureErase(device); });
+        [this](const NProto::TDeviceConfig& device)
+        { return !State->CanSecureErase(device); });
 
     if (!dirtyDevices) {
         LOG_DEBUG(
@@ -376,16 +406,19 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 
         auto deadline =
             Min(SecureEraseStartTs, ctx.Now()) + TDuration::Seconds(5);
-        if (deadline > ctx.Now()) {
+
+        if (deadline > ctx.Now() || Config->GetCoolDownTimeoutBeforeSecureErase()) {
+            deadline =
+                Max(deadline,
+                    ctx.Now() + Config->GetCoolDownTimeoutBeforeSecureErase());
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
-                "%s Scheduled secure erase for pool: %s, now: %lu, "
-                "deadline: %lu",
+                "%s Scheduled secure erase for pool: %s, devices: %s, after: %s",
                 LogTitle.GetWithTime().c_str(),
-                poolName.c_str(),
-                ctx.Now().MicroSeconds(),
-                deadline.MicroSeconds());
+                poolName.Quote().c_str(),
+                MakeDevicesNamesString(request->DirtyDevices).c_str(),
+                FormatDuration(deadline - ctx.Now()).c_str());
 
             ctx.Schedule(
                 deadline,
@@ -394,9 +427,10 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
-                "%s Sending secure erase request for pool: %s",
+                "%s Sending secure erase request for pool: %s, devices: %s",
                 LogTitle.GetWithTime().c_str(),
-                poolName.c_str());
+                poolName.Quote().c_str(),
+                MakeDevicesNamesString(request->DirtyDevices).c_str());
 
             NCloud::Send(ctx, ctx.SelfID, std::move(request));
         }
@@ -416,13 +450,17 @@ void TDiskRegistryActor::HandleSecureErase(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Received SecureErase request: DirtyDevices=%lu",
+        "%s Received SecureErase request. DirtyDevices: %s",
         LogTitle.GetWithTime().c_str(),
-        msg->DirtyDevices.size());
+        MakeDevicesNamesString(msg->DirtyDevices).c_str());
+
+    for (const auto& device: msg->DirtyDevices) {
+        DeviceEraseStartTs[device.GetDeviceUUID()] = ctx.Now();
+    }
 
     auto actor = NCloud::Register<TSecureEraseActor>(
         ctx,
-        LogTitle.GetChild(GetCycleCount()),
+        LogTitle,
         ctx.SelfID,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         msg->RequestTimeout,
@@ -442,9 +480,12 @@ void TDiskRegistryActor::HandleSecureEraseResponse(
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received SecureErase response: CleanDevices=%lu",
         LogTitle.GetWithTime().c_str(),
-        msg->CleanDevices);
+        msg->CleanDevices.size());
 
     SecureEraseInProgressPerPool.erase(msg->PoolName);
+    for (const auto& uuid: msg->CleanDevices) {
+        DeviceEraseStartTs.erase(uuid);
+    }
     SecureErase(ctx);
 }
 
@@ -457,9 +498,9 @@ void TDiskRegistryActor::HandleCleanupDevices(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Received CleanupDevices request: Devices=%lu %s",
+        "%s Received CleanupDevices request: Devices=[%s] %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Devices.size(),
+        JoinStrings(msg->Devices, ", ").c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TCleanupDevices>(

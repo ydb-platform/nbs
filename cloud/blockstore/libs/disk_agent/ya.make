@@ -11,7 +11,6 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/local_nvme
-    cloud/blockstore/libs/rdma/iface
     cloud/blockstore/libs/server
     cloud/blockstore/libs/service
     cloud/blockstore/libs/spdk/iface
@@ -26,6 +25,7 @@ PEERDIR(
     cloud/storage/core/libs/http
     cloud/storage/core/libs/io_uring
     cloud/storage/core/libs/version
+    cloud/storage/core/libs/rdma/iface
 
     contrib/ydb/core/protos
     contrib/ydb/library/yql/public/udf/service/exception_policy

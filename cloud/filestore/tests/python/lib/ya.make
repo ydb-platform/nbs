@@ -7,8 +7,10 @@ PEERDIR(
     cloud/filestore/public/sdk/python/protos
 
     cloud/storage/core/protos
-    cloud/storage/core/tools/testing/access_service/lib
+    cloud/storage/core/tests/common
+    cloud/storage/core/tools/common/python
     cloud/storage/core/tools/testing/access_service_new/lib
+    cloud/storage/core/tools/testing/access_service/lib
 
     contrib/python/requests/py3
     contrib/python/retrying
@@ -21,6 +23,8 @@ PY_SRCS(
     common.py
     daemon_config.py
     endpoint.py
+    fastshard.py
+    fs.py
     http_proxy.py
     kikimr.py
     loadtest.py
@@ -30,3 +34,7 @@ PY_SRCS(
 )
 
 END()
+
+RECURSE_FOR_TESTS(
+    ut
+)

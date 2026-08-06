@@ -87,7 +87,8 @@ bool TBlockIndex::AddBlock(
     ui32 blockIndex,
     ui64 commitId,
     bool isStoredInDb,
-    TStringBuf blockContent)
+    TStringBuf blockContent,
+    TPartialBlobId blobId)
 {
     TImpl::TBlockMap::iterator it;
     bool inserted;
@@ -101,7 +102,8 @@ bool TBlockIndex::AddBlock(
 
     std::tie(it, inserted) = Impl->Blocks.emplace(
         TBlock{blockIndex, commitId, isStoredInDb},
-        content
+        content,
+        blobId
     );
 
     if (!inserted && content) {

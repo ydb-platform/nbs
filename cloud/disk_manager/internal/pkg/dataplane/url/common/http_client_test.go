@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	url_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/metrics"
+	common_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,6 +57,7 @@ func TestHTTPClientURLReplacement(t *testing.T) {
 			time.Millisecond, // maxRetryTimeout
 			1,                // maxRetries
 			testCase.url,
+			url_metrics.New(common_metrics.NewEmptyRegistry()),
 		)
 
 		_, err := httpClient.Head(ctx)
@@ -108,6 +111,7 @@ func TestHTTPClientTimeout(t *testing.T) {
 		time.Millisecond, // maxRetryTimeout
 		1,                // maxRetries
 		server.URL,
+		url_metrics.New(common_metrics.NewEmptyRegistry()),
 	)
 
 	_, err := httpClient.Head(ctx)

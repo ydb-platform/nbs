@@ -103,6 +103,7 @@ private:
     const ui32 SocketAccessMode;
 
     TExecutorPtr Executor = TExecutor::Create("SVC");
+    bool Started = false;
     TLog Log;
 
     // Fields may only be accessed from the Executor thread
@@ -111,6 +112,8 @@ private:
 
     bool DrainingStarted = false;
     TMap<TString, TEndpointInfo> Endpoints;
+
+    TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
     TEndpointManager(
@@ -129,6 +132,7 @@ public:
     void Start() override
     {
         Executor->Start();
+        Started = true;
     }
 
     void Stop() override
@@ -138,7 +142,11 @@ public:
 
     void Drain() override
     {
-        Executor->Execute([this]() { return DoDrain(); }).GetValueSync();
+        if (Started) {
+            Executor->Execute([this]() {
+                return DoDrain();
+            }).GetValueSync();
+        }
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
@@ -147,6 +155,7 @@ public:                                                                        \
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
+        Y_ABORT_UNLESS(Started);                                               \
         Y_UNUSED(callContext);                                                 \
         return Executor->Execute([this, request = std::move(request)] {        \
             return Do##name(*request);                                         \
@@ -267,9 +276,7 @@ private:
         if (HasError(error)) {
             STORAGE_ERROR("Failed to start endpoint: "
                 << FormatError(error));
-            if (error.GetCode() ==
-                MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
-            {
+            if (error.GetCode() == E_NOT_FOUND) {
                 STORAGE_INFO(
                     "Remove endpoint for non-existing filesystem. endpoint id: "
                     << endpointId.Quote());
@@ -339,7 +346,7 @@ private:
 NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
     const NProto::TStartEndpointRequest& request)
 {
-    STORAGE_INFO("StartEndpoint " << DumpMessage(request));
+    STORAGE_INFO("StartEndpoint " << ProtoMessagePrinter.ToString(request));
 
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
@@ -434,7 +441,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     const NProto::TStopEndpointRequest& request)
 {
-    STORAGE_INFO("StopEndpoint " << DumpMessage(request));
+    STORAGE_INFO("StopEndpoint " << ProtoMessagePrinter.ToString(request));
 
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
@@ -489,7 +496,7 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
 NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
     const NProto::TListEndpointsRequest& request)
 {
-    STORAGE_TRACE("ListEndpoints " << DumpMessage(request));
+    STORAGE_TRACE("ListEndpoints " << ProtoMessagePrinter.ToString(request));
 
     if (DrainingStarted) {
         return TErrorResponse(E_REJECTED, "draining");
@@ -506,7 +513,7 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
 NProto::TKickEndpointResponse TEndpointManager::DoKickEndpoint(
     const NProto::TKickEndpointRequest& request)
 {
-    STORAGE_TRACE("KickEndpoint " << DumpMessage(request));
+    STORAGE_TRACE("KickEndpoint " << ProtoMessagePrinter.ToString(request));
 
     auto requestOrError = Storage->GetEndpoint(
         ToString(request.GetKeyringId()));
@@ -528,7 +535,7 @@ NProto::TKickEndpointResponse TEndpointManager::DoKickEndpoint(
 NProto::TPingResponse TEndpointManager::DoPing(
     const NProto::TPingRequest& request)
 {
-    STORAGE_TRACE("Ping " << DumpMessage(request));
+    STORAGE_TRACE("Ping " << ProtoMessagePrinter.ToString(request));
 
     return {};
 }

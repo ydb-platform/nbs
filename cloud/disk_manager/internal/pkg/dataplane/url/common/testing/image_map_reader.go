@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/metrics"
+	common_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -134,6 +136,7 @@ func MapImageTest(
 		8*time.Second, // httpClientMaxRetryTimeout
 		5,             // httpClientMaxRetries
 		url,
+		metrics.New(common_metrics.NewEmptyRegistry()),
 	)
 	require.NoError(t, err)
 
