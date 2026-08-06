@@ -792,8 +792,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     FILE_RING_BUFFER_TEST(ShouldResizeMetadata)
     {
         const auto f = TTempFileHandle();
-        // entry header (8) + max entry data (4 or 8 depending on alignment)
-        const ui32 len = 17;
+        const ui32 len = 19;
 
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 1, ver);
         UNIT_ASSERT(rb->PushBack("ABCD"));
