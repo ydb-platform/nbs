@@ -18,7 +18,7 @@ double TNodeLatencyStatsTracker::CalculateLatencyDecay(
     TInstant now)
 {
     const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
-                                                     : TDuration::Zero();
+                                                   : TDuration::Zero();
     return stats.AverageLatencyDecayedMs *
            exp(-log(2) * elapsed.MilliSeconds() /
                TDuration::Minutes(10).MilliSeconds());
@@ -45,7 +45,8 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
 
     ++stats.RequestCount;
     stats.TotalLatencyMs += latency.MilliSeconds();
-    stats.AverageLatencyDecayedMs = static_cast<double>(stats.TotalLatencyMs) / stats.RequestCount;
+    stats.AverageLatencyDecayedMs =
+        static_cast<double>(stats.TotalLatencyMs) / stats.RequestCount;
     stats.LastAccessed = now;
 
     auto [newLatencyIterator, inserted] = NodeLatencyStats.insert(stats);

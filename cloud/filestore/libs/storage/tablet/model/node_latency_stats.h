@@ -65,7 +65,9 @@ public:
         EFileStoreRequest requestType,
         TInstant now,
         TDuration latency);
-    static double CalculateLatencyDecay(const TNodeLatencyStats& stats, TInstant now);
+    static double CalculateLatencyDecay(
+        const TNodeLatencyStats& stats,
+        TInstant now);
 
     TVector<TNodeLatencyStats> GetLatencyStats(TInstant now) const
     {
