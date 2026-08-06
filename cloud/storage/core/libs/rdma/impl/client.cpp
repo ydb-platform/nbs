@@ -3111,6 +3111,9 @@ void TClient::HandleConnected(
         static_cast<const TAcceptMessage*>(param->private_data);
     endpoint->PeerSupportsSendWithInvalidate =
         (acceptMsg->Unused & RDMA_ACCEPT_FLAG_SEND_WITH_INV) != 0;
+    if (endpoint->PeerSupportsSendWithInvalidate) {
+        RDMA_INFO(endpoint->Log, "send with invalidate enabled");
+    }
 
     endpoint->SetNegotiatedProtocolVersion(version);
     endpoint->ChangeState(

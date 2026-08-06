@@ -1993,6 +1993,8 @@ void TServer::Accept(
             .rnr_retry_count = Config->QpRnrRetryCount,
         };
 
+        RDMA_INFO(
+            "send with invalidate enabled for " << Verbs->GetPeer(event->id));
         RDMA_DEBUG("accept " << Verbs->GetPeer(event->id));
         Verbs->Accept(event->id, &acceptParams);
 
