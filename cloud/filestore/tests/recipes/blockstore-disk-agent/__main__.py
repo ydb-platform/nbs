@@ -18,6 +18,8 @@ from cloud.blockstore.tests.python.lib.config import (
 )
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
+from cloud.filestore.tests.python.lib.common import shutdown
+
 logger = logging.getLogger(__name__)
 
 #
@@ -43,10 +45,8 @@ def _shutdown(pid_file):
         return
     with open(pid_file) as f:
         pid = int(f.read())
-    try:
-        os.kill(pid, 9)
-    except OSError:
-        pass
+
+    shutdown(pid)
 
 
 def start(argv):
