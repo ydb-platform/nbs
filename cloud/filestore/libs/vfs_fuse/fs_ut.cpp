@@ -3559,79 +3559,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
     }
 
-    Y_UNIT_TEST(ShouldRetryAsyncCreateHandleConfirmationOnRetriableError)
-    {
-        NProto::TFileStoreFeatures features;
-        features.SetAsyncCreateHandleEnabled(true);
-        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
-        auto scheduler = std::make_shared<TTestScheduler>();
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
-
-        const ui64 nodeId = 10;
-        const ui64 handle = 2;
-        std::atomic_bool openFinished = false;
-        std::atomic_uint confirmCalled = 0;
-
-        bootstrap.Service->SetHandlerCreateHandle(
-            [&](auto callContext, auto request)
-            {
-                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
-                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
-
-                NProto::TCreateHandleResponse response;
-                response.SetHandle(handle);
-                response.SetHandleCreatedAsync(true);
-                response.MutableNodeAttr()->SetId(nodeId);
-                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
-                return MakeFuture(response);
-            });
-
-        bootstrap.Service->SetHandlerConfirmCreateHandle(
-            [&](auto callContext, auto request)
-            {
-                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
-                UNIT_ASSERT(openFinished);
-                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
-                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    SessionId,
-                    request->GetHeaders().GetSessionId());
-
-                if (++confirmCalled < 3) {
-                    NProto::TConfirmCreateHandleResponse response =
-                        TErrorResponse(E_REJECTED, "retriable");
-                    return MakeFuture(response);
-                }
-
-                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
-            });
-
-        bootstrap.Start();
-        Y_DEFER {
-            bootstrap.Stop();
-        };
-
-        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
-        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
-        openFinished = true;
-
-        scheduler->RunAllScheduledTasks();
-        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
-
-        scheduler->RunAllScheduledTasks();
-        UNIT_ASSERT_VALUES_EQUAL(2U, confirmCalled.load());
-
-        scheduler->RunAllScheduledTasks();
-        UNIT_ASSERT_VALUES_EQUAL(3U, confirmCalled.load());
-
-        // The successful third confirmation pops the queue entry; later queue
-        // processing must not retry it.
-        scheduler->RunAllScheduledTasks();
-        UNIT_ASSERT_VALUES_EQUAL(3U, confirmCalled.load());
-    }
-
-    Y_UNIT_TEST(ShouldNotRetryAsyncCreateHandleConfirmationOnFinalError)
+    Y_UNIT_TEST(ShouldNotRetryAsyncCreateHandleConfirmationOnError)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncCreateHandleEnabled(true);
@@ -3672,7 +3600,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
                 ++confirmCalled;
                 NProto::TConfirmCreateHandleResponse response =
-                    TErrorResponse(E_FS_NOENT, "final");
+                    TErrorResponse(E_REJECTED, "retriable");
                 return MakeFuture(response);
             });
 
@@ -3695,8 +3623,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     true);
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
 
-        // A final confirmation error pops the queue entry, so later queue
-        // processing must not retry it.
+        // Retriable errors are handled by DurableClient and must not reach this
+        // layer in production. Any error returned here is final.
         scheduler->RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
     }
@@ -3955,6 +3883,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 handle = 2;
         std::atomic<ui64> requestId = 0;
         std::atomic_uint confirmCalled = 0;
+        auto firstConfirmPromise =
+            NewPromise<NProto::TConfirmCreateHandleResponse>();
 
         auto createBootstrap = [&]()
         {
@@ -4000,7 +3930,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 });
 
             bootstrap.Service->SetHandlerConfirmCreateHandle(
-                [&](auto callContext, auto request)
+                [&, firstConfirmPromise](auto callContext, auto request)
                 {
                     UNIT_ASSERT_VALUES_EQUAL(
                         FileSystemId,
@@ -4016,10 +3946,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                         request->GetFlags());
                     requestId = request->GetOriginalRequestId();
                     ++confirmCalled;
-
-                    NProto::TConfirmCreateHandleResponse response =
-                        TErrorResponse(E_REJECTED, "retriable");
-                    return MakeFuture(response);
+                    return firstConfirmPromise;
                 });
 
             bootstrap.Start();
@@ -4036,8 +3963,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT(scheduler);
             scheduler->RunAllScheduledTasks();
 
-            // The retriable failure leaves the durable queue entry in place for
-            // the restarted loop to reload and confirm.
+            // The confirmation is still in flight, so the durable queue entry
+            // remains in place for the restarted loop to reload and confirm.
             UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
             UNIT_ASSERT(requestId.load());
 
@@ -4056,6 +3983,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             // and queue directory still present.
             bootstrap.Loop = nullptr;
         }
+
+        // Complete the abandoned request after its filesystem has been
+        // destroyed. Its weak callback must not modify the durable queue.
+        firstConfirmPromise.SetValue(NProto::TConfirmCreateHandleResponse{});
 
         {
             auto bootstrap = createBootstrap();
@@ -4102,53 +4033,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRetryDestroyIfNotSuccessDuringAsyncProcessing)
-    {
-        NProto::TFileStoreFeatures features;
-        features.SetAsyncDestroyHandleEnabled(true);
-        TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            CreateScheduler(),
-            features);
-
-        const ui64 handle = 2;
-        const ui64 nodeId = 10;
-        std::atomic_uint handlerCalled = 0;
-        auto destroyFinished = NewPromise<void>();
-        bootstrap.Service->SetHandlerDestroyHandle(
-            [&, destroyFinished](auto callContext, auto request) mutable
-            {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    FileSystemId,
-                    callContext->FileSystemId);
-                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
-                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
-                if (++handlerCalled > 3) {
-                    destroyFinished.TrySetValue();
-                    return MakeFuture(NProto::TDestroyHandleResponse{});
-                }
-
-                NProto::TDestroyHandleResponse response = TErrorResponse(
-                    E_REJECTED, "xxx");
-                return MakeFuture(response);
-            });
-
-        bootstrap.Start();
-        Y_DEFER {
-            bootstrap.Stop();
-        };
-
-        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
-            nodeId,
-            handle,
-            O_RDONLY);
-        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
-
-        destroyFinished.GetFuture().Wait(WaitTimeout);
-        UNIT_ASSERT_VALUES_EQUAL(4U, handlerCalled.load());
-    }
-
-    Y_UNIT_TEST(ShouldNotRetryDestroyHandleAndRaiseCritEvent)
+    Y_UNIT_TEST(ShouldNotRetryDestroyHandleAndRaiseCritEventOnError)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
@@ -4157,10 +4042,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         const ui64 handle = 2;
         const ui64 nodeId = 10;
+        std::atomic_uint handlerCalled = 0;
         auto responsePromise = NewPromise<NProto::TDestroyHandleResponse>();
         bootstrap.Service->SetHandlerDestroyHandle(
             [&, responsePromise](auto callContext, auto request)
             {
+                ++handlerCalled;
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
                     callContext->FileSystemId);
@@ -4183,7 +4070,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         scheduler->RunAllScheduledTasks();
         NProto::TDestroyHandleResponse response =
-            TErrorResponse(E_FS_NOENT, "xxx");
+            TErrorResponse(E_REJECTED, "retriable");
         responsePromise.SetValue(std::move(response));
 
         auto errorCounter =
@@ -4193,6 +4080,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     true);
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+
+        // Retriable errors are handled by DurableClient and must not reach this
+        // layer in production. Any error returned here is final.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, handlerCalled.load());
     }
 
     Y_UNIT_TEST(ShouldPostponeDestroyHandleRequestIfHandleOpsQueueOverflows)
