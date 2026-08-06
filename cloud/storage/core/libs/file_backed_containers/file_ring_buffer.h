@@ -4,8 +4,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <util/generic/string.h>
-#include <util/generic/vector.h>
+#include <util/generic/strbuf.h>
 
 #include <functional>
 
@@ -79,7 +78,14 @@ public:
     void PopFront();
     ui64 Size() const;
     bool Empty() const;
+
+    // Checks data and structure integrity
+    // Sets IsCorrupted flag if any issues are found and returns false
+    // Returns true if everything is valid
     bool Validate();
+
+    // Calls visitor for each entry in the buffer
+    // Fires a critical event doesn't visit entries if a buffer is corrupted
     void Visit(const TVisitor& visitor);
     bool IsCorrupted() const;
     void SetCorrupted();

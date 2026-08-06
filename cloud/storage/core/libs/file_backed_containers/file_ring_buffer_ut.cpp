@@ -571,6 +571,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             TStateWithCorruptedEntryLength s(i);
             UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
             UNIT_ASSERT_VALUES_EQUAL(i == 2, s.RingBuffer.Validate());
+            UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
         }
     }
 
