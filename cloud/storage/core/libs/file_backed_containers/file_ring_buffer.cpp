@@ -299,8 +299,9 @@ private:
             Header()->DataOffset < newFileSize)
         {
             // Move data to the temporary place
-            const ui64 tempDataOffset =
-                Max(newFileSize, Header()->DataOffset + Header()->DataCapacity);
+            const ui64 tempDataOffset = AlignUp(
+                Max(newFileSize, Header()->DataOffset + Header()->DataCapacity),
+                sizeof(ui64));
 
             const ui64 tempFileSize = tempDataOffset + Header()->DataCapacity;
 
