@@ -84,6 +84,9 @@ public:
     // Returns true if everything is valid
     // Fires a critical event and doesn't visit entries if a buffer is corrupted
     bool Validate();
+
+    // Calls visitor for each entry in the buffer
+    // Fires a critical event doesn't visit entries if a buffer is corrupted
     void Visit(const TVisitor& visitor);
     bool IsCorrupted() const;
     void SetCorrupted();
