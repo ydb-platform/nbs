@@ -88,6 +88,7 @@ def do_test(test_name, aux_params):
     results_path = f"{common.output_path()}/{test_name}_results.txt"
     with open(results_path, 'w') as results:
         results.write(json.dumps(report, indent=4))
+        results.write("\n")
 
     ret = common.canonical_file(results_path, local=True)
     return ret
