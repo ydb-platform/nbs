@@ -32,7 +32,6 @@ public:
         const NProto::TCreateHandleRequest& request,
         ui64 nodeId,
         ui64 handle,
-        bool guestKeepCache,
         ui64 originalRequestId);
     EResult AddDestroyRequest(ui64 nodeId, ui64 handle);
     std::optional<NProto::TQueueEntry> Front();

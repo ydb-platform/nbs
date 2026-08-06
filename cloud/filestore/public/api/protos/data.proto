@@ -124,12 +124,8 @@ message TConfirmCreateHandleRequest
     // Original CreateHandle flags.
     uint32 Flags = 5;
 
-    // Effective GuestKeepCache value returned to the guest by the original
-    // CreateHandle request.
-    bool GuestKeepCache = 6;
-
     // Original CreateHandle request id.
-    uint64 OriginalRequestId = 7;
+    uint64 OriginalRequestId = 6;
 }
 
 message TConfirmCreateHandleResponse
