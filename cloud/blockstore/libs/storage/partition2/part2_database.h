@@ -62,10 +62,17 @@ public:
 
 private:
     TCounters Counters;
+    ui64 L0RangeSize = 0;
+    ui64 L1RangeSize = 0;
 
 public:
-    TPartitionDatabaseImpl(NKikimr::NTable::TDatabase& database)
+    TPartitionDatabaseImpl(
+        NKikimr::NTable::TDatabase& database,
+        ui64 l0RangeSize = 0,
+        ui64 l1RangeSize = 0)
         : NKikimr::NIceDb::TNiceDb(database)
+        , L0RangeSize(l0RangeSize)
+        , L1RangeSize(l1RangeSize)
     {}
 
     [[nodiscard]] const TCounters& GetCounters() const
@@ -202,6 +209,34 @@ public:
         TPartialBlobId startBlobId,
         TPartialBlobId finalBlobId,
         ui64 prechargeRowCount);
+
+    //
+    // L0Index
+    //
+
+    void WriteL0Blob(
+        const TPartialBlobId& blobId,
+        const TBlockRange32& blockRange,
+        const NProto::TBlobMeta& blobMeta);
+
+    bool FindBlocksInL0Index(
+        IBlocksIndexVisitor& visitor,
+        const TBlockRange32& blockRange,
+        ui64 maxCommitId = Max());
+
+    //
+    // L1Index
+    //
+
+    void WriteL1Blob(
+        const TPartialBlobId& blobId,
+        const TBlockRange32& blockRange,
+        const NProto::TBlobMeta& blobMeta);
+
+    bool FindBlocksInL1Index(
+        IBlocksIndexVisitor& visitor,
+        const TBlockRange32& blockRange,
+        ui64 maxCommitId = Max());
 
     //
     // CompactionMap

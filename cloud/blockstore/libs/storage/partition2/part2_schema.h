@@ -418,6 +418,84 @@ struct TPartitionSchema
         using Precharge = NoAutoPrecharge;
     };
 
+    struct L0Index
+        : public TTableSchema<13>
+    {
+        struct RangeStart
+            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct RangeEnd
+            : public Column<2, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct BlobCommitId
+            : public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct BlobId
+            : public Column<4, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct BlobMeta
+            : public Column<5, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TBlobMeta;
+        };
+
+        using TKey = TableKey<RangeStart, RangeEnd, BlobCommitId, BlobId>;
+        using TColumns =
+            TableColumns<RangeStart, RangeEnd, BlobCommitId, BlobId, BlobMeta>;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy =
+            TCompactionPolicy<ECompactionPolicy::IndexTable>;
+        using Precharge = NoAutoPrecharge;
+    };
+
+    struct L1Index
+        : public TTableSchema<14>
+    {
+        struct RangeStart
+            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct RangeEnd
+            : public Column<2, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct BlobCommitId
+            : public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct BlobId
+            : public Column<4, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct BlobMeta
+            : public Column<5, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TBlobMeta;
+        };
+
+        using TKey = TableKey<RangeStart, RangeEnd, BlobCommitId, BlobId>;
+        using TColumns =
+            TableColumns<RangeStart, RangeEnd, BlobCommitId, BlobId, BlobMeta>;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy =
+            TCompactionPolicy<ECompactionPolicy::IndexTable>;
+        using Precharge = NoAutoPrecharge;
+    };
+
     using TTables = SchemaTables<
         Meta,
         FreshBlocksIndex,
@@ -430,7 +508,9 @@ struct TPartitionSchema
         Checkpoints,
         UsedBlocks,
         LogicalUsedBlocks,
-        UnconfirmedBlobs
+        UnconfirmedBlobs,
+        L0Index,
+        L1Index
     >;
 
     using TSettings = SchemaSettings<

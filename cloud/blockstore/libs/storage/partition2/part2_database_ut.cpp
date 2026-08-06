@@ -1,9 +1,12 @@
 #include "part2_database.h"
+#include "part2_schema.h"
 
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <initializer_list>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
@@ -19,6 +22,40 @@ TString GetBlockContent(char fill)
 TString CommitId2Str(ui64 commitId)
 {
     return commitId == InvalidCommitId ? "x" : ToString(commitId);
+}
+
+template <typename TTable>
+void AssertIndexEntry(
+    TPartitionDatabase& db,
+    const TPartialBlobId& expectedBlobId,
+    const TBlockRange32& expectedBlockRange,
+    const NProto::TBlobMeta& expectedBlobMeta)
+{
+    auto it = db.Table<TTable>().Range().Select();
+
+    UNIT_ASSERT(it.IsReady());
+    UNIT_ASSERT(it.IsValid());
+    UNIT_ASSERT_VALUES_EQUAL(
+        expectedBlockRange.Start,
+        it.template GetValue<typename TTable::RangeStart>());
+    UNIT_ASSERT_VALUES_EQUAL(
+        expectedBlockRange.End,
+        it.template GetValue<typename TTable::RangeEnd>());
+    UNIT_ASSERT_VALUES_EQUAL(
+        expectedBlobId.CommitId(),
+        it.template GetValue<typename TTable::BlobCommitId>());
+    UNIT_ASSERT_VALUES_EQUAL(
+        expectedBlobId.UniqueId(),
+        it.template GetValue<typename TTable::BlobId>());
+
+    const auto blobMeta =
+        it.template GetValue<typename TTable::BlobMeta>();
+    UNIT_ASSERT_VALUES_EQUAL(
+        expectedBlobMeta.SerializeAsString(),
+        blobMeta.SerializeAsString());
+
+    UNIT_ASSERT(it.Next());
+    UNIT_ASSERT(!it.IsValid());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -104,6 +141,27 @@ struct TTestBlockVisitorWithBlobOffset final
     }
 };
 
+struct TTestLevelIndexVisitor final
+    : public IBlocksIndexVisitor
+{
+    TStringBuilder Result;
+
+    bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset) override
+    {
+        if (Result) {
+            Result << " ";
+        }
+        Result << "#" << blockIndex << ":" << commitId << ":"
+               << blobId.CommitId() << ":" << blobId.UniqueId() << ":"
+               << blobOffset;
+        return true;
+    }
+};
+
 struct TTestBlobVisitor final
     : public IBlobsIndexVisitor
 {
@@ -130,6 +188,125 @@ struct TTestBlobVisitor final
 
 Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
 {
+    Y_UNIT_TEST(ShouldWriteL0AndL1Blobs)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        const TPartialBlobId l0BlobId(10, 1);
+        const auto l0BlockRange =
+            TBlockRange32::MakeClosedInterval(100, 200);
+        NProto::TBlobMeta l0BlobMeta;
+        l0BlobMeta.MutableMixedBlocks()->AddBlocks(100);
+
+        const TPartialBlobId l1BlobId(20, 2);
+        const auto l1BlockRange =
+            TBlockRange32::MakeClosedInterval(300, 400);
+        NProto::TBlobMeta l1BlobMeta;
+        l1BlobMeta.MutableMixedBlocks()->AddBlocks(300);
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                db.WriteL0Blob(l0BlobId, l0BlockRange, l0BlobMeta);
+                db.WriteL1Blob(l1BlobId, l1BlockRange, l1BlobMeta);
+            });
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                AssertIndexEntry<TPartitionSchema::L0Index>(
+                    db,
+                    l0BlobId,
+                    l0BlockRange,
+                    l0BlobMeta);
+                AssertIndexEntry<TPartitionSchema::L1Index>(
+                    db,
+                    l1BlobId,
+                    l1BlockRange,
+                    l1BlobMeta);
+            });
+    }
+
+    Y_UNIT_TEST(ShouldFindBlocksInL0AndL1Indices)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto writeBlob = [&](TPartialBlobId blobId,
+                                           TBlockRange32 blockRange,
+                                           std::initializer_list<ui32> blocks,
+                                           std::initializer_list<ui64> commitIds)
+                {
+                    NProto::TBlobMeta blobMeta;
+                    auto* mixedBlocks = blobMeta.MutableMixedBlocks();
+                    for (ui32 blockIndex: blocks) {
+                        mixedBlocks->AddBlocks(blockIndex);
+                    }
+                    for (ui64 commitId: commitIds) {
+                        mixedBlocks->AddCommitIds(commitId);
+                    }
+
+                    db.WriteL0Blob(blobId, blockRange, blobMeta);
+                    db.WriteL1Blob(blobId, blockRange, blobMeta);
+                };
+
+                writeBlob(
+                    TPartialBlobId(5, 1),
+                    TBlockRange32::MakeClosedInterval(0, 5),
+                    {0, 5},
+                    {});
+                writeBlob(
+                    TPartialBlobId(10, 2),
+                    TBlockRange32::MakeClosedInterval(10, 19),
+                    {10, 15, 19},
+                    {});
+                writeBlob(
+                    TPartialBlobId(30, 3),
+                    TBlockRange32::MakeClosedInterval(15, 19),
+                    {15, 19},
+                    {5, 15});
+                writeBlob(
+                    TPartialBlobId(40, 4),
+                    TBlockRange32::MakeClosedInterval(20, 25),
+                    {20, 25},
+                    {15, 25});
+                writeBlob(
+                    TPartialBlobId(10, 5),
+                    TBlockRange32::MakeClosedInterval(30, 39),
+                    {30, 39},
+                    {});
+            });
+
+        executor.ReadTx(
+            [&](NKikimr::NTable::TDatabase& database)
+            {
+                TPartitionDatabase db(database, 10, 20);
+                const auto blockRange =
+                    TBlockRange32::MakeClosedInterval(12, 22);
+                constexpr ui64 maxCommitId = 15;
+                constexpr TStringBuf expected =
+                    "#15:5:30:3:0 #19:15:30:3:1 #20:15:40:4:0";
+
+                TTestLevelIndexVisitor l0Visitor;
+                UNIT_ASSERT(db.FindBlocksInL0Index(
+                    l0Visitor,
+                    blockRange,
+                    maxCommitId));
+                UNIT_ASSERT_VALUES_EQUAL(expected, l0Visitor.Result);
+
+                TTestLevelIndexVisitor l1Visitor;
+                UNIT_ASSERT(db.FindBlocksInL1Index(
+                    l1Visitor,
+                    blockRange,
+                    maxCommitId));
+                UNIT_ASSERT_VALUES_EQUAL(expected, l1Visitor.Result);
+            });
+    }
+
     Y_UNIT_TEST(ShouldStorePartitionMeta)
     {
         TTestExecutor executor;
