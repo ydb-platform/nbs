@@ -23,11 +23,51 @@ namespace {
 // VolumeCriticalEvents
 ////////////////////////////////////////////////////////////////////////////////
 
+/*
+TVolumeCriticalEventCounter - per-interval CriticalEvent counter with
+deferred export
+
+Writing the number of CritEvents for an interval directly into the monitoring
+counter (Exported) can lead to registered CriticalEvents being missed in
+monitoring, because the 15s intervals (cycles) - the internal one and the
+monitoring one - generally do not coincide:
+
+1. End of the next monitoring interval - monitoring reads the current counter
+   value (including 0, if no CriticalEvents have been registered in this
+   internal interval yet)
+
+2. End of the next internal interval -
+   WriteVolumeCriticalEventCounters() resets the counter to 0.
+
+3. If a CriticalEvent was registered between (1) and (2) (Report...() was
+   called with an increment of the counter), that event will be lost and
+   not reflected in monitoring
+
+To exclude such a scenario:
+
+- CriticalEvents for the current interval are accumulated in the Internal
+  counter
+
+- at the end of the interval, the Internal value is written into the Exported
+  counter and held there until the end of the next interval, allowing
+  monitoring to read the value in its own read cycle
+
+Additionally:
+
+- the separate use of Internal and Exported counters avoids losing
+  CriticalEvents registered before module initialization (before
+  TVolumeCriticalEvents::CountersRoot is set) - the value accumulated in
+  Internal is not reset at the end of an interval when writing to Exported
+  is not possible. At the end of the first interval after CountersRoot
+  initialization, the value accumulated since startup in the Internal counter
+  will be written into Exported
+*/
 struct TVolumeCriticalEventCounter
 {
-    // Hot-path accumulator, not exported
+    // Per-interval CriticalEvents counter, not exported
     std::atomic<i64> Internal{0};
-    // Metrics counter, GAUGE, derivative=false. Constructed lazily
+    // Per-interval CriticalEvents metrics counter, GAUGE.
+    // Constructed lazily
     NMonitoring::TDynamicCounters::TCounterPtr Exported;
 };
 
