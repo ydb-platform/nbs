@@ -3316,7 +3316,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 NProto::TCreateHandleResponse response;
                 response.SetHandle(handle);
                 response.SetHandleCreatedAsync(true);
-                response.SetGuestKeepCache(true);
                 response.MutableNodeAttr()->SetId(nodeId);
                 response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
                 return MakeFuture(response);
@@ -3337,7 +3336,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     requestId,
                     request->GetOriginalRequestId());
-                UNIT_ASSERT(!request->GetGuestKeepCache());
                 UNIT_ASSERT_VALUES_EQUAL(
                     headers,
                     request->GetHeaders().SerializeAsString());
@@ -3508,7 +3506,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         NProto::TFileStoreFeatures features;
         features.SetAsyncCreateHandleEnabled(true);
         features.SetAsyncDestroyReadOnlyHandleEnabled(true);
-        features.SetGuestKeepCacheAllowed(true);
         auto scheduler = std::make_shared<TTestScheduler>();
         TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
@@ -3527,7 +3524,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 NProto::TCreateHandleResponse response;
                 response.SetHandle(handle);
                 response.SetHandleCreatedAsync(true);
-                response.SetGuestKeepCache(true);
                 response.MutableNodeAttr()->SetId(nodeId);
                 response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
                 return MakeFuture(response);
@@ -3543,7 +3539,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     SessionId,
                     request->GetHeaders().GetSessionId());
-                UNIT_ASSERT(request->GetGuestKeepCache());
                 ++confirmCalled;
                 return MakeFuture(NProto::TConfirmCreateHandleResponse{});
             });
@@ -3587,7 +3582,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 NProto::TCreateHandleResponse response;
                 response.SetHandle(handle);
                 response.SetHandleCreatedAsync(true);
-                response.SetGuestKeepCache(true);
                 response.MutableNodeAttr()->SetId(nodeId);
                 response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
                 return MakeFuture(response);
@@ -3603,7 +3597,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     SessionId,
                     request->GetHeaders().GetSessionId());
-                UNIT_ASSERT(!request->GetGuestKeepCache());
 
                 if (++confirmCalled < 3) {
                     NProto::TConfirmCreateHandleResponse response =
@@ -3713,7 +3706,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         NProto::TFileStoreFeatures features;
         features.SetAsyncCreateHandleEnabled(true);
         features.SetAsyncDestroyReadOnlyHandleEnabled(true);
-        features.SetGuestKeepCacheAllowed(true);
         auto scheduler = std::make_shared<TTestScheduler>();
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
@@ -3734,7 +3726,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 NProto::TCreateHandleResponse response;
                 response.SetHandle(handle);
                 response.SetHandleCreatedAsync(true);
-                response.SetGuestKeepCache(true);
                 response.MutableNodeAttr()->SetId(nodeId);
                 response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
                 return MakeFuture(response);
@@ -3749,7 +3740,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     SessionId,
                     request->GetHeaders().GetSessionId());
-                UNIT_ASSERT(request->GetGuestKeepCache());
                 ++confirmCalled;
                 return confirmPromise;
             });
@@ -3960,7 +3950,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         NProto::TFileStoreFeatures features;
         features.SetAsyncCreateHandleEnabled(true);
         features.SetAsyncDestroyReadOnlyHandleEnabled(true);
-        features.SetGuestKeepCacheAllowed(true);
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4004,7 +3993,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     NProto::TCreateHandleResponse response;
                     response.SetHandle(handle);
                     response.SetHandleCreatedAsync(true);
-                    response.SetGuestKeepCache(true);
                     response.MutableNodeAttr()->SetId(nodeId);
                     response.MutableNodeAttr()->SetType(
                         NProto::E_REGULAR_NODE);
@@ -4026,7 +4014,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     UNIT_ASSERT_VALUES_EQUAL(
                         ProtoFlag(NProto::TCreateHandleRequest::E_READ),
                         request->GetFlags());
-                    UNIT_ASSERT(request->GetGuestKeepCache());
                     requestId = request->GetOriginalRequestId();
                     ++confirmCalled;
 
@@ -4090,7 +4077,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     UNIT_ASSERT_VALUES_EQUAL(
                         ProtoFlag(NProto::TCreateHandleRequest::E_READ),
                         request->GetFlags());
-                    UNIT_ASSERT(request->GetGuestKeepCache());
                     ++confirmCalled;
                     return MakeFuture(NProto::TConfirmCreateHandleResponse{});
                 });

@@ -90,7 +90,6 @@ TFileSystem::CreateConfirmCreateHandleRequest(
     const NProto::TCreateHandleRequest& createRequest,
     ui64 nodeId,
     ui64 handle,
-    bool guestKeepCache,
     ui64 originalRequestId)
 {
     auto request = std::make_shared<NProto::TConfirmCreateHandleRequest>();
@@ -99,7 +98,6 @@ TFileSystem::CreateConfirmCreateHandleRequest(
     request->SetNodeId(nodeId);
     request->SetHandle(handle);
     request->SetFlags(createRequest.GetFlags());
-    request->SetGuestKeepCache(guestKeepCache);
     request->SetOriginalRequestId(originalRequestId);
     return request;
 }
@@ -119,7 +117,6 @@ void TFileSystem::ConfirmCreateHandleAndReplyOpen(
         createRequest,
         nodeId,
         handle,
-        fi.keep_cache,
         originalRequestId);
 
     Session->ConfirmCreateHandle(callContext, std::move(confirmRequest))
@@ -415,6 +412,7 @@ void TFileSystem::ProcessAsyncCreateHandleResponse(
     const NProto::TCreateHandleRequest& originalRequest,
     const NProto::TCreateHandleResponse& asyncResponse)
 {
+    // TODO(#6714): handle GuestKeepCache correctly for async CreateHandle
     const auto originalRequestId = originalRequest.GetHeaders().GetRequestId()
         ? originalRequest.GetHeaders().GetRequestId()
         : callContext->RequestId;
@@ -426,7 +424,6 @@ void TFileSystem::ProcessAsyncCreateHandleResponse(
             originalRequest,
             ino,
             asyncResponse.GetHandle(),
-            fi.keep_cache,
             originalRequestId);
     }
 

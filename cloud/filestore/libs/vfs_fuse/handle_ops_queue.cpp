@@ -22,7 +22,6 @@ THandleOpsQueue::EResult THandleOpsQueue::AddCreateRequest(
     const NProto::TCreateHandleRequest& createHandleRequest,
     ui64 nodeId,
     ui64 handle,
-    bool guestKeepCache,
     ui64 originalRequestId)
 {
     NProto::TQueueEntry request;
@@ -30,7 +29,6 @@ THandleOpsQueue::EResult THandleOpsQueue::AddCreateRequest(
     *queued->MutableRequest() = createHandleRequest;
     queued->SetHandle(handle);
     queued->SetNodeId(nodeId);
-    queued->SetGuestKeepCache(guestKeepCache);
     queued->SetOriginalRequestId(originalRequestId);
 
     TString result;
