@@ -369,9 +369,16 @@ private:
         if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
             // blob already could be garbage, but we should keep it
             // as there could be active readers (or even checkpoint)
-            db.WriteCleanupQueue(blob.BlobId, DeletionCommitId);
+            NProto::TCleanupQueueAdditionalFields additionalFields;
+            *additionalFields.MutableBlobMeta() = blobMeta;
+            db.WriteCleanupQueue(
+                blob.BlobId,
+                DeletionCommitId,
+                additionalFields);
             State.GetCleanupQueue().Add(
-                {blob.BlobId, DeletionCommitId, blobMeta});
+                {.BlobId = blob.BlobId,
+                 .CommitId = DeletionCommitId,
+                 .AdditionalFields = std::move(additionalFields)});
         }
 
         // move blocks from FreshBlocks to MixedBlocks
@@ -603,15 +610,21 @@ private:
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                NProto::TBlobMeta blobMeta;
+
+                NProto::TCleanupQueueAdditionalFields additionalFields;
                 if (kv.second.BlobMeta) {
-                    blobMeta = kv.second.BlobMeta.GetRef();
+                    *additionalFields.MutableBlobMeta() = kv.second.BlobMeta.GetRef();
                 } else if (kv.second.RecreatedBlobMeta) {
-                    blobMeta = kv.second.RecreatedBlobMeta.GetRef();
+                    *additionalFields.MutableBlobMeta() = kv.second.RecreatedBlobMeta.GetRef();
                 }
 
-                bool inserted = State.GetCleanupQueue().Add(
-                    {kv.first, DeletionCommitId, std::move(blobMeta)});
+                TCleanupQueueItem cleanupQueueItem{
+                    kv.first,
+                    DeletionCommitId,
+                    std::move(additionalFields)};
+
+                bool inserted =
+                    State.GetCleanupQueue().Add(cleanupQueueItem);
 
                 STORAGE_VERIFY_DEBUG_C(
                     inserted,
@@ -619,7 +632,10 @@ private:
                     TabletId,
                     "Cleanup queue: blob already in cleanup queue");
                 if (inserted) {
-                    db.WriteCleanupQueue(kv.first, DeletionCommitId);
+                    db.WriteCleanupQueue(
+                        kv.first,
+                        DeletionCommitId,
+                        cleanupQueueItem.AdditionalFields);
                 }
             }
         }
