@@ -302,7 +302,9 @@ private:
             const ui64 tempDataOffset =
                 Max(newFileSize, Header()->DataOffset + Header()->DataCapacity);
 
-            if (!ResizeAndRemap(tempDataOffset) || !Validate()) {
+            const ui64 tempFileSize = tempDataOffset + Header()->DataCapacity;
+
+            if (!ResizeAndRemap(tempFileSize) || !Validate()) {
                 return false;
             }
 

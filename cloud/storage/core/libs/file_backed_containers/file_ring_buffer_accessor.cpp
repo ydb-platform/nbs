@@ -320,6 +320,9 @@ void TFileRingBufferAccessor::UpdateRawData(std::span<char> rawData)
 
 std::span<char> TFileRingBufferAccessor::GetRawData(ui64 offset, ui64 byteCount)
 {
+    Y_ABORT_UNLESS(offset <= RawData.size());
+    Y_ABORT_UNLESS(byteCount <= RawData.size() - offset);
+
     return RawData.subspan(offset, byteCount);
 }
 
