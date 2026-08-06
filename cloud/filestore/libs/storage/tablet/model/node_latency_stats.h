@@ -32,9 +32,13 @@ private:
             const TNodeLatencyStats& lhs,
             const TNodeLatencyStats& rhs) const
         {
+            const auto comparisonTime = Max(lhs.LastAccessed, rhs.LastAccessed);
+            const double lhsScore = CalculateLatencyDecay(lhs, comparisonTime);
+            const double rhsScore = CalculateLatencyDecay(rhs, comparisonTime);
+
             // AverageLatencyDecayedMs ASC, NodeId ASC
-            return std::tie(lhs.AverageLatencyDecayedMs, lhs.NodeId) <
-                   std::tie(rhs.AverageLatencyDecayedMs, rhs.NodeId);
+            return std::tie(lhsScore, lhs.NodeId) <
+                   std::tie(rhsScore, rhs.NodeId);
         }
     };
 
@@ -61,7 +65,7 @@ public:
         EFileStoreRequest requestType,
         TInstant now,
         TDuration latency);
-    void CalculateLatencyDecay(TNodeLatencyStats& stats, TInstant now) const;
+    static double CalculateLatencyDecay(const TNodeLatencyStats& stats, TInstant now);
 
     TVector<TNodeLatencyStats> GetLatencyStats(TInstant now) const
     {
@@ -71,7 +75,7 @@ public:
              ++it)
         {
             auto stats = *it;
-            CalculateLatencyDecay(stats, now);
+            stats.AverageLatencyDecayedMs = CalculateLatencyDecay(stats, now);
             result.push_back(stats);
         };
         return result;

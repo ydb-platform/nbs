@@ -13,14 +13,15 @@ void TNodeLatencyStatsTracker::Initialize(size_t maxEntries)
     IdAndRequest2Stats.clear();
 }
 
-void TNodeLatencyStatsTracker::CalculateLatencyDecay(
-    TNodeLatencyStats& stats,
-    TInstant now) const
+double TNodeLatencyStatsTracker::CalculateLatencyDecay(
+    const TNodeLatencyStats& stats,
+    TInstant now)
 {
-    const auto elapsedUs = now >= stats.LastAccessed ? now - stats.LastAccessed
+    const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
                                                      : TDuration::Zero();
-    stats.AverageLatencyDecayedMs *= exp(
-        -log(2) * elapsedUs.GetValue() / TDuration::Minutes(10).MicroSeconds());
+    return stats.AverageLatencyDecayedMs *
+           exp(-log(2) * elapsed.MilliSeconds() /
+               TDuration::Minutes(10).MilliSeconds());
 }
 
 void TNodeLatencyStatsTracker::UpdateLatencyStats(
@@ -40,11 +41,11 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
         stats.RequestType = requestType;
     }
 
-    CalculateLatencyDecay(stats, now);
+    stats.AverageLatencyDecayedMs = CalculateLatencyDecay(stats, now);
 
     ++stats.RequestCount;
-    stats.TotalLatencyMs += latency.GetValue();
-    stats.AverageLatencyDecayedMs = stats.TotalLatencyMs / stats.RequestCount;
+    stats.TotalLatencyMs += latency.MilliSeconds();
+    stats.AverageLatencyDecayedMs = static_cast<double>(stats.TotalLatencyMs) / stats.RequestCount;
     stats.LastAccessed = now;
 
     auto [newLatencyIterator, inserted] = NodeLatencyStats.insert(stats);
