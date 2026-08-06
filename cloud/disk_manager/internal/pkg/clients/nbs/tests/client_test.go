@@ -95,6 +95,7 @@ func newFactory(
 	factory, err := nbs.NewFactoryWithCreds(
 		ctx,
 		clientConfig,
+		0,
 		creds,
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),

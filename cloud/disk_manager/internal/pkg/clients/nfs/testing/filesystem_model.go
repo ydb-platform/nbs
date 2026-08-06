@@ -55,6 +55,7 @@ func NewFactory(ctx context.Context) nfs.Factory {
 			RootCertsFile:        &rootCertsFile,
 			DurableClientTimeout: &clientTimeout,
 		},
+		0,
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
 	)

@@ -10,6 +10,7 @@ SRCS(
     grpc.go
     iface.go
     log.go
+    reloadable_transport_credentials.go
     request.go
     response.go
     test_client.go

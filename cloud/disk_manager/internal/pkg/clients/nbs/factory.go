@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -22,6 +23,7 @@ import (
 
 type factory struct {
 	config                 *nbs_config.ClientConfig
+	refreshCertsPeriod     time.Duration
 	credentials            auth.Credentials
 	sessionMetricsRegistry metrics.Registry
 	metrics                client_metrics.Metrics
@@ -116,9 +118,24 @@ func (f *factory) initClients(
 		return err
 	}
 
+	var tlsProvider nbs_client.TLSConfigProvider
+	if !f.config.GetInsecure() && f.refreshCertsPeriod > 0 {
+		tlsProvider, err = common.NewReloadableTLSConfigProvider(
+			ctx,
+			common.ReloadableTLSConfigProviderConfig{
+				RootCertsFile: f.config.GetRootCertsFile(),
+				RefreshPeriod: f.refreshCertsPeriod,
+			},
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	for zoneID, zone := range f.config.GetZones() {
 		clientCreds := &nbs_client.ClientCredentials{
 			RootCertsFile: f.config.GetRootCertsFile(),
+			TLSProvider:   tlsProvider,
 			IAMClient:     f.credentials,
 		}
 
@@ -291,6 +308,7 @@ func (f *factory) GetMultiZoneClient(
 func newFactoryWithCreds(
 	ctx context.Context,
 	config *nbs_config.ClientConfig,
+	refreshCertsPeriod time.Duration,
 	creds auth.Credentials,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
@@ -302,6 +320,7 @@ func newFactoryWithCreds(
 
 	f := &factory{
 		config:                 config,
+		refreshCertsPeriod:     refreshCertsPeriod,
 		credentials:            creds,
 		sessionMetricsRegistry: sessionMetricsRegistry,
 		metrics:                client_metrics.NewClientMetrics(clientMetricsRegistry),
@@ -317,6 +336,7 @@ func newFactoryWithCreds(
 func NewFactoryWithCreds(
 	ctx context.Context,
 	config *nbs_config.ClientConfig,
+	refreshCertsPeriod time.Duration,
 	creds auth.Credentials,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
@@ -325,6 +345,7 @@ func NewFactoryWithCreds(
 	return newFactoryWithCreds(
 		ctx,
 		config,
+		refreshCertsPeriod,
 		creds,
 		clientMetricsRegistry,
 		sessionMetricsRegistry,
@@ -334,6 +355,7 @@ func NewFactoryWithCreds(
 func NewFactory(
 	ctx context.Context,
 	config *nbs_config.ClientConfig,
+	refreshCertsPeriod time.Duration,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
 ) (Factory, error) {
@@ -341,6 +363,7 @@ func NewFactory(
 	return NewFactoryWithCreds(
 		ctx,
 		config,
+		refreshCertsPeriod,
 		nil,
 		clientMetricsRegistry,
 		sessionMetricsRegistry,

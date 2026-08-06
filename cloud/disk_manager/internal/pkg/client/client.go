@@ -425,13 +425,15 @@ func (c *privateClient) Close() error {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func getDialOptions(config *client_config.ClientConfig) ([]grpc.DialOption, error) {
+func getDialOptions(
+	ctx context.Context,
+	config *client_config.ClientConfig,
+) ([]grpc.DialOption, error) {
 	options := make([]grpc.DialOption, 0)
 
 	if config.GetInsecure() {
 		return append(options, grpc.WithInsecure()), nil
 	}
-
 	cp, err := x509.SystemCertPool()
 	if err != nil {
 		return nil, errors.NewNonRetriableError(err)
@@ -479,7 +481,7 @@ func NewClient(
 	config *client_config.ClientConfig,
 ) (sdk_client.Client, error) {
 
-	options, err := getDialOptions(config)
+	options, err := getDialOptions(ctx, config)
 	if err != nil {
 		return nil, err
 	}
@@ -579,7 +581,7 @@ func NewPrivateClientForCLI(
 	config *client_config.ClientConfig,
 ) (PrivateClient, error) {
 
-	options, err := getDialOptions(config)
+	options, err := getDialOptions(ctx, config)
 	if err != nil {
 		return nil, err
 	}

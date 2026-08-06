@@ -23,12 +23,17 @@ type ClientCredentials struct {
 	RootCertsFile      string
 	CertFile           string
 	CertPrivateKeyFile string
+	TLSProvider        TLSConfigProvider
 	AuthToken          string
 	IAMClient          TokenProvider
 }
 
 type TokenProvider interface {
 	Token(ctx context.Context) (string, error)
+}
+
+type TLSConfigProvider interface {
+	GetTLSConfig(ctx context.Context) (*tls.Config, error)
 }
 
 type grpcTokenProvider struct {
@@ -47,13 +52,16 @@ func (p *grpcTokenProvider) RequireTransportSecurity() bool {
 	return false
 }
 
-func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, error) {
+func (creds *ClientCredentials) buildTLSConfigFromFiles() (
+	*tls.Config,
+	error,
+) {
 	cfg := tls.Config{}
 
 	if creds.CertFile != "" {
 		cert, err := tls.LoadX509KeyPair(creds.CertFile, creds.CertPrivateKeyFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load client certificate/key: %s", err.Error())
+			return nil, fmt.Errorf("failed to load client certificate/key: %w", err)
 		}
 
 		cfg.Certificates = []tls.Certificate{cert}
@@ -62,7 +70,7 @@ func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, e
 	if creds.RootCertsFile != "" {
 		pem, err := os.ReadFile(creds.RootCertsFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read root cert file: %s", err.Error())
+			return nil, fmt.Errorf("failed to read root cert file: %w", err)
 		}
 
 		pool := x509.NewCertPool()
@@ -74,8 +82,27 @@ func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, e
 		cfg.RootCAs = pool
 	}
 
+	return &cfg, nil
+}
+
+func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, error) {
+	var transportCredentials credentials.TransportCredentials
+
+	if creds.TLSProvider != nil {
+		transportCredentials = NewReloadableTransportCredentials(
+			creds.TLSProvider,
+		)
+	} else {
+		cfg, err := creds.buildTLSConfigFromFiles()
+		if err != nil {
+			return nil, err
+		}
+
+		transportCredentials = credentials.NewTLS(cfg)
+	}
+
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(credentials.NewTLS(&cfg)),
+		grpc.WithTransportCredentials(transportCredentials),
 	}
 
 	if creds.AuthToken != "" {
