@@ -81,6 +81,10 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
     STFUNC(StateWork);
 };
 
@@ -210,6 +214,18 @@ void TBootRequestActor::HandleWakeup(
             "External boot timed out"));
 }
 
+void TBootRequestActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ctx.Send(
+        ev->Sender,
+        std::make_unique<TEvents::TEvPoisonTaken>(),
+        0,   // flags
+        ev->Cookie);
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "HiveProxy is shutting down"));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TBootRequestActor::StateWork)
@@ -221,6 +237,7 @@ STFUNC(TBootRequestActor::StateWork)
         HFunc(NKikimr::TEvHive::TEvBootTabletReply, HandleError);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
             HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
@@ -238,20 +255,18 @@ void THiveProxyActor::HandleBootExternal(
 {
     const auto* msg = ev->Get();
 
-    ui64 tabletId = msg->TabletId;
-
-    auto clientId = ClientCache->Prepare(ctx, HiveTabletId);
-    auto requestId = NCloud::Register<TBootRequestActor>(
+    auto clientId = PrepareHiveClient(ctx);
+    auto actorId = NCloud::Register<TBootRequestActor>(
         ctx,
         SelfId(),
         LogComponent,
         TRequestInfo(ev->Sender, ev->Cookie),
-        tabletId,
+        msg->TabletId,
         clientId,
         TabletBootInfoBackup,
-        msg->RequestTimeout
-    );
-    HiveState.Actors.insert(requestId);
+        msg->RequestTimeout);
+    HiveState.Actors.insert(actorId);
+    PoisonPillHelper.TakeOwnership(ctx, actorId);
 }
 
 }   // namespace NCloud::NStorage

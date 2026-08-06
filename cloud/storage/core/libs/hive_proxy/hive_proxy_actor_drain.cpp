@@ -49,6 +49,10 @@ private:
         const TEvHive::TEvDrainNodeResult::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
     STFUNC(StateWork);
 };
 
@@ -104,6 +108,18 @@ void TDrainNodeRequestActor::HandleDrainNodeResult(
     ReplyAndDie(ctx, std::move(error));
 }
 
+void TDrainNodeRequestActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ctx.Send(
+        ev->Sender,
+        std::make_unique<TEvents::TEvPoisonTaken>(),
+        0,   // flags
+        ev->Cookie);
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "HiveProxy is shutting down"));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TDrainNodeRequestActor::StateWork)
@@ -112,6 +128,7 @@ STFUNC(TDrainNodeRequestActor::StateWork)
         HFunc(TEvHiveProxyPrivate::TEvChangeTabletClient, HandleChangeTabletClient);
         HFunc(TEvHive::TEvDrainNodeResult, HandleDrainNodeResult);
         IgnoreFunc(TEvHive::TEvDrainNodeAck);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
             HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
@@ -127,16 +144,16 @@ void THiveProxyActor::HandleDrainNode(
     const TEvHiveProxy::TEvDrainNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto clientId = ClientCache->Prepare(ctx, HiveTabletId);
-
-    HiveState.Actors.insert(NCloud::Register<TDrainNodeRequestActor>(
+    auto clientId = PrepareHiveClient(ctx);
+    auto actorId = NCloud::Register<TDrainNodeRequestActor>(
         ctx,
         SelfId(),
         ev->Get()->KeepDown,
         LogComponent,
         TRequestInfo(ev->Sender, ev->Cookie),
-        clientId
-    ));
+        clientId);
+    HiveState.Actors.insert(actorId);
+    PoisonPillHelper.TakeOwnership(ctx, actorId);
 }
 
 }   // namespace NCloud::NStorage

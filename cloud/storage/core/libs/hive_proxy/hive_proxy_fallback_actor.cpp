@@ -4,8 +4,6 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 
-#include <library/cpp/protobuf/util/pb_io.h>
-
 namespace NCloud::NStorage {
 
 using namespace NActors;
@@ -42,6 +40,7 @@ private:
         void(const TActorContext&, std::unique_ptr<TResponse>)
     >;
 
+    TActorId Owner;
     int LogComponent;
     TActorId TabletBootInfoBackup;
     ui64 TabletId;
@@ -49,11 +48,13 @@ private:
 
 public:
     TReadTabletBootInfoBackupActor(
+            TActorId owner,
             int logComponent,
             TActorId tabletBootInfoCache,
             ui64 tabletId,
             TReply reply)
-        : LogComponent(logComponent)
+        : Owner(owner)
+        , LogComponent(logComponent)
         , TabletBootInfoBackup(std::move(tabletBootInfoCache))
         , TabletId(tabletId)
         , Reply(std::move(reply))
@@ -66,6 +67,19 @@ public:
     }
 
 private:
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        std::unique_ptr<TResponse> response)
+    {
+        Reply(ctx, std::move(response));
+        NCloud::Send<TEvHiveProxyPrivate::TEvRequestFinished>(
+            ctx,
+            Owner,
+            TabletId,
+            TabletId);
+        Die(ctx);
+    }
+
     void Request(const TActorContext& ctx)
     {
         auto request = std::make_unique<TRequest>(TabletId);
@@ -95,8 +109,22 @@ private:
                 std::move(msg->StorageInfo), msg->SuggestedGeneration);
         }
 
-        Reply(ctx, std::move(response));
-        Die(ctx);
+        ReplyAndDie(ctx, std::move(response));
+    }
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        ctx.Send(
+            ev->Sender,
+            std::make_unique<TEvents::TEvPoisonTaken>(),
+            0,   // flags
+            ev->Cookie);
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TResponse>(
+                MakeError(E_REJECTED, "HiveProxy is shutting down")));
     }
 
 private:
@@ -104,6 +132,7 @@ private:
     {
         switch (ev->GetTypeRewrite()) {
             HFunc(TResponse, HandleResponse);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             default:
                 HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
@@ -118,22 +147,57 @@ private:
 
 THiveProxyFallbackActor::THiveProxyFallbackActor(THiveProxyConfig config)
     : Config(std::move(config))
+    , PoisonPillHelper(this)
 {}
 
 void THiveProxyFallbackActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    if (Config.TabletBootInfoBackupFilePath) {
+    const auto& backupFilePath = Config.GoldenTabletBootInfoBackupFilePath
+                                     ? Config.GoldenTabletBootInfoBackupFilePath
+                                     : Config.TabletBootInfoBackupFilePath;
+
+    if (backupFilePath) {
         auto cache = std::make_unique<TTabletBootInfoBackup>(
             Config.LogComponent,
-            Config.TabletBootInfoBackupFilePath,
+            backupFilePath,
             Config.UseBinaryFormatForTabletBootInfoBackup,
             true /* readOnlyMode */
         );
         TabletBootInfoBackup = ctx.Register(
-            cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
+            cache.release(),
+            TMailboxType::HTSwap,
+            AppData()->IOPoolId);
+        PoisonPillHelper.TakeOwnership(ctx, TabletBootInfoBackup);
     }
+}
+
+void THiveProxyFallbackActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    TThis::Become(&TThis::StateShutdown);
+    PoisonPillHelper.HandlePoisonPill(ev, ctx);
+}
+
+void THiveProxyFallbackActor::HandlePoisonTaken(
+    const TEvents::TEvPoisonTaken::TPtr& ev,
+    const TActorContext& ctx)
+{
+    PoisonPillHelper.HandlePoisonTaken(ev, ctx);
+}
+
+void THiveProxyFallbackActor::HandleRequestFinished(
+    const TEvHiveProxyPrivate::TEvRequestFinished::TPtr& ev,
+    const TActorContext& ctx)
+{
+    PoisonPillHelper.ReleaseOwnership(ctx, ev->Sender);
+}
+
+void THiveProxyFallbackActor::Poison(const TActorContext& ctx)
+{
+    Die(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,8 +218,35 @@ bool THiveProxyFallbackActor::HandleRequests(STFUNC_SIG)
 
 STFUNC(THiveProxyFallbackActor::StateWork)
 {
-    if (!HandleRequests(ev)) {
-        LogUnexpectedEvent(ev, Config.LogComponent, __PRETTY_FUNCTION__);
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+        HFunc(TEvHiveProxyPrivate::TEvRequestFinished, HandleRequestFinished);
+
+        default:
+            if (!HandleRequests(ev)) {
+                LogUnexpectedEvent(
+                    ev,
+                    Config.LogComponent,
+                    __PRETTY_FUNCTION__);
+            }
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(THiveProxyFallbackActor::StateShutdown)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+        HFunc(TEvHiveProxyPrivate::TEvRequestFinished, HandleRequestFinished);
+
+        STORAGE_HIVE_PROXY_REQUESTS(STORAGE_REJECT_REQUEST, TEvHiveProxy)
+
+        default:
+            break;
     }
 }
 
@@ -194,13 +285,13 @@ void THiveProxyFallbackActor::HandleGetStorageInfo(
     const auto* msg = ev->Get();
 
     auto requestInfo = TRequestInfo(ev->Sender, ev->Cookie);
-    auto reply = [=](const auto& ctx, auto r) {
+    auto reply = [requestInfo](const auto& ctx, auto r)
+    {
         if (HasError(r->Error)) {
             NCloud::Reply(
                 ctx,
                 requestInfo,
-                std::make_unique<TResponse>(r->Error)
-            );
+                std::make_unique<TResponse>(r->Error));
             return;
         }
 
@@ -208,12 +299,14 @@ void THiveProxyFallbackActor::HandleGetStorageInfo(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    NCloud::Register<TReadTabletBootInfoBackupActor>(
+    auto actorId = NCloud::Register<TReadTabletBootInfoBackupActor>(
         ctx,
+        SelfId(),
         Config.LogComponent,
         TabletBootInfoBackup,
         msg->TabletId,
         std::move(reply));
+    PoisonPillHelper.TakeOwnership(ctx, actorId);
 }
 
 void THiveProxyFallbackActor::HandleBootExternal(
@@ -231,9 +324,9 @@ void THiveProxyFallbackActor::HandleBootExternal(
     }
 
     const auto* msg = ev->Get();
-
     auto requestInfo = TRequestInfo(ev->Sender, ev->Cookie);
-    auto reply = [=, this](const auto& ctx, auto r) {
+    auto reply = [requestInfo, this](const auto& ctx, auto r)
+    {
         if (HasError(r->Error)) {
             NCloud::Reply(
                 ctx,
@@ -246,8 +339,8 @@ void THiveProxyFallbackActor::HandleBootExternal(
         // increment suggested generation to ensure that the tablet does not get
         // stuck with an outdated generation, no matter what
         auto request = std::make_unique<
-            TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest>(
-               r->StorageInfo,
+                TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest>(
+                r->StorageInfo,
                r->SuggestedGeneration + 1
             );
         NCloud::Send(ctx, TabletBootInfoBackup, std::move(request));
@@ -255,18 +348,20 @@ void THiveProxyFallbackActor::HandleBootExternal(
         auto response = std::make_unique<TResponse>(
             std::move(r->StorageInfo),
             r->SuggestedGeneration,
-            TEvHiveProxy::TEvBootExternalResponse::EBootMode::MASTER,
+            TResponse::EBootMode::MASTER,
             0  // SlaveId
         );
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    NCloud::Register<TReadTabletBootInfoBackupActor>(
+    auto actorId = NCloud::Register<TReadTabletBootInfoBackupActor>(
         ctx,
+        SelfId(),
         Config.LogComponent,
         TabletBootInfoBackup,
         msg->TabletId,
         std::move(reply));
+    PoisonPillHelper.TakeOwnership(ctx, actorId);
 }
 
 void THiveProxyFallbackActor::HandleReassignTablet(

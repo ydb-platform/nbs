@@ -5,6 +5,7 @@
 #include "hive_proxy_events_private.h"
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
@@ -18,9 +19,11 @@ namespace NCloud::NStorage {
 
 class THiveProxyFallbackActor final
     : public NActors::TActorBootstrapped<THiveProxyFallbackActor>
+    , public IMortalActor
 {
 private:
     const THiveProxyConfig Config;
+    TPoisonPillHelper PoisonPillHelper;
 
     NActors::TActorId TabletBootInfoBackup;
 
@@ -31,6 +34,21 @@ public:
 
 private:
     STFUNC(StateWork);
+    STFUNC(StateShutdown);
+
+    void Poison(const NActors::TActorContext& ctx) override;
+
+    void HandlePoisonPill(
+        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePoisonTaken(
+        const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRequestFinished(
+        const TEvHiveProxyPrivate::TEvRequestFinished::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
 

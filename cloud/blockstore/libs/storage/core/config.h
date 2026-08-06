@@ -594,7 +594,9 @@ public:
     ui32 GetMaxDevicesToErasePerDeviceNameForGlobalPoolKind() const;
 
     TString GetTabletBootInfoBackupFilePath() const;
+    [[nodiscard]] TString GetGoldenTabletBootInfoBackupFilePath() const;
     bool GetHiveProxyFallbackMode() const;
+    [[nodiscard]] bool GetEnableHiveProxyRuntimeFallback() const;
     TString GetPathDescriptionBackupFilePath() const;
     bool GetUseBinaryFormatForPathDescriptionBackup() const;
     bool GetUseBinaryFormatForTabletBootInfoBackup() const;

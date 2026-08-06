@@ -66,6 +66,10 @@ private:
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandlePoisonPill(
+        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleReadTabletBootInfoBackup(
         const TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest::TPtr& ev,
         const NActors::TActorContext& ctx);

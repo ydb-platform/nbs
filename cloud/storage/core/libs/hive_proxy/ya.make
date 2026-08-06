@@ -11,6 +11,7 @@ SRCS(
     hive_proxy_actor_reassign.cpp
     hive_proxy_actor_unlock.cpp
     hive_proxy_fallback_actor.cpp
+    hive_proxy_router.cpp
     tablet_boot_info_backup.cpp
 )
 

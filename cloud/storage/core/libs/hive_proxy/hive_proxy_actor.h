@@ -5,6 +5,7 @@
 #include "hive_proxy_events_private.h"
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/base/hive.h>
@@ -26,6 +27,7 @@ namespace NCloud::NStorage {
 
 class THiveProxyActor final
     : public NActors::TActorBootstrapped<THiveProxyActor>
+    , public IMortalActor
 {
 public:
     struct TRequestInfo
@@ -168,9 +170,11 @@ private:
 
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
     THiveState HiveState;
+    TPoisonPillHelper PoisonPillHelper;
 
     const TDuration LockExpireTimeout;
     const int LogComponent;
+    const bool RuntimeFallbackEnabled;
 
     TString TabletBootInfoBackupFilePath;
     bool UseBinaryFormatForTabletBootInfoBackup;
@@ -182,6 +186,7 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr HiveReconnectTimeCounter;
     ui64 HiveReconnectStartCycles = 0;
     bool HiveDisconnected = true;
+    NActors::TActorId HiveClient;
 
 public:
     explicit THiveProxyActor(THiveProxyConfig config);
@@ -194,10 +199,33 @@ public:
 
 private:
     STFUNC(StateWork);
+    STFUNC(StateShutdown);
+
+    void Poison(const NActors::TActorContext& ctx) override;
+
+    void HandlePoisonPill(
+        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePoisonTaken(
+        const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void RejectPendingRequests(const NActors::TActorContext& ctx);
 
     void SendRequest(
         const NActors::TActorContext& ctx,
         NActors::IEventBase* request);
+
+    NActors::TActorId PrepareHiveClient(const NActors::TActorContext& ctx);
+
+    void TrackHiveClient(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId clientId);
+
+    void ReleaseHiveClient(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId clientId);
 
     void SendNextCreateOrLookupRequest(
         const NActors::TActorContext& ctx,
@@ -234,6 +262,14 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleDisconnect(
+        NKikimr::TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleConnectDuringShutdown(
+        NKikimr::TEvTabletPipe::TEvClientConnected::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDisconnectDuringShutdown(
         NKikimr::TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
         const NActors::TActorContext& ctx);
 

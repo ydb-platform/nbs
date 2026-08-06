@@ -1656,4 +1656,12 @@ message TStorageServiceConfig
     // if block is present in mixed index. If filter says that block is not present
     // in mixed index, we skip reading mixed index.
     optional bool MixedBlocksFilterEnabled = 520;
+
+    // When enabled, HiveProxyFallbackMode can switch HiveProxy to fallback at
+    // runtime. Switching back to normal mode requires a service restart.
+    optional bool EnableHiveProxyRuntimeFallback = 521;
+
+    // If set, HiveProxy fallback mode reads tablet boot infos from this file
+    // instead of TabletBootInfoBackupFilePath.
+    optional string GoldenTabletBootInfoBackupFilePath = 522;
 }

@@ -124,6 +124,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(NonReplicatedHDDPoolName,      TString,      "rot"                    )\
                                                                                \
     xxx(TabletBootInfoBackupFilePath,                TString,      ""         )\
+    xxx(GoldenTabletBootInfoBackupFilePath,          TString,      ""         )\
     xxx(PathDescriptionBackupFilePath,               TString,      ""         )\
     xxx(UseBinaryFormatForPathDescriptionBackup,     bool,         false      )\
     xxx(UseBinaryFormatForTabletBootInfoBackup,      bool,         false      )\
@@ -535,6 +536,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxDevicesToErasePerDeviceNameForGlobalPoolKind,    ui32,   1         )\
                                                                                \
     xxx(HiveProxyFallbackMode,                     bool,      false           )\
+    xxx(EnableHiveProxyRuntimeFallback,            bool,      false           )\
     xxx(SSProxyFallbackMode,                       bool,      false           )\
     xxx(UseSchemeCache,                            bool,      false           )\
     xxx(DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode, bool, false )\
