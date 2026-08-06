@@ -62,6 +62,33 @@ using namespace NThreading;
 
 LWTRACE_USING(FILESTORE_SERVER_PROVIDER);
 
+namespace NImpl {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void PrepareRequestHeaders(
+    NCloud::NProto::ERequestSource source,
+    TStringBuf peer,
+    TStringBuf authToken,
+    NProto::THeaders& headers)
+{
+    auto& internal = *headers.MutableInternal();
+
+    internal.Clear();
+    internal.SetRequestSource(source);
+    internal.SetPeer(UrlUnescapeRet(peer));
+    internal.SetRequestOrigin(
+        NProto::THeaders::TInternal::REQUEST_ORIGIN_EXTERNAL);
+
+    if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
+        internal.SetAuthToken(TString(authToken));
+    }
+}
+
+}   // namespace NImpl
+
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -434,24 +461,16 @@ void TAppContext::ValidateRequest(
             << "internal field should not be set by client";
     }
 
-    auto& internal = *headers.MutableInternal();
-
-    internal.Clear();
-    internal.SetRequestSource(*source);
-    internal.SetPeer(UrlUnescapeRet(context.peer()));
-
-    // don't override a value set earlier
-    if (internal.GetRequestOrigin() ==
-        NProto::THeaders::TInternal::REQUEST_ORIGIN_UNSPECIFIED)
-    {
-        internal.SetRequestOrigin(
-            NProto::THeaders::TInternal::REQUEST_ORIGIN_EXTERNAL);
-    }
-
-    // we will only get token from secure control channel
+    TString authToken;
     if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
-        internal.SetAuthToken(GetAuthToken(context.client_metadata()));
+        authToken = GetAuthToken(context.client_metadata());
     }
+
+    NImpl::PrepareRequestHeaders(
+        *source,
+        context.peer(),
+        authToken,
+        headers);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

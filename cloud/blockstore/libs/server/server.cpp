@@ -60,6 +60,31 @@ namespace NCloud::NBlockStore::NServer {
 using namespace NMonitoring;
 using namespace NThreading;
 
+namespace NImpl {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void PrepareRequestHeaders(
+    NCloud::NProto::ERequestSource source,
+    TStringBuf peer,
+    TStringBuf authToken,
+    NProto::THeaders& headers)
+{
+    auto& internal = *headers.MutableInternal();
+
+    internal.Clear();
+    internal.SetRequestSource(source);
+    internal.SetPeer(UrlUnescapeRet(peer));
+
+    if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
+        internal.SetAuthToken(TString(authToken));
+    }
+}
+
+}   // namespace NImpl
+
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -698,15 +723,16 @@ private:
                 << GetBlockStoreRequestName(TMethod::Request).Quote();
         }
 
-        auto& internal = *Request->MutableHeaders()->MutableInternal();
-        internal.Clear();
-        internal.SetRequestSource(*source);
-        internal.SetPeer(UrlUnescapeRet(Context->peer()));
-
-        // we will only get token from secure control channel
-        if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
-            internal.SetAuthToken(GetAuthToken(Context->client_metadata()));
+        TString authToken;
+        if (*source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
+            authToken = GetAuthToken(Context->client_metadata());
         }
+
+        NImpl::PrepareRequestHeaders(
+            *source,
+            Context->peer(),
+            authToken,
+            *Request->MutableHeaders());
 
         if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
             const auto& cellId = Request->GetHeaders().GetCellId();
