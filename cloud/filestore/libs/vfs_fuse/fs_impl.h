@@ -371,6 +371,7 @@ private:
         const NProto::TCreateHandleRequest& createRequest,
         ui64 nodeId,
         ui64 handle,
+        bool guestKeepCache,
         ui64 originalRequestId);
 
     void ConfirmCreateHandleAndReplyOpen(

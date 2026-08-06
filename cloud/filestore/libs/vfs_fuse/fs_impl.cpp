@@ -494,6 +494,7 @@ void TFileSystem::ProcessHandleOpsQueue()
             requestInfo.GetRequest(),
             requestInfo.GetNodeId(),
             requestInfo.GetHandle(),
+            requestInfo.GetGuestKeepCache(),
             requestInfo.GetOriginalRequestId());
 
         STORAGE_DEBUG(

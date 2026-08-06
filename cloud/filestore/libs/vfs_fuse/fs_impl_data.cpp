@@ -44,22 +44,21 @@ void InitNodeInfo(
     nodeInfo->SetHandle(ToUnderlying(handle));
 }
 
+bool IsReadOnlyAccessMode(ui32 flags)
+{
+    return !HasFlag(flags, NProto::TCreateHandleRequest::E_WRITE);
+}
+
 bool IsAsyncCreateHandleEligible(
     const TFileSystemConfig& config,
     ui32 flags)
 {
-    // Async create is safe only when close is async too. Otherwise a sync
-    // DestroyHandle can run before the queued ConfirmCreateHandle.
-    const bool asyncDestroyHandle =
-        config.GetAsyncDestroyHandleEnabled() ||
-        config.GetAsyncDestroyReadOnlyHandleEnabled();
-    if (!asyncDestroyHandle || !config.GetAsyncCreateHandleEnabled()) {
+    if (!IsAsyncCreateEnabled(config) || !IsReadOnlyAccessMode(flags)) {
         return false;
     }
 
     constexpr ui32 unsupportedFlags =
         ProtoFlag(NProto::TCreateHandleRequest::E_CREATE) |
-        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE) |
         ProtoFlag(NProto::TCreateHandleRequest::E_APPEND) |
         ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE);
 
@@ -91,6 +90,7 @@ TFileSystem::CreateConfirmCreateHandleRequest(
     const NProto::TCreateHandleRequest& createRequest,
     ui64 nodeId,
     ui64 handle,
+    bool guestKeepCache,
     ui64 originalRequestId)
 {
     auto request = std::make_shared<NProto::TConfirmCreateHandleRequest>();
@@ -99,6 +99,7 @@ TFileSystem::CreateConfirmCreateHandleRequest(
     request->SetNodeId(nodeId);
     request->SetHandle(handle);
     request->SetFlags(createRequest.GetFlags());
+    request->SetGuestKeepCache(guestKeepCache);
     request->SetOriginalRequestId(originalRequestId);
     return request;
 }
@@ -118,6 +119,7 @@ void TFileSystem::ConfirmCreateHandleAndReplyOpen(
         createRequest,
         nodeId,
         handle,
+        fi.keep_cache,
         originalRequestId);
 
     Session->ConfirmCreateHandle(callContext, std::move(confirmRequest))
@@ -405,6 +407,11 @@ void TFileSystem::Open(
         });
 }
 
+// CreateHandle has completed, but the async response indicates that the
+// returned handle is not durable yet. The original request is needed to
+// recreate the handle during confirmation if the server did not persist it.
+// Save it together with the allocated handle before returning the handle to
+// FUSE.
 void TFileSystem::ProcessAsyncCreateHandleResponse(
     TCallContextPtr callContext,
     fuse_req_t req,
@@ -415,6 +422,7 @@ void TFileSystem::ProcessAsyncCreateHandleResponse(
     const auto originalRequestId = originalRequest.GetHeaders().GetRequestId()
         ? originalRequest.GetHeaders().GetRequestId()
         : callContext->RequestId;
+    auto fi = MakeFuseFileInfo(asyncResponse, *Config);
 
     THandleOpsQueue::EResult result;
     with_lock (HandleOpsQueueLock) {
@@ -422,6 +430,7 @@ void TFileSystem::ProcessAsyncCreateHandleResponse(
             originalRequest,
             ino,
             asyncResponse.GetHandle(),
+            fi.keep_cache,
             originalRequestId);
     }
 
@@ -429,7 +438,6 @@ void TFileSystem::ProcessAsyncCreateHandleResponse(
         STORAGE_DEBUG(
             "Create handle request added to queue #"
             << ino << " @" << asyncResponse.GetHandle());
-        auto fi = MakeFuseFileInfo(asyncResponse, *Config);
         ReplyOpen(*callContext, MakeError(S_OK), req, &fi);
         return;
     }
@@ -455,7 +463,6 @@ void TFileSystem::ProcessAsyncCreateHandleResponse(
         "confirming create handle #"
         << ino << " @" << asyncResponse.GetHandle());
 
-    const auto fi = MakeFuseFileInfo(asyncResponse, *Config);
     ConfirmCreateHandleAndReplyOpen(
         std::move(callContext),
         req,
@@ -567,7 +574,8 @@ void TFileSystem::Release(
     fuse_file_info* fi)
 {
     auto handle = fi->fh;
-    const bool readOnly = (fi->flags & O_ACCMODE) == O_RDONLY;
+    const auto [flags, _] = SystemFlagsToHandle(fi->flags);
+    const bool readOnly = IsReadOnlyAccessMode(flags);
     const bool processAsynchronously =
         HandleOpsQueue &&
         (Config->GetAsyncDestroyHandleEnabled() ||

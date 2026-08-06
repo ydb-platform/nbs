@@ -64,13 +64,6 @@ static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
 static constexpr TStringBuf DirectoryHandleStorageFileName = "directory_handles_storage";
 
-bool ShouldCreateHandleOpsQueue(const TFileSystemConfig& config)
-{
-    return config.GetAsyncDestroyHandleEnabled() ||
-        config.GetAsyncDestroyReadOnlyHandleEnabled() ||
-        config.GetAsyncCreateHandleEnabled();
-}
-
 NProto::TError CreateAndLockFile(
     const TString& dir,
     const TStringBuf& fileName,

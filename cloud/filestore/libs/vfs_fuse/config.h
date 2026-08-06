@@ -80,4 +80,8 @@ public:
     void DumpHtml(IOutputStream& out) const;
 };
 
+bool IsAsyncDestroyEnabled(const TFileSystemConfig& config);
+bool IsAsyncCreateEnabled(const TFileSystemConfig& config);
+bool ShouldCreateHandleOpsQueue(const TFileSystemConfig& config);
+
 }   // namespace NCloud::NFileStore::NFuse

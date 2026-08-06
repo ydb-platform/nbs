@@ -114,6 +114,27 @@ FILESTORE_FILESYSTEM_CONFIG(FILESTORE_FS_GETTER)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsAsyncDestroyEnabled(const TFileSystemConfig& config)
+{
+    return config.GetAsyncDestroyHandleEnabled() ||
+        config.GetAsyncDestroyReadOnlyHandleEnabled();
+}
+
+bool IsAsyncCreateEnabled(const TFileSystemConfig& config)
+{
+    // Async create is safe only when close uses the same queue. Otherwise a
+    // sync DestroyHandle can run before the queued ConfirmCreateHandle.
+    return config.GetAsyncCreateHandleEnabled() &&
+        IsAsyncDestroyEnabled(config);
+}
+
+bool ShouldCreateHandleOpsQueue(const TFileSystemConfig& config)
+{
+    return IsAsyncDestroyEnabled(config) || IsAsyncCreateEnabled(config);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define FILESTORE_CONFIG_DUMP(name, ...)                                       \
     out << #name << ": ";                                                      \
     DumpImpl(Get##name(), out);                                                \
