@@ -42,12 +42,12 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 
     Y_UNIT_TEST(ShouldAllowIncrementingFlushCountersToMaxValue)
     {
-        TPartitionFlushState state;
+        TPartitionFreshBlobState state;
 
-        state.IncrementUnflushedFreshBlobCount(Max<ui32>());
+        state.AddFreshBlob({1, Max<ui32>()});
         UNIT_ASSERT_VALUES_EQUAL(
             Max<ui32>(),
-            state.GetUnflushedFreshBlobCount());
+            state.GetUnflushedFreshBlobByteCount());
     }
 }
 
