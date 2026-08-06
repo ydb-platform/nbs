@@ -28,7 +28,12 @@ SRCS(
     future-test.cpp
     mutex-test.cpp
     sequencer-test.cpp
-    thread-mode-test.cpp
+    fiber-thread-mode-test.cpp
 )
+
+# fiber-cpuset-test.cpp is CMake-only: it needs its own main that restricts
+# the scheduler to a CPU subset before initialize, which the GTEST module
+# cannot provide - gtest_main owns main and silk_test_env.cpp initializes
+# the scheduler with default options.
 
 END()
