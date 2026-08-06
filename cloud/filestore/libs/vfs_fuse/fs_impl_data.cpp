@@ -134,11 +134,7 @@ void TFileSystem::ConfirmCreateHandleAndReplyOpen(
                 const auto& confirmResponse = future.GetValue();
                 const auto& error = confirmResponse.GetError();
                 if (!HasError(error)) {
-                    self->ReplyOpen(
-                        *callContext,
-                        MakeError(S_OK),
-                        req,
-                        &fi);
+                    self->ReplyOpen(*callContext, MakeError(S_OK), req, &fi);
                     return;
                 }
 
