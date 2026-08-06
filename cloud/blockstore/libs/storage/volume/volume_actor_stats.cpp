@@ -410,10 +410,11 @@ void TVolumeActor::HandlePartCountersCombined(
     auto* msg = ev->Get();
 
     if (HasError(msg->Error)) {
-        LOG_ERROR(
+        LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Failed to update part counters. Error: %s",
+            "%s Failed to pull part counters. Error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(msg->Error).c_str());
     }
 
