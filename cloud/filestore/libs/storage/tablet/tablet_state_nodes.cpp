@@ -551,7 +551,8 @@ bool TIndexTabletState::ReadNodeRefs(
     ui32 maxBytes,
     TString* next,
     bool noAutoPrecharge,
-    NProto::EListNodesSizeMode sizeMode)
+    NProto::EListNodesSizeMode sizeMode,
+    ui32 maxRows)
 {
     bool ready = db.ReadNodeRefs(
         nodeId,
@@ -562,7 +563,8 @@ bool TIndexTabletState::ReadNodeRefs(
         next,
         nullptr, // skippedRefs
         noAutoPrecharge,
-        sizeMode);
+        sizeMode,
+        maxRows);
 
     std::erase_if(
         refs,
@@ -572,6 +574,7 @@ bool TIndexTabletState::ReadNodeRefs(
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
     if (checkpointId != InvalidCommitId) {
         // there could be history versions
+        // maxBytes and maxCount are not respected here.
         if (!db.ReadNodeRefVers(nodeId, commitId, refs)) {
             ready = false;
         }
