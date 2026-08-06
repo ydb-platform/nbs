@@ -429,6 +429,7 @@ NProto::TError TFileMapFileRingBufferAccessor::Map()
         }
         FileMap->Map(0, FileMap->Length());
     } catch (...) {
+        UpdateRawData({});
         return MakeError(
             E_IO,
             Sprintf(
@@ -448,6 +449,7 @@ NProto::TError TFileMapFileRingBufferAccessor::ResizeAndRemap(size_t newSize)
         }
         FileMap->ResizeAndRemap(0, newSize);
     } catch (...) {
+        UpdateRawData({});
         return MakeError(
             E_IO,
             Sprintf(
