@@ -68,17 +68,25 @@ TString ReportCriticalEvent(
             message.c_str());
     }
 
+    ReportCriticalEventWithoutLogging(sensorName);
+
+    return LogCriticalEvent(sensorName, message);
+}
+
+void ReportCriticalEventWithoutLogging(const TString& sensorName)
+{
     if (CriticalEvents) {
-        auto counter = CriticalEvents->GetCounter(
-            sensorName,
-            true);
+        auto counter = CriticalEvents->GetCounter(sensorName, true);
         counter->Inc();
     }
+}
 
+TString LogCriticalEvent(const TString& sensorName, const TString& message)
+{
     TStringBuilder fullMessage;
     fullMessage << "CRITICAL_EVENT:" << sensorName;
     if (message) {
-        fullMessage << ":" << message;
+        fullMessage << ": " << message;
     }
 
     if (Log.IsNotNullLog()) {
@@ -91,16 +99,6 @@ TString ReportCriticalEvent(
     }
 
     return fullMessage;
-}
-
-void ReportCriticalEventWithoutLogging(const TString& sensorName)
-{
-    if (CriticalEvents) {
-        auto counter = CriticalEvents->GetCounter(
-            sensorName,
-            true);
-        counter->Inc();
-    }
 }
 
 #define STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                            \

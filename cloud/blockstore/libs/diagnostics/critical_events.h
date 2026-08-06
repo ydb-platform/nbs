@@ -4,6 +4,9 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/printable_params.h>
+#include <cloud/blockstore/libs/common/volume_id.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore {
 
@@ -135,9 +138,51 @@ using TCritEventParams =
     xxx(CleanupBlobMetaBlocksMismatch)                                         \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
+#define BLOCKSTORE_VOLUME_CRITICAL_EVENTS(xxx)                                 \
+    xxx(InvalidTabletConfig)                                                   \
+    xxx(ReassignTablet)                                                        \
+    xxx(TabletBSFailure)                                                       \
+    xxx(DiskAllocationFailure)                                                 \
+    xxx(CollectGarbageError)                                                   \
+    xxx(MigrationFailed)                                                       \
+    xxx(BadMigrationConfig)                                                    \
+    xxx(InitFreshBlocksError)                                                  \
+    xxx(TrimFreshLogError)                                                     \
+    xxx(NrdDestructionError)                                                   \
+    xxx(FailedToStartVolumeLocally)                                            \
+    xxx(MirroredDiskAllocationCleanupFailure)                                  \
+    xxx(MirroredDiskAllocationPlacementGroupCleanupFailure)                    \
+    xxx(MirroredDiskDeviceReplacementForbidden)                                \
+    xxx(MirroredDiskDeviceReplacementFailure)                                  \
+    xxx(MirroredDiskDeviceReplacementRateLimitExceeded)                        \
+    xxx(MirroredDiskMinorityChecksumMismatch)                                  \
+    xxx(MirroredDiskMajorityChecksumMismatch)                                  \
+    xxx(MirroredDiskChecksumMismatchUponRead)                                  \
+    xxx(MirroredDiskAddTagFailed)                                              \
+    xxx(ResyncFailed)                                                          \
+    xxx(AddConfirmedBlobsError)                                                \
+    xxx(ConfirmBlobsError)                                                     \
+    xxx(BlockDigestMismatchInBlob)                                             \
+    xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
+    xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
+    xxx(MirroredDiskResyncChecksumMismatch)                                    \
+    xxx(ReleaseShadowDiskError)                                                \
+    xxx(WrongCellIdInDescribeVolume)                                           \
+    xxx(TrimFreshLogTimeout)                                                   \
+    xxx(AddFreshBlocksResultedInError)                                         \
+    xxx(OverlappingRequestsDetected)                                           \
+    xxx(CrossPartitionRequestDetected)                                         \
+    // BLOCKSTORE_VOLUME_CRITICAL_EVENTS
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
+void InitVolumeCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
+
+NCloud::IStatsHandlerPtr CreateCriticalEventsStatsHandler();
+
+// For unit test purposes
+void ResetVolumeCriticalEventsCounter();
 
 #define BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                        \
     TString Report##name(const TString& message = "");                         \
@@ -177,5 +222,47 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 // BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
+
+#define BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE(name)             \
+        TString Report##name(                                                  \
+            const TString& diskId,                                             \
+            const TString& cloudId,                                            \
+            const TString& folderId,                                           \
+            const TString& message = "");                                      \
+        TString Report##name(                                                  \
+            const TString& diskId,                                             \
+            const TString& cloudId,                                            \
+            const TString& folderId,                                           \
+            const TString& message,                                            \
+            const TCritEventParams& keyValues);                                \
+        TString Report##name(                                                  \
+            const TString& diskId,                                             \
+            const TString& cloudId,                                            \
+            const TString& folderId,                                           \
+            const TCritEventParams& keyValues);                                \
+        template <typename... TArgs>                                           \
+        TString Report##name(const TVolumeId& volumeId, TArgs&&... args)       \
+        {                                                                      \
+            return Report##name(                                               \
+                volumeId.DiskId,                                               \
+                volumeId.CloudId,                                              \
+                volumeId.FolderId,                                             \
+                std::forward<TArgs>(args)...);                                 \
+        }                                                                      \
+        template <typename... TArgs>                                           \
+        TString Report##name(                                                  \
+            const TVolumeIdConstPtr& volumeId,                                 \
+            TArgs&&... args)                                                   \
+        {                                                                      \
+            Y_DEBUG_ABORT_UNLESS(volumeId);                                    \
+            return Report##name(*volumeId, std::forward<TArgs>(args)...);      \
+        }                                                                      \
+        const TString GetVolumeCriticalEventFor##name();                       \
+        const TString GetDeprecatedCriticalEventFor##name();                   \
+        // BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
+
+    BLOCKSTORE_VOLUME_CRITICAL_EVENTS(
+        BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE)
+#undef BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
 
 }   // namespace NCloud::NBlockStore
