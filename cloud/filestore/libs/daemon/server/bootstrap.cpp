@@ -73,6 +73,15 @@ void TBootstrapServer::StartComponents()
             || Configs->StorageConfig->GetFastShardRuntimeEnabled())
     {
         NStorage::NFastShard::Init();
+        if (Configs->StorageConfig->GetFastShardExtendedVerificationEnabled())
+        {
+            // TODO(#5895): properly integrate fastshard with log settings.
+            // FastShardExtendedVerificationEnabled flag is supposed to trigger
+            // some internal consistency checks inside fastshard code, fastshard
+            // loglevel should be configured in the same way as for the other
+            // components.
+            NStorage::NFastShard::EnableDebugLogging();
+        }
     }
     FILESTORE_LOG_START_COMPONENT(FastShardServer);
     FILESTORE_LOG_START_COMPONENT(ThreadPool);

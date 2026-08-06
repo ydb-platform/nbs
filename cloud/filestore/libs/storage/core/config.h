@@ -422,6 +422,7 @@ public:
 
     [[nodiscard]] ui32 GetFastShardServerPort() const;
     [[nodiscard]] bool GetFastShardRuntimeEnabled() const;
+    [[nodiscard]] bool GetFastShardExtendedVerificationEnabled() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 

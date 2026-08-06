@@ -124,6 +124,10 @@ public:
         pageGroups->clear();
 
         NProto::TReadPagesRequest request;
+        // TODO(#5895): use proper client-id
+        const TString clientId = "fastshard-prototype-client";
+        headers.SetClientId(clientId);
+
         const ui32 i =
             Selector.fetch_add(1, std::memory_order_relaxed) % Devices.size();
         request.SetDeviceUUID(Devices[i].DeviceUUID);
@@ -172,6 +176,11 @@ private:
         typename TFiberMain>
     NProto::TError MirrorRequest(TFiberMain fiberMain, TRequest request)
     {
+        auto& headers = *request.MutableHeaders();
+        // TODO(#5895): use proper client-id
+        const TString clientId = "fastshard-prototype-client";
+        headers.SetClientId(clientId);
+
         TVector<silk::FiberFuture> futures(Devices.size());
         TVector<TResponse> responses(Devices.size());
         for (ui32 i = 0; i < Devices.size(); ++i) {
