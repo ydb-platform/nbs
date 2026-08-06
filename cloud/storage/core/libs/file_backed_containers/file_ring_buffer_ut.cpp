@@ -888,19 +888,20 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const auto f2 = TTempFileHandle();
         {
             TFileMap m(f2.GetName(), TMemoryMapCommon::oRdWr);
-            m.ResizeAndRemap(0, resized.length() + len);
+            auto dataOffset = AlignUp(resized.length(), sizeof(ui64));
+            m.ResizeAndRemap(0, dataOffset + len);
             auto* data = static_cast<char*>(m.Ptr());
             MemCopy(data, initial.data(), initial.length());
             const auto* entryData = initial.data() + initial.length() - len;
-            MemCopy(data + resized.length(), entryData, len);
-            MemCopy(data + resized.length() - len, entryData, 3);
-            *reinterpret_cast<ui64*>(data + 40) = resized.length();
+            MemCopy(data + dataOffset, entryData, len);
+            MemCopy(data + dataOffset - len, entryData, 3);
+            *reinterpret_cast<ui64*>(data + 40) = dataOffset;
         }
         {
             TFileRingBuffer rb(f2.GetName(), len, 100, ver);
         }
         {
-            TFileMap m(f1.GetName(), TMemoryMapCommon::oRdWr);
+            TFileMap m(f2.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, m.Length());
             UNIT_ASSERT_STRINGS_EQUAL(
                 resized,
