@@ -10,9 +10,12 @@ message TQueuedCreateHandleRequest
     uint64 Handle = 2;
     uint64 NodeId = 3;
 
+    // Effective GuestKeepCache value returned to the guest.
+    bool GuestKeepCache = 4;
+
     // Stored separately for convenience. This value is also contained in
     // Request.Headers.RequestId.
-    uint64 OriginalRequestId = 4;
+    uint64 OriginalRequestId = 5;
 }
 
 message TQueueEntry
