@@ -682,7 +682,9 @@ void TIndexTabletActor::HandleReadData(
     AddInFlightRequest<TEvService::TReadDataMethod>(*requestInfo);
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
-    auto blockBuffer = CreateBlockBuffer(alignedByteRange);
+    auto blockBuffer = CreateContiguousBlockBuffer(
+        alignedByteRange,
+        true /* lazyAllocation */);
 
     ExecuteTx<TReadData>(
         ctx,
