@@ -793,7 +793,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         // entry header (8) + max entry data (4 or 8 depending on alignment)
-        const ui32 len = ver >= EVersion::V6 ? 16 : 12;
+        const ui32 len = 17;
 
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 1, ver);
         UNIT_ASSERT(rb->PushBack("ABCD"));
@@ -811,6 +811,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_STRINGS_EQUAL("123", rb->GetMetadata());
         UNIT_ASSERT(rb->SetMetadata("123456789"));
         UNIT_ASSERT(!rb->SetMetadata("1234567890abcdef!"));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 17, ver);
+        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
+        UNIT_ASSERT(!rb->SetMetadata("1234567890abcdefg!"));
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 100, ver);
         UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
