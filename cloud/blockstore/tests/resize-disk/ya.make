@@ -6,6 +6,7 @@ FORK_SUBTESTS()
 SPLIT_FACTOR(1)
 
 PEERDIR(
+    cloud/blockstore/public/sdk/python/client
     cloud/blockstore/tests/python/lib
 )
 
@@ -13,9 +14,10 @@ TEST_SRCS(
     test.py
 )
 
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/service-local/service-local.inc)
+SET(LOCAL_KIKIMR_SERVER_COUNT 2)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/local-kikimr/local-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/endpoint/vhost-endpoint.inc)
-INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/resize-disk/resize-disk.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/qemu.inc)
 
 END()

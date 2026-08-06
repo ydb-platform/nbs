@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/public.h>
@@ -37,6 +38,11 @@ struct IEndpointManager
 #undef ENDPOINT_DECLARE_METHOD
 
     virtual NThreading::TFuture<void> RestoreEndpoints() = 0;
+
+    virtual NThreading::TFuture<NProto::TError> RefreshEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason,
+        const NProto::TVolume* volume = nullptr) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

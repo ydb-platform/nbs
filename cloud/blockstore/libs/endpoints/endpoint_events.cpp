@@ -17,6 +17,10 @@ public:
     TFuture<NProto::TError> SwitchEndpointIfNeeded(
         const TString& diskId,
         const TString& reason) override;
+    TFuture<NProto::TError> RefreshEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason,
+        const NProto::TVolume* volume) override;
     void Register(IEndpointEventHandlerPtr listener) override;
 };
 
@@ -28,6 +32,18 @@ TFuture<NProto::TError> TEndpointEventProxy::SwitchEndpointIfNeeded(
 {
     if (Handler) {
         return Handler->SwitchEndpointIfNeeded(diskId, reason);
+    }
+
+    return MakeFuture(MakeError(S_OK));
+}
+
+TFuture<NProto::TError> TEndpointEventProxy::RefreshEndpointIfNeeded(
+    const TString& diskId,
+    const TString& reason,
+    const NProto::TVolume* volume)
+{
+    if (Handler) {
+        return Handler->RefreshEndpointIfNeeded(diskId, reason, volume);
     }
 
     return MakeFuture(MakeError(S_OK));

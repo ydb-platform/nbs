@@ -208,6 +208,21 @@ ui32 TTestEnv::CreateBlockStoreNode(
     const TString& name,
     TStorageConfigPtr storageConfig,
     TDiagnosticsConfigPtr diagnosticsConfig,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler)
+{
+    return CreateBlockStoreNode(
+        name,
+        std::move(storageConfig),
+        std::move(diagnosticsConfig),
+        NYdbStats::CreateVolumesStatsUploaderStub(),
+        CreateManuallyPreemptedVolumes(),
+        std::move(endpointEventHandler));
+}
+
+ui32 TTestEnv::CreateBlockStoreNode(
+    const TString& name,
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes)
 {
     return CreateBlockStoreNode(
@@ -224,6 +239,23 @@ ui32 TTestEnv::CreateBlockStoreNode(
     TDiagnosticsConfigPtr diagnosticsConfig,
     NYdbStats::IYdbVolumesStatsUploaderPtr ydbStatsUploader,
     TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes)
+{
+    return CreateBlockStoreNode(
+        name,
+        std::move(storageConfig),
+        std::move(diagnosticsConfig),
+        std::move(ydbStatsUploader),
+        std::move(manuallyPreemptedVolumes),
+        NServer::CreateEndpointEventProxy());
+}
+
+ui32 TTestEnv::CreateBlockStoreNode(
+    const TString& name,
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    NYdbStats::IYdbVolumesStatsUploaderPtr ydbStatsUploader,
+    TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler)
 {
     ui32 nodeIdx = NextDynamicNode++;
     UNIT_ASSERT(nodeIdx < StaticNodeCount + DynamicNodeCount);
@@ -413,7 +445,7 @@ ui32 TTestEnv::CreateBlockStoreNode(
         NStorage::CreateBlockDigestGeneratorFactory(),
         NDiscovery::CreateDiscoveryServiceStub(),
         TraceSerializer,
-        NServer::CreateEndpointEventProxy(),
+        std::move(endpointEventHandler),
         nullptr,   // rdmaClient
         partitionBudgetManager,
         CreateVolumeStatsStub(),

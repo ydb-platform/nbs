@@ -16,6 +16,11 @@ struct IEndpointEventHandler
     virtual NThreading::TFuture<NProto::TError> SwitchEndpointIfNeeded(
         const TString& diskId,
         const TString& reason) = 0;
+
+    virtual NThreading::TFuture<NProto::TError> RefreshEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason,
+        const NProto::TVolume* volume = nullptr) = 0;
 };
 
 struct IEndpointEventProxy: public IEndpointEventHandler

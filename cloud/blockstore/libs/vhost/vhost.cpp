@@ -6,7 +6,10 @@
 #include <cloud/contrib/vhost/include/vhost/server.h>
 
 #include <util/generic/singleton.h>
+#include <util/string/builder.h>
 #include <util/system/mutex.h>
+
+#include <string.h>
 
 namespace NCloud::NBlockStore::NVhost {
 
@@ -213,13 +216,23 @@ public:
         return result.GetFuture();
     }
 
-    void Update(ui64 blocksCount) override
+    NProto::TError Update(ui64 blocksCount) override
     {
         with_lock (Lock) {
             if (!VhdVdev) {
-                return;
+                return MakeError(S_FALSE, "Vhost device is not started");
             }
-            vhd_blockdev_set_total_blocks(VhdVdev, blocksCount);
+
+            const auto ret = vhd_blockdev_resize(VhdVdev, blocksCount);
+            if (ret < 0) {
+                return MakeError(
+                    MAKE_SYSTEM_ERROR(-ret),
+                    TStringBuilder()
+                        << "Failed to update vhost device "
+                        << SocketPath.Quote() << ": " << strerror(-ret));
+            }
+
+            return {};
         }
     }
 };

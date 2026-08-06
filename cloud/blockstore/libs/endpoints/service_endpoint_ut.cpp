@@ -209,6 +209,56 @@ struct TTestSessionManager final
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestEndpointManager final
+    : public IEndpointManager
+{
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    size_t CollectRequests(
+        const TIncompleteRequestsCollector& collector) override
+    {
+        Y_UNUSED(collector);
+        return 0;
+    }
+
+#define ENDPOINT_IMPLEMENT_METHOD(name, ...)                                   \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr ctx,                                                   \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        Y_UNUSED(ctx);                                                         \
+        Y_UNUSED(request);                                                     \
+        return MakeFuture(NProto::T##name##Response());                        \
+    }                                                                          \
+// ENDPOINT_IMPLEMENT_METHOD
+
+    BLOCKSTORE_ENDPOINT_SERVICE(ENDPOINT_IMPLEMENT_METHOD)
+
+#undef ENDPOINT_IMPLEMENT_METHOD
+
+    TFuture<void> RestoreEndpoints() override
+    {
+        return MakeFuture();
+    }
+
+    TFuture<NProto::TError> RefreshEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason,
+        const NProto::TVolume* volume) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(reason);
+        Y_UNUSED(volume);
+        return MakeFuture(MakeError(S_OK));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TKickEndpointResponse KickEndpoint(
     IEndpointManager& service,
     ui32 keyringId,
