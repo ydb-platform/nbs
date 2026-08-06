@@ -24,15 +24,35 @@ permissions:
   issues: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{
+      (
+        github.event.action != 'labeled' ||
+        contains(
+          vars.LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS,
+          format('''{0}''', github.event.label.name)
+        )
+      ) && 'tests' || 'ignored'
+    }}
   cancel-in-progress: true
 
 jobs:
   check-running-allowed:
     if: >-
-      (github.event.action == 'labeled' && github.event.label.name == 'recheck') ||
-      github.event.pull_request.stack == null ||
-      github.event.pull_request.stack.base.ref == github.event.pull_request.base.ref
+      ${{
+        (
+          github.event.action != 'labeled' ||
+          contains(
+            vars.LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS,
+            format('''{0}''', github.event.label.name)
+          )
+        ) &&
+        (
+          (github.event.action == 'labeled' && github.event.label.name == 'recheck') ||
+          github.event.pull_request.stack == null ||
+          github.event.pull_request.stack.base.ref == github.event.pull_request.base.ref
+        )
+      }}
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.check-ownership-membership.outputs.result }}
@@ -89,16 +109,10 @@ jobs:
               }
             }
 
-  check-trigger-label:
-    needs:
-      - check-running-allowed
-    uses: ./.github/workflows/check-test-launch-label.yaml
-
   create-build-and-test-target-var:
     needs:
-      - check-trigger-label
       - check-running-allowed
-    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       matrix_include: ${{ steps.set-build-and-test-targets.outputs.matrix_include }}
