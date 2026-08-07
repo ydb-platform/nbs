@@ -56,14 +56,26 @@ struct TCleanupQueue::TImpl
         return BlobIds.contains(blobId);
     }
 
-    size_t GetCount(ui64 maxCommitId) const
+    size_t GetCount(ui64 toCommitId) const
     {
-        if (maxCommitId == InvalidCommitId) {
+        if (toCommitId == InvalidCommitId) {
             return Items.size();
         }
+
+        return GetCount(0, TPartialBlobId(0, 0), toCommitId);
+    }
+
+    size_t GetCount(
+        ui64 fromCommitId,
+        const TPartialBlobId& fromBlobId,
+        ui64 toCommitId) const
+    {
+        auto it =
+            Items.upper_bound(TCleanupQueueItem{fromBlobId, fromCommitId, {}});
+
         size_t result = 0;
-        for (const auto& item: Items) {
-            if (item.CommitId > maxCommitId) {
+        for (; it != Items.end(); ++it) {
+            if (it->CommitId > toCommitId) {
                 break;
             }
             ++result;
@@ -71,14 +83,26 @@ struct TCleanupQueue::TImpl
         return result;
     }
 
-    TVector<TCleanupQueueItem> GetItems(ui64 maxCommitId, size_t limit) const
+    TVector<TCleanupQueueItem> GetItems(ui64 toCommitId, size_t limit) const
     {
+        return GetItems(0, TPartialBlobId(0, 0), toCommitId, limit);
+    }
+
+    TVector<TCleanupQueueItem> GetItems(
+        ui64 fromCommitId,
+        const TPartialBlobId& fromBlobId,
+        ui64 toCommitId,
+        size_t limit) const
+    {
+        auto it =
+            Items.upper_bound(TCleanupQueueItem{fromBlobId, fromCommitId, {}});
+
         TVector<TCleanupQueueItem> result;
-        for (const auto& item: Items) {
-            if (item.CommitId > maxCommitId) {
+        for (; it != Items.end(); ++it) {
+            if (it->CommitId > toCommitId) {
                 break;
             }
-            result.emplace_back(item);
+            result.emplace_back(*it);
             if (result.size() == limit) {
                 break;
             }
@@ -135,14 +159,33 @@ bool TCleanupQueue::HasBlob(const TPartialBlobId& blobId) const
     return Impl->HasBlob(blobId);
 }
 
-size_t TCleanupQueue::GetCount(ui64 maxCommitId) const
+size_t TCleanupQueue::GetCount(ui64 toCommitId) const
 {
-    return Impl->GetCount(maxCommitId);
+    return Impl->GetCount(toCommitId);
 }
 
-TVector<TCleanupQueueItem> TCleanupQueue::GetItems(ui64 maxCommitId, size_t limit) const
+size_t TCleanupQueue::GetCount(
+    ui64 fromCommitId,
+    const TPartialBlobId& fromBlobId,
+    ui64 toCommitId) const
 {
-    return Impl->GetItems(maxCommitId, limit);
+    return Impl->GetCount(fromCommitId, fromBlobId, toCommitId);
+}
+
+TVector<TCleanupQueueItem> TCleanupQueue::GetItems(
+    ui64 toCommitId,
+    size_t limit) const
+{
+    return Impl->GetItems(toCommitId, limit);
+}
+
+TVector<TCleanupQueueItem> TCleanupQueue::GetItems(
+    ui64 fromCommitId,
+    const TPartialBlobId& fromBlobId,
+    ui64 toCommitId,
+    size_t limit) const
+{
+    return Impl->GetItems(fromCommitId, fromBlobId, toCommitId, limit);
 }
 
 ui64 TCleanupQueue::GetQueueBytes() const

@@ -259,7 +259,7 @@ TTxPartition::TCleanup MakeCleanupArgs(
     ui64 cleanupCommitId,
     bool useRecreatedBlobMeta,
     bool verifyRecreatedBlobMetasOnCleanup,
-    bool withCheckpoint,
+    bool checkpointAware,
     ui64 minCheckpointCommitId,
     ui64 maxCheckpointCommitId)
 {
@@ -269,7 +269,7 @@ TTxPartition::TCleanup MakeCleanupArgs(
         useRecreatedBlobMeta,
         verifyRecreatedBlobMetasOnCleanup,
         cleanupQueue,
-        withCheckpoint,
+        checkpointAware,
         minCheckpointCommitId,
         maxCheckpointCommitId);
 }
@@ -608,7 +608,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             false,   // useRecreatedBlobMeta
             false,   // verifyRecreatedBlobMetasOnCleanup
-            false,   // withCheckpoint
+            false,   // checkpointAware
             InvalidCommitId,
             InvalidCommitId);
 
@@ -683,7 +683,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             false,   // useRecreatedBlobMeta
             true,    // verifyRecreatedBlobMetasOnCleanup
-            false,   // withCheckpoint
+            false,   // checkpointAware
             InvalidCommitId,
             InvalidCommitId);
 
@@ -731,7 +731,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             true,    // useRecreatedBlobMeta
             false,   // verifyRecreatedBlobMetasOnCleanup
-            false,   // withCheckpoint
+            false,   // checkpointAware
             InvalidCommitId,
             InvalidCommitId);
         RunPrepareAndExecute(executor, env, state, args);
@@ -786,7 +786,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             true,    // useRecreatedBlobMeta
             false,   // verifyRecreatedBlobMetasOnCleanup
-            false,   // withCheckpoint
+            false,   // checkpointAware
             InvalidCommitId,
             InvalidCommitId);
         RunPrepareAndExecute(executor, env, state, args);
@@ -1023,7 +1023,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             false,   // useRecreatedBlobMeta
             false,   // verifyRecreatedBlobMetasOnCleanup
-            true,    // withCheckpoint
+            true,    // checkpointAware
             minCheckpointCommitId,
             maxCheckpointCommitId);
 

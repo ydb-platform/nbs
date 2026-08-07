@@ -208,6 +208,13 @@ def storage_config_with_use_recreated_blob_metas_on_cleanup_enabled():
     return storage
 
 
+def storage_config_with_checkpoint_aware_cleanup_enabled(max_partitions):
+    storage = storage_config_with_multiple_partitions(max_partitions)
+    storage.CheckpointAwareCleanupEnabled = True
+
+    return storage
+
+
 class TestCase(object):
 
     def __init__(
@@ -245,6 +252,15 @@ TESTS = [
         [
             storage_config_with_multiple_partitions(2),
             storage_config_with_multiple_partitions(1),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-two-partitions-and-checkpoints-with-checkpoint-aware-cleanup",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-two-partitions-and-checkpoints.txt",
+        [
+            storage_config_with_checkpoint_aware_cleanup_enabled(2),
+            storage_config_with_checkpoint_aware_cleanup_enabled(1),
         ],
         None,
     ),

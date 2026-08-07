@@ -642,7 +642,7 @@ struct TTxPartition
 
         TVector<TCleanupQueueItem> CleanupQueue;
 
-        const bool WithCheckpoint;
+        const bool CheckpointAware;
         const ui64 MinCheckpointCommitId;
         const ui64 MaxCheckpointCommitId;
 
@@ -656,7 +656,7 @@ struct TTxPartition
             bool useRecreatedBlobMeta,
             bool verifyRecreatedBlobMetasOnCleanup,
             TVector<TCleanupQueueItem> cleanupQueue,
-            bool withCheckpoint,
+            bool checkpointAware,
             ui64 minCheckpointCommitId,
             ui64 maxCheckpointCommitId)
             : RequestInfo(std::move(requestInfo))
@@ -665,7 +665,7 @@ struct TTxPartition
             , VerifyRecreatedBlobMetasOnCleanup(
                   verifyRecreatedBlobMetasOnCleanup)
             , CleanupQueue(std::move(cleanupQueue))
-            , WithCheckpoint(withCheckpoint)
+            , CheckpointAware(checkpointAware)
             , MinCheckpointCommitId(minCheckpointCommitId)
             , MaxCheckpointCommitId(maxCheckpointCommitId)
         {}
