@@ -47,11 +47,28 @@ env:
   large_tests: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'large-tests'))  && 'true' || inputs.large_tests == 'yes' }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{
+      (
+        github.event.action != 'labeled' ||
+        contains(
+          vars.LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS,
+          format('''{0}''', github.event.label.name)
+        )
+      ) && 'tests' || 'ignored'
+    }}
   cancel-in-progress: true
 
 jobs:
   check-running-allowed:
+    if: >-
+      ${{
+        github.event.action != 'labeled' ||
+        contains(
+          vars.LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS,
+          format('''{0}''', github.event.label.name)
+        )
+      }}
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.allow-local.outputs.result || steps.check-ownership-membership.outputs.result }}
@@ -122,11 +139,6 @@ jobs:
               }
             }
 
-  check-trigger-label:
-    needs:
-      - check-running-allowed
-    uses: ./.github/workflows/check-test-launch-label.yaml
-
   set-env:
     needs:
       - check-running-allowed
@@ -140,8 +152,8 @@ jobs:
         id: set-env
         run: echo
   shell:
-    needs: [set-env, check-running-allowed, check-trigger-label]
-    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    needs: [set-env, check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: [self-hosted, "self-hosted", "runner_light"]
 
     steps:
@@ -238,8 +250,8 @@ jobs:
           fi
           exit "$status"
   python:
-    needs: [set-env, check-running-allowed, check-trigger-label]
-    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    needs: [set-env, check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: [self-hosted, "self-hosted", "runner_light"]
 
     steps:
@@ -433,8 +445,8 @@ jobs:
           fi
           exit "$status"
   workflows:
-    needs: [set-env, check-running-allowed, check-trigger-label]
-    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    needs: [set-env, check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: checkout
@@ -547,8 +559,8 @@ jobs:
           exit "$status"
 
   packer:
-    needs: [check-running-allowed, check-trigger-label]
-    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    needs: [check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
     name: Packer build
     uses: ./.github/workflows/packer.yaml
     secrets: inherit
@@ -563,9 +575,8 @@ jobs:
 
   create-build-and-test-target-var:
     needs:
-      - check-trigger-label
       - check-running-allowed
-    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    if: needs.check-running-allowed.outputs.result == 'true'
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       matrix_include: ${{ steps.set-build-and-test-targets.outputs.matrix_include }}
@@ -638,11 +649,10 @@ jobs:
     secrets: inherit
 
   nightly-builds:
-    needs: [check-running-allowed, check-trigger-label]
+    needs: [check-running-allowed]
     if: >-
       ${{
         needs.check-running-allowed.outputs.result == 'true' &&
-        needs.check-trigger-label.outputs.allowed == 'true' &&
         (
           contains(github.event.pull_request.labels.*.name, 'nightly-tests') ||
           contains(github.event.pull_request.labels.*.name, 'nightly-asan') ||
