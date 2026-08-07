@@ -43,4 +43,8 @@ message DataplaneConfig {
     // Max number of RelocateSnapshotDataFromYDBToS3Task running at once under
     // RelocateAllSnapshotsDataFromYDBToS3Task (same role as MigratingSnapshotsInflightLimit).
     optional uint32 RelocatingSnapshotsToS3InflightLimit = 21 [default = 5];
+
+    // Prefetch buffer between streaming ListSnapshots and child scheduling.
+    // Lister blocks when the queue is full (backpressure).
+    optional uint32 RelocateSnapshotsScanQueueSize = 22 [default = 500];
 }

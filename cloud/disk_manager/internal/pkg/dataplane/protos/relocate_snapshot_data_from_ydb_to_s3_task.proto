@@ -8,6 +8,9 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message RelocateSnapshotDataFromYDBToS3Request {
   string SnapshotId = 1;
+  // When true, copy chunks to S3 and flip stored_in_s3, but keep YDB blob
+  // payload intact for verification / dual presence. Re-run with false to clear.
+  bool KeepYdbData = 2;
 }
 
 message RelocateSnapshotDataFromYDBToS3TaskState {

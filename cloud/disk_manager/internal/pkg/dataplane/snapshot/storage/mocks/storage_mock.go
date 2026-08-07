@@ -252,6 +252,24 @@ func (s *StorageMock) ListSnapshots(
 	return args.Get(0).(tasks_common.StringSet), args.Error(1)
 }
 
+func (s *StorageMock) StreamReadySnapshotIDs(
+	ctx context.Context,
+) (<-chan string, <-chan error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(<-chan string), args.Get(1).(<-chan error)
+}
+
+func (s *StorageMock) SnapshotNeedsRelocateToS3(
+	ctx context.Context,
+	snapshotID string,
+	keepYdbData bool,
+) (bool, error) {
+
+	args := s.Called(ctx, snapshotID, keepYdbData)
+	return args.Bool(0), args.Error(1)
+}
+
 func (s *StorageMock) RelocateChunkToS3(
 	ctx context.Context,
 	chunkID string,
@@ -266,9 +284,16 @@ func (s *StorageMock) RelocateSnapshotChunksToS3(
 	snapshotID string,
 	milestoneChunkIndex uint32,
 	saveProgress func(context.Context, uint32) error,
+	keepYdbData bool,
 ) error {
 
-	args := s.Called(ctx, snapshotID, milestoneChunkIndex, saveProgress)
+	args := s.Called(
+		ctx,
+		snapshotID,
+		milestoneChunkIndex,
+		saveProgress,
+		keepYdbData,
+	)
 	return args.Error(0)
 }
 

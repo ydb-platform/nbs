@@ -1456,3 +1456,50 @@ func (s *storageYDB) listSnapshots(
 
 	return snapshots, nil
 }
+
+func (s *storageYDB) streamReadySnapshotIDs(
+	ctx context.Context,
+	session *persistence.Session,
+	ids chan<- string,
+) error {
+
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshotStatusReady as Int64;
+		select id
+		from snapshots where status = $snapshotStatusReady
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$snapshotStatusReady",
+			persistence.Int64Value(int64(snapshotStatusReady)),
+		),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var id *string
+			err := res.Scan(&id)
+			if err != nil {
+				return err
+			}
+
+			select {
+			case ids <- *id:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+
+	err = res.Err()
+	if err != nil {
+		return task_errors.NewRetriableError(err)
+	}
+
+	return nil
+}

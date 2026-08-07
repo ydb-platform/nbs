@@ -39,6 +39,7 @@ func TestRelocateSnapshotDataFromYDBToS3TaskLockProgressUnlock(t *testing.T) {
 		"snapshot",
 		uint32(0),
 		mock.Anything,
+		false,
 	).Run(func(args mock.Arguments) {
 		saveProgress := args.Get(3).(func(context.Context, uint32) error)
 		require.NoError(t, saveProgress(ctx, 5))

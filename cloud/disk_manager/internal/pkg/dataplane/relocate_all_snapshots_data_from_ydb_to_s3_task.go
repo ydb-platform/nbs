@@ -3,6 +3,7 @@ package dataplane
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -12,7 +13,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
@@ -52,15 +52,7 @@ func (t *relocateAllSnapshotsDataFromYDBToS3Task) Run(
 	})
 	for {
 		// Infinite loop: stop via tasks cancel after load is drained.
-		snapshots, err := t.storage.ListSnapshots(ctx)
-		if err != nil {
-			return err
-		}
-
-		subregistry.Gauge("snapshots/relocateToS3Candidates").Set(
-			float64(snapshots.Size()),
-		)
-		err = t.relocateSnapshots(ctx, execCtx, snapshots)
+		err := t.relocatePass(ctx, execCtx, subregistry)
 		if err != nil {
 			return err
 		}
@@ -88,22 +80,82 @@ func (t *relocateAllSnapshotsDataFromYDBToS3Task) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *relocateAllSnapshotsDataFromYDBToS3Task) relocateSnapshots(
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) relocatePass(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	snapshots tasks_common.StringSet,
+	subregistry metrics.Registry,
 ) error {
 
+	queueSize := int(t.config.GetRelocateSnapshotsScanQueueSize())
+	if queueSize == 0 {
+		queueSize = 500
+	}
+
+	scanCtx, cancelScan := context.WithCancel(ctx)
+	defer cancelScan()
+
+	ids, scanErrors := t.storage.StreamReadySnapshotIDs(scanCtx)
+	candidates := make(chan string, queueSize)
+
+	var queueDepth int64
+	var scannedCount int64
+	var skippedCount int64
+	var scheduledCount int64
+
+	scanDone := make(chan error, 1)
+	go func() {
+		defer close(candidates)
+
+		for id := range ids {
+			atomic.AddInt64(&scannedCount, 1)
+			subregistry.Gauge("snapshots/relocateToS3Scanned").Set(
+				float64(atomic.LoadInt64(&scannedCount)),
+			)
+
+			select {
+			case candidates <- id:
+				depth := atomic.AddInt64(&queueDepth, 1)
+				subregistry.Gauge("snapshots/relocateToS3Queue").Set(
+					float64(depth),
+				)
+			case <-scanCtx.Done():
+				scanDone <- scanCtx.Err()
+				return
+			}
+		}
+
+		var terminal error
+		if err, ok := <-scanErrors; ok {
+			terminal = err
+		}
+		scanDone <- terminal
+	}()
+
 	mapping := newSnapshotToTasksMapping()
+	scanExhausted := false
 
 	for {
-		err := t.updateInflightSnapshots(ctx, execCtx, snapshots)
+		err := t.updateInflightFromScan(
+			ctx,
+			execCtx,
+			candidates,
+			&queueDepth,
+			&skippedCount,
+			&scheduledCount,
+			subregistry,
+			&scanExhausted,
+		)
 		if err != nil {
+			cancelScan()
+			<-scanDone
 			return err
 		}
 
 		if len(t.state.InflightSnapshots) == 0 {
-			return nil
+			if scanExhausted {
+				return <-scanDone
+			}
+			continue
 		}
 
 		err = t.scheduleInflightSnapshotsAndSaveThemIntoMapping(
@@ -112,6 +164,8 @@ func (t *relocateAllSnapshotsDataFromYDBToS3Task) relocateSnapshots(
 			mapping,
 		)
 		if err != nil {
+			cancelScan()
+			<-scanDone
 			return err
 		}
 
@@ -120,6 +174,8 @@ func (t *relocateAllSnapshotsDataFromYDBToS3Task) relocateSnapshots(
 			mapping.taskIDs(),
 		)
 		if err != nil {
+			cancelScan()
+			<-scanDone
 			return err
 		}
 
@@ -127,15 +183,22 @@ func (t *relocateAllSnapshotsDataFromYDBToS3Task) relocateSnapshots(
 		t.state.InflightSnapshots = mapping.snapshotIDs()
 		err = execCtx.SaveState(ctx)
 		if err != nil {
+			cancelScan()
+			<-scanDone
 			return err
 		}
 	}
 }
 
-func (t *relocateAllSnapshotsDataFromYDBToS3Task) updateInflightSnapshots(
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) updateInflightFromScan(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	snapshots tasks_common.StringSet,
+	candidates <-chan string,
+	queueDepth *int64,
+	skippedCount *int64,
+	scheduledCount *int64,
+	subregistry metrics.Registry,
+	scanExhausted *bool,
 ) error {
 
 	inflightLimit := int(t.config.GetRelocatingSnapshotsToS3InflightLimit())
@@ -143,22 +206,52 @@ func (t *relocateAllSnapshotsDataFromYDBToS3Task) updateInflightSnapshots(
 		inflightLimit = 1
 	}
 
-	for snapshotID := range snapshots.Vals() {
+	for len(t.state.InflightSnapshots) < inflightLimit {
+		var snapshotID string
+		var ok bool
+
+		if len(t.state.InflightSnapshots) == 0 {
+			snapshotID, ok = <-candidates
+			if !ok {
+				*scanExhausted = true
+				return nil
+			}
+		} else {
+			select {
+			case snapshotID, ok = <-candidates:
+				if !ok {
+					*scanExhausted = true
+					return nil
+				}
+			default:
+				return execCtx.SaveState(ctx)
+			}
+		}
+
+		depth := atomic.AddInt64(queueDepth, -1)
+		if depth < 0 {
+			depth = 0
+			atomic.StoreInt64(queueDepth, 0)
+		}
+		subregistry.Gauge("snapshots/relocateToS3Queue").Set(float64(depth))
+
 		if common.Find(t.state.InflightSnapshots, snapshotID) {
-			snapshots.Remove(snapshotID)
 			continue
 		}
 
-		if len(t.state.InflightSnapshots) >= inflightLimit {
-			break
-		}
-
-		meta, err := t.storage.GetSnapshotMeta(ctx, snapshotID)
+		needs, err := t.storage.SnapshotNeedsRelocateToS3(
+			ctx,
+			snapshotID,
+			t.request.KeepYdbData,
+		)
 		if err != nil {
 			return err
 		}
-		if meta == nil || !meta.Ready {
-			snapshots.Remove(snapshotID)
+		if !needs {
+			atomic.AddInt64(skippedCount, 1)
+			subregistry.Gauge("snapshots/relocateToS3Skipped").Set(
+				float64(atomic.LoadInt64(skippedCount)),
+			)
 			continue
 		}
 
@@ -166,7 +259,10 @@ func (t *relocateAllSnapshotsDataFromYDBToS3Task) updateInflightSnapshots(
 			t.state.InflightSnapshots,
 			snapshotID,
 		)
-		snapshots.Remove(snapshotID)
+		atomic.AddInt64(scheduledCount, 1)
+		subregistry.Gauge("snapshots/relocateToS3Scheduled").Set(
+			float64(atomic.LoadInt64(scheduledCount)),
+		)
 	}
 
 	return execCtx.SaveState(ctx)
@@ -217,7 +313,8 @@ func (t *relocateAllSnapshotsDataFromYDBToS3Task) scheduleRelocateSnapshotDataFr
 		"dataplane.RelocateSnapshotDataFromYDBToS3Task",
 		"",
 		&dataplane_protos.RelocateSnapshotDataFromYDBToS3Request{
-			SnapshotId: snapshotID,
+			SnapshotId:  snapshotID,
+			KeepYdbData: t.request.KeepYdbData,
 		},
 	)
 }

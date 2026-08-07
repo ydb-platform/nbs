@@ -497,7 +497,8 @@ func newMigrateSnapshotDatabaseCmd(
 
 type scheduleRelocateSnapshotDataFromYDBToS3TaskCmd struct {
 	commandWithScheduler
-	snapshotID string
+	snapshotID  string
+	keepYdbData bool
 }
 
 func (c *scheduleRelocateSnapshotDataFromYDBToS3TaskCmd) run() error {
@@ -515,7 +516,8 @@ func (c *scheduleRelocateSnapshotDataFromYDBToS3TaskCmd) run() error {
 		"dataplane.RelocateSnapshotDataFromYDBToS3Task",
 		"",
 		&dataplane_protos.RelocateSnapshotDataFromYDBToS3Request{
-			SnapshotId: c.snapshotID,
+			SnapshotId:  c.snapshotID,
+			KeepYdbData: c.keepYdbData,
 		},
 	)
 	if err != nil {
@@ -554,6 +556,13 @@ func newScheduleRelocateSnapshotDataFromYDBToS3TaskCmd(
 		log.Fatalf("Error setting flag id as required: %v", err)
 	}
 
+	cmd.Flags().BoolVar(
+		&c.keepYdbData,
+		"keep-ydb-data",
+		false,
+		"copy to S3 and flip stored_in_s3, but do not clear YDB blob payload",
+	)
+
 	return cmd
 }
 
@@ -561,6 +570,7 @@ func newScheduleRelocateSnapshotDataFromYDBToS3TaskCmd(
 
 type scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd struct {
 	commandWithScheduler
+	keepYdbData bool
 }
 
 func (c *scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd) run() error {
@@ -577,7 +587,9 @@ func (c *scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd) run() error {
 		),
 		"dataplane.RelocateAllSnapshotsDataFromYDBToS3Task",
 		"",
-		&dataplane_protos.RelocateAllSnapshotsDataFromYDBToS3Request{},
+		&dataplane_protos.RelocateAllSnapshotsDataFromYDBToS3Request{
+			KeepYdbData: c.keepYdbData,
+		},
 	)
 	if err != nil {
 		return err
@@ -604,6 +616,13 @@ func newScheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd(
 			return c.run()
 		},
 	}
+
+	cmd.Flags().BoolVar(
+		&c.keepYdbData,
+		"keep-ydb-data",
+		false,
+		"copy to S3 and flip stored_in_s3, but do not clear YDB blob payload",
+	)
 
 	return cmd
 }
