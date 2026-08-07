@@ -251,6 +251,10 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
         ss.SetUsedNodesCount(src.GetUsedNodesCount());
     }
 
+    for (const auto& nodeStats: src.GetNodeStats()) {
+        *dst.AddNodeStats() = nodeStats;
+    }
+
     if (--RemainingResponses == 0) {
         ReplyAndDie(ctx, {});
     }
@@ -730,7 +734,10 @@ void TIndexTabletActor::HandleUpdateCounters(
         // If shardIds isn't empty and the current tablet is a shard, it will
         // collect self stats via TAggregateStatsActor
         if (shardIds.empty() || IsMainTablet()) {
-            FillSelfStorageStats(stats);
+            FillSelfStorageStats(
+                stats,
+                ctx.Now(),
+                false /* collectNodeStats */);
         }
         if (shardIds.empty()) {
             CachedAggregateStats = std::move(*stats);
@@ -769,7 +776,9 @@ void TIndexTabletActor::HandleUpdateCounters(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::FillSelfStorageStats(
-    NProtoPrivate::TStorageStats* stats)
+    NProtoPrivate::TStorageStats* stats,
+    TInstant now,
+    bool collectNodeStats)
 {
 #define FILESTORE_TABLET_UPDATE_COUNTER(name, ...)                             \
     stats->Set##name(Get##name());                                             \
@@ -810,6 +819,18 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetUnconfirmedDataCount(
         UnconfirmedData.size() + UnconfirmedDataInProgress.size());
     stats->SetConfirmedDataCount(ConfirmedData.size());
+
+    if (collectNodeStats) {
+        for (const auto& fileStats: GetNodeAccessStats(now)) {
+            auto* out = stats->AddNodeStats();
+            out->SetShardId(GetFileSystemId());
+            out->SetNodeId(fileStats.NodeId);
+            out->SetRequestCount(fileStats.RequestCount);
+            out->SetAccessScore(fileStats.AccessScore);
+            out->SetLastAccessedTimestampUs(
+                fileStats.LastAccessed.MicroSeconds());
+        }
+    }
 }
 
 void TIndexTabletActor::HandleGetStorageStats(
@@ -850,7 +871,7 @@ void TIndexTabletActor::HandleGetStorageStats(
     if (allowCache && pollShards) {
         *stats = CachedAggregateStats;
     } else {
-        FillSelfStorageStats(stats);
+        FillSelfStorageStats(stats, ctx.Now(), true /* collectNodeStats */);
     }
 
     TVector<TCompactionRangeInfo> topRanges;
@@ -902,6 +923,9 @@ void TIndexTabletActor::HandleGetStorageStats(
         // FILESTORE_TABLET_MERGE_COUNTER
         FILESTORE_TABLET_STATS(FILESTORE_TABLET_CLEAR_COUNTER)
         #undef FILESTORE_TABLET_CLEAR_COUNTER
+
+        // Non-main tablet stats will be added by the aggregator
+        stats->ClearNodeStats();
     }
 
     auto actor = std::make_unique<TAggregateStatsActor>(

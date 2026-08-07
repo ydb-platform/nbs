@@ -28,6 +28,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_access_stats.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -231,6 +232,7 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
+    TNodeAccessStatsTracker NodeAccessStatsTracker;
     ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
@@ -305,6 +307,10 @@ public:
     {
         StateLoaded = true;
     }
+
+    void NodeRequestStarted(ui64 nodeId, TInstant now);
+
+    TVector<TNodeAccessStats> GetNodeAccessStats(TInstant now) const;
 
     void UpdateConfig(
         IIndexTabletDatabase& db,

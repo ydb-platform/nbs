@@ -118,6 +118,15 @@ message TShardStats
     uint64 UsedNodesCount = 6;
 }
 
+message TNodeStats
+{
+    string ShardId = 1;
+    uint64 NodeId = 2;
+    uint64 RequestCount = 3;
+    double AccessScore = 4;
+    uint64 LastAccessedTimestampUs = 5;
+}
+
 message TStorageStats
 {
     // index stats
@@ -171,6 +180,9 @@ message TStorageStats
 
     // shard stats
     repeated TShardStats ShardStats = 6001;
+
+    // recent node request stats
+    repeated TNodeStats NodeStats = 7001;
 }
 
 enum EStatsRequestMode
