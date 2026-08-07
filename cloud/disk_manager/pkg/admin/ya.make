@@ -4,6 +4,7 @@ SRCS(
     common.go
     disks.go
     filesystem.go
+    filesystem_snapshots.go
     images.go
     operations.go
     placement_group.go
