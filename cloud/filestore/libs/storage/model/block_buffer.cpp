@@ -59,6 +59,11 @@ public:
         char* ptr = const_cast<char*>(Buffer.data()) + offset;
         memset(ptr, 0, ByteRange.BlockSize);
     }
+
+    bool IsContiguous() const override
+    {
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -117,6 +122,11 @@ public:
     {
         Blocks[index].clear();
     }
+
+    bool IsContiguous() const override
+    {
+        return false;
+    }
 };
 
 }   // namespace
@@ -158,6 +168,13 @@ void CopyFileData(
 
     out->ReserveAndResize(end - origin.Offset);
     char* outPtr = out->begin();
+
+    if (buffer.IsContiguous()) {
+        const auto block = buffer.GetBlock(0);
+        const auto shift = origin.Offset - aligned.Offset;
+        memcpy(outPtr, block.data() + shift, out->end() - outPtr);
+        return;
+    }
 
     ui32 i = 0;
 
