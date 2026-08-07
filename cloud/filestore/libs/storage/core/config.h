@@ -349,6 +349,7 @@ public:
 
     bool GetServerWriteBackCacheEnabled() const;
     bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
+    bool GetServerWriteBackCacheImmediateFlushEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
     NProto::EGuestCachingType GetGuestCachingType() const;

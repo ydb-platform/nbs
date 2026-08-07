@@ -170,6 +170,7 @@ struct TBootstrapArgs
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
     bool FlushWritesInParallelEnabled = true;
+    bool ImmediateFlushEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -197,6 +198,7 @@ struct TBootstrap
     bool DoNotCheckWriteDataRequestBuffer = false;
     bool FlushWritesInParallelEnabled = false;
     bool DisableExpectedDataValidation = false;
+    bool ImmediateFlushEnabled = false;
 
     TCallContextPtr CallContext;
 
@@ -228,6 +230,7 @@ struct TBootstrap
         , DoNotCheckWriteDataRequestBuffer(
               args.DoNotCheckWriteDataRequestBuffer)
         , FlushWritesInParallelEnabled(args.FlushWritesInParallelEnabled)
+        , ImmediateFlushEnabled(args.ImmediateFlushEnabled)
     {
         CacheFlushRetryPeriod = FlushRetryPeriod;
 
@@ -381,7 +384,8 @@ struct TBootstrap
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
              .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
-             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled});
+             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled,
+             .ImmediateFlushEnabled = ImmediateFlushEnabled});
 
         ModuleStats = Cache.CreateModuleStats();
     }
@@ -1022,6 +1026,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         bool WithCacheRecreation = false;
         bool ZeroCopyWriteEnabled = false;
         bool FlushWritesInParallelEnabled = false;
+        bool ImmediateFlushEnabled = false;
     };
 
     void TestShouldReadAfterWriteRandomized(const TTestArgs& args) {
@@ -1030,6 +1035,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             .DoNotCheckWriteDataRequestBuffer =
                 !args.FlushWritesInParallelEnabled,
             .FlushWritesInParallelEnabled = args.FlushWritesInParallelEnabled,
+            .ImmediateFlushEnabled = args.ImmediateFlushEnabled,
         });
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";

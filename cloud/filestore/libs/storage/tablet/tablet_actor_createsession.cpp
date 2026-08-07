@@ -64,6 +64,8 @@ void FillFeatures(
         config.GetServerWriteBackCacheEnabled());
     features->SetServerWriteBackCacheFlushWritesInParallelEnabled(
         config.GetServerWriteBackCacheFlushWritesInParallelEnabled());
+    features->SetServerWriteBackCacheImmediateFlushEnabled(
+        config.GetServerWriteBackCacheImmediateFlushEnabled());
 
     features->SetParentlessFilesOnly(config.GetParentlessFilesOnly());
     features->SetAllowHandlelessIO(config.GetAllowHandlelessIO());

@@ -1080,7 +1080,10 @@ private:
                              FileSystemConfig->GetZeroCopyWriteEnabled(),
                          .FlushWritesInParallelEnabled =
                              FileSystemConfig
-                                 ->GetServerWriteBackCacheFlushWritesInParallelEnabled()});
+                                 ->GetServerWriteBackCacheFlushWritesInParallelEnabled(),
+                         .ImmediateFlushEnabled =
+                             FileSystemConfig
+                                 ->GetServerWriteBackCacheImmediateFlushEnabled()});
 
                     if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                         auto future = WriteBackCache.Drain();
@@ -1309,6 +1312,8 @@ private:
             features.GetServerWriteBackCacheEnabled());
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
             features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
+        config.SetServerWriteBackCacheImmediateFlushEnabled(
+            features.GetServerWriteBackCacheImmediateFlushEnabled());
 
         config.SetDirectoryHandlesStorageEnabled(
             features.GetDirectoryHandlesStorageEnabled());

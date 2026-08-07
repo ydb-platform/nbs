@@ -54,6 +54,7 @@ public:
 
     bool GetServerWriteBackCacheEnabled() const;
     bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
+    bool GetServerWriteBackCacheImmediateFlushEnabled() const;
 
     bool GetDirectoryHandlesStorageEnabled() const;
 

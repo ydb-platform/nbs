@@ -6405,6 +6405,43 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         restWriteDataPromise.SetValue({});
     }
+
+    Y_UNIT_TEST(ShouldSupportServerWriteBackCacheImmediateFlushEnabled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheImmediateFlushEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            /* handleOpsQueueSize = */ 0,
+            /* writeBackCacheAutomaticFlushPeriodMs = */ 1000000);
+
+        auto writeDataCalled = NewPromise();
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto)
+        {
+            writeDataCalled.SetValue();
+            return MakeFuture<NProto::TWriteDataResponse>({});
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            1,
+            101,
+            0,
+            "abc");
+
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT(writeDataCalled.GetFuture().Wait(WaitTimeout));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
