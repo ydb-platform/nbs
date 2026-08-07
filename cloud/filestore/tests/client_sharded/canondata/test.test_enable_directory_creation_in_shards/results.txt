@@ -25,4 +25,3 @@ FileStore {
 {"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":1,"DirectoryCreationInShardsEnabled":true,"MaxShardCount":254,"MainFileSystemId":"fs0"}
 {"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":2,"DirectoryCreationInShardsEnabled":true,"MaxShardCount":254,"MainFileSystemId":"fs0"}
 {"ShardFileSystemIds":["fs0_s1","fs0_s2","fs0_s3"],"ShardNo":3,"DirectoryCreationInShardsEnabled":true,"MaxShardCount":254,"MainFileSystemId":"fs0"}
-
