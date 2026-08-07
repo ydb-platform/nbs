@@ -414,6 +414,15 @@ void TFileSystem::CompleteAsyncDestroyHandle(
 void TFileSystem::ProcessHandleOpsQueue()
 {
     TGuard g{HandleOpsQueueLock};
+
+    if (HandleOpsQueue->IsCorrupted()) {
+        ReportHandleOpsQueueProcessError(
+            TStringBuilder()
+            << "HandleOpsQueue is corrupted, filesystem: "
+            << Config->GetFileSystemId());
+        return;
+    }
+
     if (HandleOpsQueue->Empty()) {
         ScheduleProcessHandleOpsQueue();
         return;
