@@ -50,6 +50,19 @@ struct TTestVhostQueueFactory final
     TVector<std::shared_ptr<ITestVhostQueue>> Queues;
 
     IVhostQueuePtr CreateQueue() override;
+
+    IVhostDevicePtr CreateDevice(
+        TString socketPath,
+        TString deviceName,
+        ui32 blockSize,
+        ui64 blocksCount,
+        ui32 queuesCount,
+        bool discardEnabled,
+        bool writeZeroesEnabled,
+        ui32 optimalIoSize,
+        TVector<IVhostQueuePtr> queues,
+        void* cookie,
+        const TVhostCallbacks& callbacks) override;
 };
 
 }   // namespace NCloud::NBlockStore::NVhost

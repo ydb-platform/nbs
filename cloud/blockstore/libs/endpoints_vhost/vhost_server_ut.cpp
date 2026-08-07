@@ -108,6 +108,57 @@ Y_UNIT_TEST_SUITE(TVhostEndpointTest)
                 ShouldDropDiscardRequestsForVolume(false, volume));
         }
     }
+
+    Y_UNIT_TEST(ShouldSelectThreadCountByMediaKind)
+    {
+        const TVhostEndpointThreadCounts threadCounts{
+            .SSD = 2,
+            .HDD = 3,
+            .NonReplicated = 4,
+            .Mirror2 = 5,
+            .Mirror3 = 6};
+
+        auto threadCount = [&] (NCloud::NProto::EStorageMediaKind mediaKind)
+        {
+            return GetVhostEndpointThreadCount(threadCounts, mediaKind);
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_SSD));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_HDD));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_HYBRID));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_DEFAULT));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED));
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            5,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2));
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3));
+
+        // Local disks are served by a single thread.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            threadCount(NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer
