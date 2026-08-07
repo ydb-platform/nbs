@@ -21,12 +21,12 @@
 #include "utils/s2n_blob.h"
 #include "utils/s2n_safety.h"
 
-static uint8_t s2n_cbc_cipher_aes128_available()
+static uint8_t s2n_cbc_cipher_aes128_available(void)
 {
     return (EVP_aes_128_cbc() ? 1 : 0);
 }
 
-static uint8_t s2n_cbc_cipher_aes256_available()
+static uint8_t s2n_cbc_cipher_aes256_available(void)
 {
     return (EVP_aes_256_cbc() ? 1 : 0);
 }
