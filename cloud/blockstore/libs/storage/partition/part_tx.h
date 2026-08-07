@@ -65,6 +65,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(ConfirmBlobs,               __VA_ARGS__)                               \
     xxx(DeleteUnconfirmedBlobs,     __VA_ARGS__)                               \
     xxx(LoadCompactionMapChunk,     __VA_ARGS__)                               \
+    xxx(LoadMixedBlocksFilterChunk, __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1284,6 +1285,30 @@ struct TTxPartition
         void Clear()
         {
             Counters.clear();
+        }
+    };
+
+    //
+    // LoadMixedBlocksFilterChunk
+    //
+
+    struct TLoadMixedBlocksFilterChunk
+    {
+        const TBlockRange32 Range;
+
+        const TRequestInfoPtr RequestInfo;
+        TVector<TBlock> Blocks;
+
+        TLoadMixedBlocksFilterChunk(
+            TBlockRange32 range,
+            TRequestInfoPtr requestInfo)
+            : Range(range)
+            , RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear()
+        {
+            Blocks.clear();
         }
     };
 };

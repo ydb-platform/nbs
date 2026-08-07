@@ -13184,6 +13184,93 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_GE(rangesLoaded, rangeCount);
     }
 
+    Y_UNIT_TEST(ShouldLoadMixedBlocksFilterByCompactionRanges)
+    {
+        constexpr ui32 rangeSize = 1024;
+
+        auto config = DefaultConfig();
+        config.SetMixedBlocksFilterEnabled(true);
+        config.SetMixedBlocksFilterRangesToLoadPerTx(2);
+
+        auto runtime = PrepareTestActorRuntime(config, 5 * rangeSize);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(4 * rangeSize, 1), 2);
+        partition.Flush();
+
+        TVector<TBlockRange32> ranges;
+        TVector<std::pair<ui32, char>> writtenBlocks;
+        const auto writeClient = runtime->AllocateEdgeActor();
+        ui32 flushCount = 0;
+        auto observer = runtime->AddObserver<
+            TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest>(
+            [&](TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest::TPtr&
+                    event)
+            {
+                const auto range = event->Get()->Range;
+                ranges.push_back(range);
+
+                for (ui32 rangeIndex = range.Start;
+                     rangeIndex <= range.End;
+                     ++rangeIndex)
+                {
+                    const ui32 blockIndex = rangeIndex * rangeSize + 1;
+                    const char fill = rangeIndex + 1;
+                    runtime->Send(new IEventHandle(
+                        event->GetRecipientRewrite(),
+                        writeClient,
+                        partition
+                            .CreateWriteBlocksRequest(blockIndex, fill)
+                            .release()));
+                    writtenBlocks.emplace_back(blockIndex, fill);
+                }
+
+                runtime->Send(new IEventHandle(
+                    event->GetRecipientRewrite(),
+                    writeClient,
+                    partition.CreateFlushRequest().release()));
+                ++flushCount;
+            });
+
+        partition.RebootTablet();
+        partition.WaitReady();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(3, ranges.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, ranges[0].Start);
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[0].Size());
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[1].Start);
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[1].Size());
+        UNIT_ASSERT_VALUES_EQUAL(4, ranges[2].Start);
+        UNIT_ASSERT_VALUES_EQUAL(1, ranges[2].Size());
+
+        for (size_t i = 0; i < writtenBlocks.size(); ++i) {
+            const auto response = runtime->GrabEdgeEventRethrow<
+                TEvService::TEvWriteBlocksResponse>(writeClient);
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->Get()->GetStatus()),
+                response->Get()->GetErrorReason());
+        }
+        for (ui32 i = 0; i < flushCount; ++i) {
+            const auto response = runtime->GrabEdgeEventRethrow<
+                TEvPartitionPrivate::TEvFlushResponse>(writeClient);
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->Get()->GetStatus()),
+                response->Get()->GetErrorReason());
+        }
+
+        for (const auto& [blockIndex, fill]: writtenBlocks) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(fill),
+                GetBlockContent(partition.ReadBlocks(blockIndex)));
+        }
+    }
+
     Y_UNIT_TEST(ShouldRejectWriteIfCompactionMapIsNotLoaded1)
     {
         const ui32 rangeSize = 1024;
