@@ -321,7 +321,7 @@ void TStorageServiceActor::ForwardRequestToShard(
         FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_HANDLE,
         TEvService)
 
-#undef FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID
+#undef FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_HANDLE
 
 #define FILESTORE_DEFINE_HANDLE_FORWARD(name, ns)                              \
 template void TStorageServiceActor::ForwardRequest<ns::T##name##Method>(       \

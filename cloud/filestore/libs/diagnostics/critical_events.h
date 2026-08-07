@@ -20,6 +20,9 @@ namespace NCloud::NFileStore{
     xxx(NodeNotFoundInShard)                                                   \
     xxx(NotEnoughResultsInGetNodeAttrBatchResponses)                           \
     xxx(AsyncDestroyHandleFailed)                                              \
+    xxx(UnexpectedAsyncCreateHandleResponse)                                   \
+    xxx(ConfirmCreateHandleFailed)                                             \
+    xxx(AsyncCreateHandleCleanupFailed)                                        \
     xxx(HandleOpsQueueProcessError)                                            \
     xxx(HandleOpsQueueCreatingOrDeletingError)                                 \
     xxx(DuplicateRequestId)                                                    \

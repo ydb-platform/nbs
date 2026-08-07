@@ -867,4 +867,7 @@ message TStorageConfig
 
     // Enables various self diagnostics/validation.
     optional bool FastShardExtendedVerificationEnabled = 531;
+
+    // Async processing of read-only create handle requests.
+    optional bool AsyncCreateHandleEnabled = 532;
 }

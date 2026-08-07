@@ -40,6 +40,7 @@ public:
 
     bool GetAsyncDestroyHandleEnabled() const;
     bool GetAsyncDestroyReadOnlyHandleEnabled() const;
+    bool GetAsyncCreateHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
 
     bool GetDirectIoEnabled() const;
@@ -78,5 +79,9 @@ public:
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
+
+bool IsAsyncDestroyEnabled(const TFileSystemConfig& config);
+bool IsAsyncCreateEnabled(const TFileSystemConfig& config);
+bool ShouldCreateHandleOpsQueue(const TFileSystemConfig& config);
 
 }   // namespace NCloud::NFileStore::NFuse

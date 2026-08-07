@@ -992,14 +992,11 @@ private:
             SessionId = response.GetSession().GetSessionId();
 
             THandleOpsQueuePtr handleOpsQueue;
-            const bool asyncDestroyEnabled =
-                FileSystemConfig->GetAsyncDestroyHandleEnabled() ||
-                FileSystemConfig->GetAsyncDestroyReadOnlyHandleEnabled();
             if (Config->GetHandleOpsQueuePath()) {
                 const auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
                                   FileSystemConfig->GetFileSystemId() /
                                   SessionId;
-                if (path.Exists() || asyncDestroyEnabled) {
+                if (path.Exists() || ShouldCreateHandleOpsQueue(*FileSystemConfig)) {
                     auto error = CreateAndLockFile(
                         path,
                         HandleOpsQueueFileName,
@@ -1020,7 +1017,7 @@ private:
                         Config->GetHandleOpsQueueSize());
                     HandleOpsQueueInitialized = true;
                 }
-            } else if (asyncDestroyEnabled) {
+            } else if (ShouldCreateHandleOpsQueue(*FileSystemConfig)) {
                 ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
                     "[f:%s][c:%s] Error initializing HandleOpsQueue: "
                     "HandleOpsQueuePath is not set",
@@ -1296,6 +1293,8 @@ private:
             features.GetAsyncDestroyHandleEnabled());
         config.SetAsyncDestroyReadOnlyHandleEnabled(
             features.GetAsyncDestroyReadOnlyHandleEnabled());
+        config.SetAsyncCreateHandleEnabled(
+            features.GetAsyncCreateHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
             features.GetAsyncHandleOperationPeriod());
 

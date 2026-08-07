@@ -319,6 +319,13 @@ service TFileStoreService
         };
     }
 
+    rpc ConfirmCreateHandle(TConfirmCreateHandleRequest) returns (TConfirmCreateHandleResponse) {
+        option (google.api.http) = {
+            post: "/confirm_create_handle"
+            body: "*"
+        };
+    }
+
     rpc DestroyHandle(TDestroyHandleRequest) returns (TDestroyHandleResponse) {
         option (google.api.http) = {
             post: "/destroy_handle"

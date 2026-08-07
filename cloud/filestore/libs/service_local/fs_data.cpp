@@ -91,6 +91,14 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     return response;
 }
 
+NProto::TConfirmCreateHandleResponse TLocalFileSystem::ConfirmCreateHandle(
+    const NProto::TConfirmCreateHandleRequest& request)
+{
+    Y_UNUSED(request);
+
+    return {};
+}
+
 NProto::TDestroyHandleResponse TLocalFileSystem::DestroyHandle(
     const NProto::TDestroyHandleRequest& request)
 {
