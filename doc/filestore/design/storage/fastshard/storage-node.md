@@ -1,0 +1,59 @@
+# Journalled storage node
+
+A storage node is a single journalled device hosted by
+blockstore-disk-agent. The journalled device layer sits on top of a raw
+storage device and exposes a page-oriented protocol with a write-ahead
+journal.
+
+## Interface
+
+The protocol is defined in `cloud/storage/core/protos/device.proto` and
+served over TCP by `cloud/storage/core/libs/journalled_device_tcp_server`.
+Each message is a `TDeviceProtocolRequest` / `TDeviceProtocolResponse` pair
+matched by `RequestId`. Four methods:
+
+| Method | Purpose |
+|--------|---------|
+| `AcquireDevices` | Lock devices for a writer. |
+| `ReleaseDevices` | Release the writer's lock. |
+| `ReadPages` | Read page groups (`FirstPageNo`, `PageCount`, `PageSize`). |
+| `WriteLogRecord` | Write one log record: several page groups plus a `LogSequenceNumber`. |
+
+On the shard side the same four methods form the `IStorageNode` interface
+(`sn/iface/storage_node.h`); `sn/client` speaks the TCP protocol from silk
+fibers, `sn/server` and `sn/impl` provide an in-process implementation for
+tests.
+
+## Responsibilities
+
+* **Atomicity** - all page groups of a single `WriteLogRecord` are applied
+  atomically, via the journal. A crash either preserves the whole record or
+  none of it.
+* **Lsn ordering** - writes are applied in `LogSequenceNumber` order. A
+  write whose Lsn is not properly ordered is rejected.
+  *Missing in the prototype.*
+* **Writer fencing** - a writer whose lease has been invalidated by another
+  writer with a newer `Generation` is rejected.
+  *Missing in the prototype.*
+* **Reads** - serving `ReadPages` with the latest data: a page whose newest
+  record is still in the journal is served from the journal, the rest from
+  the final locations.
+
+## Journal application (checkpointing)
+
+Each write lands in the journal first. Moving pages from the journal to
+their final locations is triggered by the Lsn low watermark: the shard moves
+the watermark, the storage node applies every journal record below it. The
+shard only moves the watermark; the physical page movement happens entirely
+on the storage node side.
+
+> **TBD**: journal format and application details.
+
+The prototype does not physically have a journal: `WriteLogRecord` writes
+the page groups in place.
+
+## Diagram
+
+![fastshard_storage_node](../../../excalidraw/fastshard_storage_node.svg)
+
+Diagram source: [fastshard_storage_node.excalidraw](../../../excalidraw/fastshard_storage_node.excalidraw).
