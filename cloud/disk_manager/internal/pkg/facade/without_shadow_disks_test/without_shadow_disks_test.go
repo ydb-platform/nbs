@@ -47,7 +47,7 @@ func TestCreateSnapshotFromSsdNonreplicatedDiskWithoutShadowDisks(
 	require.NoError(t, err)
 
 	// Disk cell is not determined, when creating in sharded zone.
-	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+	diskMeta, err := testcommon.GetDiskMeta(t, ctx, diskID)
 	require.NoError(t, err)
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
 	_, err = nbsClient.FillDisk(ctx, diskID, 64*4096)

@@ -612,7 +612,7 @@ func DeleteDisk(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
+func newYDB(t *testing.T, ctx context.Context) *persistence.YDBClient {
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
 		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
@@ -622,7 +622,7 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	database := "/Root"
 	rootPath := "disk_manager/recipe"
 
-	return persistence.NewYDBClient(
+	db, err := persistence.NewYDBClient(
 		ctx,
 		&persistence_config.PersistenceConfig{
 			Endpoint: &endpoint,
@@ -631,33 +631,24 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 		},
 		metrics.NewEmptyRegistry(),
 	)
+	require.NoError(t, err)
+	return db
 }
 
-type storageWithDB[T any] struct {
-	storage T
-	db      *persistence.YDBClient
-}
-
-func (s *storageWithDB[T]) close(ctx context.Context) error {
-	return s.db.Close(ctx)
-}
-
-func newResourceStorage(
+func NewResourceStorage(
+	t *testing.T,
 	ctx context.Context,
-) (*storageWithDB[resources.Storage], error) {
+) (resources.Storage, func()) {
 
-	db, err := newYDB(ctx)
-	if err != nil {
-		return nil, err
-	}
+	db := newYDB(t, ctx)
 
-	endedMigrationExpirationTimeout, err := time.ParseDuration("30m")
-	if err != nil {
+	closeFunc := func() {
 		_ = db.Close(ctx)
-		return nil, err
 	}
 
-	resourcesStorage, err := resources.NewStorage(
+	endedMigrationExpirationTimeout := 30 * time.Minute
+
+	storage, err := resources.NewStorage(
 		"disks",
 		"images",
 		"snapshot",
@@ -667,20 +658,15 @@ func newResourceStorage(
 		db,
 		endedMigrationExpirationTimeout,
 	)
-	if err != nil {
-		_ = db.Close(ctx)
-		return nil, err
-	}
+	require.NoError(t, err)
 
-	return &storageWithDB[resources.Storage]{
-		storage: resourcesStorage,
-		db:      db,
-	}, nil
+	return storage, closeFunc
 }
 
-func newFilesystemSnapshotStorage(
+func NewFilesystemSnapshotStorage(
+	t *testing.T,
 	ctx context.Context,
-) (*storageWithDB[filesystem_snapshot_storage.Storage], error) {
+) (filesystem_snapshot_storage.Storage, func()) {
 
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
@@ -699,27 +685,30 @@ func newFilesystemSnapshotStorage(
 		},
 		metrics.NewEmptyRegistry(),
 	)
-	if err != nil {
-		return nil, err
+	require.NoError(t, err)
+
+	closeFunc := func() {
+		_ = db.Close(ctx)
 	}
 
 	// Should be in sync with FilesystemSnapshotConfig.NodesStorageFolder.
-	return &storageWithDB[filesystem_snapshot_storage.Storage]{
-		storage: filesystem_snapshot_storage.NewStorage(
-			db,
-			"filesystem/snapshot/nodes",
-		),
-		db: db,
-	}, nil
+	storage := filesystem_snapshot_storage.NewStorage(
+		db,
+		"filesystem/snapshot/nodes",
+	)
+
+	return storage, closeFunc
 }
 
 func newPoolStorage(
+	t *testing.T,
 	ctx context.Context,
-) (*storageWithDB[pools_storage.Storage], error) {
+) (pools_storage.Storage, func()) {
 
-	db, err := newYDB(ctx)
-	if err != nil {
-		return nil, err
+	db := newYDB(t, ctx)
+
+	closeFunc := func() {
+		_ = db.Close(ctx)
 	}
 
 	// Should be in sync with settings from PoolsConfig in test recipe.
@@ -730,35 +719,31 @@ func newPoolStorage(
 		CloudId:  &cloudID,
 		FolderId: &folderID,
 	}, db, metrics.NewEmptyRegistry())
-	if err != nil {
-		_ = db.Close(ctx)
-		return nil, err
-	}
+	require.NoError(t, err)
 
-	return &storageWithDB[pools_storage.Storage]{
-		storage: storage,
-		db:      db,
-	}, nil
+	return storage, closeFunc
 }
 
 func newCellStorage(
+	t *testing.T,
 	ctx context.Context,
-) (*storageWithDB[cells_storage.Storage], error) {
+) (cells_storage.Storage, func()) {
 
-	db, err := newYDB(ctx)
-	if err != nil {
-		return nil, err
+	db := newYDB(t, ctx)
+
+	closeFunc := func() {
+		_ = db.Close(ctx)
 	}
 
-	return &storageWithDB[cells_storage.Storage]{
-		storage: cells_storage.NewStorage(&cells_config.CellsConfig{}, db),
-		db:      db,
-	}, nil
+	storage := cells_storage.NewStorage(&cells_config.CellsConfig{}, db)
+
+	return storage, closeFunc
 }
 
 func newSnapshotStorage(
+	t *testing.T,
 	ctx context.Context,
-) (*storageWithDB[snapshot_storage.Storage], error) {
+) (snapshot_storage.Storage, func()) {
 
 	// Should be in sync with settings from SnapshotConfig in test recipe.
 	endpoint := fmt.Sprintf(
@@ -778,8 +763,10 @@ func newSnapshotStorage(
 		config.GetPersistenceConfig(),
 		metrics.NewEmptyRegistry(),
 	)
-	if err != nil {
-		return nil, err
+	require.NoError(t, err)
+
+	closeFunc := func() {
+		_ = db.Close(ctx)
 	}
 
 	storage, err := snapshot_storage.NewStorage(
@@ -788,54 +775,43 @@ func newSnapshotStorage(
 		db,
 		nil, // do not need s3 here
 	)
-	if err != nil {
-		_ = db.Close(ctx)
-		return nil, err
-	}
+	require.NoError(t, err)
 
-	return &storageWithDB[snapshot_storage.Storage]{
-		storage: storage,
-		db:      db,
-	}, nil
+	return storage, closeFunc
 }
 
-func NewTaskStorage(ctx context.Context) (tasks_storage.Storage, error) {
-	db, err := newYDB(ctx)
-	if err != nil {
-		return nil, err
-	}
+func NewTaskStorage(
+	t *testing.T,
+	ctx context.Context,
+) tasks_storage.Storage {
 
-	return tasks_storage.NewStorage(
+	db := newYDB(t, ctx)
+
+	storage, err := tasks_storage.NewStorage(
 		&tasks_config.TasksConfig{},
 		metrics.NewEmptyRegistry(),
 		db,
 	)
+	require.NoError(t, err)
+
+	return storage
 }
 
-func newScheduler(ctx context.Context) (tasks.Scheduler, error) {
+func newScheduler(t *testing.T, ctx context.Context) tasks.Scheduler {
 	taskRegistry := tasks.NewRegistry()
-	err := filesystem_scrubbing.Register(taskRegistry)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, filesystem_scrubbing.Register(taskRegistry))
+	require.NoError(t, filesystem_snapshot.Register(taskRegistry))
 
-	err = filesystem_snapshot.Register(taskRegistry)
-	if err != nil {
-		return nil, err
-	}
-
-	taskStorage, err := NewTaskStorage(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return tasks.NewScheduler(
+	scheduler, err := tasks.NewScheduler(
 		ctx,
 		taskRegistry,
-		taskStorage,
+		NewTaskStorage(t, ctx),
 		&tasks_config.TasksConfig{},
 		metrics.NewEmptyRegistry(),
 	)
+	require.NoError(t, err)
+
+	return scheduler
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -847,10 +823,9 @@ func WaitOperationEnded(
 	timeout time.Duration,
 ) {
 
-	scheduler, err := newScheduler(ctx)
-	require.NoError(t, err)
+	scheduler := newScheduler(t, ctx)
 
-	err = scheduler.WaitTaskEndedWithTimeout(ctx, operationID, timeout)
+	err := scheduler.WaitTaskEndedWithTimeout(ctx, operationID, timeout)
 	require.NoError(t, err)
 }
 
@@ -860,10 +835,9 @@ func RequireTaskHasNoError(
 	taskID string,
 ) {
 
-	scheduler, err := newScheduler(ctx)
-	require.NoError(t, err)
+	scheduler := newScheduler(t, ctx)
 
-	err = scheduler.GetTaskError(ctx, taskID)
+	err := scheduler.GetTaskError(ctx, taskID)
 	require.NoError(t, err)
 }
 
@@ -873,8 +847,7 @@ func GetTaskMetadata(
 	taskID string,
 ) proto.Message {
 
-	scheduler, err := newScheduler(ctx)
-	require.NoError(t, err)
+	scheduler := newScheduler(t, ctx)
 
 	metadata, err := scheduler.GetTaskMetadata(ctx, taskID)
 	require.NoError(t, err)
@@ -888,8 +861,7 @@ func ScheduleFilesystemScrubbing(
 	filesystemID string,
 ) string {
 
-	scheduler, err := newScheduler(ctx)
-	require.NoError(t, err)
+	scheduler := newScheduler(t, ctx)
 	lastReqNumber++
 	taskID, err := filesystem_scrubbing.ScheduleScrubFilesystem(
 		tasks_headers.SetIncomingIdempotencyKey(
@@ -913,7 +885,7 @@ func CheckBaseSnapshot(
 	expectedBaseSnapshotID string,
 ) {
 
-	snapshotMeta, err := GetSnapshotMeta(ctx, snapshotID)
+	snapshotMeta, err := GetSnapshotMeta(t, ctx, snapshotID)
 	require.NoError(t, err)
 	require.EqualValues(t, expectedBaseSnapshotID, snapshotMeta.BaseSnapshotID)
 }
@@ -924,13 +896,10 @@ func CheckBaseDiskSlotReleased(
 	overlayDiskID string,
 ) {
 
-	poolStorage, err := newPoolStorage(ctx)
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, poolStorage.close(ctx))
-	}()
+	poolStorage, closeFunc := newPoolStorage(t, ctx)
+	defer closeFunc()
 
-	err = poolStorage.storage.CheckBaseDiskSlotReleased(ctx, overlayDiskID)
+	err := poolStorage.CheckBaseDiskSlotReleased(ctx, overlayDiskID)
 	require.NoError(t, err)
 }
 
@@ -975,13 +944,10 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 		time.Sleep(time.Second)
 	}
 
-	poolStorage, err := newPoolStorage(ctx)
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, poolStorage.close(ctx))
-	}()
+	poolStorage, closeFunc := newPoolStorage(t, ctx)
+	defer closeFunc()
 
-	err = poolStorage.storage.CheckConsistency(ctx)
+	err := poolStorage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
 	// TODO: validate internal YDB tables (tasks, pools etc.) consistency.
@@ -990,31 +956,27 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 ////////////////////////////////////////////////////////////////////////////////
 
 func GetIncremental(
+	t *testing.T,
 	ctx context.Context,
 	disk *types.Disk,
 ) (string, string, error) {
 
-	storage, err := newSnapshotStorage(ctx)
-	if err != nil {
-		return "", "", err
-	}
-	defer storage.close(ctx)
+	storage, closeFunc := newSnapshotStorage(t, ctx)
+	defer closeFunc()
 
-	return storage.storage.GetIncremental(ctx, disk)
+	return storage.GetIncremental(ctx, disk)
 }
 
 func GetDiskMeta(
+	t *testing.T,
 	ctx context.Context,
 	diskID string,
 ) (*resources.DiskMeta, error) {
 
-	storage, err := newResourceStorage(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer storage.close(ctx)
+	storage, closeFunc := NewResourceStorage(t, ctx)
+	defer closeFunc()
 
-	return storage.storage.GetDiskMeta(ctx, diskID)
+	return storage.GetDiskMeta(ctx, diskID)
 }
 
 func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) {
@@ -1029,60 +991,28 @@ func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) 
 }
 
 func GetSnapshotMeta(
+	t *testing.T,
 	ctx context.Context,
 	snapshotID string,
 ) (*snapshot_storage.SnapshotMeta, error) {
 
-	storage, err := newSnapshotStorage(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer storage.close(ctx)
+	storage, closeFunc := newSnapshotStorage(t, ctx)
+	defer closeFunc()
 
-	return storage.storage.GetSnapshotMeta(ctx, snapshotID)
-}
-
-func GetFilesystemSnapshotMeta(
-	ctx context.Context,
-	snapshotID string,
-) (*resources.FilesystemSnapshotMeta, error) {
-
-	storage, err := newResourceStorage(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer storage.close(ctx)
-
-	return storage.storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
-}
-
-func GetDataplaneFilesystemSnapshotMeta(
-	ctx context.Context,
-	snapshotID string,
-) (*filesystem_snapshot_storage.FilesystemSnapshotMeta, error) {
-
-	storage, err := newFilesystemSnapshotStorage(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer storage.close(ctx)
-
-	return storage.storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
+	return storage.GetSnapshotMeta(ctx, snapshotID)
 }
 
 func UpdateClusterCapacities(
+	t *testing.T,
 	ctx context.Context,
 	capacities []cells_storage.ClusterCapacity,
 	deleteOlderThan time.Time,
 ) error {
 
-	cellStorage, err := newCellStorage(ctx)
-	if err != nil {
-		return err
-	}
-	defer cellStorage.close(ctx)
+	cellStorage, closeFunc := newCellStorage(t, ctx)
+	defer closeFunc()
 
-	return cellStorage.storage.UpdateClusterCapacities(
+	return cellStorage.UpdateClusterCapacities(
 		ctx,
 		capacities,
 		deleteOlderThan,

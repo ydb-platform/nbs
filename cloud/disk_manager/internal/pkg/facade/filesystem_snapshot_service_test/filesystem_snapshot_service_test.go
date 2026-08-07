@@ -57,8 +57,17 @@ func waitForFilesystemSnapshotCreationStarted(
 	snapshotID string,
 ) {
 
+	// Storages are constructed here, because the callback below runs on
+	// another goroutine and must not use require.
+	storage, closeFunc := testcommon.NewResourceStorage(t, ctx)
+	defer closeFunc()
+
+	dataplaneStorage, closeDataplaneFunc :=
+		testcommon.NewFilesystemSnapshotStorage(t, ctx)
+	defer closeDataplaneFunc()
+
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		meta, err := testcommon.GetFilesystemSnapshotMeta(ctx, snapshotID)
+		meta, err := storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
 		assert.NoError(collect, err)
 		assert.NotNil(collect, meta)
 		if err != nil || meta == nil {
@@ -66,7 +75,7 @@ func waitForFilesystemSnapshotCreationStarted(
 		}
 
 		dataplaneMeta, err :=
-			testcommon.GetDataplaneFilesystemSnapshotMeta(ctx, snapshotID)
+			dataplaneStorage.GetFilesystemSnapshotMeta(ctx, snapshotID)
 		assert.NoError(collect, err)
 		assert.NotNil(collect, dataplaneMeta)
 	}, 30*time.Second, 100*time.Millisecond)
@@ -78,8 +87,17 @@ func waitForFilesystemSnapshotDeleted(
 	snapshotID string,
 ) {
 
+	// Storages are constructed here, because the callback below runs on
+	// another goroutine and must not use require.
+	storage, closeFunc := testcommon.NewResourceStorage(t, ctx)
+	defer closeFunc()
+
+	dataplaneStorage, closeDataplaneFunc :=
+		testcommon.NewFilesystemSnapshotStorage(t, ctx)
+	defer closeDataplaneFunc()
+
 	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		meta, err := testcommon.GetFilesystemSnapshotMeta(ctx, snapshotID)
+		meta, err := storage.GetFilesystemSnapshotMeta(ctx, snapshotID)
 		assert.NoError(collect, err)
 		assert.Nil(collect, meta)
 		if err != nil || meta != nil {
@@ -87,7 +105,7 @@ func waitForFilesystemSnapshotDeleted(
 		}
 
 		dataplaneMeta, err :=
-			testcommon.GetDataplaneFilesystemSnapshotMeta(ctx, snapshotID)
+			dataplaneStorage.GetFilesystemSnapshotMeta(ctx, snapshotID)
 		assert.NoError(collect, err)
 		assert.Nil(collect, dataplaneMeta)
 	}, 60*time.Second, 100*time.Millisecond)

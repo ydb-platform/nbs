@@ -354,8 +354,7 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 
 	testcommon.DeleteDisk(t, ctx, client, diskID)
 
-	tasksStorage, err := testcommon.NewTaskStorage(ctx)
-	require.NoError(t, err)
+	tasksStorage := testcommon.NewTaskStorage(t, ctx)
 
 	require.Eventually(t, func() bool {
 		ended, err := tasksStorage.IsTaskEnded(ctx, createOp.Id)

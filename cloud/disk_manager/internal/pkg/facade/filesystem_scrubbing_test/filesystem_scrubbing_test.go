@@ -229,8 +229,7 @@ func TestRegularFilesystemScrubbing(t *testing.T) {
 		}()
 	}
 
-	taskStorage, err := testcommon.NewTaskStorage(ctx)
-	require.NoError(t, err)
+	taskStorage := testcommon.NewTaskStorage(t, ctx)
 
 	// First iteration: wait for all filesystems to be scheduled.
 	firstTaskIDs := getRegularScrubTaskIDs(t, ctx, taskStorage)
