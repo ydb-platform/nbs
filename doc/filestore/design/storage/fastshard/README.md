@@ -71,11 +71,12 @@ flowchart TD
         VHOST["filestore-vhost / SDK"]
     end
 
-    subgraph main["Main filesystem tablet"]
-        MAINTAB["TIndexTabletActor<br/>directories, other inode types<br/>(BlobStorage, unchanged)"]
+    subgraph unchanged["Unchanged tablets (BlobStorage)"]
+        MAINTAB["Main tablet<br/>TIndexTabletActor"]
+        DIRSHARD["Directory shards<br/>TIndexTabletActor<br/>directories, other inode types"]
     end
 
-    subgraph fileshard["File shard"]
+    subgraph fileshard["File shard (fastshard)"]
         TAB["TIndexTabletActor<br/>Adapter mode: sessions, config"]
         SHARD["IFileSystemShard<br/>inode/name/handle tables,<br/>page index, page allocator"]
         PS["IPageStore<br/>page cache, dirty pages"]
@@ -86,18 +87,26 @@ flowchart TD
         PS --> SG2
     end
 
-    subgraph agent["blockstore-disk-agent"]
+    subgraph agents["blockstore-disk-agents"]
         SN1["journalled device"]
         SN2["journalled device"]
         SN3["journalled device"]
+        SN4["journalled device"]
+        SN5["journalled device"]
+        SN6["journalled device"]
     end
 
     VHOST -->|"interconnect"| MAINTAB
+    VHOST -->|"interconnect"| DIRSHARD
     VHOST -->|"interconnect"| TAB
+    MAINTAB <-->|"interconnect"| DIRSHARD
     MAINTAB <-->|"interconnect"| TAB
     SG1 -->|"TCP, TDeviceProtocolRequest"| SN1
     SG1 --> SN2
     SG1 --> SN3
+    SG2 --> SN4
+    SG2 --> SN5
+    SG2 --> SN6
 ```
 
 ## Reused and new components

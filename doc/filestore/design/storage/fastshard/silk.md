@@ -46,7 +46,10 @@ flowchart LR
         PS["IPageStore"]
         SG["IStorageGroup"]
         SNC["sn/client"]
-        SHARD --> PS --> SG --> SNC
+        SHARD --> PS
+        SHARD -->|"WriteLogRecord"| SG
+        PS -->|"ReadPages"| SG
+        SG --> SNC
     end
 
     TAB -->|"TFuture boundary"| SHARD

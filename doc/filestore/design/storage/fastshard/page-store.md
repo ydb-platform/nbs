@@ -7,8 +7,11 @@ the page store.
 
 ## Responsibilities
 
-* **Request forwarding** - translating page reads and writes into
-  `ReadPages` / `WriteLogRecord` calls on the storage group.
+* **Request forwarding** - translating cache-missing page reads into
+  `ReadPages` calls on the storage group. Writes are not forwarded by the
+  page store: `WritePage` only stages the page and accumulates the log
+  record; the shard operation itself sends the record via
+  `IStorageGroup::WriteLogRecord`.
 * **Page cache** - an in-memory cache of recently used pages.
 * **Dirty page tracking** - pages staged by an uncommitted operation are
   marked dirty and tagged with the operation's Lsn.
@@ -58,17 +61,19 @@ The caller must treat `E_REJECTED` as a retryable conflict, distinct from
 flowchart TD
     subgraph shard["Shard operation"]
         OP["allocate Lsn,<br/>stage writes,<br/>commit / rollback"]
+        LR["log record<br/>TPageGroups accumulated<br/>by WritePage calls"]
+        OP --- LR
     end
 
     subgraph pagestore["IPageStore"]
         CACHE["page cache<br/>pageNo -> {content, Lsn, dirty}"]
-        LR["log record<br/>accumulated TPageGroups"]
     end
 
-    OP -->|"WritePage(lsn, pageNo)"| CACHE
+    SG["IStorageGroup"]
+
+    OP -->|"WritePage(lsn, pageNo, &logRecord)"| CACHE
     OP -->|"ReadPage(lsn, pageNo)"| CACHE
-    CACHE -->|"cache miss"| SG
     OP -->|"CommitPages / RollbackPages"| CACHE
-    CACHE --- LR
-    LR -->|"WriteLogRecord(lsn) - atomic"| SG["IStorageGroup(s)"]
+    CACHE -->|"cache miss: ReadPages"| SG
+    LR -->|"WriteLogRecord(lsn) - atomic,<br/>sent by the shard operation"| SG
 ```

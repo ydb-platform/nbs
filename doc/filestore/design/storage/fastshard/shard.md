@@ -88,7 +88,8 @@ flowchart TD
     subgraph ops["IFileSystemShard operations"]
         CN["CreateNode / UnlinkNode"]
         CH["CreateHandle / DestroyHandle"]
-        RW["ReadData / WriteData"]
+        RD["ReadData"]
+        WR["WriteData / AllocateData"]
     end
 
     subgraph structures["Persistent data structures (one set per group)"]
@@ -104,11 +105,13 @@ flowchart TD
     CN --> NAT
     CH --> NAT
     CH --> HT
-    RW --> HT
-    RW --> PI
-    RW --> PA
-    PI --> DP
-    PA --> DP
+    RD --> HT
+    RD --> PI
+    WR --> HT
+    WR --> PI
+    WR --> PA
+    PI -->|"maps file pages"| DP
+    PA -->|"allocates 8-page clusters"| DP
 
     structures -->|"all updates through IPageStore"| PS["IPageStore"]
 ```

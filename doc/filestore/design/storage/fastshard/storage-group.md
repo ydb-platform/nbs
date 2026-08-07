@@ -46,15 +46,17 @@ the group to every device (see
 
 ```mermaid
 flowchart TD
-    PS["IPageStore"]
+    SHARD["shard / IPageStore"]
 
     subgraph group["IStorageGroup"]
-        SG["quorum logic<br/>locking, recovery,<br/>Lsn: monotone, gapless"]
+        SG["quorum logic:<br/>write - sent to all n, acked by m<br/>read - k of n<br/>locking, recovery,<br/>Lsn: monotone, gapless"]
     end
 
-    PS -->|"WriteLogRecord(Lsn, page groups)<br/>ReadPages"| SG
+    SHARD -->|"WriteLogRecord(Lsn, page groups)<br/>ReadPages"| SG
 
-    SG -->|"write: replicate m/n"| D1["device 1<br/>journal + pages"]
-    SG -->|"write: replicate m/n"| D2["device 2<br/>journal + pages"]
-    SG -->|"write: replicate m/n<br/>read: k/n"| D3["device N<br/>journal + pages"]
+    SG -->|"write"| D1["device 1<br/>journal + pages"]
+    SG -->|"write"| D2["device 2<br/>journal + pages"]
+    SG -->|"write"| D3["device N<br/>journal + pages"]
+    SG -.->|"read: any k devices"| D1
+    SG -.->|"read: any k devices"| D3
 ```

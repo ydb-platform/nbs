@@ -35,7 +35,9 @@ tests.
 * **Writer fencing** - a writer whose lease has been invalidated by another
   writer with a newer `Generation` is rejected.
   *Missing in the prototype.*
-* **Reads** - serving `ReadPages`.
+* **Reads** - serving `ReadPages` with the latest data: a page whose newest
+  record is still in the journal is served from the journal, the rest from
+  the final locations.
 
 ## Journal application (checkpointing)
 
@@ -63,13 +65,15 @@ flowchart TD
     subgraph agent["blockstore-disk-agent"]
         SRV["journalled_device_tcp_server"]
         BE["IServerBackend"]
-        J["journal"]
-        DEV["storage device"]
+        J["journal<br/>records above the low watermark"]
+        DEV["storage device<br/>final page locations"]
         SRV --> BE
-        BE -->|"WriteLogRecord (atomic, Lsn-ordered)"| J
-        J -->|"apply below low watermark"| DEV
-        BE -->|"ReadPages"| DEV
+        BE -->|"WriteLogRecord<br/>(atomic, Lsn-ordered)"| J
+        J -->|"apply records below<br/>the low watermark"| DEV
+        BE -->|"ReadPages: journal overlay first"| J
+        BE -->|"ReadPages: applied pages"| DEV
     end
 
     SNC -->|"TCP: TDeviceProtocolRequest"| SRV
+    SNC -.->|"move Lsn low watermark<br/>(shard-controlled, protocol TBD)"| SRV
 ```
