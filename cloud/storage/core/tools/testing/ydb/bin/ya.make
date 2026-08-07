@@ -3,8 +3,7 @@ IF(USE_BUNDLED_YDBD)
     # It can be removed by code sync
     INCLUDE(${ARCADIA_ROOT}/contrib/ydb/apps/ydbd/ya.make)
 ELSE()
-
-PACKAGE()
+    PACKAGE()
 
 IF(ARCH_X86_64)
     FROM_SANDBOX(
@@ -25,5 +24,4 @@ ELSE()
 ENDIF()
 
 END()
-
 ENDIF()
