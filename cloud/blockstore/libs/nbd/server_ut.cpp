@@ -45,6 +45,19 @@ constexpr bool UseNbsErrors = true;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestErrorHandler final
+    : IErrorHandler
+{
+    TManualEvent ErrorReported;
+
+    void ProcessException(std::exception_ptr) override
+    {
+        ErrorReported.Signal();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 void ConnectInvalidClient(ui16 port)
 {
     TInet6StreamSocket socket;
@@ -64,6 +77,13 @@ void ConnectInvalidClient(ui16 port)
     TStreamSocketOutput output(&socket);
     TRequestWriter writer(output);
     writer.WriteClientHello(0);
+
+    SetSocketTimeout(socket, 3);
+    char c;
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        0,
+        socket.Recv(&c, sizeof(c)),
+        "invalid client connection was not closed");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -284,7 +304,8 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
     IStoragePtr storage,
     const TStorageOptions& options = DefaultStorageOptions,
     TServerConfig serverConfig = Default<TServerConfig>(),
-    IBlockStorePtr grpcClientEndpoint = nullptr)
+    IBlockStorePtr grpcClientEndpoint = nullptr,
+    IErrorHandlerPtr errorHandler = nullptr)
 {
     const ui32 clientThreadsCount = 1;
 
@@ -295,12 +316,16 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
 
     auto server = CreateServer(logging, serverConfig);
 
+    if (!errorHandler) {
+        errorHandler = CreateErrorHandlerStub();
+    }
+
     auto handlerFactory = CreateServerHandlerFactory(
         CreateDefaultDeviceHandlerFactory(),
         logging,
         std::move(storage),
         CreateServerStatsStub(),
-        CreateErrorHandlerStub(),
+        std::move(errorHandler),
         options);
 
     auto client = CreateClient(
@@ -1157,7 +1182,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto port = portManager.GetPort(9001);
         TNetworkAddress connectAddress(port);
 
-        auto bootstrap = CreateBootstrap(connectAddress, storage);
+        auto errorHandler = std::make_shared<TTestErrorHandler>();
+        auto bootstrap = CreateBootstrap(
+            connectAddress,
+            storage,
+            DefaultStorageOptions,
+            Default<TServerConfig>(),
+            nullptr,
+            errorHandler);
 
         auto error = bootstrap->Start();
         UNIT_ASSERT_C(!HasError(error), error);
@@ -1174,6 +1206,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT(!future.HasValue());
 
         ConnectInvalidClient(port);
+        UNIT_ASSERT_C(
+            !errorHandler->ErrorReported.WaitT(TDuration::Zero()),
+            "invalid client error was reported to the endpoint");
+
         trigger.SetValue({});
 
         auto response = future.GetValue(TDuration::Seconds(3));

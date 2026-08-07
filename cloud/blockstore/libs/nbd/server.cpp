@@ -72,6 +72,7 @@ private:
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
 
     size_t InFlightBytes = 0;
+    std::atomic_bool ReportErrors = false;
     std::atomic_flag ShuttingDown = false;
 
 public:
@@ -105,6 +106,7 @@ public:
 
     void Stop() override
     {
+        ReportErrors.store(false, std::memory_order_release);
         ShutDown();
     }
 
@@ -185,7 +187,7 @@ private:
             if (!IsShuttingDown() && !c->Cancelled()) {
                 STORAGE_INFO("lost connection with client, failed to receive: "
                     << CurrentExceptionMessage());
-                Handler->ProcessException(std::current_exception());
+                ReportException(std::current_exception());
             }
         }
 
@@ -199,6 +201,7 @@ private:
         if (Handler->NegotiateClient(io, io) &&
             ConnectionNegotiatedHandler(this))
         {
+            ReportErrors.store(true, std::memory_order_release);
             Handler->ProcessRequests(this, io, io, c);
         }
     }
@@ -211,7 +214,7 @@ private:
         while (ResponseQueue.Dequeue(&response)) {
             if (!response) {
                 // stop signal received
-                Handler->ProcessException(
+                ReportException(
                     std::make_exception_ptr(TSystemError(-ESHUTDOWN)));
                 break;
             }
@@ -221,7 +224,7 @@ private:
             } catch (...) {
                 STORAGE_INFO("lost connection with client, failed to send: "
                     << CurrentExceptionMessage());
-                Handler->ProcessException(std::current_exception());
+                ReportException(std::current_exception());
             }
 
             ReleaseRequest(response->RequestBytes);
@@ -257,6 +260,15 @@ private:
         }
 
         return false;
+    }
+
+    void ReportException(std::exception_ptr e)
+    {
+        if (ReportErrors.load(std::memory_order_acquire) &&
+            !IsShuttingDown())
+        {
+            Handler->ProcessException(std::move(e));
+        }
     }
 
     void ShutDown()
