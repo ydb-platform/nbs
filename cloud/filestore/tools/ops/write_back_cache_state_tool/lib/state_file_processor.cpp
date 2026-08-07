@@ -336,7 +336,8 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
     auto validationResult = accessor.ValidateAndInitialize();
 
     res.SetChecksum(Crc32c(rawData.data(), rawData.size()));
-    res.SetIsCorrupted(HasError(validationResult));
+    res.SetIsCorrupted(
+        validationResult == EFileRingBufferAccessorValidationStatus::Failed);
 
     auto* header = accessor.GetHeader();
     if (header != nullptr) {
@@ -388,7 +389,9 @@ NCloud::NProto::TError TStateFileProcessor::PatchStateFile(
     TFileRingBufferAccessor& accessor,
     const NProto::TStateFileDump& newState)
 {
-    if (!accessor.IsInitialized()) {
+    if (accessor.GetHeader() == nullptr ||
+        accessor.GetDataProcessor() == nullptr)
+    {
         return MakeInvalidStateError(
             "State file is not initialized, nothing to patch");
     }
