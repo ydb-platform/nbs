@@ -62,6 +62,16 @@ enum {
     RDMA_PROTO_FLAG_DATA_AT_THE_END = 1,
 };
 
+enum {
+    RDMA_REQUEST_FLAG_NONE = 0,
+    RDMA_REQUEST_FLAG_USE_MEMORY_WINDOWS = 1,
+};
+
+enum {
+    RDMA_ACCEPT_FLAG_NONE = 0,
+    RDMA_ACCEPT_FLAG_SEND_WITH_INV = 1,
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct Y_PACKED TMessageHeader

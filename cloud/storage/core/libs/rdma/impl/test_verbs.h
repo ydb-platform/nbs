@@ -39,6 +39,9 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     TAtomic PostRecvCounter = 0;
 
     std::function<void(ibv_qp* qp, ibv_send_wr* wr)> PostSend;
+    // Return the first WR that was not accepted to emulate a partial
+    // ibv_post_send failure.
+    std::function<ibv_send_wr*(ibv_send_wr* wr)> GetBadSendWr;
     std::function<void(ibv_qp* qp, ibv_recv_wr* wr)> PostRecv;
     std::function<void(rdma_cm_id* id, int backlog)> Listen;
     std::function<void(ibv_wc* wc)> HandleCompletionEvent;
@@ -51,6 +54,7 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     std::function<void(ibv_qp* qp, ibv_qp_attr* attr, int mask)> ModifyQP;
     std::function<void(ibv_pd* pd, void* addr, size_t length, int flags)>
         RegisterMemoryRegion;
+    std::function<void(ibv_mw* mw)> DestroyMemoryWindow;
 
     // If set, called when TTestVerbs resolves address/route.
     std::function<void(
@@ -79,9 +83,16 @@ void PostSend(TTestContextPtr context, ibv_qp* qp, ibv_send_wr* wr)
 {
     Y_UNUSED(qp);
     with_lock (context->CompletionLock) {
-        const auto* msg = reinterpret_cast<M*>(wr->sg_list[0].addr);
-        context->ReqIds.push_back(msg->ReqId);
-        context->SendEvents.push_back(new ibv_send_wr(*wr));
+        for (auto* current = wr; current; current = current->next) {
+            if (current->opcode == IBV_WR_SEND &&
+                current->sg_list &&
+                current->num_sge > 0)
+            {
+                const auto* msg = reinterpret_cast<M*>(current->sg_list[0].addr);
+                context->ReqIds.push_back(msg->ReqId);
+            }
+            context->SendEvents.push_back(new ibv_send_wr(*current));
+        }
         context->CompletionHandle.Set();
     }
 }

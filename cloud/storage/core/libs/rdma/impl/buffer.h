@@ -39,6 +39,9 @@ public:
     {
         TChunk* Chunk;
         ui32 LKey;
+        ui32 WindowRKey;
+
+        ibv_mr* GetMemoryRegion() const;
 
         explicit operator TStringBuf() const;
     };
