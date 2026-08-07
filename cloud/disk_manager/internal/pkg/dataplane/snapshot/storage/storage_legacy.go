@@ -294,3 +294,22 @@ func (s *legacyStorage) ListSnapshots(
 	return tasks_common.NewStringSet(),
 		task_errors.NewNonRetriableErrorf("not implemented")
 }
+
+func (s *legacyStorage) RelocateChunkToS3(
+	ctx context.Context,
+	chunkID string,
+) error {
+
+	return task_errors.NewNonRetriableErrorf("not implemented")
+}
+
+func (s *legacyStorage) RelocateSnapshotChunksToS3(
+	ctx context.Context,
+	snapshotID string,
+	milestoneChunkIndex uint32,
+	workerCount uint32,
+	saveProgress func(context.Context, uint32) error,
+) error {
+
+	return task_errors.NewNonRetriableErrorf("not implemented")
+}

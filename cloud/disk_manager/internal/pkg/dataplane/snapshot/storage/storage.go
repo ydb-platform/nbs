@@ -146,4 +146,19 @@ type Storage interface {
 	) (snapshotID string, checkpointID string, err error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
+
+	// RelocateChunkToS3 copies chunk blob payload from YDB to S3 without flipping
+	// chunk_map. Idempotent: existing S3 object is overwritten / verified.
+	RelocateChunkToS3(ctx context.Context, chunkID string) error
+
+	// RelocateSnapshotChunksToS3 copies all non-S3 chunks of the snapshot to S3,
+	// then flips stored_in_s3 for this snapshot and clears YDB blob data for
+	// chunk_ids that are no longer referenced with stored_in_s3=false.
+	RelocateSnapshotChunksToS3(
+		ctx context.Context,
+		snapshotID string,
+		milestoneChunkIndex uint32,
+		workerCount uint32,
+		saveProgress func(context.Context, uint32) error,
+	) error
 }

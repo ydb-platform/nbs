@@ -39,4 +39,6 @@ message DataplaneConfig {
     optional int64 ReplicationBetweenCellsSecondsRemainingThreshold = 19 [default = 300];
 
     optional filesystem_dataplane.FilesystemDataplaneConfig FilesystemConfig = 20;
+
+    optional uint32 RelocateSnapshotsToS3InflightLimit = 21 [default = 5];
 }

@@ -252,6 +252,27 @@ func (s *StorageMock) ListSnapshots(
 	return args.Get(0).(tasks_common.StringSet), args.Error(1)
 }
 
+func (s *StorageMock) RelocateChunkToS3(
+	ctx context.Context,
+	chunkID string,
+) error {
+
+	args := s.Called(ctx, chunkID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) RelocateSnapshotChunksToS3(
+	ctx context.Context,
+	snapshotID string,
+	milestoneChunkIndex uint32,
+	workerCount uint32,
+	saveProgress func(context.Context, uint32) error,
+) error {
+
+	args := s.Called(ctx, snapshotID, milestoneChunkIndex, workerCount, saveProgress)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {

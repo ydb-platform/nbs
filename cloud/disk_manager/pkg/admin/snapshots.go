@@ -495,6 +495,148 @@ func newMigrateSnapshotDatabaseCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type scheduleRelocateSnapshotChunksToS3TaskCmd struct {
+	commandWithScheduler
+	snapshotID  string
+	workerCount uint32
+}
+
+func (c *scheduleRelocateSnapshotChunksToS3TaskCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	taskID, err := c.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.RelocateSnapshotChunksToS3Task_"+c.snapshotID+"_"+generateID(),
+		),
+		"dataplane.RelocateSnapshotChunksToS3Task",
+		"",
+		&dataplane_protos.RelocateSnapshotChunksToS3Request{
+			SnapshotId:  c.snapshotID,
+			WorkerCount: c.workerCount,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newScheduleRelocateSnapshotChunksToS3TaskCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &scheduleRelocateSnapshotChunksToS3TaskCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "schedule-relocate-snapshot-chunks-to-s3-task",
+		Aliases: []string{"schedule_relocate_snapshot_chunks_to_s3_task"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to relocate chunk blobs to S3; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	cmd.Flags().Uint32Var(
+		&c.workerCount,
+		"worker-count",
+		0,
+		"number of workers for chunk relocate; 0 means config default",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type scheduleRelocateSnapshotsToS3DatabaseTaskCmd struct {
+	commandWithScheduler
+	inflightLimit uint32
+	workerCount   uint32
+}
+
+func (c *scheduleRelocateSnapshotsToS3DatabaseTaskCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	taskID, err := c.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.RelocateSnapshotsToS3DatabaseTask_"+generateID(),
+		),
+		"dataplane.RelocateSnapshotsToS3DatabaseTask",
+		"",
+		&dataplane_protos.RelocateSnapshotsToS3DatabaseRequest{
+			InflightLimit: c.inflightLimit,
+			WorkerCount:   c.workerCount,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newScheduleRelocateSnapshotsToS3DatabaseTaskCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &scheduleRelocateSnapshotsToS3DatabaseTaskCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "schedule-relocate-snapshots-to-s3-database-task",
+		Aliases: []string{"schedule_relocate_snapshots_to_s3_database_task"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().Uint32Var(
+		&c.inflightLimit,
+		"inflight-limit",
+		0,
+		"max number of snapshots relocating at once; 0 means config default",
+	)
+	cmd.Flags().Uint32Var(
+		&c.workerCount,
+		"worker-count",
+		0,
+		"worker count passed to each per-snapshot relocate task; 0 means config default",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -520,6 +662,14 @@ func newSnapshotsCmd(
 			serverConfig,
 		),
 		newMigrateSnapshotDatabaseCmd(
+			clientConfig,
+			serverConfig,
+		),
+		newScheduleRelocateSnapshotChunksToS3TaskCmd(
+			clientConfig,
+			serverConfig,
+		),
+		newScheduleRelocateSnapshotsToS3DatabaseTaskCmd(
 			clientConfig,
 			serverConfig,
 		),
