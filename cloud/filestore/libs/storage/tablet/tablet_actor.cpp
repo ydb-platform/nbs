@@ -1088,6 +1088,7 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
         GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled());
     response->Record.SetMaxShardCount(Config->GetMaxShardCount());
     response->Record.SetCompressNodeRef(GetCompressNodeRef());
+    response->Record.SetMainFileSystemId(GetMainFileSystemId());
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,

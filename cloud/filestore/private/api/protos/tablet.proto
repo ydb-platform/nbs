@@ -897,6 +897,9 @@ message TGetFileSystemTopologyResponse
     repeated string FileShardFileSystemIds = 8;
 
     bool CompressNodeRef = 9;
+
+    // Main FileSystem identifier.
+    string MainFileSystemId = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
