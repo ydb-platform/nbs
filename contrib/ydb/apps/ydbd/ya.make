@@ -19,6 +19,10 @@ IF (OS_WINDOWS)
     )
 ENDIF()
 
+SRCDIR(
+     contrib/ydb/apps/ydbd
+)
+
 SRCS(
     export.cpp
     export.h
