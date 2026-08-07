@@ -1741,7 +1741,6 @@ func TestRelocateSnapshotChunksToS3(t *testing.T) {
 		f.ctx,
 		"snapshot",
 		0, // milestoneChunkIndex
-		2, // workerCount
 		nil,
 	)
 	require.NoError(t, err)
@@ -1769,7 +1768,7 @@ func TestRelocateSnapshotChunksToS3(t *testing.T) {
 	require.Equal(t, chunk.Data, readChunk.Data)
 
 	// Idempotent second run.
-	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "snapshot", 0, 2, nil)
+	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "snapshot", 0, nil)
 	require.NoError(t, err)
 
 	ydbBlobs = readChunkBlobsFromYDB(f, chunkID)
@@ -1801,7 +1800,7 @@ func TestRelocateSnapshotChunksToS3SharedChunk(t *testing.T) {
 	err = f.storage.SnapshotCreated(f.ctx, "dst", uint64(len(chunk.Data)), uint64(len(chunk.Data)), 1, nil)
 	require.NoError(t, err)
 
-	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "src", 0, 2, nil)
+	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "src", 0, nil)
 	require.NoError(t, err)
 
 	require.Equal(t, []chunkMapEntry{
@@ -1817,7 +1816,7 @@ func TestRelocateSnapshotChunksToS3SharedChunk(t *testing.T) {
 		{chunkID, 2, []byte("shared")},
 	}, ydbBlobs)
 
-	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "dst", 0, 2, nil)
+	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "dst", 0, nil)
 	require.NoError(t, err)
 
 	require.Equal(t, []chunkMapEntry{

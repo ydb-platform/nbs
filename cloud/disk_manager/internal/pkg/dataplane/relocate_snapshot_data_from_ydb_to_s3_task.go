@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -15,7 +14,6 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type relocateSnapshotDataFromYDBToS3Task struct {
-	config  *config.DataplaneConfig
 	storage storage.Storage
 	request *protos.RelocateSnapshotDataFromYDBToS3Request
 	state   *protos.RelocateSnapshotDataFromYDBToS3TaskState
@@ -86,7 +84,6 @@ func (t *relocateSnapshotDataFromYDBToS3Task) Run(
 		ctx,
 		t.request.SnapshotId,
 		t.state.MilestoneChunkIndex,
-		t.config.GetSnapshotConfig().GetRelocateChunksToS3WorkerCount(),
 		func(ctx context.Context, milestoneChunkIndex uint32) error {
 			_, checkErr := t.storage.CheckSnapshotReady(
 				ctx,
