@@ -64,6 +64,8 @@ struct IPersistentStorage
     virtual void SetTag(const void* ptr, ui32 tag) = 0;
 
     virtual void UpdateStats() const = 0;
+
+    virtual const TString& GetFilePath() const = 0;
 };
 
 using IPersistentStoragePtr = std::shared_ptr<IPersistentStorage>;

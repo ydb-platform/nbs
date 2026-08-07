@@ -1364,12 +1364,39 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(b.Add(2, 201, 9, "123").GetValue());
         UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
 
-        // The request is merged - flush is not triggerer
+        // The request is merged - flush is not triggered
         UNIT_ASSERT(b.Add(1, 102, 7, "xyz").GetValue());
         UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
 
         UNIT_ASSERT(b.Add(1, 102, 100, "!").GetValue());
         UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+
+        // Long chain
+        UNIT_ASSERT(b.Add(1, 102, 20, "1").GetValue());
+        UNIT_ASSERT(b.Add(1, 102, 30, "2").GetValue());
+        UNIT_ASSERT(b.Add(1, 102, 40, "3").GetValue());
+        UNIT_ASSERT(b.Add(1, 102, 50, "4").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+
+        b.State->FlushSucceeded(1, 3);
+        // 2 complete + 1 incomplete batch
+        UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+        b.State->FlushSucceeded(1, 2);
+        // 1 complete + 1 incomplete batch
+        UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+        b.State->FlushSucceeded(1, 2);
+        // 0 complete + 1 incomplete batch
+        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+
+        // Barriers
+        auto barrier = b.State->AcquireBarrier(3).GetValueSync();
+        UNIT_ASSERT(b.Add(3, 303, 20, "1").GetValue());
+        UNIT_ASSERT(b.Add(3, 303, 30, "2").GetValue());
+        UNIT_ASSERT(b.Add(3, 303, 40, "3").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+        b.State->ReleaseBarrier(3, barrier.GetResult());
+        UNIT_ASSERT_VALUES_EQUAL("3", b.DumpEvents());
+
     }
 }
 

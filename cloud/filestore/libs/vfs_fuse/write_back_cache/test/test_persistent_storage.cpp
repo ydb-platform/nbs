@@ -85,6 +85,12 @@ void TTestStorage::SetStats()
     });
 }
 
+const TString& TTestStorage::GetFilePath() const
+{
+    static const TString Path = "/dev/null";
+    return Path;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 std::shared_ptr<TTestStorage> CreateTestStorage(
