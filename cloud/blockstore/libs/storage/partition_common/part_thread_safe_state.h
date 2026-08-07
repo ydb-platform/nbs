@@ -93,6 +93,8 @@ private:
     NPartition::TBarriers TrimFreshLogBarriers;
     NPartition::TCommitQueue CommitQueue;
 
+    NPartition::TCommitQueueWithCallback FreshWritesCommitQueue;
+
     NPartition::TCheckpointsInFlight CheckpointsInFlight;
 
     std::atomic<ui64> FreshBlocksInFlight = 0;
@@ -194,6 +196,10 @@ public:
         std::unique_ptr<ITransactionBase> tx,
         ui64 commitId);
 
+    void WaitFreshWritesToComplete(
+        NPartition::TCommitQueueCallback callback,
+        ui64 commitId);
+
     void WaitCommitForCheckpoint(
         const NActors::TActorContext& ctx,
         std::unique_ptr<ITransactionBase> tx,
@@ -242,7 +248,8 @@ private:
         TVector<std::unique_ptr<ITransactionBase>> txs);
 
     void ProcessCommitQueueImpl(
-        TVector<std::unique_ptr<ITransactionBase>>& txs);
+        TVector<std::unique_ptr<ITransactionBase>>& txs,
+        TVector<NPartition::TCommitQueueCallback>& callbacks);
 
     void CollectCheckpointQueueTransactions(
         TVector<std::unique_ptr<ITransactionBase>>& txs);
