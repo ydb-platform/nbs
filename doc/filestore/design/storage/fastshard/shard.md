@@ -83,36 +83,6 @@ into one group span several; writes to multiple groups are coordinated via
 
 ## Diagram
 
-```mermaid
-flowchart TD
-    subgraph ops["IFileSystemShard operations"]
-        CN["CreateNode / UnlinkNode"]
-        CH["CreateHandle / DestroyHandle"]
-        RD["ReadData"]
-        WR["WriteData / AllocateData"]
-    end
+![fastshard_shard_structures](../../../excalidraw/fastshard_shard_structures.svg)
 
-    subgraph structures["Persistent data structures (one set per group)"]
-        NT["Node table<br/>NodeId -> NodeAttr<br/>TPersistentHashTable"]
-        NAT["Name table<br/>Name -> NodeId<br/>TPersistentHashTable"]
-        HT["Handle table<br/>Handle -> NodeId<br/>TPersistentHashTable"]
-        PI["Page index<br/>file page -> storage page<br/>prototype: hash table<br/>production: radix tree per file (TBD)"]
-        PA["Page allocator<br/>TPersistentBitmap<br/>1 bit per 8-page cluster"]
-        DP["Data pages"]
-    end
-
-    CN --> NT
-    CN --> NAT
-    CH --> NT
-    CH --> NAT
-    CH --> HT
-    RD --> HT
-    RD --> PI
-    WR --> HT
-    WR --> PI
-    WR --> PA
-    PI -->|"maps file pages"| DP
-    PA -->|"allocates 8-page clusters"| DP
-
-    structures -->|"all updates through IPageStore"| PS["IPageStore"]
-```
+Diagram source: [fastshard_shard_structures.excalidraw](../../../excalidraw/fastshard_shard_structures.excalidraw).

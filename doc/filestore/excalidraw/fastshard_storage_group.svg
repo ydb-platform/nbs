@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#495057" stroke-width="1.6" stroke-linecap="round"/></marker></defs>
+<rect x="0" y="0" width="900" height="640" fill="#ffffff"/>
+<rect x="250" y="170" width="400" height="210" rx="12" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.3"/>
+<text x="264" y="194" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#495057">IStorageGroup</text>
+<line x1="450.0" y1="114.0" x2="450.0" y2="216.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="610" y="144.9">WriteLogRecord(Lsn, page groups)</tspan><tspan x="610" y="161.1">ReadPages</tspan></text>
+<line x1="330.0" y1="360.0" x2="200.0" y2="480.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="245" y="420.0">write</tspan></text>
+<line x1="450.0" y1="360.0" x2="450.0" y2="480.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="428" y="420.0">write</tspan></text>
+<line x1="570.0" y1="360.0" x2="700.0" y2="480.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="609" y="420.0">write</tspan></text>
+<line x1="290.0" y1="340.0" x2="140.0" y2="480.0" stroke="#495057" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="171" y="401.9">read: any</tspan><tspan x="171" y="418.1">k devices</tspan></text>
+<line x1="610.0" y1="340.0" x2="760.0" y2="480.0" stroke="#495057" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="731" y="401.9">read: any</tspan><tspan x="731" y="418.1">k devices</tspan></text>
+<rect x="330" y="40" width="240" height="70" rx="9" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="450" y="75.0">shard / IPageStore</tspan></text>
+<rect x="280" y="220" width="340" height="140" rx="9" fill="#d0bfff" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="450" y="252.2" font-weight="600">quorum logic</tspan><tspan x="450" y="271.1">write: sent to all n, acked by m</tspan><tspan x="450" y="290.0">read: k of n</tspan><tspan x="450" y="308.9">locking, recovery</tspan><tspan x="450" y="327.8">Lsn: monotone, gapless</tspan></text>
+<rect x="80" y="480" width="200" height="80" rx="9" fill="#ffd8a8" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="180" y="510.6" font-weight="600">device 1</tspan><tspan x="180" y="529.5">journal + pages</tspan></text>
+<rect x="350" y="480" width="200" height="80" rx="9" fill="#ffd8a8" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="450" y="510.6" font-weight="600">device 2</tspan><tspan x="450" y="529.5">journal + pages</tspan></text>
+<rect x="620" y="480" width="200" height="80" rx="9" fill="#ffd8a8" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="720" y="510.6" font-weight="600">device N</tspan><tspan x="720" y="529.5">journal + pages</tspan></text>
+</svg>

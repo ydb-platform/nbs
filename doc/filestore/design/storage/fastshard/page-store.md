@@ -57,23 +57,6 @@ The caller must treat `E_REJECTED` as a retryable conflict, distinct from
 
 ## Diagram
 
-```mermaid
-flowchart TD
-    subgraph shard["Shard operation"]
-        OP["allocate Lsn,<br/>stage writes,<br/>commit / rollback"]
-        LR["log record<br/>TPageGroups accumulated<br/>by WritePage calls"]
-        OP --- LR
-    end
+![fastshard_page_store](../../../excalidraw/fastshard_page_store.svg)
 
-    subgraph pagestore["IPageStore"]
-        CACHE["page cache<br/>pageNo -> {content, Lsn, dirty}"]
-    end
-
-    SG["IStorageGroup"]
-
-    OP -->|"WritePage(lsn, pageNo, &logRecord)"| CACHE
-    OP -->|"ReadPage(lsn, pageNo)"| CACHE
-    OP -->|"CommitPages / RollbackPages"| CACHE
-    CACHE -->|"cache miss: ReadPages"| SG
-    LR -->|"WriteLogRecord(lsn) - atomic,<br/>sent by the shard operation"| SG
-```
+Diagram source: [fastshard_page_store.excalidraw](../../../excalidraw/fastshard_page_store.excalidraw).

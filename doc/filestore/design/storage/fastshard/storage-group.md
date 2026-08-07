@@ -44,19 +44,6 @@ the group to every device (see
 
 ## Diagram
 
-```mermaid
-flowchart TD
-    SHARD["shard / IPageStore"]
+![fastshard_storage_group](../../../excalidraw/fastshard_storage_group.svg)
 
-    subgraph group["IStorageGroup"]
-        SG["quorum logic:<br/>write - sent to all n, acked by m<br/>read - k of n<br/>locking, recovery,<br/>Lsn: monotone, gapless"]
-    end
-
-    SHARD -->|"WriteLogRecord(Lsn, page groups)<br/>ReadPages"| SG
-
-    SG -->|"write"| D1["device 1<br/>journal + pages"]
-    SG -->|"write"| D2["device 2<br/>journal + pages"]
-    SG -->|"write"| D3["device N<br/>journal + pages"]
-    SG -.->|"read: any k devices"| D1
-    SG -.->|"read: any k devices"| D3
-```
+Diagram source: [fastshard_storage_group.excalidraw](../../../excalidraw/fastshard_storage_group.excalidraw).

@@ -35,23 +35,6 @@ the work runs on silk fibers. Threads that do not belong to silk (actor
 system threads) interact with the fiber world through silk's proxy-fiber
 support.
 
-```mermaid
-flowchart LR
-    subgraph actorsystem["ActorSystem (callbacks)"]
-        TAB["TIndexTabletActor<br/>StateAdapter"]
-    end
+![fastshard_silk](../../../excalidraw/fastshard_silk.svg)
 
-    subgraph silkland["silk fibers (synchronous style)"]
-        SHARD["IFileSystemShard"]
-        PS["IPageStore"]
-        SG["IStorageGroup"]
-        SNC["sn/client"]
-        SHARD --> PS
-        SHARD -->|"WriteLogRecord"| SG
-        PS -->|"ReadPages"| SG
-        SG --> SNC
-    end
-
-    TAB -->|"TFuture boundary"| SHARD
-    SNC -->|"io_uring TCP"| DA["blockstore-disk-agent"]
-```
+Diagram source: [fastshard_silk.excalidraw](../../../excalidraw/fastshard_silk.excalidraw).

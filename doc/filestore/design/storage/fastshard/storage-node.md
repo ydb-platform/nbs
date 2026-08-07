@@ -54,26 +54,6 @@ the page groups in place.
 
 ## Diagram
 
-```mermaid
-flowchart TD
-    subgraph shard_host["Shard host"]
-        SG["IStorageGroup"]
-        SNC["sn/client<br/>TStorageNodeClient"]
-        SG --> SNC
-    end
+![fastshard_storage_node](../../../excalidraw/fastshard_storage_node.svg)
 
-    subgraph agent["blockstore-disk-agent"]
-        SRV["journalled_device_tcp_server"]
-        BE["IServerBackend"]
-        J["journal<br/>records above the low watermark"]
-        DEV["storage device<br/>final page locations"]
-        SRV --> BE
-        BE -->|"WriteLogRecord<br/>(atomic, Lsn-ordered)"| J
-        J -->|"apply records below<br/>the low watermark"| DEV
-        BE -->|"ReadPages: journal overlay first"| J
-        BE -->|"ReadPages: applied pages"| DEV
-    end
-
-    SNC -->|"TCP: TDeviceProtocolRequest"| SRV
-    SNC -.->|"move Lsn low watermark<br/>(shard-controlled, protocol TBD)"| SRV
-```
+Diagram source: [fastshard_storage_node.excalidraw](../../../excalidraw/fastshard_storage_node.excalidraw).

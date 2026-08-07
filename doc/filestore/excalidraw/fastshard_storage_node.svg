@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="600" viewBox="0 0 1100 600">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#495057" stroke-width="1.6" stroke-linecap="round"/></marker></defs>
+<rect x="0" y="0" width="1100" height="600" fill="#ffffff"/>
+<rect x="60" y="60" width="300" height="330" rx="12" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.3"/>
+<text x="74" y="84" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#495057">Shard host</text>
+<rect x="520" y="60" width="520" height="480" rx="12" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.3"/>
+<text x="534" y="84" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#495057">blockstore-disk-agent</text>
+<line x1="210.0" y1="194.0" x2="210.0" y2="256.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<line x1="330.0" y1="290.0" x2="550.0" y2="160.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="440" y="209.0">TCP: TDeviceProtocolRequest</tspan></text>
+<line x1="330.0" y1="330.0" x2="550.0" y2="285.0" stroke="#495057" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="440" y="273.4">move Lsn low watermark</tspan><tspan x="440" y="289.6">(shard-controlled, TBD)</tspan></text>
+<line x1="700.0" y1="184.0" x2="700.0" y2="236.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<line x1="610.0" y1="300.0" x2="610.0" y2="380.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="525" y="331.9">WriteLogRecord</tspan><tspan x="525" y="348.1">(atomic, Lsn-ordered)</tspan></text>
+<line x1="760.0" y1="300.0" x2="760.0" y2="380.0" stroke="#495057" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="824" y="331.9">ReadPages:</tspan><tspan x="824" y="348.1">journal overlay</tspan></text>
+<line x1="850.0" y1="280.0" x2="910.0" y2="380.0" stroke="#495057" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="926" y="321.9">ReadPages:</tspan><tspan x="926" y="338.1">applied pages</tspan></text>
+<line x1="784.0" y1="435.0" x2="816.0" y2="435.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="800" y="496.8">apply records</tspan><tspan x="800" y="513.0">below the</tspan><tspan x="800" y="529.2">low watermark</tspan></text>
+<rect x="90" y="120" width="240" height="70" rx="9" fill="#d0bfff" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="210" y="155.0">IStorageGroup</tspan></text>
+<rect x="90" y="260" width="240" height="90" rx="9" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="210" y="295.6" font-weight="600">sn/client</tspan><tspan x="210" y="314.4">TStorageNodeClient</tspan></text>
+<rect x="550" y="110" width="300" height="70" rx="9" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="700" y="145.0">journalled_device_tcp_server</tspan></text>
+<rect x="550" y="240" width="300" height="60" rx="9" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="700" y="270.0">IServerBackend</tspan></text>
+<rect x="550" y="380" width="230" height="110" rx="9" fill="#ffec99" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="665" y="416.1" font-weight="600">journal</tspan><tspan x="665" y="435.0">records above the</tspan><tspan x="665" y="453.9">low watermark</tspan></text>
+<rect x="820" y="380" width="200" height="110" rx="9" fill="#ffd8a8" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="920" y="416.1" font-weight="600">storage device</tspan><tspan x="920" y="435.0">final page</tspan><tspan x="920" y="453.9">locations</tspan></text>
+</svg>
