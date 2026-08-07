@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package NCloud.NFileStore.NWriteBackCacheStateTool.NProto;
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EStateFileType
+{
+    Unknown = 0;
+    WriteBackCache = 1;
+    DirectoryHandles = 2;
+}
+
+message TStateFileInfo
+{
+    string FilePath = 1;
+    string FileSystemId = 2;
+    string SessionId = 3;
+    EStateFileType FileType = 4;
+    uint64 FileSize = 5;
+    bool IsLocked = 6;
+}
+
+message TStateFileList
+{
+    string StateDirectory = 1;
+    repeated TStateFileInfo Files = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TWriteDataRequestInfo
+{
+    uint64 NodeId = 1;
+    uint64 Handle = 2;
+    uint64 Offset = 3;
+    uint32 Size = 4;
+}
+
+message TStateFileHeader
+{
+    uint32 Version = 1;
+    uint32 HeaderSize = 2;
+    uint64 MetadataOffset = 3;
+    uint64 MetadataCapacity = 4;
+    uint32 MetadataSize = 5;
+    uint32 MetadataChecksum = 6;
+    uint64 DataOffset = 7;
+    uint64 DataCapacity = 8;
+    uint64 ReadPos = 9;
+    uint64 WritePos = 10;
+}
+
+message TStateFileEntry
+{
+    uint32 DataSize = 1;
+    uint32 DataChecksum = 2;
+    uint32 Tag = 3;
+    bool FreeFlag = 4;
+    uint32 ActualDataChecksum = 5;
+    uint64 EntryPos = 6;
+    optional TWriteDataRequestInfo WriteDataRequestInfo = 7;
+}
+
+message TStateFileDump
+{
+    uint32 Checksum = 1;
+    bool IsCorrupted = 2;
+    optional TStateFileHeader Header = 4;
+    repeated TStateFileEntry Entries = 5;
+}
