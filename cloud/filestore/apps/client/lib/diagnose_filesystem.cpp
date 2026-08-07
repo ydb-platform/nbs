@@ -1,8 +1,8 @@
 #include "command.h"
 
-#include <library/cpp/json/json_writer.h>
-
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+
+#include <library/cpp/json/json_writer.h>
 
 #include <google/protobuf/util/json_util.h>
 
@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiagnoseFilesystemCommand final
-    : public TFileStoreCommand
+class TDiagnoseFilesystemCommand final: public TFileStoreCommand
 {
 private:
     struct TShardRow
@@ -26,8 +25,18 @@ private:
         ui64 UsedNodesCount = 0;
     };
 
+    struct TNodeRow
+    {
+        TString ShardId;
+        ui64 NodeId = 0;
+        ui64 RequestCount = 0;
+        double AccessScore = 0;
+        ui64 LastAccessedTimestampUs = 0;
+    };
+
     ui32 Top;
     TString SortBy;
+    ui32 TopNodes;
 
 public:
     TDiagnoseFilesystemCommand()
@@ -41,6 +50,10 @@ public:
             .Choices({"load"})
             .DefaultValue("load")
             .StoreResult(&SortBy);
+        Opts.AddLongOption("top-nodes", "number of most accessed nodes")
+            .RequiredArgument("NUM")
+            .DefaultValue(10)
+            .StoreResult(&TopNodes);
     }
 
 private:
@@ -72,14 +85,15 @@ private:
         }
 
         auto parsed = google::protobuf::util::JsonStringToMessage(
-            result.GetOutput(),
-            responseProto).ok();
+                          result.GetOutput(),
+                          responseProto)
+                          .ok();
 
         if (!parsed) {
             responseProto->MutableError()->CopyFrom(MakeError(
                 E_BADMSG,
                 TStringBuilder() << "failed to parse response json: "
-                    << result.GetOutput()));
+                                 << result.GetOutput()));
         }
     }
 
@@ -88,13 +102,14 @@ public:
     {
         NProtoPrivate::TGetStorageStatsRequest request;
         request.SetFileSystemId(FileSystemId);
-        request.SetCacheTTL(0); // disable caching
+        request.SetCacheTTL(0);   // disable caching
         request.SetMode(NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
         NProtoPrivate::TGetStorageStatsResponse response;
         ExecuteAction("getstoragestats", request, &response);
         CheckResponse(response);
 
         TVector<TShardRow> rows;
+        TVector<TNodeRow> nodeRows;
 
         const auto& stats = response.GetStats();
         rows.reserve(stats.ShardStatsSize());
@@ -109,20 +124,34 @@ public:
             row.UsedNodesCount = shardStats.GetUsedNodesCount();
             rows.push_back(std::move(row));
         }
+        for (const auto& nodeStats: stats.GetNodeStats()) {
+            nodeRows.push_back(
+                {nodeStats.GetShardId(),
+                 nodeStats.GetNodeId(),
+                 nodeStats.GetRequestCount(),
+                 nodeStats.GetAccessScore(),
+                 nodeStats.GetLastAccessedTimestampUs()});
+        }
+        Sort(
+            nodeRows,
+            [](const TNodeRow& l, const TNodeRow& r)
+            {
+                // AccessScore DESC, ShardId ASC, NodeId ASC
+                return std::tie(r.AccessScore, l.ShardId, l.NodeId) <
+                       std::tie(l.AccessScore, r.ShardId, r.NodeId);
+            });
 
-        Sort(rows, [] (const TShardRow& l, const TShardRow& r) {
-            if (l.CurrentLoad != r.CurrentLoad) {
-                return l.CurrentLoad > r.CurrentLoad;
-            }
-
-            if (l.Suffer != r.Suffer) {
-                return l.Suffer > r.Suffer;
-            }
-
-            return l.ShardId < r.ShardId;
-        });
+        Sort(
+            rows,
+            [](const TShardRow& l, const TShardRow& r)
+            {
+                // CurrentLoad DESC, Suffer DESC, ShardId ASC
+                return std::tie(r.CurrentLoad, r.Suffer, l.ShardId) <
+                       std::tie(l.CurrentLoad, l.Suffer, r.ShardId);
+            });
 
         const size_t limit = Min<size_t>(Top, rows.size());
+        const size_t nodeLimit = Min<size_t>(TopNodes, nodeRows.size());
 
         if (JsonOutput) {
             NJson::TJsonValue resultJson(NJson::JSON_MAP);
@@ -146,6 +175,25 @@ public:
             }
 
             resultJson["shards"] = std::move(shardsJson);
+            NJson::TJsonValue nodesJson(NJson::JSON_ARRAY);
+
+            for (size_t i = 0; i < nodeLimit; ++i) {
+                const auto& node = nodeRows[i];
+
+                NJson::TJsonValue nodeJson(NJson::JSON_MAP);
+                nodeJson["shard_id"] = node.ShardId;
+                nodeJson["node_id"] = node.NodeId;
+                nodeJson["request_count"] = node.RequestCount;
+                nodeJson["access_score"] = node.AccessScore;
+                nodeJson["last_accessed_timestamp_us"] =
+                    node.LastAccessedTimestampUs;
+                nodeJson["last_accessed"] =
+                    TInstant::MicroSeconds(node.LastAccessedTimestampUs)
+                        .ToStringUpToSeconds();
+                nodesJson.AppendValue(std::move(nodeJson));
+            }
+
+            resultJson["nodes"] = std::move(nodesJson);
             NJson::WriteJson(&Cout, &resultJson, false, true, true);
 
             return true;
@@ -157,14 +205,11 @@ public:
 
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            Cout << i + 1 << ". "
-                << row.ShardId
-                << "  load=" << row.CurrentLoad
-                << "  suffer=" << row.Suffer
-                << "  blocks=" << row.UsedBlocksCount
-                << "/" << row.TotalBlocksCount
-                << "  nodes=" << row.UsedNodesCount
-                << Endl;
+            Cout << i + 1 << ". " << row.ShardId << "  load=" << row.CurrentLoad
+                 << "  suffer=" << row.Suffer
+                 << "  blocks=" << row.UsedBlocksCount << "/"
+                 << row.TotalBlocksCount << "  nodes=" << row.UsedNodesCount
+                 << Endl;
         }
 
         return true;
