@@ -13,15 +13,16 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type storageYDB struct {
-	db                       *persistence.YDBClient
-	tablesPath               string
-	metrics                  metrics.Metrics
-	deleteWorkerCount        int
-	shallowCopyWorkerCount   int
-	shallowCopyInflightLimit int
-	chunkCompression         string
-	chunkStorageS3           *chunks.StorageS3
-	chunkStorageYDB          *chunks.StorageYDB
+	db                            *persistence.YDBClient
+	tablesPath                    string
+	metrics                       metrics.Metrics
+	deleteWorkerCount             int
+	shallowCopyWorkerCount        int
+	shallowCopyInflightLimit      int
+	relocateChunksToS3WorkerCount int
+	chunkCompression              string
+	chunkStorageS3                *chunks.StorageS3
+	chunkStorageYDB               *chunks.StorageYDB
 }
 
 func (s *storageYDB) CreateSnapshot(

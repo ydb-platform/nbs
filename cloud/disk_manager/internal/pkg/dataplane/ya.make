@@ -15,6 +15,8 @@ SRCS(
     migrate_snapshot.go
     migrate_snapshot_database_task.go
     register.go
+    relocate_snapshot_chunks_to_s3_task.go
+    relocate_snapshots_to_s3_database_task.go
     replicate_disk_task.go
     transfer_from_disk_to_disk_task.go
     transfer_from_snapshot_to_disk_task.go
@@ -22,6 +24,7 @@ SRCS(
 
 GO_TEST_SRCS(
     collect_snapshots_task_test.go
+    relocate_snapshot_chunks_to_s3_task_test.go
     replicate_disk_task_test.go
 )
 
