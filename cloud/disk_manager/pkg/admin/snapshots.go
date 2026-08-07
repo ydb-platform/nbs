@@ -568,13 +568,13 @@ func newScheduleRelocateSnapshotChunksToS3TaskCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type scheduleRelocateSnapshotsToS3DatabaseTaskCmd struct {
+type scheduleRelocateSnapshotsDataFromYDBToS3TaskCmd struct {
 	commandWithScheduler
 	inflightLimit uint32
 	workerCount   uint32
 }
 
-func (c *scheduleRelocateSnapshotsToS3DatabaseTaskCmd) run() error {
+func (c *scheduleRelocateSnapshotsDataFromYDBToS3TaskCmd) run() error {
 	err := c.init()
 	if err != nil {
 		return err
@@ -584,11 +584,11 @@ func (c *scheduleRelocateSnapshotsToS3DatabaseTaskCmd) run() error {
 	taskID, err := c.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			c.ctx,
-			"dataplane.RelocateSnapshotsToS3DatabaseTask_"+generateID(),
+			"dataplane.RelocateSnapshotsDataFromYDBToS3Task_"+generateID(),
 		),
-		"dataplane.RelocateSnapshotsToS3DatabaseTask",
+		"dataplane.RelocateSnapshotsDataFromYDBToS3Task",
 		"",
-		&dataplane_protos.RelocateSnapshotsToS3DatabaseRequest{
+		&dataplane_protos.RelocateSnapshotsDataFromYDBToS3Request{
 			InflightLimit: c.inflightLimit,
 			WorkerCount:   c.workerCount,
 		},
@@ -601,19 +601,19 @@ func (c *scheduleRelocateSnapshotsToS3DatabaseTaskCmd) run() error {
 	return nil
 }
 
-func newScheduleRelocateSnapshotsToS3DatabaseTaskCmd(
+func newScheduleRelocateSnapshotsDataFromYDBToS3TaskCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
 	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
-	c := &scheduleRelocateSnapshotsToS3DatabaseTaskCmd{
+	c := &scheduleRelocateSnapshotsDataFromYDBToS3TaskCmd{
 		commandWithScheduler: cmdWithScheduler,
 	}
 
 	cmd := &cobra.Command{
-		Use:     "schedule-relocate-snapshots-to-s3-database-task",
-		Aliases: []string{"schedule_relocate_snapshots_to_s3_database_task"},
+		Use:     "schedule-relocate-snapshots-data-from-ydb-to-s3-task",
+		Aliases: []string{"schedule_relocate_snapshots_data_from_ydb_to_s3_task"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -669,7 +669,7 @@ func newSnapshotsCmd(
 			clientConfig,
 			serverConfig,
 		),
-		newScheduleRelocateSnapshotsToS3DatabaseTaskCmd(
+		newScheduleRelocateSnapshotsDataFromYDBToS3TaskCmd(
 			clientConfig,
 			serverConfig,
 		),

@@ -15,7 +15,7 @@ SRCS(
     migrate_snapshot_task.proto
     migrate_snapshot_database_task.proto
     relocate_snapshot_chunks_to_s3_task.proto
-    relocate_snapshots_to_s3_database_task.proto
+    relocate_snapshots_data_from_ydb_to_s3_task.proto
     replicate_disk_task.proto
     transfer_from_disk_to_disk_task.proto
     transfer_from_snapshot_to_disk_task.proto
