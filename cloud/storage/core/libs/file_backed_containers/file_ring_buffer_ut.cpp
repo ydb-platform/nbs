@@ -748,7 +748,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->SetMetadata("1234"));
 
         {
-            // Corrupt metadata
+            // Corrupt metadata contents
+            // Header validation will pass - it will be possible to change
+            // metadata
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, 256);
             char* data = static_cast<char*>(m.Ptr());
@@ -771,7 +773,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->SetMetadata("1234"));
 
         {
-            // Corrupt metadata Length
+            // Corrupt metadata length (set length > capacity)
+            // Header validation will fail - setting metadata will not be
+            // possible
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, 256);
             char* data = static_cast<char*>(m.Ptr());
@@ -788,8 +792,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     FILE_RING_BUFFER_TEST(ShouldResizeMetadata)
     {
         const auto f = TTempFileHandle();
-        // entry header (8) + max entry data (4 or 8 depending on alignment)
-        const ui32 len = ver >= EVersion::V6 ? 16 : 12;
+        const ui32 len = 19;
 
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 1, ver);
         UNIT_ASSERT(rb->PushBack("ABCD"));
@@ -807,6 +810,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_STRINGS_EQUAL("123", rb->GetMetadata());
         UNIT_ASSERT(rb->SetMetadata("123456789"));
         UNIT_ASSERT(!rb->SetMetadata("1234567890abcdef!"));
+
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 17, ver);
+        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
+        UNIT_ASSERT(!rb->SetMetadata("1234567890abcdefg!"));
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 100, ver);
         UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
@@ -880,19 +888,20 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const auto f2 = TTempFileHandle();
         {
             TFileMap m(f2.GetName(), TMemoryMapCommon::oRdWr);
-            m.ResizeAndRemap(0, resized.length() + len);
+            auto dataOffset = AlignUp(resized.length(), sizeof(ui64));
+            m.ResizeAndRemap(0, dataOffset + len);
             auto* data = static_cast<char*>(m.Ptr());
             MemCopy(data, initial.data(), initial.length());
             const auto* entryData = initial.data() + initial.length() - len;
-            MemCopy(data + resized.length(), entryData, len);
-            MemCopy(data + resized.length() - len, entryData, 3);
-            *reinterpret_cast<ui64*>(data + 40) = resized.length();
+            MemCopy(data + dataOffset, entryData, len);
+            MemCopy(data + dataOffset - len, entryData, 3);
+            *reinterpret_cast<ui64*>(data + 40) = dataOffset;
         }
         {
             TFileRingBuffer rb(f2.GetName(), len, 100, ver);
         }
         {
-            TFileMap m(f1.GetName(), TMemoryMapCommon::oRdWr);
+            TFileMap m(f2.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, m.Length());
             UNIT_ASSERT_STRINGS_EQUAL(
                 resized,
