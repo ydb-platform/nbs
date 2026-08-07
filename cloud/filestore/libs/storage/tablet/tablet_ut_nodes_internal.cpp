@@ -2172,6 +2172,60 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         UNIT_ASSERT_VALUES_EQUAL(target, readLinkResponse->Record.GetSymLink());
     }
 
+    TABLET_TEST_4K_ONLY(ShouldSetAttrsViaUnsafeCreateNode)
+    {
+        TTestEnv env(testEnvConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 nodeId = 111;
+
+        auto request = tablet.CreateUnsafeCreateNodeRequest(nodeId, 0);
+        auto* node = request->Record.MutableNode();
+        node->SetType(NProto::E_DIRECTORY_NODE);
+        node->SetMode(0755);
+        node->SetUid(100);
+        node->SetGid(200);
+        node->SetATime(1000);
+        node->SetMTime(2000);
+        node->SetCTime(3000);
+        node->SetSize(4096);
+        node->SetLinks(3);
+        node->SetDevId(42);
+        node->SetQuotaId(24);
+
+        tablet.SendRequest(std::move(request));
+        auto response = tablet.RecvUnsafeCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+
+        const auto attr = tablet.GetNodeAttr(nodeId)->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, attr.GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_DIRECTORY_NODE),
+            attr.GetType());
+        UNIT_ASSERT_VALUES_EQUAL(0755u, attr.GetMode());
+        UNIT_ASSERT_VALUES_EQUAL(100u, attr.GetUid());
+        UNIT_ASSERT_VALUES_EQUAL(200u, attr.GetGid());
+        UNIT_ASSERT_VALUES_EQUAL(1000u, attr.GetATime());
+        UNIT_ASSERT_VALUES_EQUAL(2000u, attr.GetMTime());
+        UNIT_ASSERT_VALUES_EQUAL(3000u, attr.GetCTime());
+        UNIT_ASSERT_VALUES_EQUAL(4096u, attr.GetSize());
+        UNIT_ASSERT_VALUES_EQUAL(3u, attr.GetLinks());
+        UNIT_ASSERT_VALUES_EQUAL(42u, attr.GetDevId());
+        UNIT_ASSERT_VALUES_EQUAL(24u, attr.GetQuotaId());
+    }
+
     TABLET_TEST_4K_ONLY(ShouldSendGetNodeAttrRequestWithoutBehaveAsDirectoryTabletFlagUponCreateNode)
     {
         TTestEnv env(testEnvConfig);
