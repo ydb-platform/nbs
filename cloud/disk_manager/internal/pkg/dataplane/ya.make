@@ -16,7 +16,7 @@ SRCS(
     migrate_snapshot_database_task.go
     register.go
     relocate_snapshot_chunks_to_s3_task.go
-    relocate_snapshots_to_s3_database_task.go
+    relocate_snapshots_data_from_ydb_to_s3_task.go
     replicate_disk_task.go
     transfer_from_disk_to_disk_task.go
     transfer_from_snapshot_to_disk_task.go
