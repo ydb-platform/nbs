@@ -277,6 +277,32 @@ private:
         }
     }
 
+    void ValidateMetadata()
+    {
+        auto data =
+            GetMappedData(Header()->MetadataOffset, Header()->MetadataCapacity);
+
+        if (Header()->MetadataSize > data.size() ||
+            Crc32c(data.data(), Header()->MetadataSize) !=
+                Header()->MetadataChecksum)
+        {
+            SetCorrupted();
+        }
+    }
+
+    void ValidateEntriesChecksums()
+    {
+        Visit(
+            [&](ui32 checksum, ui32 tag, TStringBuf entry)
+            {
+                Y_UNUSED(tag);
+                const ui32 actualChecksum = Crc32c(entry.data(), entry.size());
+                if (actualChecksum != checksum) {
+                    SetCorrupted();
+                }
+            });
+    }
+
     void ResizeAndRemap(ui64 fileSize)
     {
         Map.ResizeAndRemap(0, fileSize);
@@ -453,6 +479,8 @@ public:
         CreateDataProcessor(Header()->Version);
 
         ValidateDataStructure();
+        ValidateMetadata();
+        ValidateEntriesChecksums();
 
         VisitEntries(
             [&](const TEntryInfo& e)
@@ -717,22 +745,13 @@ public:
         return result;
     }
 
-    auto ValidateEntriesChecksums()
+    bool Validate()
     {
-        TVector<TBrokenFileEntry> entries;
-
-        Visit([&] (ui32 checksum, ui32 tag, TStringBuf entry) {
-            Y_UNUSED(tag);
-            const ui32 actualChecksum = Crc32c(entry.data(), entry.size());
-            if (actualChecksum != checksum) {
-                entries.push_back({
-                    TString(entry),
-                    checksum,
-                    actualChecksum});
-            }
-        });
-
-        return entries;
+        ValidateStructure();
+        ValidateDataStructure();
+        ValidateMetadata();
+        ValidateEntriesChecksums();
+        return !IsCorrupted();
     }
 
     void Visit(const TVisitor& visitor)
@@ -822,18 +841,12 @@ public:
         return Capabilities.MaxAllocationByteCount;
     }
 
-    bool ValidateMetadata() const
-    {
-        auto data =
-            GetMappedData(Header()->MetadataOffset, Header()->MetadataCapacity);
-
-        return Header()->MetadataSize <= data.size() &&
-               Crc32c(data.data(), Header()->MetadataSize) ==
-                   Header()->MetadataChecksum;
-    }
-
     TStringBuf GetMetadata() const
     {
+        if (!ValidateAccess("GetMetadata")) {
+            return {};
+        }
+
         auto data =
             GetMappedData(Header()->MetadataOffset, Header()->MetadataCapacity);
 
@@ -844,6 +857,10 @@ public:
 
     bool SetMetadata(TStringBuf buf)
     {
+        if (!ValidateAccess("SetMetadata")) {
+            return false;
+        }
+
         if (buf.size() > Header()->MetadataCapacity) {
             return false;
         }
@@ -929,9 +946,9 @@ bool TFileRingBuffer::Empty() const
     return Impl->Empty();
 }
 
-TVector<TFileRingBuffer::TBrokenFileEntry> TFileRingBuffer::Validate()
+bool TFileRingBuffer::Validate()
 {
-    return Impl->ValidateEntriesChecksums();
+    return Impl->Validate();
 }
 
 void TFileRingBuffer::Visit(const TVisitor& visitor)
@@ -977,11 +994,6 @@ ui64 TFileRingBuffer::GetAvailableByteCount() const
 ui64 TFileRingBuffer::GetMaxSupportedAllocationByteCount() const
 {
     return Impl->GetMaxSupportedAllocationByteCount();
-}
-
-bool TFileRingBuffer::ValidateMetadata() const
-{
-    return Impl->ValidateMetadata();
 }
 
 TStringBuf TFileRingBuffer::GetMetadata() const

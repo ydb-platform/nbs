@@ -4,8 +4,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <util/generic/string.h>
-#include <util/generic/vector.h>
+#include <util/generic/strbuf.h>
 
 #include <functional>
 
@@ -16,13 +15,6 @@ namespace NCloud {
 class TFileRingBuffer
 {
 public:
-    struct TBrokenFileEntry
-    {
-        TString Data;
-        ui32 ExpectedChecksum = 0;
-        ui32 ActualChecksum = 0;
-    };
-
     using TVisitor =
         std::function<void(ui32 checksum, ui32 tag, TStringBuf entry)>;
 
@@ -86,7 +78,14 @@ public:
     void PopFront();
     ui64 Size() const;
     bool Empty() const;
-    TVector<TBrokenFileEntry> Validate();
+
+    // Checks data and structure integrity
+    // Sets IsCorrupted flag if any issues are found and returns false
+    // Returns true if everything is valid
+    bool Validate();
+
+    // Calls visitor for each entry in the buffer
+    // Fires a critical event doesn't visit entries if a buffer is corrupted
     void Visit(const TVisitor& visitor);
     bool IsCorrupted() const;
     void SetCorrupted();
@@ -105,7 +104,6 @@ public:
     // Returns zero if the buffer is corrupted.
     ui64 GetMaxSupportedAllocationByteCount() const;
 
-    bool ValidateMetadata() const;
     TStringBuf GetMetadata() const;
     bool SetMetadata(TStringBuf data);
 };

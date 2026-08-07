@@ -45,8 +45,7 @@ struct TBootstrap
             Stats,
             {.FilePath = TempFile.GetName(),
              .DataCapacity = DefaultCapacity,
-             .MetadataCapacity = 0,
-             .EnableChecksumValidation = true},
+             .MetadataCapacity = 0},
             Log,
             "[tag]");
 
