@@ -393,6 +393,7 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
 
         JournalledDeviceTcpServer = NJournalled::CreateServer(
             listenAddress,
+            GetComponentName(TBlockStoreComponents::DISK_AGENT_WORKER),
             Logging,
             Executor,
             std::make_shared<TJournalledDeviceHandler>(
