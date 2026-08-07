@@ -17,13 +17,13 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 {
     Y_UNIT_TEST(ShouldCalculateFreshBlobByteCount)
     {
-        TPartitionFreshBlobState state;
+        TPartitionFreshBlobState state(/*tabletId=*/0);
 
-        state.AddFreshBlob({1, 10});
-        state.AddFreshBlob({3, 30});
-        state.AddFreshBlob({2, 20});
-        state.AddFreshBlob({5, 50});
-        state.AddFreshBlob({4, 40});
+        state.AddFreshBlob(1, 10);
+        state.AddFreshBlob(3, 30);
+        state.AddFreshBlob(2, 20);
+        state.AddFreshBlob(5, 50);
+        state.AddFreshBlob(4, 40);
 
         UNIT_ASSERT_VALUES_EQUAL(150, state.GetUntrimmedFreshBlobByteCount());
 
@@ -31,7 +31,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(90, state.GetUntrimmedFreshBlobByteCount());
 
-        state.AddFreshBlob({7, 70});
+        state.AddFreshBlob(7, 70);
 
         UNIT_ASSERT_VALUES_EQUAL(160, state.GetUntrimmedFreshBlobByteCount());
 
@@ -42,12 +42,12 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 
     Y_UNIT_TEST(ShouldAllowIncrementingFlushCountersToMaxValue)
     {
-        TPartitionFlushState state;
+        TPartitionFreshBlobState state(/*tabletId=*/0);
 
-        state.IncrementUnflushedFreshBlobCount(Max<ui32>());
+        state.AddFreshBlob(1, Max<ui32>());
         UNIT_ASSERT_VALUES_EQUAL(
             Max<ui32>(),
-            state.GetUnflushedFreshBlobCount());
+            state.GetUnflushedFreshBlobByteCount());
     }
 }
 

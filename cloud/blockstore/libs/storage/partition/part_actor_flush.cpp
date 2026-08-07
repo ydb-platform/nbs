@@ -63,8 +63,7 @@ private:
     const TActorId Tablet;
     const ui64 CommitId;
     TFlushedCommitIds FlushedCommitIdsFromChannel;
-    const ui32 FlushedFreshBlobCount;
-    const ui64 FlushedFreshBlobByteCount;
+    TVector<ui64> FlushedFreshBlobCommitIds;
     const TDuration BlobStorageAsyncRequestTimeout;
 
     TVector<TRequest> Requests;
@@ -85,8 +84,7 @@ public:
         const TActorId& tablet,
         ui64 commitId,
         TFlushedCommitIds flushedCommitIdsFromChannel,
-        ui32 flushedFreshBlobCount,
-        ui64 flushedFreshBlobByteCount,
+        TVector<ui64> flushedFreshBlobCommitIds,
         TDuration blobStorageAsyncRequestTimeout,
         TVector<TRequest> requests);
 
@@ -122,24 +120,22 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TFlushActor::TFlushActor(
-        TRequestInfoPtr requestInfo,
-        ui32 blockSize,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        const TActorId& tablet,
-        ui64 commitId,
-        TFlushedCommitIds flushedCommitIdsFromChannel,
-        ui32 flushedFreshBlobCount,
-        ui64 flushedFreshBlobByteCount,
-        TDuration blobStorageAsyncRequestTimeout,
-        TVector<TRequest> requests)
+    TRequestInfoPtr requestInfo,
+    ui32 blockSize,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    const TActorId& tablet,
+    ui64 commitId,
+    TFlushedCommitIds flushedCommitIdsFromChannel,
+    TVector<ui64> flushedFreshBlobCommitIds,
+    TDuration blobStorageAsyncRequestTimeout,
+    TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , Tablet(tablet)
     , CommitId(commitId)
     , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
-    , FlushedFreshBlobCount(flushedFreshBlobCount)
-    , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
+    , FlushedFreshBlobCommitIds(std::move(flushedFreshBlobCommitIds))
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
     , Requests(std::move(requests))
 {}
@@ -265,8 +261,7 @@ void TFlushActor::NotifyCompleted(
     using TEvent = TEvPartitionPrivate::TEvFlushCompleted;
     auto ev = std::make_unique<TEvent>(
         error,
-        FlushedFreshBlobCount,
-        FlushedFreshBlobByteCount,
+        std::move(FlushedFreshBlobCommitIds),
         std::move(FlushedCommitIdsFromChannel));
 
     ev->ExecCycles = RequestInfo->GetExecCycles();
@@ -445,7 +440,7 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
 
 void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 {
-    if (State->GetFlushState().Status != EOperationStatus::Idle) {
+    if (State->GetFlushState().GetOperationState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
     }
@@ -465,7 +460,13 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Enqueued, ctx.Now());
+    bool stateTransitionOk = State->AccessFlushState().SetEnqueued(ctx.Now());
+    STORAGE_VERIFY_C(
+        stateTransitionOk,
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "Failed to set flush state to enqueued, current status: "
+            << State->GetFlushState().GetOperationState().Status);
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvFlushRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
@@ -497,7 +498,9 @@ void TPartitionActor::HandleFlush(
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    if (State->GetFlushState().Status == EOperationStatus::Started) {
+    if (State->GetFlushState().GetOperationState().Status ==
+        EOperationStatus::Started)
+    {
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
             MakeError(E_TRY_AGAIN, "flush already in progress"));
 
@@ -515,7 +518,7 @@ void TPartitionActor::HandleFlush(
 
     ui64 blocksCount = State->GetUnflushedFreshBlocksCount();
     if (!blocksCount) {
-        State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
+        State->AccessFlushState().SetIdle(ctx.Now());
 
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
             MakeError(S_ALREADY, "nothing to flush"));
@@ -539,6 +542,15 @@ void TPartitionActor::HandleFlush(
         return;
     }
 
+    bool stateTransitionOk =
+        State->AccessFlushState().SetStarted(commitId, requestInfo, ctx.Now());
+    STORAGE_VERIFY_C(
+        stateTransitionOk,
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "Failed to set flush state to started, current status: "
+            << State->GetFlushState().GetOperationState().Status);
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
@@ -547,7 +559,21 @@ void TPartitionActor::HandleFlush(
         commitId,
         blocksCount);
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Started, ctx.Now());
+    if (!Config->GetFlushToDevNull()) {
+        State->AccessCommitQueue()->AcquireBarrier(commitId);
+        State->GetGarbageQueue().AcquireBarrier(commitId);
+    }
+
+    StartFlush(ctx);
+}
+
+void TPartitionActor::StartFlush(const TActorContext& ctx)
+{
+    auto commitId = State->AccessFlushState().GetFlushCommitId();
+    auto requestInfo = State->AccessFlushState().GetRequestInfo();
+
+    auto unflushedFreshBlobCommitIds =
+        State->GetUnflushedFreshBlobCommitIds(commitId);
 
     TVector<TFlushBlocksVisitor::TBlob> blobs;
     {
@@ -577,6 +603,31 @@ void TPartitionActor::HandleFlush(
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
         visitor.Finish();
+    }
+
+    if (!blobs) {
+        State->AccessFlushState().SetIdle(ctx.Now());
+
+        auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
+            MakeError(S_ALREADY, "nothing to flush"));
+
+        LWTRACK(
+            ResponseSent_Partition,
+            requestInfo->CallContext->LWOrbit,
+            "Flush",
+            requestInfo->CallContext->RequestId);
+
+        UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+        if (!Config->GetFlushToDevNull()) {
+            State->AccessCommitQueue()->ReleaseBarrier(commitId);
+            State->GetGarbageQueue().ReleaseBarrier(commitId);
+            ProcessCommitQueue(ctx);
+        }
+
+        return;
     }
 
     auto flushedCommitIdsFromChannel = BuildFlushedCommitIdsFromChannel(blobs);
@@ -626,9 +677,6 @@ void TPartitionActor::HandleFlush(
             ctx,
             CreateTx<TFlushToDevNull>(requestInfo, std::move(freshBlocks)));
     } else {
-        State->AccessCommitQueue()->AcquireBarrier(commitId);
-        State->GetGarbageQueue().AcquireBarrier(commitId);
-
         auto actor = NCloud::Register<TFlushActor>(
             ctx,
             requestInfo,
@@ -637,8 +685,7 @@ void TPartitionActor::HandleFlush(
             SelfId(),
             commitId,
             std::move(flushedCommitIdsFromChannel),
-            State->GetUnflushedFreshBlobCount(),
-            State->GetUnflushedFreshBlobByteCount(),
+            std::move(unflushedFreshBlobCommitIds),
             GetBlobStorageAsyncRequestTimeout(),
             std::move(requests));
 
@@ -684,7 +731,7 @@ void TPartitionActor::CompleteFlushToDevNull(
 {
     Y_UNUSED(args);
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
+    State->AccessFlushState().SetIdle(ctx.Now());
 }
 
 void TPartitionActor::HandleFlushCompleted(
@@ -715,18 +762,22 @@ void TPartitionActor::HandleFlushCompleted(
                 i.BlockCount);
         }
 
-        State->DecrementUnflushedFreshBlobCount(msg->FlushedFreshBlobCount);
-        State->DecrementUnflushedFreshBlobByteCount(msg->FlushedFreshBlobByteCount);
+        ui64 flushedFreshBlobByteCount = 0;
+
+        for (const auto& freshBlobCommitId: msg->FlushedFreshBlobCommitIds) {
+            flushedFreshBlobByteCount +=
+                State->FlushFreshBlob(freshBlobCommitId);
+        }
 
         if (FreshBlocksWriter) {
             SharedState->UnflushedFreshBlobByteCount.fetch_sub(
-                msg->FlushedFreshBlobByteCount);
+                flushedFreshBlobByteCount);
         }
     }
 
     State->AccessFlushedCommitIdsInProgress().clear();
 
-    State->AccessFlushState().SetStatus(EOperationStatus::Idle, ctx.Now());
+    State->AccessFlushState().SetIdle(ctx.Now());
 
     Actors.Erase(ev->Sender);
 

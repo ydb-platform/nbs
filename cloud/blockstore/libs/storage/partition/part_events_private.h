@@ -6,11 +6,11 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
@@ -704,17 +704,15 @@ struct TEvPartitionPrivate
     struct TFlushCompleted
         : TOperationCompleted
     {
-        ui32 FlushedFreshBlobCount;
-        ui64 FlushedFreshBlobByteCount;
+        TVector<ui64> FlushedFreshBlobCommitIds;
         TFlushedCommitIds FlushedCommitIdsFromChannel;
 
         TFlushCompleted(
-                ui32 flushedFreshBlobCount,
-                ui64 flushedFreshBlobByteCount,
-                TFlushedCommitIds flushedCommitIdsFromChannel)
-            : FlushedFreshBlobCount(flushedFreshBlobCount)
-            , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
-            , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
+            TVector<ui64> flushedFreshBlobCommitIds,
+            TFlushedCommitIds flushedCommitIdsFromChannel)
+            : FlushedFreshBlobCommitIds(std::move(flushedFreshBlobCommitIds))
+            , FlushedCommitIdsFromChannel(
+                  std::move(flushedCommitIdsFromChannel))
         {
         }
     };
