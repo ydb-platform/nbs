@@ -1331,8 +1331,7 @@ private:
 
     TActorsStack WrapWithFollowerActorIfNeeded(
         const NActors::TActorContext& ctx,
-        TActorsStack actors,
-        bool takePartitionOwnership);
+        TActorsStack actors);
 
     void HandleCreateLinkFinished(
         const TEvVolumePrivate::TEvCreateLinkFinished::TPtr& ev,

@@ -73,7 +73,6 @@ TFollowerDiskActor::TFollowerDiskActor(
     , LeaderBlockSize(params.LeaderBlockSize)
     , LeaderVolumeActorId(params.LeaderVolumeActorId)
     , LeaderPartitionActorId(params.LeaderPartitionActorId)
-    , TakePartitionOwnership(params.TakePartitionOwnership)
     , ClientId(params.ClientId)
     , FollowerDiskInfo(params.FollowerDiskInfo)
 {
@@ -109,7 +108,7 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
             .MigrationSrcActorId = LeaderPartitionActorId,
             .SrcActorId = LeaderPartitionActorId,
             .DstActorId = FollowerPartitionActorId,
-            .TakeOwnershipOverSrcActor = TakePartitionOwnership,
+            .TakeOwnershipOverSrcActor = true,
             .TakeOwnershipOverDstActor = true,
             .SendWritesToSrc = true,
             .TimeoutCalculator = std::make_unique<TMigrationTimeoutCalculator>(

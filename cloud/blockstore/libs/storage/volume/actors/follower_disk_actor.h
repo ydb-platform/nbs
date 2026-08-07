@@ -20,7 +20,6 @@ struct TFollowerDiskActorParams
 
     NActors::TActorId LeaderVolumeActorId;
     NActors::TActorId LeaderPartitionActorId;
-    bool TakePartitionOwnership = false;
     TString ClientId;
 
     TFollowerDiskInfo FollowerDiskInfo;
@@ -72,7 +71,6 @@ private:
     const ui32 LeaderBlockSize = 0;
     const NActors::TActorId LeaderVolumeActorId;
     const NActors::TActorId LeaderPartitionActorId;
-    const bool TakePartitionOwnership = false;
 
     TString ClientId;
 
