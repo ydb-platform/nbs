@@ -15,19 +15,6 @@ using namespace NFileStore;
 using namespace NFileStore::NProto;
 using namespace NStorage::NFastShard;
 
-////////////////////////////////////////////////////////////////////////////////
-// This is deliberately not a unit test now. This test deliberately bootstraps
-// the whole stack:
-// * several storage nodes on top of files
-// * storage node server
-// * storage node clients
-// * storage group
-// * shard implementation on top of this group
-//
-// This could've been an integration pytest but that would require adding a
-// storage node daemon as well and also it's less convenient to debug pytests
-// than to debug gtests.
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
