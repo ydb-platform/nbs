@@ -575,12 +575,12 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
 
         UNIT_ASSERT(!dump2.GetIsCorrupted());
         UNIT_ASSERT(dump2.HasHeader());
-        UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
+        UNIT_ASSERT_VALUES_EQUAL(1, dump2.GetEntries().size());
 
-        auto& entry2 = *dump.MutableEntries(0);
+        const auto& entry2 = dump2.GetEntries(0);
         UNIT_ASSERT(entry2.HasWriteDataRequestInfo());
 
-        auto& info2 = *entry2.MutableWriteDataRequestInfo();
+        const auto& info2 = entry2.GetWriteDataRequestInfo();
 
         UNIT_ASSERT_VALUES_EQUAL(10, info2.GetNodeId());
         UNIT_ASSERT_VALUES_EQUAL(20, info2.GetHandle());
