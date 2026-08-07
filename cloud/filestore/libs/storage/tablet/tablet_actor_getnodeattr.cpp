@@ -200,6 +200,10 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
             1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
+
+        const auto latency = ctx.Now() - args.RequestInfo->StartedTs;
+
+        UpdateLatencyStats(args.NodeId, EFileStoreRequest::GetNodeAttr, ctx.Now(), latency);
     }
 
     CompleteResponse<TEvService::TGetNodeAttrMethod>(

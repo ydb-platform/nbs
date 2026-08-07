@@ -23,6 +23,7 @@ TAddDataActor::TAddDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
+        ui64 nodeId,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -35,6 +36,7 @@ TAddDataActor::TAddDataActor(
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
+    , NodeId(nodeId)
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
@@ -115,7 +117,8 @@ void TAddDataActor::ReplyAndDie(
             BlobsSize,
             ctx.Now() - RequestInfo->StartedTs,
             CommitId,
-            BackendInfo.GetIsOverloaded());
+            BackendInfo.GetIsOverloaded(),
+            NodeId);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 

@@ -218,6 +218,8 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
+
+    UpdateLatencyStats(msg->NodeId, EFileStoreRequest::WriteData, ctx.Now(), msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -452,6 +454,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
             args.ByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
+        UpdateLatencyStats(args.NodeId, EFileStoreRequest::WriteData, ctx.Now(), ctx.Now() - args.RequestInfo->StartedTs);
+
         return;
     }
 
@@ -517,6 +521,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
         TraceSerializer,
         LogTag,
         GetFileSystemId(),
+        args.NodeId,
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
