@@ -1352,6 +1352,25 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL("2:def", b.VisitCachedData(1, 1, 4, 1));
         UNIT_ASSERT_VALUES_EQUAL("", b.VisitCachedData(1, 1, 4, 2));
     }
+
+    Y_UNIT_TEST(ShouldScheduleFlushCompletedBatches)
+    {
+        TBootstrap b;
+        b.FlushBatchLimits.MaxWriteRequestsCount = 2;
+        b.Recreate();
+
+        UNIT_ASSERT(b.Add(1, 101, 1, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 5, "def").GetValue());
+        UNIT_ASSERT(b.Add(2, 201, 9, "123").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+
+        // The request is merged - flush is not triggerer
+        UNIT_ASSERT(b.Add(1, 102, 7, "xyz").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+
+        UNIT_ASSERT(b.Add(1, 102, 100, "!").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
