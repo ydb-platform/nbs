@@ -281,7 +281,6 @@ func RegisterForExecution(
 		"dataplane.RelocateSnapshotDataFromYDBToS3Task",
 		func() tasks.Task {
 			return &relocateSnapshotDataFromYDBToS3Task{
-				config:  config,
 				storage: storage,
 			}
 		},

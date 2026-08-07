@@ -71,7 +71,6 @@ func (s *storageYDB) RelocateSnapshotChunksToS3(
 	ctx context.Context,
 	snapshotID string,
 	milestoneChunkIndex uint32,
-	workerCount uint32,
 	saveProgress func(context.Context, uint32) error,
 ) (err error) {
 
@@ -83,10 +82,7 @@ func (s *storageYDB) RelocateSnapshotChunksToS3(
 		)
 	}
 
-	workers := int(workerCount)
-	if workers == 0 {
-		workers = s.relocateChunksToS3WorkerCount
-	}
+	workers := s.relocateChunksToS3WorkerCount
 	if workers == 0 {
 		workers = 1
 	}

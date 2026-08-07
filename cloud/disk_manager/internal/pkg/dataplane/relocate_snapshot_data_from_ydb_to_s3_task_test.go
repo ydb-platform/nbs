@@ -6,9 +6,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/mocks"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
@@ -21,14 +19,7 @@ func TestRelocateSnapshotDataFromYDBToS3TaskLockProgressUnlock(t *testing.T) {
 	storageMock := storage_mocks.NewStorageMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 
-	workerCount := uint32(4)
-	snapshotConfig := &snapshot_config.SnapshotConfig{
-		RelocateChunksToS3WorkerCount: &workerCount,
-	}
 	task := &relocateSnapshotDataFromYDBToS3Task{
-		config: &config.DataplaneConfig{
-			SnapshotConfig: snapshotConfig,
-		},
 		storage: storageMock,
 		request: &protos.RelocateSnapshotDataFromYDBToS3Request{
 			SnapshotId: "snapshot",
@@ -47,10 +38,9 @@ func TestRelocateSnapshotDataFromYDBToS3TaskLockProgressUnlock(t *testing.T) {
 		ctx,
 		"snapshot",
 		uint32(0),
-		workerCount,
 		mock.Anything,
 	).Run(func(args mock.Arguments) {
-		saveProgress := args.Get(4).(func(context.Context, uint32) error)
+		saveProgress := args.Get(3).(func(context.Context, uint32) error)
 		require.NoError(t, saveProgress(ctx, 5))
 	}).Return(nil)
 	execCtx.On("SaveState", ctx).Return(nil).Twice()

@@ -265,11 +265,10 @@ func (s *StorageMock) RelocateSnapshotChunksToS3(
 	ctx context.Context,
 	snapshotID string,
 	milestoneChunkIndex uint32,
-	workerCount uint32,
 	saveProgress func(context.Context, uint32) error,
 ) error {
 
-	args := s.Called(ctx, snapshotID, milestoneChunkIndex, workerCount, saveProgress)
+	args := s.Called(ctx, snapshotID, milestoneChunkIndex, saveProgress)
 	return args.Error(0)
 }
 

@@ -158,7 +158,6 @@ type Storage interface {
 		ctx context.Context,
 		snapshotID string,
 		milestoneChunkIndex uint32,
-		workerCount uint32,
 		saveProgress func(context.Context, uint32) error,
 	) error
 }
