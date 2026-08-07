@@ -1096,6 +1096,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     stats.GetUnflushedQueueRequestCount(),
                     b.Metrics.UnflushedQueue.Count->Get());
+            } else {
+                UNIT_ASSERT_LE(
+                    static_cast<ui64>(b.Metrics.UnflushedQueue.Count->Get()),
+                    stats.GetUnflushedQueueRequestCount());
             }
 
             UNIT_ASSERT_VALUES_EQUAL(
