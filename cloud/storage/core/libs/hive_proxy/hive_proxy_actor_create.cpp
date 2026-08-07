@@ -22,25 +22,23 @@ void THiveProxyActor::SendNextCreateOrLookupRequest(
             queue.front().Event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
 
         hiveRequest->Record = msg->Request;
-        ClientCache->Send(
+        TrackHiveClient(
             ctx,
-            msg->HiveId,
-            hiveRequest.release(),
-            msg->HiveId);
+            ClientCache
+                ->Send(ctx, msg->HiveId, hiveRequest.release(), msg->HiveId));
 
     } else {
         const auto* msg =
             queue.front().Event->Get<TEvHiveProxy::TEvLookupTabletRequest>();
 
         auto hiveRequest = std::make_unique<TEvHive::TEvLookupTablet>(
-            msg->Owner, msg->OwnerIdx);
+            msg->Owner,
+            msg->OwnerIdx);
 
-        ClientCache->Send(
+        TrackHiveClient(
             ctx,
-            msg->HiveId,
-            hiveRequest.release(),
-            msg->HiveId);
-
+            ClientCache
+                ->Send(ctx, msg->HiveId, hiveRequest.release(), msg->HiveId));
     }
 }
 

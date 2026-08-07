@@ -38,8 +38,10 @@ THiveProxyActor::THiveProxyActor(
         THiveProxyConfig config,
         NMonitoring::TDynamicCounterPtr counters)
     : ClientCache(CreateTabletPipeClientCache(config))
+    , PoisonPillHelper(this)
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
+    , RuntimeFallbackEnabled(!!config.FallbackModeProvider)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
     , UseBinaryFormatForTabletBootInfoBackup(config.UseBinaryFormatForTabletBootInfoBackup)
     , HiveTabletId(config.TenantHiveTabletId)
@@ -63,6 +65,7 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
         );
         TabletBootInfoBackup = ctx.Register(
             cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
+        PoisonPillHelper.TakeOwnership(ctx, TabletBootInfoBackup);
     }
     if (Counters) {
         HiveReconnectTimeCounter = Counters->GetCounter("HiveReconnectTime", true);
@@ -79,10 +82,45 @@ void THiveProxyActor::SendRequest(
     const TActorContext& ctx,
     IEventBase* request)
 {
-    ClientCache->Send(ctx, HiveTabletId, request);
+    TrackHiveClient(ctx, ClientCache->Send(ctx, HiveTabletId, request));
     if (HiveDisconnected) {
         HiveReconnectStartCycles = GetCycleCount();
     }
+}
+
+TActorId THiveProxyActor::PrepareHiveClient(const TActorContext& ctx)
+{
+    auto clientId = ClientCache->Prepare(ctx, HiveTabletId);
+    TrackHiveClient(ctx, clientId);
+    return clientId;
+}
+
+void THiveProxyActor::TrackHiveClient(
+    const TActorContext& ctx,
+    TActorId clientId)
+{
+    if (!RuntimeFallbackEnabled || clientId == HiveClient) {
+        return;
+    }
+
+    if (HiveClient) {
+        PoisonPillHelper.ReleaseOwnership(ctx, HiveClient);
+    }
+
+    HiveClient = clientId;
+    PoisonPillHelper.TakeOwnership(ctx, HiveClient);
+}
+
+void THiveProxyActor::ReleaseHiveClient(
+    const TActorContext& ctx,
+    TActorId clientId)
+{
+    if (!RuntimeFallbackEnabled || clientId != HiveClient) {
+        return;
+    }
+
+    HiveClient = {};
+    PoisonPillHelper.ReleaseOwnership(ctx, clientId);
 }
 
 void THiveProxyActor::SendLockRequest(
@@ -206,6 +244,7 @@ void THiveProxyActor::HandleConnect(
     Y_DEBUG_ABORT_UNLESS(msg->TabletId == HiveTabletId);
 
     if (!ClientCache->OnConnect(ev)) {
+        ReleaseHiveClient(ctx, msg->ClientId);
         // Connect to hive failed
         auto error = MakeKikimrError(msg->Status, TStringBuilder()
             << "Connect to hive " << HiveTabletId << " failed");
@@ -230,6 +269,7 @@ void THiveProxyActor::HandleDisconnect(
     Y_DEBUG_ABORT_UNLESS(msg->TabletId == HiveTabletId);
 
     ClientCache->OnDisconnect(ev);
+    ReleaseHiveClient(ctx, msg->ClientId);
 
     auto error = MakeError(E_REJECTED, TStringBuilder()
         << "Disconnected from hive " << HiveTabletId);
@@ -313,16 +353,18 @@ void THiveProxyActor::HandleConnectionError(
         );
     }
 
-    for (const auto& actorId: states.Actors) {
-        auto clientId = ClientCache->Prepare(ctx, HiveTabletId);
+    if (!states.Actors.empty()) {
+        auto clientId = PrepareHiveClient(ctx);
         if (!HiveReconnectStartCycles) {
             HiveReconnectStartCycles = GetCycleCount();
         }
-        NCloud::Send<TEvHiveProxyPrivate::TEvChangeTabletClient>(
-            ctx,
-            actorId,
-            0,
-            clientId);
+        for (const auto& actorId: states.Actors) {
+            NCloud::Send<TEvHiveProxyPrivate::TEvChangeTabletClient>(
+                ctx,
+                actorId,
+                0,
+                clientId);
+        }
     }
 }
 
@@ -374,8 +416,99 @@ void THiveProxyActor::HandleRequestFinished(
     const TEvHiveProxyPrivate::TEvRequestFinished::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
     HiveState.Actors.erase(ev->Sender);
+    PoisonPillHelper.ReleaseOwnership(ctx, ev->Sender);
+}
+
+void THiveProxyActor::RejectPendingRequests(const TActorContext& ctx)
+{
+    const auto error = MakeError(E_REJECTED, "HiveProxy is shutting down");
+
+    for (auto& [_, state]: HiveState.LockStates) {
+        if (state.LockRequest) {
+            SendLockReply(ctx, &state, error);
+        } else {
+            SendLockLostNotification(ctx, &state, error);
+        }
+
+        if (state.UnlockRequest) {
+            SendUnlockReply(ctx, &state, error);
+        }
+    }
+    HiveState.LockStates.clear();
+
+    for (auto& [_, requests]: HiveState.GetInfoRequests) {
+        while (!requests.empty()) {
+            auto response =
+                std::make_unique<TEvHiveProxy::TEvGetStorageInfoResponse>(
+                    error,
+                    nullptr);
+            NCloud::Reply(ctx, requests.front(), std::move(response));
+            requests.pop_front();
+        }
+    }
+    HiveState.GetInfoRequests.clear();
+
+    for (auto& [_, requests]: HiveState.CreateRequests) {
+        while (!requests.empty()) {
+            auto request = std::move(requests.front());
+            requests.pop_front();
+
+            std::unique_ptr<IEventBase> response;
+            if (request.IsLookup) {
+                response =
+                    std::make_unique<TEvHiveProxy::TEvLookupTabletResponse>(
+                        error);
+            } else {
+                response =
+                    std::make_unique<TEvHiveProxy::TEvCreateTabletResponse>(
+                        error);
+            }
+            NCloud::Reply(ctx, request, std::move(response));
+        }
+    }
+    HiveState.CreateRequests.clear();
+}
+
+void THiveProxyActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    RejectPendingRequests(ctx);
+    if (!RuntimeFallbackEnabled || !HiveClient) {
+        ClientCache->Shutdown(ctx, HiveTabletId);
+    }
+    TThis::Become(&TThis::StateShutdown);
+    PoisonPillHelper.HandlePoisonPill(ev, ctx);
+}
+
+void THiveProxyActor::HandleConnectDuringShutdown(
+    TEvTabletPipe::TEvClientConnected::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (msg->Status != NKikimrProto::OK) {
+        ReleaseHiveClient(ctx, msg->ClientId);
+    }
+}
+
+void THiveProxyActor::HandleDisconnectDuringShutdown(
+    TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ReleaseHiveClient(ctx, ev->Get()->ClientId);
+}
+
+void THiveProxyActor::HandlePoisonTaken(
+    const TEvents::TEvPoisonTaken::TPtr& ev,
+    const TActorContext& ctx)
+{
+    PoisonPillHelper.HandlePoisonTaken(ev, ctx);
+}
+
+void THiveProxyActor::Poison(const TActorContext& ctx)
+{
+    Die(ctx);
 }
 
 void THiveProxyActor::HandleTabletMetrics(
@@ -510,10 +643,33 @@ STFUNC(THiveProxyActor::StateWork)
 
         HFunc(TEvHiveProxyPrivate::TEvRequestFinished, HandleRequestFinished);
 
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+
         default:
             if (!HandleRequests(ev)) {
                 HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             }
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(THiveProxyActor::StateShutdown)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvTabletPipe::TEvClientConnected, HandleConnectDuringShutdown);
+        HFunc(
+            TEvTabletPipe::TEvClientDestroyed,
+            HandleDisconnectDuringShutdown);
+        HFunc(TEvHiveProxyPrivate::TEvRequestFinished, HandleRequestFinished);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+
+        STORAGE_HIVE_PROXY_REQUESTS(STORAGE_REJECT_REQUEST, TEvHiveProxy)
+
+        default:
             break;
     }
 }

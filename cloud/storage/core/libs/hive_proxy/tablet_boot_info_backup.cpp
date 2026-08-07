@@ -220,6 +220,18 @@ void TTabletBootInfoBackup::HandleWakeup(
     ScheduleBackup(ctx);
 }
 
+void TTabletBootInfoBackup::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ctx.Send(
+        ev->Sender,
+        std::make_unique<TEvents::TEvPoisonTaken>(),
+        0,   // flags
+        ev->Cookie);
+    Die(ctx);
+}
+
 void TTabletBootInfoBackup::HandleReadTabletBootInfoBackup(
     const TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -348,6 +360,7 @@ STFUNC(TTabletBootInfoBackup::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvHiveProxyPrivate::TEvReadTabletBootInfoBackupRequest, HandleReadTabletBootInfoBackup);
         HFunc(TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest, HandleUpdateTabletBootInfoBackup);
         HFunc(TEvHiveProxy::TEvBackupTabletBootInfosRequest, HandleBackupTabletBootInfos);
