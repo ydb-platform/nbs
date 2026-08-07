@@ -25,6 +25,7 @@ private:
     std::optional<ui64> ATimeAttr;
     std::optional<ui64> MTimeAttr;
     std::optional<ui64> CTimeAttr;
+    std::optional<ui32> QuotaIdAttr;
 
 public:
     TSetNodeAttrCommand()
@@ -60,6 +61,12 @@ public:
         Opts.AddLongOption("ctime")
             .Optional()
             .StoreResult(&CTimeAttr);
+
+        Opts.AddLongOption("quota-id")
+            .Optional()
+            .Help("attach the node (must be an empty directory) to the "
+                "quota with this id")
+            .StoreResult(&QuotaIdAttr);
     }
 
     bool Execute() override
@@ -110,6 +117,11 @@ public:
         if (CTimeAttr) {
             addFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_CTIME);
             request->MutableUpdate()->SetCTime(*CTimeAttr);
+        }
+
+        if (QuotaIdAttr) {
+            addFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_QUOTA_ID);
+            request->MutableUpdate()->SetQuotaId(*QuotaIdAttr);
         }
 
         auto response = WaitFor(

@@ -467,6 +467,33 @@ def test_set_node_attr():
     assert ctime == stat["CTime"]
 
 
+def test_set_node_attr_quota_id():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+    client.mkdir("fs0", "/aaa")
+
+    out = client.stat("fs0", "/aaa")
+    stat = json.loads(out)
+    node_id = stat["Id"]
+    result = json.dumps(__process_stat(stat))
+    result += "\n"
+
+    client.set_node_attr("fs0", node_id, "--quota-id", 42)
+
+    out = client.stat("fs0", "/aaa")
+    stat = json.loads(out)
+    result += json.dumps(__process_stat(stat))
+    result += "\n"
+
+    client.destroy("fs0")
+
+    with open(results_path, "w") as results_file:
+        results_file.write(result)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
 def test_partial_set_node_attr():
     client, results_path = __init_test()
     client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
