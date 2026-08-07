@@ -1090,13 +1090,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
 
             if (args.FlushWritesInParallelEnabled) {
-                // If parallel writes are disabled, flush may be triggered in
-                // background because of completed flush batches - these values
-                // will be different
                 UNIT_ASSERT_VALUES_EQUAL(
                     stats.GetUnflushedQueueRequestCount(),
                     b.Metrics.UnflushedQueue.Count->Get());
             } else {
+                // If parallel writes are disabled, flush may be triggered in
+                // background because of completed flush batches so there can
+                // be less unflushed requests than expected
                 UNIT_ASSERT_LE(
                     static_cast<ui64>(b.Metrics.UnflushedQueue.Count->Get()),
                     stats.GetUnflushedQueueRequestCount());

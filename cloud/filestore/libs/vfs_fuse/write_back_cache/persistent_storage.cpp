@@ -121,6 +121,11 @@ public:
         Stats->UpdateStats();
     }
 
+    const TString& GetFilePath() const override
+    {
+        return Config.FilePath;
+    }
+
 private:
     void SetCounters()
     {

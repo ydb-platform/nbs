@@ -142,15 +142,25 @@ public:
         Y_ABORT_UNLESS(
             PersistentStorage->GetMaxSupportedAllocationByteCount() >=
             1024 * 1024 + 1016);
+    }
+
+    // This method should be called outside the construction
+    void Init()
+    {
+        if (!PersistentStorage) {
+            return;
+        }
 
         if (!State.Init(PersistentStorage)) {
             ReportWriteBackCacheCorruptionError(
                 TStringBuilder()
                 << LogTag
                 << " WriteBackCache failed to deserialize requests from the "
-                   "persistent storage due to corruption, FilePath: "
-                << args.FilePath.Quote());
+                   "persistent storage due to corruption"
+                << PersistentStorage->GetFilePath().Quote());
         }
+
+        ScheduleAutomaticFlushIfNeeded();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -647,7 +657,7 @@ TWriteBackCache::TWriteBackCache() = default;
 TWriteBackCache::TWriteBackCache(TWriteBackCacheArgs args)
     : Impl(std::make_shared<TImpl>(std::move(args)))
 {
-    Impl->ScheduleAutomaticFlushIfNeeded();
+    Impl->Init();
 }
 
 TWriteBackCache::~TWriteBackCache() = default;
