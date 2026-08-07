@@ -1,0 +1,1828 @@
+{
+ "type": "excalidraw",
+ "version": 2,
+ "source": "https://excalidraw.com",
+ "elements": [
+  {
+   "angle": 0,
+   "strokeColor": "#868e96",
+   "backgroundColor": "#f8f9fa",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1798,
+   "version": 1,
+   "versionNonce": 1799,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-g0",
+   "type": "rectangle",
+   "x": 60,
+   "y": 40,
+   "width": 1030,
+   "height": 130
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1805,
+   "version": 1,
+   "versionNonce": 1806,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-gl0",
+   "type": "text",
+   "x": 74,
+   "y": 50,
+   "width": 226.79999999999998,
+   "height": 17.5,
+   "text": "IFileSystemShard operations",
+   "fontSize": 14,
+   "fontFamily": 1,
+   "textAlign": "left",
+   "verticalAlign": "top",
+   "containerId": null,
+   "originalText": "IFileSystemShard operations",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#868e96",
+   "backgroundColor": "#f8f9fa",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1812,
+   "version": 1,
+   "versionNonce": 1813,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-g1",
+   "type": "rectangle",
+   "x": 60,
+   "y": 250,
+   "width": 1030,
+   "height": 310
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1819,
+   "version": 1,
+   "versionNonce": 1820,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-gl1",
+   "type": "text",
+   "x": 74,
+   "y": 260,
+   "width": 453.59999999999997,
+   "height": 17.5,
+   "text": "Persistent data structures (one set per storage group)",
+   "fontSize": 14,
+   "fontFamily": 1,
+   "textAlign": "left",
+   "verticalAlign": "top",
+   "containerId": null,
+   "originalText": "Persistent data structures (one set per storage group)",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#a5d8ff",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1826,
+   "version": 1,
+   "versionNonce": 1827,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-cn-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e0",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e1",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-cn",
+   "type": "rectangle",
+   "x": 90,
+   "y": 90,
+   "width": 210,
+   "height": 60
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1833,
+   "version": 1,
+   "versionNonce": 1834,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-cn-t",
+   "type": "text",
+   "x": 98,
+   "y": 98,
+   "width": 115.19999999999999,
+   "height": 40,
+   "text": "CreateNode /\nUnlinkNode",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-cn",
+   "originalText": "CreateNode /\nUnlinkNode",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#a5d8ff",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1840,
+   "version": 1,
+   "versionNonce": 1841,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-ch-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e2",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e3",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e4",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-ch",
+   "type": "rectangle",
+   "x": 330,
+   "y": 90,
+   "width": 230,
+   "height": 60
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1847,
+   "version": 1,
+   "versionNonce": 1848,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-ch-t",
+   "type": "text",
+   "x": 338,
+   "y": 98,
+   "width": 134.4,
+   "height": 40,
+   "text": "CreateHandle /\nDestroyHandle",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-ch",
+   "originalText": "CreateHandle /\nDestroyHandle",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#a5d8ff",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1854,
+   "version": 1,
+   "versionNonce": 1855,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-rd-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e5",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e6",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-rd",
+   "type": "rectangle",
+   "x": 590,
+   "y": 90,
+   "width": 140,
+   "height": 60
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1861,
+   "version": 1,
+   "versionNonce": 1862,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-rd-t",
+   "type": "text",
+   "x": 598,
+   "y": 98,
+   "width": 76.8,
+   "height": 20,
+   "text": "ReadData",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-rd",
+   "originalText": "ReadData",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#a5d8ff",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1868,
+   "version": 1,
+   "versionNonce": 1869,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-wr-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e7",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e8",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e9",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-wr",
+   "type": "rectangle",
+   "x": 760,
+   "y": 90,
+   "width": 250,
+   "height": 60
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1875,
+   "version": 1,
+   "versionNonce": 1876,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-wr-t",
+   "type": "text",
+   "x": 768,
+   "y": 98,
+   "width": 115.19999999999999,
+   "height": 40,
+   "text": "WriteData /\nAllocateData",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-wr",
+   "originalText": "WriteData /\nAllocateData",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#b2f2bb",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1882,
+   "version": 1,
+   "versionNonce": 1883,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-nt-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e0",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e2",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-nt",
+   "type": "rectangle",
+   "x": 90,
+   "y": 300,
+   "width": 190,
+   "height": 90
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1889,
+   "version": 1,
+   "versionNonce": 1890,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-nt-t",
+   "type": "text",
+   "x": 98,
+   "y": 308,
+   "width": 192,
+   "height": 60,
+   "text": "Node table\nNodeId -> NodeAttr\nTPersistentHashTable",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-nt",
+   "originalText": "Node table\nNodeId -> NodeAttr\nTPersistentHashTable",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#b2f2bb",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1896,
+   "version": 1,
+   "versionNonce": 1897,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-nat-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e1",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e3",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-nat",
+   "type": "rectangle",
+   "x": 300,
+   "y": 300,
+   "width": 190,
+   "height": 90
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1903,
+   "version": 1,
+   "versionNonce": 1904,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-nat-t",
+   "type": "text",
+   "x": 308,
+   "y": 308,
+   "width": 192,
+   "height": 60,
+   "text": "Name table\nName -> NodeId\nTPersistentHashTable",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-nat",
+   "originalText": "Name table\nName -> NodeId\nTPersistentHashTable",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#b2f2bb",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1910,
+   "version": 1,
+   "versionNonce": 1911,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-ht-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e4",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e5",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e7",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-ht",
+   "type": "rectangle",
+   "x": 510,
+   "y": 300,
+   "width": 190,
+   "height": 90
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1917,
+   "version": 1,
+   "versionNonce": 1918,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-ht-t",
+   "type": "text",
+   "x": 518,
+   "y": 308,
+   "width": 192,
+   "height": 60,
+   "text": "Handle table\nHandle -> NodeId\nTPersistentHashTable",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-ht",
+   "originalText": "Handle table\nHandle -> NodeId\nTPersistentHashTable",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#ffec99",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1924,
+   "version": 1,
+   "versionNonce": 1925,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-pi-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e6",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e8",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e10",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-pi",
+   "type": "rectangle",
+   "x": 780,
+   "y": 290,
+   "width": 280,
+   "height": 110
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1931,
+   "version": 1,
+   "versionNonce": 1932,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-pi-t",
+   "type": "text",
+   "x": 788,
+   "y": 298,
+   "width": 268.8,
+   "height": 80,
+   "text": "Page index\nfile page -> storage page\nprototype: hash table\nproduction: radix tree (TBD)",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-pi",
+   "originalText": "Page index\nfile page -> storage page\nprototype: hash table\nproduction: radix tree (TBD)",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#d0bfff",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1938,
+   "version": 1,
+   "versionNonce": 1939,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-pa-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e9",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e11",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e12",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-pa",
+   "type": "rectangle",
+   "x": 500,
+   "y": 440,
+   "width": 240,
+   "height": 90
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1945,
+   "version": 1,
+   "versionNonce": 1946,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-pa-t",
+   "type": "text",
+   "x": 508,
+   "y": 448,
+   "width": 230.39999999999998,
+   "height": 60,
+   "text": "Page allocator\nTPersistentBitmap\n1 bit per 8-page cluster",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-pa",
+   "originalText": "Page allocator\nTPersistentBitmap\n1 bit per 8-page cluster",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#ffd8a8",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1952,
+   "version": 1,
+   "versionNonce": 1953,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-dp-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e10",
+     "type": "arrow"
+    },
+    {
+     "id": "fastshard_shard_structures-e11",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-dp",
+   "type": "rectangle",
+   "x": 800,
+   "y": 450,
+   "width": 260,
+   "height": 70
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1959,
+   "version": 1,
+   "versionNonce": 1960,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-dp-t",
+   "type": "text",
+   "x": 808,
+   "y": 458,
+   "width": 96,
+   "height": 20,
+   "text": "Data pages",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-dp",
+   "originalText": "Data pages",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "#e9ecef",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 3
+   },
+   "seed": 1966,
+   "version": 1,
+   "versionNonce": 1967,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-ps-t",
+     "type": "text"
+    },
+    {
+     "id": "fastshard_shard_structures-e12",
+     "type": "arrow"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-ps",
+   "type": "rectangle",
+   "x": 400,
+   "y": 660,
+   "width": 350,
+   "height": 70
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#1e1e1e",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 1973,
+   "version": 1,
+   "versionNonce": 1974,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-ps-t",
+   "type": "text",
+   "x": 408,
+   "y": 668,
+   "width": 96,
+   "height": 20,
+   "text": "IPageStore",
+   "fontSize": 16,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-ps",
+   "originalText": "IPageStore",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 1980,
+   "version": 1,
+   "versionNonce": 1981,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e0",
+   "type": "arrow",
+   "x": 193.4890642121838,
+   "y": 153.99605522586484,
+   "width": 6.311461757700897,
+   "height": 142.00788954827033,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     -6.311461757700897,
+     142.00788954827033
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-cn",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-nt",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 1987,
+   "version": 1,
+   "versionNonce": 1988,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e1",
+   "type": "arrow",
+   "x": 224.32412202198634,
+   "y": 152.98963727473463,
+   "width": 128.018422622694,
+   "height": 144.0207254505307,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     128.018422622694,
+     144.0207254505307
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-cn",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-nat",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 1994,
+   "version": 1,
+   "versionNonce": 1995,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e2",
+   "type": "arrow",
+   "x": 407.30865860348223,
+   "y": 152.61750697775577,
+   "width": 167.28398387363112,
+   "height": 144.7649860444885,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     -167.28398387363112,
+     144.7649860444885
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-ch",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-nt",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2001,
+   "version": 1,
+   "versionNonce": 2002,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e3",
+   "type": "arrow",
+   "x": 437.4656115020587,
+   "y": 153.9047482407358,
+   "width": 31.59788967078407,
+   "height": 142.1905035185284,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     -31.59788967078407,
+     142.1905035185284
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-ch",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-nat",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2008,
+   "version": 1,
+   "versionNonce": 2009,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e4",
+   "type": "arrow",
+   "x": 468.65142847877337,
+   "y": 153.25982129827503,
+   "width": 102.03047637578663,
+   "height": 143.48035740344994,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     102.03047637578663,
+     143.48035740344994
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-ch",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-ht",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2015,
+   "version": 1,
+   "versionNonce": 2016,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e5",
+   "type": "arrow",
+   "x": 651.7168543047587,
+   "y": 153.88559602598713,
+   "width": 34.76704194285071,
+   "height": 142.22880794802575,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     -34.76704194285071,
+     142.22880794802575
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-rd",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-ht",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2022,
+   "version": 1,
+   "versionNonce": 2023,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e6",
+   "type": "arrow",
+   "x": 697.6913413965178,
+   "y": 152.61750697775577,
+   "width": 155.72842831807554,
+   "height": 134.7649860444885,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     155.72842831807554,
+     134.7649860444885
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-rd",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-pi",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2029,
+   "version": 1,
+   "versionNonce": 2030,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e7",
+   "type": "arrow",
+   "x": 844.5486309274935,
+   "y": 152.5055644332642,
+   "width": 180.43059518832024,
+   "height": 144.98887113347158,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     -180.43059518832024,
+     144.98887113347158
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-wr",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-ht",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2036,
+   "version": 1,
+   "versionNonce": 2037,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e8",
+   "type": "arrow",
+   "x": 890.2814946917941,
+   "y": 153.95246587581954,
+   "width": 20.548121727522812,
+   "height": 132.09506824836092,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     20.548121727522812,
+     132.09506824836092
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-wr",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-pi",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2043,
+   "version": 1,
+   "versionNonce": 2044,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e9",
+   "type": "arrow",
+   "x": 800,
+   "y": 150,
+   "width": 65,
+   "height": 290,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     -65,
+     290
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-wr",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-pa",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 2057,
+   "version": 1,
+   "versionNonce": 2058,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e10-t",
+   "type": "text",
+   "x": 925.7142857142858,
+   "y": 425,
+   "width": 108,
+   "height": 15,
+   "text": "maps file pages",
+   "fontSize": 12,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-e10",
+   "originalText": "maps file pages",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2050,
+   "version": 1,
+   "versionNonce": 2051,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-e10-t",
+     "type": "text"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e10",
+   "type": "arrow",
+   "x": 924.2135596285231,
+   "y": 403.9898347993229,
+   "width": 3.0014521715253295,
+   "height": 42.02033040135416,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     3.0014521715253295,
+     42.02033040135416
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-pi",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-dp",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 2071,
+   "version": 1,
+   "versionNonce": 2072,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e11-t",
+   "type": "text",
+   "x": 770,
+   "y": 485,
+   "width": 180,
+   "height": 15,
+   "text": "allocates 8-page clusters",
+   "fontSize": 12,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-e11",
+   "originalText": "allocates 8-page clusters",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2064,
+   "version": 1,
+   "versionNonce": 2065,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-e11-t",
+     "type": "text"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e11",
+   "type": "arrow",
+   "x": 744,
+   "y": 485,
+   "width": 52,
+   "height": 0,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     52,
+     0
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-pa",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-dp",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": null,
+   "seed": 2085,
+   "version": 1,
+   "versionNonce": 2086,
+   "isDeleted": false,
+   "boundElements": [],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e12-t",
+   "type": "text",
+   "x": 597.5,
+   "y": 595,
+   "width": 151.2,
+   "height": 30,
+   "text": "all reads and updates\ngo through IPageStore",
+   "fontSize": 12,
+   "fontFamily": 1,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "containerId": "fastshard_shard_structures-e12",
+   "originalText": "all reads and updates\ngo through IPageStore",
+   "autoResize": true,
+   "lineHeight": 1.25
+  },
+  {
+   "angle": 0,
+   "strokeColor": "#495057",
+   "backgroundColor": "transparent",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "strokeStyle": "solid",
+   "roughness": 1,
+   "opacity": 100,
+   "groupIds": [],
+   "frameId": null,
+   "roundness": {
+    "type": 2
+   },
+   "seed": 2078,
+   "version": 1,
+   "versionNonce": 2079,
+   "isDeleted": false,
+   "boundElements": [
+    {
+     "id": "fastshard_shard_structures-e12-t",
+     "type": "text"
+    }
+   ],
+   "updated": 1,
+   "link": null,
+   "locked": false,
+   "id": "fastshard_shard_structures-e12",
+   "type": "arrow",
+   "x": 620,
+   "y": 530,
+   "width": 45,
+   "height": 130,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     -45,
+     130
+    ]
+   ],
+   "lastCommittedPoint": null,
+   "startBinding": {
+    "elementId": "fastshard_shard_structures-pa",
+    "focus": 0,
+    "gap": 4
+   },
+   "endBinding": {
+    "elementId": "fastshard_shard_structures-ps",
+    "focus": 0,
+    "gap": 4
+   },
+   "startArrowhead": null,
+   "endArrowhead": "arrow",
+   "elbowed": false
+  }
+ ],
+ "appState": {
+  "gridSize": null,
+  "viewBackgroundColor": "#ffffff"
+ },
+ "files": {}
+}
