@@ -1740,8 +1740,9 @@ func TestRelocateSnapshotChunksToS3(t *testing.T) {
 	err = f.storage.RelocateSnapshotChunksToS3(
 		f.ctx,
 		"snapshot",
-		0, // milestoneChunkIndex
-		nil,
+		0,    // milestoneChunkIndex
+		nil,  // saveProgress
+		false, // keepYdbData
 	)
 	require.NoError(t, err)
 
@@ -1768,7 +1769,159 @@ func TestRelocateSnapshotChunksToS3(t *testing.T) {
 	require.Equal(t, chunk.Data, readChunk.Data)
 
 	// Idempotent second run.
-	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "snapshot", 0, nil)
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		false, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	ydbBlobs = readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 1, []byte{}},
+	}, ydbBlobs)
+}
+
+func TestSnapshotNeedsRelocateToS3(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot"})
+	require.NoError(t, err)
+
+	chunk := makeChunk(0, "needs-relocate")
+	_, err = f.storage.WriteChunk(f.ctx, "", "snapshot", chunk, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(
+		f.ctx,
+		"snapshot",
+		uint64(len(chunk.Data)),
+		uint64(len(chunk.Data)),
+		1,
+		nil,
+	)
+	require.NoError(t, err)
+
+	needs, err := f.storage.SnapshotNeedsRelocateToS3(f.ctx, "snapshot", true)
+	require.NoError(t, err)
+	require.True(t, needs)
+
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		true, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	needs, err = f.storage.SnapshotNeedsRelocateToS3(f.ctx, "snapshot", true)
+	require.NoError(t, err)
+	require.False(t, needs)
+
+	needs, err = f.storage.SnapshotNeedsRelocateToS3(f.ctx, "snapshot", false)
+	require.NoError(t, err)
+	require.True(t, needs)
+
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		false, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	needs, err = f.storage.SnapshotNeedsRelocateToS3(f.ctx, "snapshot", false)
+	require.NoError(t, err)
+	require.False(t, needs)
+}
+
+func TestStreamReadySnapshotIDs(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	for _, id := range []string{"snap-a", "snap-b"} {
+		_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: id})
+		require.NoError(t, err)
+		err = f.storage.SnapshotCreated(f.ctx, id, 0, 0, 0, nil)
+		require.NoError(t, err)
+	}
+
+	ids, errors := f.storage.StreamReadySnapshotIDs(f.ctx)
+	got := make(map[string]struct{})
+	for id := range ids {
+		got[id] = struct{}{}
+	}
+	require.NoError(t, <-errors)
+	require.Equal(t, map[string]struct{}{
+		"snap-a": {},
+		"snap-b": {},
+	}, got)
+}
+
+func TestRelocateSnapshotChunksToS3KeepYdbData(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot"})
+	require.NoError(t, err)
+
+	chunk := makeChunk(0, "relocate-keep")
+	chunkID, err := f.storage.WriteChunk(f.ctx, "", "snapshot", chunk, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(
+		f.ctx,
+		"snapshot",
+		uint64(len(chunk.Data)),
+		uint64(len(chunk.Data)),
+		1,
+		nil,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		true, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, []chunkMapEntry{
+		{makeShardID("snapshot"), "snapshot", 0, chunkID, true},
+	}, readChunkMap(f, "snapshot"))
+
+	ydbBlobs := readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 1, []byte("relocate-keep")},
+	}, ydbBlobs)
+
+	s3Obj := getS3Object(f, chunkID)
+	require.Equal(t, []byte("relocate-keep"), s3Obj.Data)
+
+	readChunk := dataplane_common.Chunk{
+		ID:         chunkID,
+		Data:       make([]byte, len(chunk.Data)),
+		StoredInS3: true,
+	}
+	err = f.storage.ReadChunk(f.ctx, &readChunk)
+	require.NoError(t, err)
+	require.Equal(t, chunk.Data, readChunk.Data)
+
+	// Second run without keepYdbData clears YDB payload.
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		false, // keepYdbData
+	)
 	require.NoError(t, err)
 
 	ydbBlobs = readChunkBlobsFromYDB(f, chunkID)
@@ -1800,7 +1953,7 @@ func TestRelocateSnapshotChunksToS3SharedChunk(t *testing.T) {
 	err = f.storage.SnapshotCreated(f.ctx, "dst", uint64(len(chunk.Data)), uint64(len(chunk.Data)), 1, nil)
 	require.NoError(t, err)
 
-	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "src", 0, nil)
+	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "src", 0, nil, false)
 	require.NoError(t, err)
 
 	require.Equal(t, []chunkMapEntry{
@@ -1816,7 +1969,7 @@ func TestRelocateSnapshotChunksToS3SharedChunk(t *testing.T) {
 		{chunkID, 2, []byte("shared")},
 	}, ydbBlobs)
 
-	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "dst", 0, nil)
+	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "dst", 0, nil, false)
 	require.NoError(t, err)
 
 	require.Equal(t, []chunkMapEntry{

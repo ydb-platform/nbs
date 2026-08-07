@@ -72,6 +72,7 @@ func (s *storageYDB) RelocateSnapshotChunksToS3(
 	snapshotID string,
 	milestoneChunkIndex uint32,
 	saveProgress func(context.Context, uint32) error,
+	keepYdbData bool,
 ) (err error) {
 
 	defer s.metrics.StatOperation("RelocateSnapshotChunksToS3")(&err)
@@ -145,6 +146,13 @@ func (s *storageYDB) RelocateSnapshotChunksToS3(
 				if err != nil {
 					return err
 				}
+
+				// Flip per chunk after a successful put so cutover is spread
+				// across workers instead of one giant end-of-snapshot update.
+				err = s.flipChunkMapEntryToS3(ctx, snapshotID, entry.ChunkIndex)
+				if err != nil {
+					return err
+				}
 			}
 
 			select {
@@ -172,20 +180,27 @@ func (s *storageYDB) RelocateSnapshotChunksToS3(
 		return err
 	}
 
-	// Cutover at the end of the snapshot: flip this snapshot's map entries.
+	// Safety net for any leftovers (e.g. races / older milestones).
 	err = s.flipSnapshotChunkMapToS3(ctx, snapshotID)
 	if err != nil {
 		return err
 	}
 
-	// Clear YDB payload for every chunk of this snapshot that is fully on S3.
-	// Must cover the whole map (not only the resumed milestone range).
-	err = s.clearSnapshotChunkBlobsIfFullyRelocated(ctx, snapshotID)
-	if err != nil {
-		return err
+	if !keepYdbData {
+		// Clear YDB payload for every chunk of this snapshot that is fully on S3.
+		// Must cover the whole map (not only the resumed milestone range).
+		err = s.clearSnapshotChunkBlobsIfFullyRelocated(ctx, snapshotID)
+		if err != nil {
+			return err
+		}
 	}
 
-	logging.Info(ctx, "relocated snapshot %v chunks to s3", snapshotID)
+	logging.Info(
+		ctx,
+		"relocated snapshot %v chunks to s3 (keepYdbData=%v)",
+		snapshotID,
+		keepYdbData,
+	)
 	return nil
 }
 
@@ -235,11 +250,38 @@ func (s *storageYDB) readChunkBlobRaw(
 	return data, checksum, compression, nil
 }
 
+func (s *storageYDB) flipChunkMapEntryToS3(
+	ctx context.Context,
+	snapshotID string,
+	chunkIndex uint32,
+) error {
+
+	_, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $shard_id as Uint64;
+		declare $snapshot_id as Utf8;
+		declare $chunk_index as Uint32;
+
+		update chunk_map
+		set stored_in_s3 = true
+		where shard_id = $shard_id and
+			snapshot_id = $snapshot_id and
+			chunk_index = $chunk_index;
+	`, s.tablesPath),
+		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(snapshotID))),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$chunk_index", persistence.Uint32Value(chunkIndex)),
+	)
+	return err
+}
+
 func (s *storageYDB) flipSnapshotChunkMapToS3(
 	ctx context.Context,
 	snapshotID string,
 ) error {
 
+	// Usually a no-op after per-chunk flips; kept as a cheap safety net.
 	_, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -352,4 +394,90 @@ func (s *storageYDB) hasChunkMapEntriesStoredInYDB(
 	}
 
 	return false, nil
+}
+
+func (s *storageYDB) SnapshotNeedsRelocateToS3(
+	ctx context.Context,
+	snapshotID string,
+	keepYdbData bool,
+) (bool, error) {
+
+	hasPending, err := s.snapshotHasChunksNotStoredInS3(ctx, snapshotID)
+	if err != nil {
+		return false, err
+	}
+	if hasPending {
+		return true, nil
+	}
+	if keepYdbData {
+		// Copy+flip already done; YDB payload is intentionally kept.
+		return false, nil
+	}
+
+	// Clear phase: still need work if some blob payload remains.
+	return s.snapshotHasNonEmptyChunkBlobData(ctx, snapshotID)
+}
+
+func (s *storageYDB) snapshotHasChunksNotStoredInS3(
+	ctx context.Context,
+	snapshotID string,
+) (bool, error) {
+
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $shard_id as Uint64;
+		declare $snapshot_id as Utf8;
+
+		select chunk_id
+		from chunk_map
+		where shard_id = $shard_id and
+			snapshot_id = $snapshot_id and
+			chunk_id != "" and
+			(stored_in_s3 is null or stored_in_s3 = false)
+		limit 1;
+	`, s.tablesPath),
+		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(snapshotID))),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+
+	if res.NextResultSet(ctx) && res.NextRow() {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (s *storageYDB) snapshotHasNonEmptyChunkBlobData(
+	ctx context.Context,
+	snapshotID string,
+) (bool, error) {
+
+	entries, errors := s.ReadChunkMap(ctx, snapshotID, 0)
+	for entry := range entries {
+		if len(entry.ChunkID) == 0 {
+			continue
+		}
+
+		data, _, _, err := s.readChunkBlobRaw(ctx, entry.ChunkID)
+		if err != nil {
+			// Drain channels before returning.
+			for range entries {
+			}
+			<-errors
+			return false, err
+		}
+		if len(data) != 0 {
+			for range entries {
+			}
+			<-errors
+			return true, nil
+		}
+	}
+
+	return false, <-errors
 }

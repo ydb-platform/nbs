@@ -295,6 +295,27 @@ func (s *legacyStorage) ListSnapshots(
 		task_errors.NewNonRetriableErrorf("not implemented")
 }
 
+func (s *legacyStorage) StreamReadySnapshotIDs(
+	ctx context.Context,
+) (<-chan string, <-chan error) {
+
+	ids := make(chan string)
+	errors := make(chan error, 1)
+	errors <- task_errors.NewNonRetriableErrorf("not implemented")
+	close(ids)
+	close(errors)
+	return ids, errors
+}
+
+func (s *legacyStorage) SnapshotNeedsRelocateToS3(
+	ctx context.Context,
+	snapshotID string,
+	keepYdbData bool,
+) (bool, error) {
+
+	return false, task_errors.NewNonRetriableErrorf("not implemented")
+}
+
 func (s *legacyStorage) RelocateChunkToS3(
 	ctx context.Context,
 	chunkID string,
@@ -308,6 +329,7 @@ func (s *legacyStorage) RelocateSnapshotChunksToS3(
 	snapshotID string,
 	milestoneChunkIndex uint32,
 	saveProgress func(context.Context, uint32) error,
+	keepYdbData bool,
 ) error {
 
 	return task_errors.NewNonRetriableErrorf("not implemented")

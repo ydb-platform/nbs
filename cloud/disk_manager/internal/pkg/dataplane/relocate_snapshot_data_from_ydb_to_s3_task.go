@@ -96,6 +96,7 @@ func (t *relocateSnapshotDataFromYDBToS3Task) Run(
 			t.state.MilestoneChunkIndex = milestoneChunkIndex
 			return t.saveProgress(ctx, execCtx)
 		},
+		t.request.KeepYdbData,
 	)
 	if err != nil {
 		return err

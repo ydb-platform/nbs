@@ -147,17 +147,34 @@ type Storage interface {
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
 
+	// StreamReadySnapshotIDs yields ready snapshot ids as they are scanned.
+	// The ids channel is closed when the stream ends; errors carries at most
+	// one terminal error (also closed when the stream ends).
+	StreamReadySnapshotIDs(ctx context.Context) (<-chan string, <-chan error)
+
+	// SnapshotNeedsRelocateToS3 reports whether the snapshot still has work for
+	// RelocateSnapshotChunksToS3. When keepYdbData is true, only unfinished
+	// copy/flip (chunk_map not fully on S3) counts. When keepYdbData is false,
+	// non-empty YDB blob payload also counts (clear phase after keepYdbData).
+	SnapshotNeedsRelocateToS3(
+		ctx context.Context,
+		snapshotID string,
+		keepYdbData bool,
+	) (bool, error)
+
 	// RelocateChunkToS3 copies chunk blob payload from YDB to S3 without flipping
 	// chunk_map. Idempotent: existing S3 object is overwritten / verified.
 	RelocateChunkToS3(ctx context.Context, chunkID string) error
 
 	// RelocateSnapshotChunksToS3 copies all non-S3 chunks of the snapshot to S3,
-	// then flips stored_in_s3 for this snapshot and clears YDB blob data for
-	// chunk_ids that are no longer referenced with stored_in_s3=false.
+	// then flips stored_in_s3 for this snapshot. Unless keepYdbData is set, also
+	// clears YDB blob data for chunk_ids that are no longer referenced with
+	// stored_in_s3=false.
 	RelocateSnapshotChunksToS3(
 		ctx context.Context,
 		snapshotID string,
 		milestoneChunkIndex uint32,
 		saveProgress func(context.Context, uint32) error,
+		keepYdbData bool,
 	) error
 }
