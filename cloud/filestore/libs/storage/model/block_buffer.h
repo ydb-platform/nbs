@@ -20,6 +20,7 @@ struct IBlockBuffer
     virtual TStringBuf GetUnalignedTail() = 0;
     virtual void SetBlock(size_t index, TStringBuf block) = 0;
     virtual void ClearBlock(size_t index) = 0;
+    virtual bool IsContiguous() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
