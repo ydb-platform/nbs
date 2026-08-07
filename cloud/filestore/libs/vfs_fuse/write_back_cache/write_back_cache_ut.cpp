@@ -1088,9 +1088,20 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             b.ValidateCache();
 
             UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
-            UNIT_ASSERT_VALUES_EQUAL(
-                stats.GetUnflushedQueueRequestCount(),
-                b.Metrics.UnflushedQueue.Count->Get());
+
+            if (args.FlushWritesInParallelEnabled) {
+                // If parallel writes are disabled, flush may be triggered in
+                // background because of completed flush batches - these values
+                // will be different
+                UNIT_ASSERT_VALUES_EQUAL(
+                    stats.GetUnflushedQueueRequestCount(),
+                    b.Metrics.UnflushedQueue.Count->Get());
+            } else {
+                UNIT_ASSERT_LE(
+                    static_cast<ui64>(b.Metrics.UnflushedQueue.Count->Get()),
+                    stats.GetUnflushedQueueRequestCount());
+            }
+
             UNIT_ASSERT_VALUES_EQUAL(
                 stats.GetNodeCount(),
                 b.Metrics.Nodes.Count->Get());
@@ -2350,11 +2361,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 101, 1, "abc");
         b.WriteToCacheSync(1, 102, 10, "123");
 
-        auto releaseFuture = b.Cache.ReleaseHandle(1, 101);
-
         // An attempt to flush via handle=101 should have been made
         UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
         UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        auto releaseFuture = b.Cache.ReleaseHandle(1, 101);
+
+        // An attempt to retry flush via handle=101 should have been made
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[1]);
 
         // Confirm that handle 101 is released
         UNIT_ASSERT(releaseFuture.HasValue());
@@ -2362,8 +2378,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // Flush should be retried using handle 102
         b.RunAllScheduledTasks();
-        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
-        UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[1]);
+        UNIT_ASSERT_VALUES_EQUAL(3, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[2]);
     }
 
     Y_UNIT_TEST(ShouldHandleFlushWritesInParallelEnabled)
