@@ -375,11 +375,11 @@ void ApplyFreshDataRange(
     }
 
     const ui64 relOffset = commonRange.Offset - targetByteRange.Offset;
-    TRopeUtils::Memcpy(
-        targetBuffer.Begin() + relOffset,
-        sourceFreshData.GetContent().data() +
-            (commonRange.Offset - sourceByteRange.Offset),
-        commonRange.Length);
+    // TRopeUtils::Memcpy(
+    //     targetBuffer.Begin() + relOffset,
+    //     sourceFreshData.GetContent().data() +
+    //         (commonRange.Offset - sourceByteRange.Offset),
+    //     commonRange.Length);
     zeroIntervals.PunchHole(relOffset, relOffset + commonRange.Length);
 }
 
@@ -651,10 +651,10 @@ void TReadDataActor::HandleReadBlobResponse(
             const auto relOffset = commonRange.Offset - OriginByteRange.Offset;
             auto dataIter = response.Buffer.begin();
             dataIter += commonRange.Offset - blobByteRange.Offset;
-            TRopeUtils::Memcpy(
-                TargetBuffers.Begin() + relOffset,
-                dataIter,
-                commonRange.Length);
+            // TRopeUtils::Memcpy(
+            //     TargetBuffers.Begin() + relOffset,
+            //     dataIter,
+            //     commonRange.Length);
             ZeroIntervals.PunchHole(relOffset, relOffset + commonRange.Length);
         } else {
             LOG_WARN(
@@ -950,12 +950,12 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
             offset);
     }
 
-    for (const auto& zeroInterval: ZeroIntervals) {
-        TRopeUtils::Memset(
-            TargetBuffers.Begin() + zeroInterval.Start,
-            0,
-            zeroInterval.End - zeroInterval.Start);
-    }
+    // for (const auto& zeroInterval: ZeroIntervals) {
+    //     TRopeUtils::Memset(
+    //         TargetBuffers.Begin() + zeroInterval.Start,
+    //         0,
+    //         zeroInterval.End - zeroInterval.Start);
+    // }
 
     // The actual file size may already be bigger than the returned one (see
     // TDescribeDataResponse::FileSize), it can only be used to clamp the read
