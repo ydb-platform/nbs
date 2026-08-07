@@ -65,7 +65,10 @@ struct TBootstrap
     static constexpr ui64 MetadataCapacity = 8;
 
     TBootstrap()
-        : Accessor(TempFileHandle.Name(), /* readOnly = */ false)
+        : Accessor(
+              TempFileHandle.Name(),
+              EFileRingBufferAccessorValidationMode::Debug,
+              TMemoryMapCommon::EOpenModeFlag::oRdWr)
     {
         Remap();
     }
@@ -393,8 +396,6 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         headerWithCorruptedChecksum.DataChecksum ^= 1;
 
         b.Accessor.ValidateAndInitialize();
-        UNIT_ASSERT(b.Accessor.IsInitialized());
-
         b.Accessor.GetDataProcessor()->WriteEntryHeader(
             entryPos,
             headerWithCorruptedChecksum);
@@ -423,8 +424,6 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         headerWithCorruptedSize.DataSize = 1000000;
 
         b.Accessor.ValidateAndInitialize();
-        UNIT_ASSERT(b.Accessor.IsInitialized());
-
         b.Accessor.GetDataProcessor()->WriteEntryHeader(
             entryPos,
             headerWithCorruptedSize);
@@ -502,7 +501,6 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         // Corrupt checksum for the first entry
 
         b.Accessor.ValidateAndInitialize();
-        UNIT_ASSERT(b.Accessor.IsInitialized());
 
         auto header = b.Accessor.GetDataProcessor()->ReadEntryHeader(0);
         header.DataChecksum ^= 1;
@@ -529,7 +527,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         b.Execute(
             [&](TFileRingBuffer& rb)
             {
-                UNIT_ASSERT(rb.Validate().empty());
+                UNIT_ASSERT(rb.Validate());
                 UNIT_ASSERT_VALUES_EQUAL(
                     "Hello:0,What:" + ToString(tag),
                     Dump(rb));

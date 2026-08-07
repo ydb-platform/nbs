@@ -108,7 +108,11 @@ private:
             }
         }
 
-        TFileMapFileRingBufferAccessor accessor(stateFile, readOnly);
+        TFileMapFileRingBufferAccessor accessor(
+            stateFile,
+            EFileRingBufferAccessorValidationMode::Debug,
+            readOnly ? TMemoryMapCommon::EOpenModeFlag::oRdOnly
+                     : TMemoryMapCommon::EOpenModeFlag::oRdWr);
 
         auto mapResult = accessor.Map();
         if (HasError(mapResult)) {
@@ -142,19 +146,19 @@ private:
     {
         auto validationResult = accessor.ValidateAndInitialize();
 
-        if (HasError(validationResult)) {
-            Cerr << "Validation failed: " << FormatError(validationResult)
-                 << "\n";
-            return 1;
+        switch (validationResult) {
+            case EFileRingBufferAccessorValidationStatus::NotInitialized:
+                Cerr << "State file is not initialized\n";
+                return 1;
+            case EFileRingBufferAccessorValidationStatus::Failed:
+                Cerr << "Validation failed: "
+                     << FormatError(accessor.GetLastValidationError()) << "\n";
+                return 1;
+            case EFileRingBufferAccessorValidationStatus::Success:
+                return 0;
         }
 
-        if (!accessor.IsInitialized()) {
-            Cerr << "State file is not initialized\n";
-            return 1;
-        }
-
-        Cerr << "State file is valid\n";
-        return 0;
+        return 2;
     }
 
     int ActionDump(TFileRingBufferAccessor& accessor)
@@ -168,14 +172,21 @@ private:
     {
         auto validationResult = accessor.ValidateAndInitialize();
 
-        if (HasError(validationResult)) {
-            Cerr << "State file is corrupted";
-            if (Options.UnsafeIgnoreCorruption) {
-                Cerr << ", proceeding with --unsafe-ignore-corruption\n";
-            } else {
-                Cerr << ", patching is forbidden\n";
+        switch (validationResult) {
+            case EFileRingBufferAccessorValidationStatus::NotInitialized:
+                Cerr << "State file is not initialized, patching is not "
+                        "possible\n";
                 return 1;
-            }
+            case EFileRingBufferAccessorValidationStatus::Failed:
+                Cerr << "State file is corrupted";
+                if (!Options.UnsafeIgnoreCorruption) {
+                    Cerr << ", patching is forbidden\n";
+                    return 1;
+                }
+                Cerr << ", proceeding with --unsafe-ignore-corruption\n";
+                break;
+            case EFileRingBufferAccessorValidationStatus::Success:
+                break;
         }
 
         NProto::TStateFileDump newState;
