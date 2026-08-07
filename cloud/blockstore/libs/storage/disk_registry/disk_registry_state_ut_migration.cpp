@@ -241,6 +241,9 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
                     break;
                 }
                 case ECanceledTargetFailure::Registration: {
+                    // Simulate a target Disk Agent restart: the migration
+                    // target failed to initialize and is reported as ERROR
+                    // during re-registration.
                     const auto it = FindIf(
                         agents,
                         [&](const auto& agent)
@@ -1939,7 +1942,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             ECanceledTargetFailure::Device);
     }
 
-    Y_UNIT_TEST(ShouldNotReplaceCanceledMigrationTargetOnAgentRegistration)
+    Y_UNIT_TEST(
+        ShouldNotReplaceCanceledMigrationTargetOnAgentRegistrationWithBrokenDevice)
     {
         DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
             ECanceledTargetFailure::Registration);
