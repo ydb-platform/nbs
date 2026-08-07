@@ -56,7 +56,7 @@ void TPartitionThreadSafeState::FinishFreshWrite(
 {
     TVector<std::unique_ptr<ITransactionBase>> txs;
 
-    with_lock(StateLock) {
+    with_lock (StateLock) {
         CommitQueue.ReleaseBarrier(commitId);
         if (isError) {
             TrimFreshLogBarriers.ReleaseBarrierN(commitId, blockCount);
@@ -135,7 +135,8 @@ void TPartitionThreadSafeState::ProcessCommitQueue(
     ExecuteTxs(ctx, std::move(txs));
 }
 
-void TPartitionThreadSafeState::ProcessCheckpointQueue(const NActors::TActorContext& ctx)
+void TPartitionThreadSafeState::ProcessCheckpointQueue(
+    const NActors::TActorContext& ctx)
 {
     TVector<std::unique_ptr<ITransactionBase>> txs;
 
