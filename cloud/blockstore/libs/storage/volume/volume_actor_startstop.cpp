@@ -355,7 +355,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         ctx,
         std::move(actorStack),
         nonreplicatedConfig);
-    actorStack = WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), false);
+    actorStack =
+        WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), true);
 
     State->SetDiskRegistryBasedPartitionActor(
         std::move(actorStack),

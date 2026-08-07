@@ -3,7 +3,10 @@
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_actor.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
 #include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -694,8 +697,39 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         NProto::EStorageMediaKind leaderMediaType,
         NProto::EStorageMediaKind followerMediaType,
         ECheckpointBehaviour checkpoint,
-        bool isMultipartition = false)
+        bool isMultipartition = false,
+        bool verifySourcePartitionStopped = false)
     {
+        TActorId latestSourcePartitionActor;
+        TActorId migrationSourcePartitionActor;
+        TTestActorRuntimeBase::TRegistrationObserver prevRegistrationObserver;
+
+        if (verifySourcePartitionStopped) {
+            prevRegistrationObserver =
+                fixture.Runtime->SetRegistrationObserverFunc({});
+            fixture.Runtime->SetRegistrationObserverFunc(
+                [&](TTestActorRuntimeBase& runtime,
+                    const TActorId& parentId,
+                    const TActorId& actorId)
+                {
+                    if (prevRegistrationObserver) {
+                        prevRegistrationObserver(runtime, parentId, actorId);
+                    }
+                    if (migrationSourcePartitionActor) {
+                        return;
+                    }
+                    auto* actor = runtime.FindActor(actorId);
+                    if (dynamic_cast<TNonreplicatedPartitionActor*>(actor) ||
+                        dynamic_cast<TMirrorPartitionActor*>(actor))
+                    {
+                        latestSourcePartitionActor = actorId;
+                    } else if (dynamic_cast<TFollowerDiskActor*>(actor)) {
+                        migrationSourcePartitionActor =
+                            latestSourcePartitionActor;
+                    }
+                });
+        }
+
         const ui32 leaderPartitionCount =
             isMultipartition && leaderMediaType == NProto::STORAGE_MEDIA_SSD
                 ? 2
@@ -858,6 +892,24 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         // Check volumes content match.
         volume1.UnlinkLeaderVolumeFromFollower(link);
         fixture.CheckVolumesDataMatch();
+
+        if (verifySourcePartitionStopped) {
+            const bool sourcePartitionStopped =
+                migrationSourcePartitionActor &&
+                !fixture.Runtime->FindActor(migrationSourcePartitionActor);
+
+            fixture.Runtime->SetRegistrationObserverFunc(
+                std::move(prevRegistrationObserver));
+
+            UNIT_ASSERT_C(
+                migrationSourcePartitionActor,
+                "Failed to capture the source partition used by migration");
+            UNIT_ASSERT_C(
+                sourcePartitionStopped,
+                TStringBuilder()
+                    << "Source partition " << migrationSourcePartitionActor
+                    << " is still alive after leader cutover");
+        }
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_NRD_SSD, TFixture)
@@ -1232,6 +1284,30 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD,
             true);
+    }
+
+    Y_UNIT_TEST_F(ShouldStopSourcePartitionAfterMigration_NRD, TFixture)
+    {
+        DoShouldPrepareFollowerVolume(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD,
+            ECheckpointBehaviour::None,
+            false,   // isMultipartition
+            true     // verifySourcePartitionStopped
+        );
+    }
+
+    Y_UNIT_TEST_F(ShouldStopSourcePartitionAfterMigration_MIRROR, TFixture)
+    {
+        DoShouldPrepareFollowerVolume(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            NProto::STORAGE_MEDIA_SSD,
+            ECheckpointBehaviour::None,
+            false,   // isMultipartition
+            true     // verifySourcePartitionStopped
+        );
     }
 
     Y_UNIT_TEST_F(
