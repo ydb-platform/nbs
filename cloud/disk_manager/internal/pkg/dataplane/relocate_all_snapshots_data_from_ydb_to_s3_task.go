@@ -18,31 +18,31 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type relocateSnapshotsDataFromYDBToS3Task struct {
+type relocateAllSnapshotsDataFromYDBToS3Task struct {
 	config    *config.DataplaneConfig
 	registry  metrics.Registry
 	storage   storage.Storage
 	scheduler tasks.Scheduler
-	request   *dataplane_protos.RelocateSnapshotsDataFromYDBToS3Request
-	state     *dataplane_protos.RelocateSnapshotsDataFromYDBToS3TaskState
+	request   *dataplane_protos.RelocateAllSnapshotsDataFromYDBToS3Request
+	state     *dataplane_protos.RelocateAllSnapshotsDataFromYDBToS3TaskState
 }
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) Save() ([]byte, error) {
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) Load(request, state []byte) error {
-	t.request = &dataplane_protos.RelocateSnapshotsDataFromYDBToS3Request{}
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) Load(request, state []byte) error {
+	t.request = &dataplane_protos.RelocateAllSnapshotsDataFromYDBToS3Request{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
 	}
 
-	t.state = &dataplane_protos.RelocateSnapshotsDataFromYDBToS3TaskState{}
+	t.state = &dataplane_protos.RelocateAllSnapshotsDataFromYDBToS3TaskState{}
 	return proto.Unmarshal(state, t.state)
 }
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) Run(
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -67,7 +67,7 @@ func (t *relocateSnapshotsDataFromYDBToS3Task) Run(
 	}
 }
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) Cancel(
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -75,20 +75,20 @@ func (t *relocateSnapshotsDataFromYDBToS3Task) Cancel(
 	return nil
 }
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) GetMetadata(
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
 }
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) GetResponse() proto.Message {
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) relocateSnapshots(
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) relocateSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	snapshots tasks_common.StringSet,
@@ -132,16 +132,13 @@ func (t *relocateSnapshotsDataFromYDBToS3Task) relocateSnapshots(
 	}
 }
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) updateInflightSnapshots(
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) updateInflightSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	snapshots tasks_common.StringSet,
 ) error {
 
-	inflightLimit := int(t.request.GetInflightLimit())
-	if inflightLimit == 0 {
-		inflightLimit = int(t.config.GetRelocateSnapshotsToS3InflightLimit())
-	}
+	inflightLimit := int(t.config.GetRelocatingSnapshotsToS3InflightLimit())
 	if inflightLimit == 0 {
 		inflightLimit = 1
 	}
@@ -175,7 +172,7 @@ func (t *relocateSnapshotsDataFromYDBToS3Task) updateInflightSnapshots(
 	return execCtx.SaveState(ctx)
 }
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) scheduleInflightSnapshotsAndSaveThemIntoMapping(
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) scheduleInflightSnapshotsAndSaveThemIntoMapping(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	mapping *snapshotToTasksMapping,
@@ -186,7 +183,7 @@ func (t *relocateSnapshotsDataFromYDBToS3Task) scheduleInflightSnapshotsAndSaveT
 			continue
 		}
 
-		taskID, err := t.scheduleRelocateSnapshotChunksToS3Task(
+		taskID, err := t.scheduleRelocateSnapshotDataFromYDBToS3Task(
 			ctx,
 			execCtx,
 			snapshotID,
@@ -201,7 +198,7 @@ func (t *relocateSnapshotsDataFromYDBToS3Task) scheduleInflightSnapshotsAndSaveT
 	return nil
 }
 
-func (t *relocateSnapshotsDataFromYDBToS3Task) scheduleRelocateSnapshotChunksToS3Task(
+func (t *relocateAllSnapshotsDataFromYDBToS3Task) scheduleRelocateSnapshotDataFromYDBToS3Task(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	snapshotID string,
@@ -210,18 +207,17 @@ func (t *relocateSnapshotsDataFromYDBToS3Task) scheduleRelocateSnapshotChunksToS
 	idempotencyKey := headers.SetIncomingIdempotencyKey(
 		ctx,
 		fmt.Sprintf(
-			"%s_relocate_snapshot_chunks_to_s3_%s",
+			"%s_relocate_snapshot_data_from_ydb_to_s3_%s",
 			snapshotID,
 			execCtx.GetTaskID(),
 		),
 	)
 	return t.scheduler.ScheduleTask(
 		idempotencyKey,
-		"dataplane.RelocateSnapshotChunksToS3Task",
+		"dataplane.RelocateSnapshotDataFromYDBToS3Task",
 		"",
-		&dataplane_protos.RelocateSnapshotChunksToS3Request{
-			SnapshotId:  snapshotID,
-			WorkerCount: t.request.GetWorkerCount(),
+		&dataplane_protos.RelocateSnapshotDataFromYDBToS3Request{
+			SnapshotId: snapshotID,
 		},
 	)
 }

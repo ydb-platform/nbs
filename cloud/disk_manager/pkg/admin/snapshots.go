@@ -495,13 +495,12 @@ func newMigrateSnapshotDatabaseCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type scheduleRelocateSnapshotChunksToS3TaskCmd struct {
+type scheduleRelocateSnapshotDataFromYDBToS3TaskCmd struct {
 	commandWithScheduler
-	snapshotID  string
-	workerCount uint32
+	snapshotID string
 }
 
-func (c *scheduleRelocateSnapshotChunksToS3TaskCmd) run() error {
+func (c *scheduleRelocateSnapshotDataFromYDBToS3TaskCmd) run() error {
 	err := c.init()
 	if err != nil {
 		return err
@@ -511,13 +510,12 @@ func (c *scheduleRelocateSnapshotChunksToS3TaskCmd) run() error {
 	taskID, err := c.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			c.ctx,
-			"dataplane.RelocateSnapshotChunksToS3Task_"+c.snapshotID+"_"+generateID(),
+			"dataplane.RelocateSnapshotDataFromYDBToS3Task_"+c.snapshotID+"_"+generateID(),
 		),
-		"dataplane.RelocateSnapshotChunksToS3Task",
+		"dataplane.RelocateSnapshotDataFromYDBToS3Task",
 		"",
-		&dataplane_protos.RelocateSnapshotChunksToS3Request{
-			SnapshotId:  c.snapshotID,
-			WorkerCount: c.workerCount,
+		&dataplane_protos.RelocateSnapshotDataFromYDBToS3Request{
+			SnapshotId: c.snapshotID,
 		},
 	)
 	if err != nil {
@@ -528,19 +526,19 @@ func (c *scheduleRelocateSnapshotChunksToS3TaskCmd) run() error {
 	return nil
 }
 
-func newScheduleRelocateSnapshotChunksToS3TaskCmd(
+func newScheduleRelocateSnapshotDataFromYDBToS3TaskCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
 	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
-	c := &scheduleRelocateSnapshotChunksToS3TaskCmd{
+	c := &scheduleRelocateSnapshotDataFromYDBToS3TaskCmd{
 		commandWithScheduler: cmdWithScheduler,
 	}
 
 	cmd := &cobra.Command{
-		Use:     "schedule-relocate-snapshot-chunks-to-s3-task",
-		Aliases: []string{"schedule_relocate_snapshot_chunks_to_s3_task"},
+		Use:     "schedule-relocate-snapshot-data-from-ydb-to-s3-task",
+		Aliases: []string{"schedule_relocate_snapshot_data_from_ydb_to_s3_task"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
@@ -556,25 +554,16 @@ func newScheduleRelocateSnapshotChunksToS3TaskCmd(
 		log.Fatalf("Error setting flag id as required: %v", err)
 	}
 
-	cmd.Flags().Uint32Var(
-		&c.workerCount,
-		"worker-count",
-		0,
-		"number of workers for chunk relocate; 0 means config default",
-	)
-
 	return cmd
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type scheduleRelocateSnapshotsDataFromYDBToS3TaskCmd struct {
+type scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd struct {
 	commandWithScheduler
-	inflightLimit uint32
-	workerCount   uint32
 }
 
-func (c *scheduleRelocateSnapshotsDataFromYDBToS3TaskCmd) run() error {
+func (c *scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd) run() error {
 	err := c.init()
 	if err != nil {
 		return err
@@ -584,14 +573,11 @@ func (c *scheduleRelocateSnapshotsDataFromYDBToS3TaskCmd) run() error {
 	taskID, err := c.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			c.ctx,
-			"dataplane.RelocateSnapshotsDataFromYDBToS3Task_"+generateID(),
+			"dataplane.RelocateAllSnapshotsDataFromYDBToS3Task_"+generateID(),
 		),
-		"dataplane.RelocateSnapshotsDataFromYDBToS3Task",
+		"dataplane.RelocateAllSnapshotsDataFromYDBToS3Task",
 		"",
-		&dataplane_protos.RelocateSnapshotsDataFromYDBToS3Request{
-			InflightLimit: c.inflightLimit,
-			WorkerCount:   c.workerCount,
-		},
+		&dataplane_protos.RelocateAllSnapshotsDataFromYDBToS3Request{},
 	)
 	if err != nil {
 		return err
@@ -601,36 +587,23 @@ func (c *scheduleRelocateSnapshotsDataFromYDBToS3TaskCmd) run() error {
 	return nil
 }
 
-func newScheduleRelocateSnapshotsDataFromYDBToS3TaskCmd(
+func newScheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
 	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
-	c := &scheduleRelocateSnapshotsDataFromYDBToS3TaskCmd{
+	c := &scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd{
 		commandWithScheduler: cmdWithScheduler,
 	}
 
 	cmd := &cobra.Command{
-		Use:     "schedule-relocate-snapshots-data-from-ydb-to-s3-task",
-		Aliases: []string{"schedule_relocate_snapshots_data_from_ydb_to_s3_task"},
+		Use:     "schedule-relocate-all-snapshots-data-from-ydb-to-s3-task",
+		Aliases: []string{"schedule_relocate_all_snapshots_data_from_ydb_to_s3_task"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},
 	}
-
-	cmd.Flags().Uint32Var(
-		&c.inflightLimit,
-		"inflight-limit",
-		0,
-		"max number of snapshots relocating at once; 0 means config default",
-	)
-	cmd.Flags().Uint32Var(
-		&c.workerCount,
-		"worker-count",
-		0,
-		"worker count passed to each per-snapshot relocate task; 0 means config default",
-	)
 
 	return cmd
 }
@@ -665,11 +638,11 @@ func newSnapshotsCmd(
 			clientConfig,
 			serverConfig,
 		),
-		newScheduleRelocateSnapshotChunksToS3TaskCmd(
+		newScheduleRelocateSnapshotDataFromYDBToS3TaskCmd(
 			clientConfig,
 			serverConfig,
 		),
-		newScheduleRelocateSnapshotsDataFromYDBToS3TaskCmd(
+		newScheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd(
 			clientConfig,
 			serverConfig,
 		),

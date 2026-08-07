@@ -40,5 +40,7 @@ message DataplaneConfig {
 
     optional filesystem_dataplane.FilesystemDataplaneConfig FilesystemConfig = 20;
 
-    optional uint32 RelocateSnapshotsToS3InflightLimit = 21 [default = 5];
+    // Max number of RelocateSnapshotDataFromYDBToS3Task running at once under
+    // RelocateAllSnapshotsDataFromYDBToS3Task (same role as MigratingSnapshotsInflightLimit).
+    optional uint32 RelocatingSnapshotsToS3InflightLimit = 21 [default = 5];
 }

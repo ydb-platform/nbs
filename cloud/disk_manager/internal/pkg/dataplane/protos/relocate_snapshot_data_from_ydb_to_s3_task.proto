@@ -6,21 +6,19 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message RelocateSnapshotChunksToS3Request {
+message RelocateSnapshotDataFromYDBToS3Request {
   string SnapshotId = 1;
-  // 0 means use config default.
-  uint32 WorkerCount = 2;
 }
 
-message RelocateSnapshotChunksToS3TaskState {
+message RelocateSnapshotDataFromYDBToS3TaskState {
   uint32 MilestoneChunkIndex = 1;
   double Progress = 2;
   uint32 ChunkCount = 3;
 }
 
-message RelocateSnapshotChunksToS3Metadata {
+message RelocateSnapshotDataFromYDBToS3Metadata {
   double Progress = 1;
 }
 
-message RelocateSnapshotChunksToS3Response {
+message RelocateSnapshotDataFromYDBToS3Response {
 }
