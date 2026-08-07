@@ -80,6 +80,7 @@ int TTest::Run()
             Y_ENSURE(Options->FilePath.Defined(), "You need to specify the file path");
             Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
             Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
+            Y_ENSURE(Options->ZeroRate <= 100, "Zero rate should be in range [0, 100]");
 
             ConfigHolder = CreateTestConfig(
                 TCreateTestConfigArguments{
@@ -89,6 +90,7 @@ int TTest::Run()
                     .IoDepth = Options->IoDepth,
                     .BlockSize = Options->BlockSize,
                     .WriteRate = Options->WriteRate,
+                    .ZeroRate = Options->ZeroRate,
                     .RequestBlockCount = Options->RequestBlockCount,
                     .WriteParts = Options->WriteParts,
                     .AlternatingPhase = Options->AlternatingPhase,

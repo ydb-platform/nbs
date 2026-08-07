@@ -55,6 +55,7 @@ struct TOptions
 
     ui64 BlockSize;
     ui16 WriteRate;
+    ui16 ZeroRate = 0;
     ui64 RequestBlockCount;
     ui16 IoDepth;
     ui64 WriteParts;

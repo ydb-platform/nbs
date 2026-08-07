@@ -17,6 +17,17 @@
 #include <util/thread/pool.h>
 
 #include <atomic>
+#include <cerrno>
+#include <cstring>
+
+#if defined(_linux_)
+#   if !defined(FALLOC_FL_ZERO_RANGE)
+#       define FALLOC_FL_ZERO_RANGE 0x10
+#   endif
+#   include <fcntl.h>
+#   include <linux/fs.h>
+#   include <sys/ioctl.h>
+#endif
 
 namespace NCloud::NBlockStore::NTesting {
 
@@ -104,6 +115,11 @@ private:
 
     void Write(
         const void* buffer,
+        ui32 count,
+        ui64 offset,
+        TCallback callback) override;
+
+    void Zero(
         ui32 count,
         ui64 offset,
         TCallback callback) override;
@@ -380,6 +396,66 @@ void TTestExecutor::TWorkerService::Write(
                 Run();
             }
         });
+}
+
+void TTestExecutor::TWorkerService::Zero(
+    ui32 count,
+    ui64 offset,
+    TCallback callback)
+{
+    RequestCount++;
+    PendingRequestCount++;
+
+    auto complete = [this, count, callback = std::move(callback)](
+                        const NProto::TError& error)
+    {
+        if (HasError(error)) {
+            Executor.Fail("Can't zero file range: " + error.GetMessage());
+        } else {
+            Executor.BytesWritten += count;
+            callback();
+        }
+        if (HandleRequest()) {
+            Run();
+        }
+    };
+
+#if defined(_linux_)
+    ui64 range[2] = {offset, count};
+    if (ioctl(FHANDLE(Scenario.File), BLKDISCARD, range) == 0) {
+        complete({});
+        return;
+    }
+
+    const int discardErrno = errno;
+    if (discardErrno != EOPNOTSUPP && discardErrno != ENOTTY) {
+        complete(MakeError(
+            E_IO,
+            TStringBuilder() << "BLKDISCARD failed: " << discardErrno << " "
+                             << strerror(discardErrno)));
+        return;
+    }
+
+    if (fallocate(
+            FHANDLE(Scenario.File),
+            FALLOC_FL_ZERO_RANGE,
+            static_cast<off_t>(offset),
+            static_cast<off_t>(count)) == 0)
+    {
+        complete({});
+        return;
+    }
+
+    const int fallocateErrno = errno;
+    complete(MakeError(
+        E_IO,
+        TStringBuilder() << "Zero failed (BLKDISCARD errno=" << discardErrno
+                         << ", FALLOC_FL_ZERO_RANGE errno=" << fallocateErrno
+                         << " " << strerror(fallocateErrno) << ")"));
+#else
+    Y_UNUSED(offset);
+    complete(MakeError(E_NOT_IMPLEMENTED, "Zero is not supported"));
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

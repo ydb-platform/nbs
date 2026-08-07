@@ -208,6 +208,13 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&WriteRate)
         .DefaultValue(0);
 
+    opts.AddLongOption(
+        "zero-rate",
+        "percentage of write requests issued as Zero (discard) instead of Write")
+        .RequiredArgument("NUM")
+        .StoreResult(&ZeroRate)
+        .DefaultValue(0);
+
     opts.AddLongOption("write-parts", "number of parts to split one write")
         .RequiredArgument("NUM")
         .StoreResult(&WriteParts)

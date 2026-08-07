@@ -69,6 +69,10 @@ TConfigHolder::TConfigHolder(const TCreateTestConfigArguments& args)
     Config.SetWriteRate(args.WriteRate);
     Config.SetIoDepth(args.IoDepth);
 
+    if (args.ZeroRate) {
+        Config.SetZeroRate(args.ZeroRate);
+    }
+
     auto& ranges = *Config.MutableRanges();
 
     for (ui16 i = 0; i < args.IoDepth; ++i) {
