@@ -124,6 +124,114 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         UNIT_ASSERT_VALUES_EQUAL(1_GB, reloaded.GetMaxBytes());
         UNIT_ASSERT_VALUES_EQUAL(100u, reloaded.GetMaxNodes());
     }
+
+    Y_UNIT_TEST(ShouldMarkEmptyDirectoryWithQuotaId)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(1));
+
+        // re-marking with the same quota is a harmless no-op success
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(1));
+    }
+
+    Y_UNIT_TEST(ShouldRejectMarkingWithZeroQuotaId)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        tablet.AssertSetNodeAttrFailed(TSetNodeAttrArgs(dirId).SetQuotaId(0));
+    }
+
+    Y_UNIT_TEST(ShouldRejectMarkingNonEmptyDirectory)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
+
+        tablet.AssertSetNodeAttrFailed(TSetNodeAttrArgs(dirId).SetQuotaId(1));
+    }
+
+    Y_UNIT_TEST(ShouldRejectMarkingNonDirectory)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto fileId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+        tablet.AssertSetNodeAttrFailed(TSetNodeAttrArgs(fileId).SetQuotaId(1));
+
+        auto sockId =
+            CreateNode(tablet, TCreateNodeArgs::Sock(RootNodeId, "sock"));
+        tablet.AssertSetNodeAttrFailed(TSetNodeAttrArgs(sockId).SetQuotaId(1));
+
+        auto fifoId =
+            CreateNode(tablet, TCreateNodeArgs::Fifo(RootNodeId, "fifo"));
+        tablet.AssertSetNodeAttrFailed(TSetNodeAttrArgs(fifoId).SetQuotaId(1));
+
+        auto symLinkId = CreateNode(
+            tablet,
+            TCreateNodeArgs::SymLink(RootNodeId, "symlink", "target"));
+        tablet.AssertSetNodeAttrFailed(
+            TSetNodeAttrArgs(symLinkId).SetQuotaId(1));
+
+        auto charDevId =
+            CreateNode(tablet, TCreateNodeArgs::CharDev(RootNodeId, "chardev"));
+        tablet.AssertSetNodeAttrFailed(
+            TSetNodeAttrArgs(charDevId).SetQuotaId(1));
+
+        auto blockDevId = CreateNode(
+            tablet,
+            TCreateNodeArgs::BlockDev(RootNodeId, "blockdev"));
+        tablet.AssertSetNodeAttrFailed(
+            TSetNodeAttrArgs(blockDevId).SetQuotaId(1));
+    }
+
+    Y_UNIT_TEST(ShouldRejectMarkingWithDifferentExistingQuotaId)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(1));
+        tablet.AssertSetNodeAttrFailed(TSetNodeAttrArgs(dirId).SetQuotaId(2));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
