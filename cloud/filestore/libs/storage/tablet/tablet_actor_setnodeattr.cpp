@@ -32,6 +32,13 @@ NProto::TError ValidateRequest(
         }
     }
 
+    const auto setQuotaId = NProto::TSetNodeAttrRequest::F_SET_ATTR_QUOTA_ID;
+    if (HasFlag(request.GetFlags(), setQuotaId) &&
+        !request.GetUpdate().GetQuotaId())
+    {
+        return ErrorInvalidArgument("quota id must be non-zero");
+    }
+
     return {};
 }
 
@@ -108,11 +115,46 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
     }
 
     auto flags = args.Request.GetFlags();
+    const auto& update = args.Request.GetUpdate();
+
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
-        const auto& update = args.Request.GetUpdate();
         if (!HasSpaceLeft(args.Node->Attrs.GetSize(), update.GetSize())) {
             args.Error = ErrorNoSpaceLeft();
             return true;
+        }
+    }
+
+    if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_QUOTA_ID)) {
+        const ui32 currentQuotaId = args.Node->Attrs.GetQuotaId();
+        const ui32 newQuotaId = update.GetQuotaId();
+
+        if (currentQuotaId == newQuotaId) {
+            // no-op: this exact quota is already attached, nothing to
+            // validate or change
+        } else if (currentQuotaId != 0) {
+            // already attached to a *different* quota - no nested/
+            // multi-domain quotas
+            args.Error = ErrorInvalidArgument(
+                TStringBuilder()
+                << "node " << args.NodeId
+                << " is already attached to a different quota: "
+                << currentQuotaId);
+            return true;
+        } else if (args.Node->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
+            args.Error = ErrorIsNotDirectory(args.NodeId);
+            return true;
+        } else {
+            TVector<INodeIndexTabletDatabase::TNodeRef> refs;
+            // 1 entry is enough to prove the directory is non-empty
+            if (!ReadNodeRefs(*db, args.NodeId, args.CommitId, {}, refs, 1))
+            {
+                return false;   // not ready
+            }
+
+            if (!refs.empty()) {
+                args.Error = ErrorIsNotEmpty(args.NodeId);
+                return true;
+            }
         }
     }
 
@@ -167,6 +209,9 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
     }
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_CTIME)) {
         attrs.SetCTime(update.GetCTime());
+    }
+    if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_QUOTA_ID)) {
+        attrs.SetQuotaId(update.GetQuotaId());
     }
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
         auto e = Truncate(

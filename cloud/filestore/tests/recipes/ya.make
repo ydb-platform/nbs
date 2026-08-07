@@ -1,4 +1,5 @@
 RECURSE(
+    blockstore-disk-agent
     mount
     service-kikimr
     service-local

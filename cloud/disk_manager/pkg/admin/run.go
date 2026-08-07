@@ -108,6 +108,7 @@ func Run(
 		newTasksCmd(clientConfig, serverConfig),
 		newImagesCmd(clientConfig, serverConfig),
 		newSnapshotsCmd(clientConfig, serverConfig),
+		newFilesystemSnapshotsCmd(clientConfig, serverConfig),
 		newFilesystemCmd(clientConfig, serverConfig),
 		newPlacementGroupCmd(clientConfig, serverConfig),
 		newPoolsCmd(clientConfig, serverConfig),

@@ -118,6 +118,17 @@ message TShardStats
     uint64 UsedNodesCount = 6;
 }
 
+message TNodeLatencyStats
+{
+    string ShardId = 1;
+    string RequestType = 2;
+    uint64 NodeId = 3;
+    uint64 RequestCount = 4;
+    uint64 TotalLatencyMs = 5;
+    double AverageLatencyDecayedMs = 6;
+    uint64 LastAccessedTimestampUs = 7;
+}
+
 message TStorageStats
 {
     // index stats
@@ -171,6 +182,8 @@ message TStorageStats
 
     // shard stats
     repeated TShardStats ShardStats = 6001;
+
+    repeated TNodeLatencyStats LatencyStats = 8001;
 }
 
 enum EStatsRequestMode

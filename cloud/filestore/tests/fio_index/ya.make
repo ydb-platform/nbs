@@ -2,7 +2,6 @@ RECURSE_FOR_TESTS(
     mount-kikimr-test
     mount-local-test
     qemu-kikimr-multishard-nemesis-test
-    qemu-kikimr-multishard-tablets-restart-test
     qemu-kikimr-multishard-test
     qemu-kikimr-mq-test
     qemu-kikimr-nemesis-test

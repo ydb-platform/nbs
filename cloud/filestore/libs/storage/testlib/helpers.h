@@ -269,6 +269,13 @@ struct TSetNodeAttrArgs
         Update.SetCTime(value);
         return *this;
     }
+
+    TSetNodeAttrArgs& SetQuotaId(ui32 value)
+    {
+        SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_QUOTA_ID);
+        Update.SetQuotaId(value);
+        return *this;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
