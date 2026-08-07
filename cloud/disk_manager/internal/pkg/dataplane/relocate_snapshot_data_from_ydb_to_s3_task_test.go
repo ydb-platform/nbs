@@ -16,7 +16,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestRelocateSnapshotChunksToS3TaskLockProgressUnlock(t *testing.T) {
+func TestRelocateSnapshotDataFromYDBToS3TaskLockProgressUnlock(t *testing.T) {
 	ctx := newContext()
 	storageMock := storage_mocks.NewStorageMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
@@ -25,15 +25,15 @@ func TestRelocateSnapshotChunksToS3TaskLockProgressUnlock(t *testing.T) {
 	snapshotConfig := &snapshot_config.SnapshotConfig{
 		RelocateChunksToS3WorkerCount: &workerCount,
 	}
-	task := &relocateSnapshotChunksToS3Task{
+	task := &relocateSnapshotDataFromYDBToS3Task{
 		config: &config.DataplaneConfig{
 			SnapshotConfig: snapshotConfig,
 		},
 		storage: storageMock,
-		request: &protos.RelocateSnapshotChunksToS3Request{
+		request: &protos.RelocateSnapshotDataFromYDBToS3Request{
 			SnapshotId: "snapshot",
 		},
-		state: &protos.RelocateSnapshotChunksToS3TaskState{},
+		state: &protos.RelocateSnapshotDataFromYDBToS3TaskState{},
 	}
 
 	execCtx.On("GetTaskID").Return("task")
@@ -62,17 +62,17 @@ func TestRelocateSnapshotChunksToS3TaskLockProgressUnlock(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, storageMock, execCtx)
 }
 
-func TestRelocateSnapshotChunksToS3TaskCancelUnlocks(t *testing.T) {
+func TestRelocateSnapshotDataFromYDBToS3TaskCancelUnlocks(t *testing.T) {
 	ctx := newContext()
 	storageMock := storage_mocks.NewStorageMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 
-	task := &relocateSnapshotChunksToS3Task{
+	task := &relocateSnapshotDataFromYDBToS3Task{
 		storage: storageMock,
-		request: &protos.RelocateSnapshotChunksToS3Request{
+		request: &protos.RelocateSnapshotDataFromYDBToS3Request{
 			SnapshotId: "snapshot",
 		},
-		state: &protos.RelocateSnapshotChunksToS3TaskState{},
+		state: &protos.RelocateSnapshotDataFromYDBToS3TaskState{},
 	}
 
 	execCtx.On("GetTaskID").Return("task")

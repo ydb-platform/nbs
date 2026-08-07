@@ -14,29 +14,29 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type relocateSnapshotChunksToS3Task struct {
+type relocateSnapshotDataFromYDBToS3Task struct {
 	config  *config.DataplaneConfig
 	storage storage.Storage
-	request *protos.RelocateSnapshotChunksToS3Request
-	state   *protos.RelocateSnapshotChunksToS3TaskState
+	request *protos.RelocateSnapshotDataFromYDBToS3Request
+	state   *protos.RelocateSnapshotDataFromYDBToS3TaskState
 }
 
-func (t *relocateSnapshotChunksToS3Task) Save() ([]byte, error) {
+func (t *relocateSnapshotDataFromYDBToS3Task) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
 
-func (t *relocateSnapshotChunksToS3Task) Load(request, state []byte) error {
-	t.request = &protos.RelocateSnapshotChunksToS3Request{}
+func (t *relocateSnapshotDataFromYDBToS3Task) Load(request, state []byte) error {
+	t.request = &protos.RelocateSnapshotDataFromYDBToS3Request{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
 	}
 
-	t.state = &protos.RelocateSnapshotChunksToS3TaskState{}
+	t.state = &protos.RelocateSnapshotDataFromYDBToS3TaskState{}
 	return proto.Unmarshal(state, t.state)
 }
 
-func (t *relocateSnapshotChunksToS3Task) Run(
+func (t *relocateSnapshotDataFromYDBToS3Task) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) (err error) {
@@ -82,16 +82,11 @@ func (t *relocateSnapshotChunksToS3Task) Run(
 		}
 	}()
 
-	workerCount := t.request.WorkerCount
-	if workerCount == 0 {
-		workerCount = t.config.GetSnapshotConfig().GetRelocateChunksToS3WorkerCount()
-	}
-
 	err = t.storage.RelocateSnapshotChunksToS3(
 		ctx,
 		t.request.SnapshotId,
 		t.state.MilestoneChunkIndex,
-		workerCount,
+		t.config.GetSnapshotConfig().GetRelocateChunksToS3WorkerCount(),
 		func(ctx context.Context, milestoneChunkIndex uint32) error {
 			_, checkErr := t.storage.CheckSnapshotReady(
 				ctx,
@@ -114,7 +109,7 @@ func (t *relocateSnapshotChunksToS3Task) Run(
 	return execCtx.SaveState(ctx)
 }
 
-func (t *relocateSnapshotChunksToS3Task) Cancel(
+func (t *relocateSnapshotDataFromYDBToS3Task) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -126,22 +121,22 @@ func (t *relocateSnapshotChunksToS3Task) Cancel(
 	)
 }
 
-func (t *relocateSnapshotChunksToS3Task) GetMetadata(
+func (t *relocateSnapshotDataFromYDBToS3Task) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
-	return &protos.RelocateSnapshotChunksToS3Metadata{
+	return &protos.RelocateSnapshotDataFromYDBToS3Metadata{
 		Progress: t.state.Progress,
 	}, nil
 }
 
-func (t *relocateSnapshotChunksToS3Task) GetResponse() proto.Message {
-	return &protos.RelocateSnapshotChunksToS3Response{}
+func (t *relocateSnapshotDataFromYDBToS3Task) GetResponse() proto.Message {
+	return &protos.RelocateSnapshotDataFromYDBToS3Response{}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *relocateSnapshotChunksToS3Task) saveProgress(
+func (t *relocateSnapshotDataFromYDBToS3Task) saveProgress(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {

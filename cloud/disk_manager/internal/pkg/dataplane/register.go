@@ -283,9 +283,9 @@ func RegisterForExecution(
 	}
 
 	err = taskRegistry.RegisterForExecution(
-		"dataplane.RelocateSnapshotChunksToS3Task",
+		"dataplane.RelocateSnapshotDataFromYDBToS3Task",
 		func() tasks.Task {
-			return &relocateSnapshotChunksToS3Task{
+			return &relocateSnapshotDataFromYDBToS3Task{
 				config:  config,
 				storage: storage,
 			}
@@ -296,9 +296,9 @@ func RegisterForExecution(
 	}
 
 	err = taskRegistry.RegisterForExecution(
-		"dataplane.RelocateSnapshotsDataFromYDBToS3Task",
+		"dataplane.RelocateAllSnapshotsDataFromYDBToS3Task",
 		func() tasks.Task {
-			return &relocateSnapshotsDataFromYDBToS3Task{
+			return &relocateAllSnapshotsDataFromYDBToS3Task{
 				config:    config,
 				registry:  metricsRegistry,
 				storage:   storage,
@@ -341,8 +341,8 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.CreateSnapshotFromLegacySnapshot":  func() tasks.Task { return &createSnapshotFromLegacySnapshotTask{} },
 	"dataplane.MigrateSnapshotTask":               func() tasks.Task { return &migrateSnapshotTask{} },
 	"dataplane.MigrateSnapshotDatabaseTask":       func() tasks.Task { return &migrateSnapshotDatabaseTask{} },
-	"dataplane.RelocateSnapshotChunksToS3Task":    func() tasks.Task { return &relocateSnapshotChunksToS3Task{} },
-	"dataplane.RelocateSnapshotsDataFromYDBToS3Task": func() tasks.Task { return &relocateSnapshotsDataFromYDBToS3Task{} },
+	"dataplane.RelocateSnapshotDataFromYDBToS3Task":    func() tasks.Task { return &relocateSnapshotDataFromYDBToS3Task{} },
+	"dataplane.RelocateAllSnapshotsDataFromYDBToS3Task": func() tasks.Task { return &relocateAllSnapshotsDataFromYDBToS3Task{} },
 	"dataplane.TransferFromSnapshotToDisk":        func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
 	"dataplane.TransferFromLegacySnapshotToDisk":  func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
 	"dataplane.TransferFromDiskToDisk":            func() tasks.Task { return &transferFromDiskToDiskTask{} },

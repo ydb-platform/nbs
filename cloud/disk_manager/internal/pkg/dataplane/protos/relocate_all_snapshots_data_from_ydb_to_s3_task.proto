@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message RelocateAllSnapshotsDataFromYDBToS3Request {
+}
+
+message RelocateAllSnapshotsDataFromYDBToS3TaskState {
+  repeated string inflightSnapshots = 1;
+}
