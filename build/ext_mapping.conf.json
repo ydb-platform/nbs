@@ -2,8 +2,8 @@
     "bottles": {},
     "resources": {
         "4081472014": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/short.log",
-        "4399070549": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/blockstore-plugin-stable-23-1.tar.gz",
-        "3240550068": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/blockstore-plugin-stable-22-2.tar.gz",
+        "4312345600": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/libblockstore-plugin-amd64.tgz",
+        "4312345601": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/libblockstore-plugin-arm64.tgz",
         "12978105235": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/fio-static-fio-3.42-x86_64.tgz",
         "12978105361": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/fio-static-fio-3.42-aarch64.tgz",
         "4449551218": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/qemu-static.tgz",
@@ -32,8 +32,8 @@
     },
     "resources_descriptions": {
         "4081472014": "cloud/blockstore/tests/loadtest/selftest",
-        "4399070549": "cloud/blockstore/tools/testing/stable-plugin",
-        "3240550068": "cloud/blockstore/tools/testing/stable-plugin",
+        "4312345600": "cloud/blockstore/tools/testing/stable-plugin amd64",
+        "4312345601": "cloud/blockstore/tools/testing/stable-plugin arm64",
         "12978105235": "cloud/storage/core/tools/testing/fio/bin amd64",
         "12978105361": "cloud/storage/core/tools/testing/fio/bin arm64",
         "4449551218": "cloud/storage/core/tools/testing/qemu/bin amd64",
