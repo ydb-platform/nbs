@@ -23,5 +23,5 @@ ELSE()
     MESSAGE(FATAL_ERROR "Unsupported platform")
 ENDIF()
 
-    END()
+END()
 ENDIF()
