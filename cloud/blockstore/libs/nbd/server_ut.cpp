@@ -71,6 +71,19 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestErrorHandler final
+    : IErrorHandler
+{
+    TManualEvent ErrorReported;
+
+    void ProcessException(std::exception_ptr) override
+    {
+        ErrorReported.Signal();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 void ConnectInvalidClient(ui16 port)
 {
     TInet6StreamSocket socket;
@@ -90,6 +103,13 @@ void ConnectInvalidClient(ui16 port)
     TStreamSocketOutput output(&socket);
     TRequestWriter writer(output);
     writer.WriteClientHello(0);
+
+    SetSocketTimeout(socket, 3);
+    char c;
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        0,
+        socket.Recv(&c, sizeof(c)),
+        "invalid client connection was not closed");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1511,7 +1531,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto port = portManager.GetPort(9001);
         TNetworkAddress connectAddress(port);
 
-        auto bootstrap = CreateBootstrap(connectAddress, storage);
+        auto errorHandler = std::make_shared<TTestErrorHandler>();
+        auto bootstrap = CreateBootstrap(
+            connectAddress,
+            storage,
+            DefaultStorageOptions,
+            Default<TServerConfig>(),
+            nullptr,
+            errorHandler);
 
         auto error = bootstrap->Start();
         UNIT_ASSERT_C(!HasError(error), error);
@@ -1528,6 +1555,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT(!future.HasValue());
 
         ConnectInvalidClient(port);
+        UNIT_ASSERT_C(
+            !errorHandler->ErrorReported.WaitT(TDuration::Zero()),
+            "invalid client error was reported to the endpoint");
+
         trigger.SetValue({});
 
         auto response = future.GetValue(TDuration::Seconds(3));
