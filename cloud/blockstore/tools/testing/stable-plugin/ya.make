@@ -1,23 +1,15 @@
-UNION()
+PACKAGE()
 
-IF (SANITIZER_TYPE == "thread")
-    SET(RESOURCE_ID 4399070549)
-    SET(DEB_FILE yandex-cloud-blockstore-plugin_1723132229.stable-23-1_amd64.deb)
+IF(ARCH_X86_64)
+    # ya make -r -DALLOCATOR=TCMALLOC_256K cloud/vm/blockstore
+    # tar -czvhf libblockstore-plugin-amd64.tgz libblockstore-plugin.so
+    FROM_SANDBOX(4312345600 OUT_NOAUTO libblockstore-plugin.so)
+ELSEIF (ARCH_ARM64)
+    # ya make -r -DALLOCATOR=TCMALLOC_256K --target-platform=default-linux-aarch64 cloud/vm/blockstore
+    # tar -czvhf libblockstore-plugin-arm64.tgz libblockstore-plugin.so
+    FROM_SANDBOX(4312345601 OUT_NOAUTO libblockstore-plugin.so)
 ELSE()
-    SET(RESOURCE_ID 3240550068)
-    SET(DEB_FILE yandex-cloud-blockstore-plugin_1351636689.releases.ydb.stable-22-2_amd64.deb)
+    MESSAGE(FATAL_ERROR "Unsupported platform")
 ENDIF()
-
-FROM_SANDBOX(
-    ${RESOURCE_ID}
-    OUT_NOAUTO ${DEB_FILE}
-)
-
-RUN_PYTHON3(
-    ${CURDIR}/extract.py ${DEB_FILE}
-    CWD ${BINDIR}
-    IN_NOPARSE ${DEB_FILE}
-    OUT_NOAUTO libblockstore-plugin.so
-)
 
 END()
