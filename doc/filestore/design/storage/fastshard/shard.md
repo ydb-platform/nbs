@@ -103,6 +103,7 @@ flowchart TD
 
     CN --> NT
     CN --> NAT
+    CH --> NT
     CH --> NAT
     CH --> HT
     RD --> HT
