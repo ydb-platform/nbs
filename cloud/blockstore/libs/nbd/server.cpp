@@ -23,6 +23,7 @@
 #include <util/thread/singleton.h>
 
 #include <atomic>
+#include <functional>
 
 namespace NCloud::NBlockStore::NBD {
 
@@ -65,6 +66,7 @@ private:
     TContExecutor* Executor;
     ILimiterPtr Limiter;
     IServerHandlerPtr Handler;
+    std::function<bool(TConnection*)> ConnectionNegotiatedHandler;
     TSocketHolder Socket;
 
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
@@ -84,12 +86,14 @@ public:
             TContExecutor* e,
             ILimiterPtr limiter,
             IServerHandlerPtr handler,
+            std::function<bool(TConnection*)> connectionNegotiatedHandler,
             TSocketHolder socket)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(e)
         , Limiter(std::move(limiter))
         , Handler(std::move(handler))
+        , ConnectionNegotiatedHandler(std::move(connectionNegotiatedHandler))
         , Socket(std::move(socket))
         , ResponseQueue(e)
     {}
@@ -220,7 +224,9 @@ private:
     {
         TContIO io(Socket, c);
 
-        if (Handler->NegotiateClient(io, io)) {
+        if (Handler->NegotiateClient(io, io) &&
+            ConnectionNegotiatedHandler(this))
+        {
             Handler->ProcessRequests(this, io, io, c);
         }
     }
@@ -332,6 +338,7 @@ private:
 
     std::unique_ptr<TContListener> Listener;
     TConnectionPtr Connection;
+    TConnectionPtr CandidateConnection;
 
 public:
     TEndpoint(
@@ -388,6 +395,11 @@ public:
                 Connection->Stop();
             }
 
+            if (CandidateConnection) {
+                CandidateConnection->Stop();
+                CandidateConnection.Reset();
+            }
+
             if (Listener) {
                 Listener->Stop();
             }
@@ -430,6 +442,29 @@ private:
             SetNoDelay(socket, true);
         }
 
+        if (CandidateConnection) {
+            CandidateConnection->Stop();
+        }
+
+        CandidateConnection = MakeIntrusive<TConnection>(
+            AppCtx,
+            Executor,
+            Limiter,
+            HandlerFactory->CreateHandler(),
+            [this](TConnection* connection) {
+                return ActivateConnection(connection);
+            },
+            std::move(socket));
+
+        CandidateConnection->Start();
+    }
+
+    bool ActivateConnection(TConnection* connection)
+    {
+        if (CandidateConnection.Get() != connection) {
+            return false;
+        }
+
         TFuture<void> drainResult = MakeFuture();
         if (Connection) {
             drainResult = Connection->GetDrainResult();
@@ -437,20 +472,17 @@ private:
         }
 
         CurrentThread().Executor->WaitFor(drainResult);
-        if (Executor->Running()->Cancelled()) {
-            STORAGE_INFO("endpoint " << localAddress
+        if (Executor->Running()->Cancelled() ||
+            CandidateConnection.Get() != connection)
+        {
+            STORAGE_INFO("endpoint " << PrintHostAndPort(ListenAddress)
                 << ": new connection setup cancelled");
-            return;
+            return false;
         }
 
-        Connection = MakeIntrusive<TConnection>(
-            AppCtx,
-            Executor,
-            Limiter,
-            HandlerFactory->CreateHandler(),
-            std::move(socket));
-
-        Connection->Start();
+        Connection = CandidateConnection;
+        CandidateConnection.Reset();
+        return true;
     }
 
     void OnError() override
