@@ -867,4 +867,8 @@ message TStorageConfig
 
     // Enables various self diagnostics/validation.
     optional bool FastShardExtendedVerificationEnabled = 531;
+
+    // Disable periodic flush (configured by WriteBackCacheAutomaticFlushPeriod)
+    // and execute flush immediately once there are requests available for flush
+    optional bool ServerWriteBackCacheImmediateFlushEnabled = 532;
 }

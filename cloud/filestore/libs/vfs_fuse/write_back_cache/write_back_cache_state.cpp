@@ -176,6 +176,14 @@ void TWriteBackCacheState::TriggerPeriodicFlushAll()
     TriggerFlushAll(false);
 }
 
+void TWriteBackCacheState::SetImmediateFlushMode()
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    FlushAllSequenceId = Max<ui64>();
+    TriggerFlushAll(false);
+}
+
 TCachedData TWriteBackCacheState::GetCachedData(
     ui64 nodeId,
     ui64 offset,
@@ -594,12 +602,14 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
 
 void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
 {
-    if (includePendingRequests) {
-        FlushAllSequenceId = SequenceIdGenerator->GenerateId();
-    } else {
-        FlushAllSequenceId =
-            Max(FlushAllSequenceId, RequestManager.GetMaxUnflushedSequenceId());
-    }
+    const auto maxAffectedSequenceId =
+        includePendingRequests ? SequenceIdGenerator->GenerateId()
+                               : RequestManager.GetMaxUnflushedSequenceId();
+
+    // Once the flush condition is met for a node, it cannot be lifted until
+    // the affected data flushed.
+    // Therefore, FlushAllSequenceId should be never decreased.
+    FlushAllSequenceId = Max(FlushAllSequenceId, maxAffectedSequenceId);
 
     for (auto nodeId: NodesReadyToFlush) {
         auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);

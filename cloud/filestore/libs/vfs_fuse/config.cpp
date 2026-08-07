@@ -44,6 +44,7 @@ namespace {
                                                                                \
     xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
+    xxx(ServerWriteBackCacheImmediateFlushEnabled,        bool,     false     )\
                                                                                \
     xxx(DirectoryHandlesStorageEnabled, bool,   false                         )\
                                                                                \

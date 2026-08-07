@@ -119,7 +119,11 @@ public:
         ui64 nodeId,
         ui64 handle);
 
+    // Sets flush condition for all unflushed requests
     void TriggerPeriodicFlushAll();
+
+    // Flush will be triggered immediately when an unflushed request appears
+    void SetImmediateFlushMode();
 
     // Includes both flushed and unflushed data.
     // TCachedData::Parts is calculated over pinned data.

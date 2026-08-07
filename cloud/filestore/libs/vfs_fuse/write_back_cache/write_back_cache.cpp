@@ -30,8 +30,9 @@ namespace {
 
 struct TFlushConfig
 {
-    TDuration AutomaticFlushPeriod;
-    TDuration FlushRetryPeriod;
+    const TDuration AutomaticFlushPeriod;
+    const TDuration FlushRetryPeriod;
+    const bool ImmediateFlushEnabled;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -100,7 +101,8 @@ public:
         , SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
         , FlushConfig(
               {.AutomaticFlushPeriod = args.AutomaticFlushPeriod,
-               .FlushRetryPeriod = args.FlushRetryPeriod})
+               .FlushRetryPeriod = args.FlushRetryPeriod,
+               .ImmediateFlushEnabled = args.ImmediateFlushEnabled})
         , Log(std::move(args.Log))
         , LogTag(Sprintf(
               "[f:%s][c:%s]",
@@ -153,6 +155,17 @@ public:
         }
     }
 
+    // This method should not be called from a constructor because it calls
+    // weak_from_this() that is not valid there
+    void ConfigureFlush()
+    {
+        if (FlushConfig.ImmediateFlushEnabled) {
+            State.SetImmediateFlushMode();
+        } else {
+            ScheduleAutomaticFlushIfNeeded();
+        }
+    }
+
     void ScheduleAutomaticFlushIfNeeded()
     {
         if (!FlushConfig.AutomaticFlushPeriod) {
@@ -161,7 +174,8 @@ public:
 
         Scheduler->Schedule(
             Timer->Now() + FlushConfig.AutomaticFlushPeriod,
-            [ptr = weak_from_this()] () {
+            [ptr = weak_from_this()]()
+            {
                 if (auto self = ptr.lock()) {
                     self->RequestAutomaticFlush();
                 }
@@ -647,7 +661,7 @@ TWriteBackCache::TWriteBackCache() = default;
 TWriteBackCache::TWriteBackCache(TWriteBackCacheArgs args)
     : Impl(std::make_shared<TImpl>(std::move(args)))
 {
-    Impl->ScheduleAutomaticFlushIfNeeded();
+    Impl->ConfigureFlush();
 }
 
 TWriteBackCache::~TWriteBackCache() = default;

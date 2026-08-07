@@ -288,6 +288,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
+    xxx(ServerWriteBackCacheImmediateFlushEnabled,        bool,     false     )\
                                                                                \
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
     xxx(GuestCachingType,                                                      \

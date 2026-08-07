@@ -124,4 +124,8 @@ message TFileSystemConfig
 
     // Async processing of destroy handle requests only for read only handles.
     optional bool AsyncDestroyReadOnlyHandleEnabled = 36;
+
+    // Disable periodic flush (configured by WriteBackCacheAutomaticFlushPeriod)
+    // and execute flush immediately once there are requests available for flush
+    optional bool ServerWriteBackCacheImmediateFlushEnabled = 37;
 }

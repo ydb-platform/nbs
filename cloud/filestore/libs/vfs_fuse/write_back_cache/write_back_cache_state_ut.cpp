@@ -1352,6 +1352,30 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL("2:def", b.VisitCachedData(1, 1, 4, 1));
         UNIT_ASSERT_VALUES_EQUAL("", b.VisitCachedData(1, 1, 4, 2));
     }
+
+    Y_UNIT_TEST(ShouldImmediateFlush)
+    {
+        TBootstrap b;
+        b.State->SetImmediateFlushMode();
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+
+        UNIT_ASSERT(b.Add(1, 102, 5, "def").GetValue());
+        // Flush is already requested for node 1
+        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+
+        UNIT_ASSERT(b.Add(2, 201, 15, "123").GetValue());
+        UNIT_ASSERT(b.Add(3, 301, 16, "456").GetValue());
+        UNIT_ASSERT(b.Add(3, 302, 17, "789").GetValue());
+        UNIT_ASSERT_VALUES_EQUAL("2,3", b.DumpEvents());
+
+        b.State->FlushSucceeded(1, 1);
+        UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+
+        b.State->FlushSucceeded(1, 1);
+        UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

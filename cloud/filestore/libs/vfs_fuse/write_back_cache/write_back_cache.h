@@ -81,6 +81,16 @@ struct TWriteBackCacheArgs
     // may observe the effects of newer writes before older ones.
     // With parallel writes off, only sequential writes will be optimized.
     bool FlushWritesInParallelEnabled = false;
+
+    // Disable periodic flush and execute flush immediately once there are
+    // requests available for flush.
+    //
+    // Turning on this feature will increase performance in the scenarios like:
+    // open() - make several writes - close()
+    // because close() is a synchronization point that will block until all
+    // writes are flushed. If flush is executed immediately, there will be less
+    // data to flush at close().
+    bool ImmediateFlushEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
