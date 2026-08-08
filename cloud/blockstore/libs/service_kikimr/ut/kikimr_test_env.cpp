@@ -97,9 +97,31 @@ bool TTestActorSystem::Send(IEventHandlePtr event)
     return true;
 }
 
+bool TTestActorSystem::Send(TAutoPtr<IEventHandle> ev)
+{
+    Runtime->Send(ev);
+    return true;
+}
+
+void TTestActorSystem::Schedule(
+    TDuration delta,
+    std::unique_ptr<IEventHandle> ev,
+    ISchedulerCookie* cookie)
+{
+    if (cookie) {
+        cookie->Detach();
+    }
+    Runtime->Schedule(ev.release(), delta);
+}
+
 TProgramShouldContinue& TTestActorSystem::GetProgramShouldContinue()
 {
     return ProgramShouldContinue;
+}
+
+NLog::TSettings* TTestActorSystem::LoggerSettings() const
+{
+    return Runtime->GetLogSettings(0).Get();
 }
 
 void TTestActorSystem::DispatchEvents(TDuration timeout)
