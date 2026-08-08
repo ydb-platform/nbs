@@ -1112,17 +1112,19 @@ auto TDiskRegistryState::RegisterAgent(
             if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
                 auto& disk = Disks[diskId];
 
-                if (disk.MasterDiskId) {
-                    TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
-                        db,
-                        disk,
-                        diskId,
-                        d.GetDeviceUUID(),
-                        timestamp,
-                        "device failure");
-                }
-
+                // An active or canceled migration target is not a disk device
+                // and must not be replaced.
                 if (!RestartDeviceMigration(timestamp, db, diskId, disk, uuid)) {
+                    if (disk.MasterDiskId) {
+                        TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+                            db,
+                            disk,
+                            diskId,
+                            d.GetDeviceUUID(),
+                            timestamp,
+                            "device failure");
+                    }
+
                     CancelDeviceMigration(timestamp, db, diskId, disk, uuid);
                 }
             }
@@ -6569,18 +6571,26 @@ bool TDiskRegistryState::RestartDeviceMigration(
     const TDeviceId& targetId)
 {
     auto it = disk.MigrationTarget2Source.find(targetId);
+    if (it != disk.MigrationTarget2Source.end()) {
+        const TDeviceId sourceId = it->second;
 
-    if (it == disk.MigrationTarget2Source.end()) {
-        return false;
+        CancelDeviceMigration(now, db, diskId, disk, sourceId);
+        AddMigration(disk, diskId, sourceId);
+
+        return true;
     }
 
-    TDeviceId sourceId = it->second;
-
-    CancelDeviceMigration(now, db, diskId, disk, sourceId);
-
-    AddMigration(disk, diskId, sourceId);
-
-    return true;
+    // A device can be in state described below and
+    // it must not be assumed as migration's source device.
+    // For example, we can see this when DA restarted and
+    // didn't finished its registration yet.
+    return AnyOf(
+        disk.FinishedMigrations,
+        [&] (const auto& migration)
+        {
+            return migration.DeviceId == targetId &&
+                   migration.IsCanceled;
+        });
 }
 
 void TDiskRegistryState::DeleteAllDeviceMigrations(const TDiskId& diskId)
@@ -6629,6 +6639,8 @@ void TDiskRegistryState::CancelDeviceMigration(
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
 
+    // We push there a device which is not a part of the disk anymore and
+    // must be released later in RemoveFinishedMigrations after Volume's ack.
     disk.FinishedMigrations.push_back(
         {.DeviceId = targetId, .SeqNo = seqNo, .IsCanceled = true});
 
@@ -6919,8 +6931,6 @@ NProto::TError TDiskRegistryState::AddOutdatedLaggingDevices(
         const bool isMigrationSource =
             replicaState->MigrationSource2Target.contains(outdatedDeviceUUID) ||
             Migrations.contains(TDeviceMigration{replicaId, outdatedDeviceUUID});
-        const bool isMigrationTarget =
-            replicaState->MigrationTarget2Source.contains(outdatedDeviceUUID);
         if (isMigrationSource) {
             // Just snap a target device into the disk and discard the lagging
             // one.
@@ -6934,19 +6944,23 @@ NProto::TError TDiskRegistryState::AddOutdatedLaggingDevices(
                 ReportDiskRegistryCouldNotAddOutdatedLaggingDevice(
                     FormatError(error));
             }
-        } else if (isMigrationTarget) {
-            // Restart the migration with a new device.
-            const bool success = RestartDeviceMigration(
+        } else {
+            // Check for both active and canceled migration targets.
+            const bool isMigrationTarget = RestartDeviceMigration(
                 now,
                 db,
                 replicaId,
                 *replicaState,
                 outdatedDeviceUUID);
-            Y_DEBUG_ABORT_UNLESS(success);
-        } else {
-            // Mark the lagging device as the fresh devices.
-            ReplicaTable.MarkReplacementDevice(diskId, outdatedDeviceUUID, true);
-            addedOutdatedDevices.push_back(outdatedDeviceUUID);
+
+            if (!isMigrationTarget) {
+                // Mark the lagging device as the fresh devices.
+                ReplicaTable.MarkReplacementDevice(
+                    diskId,
+                    outdatedDeviceUUID,
+                    true);
+                addedOutdatedDevices.push_back(outdatedDeviceUUID);
+            }
         }
 
         replicasToUpdate.emplace(replicaId, replicaState);
