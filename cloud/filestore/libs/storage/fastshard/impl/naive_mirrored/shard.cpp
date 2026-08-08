@@ -803,6 +803,7 @@ class TFiberShardImpl
 {
 private:
     const ui32 ShardNo;
+    const IStorageGroupFactoryPtr StorageGroupFactory;
     const NProtoPrivate::TPersistentFastShardConfig Config;
 
     IStorageGroupPtr Storage;
@@ -818,26 +819,17 @@ private:
 public:
     TFiberShardImpl(
         ui32 shardNo,
+        IStorageGroupFactoryPtr storageGroupFactory,
         NProtoPrivate::TPersistentFastShardConfig config)
         : ShardNo(shardNo)
+        , StorageGroupFactory(std::move(storageGroupFactory))
         , Config(std::move(config))
     {
-        //
-        // Overall it's better to pass the group into this code via dependency
-        // injection but for now it's not necessary.
         //
         // Using only one storage group for now.
         //
 
-        TVector<TStorageDevice> devices;
-        const auto& sg = Config.GetStorageGroups(0);
-        for (const auto& d: sg.GetDevices()) {
-            devices.push_back({
-                .Node = CreateStorageNodeClient(d.GetHost(), d.GetPort()),
-                .DeviceUUID = d.GetDeviceId(),
-            });
-        }
-        Storage = CreateNaiveMirroredStorageGroup(std::move(devices));
+        Storage = StorageGroupFactory->MakeStorageGroup(Config);
         PageStore = CreatePageStore(Storage, PageSize);
 
         ui64 firstPageNo = 0;
@@ -1218,6 +1210,11 @@ public:
                         request.GetNodeId(),
                         request.GetName());
                 }
+            } else if (HasError(error)) {
+                SILK_DEBUG(
+                    "CreateHandle::Names.Get error=%s",
+                    FormatError(error).c_str());
+                *response.MutableError() = std::move(error);
             } else {
                 if (HasFlag(flags, createFlag) && HasFlag(flags, exclFlag)) {
                     *response.MutableError() =
@@ -1861,7 +1858,34 @@ FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
 
 #undef FAST_SHARD_DEFINE_METHOD
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TNaiveMirroredStorageGroupFactory: IStorageGroupFactory
+{
+    IStorageGroupPtr MakeStorageGroup(
+        const NProtoPrivate::TPersistentFastShardConfig& config)
+    {
+        TVector<TStorageDevice> devices;
+        const auto& sg = config.GetStorageGroups(0);
+        for (const auto& d: sg.GetDevices()) {
+            devices.push_back({
+                .Node = CreateStorageNodeClient(d.GetHost(), d.GetPort()),
+                .DeviceUUID = d.GetDeviceId(),
+            });
+        }
+
+        return CreateNaiveMirroredStorageGroup(std::move(devices));
+    }
+};
+
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+IStorageGroupFactoryPtr CreateNaiveMirroredStorageGroupFactory()
+{
+    return std::make_shared<TNaiveMirroredStorageGroupFactory>();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1875,9 +1899,13 @@ private:
 public:
     TNaiveMirroredFileSystemShard(
         ui32 shardNo,
+        IStorageGroupFactoryPtr storageGroupFactory,
         NProtoPrivate::TPersistentFastShardConfig config)
         : FiberShard(
-              std::make_shared<TFiberShardImpl>(shardNo, std::move(config)))
+              std::make_shared<TFiberShardImpl>(
+                  shardNo,
+                  std::move(storageGroupFactory),
+                  std::move(config)))
     {}
 
 public:
@@ -1920,9 +1948,23 @@ public:
 
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
     ui32 shardNo,
+    IStorageGroupFactoryPtr storageGroupFactory,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
-    return std::make_shared<TNaiveMirroredFileSystemShard>(shardNo, config);
+    return std::make_shared<TNaiveMirroredFileSystemShard>(
+        shardNo,
+        std::move(storageGroupFactory),
+        config);
+}
+
+IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+    ui32 shardNo,
+    const NProtoPrivate::TPersistentFastShardConfig& config)
+{
+    return std::make_shared<TNaiveMirroredFileSystemShard>(
+        shardNo,
+        CreateNaiveMirroredStorageGroupFactory(),
+        config);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
