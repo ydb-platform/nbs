@@ -7,10 +7,20 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message RelocateAllSnapshotsDataFromYDBToS3Request {
-  // Forwarded to each RelocateSnapshotDataFromYDBToS3Task.
+  // Forwarded to each child relocate task.
   bool KeepYdbData = 1;
+  // When true, drain still_ydb chunk_map tails (including orphan snapshot ids)
+  // via RelocateChunkDataFromYDBToS3Task instead of ready snapshots.
+  // One finite pass; task ends when the map scan is exhausted.
+  bool StillYdbChunks = 2;
+}
+
+message RelocateChunkIdBatch {
+  repeated string ChunkIds = 1;
 }
 
 message RelocateAllSnapshotsDataFromYDBToS3TaskState {
   repeated string inflightSnapshots = 1;
+  // Used when StillYdbChunks is set: batches currently waiting on children.
+  repeated RelocateChunkIdBatch inflightChunkBatches = 2;
 }

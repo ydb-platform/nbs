@@ -41,6 +41,17 @@ func (t *relocateSnapshotDataFromYDBToS3Task) Run(
 
 	meta, err := t.storage.CheckSnapshotReady(ctx, t.request.SnapshotId)
 	if err != nil {
+		// Race with delete/create after parent scanned ready ids: skip without
+		// failing RelocateAll (WaitAnyTasks propagates child errors).
+		if task_errors.IsSilent(err) {
+			logging.Info(
+				ctx,
+				"skip relocate to s3 for snapshot %v: %v",
+				t.request.SnapshotId,
+				err,
+			)
+			return nil
+		}
 		return err
 	}
 
@@ -55,10 +66,21 @@ func (t *relocateSnapshotDataFromYDBToS3Task) Run(
 		return err
 	}
 	if !locked {
-		return task_errors.NewNonRetriableErrorf(
-			"failed to lock snapshot %v for relocate to s3",
+		_, checkErr := t.storage.CheckSnapshotReady(
+			ctx,
 			t.request.SnapshotId,
 		)
+		if checkErr != nil && task_errors.IsSilent(checkErr) {
+			logging.Info(
+				ctx,
+				"skip relocate to s3 for snapshot %v: not lockable (%v)",
+				t.request.SnapshotId,
+				checkErr,
+			)
+			return nil
+		}
+		// Ready but locked by another task — retry later.
+		return task_errors.NewInterruptExecutionError()
 	}
 
 	defer func() {

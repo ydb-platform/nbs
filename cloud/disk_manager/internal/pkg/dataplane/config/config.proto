@@ -47,4 +47,8 @@ message DataplaneConfig {
     // Prefetch buffer between streaming ListSnapshots and child scheduling.
     // Lister blocks when the queue is full (backpressure).
     optional uint32 RelocateSnapshotsScanQueueSize = 22 [default = 500];
+
+    // Chunk ids per RelocateChunkDataFromYDBToS3Task when StillYdbChunks mode
+    // is enabled on RelocateAllSnapshotsDataFromYDBToS3Task.
+    optional uint32 RelocateStillYdbChunksBatchSize = 23 [default = 256];
 }

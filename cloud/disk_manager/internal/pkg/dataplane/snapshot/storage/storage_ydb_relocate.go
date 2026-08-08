@@ -67,6 +67,60 @@ func (s *storageYDB) RelocateChunkToS3(
 	)
 }
 
+func (s *storageYDB) RelocateChunkDataToS3(
+	ctx context.Context,
+	chunkID string,
+	keepYdbData bool,
+) (err error) {
+
+	defer s.metrics.StatOperation("RelocateChunkDataToS3")(&err)
+
+	err = s.RelocateChunkToS3(ctx, chunkID)
+	if err != nil {
+		return err
+	}
+
+	err = s.flipChunkMapEntriesToS3ByChunkID(ctx, chunkID)
+	if err != nil {
+		return err
+	}
+
+	if keepYdbData {
+		return nil
+	}
+
+	return s.clearChunkBlobDataIfFullyRelocated(ctx, chunkID)
+}
+
+func (s *storageYDB) flipChunkMapEntriesToS3ByChunkID(
+	ctx context.Context,
+	chunkID string,
+) error {
+
+	_, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $chunk_id as Utf8;
+
+		$to_update = (
+			select
+				shard_id,
+				snapshot_id,
+				chunk_index,
+				true as stored_in_s3
+			from chunk_map
+			where chunk_id = $chunk_id and
+				(stored_in_s3 is null or stored_in_s3 = false)
+		);
+
+		update chunk_map on
+		select * from $to_update;
+	`, s.tablesPath),
+		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
+	)
+	return err
+}
+
 func (s *storageYDB) RelocateSnapshotChunksToS3(
 	ctx context.Context,
 	snapshotID string,

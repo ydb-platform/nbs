@@ -1930,6 +1930,75 @@ func TestRelocateSnapshotChunksToS3KeepYdbData(t *testing.T) {
 	}, ydbBlobs)
 }
 
+func TestRelocateChunkDataToS3(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot"})
+	require.NoError(t, err)
+
+	chunk := makeChunk(0, "chunk-data-tail")
+	chunkID, err := f.storage.WriteChunk(f.ctx, "", "snapshot", chunk, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(
+		f.ctx,
+		"snapshot",
+		uint64(len(chunk.Data)),
+		uint64(len(chunk.Data)),
+		1,
+		nil,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.RelocateChunkDataToS3(f.ctx, chunkID, true)
+	require.NoError(t, err)
+
+	require.Equal(t, []chunkMapEntry{
+		{makeShardID("snapshot"), "snapshot", 0, chunkID, true},
+	}, readChunkMap(f, "snapshot"))
+
+	ydbBlobs := readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 1, []byte("chunk-data-tail")},
+	}, ydbBlobs)
+	require.Equal(t, []byte("chunk-data-tail"), getS3Object(f, chunkID).Data)
+}
+
+func TestStreamStillYdbChunkIDs(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snap-a"})
+	require.NoError(t, err)
+	_, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snap-b"})
+	require.NoError(t, err)
+
+	chunkA := makeChunk(0, "still-a")
+	chunkIDA, err := f.storage.WriteChunk(f.ctx, "", "snap-a", chunkA, false)
+	require.NoError(t, err)
+	chunkB := makeChunk(0, "still-b")
+	chunkIDB, err := f.storage.WriteChunk(f.ctx, "", "snap-b", chunkB, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snap-a", uint64(len(chunkA.Data)), uint64(len(chunkA.Data)), 1, nil)
+	require.NoError(t, err)
+	err = f.storage.SnapshotCreated(f.ctx, "snap-b", uint64(len(chunkB.Data)), uint64(len(chunkB.Data)), 1, nil)
+	require.NoError(t, err)
+
+	// Flip one chunk so stream should yield only the other.
+	err = f.storage.RelocateChunkDataToS3(f.ctx, chunkIDA, true)
+	require.NoError(t, err)
+
+	ids, errors := f.storage.StreamStillYdbChunkIDs(f.ctx)
+	got := make(map[string]struct{})
+	for id := range ids {
+		got[id] = struct{}{}
+	}
+	require.NoError(t, <-errors)
+	require.Equal(t, map[string]struct{}{chunkIDB: {}}, got)
+}
+
 func TestRelocateSnapshotChunksToS3SharedChunk(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()

@@ -298,3 +298,28 @@ func (s *storageYDB) StreamReadySnapshotIDs(
 
 	return ids, errors
 }
+
+func (s *storageYDB) StreamStillYdbChunkIDs(
+	ctx context.Context,
+) (<-chan string, <-chan error) {
+
+	ids := make(chan string)
+	errors := make(chan error, 1)
+
+	go func() {
+		defer close(ids)
+		defer close(errors)
+
+		err := s.db.Execute(
+			ctx,
+			func(ctx context.Context, session *persistence.Session) error {
+				return s.streamStillYdbChunkIDs(ctx, session, ids)
+			},
+		)
+		if err != nil {
+			errors <- err
+		}
+	}()
+
+	return ids, errors
+}
