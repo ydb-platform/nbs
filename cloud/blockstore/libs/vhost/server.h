@@ -67,7 +67,7 @@ struct TServerConfig
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerPtr CreateServer(
-    ILoggingServicePtr logging,
+    const ILoggingServicePtr& logging,
     IServerStatsPtr serverStats,
     IVhostQueueFactoryPtr vhostQueueFactory,
     IDeviceHandlerFactoryPtr deviceHandlerFactory,
