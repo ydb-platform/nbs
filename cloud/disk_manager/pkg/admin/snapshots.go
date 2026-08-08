@@ -570,7 +570,8 @@ func newScheduleRelocateSnapshotDataFromYDBToS3TaskCmd(
 
 type scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd struct {
 	commandWithScheduler
-	keepYdbData bool
+	keepYdbData    bool
+	stillYdbChunks bool
 }
 
 func (c *scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd) run() error {
@@ -588,7 +589,8 @@ func (c *scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd) run() error {
 		"dataplane.RelocateAllSnapshotsDataFromYDBToS3Task",
 		"",
 		&dataplane_protos.RelocateAllSnapshotsDataFromYDBToS3Request{
-			KeepYdbData: c.keepYdbData,
+			KeepYdbData:    c.keepYdbData,
+			StillYdbChunks: c.stillYdbChunks,
 		},
 	)
 	if err != nil {
@@ -622,6 +624,13 @@ func newScheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd(
 		"keep-ydb-data",
 		false,
 		"copy to S3 and flip stored_in_s3, but do not clear YDB blob payload",
+	)
+
+	cmd.Flags().BoolVar(
+		&c.stillYdbChunks,
+		"still-ydb-chunks",
+		false,
+		"drain still_ydb chunk_map tails (incl. orphan snapshot ids) via RelocateChunkDataFromYDBToS3Task; one finite pass",
 	)
 
 	return cmd

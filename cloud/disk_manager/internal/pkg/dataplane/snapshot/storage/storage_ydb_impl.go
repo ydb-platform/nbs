@@ -1503,3 +1503,54 @@ func (s *storageYDB) streamReadySnapshotIDs(
 
 	return nil
 }
+
+func (s *storageYDB) streamStillYdbChunkIDs(
+	ctx context.Context,
+	session *persistence.Session,
+	ids chan<- string,
+) error {
+
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		select chunk_id
+		from chunk_map
+		where chunk_id != "" and
+			(stored_in_s3 is null or stored_in_s3 = false)
+	`, s.tablesPath))
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	seen := make(map[string]struct{})
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var chunkID *string
+			err := res.Scan(&chunkID)
+			if err != nil {
+				return err
+			}
+			if chunkID == nil || len(*chunkID) == 0 {
+				continue
+			}
+			if _, ok := seen[*chunkID]; ok {
+				continue
+			}
+			seen[*chunkID] = struct{}{}
+
+			select {
+			case ids <- *chunkID:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+
+	err = res.Err()
+	if err != nil {
+		return task_errors.NewRetriableError(err)
+	}
+
+	return nil
+}

@@ -50,6 +50,10 @@ func (t *relocateAllSnapshotsDataFromYDBToS3Task) Run(
 	subregistry := t.registry.WithTags(map[string]string{
 		"id": execCtx.GetTaskID(),
 	})
+	if t.request.StillYdbChunks {
+		// Finite pass over still_ydb chunk_map tails (incl. orphan ids).
+		return t.relocateStillYdbChunksPass(ctx, execCtx, subregistry)
+	}
 	for {
 		// Infinite loop: stop via tasks cancel after load is drained.
 		err := t.relocatePass(ctx, execCtx, subregistry)
