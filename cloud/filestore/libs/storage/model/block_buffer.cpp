@@ -140,7 +140,9 @@ public:
 
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange)
 {
-    std::make_shared<TBlockBuffer>(byteRange, TString(byteRange.Length, 0));
+    return std::make_shared<TBlockBuffer>(
+        byteRange,
+        TString(byteRange.Length, 0));
 }
 
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer)
