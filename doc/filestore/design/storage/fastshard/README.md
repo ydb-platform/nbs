@@ -10,7 +10,48 @@ This directory documents the prospective design. The prototype
 (`impl/naive_mirrored`) implements a subset of it; every gap between the
 prototype and the design is marked in the per-layer documents.
 
-## Position in the current architecture
+## Motivation
+
+Our current file storage architecture stores the data in YDB BlobStorage as
+immutable blobs up to 4MiB each. The inode table and block index are stored in
+the same storage layer as an LSM database. The blobs comprising this LSM
+database are stored in channels 0, 1 and 2 of the tablet and the data blobs are
+stored in the remaining channels. Actor system is used as the async framework on
+which everything is built. This architecture works more or less okay for some
+workloads (preferably highly parallel, preferably large requests) but doesn't
+work good enough in the other important workloads - mostly the workloads for
+which low latency for small requests is critical. The main issues are:
+* the blobs are immutable which leads to the need to modify both the index and
+ the data every time we need to rewrite a portion of the file even if that
+ portion is already allocated
+* even though we have some complex features that allow us to do index updates
+ and data blob writing in parallel it's still not 100% parallel - there're
+ still more than 1 round-trips between the client and the implementation of
+ the shard
+* it's impossible to implement true direct client<->storage group writes because
+ the index needs to be updated every time
+* the blobs are pretty small which leads to needing a large index - it's
+ different from what most filesystems do which is being able to allocate large
+ consecutive extents and indexing each extent with a single index entry (the
+ index is usually implemented as some kind of a tree with large fanout - e.g.
+ extent tree, b-tree, radix tree) - a large index doesn't fit into RAM which
+ drastically increases both read and write latency
+* the inode, index and data are scattered across multiple storage groups which
+ makes tail latency upon each read and write worse
+* actor system is pretty expensive because a lot of calls which could've been
+ implemented via a lock-free op or a very short-term spinlock require creating
+ an actor
+
+## Fastshard position in the current architecture
+
+We want to be able to plug in a new solution right into the current architecture
+and would like to deliver the first version as soon as possible. That's why we
+strive to reuse most of the current components that are not 100% critical for
+achieving our latency goals for the most latency-critical operations:
+* `open(inode_id) -> handle_id`
+* `write(handle_id, offset, data)`
+* `read(handle_id, offset, len) -> data`
+* `close(handle_id)`
 
 Fastshard replaces the storage backend of a file shard. Everything around it
 stays as is:
