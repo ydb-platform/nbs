@@ -1720,3 +1720,342 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 		}()
 	}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestRelocateSnapshotChunksToS3(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot"})
+	require.NoError(t, err)
+
+	chunk := makeChunk(0, "relocate-data")
+	chunkID, err := f.storage.WriteChunk(f.ctx, "", "snapshot", chunk, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snapshot", uint64(len(chunk.Data)), uint64(len(chunk.Data)), 1, nil)
+	require.NoError(t, err)
+
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,    // milestoneChunkIndex
+		nil,  // saveProgress
+		false, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	chunkMapEntries := readChunkMap(f, "snapshot")
+	require.Equal(t, []chunkMapEntry{
+		{makeShardID("snapshot"), "snapshot", 0, chunkID, true},
+	}, chunkMapEntries)
+
+	ydbBlobs := readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 1, []byte{}},
+	}, ydbBlobs)
+
+	s3Obj := getS3Object(f, chunkID)
+	require.Equal(t, []byte("relocate-data"), s3Obj.Data)
+
+	readChunk := dataplane_common.Chunk{
+		ID:         chunkID,
+		Data:       make([]byte, len(chunk.Data)),
+		StoredInS3: true,
+	}
+	err = f.storage.ReadChunk(f.ctx, &readChunk)
+	require.NoError(t, err)
+	require.Equal(t, chunk.Data, readChunk.Data)
+
+	// Idempotent second run.
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		false, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	ydbBlobs = readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 1, []byte{}},
+	}, ydbBlobs)
+}
+
+func TestSnapshotNeedsRelocateToS3(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot"})
+	require.NoError(t, err)
+
+	chunk := makeChunk(0, "needs-relocate")
+	_, err = f.storage.WriteChunk(f.ctx, "", "snapshot", chunk, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(
+		f.ctx,
+		"snapshot",
+		uint64(len(chunk.Data)),
+		uint64(len(chunk.Data)),
+		1,
+		nil,
+	)
+	require.NoError(t, err)
+
+	needs, err := f.storage.SnapshotNeedsRelocateToS3(f.ctx, "snapshot", true)
+	require.NoError(t, err)
+	require.True(t, needs)
+
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		true, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	needs, err = f.storage.SnapshotNeedsRelocateToS3(f.ctx, "snapshot", true)
+	require.NoError(t, err)
+	require.False(t, needs)
+
+	needs, err = f.storage.SnapshotNeedsRelocateToS3(f.ctx, "snapshot", false)
+	require.NoError(t, err)
+	require.True(t, needs)
+
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		false, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	needs, err = f.storage.SnapshotNeedsRelocateToS3(f.ctx, "snapshot", false)
+	require.NoError(t, err)
+	require.False(t, needs)
+}
+
+func TestStreamReadySnapshotIDs(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	for _, id := range []string{"snap-a", "snap-b"} {
+		_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: id})
+		require.NoError(t, err)
+		err = f.storage.SnapshotCreated(f.ctx, id, 0, 0, 0, nil)
+		require.NoError(t, err)
+	}
+
+	ids, errors := f.storage.StreamReadySnapshotIDs(f.ctx)
+	got := make(map[string]struct{})
+	for id := range ids {
+		got[id] = struct{}{}
+	}
+	require.NoError(t, <-errors)
+	require.Equal(t, map[string]struct{}{
+		"snap-a": {},
+		"snap-b": {},
+	}, got)
+}
+
+func TestRelocateSnapshotChunksToS3KeepYdbData(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot"})
+	require.NoError(t, err)
+
+	chunk := makeChunk(0, "relocate-keep")
+	chunkID, err := f.storage.WriteChunk(f.ctx, "", "snapshot", chunk, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(
+		f.ctx,
+		"snapshot",
+		uint64(len(chunk.Data)),
+		uint64(len(chunk.Data)),
+		1,
+		nil,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		true, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, []chunkMapEntry{
+		{makeShardID("snapshot"), "snapshot", 0, chunkID, true},
+	}, readChunkMap(f, "snapshot"))
+
+	ydbBlobs := readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 1, []byte("relocate-keep")},
+	}, ydbBlobs)
+
+	s3Obj := getS3Object(f, chunkID)
+	require.Equal(t, []byte("relocate-keep"), s3Obj.Data)
+
+	readChunk := dataplane_common.Chunk{
+		ID:         chunkID,
+		Data:       make([]byte, len(chunk.Data)),
+		StoredInS3: true,
+	}
+	err = f.storage.ReadChunk(f.ctx, &readChunk)
+	require.NoError(t, err)
+	require.Equal(t, chunk.Data, readChunk.Data)
+
+	// Second run without keepYdbData clears YDB payload.
+	err = f.storage.RelocateSnapshotChunksToS3(
+		f.ctx,
+		"snapshot",
+		0,
+		nil,
+		false, // keepYdbData
+	)
+	require.NoError(t, err)
+
+	ydbBlobs = readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 1, []byte{}},
+	}, ydbBlobs)
+}
+
+func TestRelocateChunkDataToS3(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot"})
+	require.NoError(t, err)
+
+	chunk := makeChunk(0, "chunk-data-tail")
+	chunkID, err := f.storage.WriteChunk(f.ctx, "", "snapshot", chunk, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(
+		f.ctx,
+		"snapshot",
+		uint64(len(chunk.Data)),
+		uint64(len(chunk.Data)),
+		1,
+		nil,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.RelocateChunkDataToS3(f.ctx, chunkID, true)
+	require.NoError(t, err)
+
+	require.Equal(t, []chunkMapEntry{
+		{makeShardID("snapshot"), "snapshot", 0, chunkID, true},
+	}, readChunkMap(f, "snapshot"))
+
+	ydbBlobs := readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 1, []byte("chunk-data-tail")},
+	}, ydbBlobs)
+	require.Equal(t, []byte("chunk-data-tail"), getS3Object(f, chunkID).Data)
+}
+
+func TestStreamStillYdbChunkIDs(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snap-a"})
+	require.NoError(t, err)
+	_, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snap-b"})
+	require.NoError(t, err)
+
+	chunkA := makeChunk(0, "still-a")
+	chunkIDA, err := f.storage.WriteChunk(f.ctx, "", "snap-a", chunkA, false)
+	require.NoError(t, err)
+	chunkB := makeChunk(0, "still-b")
+	chunkIDB, err := f.storage.WriteChunk(f.ctx, "", "snap-b", chunkB, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snap-a", uint64(len(chunkA.Data)), uint64(len(chunkA.Data)), 1, nil)
+	require.NoError(t, err)
+	err = f.storage.SnapshotCreated(f.ctx, "snap-b", uint64(len(chunkB.Data)), uint64(len(chunkB.Data)), 1, nil)
+	require.NoError(t, err)
+
+	// Flip one chunk so stream should yield only the other.
+	err = f.storage.RelocateChunkDataToS3(f.ctx, chunkIDA, true)
+	require.NoError(t, err)
+
+	ids, errors := f.storage.StreamStillYdbChunkIDs(f.ctx)
+	got := make(map[string]struct{})
+	for id := range ids {
+		got[id] = struct{}{}
+	}
+	require.NoError(t, <-errors)
+	require.Equal(t, map[string]struct{}{chunkIDB: {}}, got)
+}
+
+func TestRelocateSnapshotChunksToS3SharedChunk(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "src"})
+	require.NoError(t, err)
+
+	chunk := makeChunk(0, "shared")
+	chunkID, err := f.storage.WriteChunk(f.ctx, "", "src", chunk, false)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "src", uint64(len(chunk.Data)), uint64(len(chunk.Data)), 1, nil)
+	require.NoError(t, err)
+
+	_, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "dst"})
+	require.NoError(t, err)
+
+	err = f.storage.ShallowCopySnapshot(f.ctx, "src", "dst", 0, nil)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "dst", uint64(len(chunk.Data)), uint64(len(chunk.Data)), 1, nil)
+	require.NoError(t, err)
+
+	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "src", 0, nil, false)
+	require.NoError(t, err)
+
+	require.Equal(t, []chunkMapEntry{
+		{makeShardID("src"), "src", 0, chunkID, true},
+	}, readChunkMap(f, "src"))
+	require.Equal(t, []chunkMapEntry{
+		{makeShardID("dst"), "dst", 0, chunkID, false},
+	}, readChunkMap(f, "dst"))
+
+	// Shared neighbour still needs YDB payload.
+	ydbBlobs := readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 2, []byte("shared")},
+	}, ydbBlobs)
+
+	err = f.storage.RelocateSnapshotChunksToS3(f.ctx, "dst", 0, nil, false)
+	require.NoError(t, err)
+
+	require.Equal(t, []chunkMapEntry{
+		{makeShardID("dst"), "dst", 0, chunkID, true},
+	}, readChunkMap(f, "dst"))
+
+	ydbBlobs = readChunkBlobsFromYDB(f, chunkID)
+	require.Equal(t, []chunkBlob{
+		{chunkID, 2, []byte{}},
+	}, ydbBlobs)
+
+	readChunk := dataplane_common.Chunk{
+		ID:         chunkID,
+		Data:       make([]byte, len(chunk.Data)),
+		StoredInS3: true,
+	}
+	err = f.storage.ReadChunk(f.ctx, &readChunk)
+	require.NoError(t, err)
+	require.Equal(t, chunk.Data, readChunk.Data)
+}

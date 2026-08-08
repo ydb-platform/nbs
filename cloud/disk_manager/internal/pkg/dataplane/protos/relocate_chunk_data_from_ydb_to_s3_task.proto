@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+// RelocateChunkDataFromYDBToS3Task relocates a batch of chunk blobs to S3
+// without locking any snapshot. Used for still_ydb / orphan map tails.
+message RelocateChunkDataFromYDBToS3Request {
+  repeated string ChunkIds = 1;
+  // When true, copy to S3 and flip stored_in_s3, but keep YDB blob payload.
+  bool KeepYdbData = 2;
+}
+
+message RelocateChunkDataFromYDBToS3TaskState {
+  // Number of chunk_ids from the request already processed.
+  uint32 MilestoneIndex = 1;
+  double Progress = 2;
+}
+
+message RelocateChunkDataFromYDBToS3Metadata {
+  double Progress = 1;
+}
+
+message RelocateChunkDataFromYDBToS3Response {
+}

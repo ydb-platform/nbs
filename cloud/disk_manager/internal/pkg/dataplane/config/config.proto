@@ -39,4 +39,16 @@ message DataplaneConfig {
     optional int64 ReplicationBetweenCellsSecondsRemainingThreshold = 19 [default = 300];
 
     optional filesystem_dataplane.FilesystemDataplaneConfig FilesystemConfig = 20;
+
+    // Max number of RelocateSnapshotDataFromYDBToS3Task running at once under
+    // RelocateAllSnapshotsDataFromYDBToS3Task (same role as MigratingSnapshotsInflightLimit).
+    optional uint32 RelocatingSnapshotsToS3InflightLimit = 21 [default = 5];
+
+    // Prefetch buffer between streaming ListSnapshots and child scheduling.
+    // Lister blocks when the queue is full (backpressure).
+    optional uint32 RelocateSnapshotsScanQueueSize = 22 [default = 500];
+
+    // Chunk ids per RelocateChunkDataFromYDBToS3Task when StillYdbChunks mode
+    // is enabled on RelocateAllSnapshotsDataFromYDBToS3Task.
+    optional uint32 RelocateStillYdbChunksBatchSize = 23 [default = 256];
 }

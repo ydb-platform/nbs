@@ -38,7 +38,8 @@ func (m *snapshotToTasksMapping) add(
 	m.taskToSnapshot[taskID] = snapshotID
 }
 
-func (m *snapshotToTasksMapping) remove(taskIDs []string) {
+func (m *snapshotToTasksMapping) remove(taskIDs []string) []string {
+	removed := make([]string, 0, len(taskIDs))
 	for _, taskID := range taskIDs {
 		snapshotID, ok := m.taskToSnapshot[taskID]
 		if !ok {
@@ -47,7 +48,9 @@ func (m *snapshotToTasksMapping) remove(taskIDs []string) {
 
 		delete(m.snapshotToTask, snapshotID)
 		delete(m.taskToSnapshot, taskID)
+		removed = append(removed, snapshotID)
 	}
+	return removed
 }
 
 func (m *snapshotToTasksMapping) hasSnapshots(snapshotID string) bool {

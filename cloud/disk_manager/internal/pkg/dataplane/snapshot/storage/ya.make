@@ -9,6 +9,7 @@ SRCS(
     storage_ydb.go
     storage_ydb_impl.go
     storage_ydb_metrics.go
+    storage_ydb_relocate.go
 )
 
 GO_TEST_SRCS(

@@ -146,4 +146,49 @@ type Storage interface {
 	) (snapshotID string, checkpointID string, err error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
+
+	// StreamReadySnapshotIDs yields ready snapshot ids as they are scanned.
+	// The ids channel is closed when the stream ends; errors carries at most
+	// one terminal error (also closed when the stream ends).
+	StreamReadySnapshotIDs(ctx context.Context) (<-chan string, <-chan error)
+
+	// StreamStillYdbChunkIDs yields unique non-empty chunk_ids that still have
+	// at least one chunk_map row with stored_in_s3 unset/false (including
+	// orphan snapshot ids). Dedup is best-effort in the streamer.
+	StreamStillYdbChunkIDs(ctx context.Context) (<-chan string, <-chan error)
+
+	// SnapshotNeedsRelocateToS3 reports whether the snapshot still has work for
+	// RelocateSnapshotChunksToS3. When keepYdbData is true, only unfinished
+	// copy/flip (chunk_map not fully on S3) counts. When keepYdbData is false,
+	// non-empty YDB blob payload also counts (clear phase after keepYdbData).
+	SnapshotNeedsRelocateToS3(
+		ctx context.Context,
+		snapshotID string,
+		keepYdbData bool,
+	) (bool, error)
+
+	// RelocateChunkToS3 copies chunk blob payload from YDB to S3 without flipping
+	// chunk_map. Idempotent: existing S3 object is overwritten / verified.
+	RelocateChunkToS3(ctx context.Context, chunkID string) error
+
+	// RelocateChunkDataToS3 copies one chunk to S3, flips all chunk_map rows for
+	// that chunk_id to stored_in_s3=true, and unless keepYdbData clears YDB
+	// payload when no map row still needs it.
+	RelocateChunkDataToS3(
+		ctx context.Context,
+		chunkID string,
+		keepYdbData bool,
+	) error
+
+	// RelocateSnapshotChunksToS3 copies all non-S3 chunks of the snapshot to S3,
+	// then flips stored_in_s3 for this snapshot. Unless keepYdbData is set, also
+	// clears YDB blob data for chunk_ids that are no longer referenced with
+	// stored_in_s3=false.
+	RelocateSnapshotChunksToS3(
+		ctx context.Context,
+		snapshotID string,
+		milestoneChunkIndex uint32,
+		saveProgress func(context.Context, uint32) error,
+		keepYdbData bool,
+	) error
 }

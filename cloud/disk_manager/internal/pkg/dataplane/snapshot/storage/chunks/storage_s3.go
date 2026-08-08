@@ -1,6 +1,7 @@
 package chunks
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
@@ -198,6 +199,93 @@ func (s *StorageS3) writeChunkData(
 	}
 
 	return s.s3.PutObject(ctx, s.bucket, s.newS3Key(chunk.ID), object)
+}
+
+// PutCompressedChunkData writes already-compressed chunk payload to S3 without
+// touching YDB metadata/refcnt. Used for YDB→S3 relocate.
+func (s *StorageS3) PutCompressedChunkData(
+	ctx context.Context,
+	chunkID string,
+	compressedData []byte,
+	checksum uint32,
+	compression string,
+) (err error) {
+
+	defer s.metrics.StatOperation(metrics.OperationWriteChunkBlob)(&err)
+
+	metadata := s3Metadata{
+		compression: compression,
+		checksum:    checksum,
+	}
+
+	logging.Debug(
+		ctx,
+		"put compressed chunk to s3 {id: %q, checksum: %v, compression: %q}",
+		chunkID,
+		metadata.checksum,
+		metadata.compression,
+	)
+
+	object := persistence.S3Object{
+		Data:     compressedData,
+		Metadata: metadata.toMap(),
+	}
+
+	return s.s3.PutObject(ctx, s.bucket, s.newS3Key(chunkID), object)
+}
+
+// CheckCompressedChunkData verifies that S3 object exists and matches expected
+// checksum/compression/payload. When compressedData is nil, only metadata
+// presence is checked (used after YDB payload has already been cleared).
+func (s *StorageS3) CheckCompressedChunkData(
+	ctx context.Context,
+	chunkID string,
+	compressedData []byte,
+	checksum uint32,
+	compression string,
+) error {
+
+	object, err := s.s3.GetObject(ctx, s.bucket, s.newS3Key(chunkID))
+	if err != nil {
+		return err
+	}
+
+	metadata, err := newS3Metadata(object.Metadata)
+	if err != nil {
+		return err
+	}
+
+	if compressedData == nil {
+		// YDB blob was already cleared; just ensure S3 object is readable.
+		return nil
+	}
+
+	if metadata.checksum != checksum {
+		return task_errors.NewNonRetriableErrorf(
+			"s3 chunk %v checksum mismatch: expected %v, actual %v",
+			chunkID,
+			checksum,
+			metadata.checksum,
+		)
+	}
+
+	if metadata.compression != compression {
+		return task_errors.NewNonRetriableErrorf(
+			"s3 chunk %v compression mismatch: expected %q, actual %q",
+			chunkID,
+			compression,
+			metadata.compression,
+		)
+	}
+
+	if !bytes.Equal(object.Data, compressedData) {
+		return task_errors.NewNonRetriableErrorf(
+			"s3 chunk %v data mismatch after put",
+			chunkID,
+		)
+	}
+
+	return nil
 }
 
 func (s *StorageS3) unrefChunkMetadata(
