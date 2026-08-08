@@ -5,8 +5,8 @@
 #include <contrib/ydb/library/yql/dq/runtime/dq_async_input.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_input_producer.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_async_output.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node_holders.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <util/generic/ptr.h>
 
@@ -136,12 +136,12 @@ struct IDqComputeActorAsyncInput {
     virtual void FillExtraStats(NDqProto::TDqTaskStats* /* stats */, bool /* finalized stats */, const NYql::NDq::TDqMeteringStats*) { }
 
     // The same signature as IActor::PassAway().
-    // It is guaranted that this method will be called with bound MKQL allocator.
+    // It is guaranteed that this method will be called with bound MKQL allocator.
     // So, it is the right place to destroy all internal UnboxedValues.
     virtual void PassAway() = 0;
 
-    // Do not destroy UnboxedValues inside destructor!!!
-    // It is called from actor system thread, and MKQL allocator is not bound in this case.
+    // You must also destroy all internal UnboxedValues inside destructor (same as in PassAway)
+    // But you should explicitly bind MKQL allocator here, because it is called from actor system thread.
     virtual ~IDqComputeActorAsyncInput() = default;
 };
 
@@ -198,8 +198,12 @@ struct IDqComputeActorAsyncOutput {
 
     virtual TMaybe<google::protobuf::Any> ExtraData() { return {}; }
 
+    virtual void FillExtraStats(NDqProto::TDqTaskStats* /* stats */, bool /* finalized stats */, const NYql::NDq::TDqMeteringStats*) { }
+
     virtual void PassAway() = 0; // The same signature as IActor::PassAway()
 
+    // You must also destroy all internal UnboxedValues inside destructor (same as in PassAway)
+    // But you should explicitly bind MKQL allocator here, because it is called from actor system thread.
     virtual ~IDqComputeActorAsyncOutput() = default;
 };
 
@@ -213,41 +217,26 @@ struct IDqAsyncLookupSource {
             NKikimr::NMiniKQL::TMKQLAllocator<std::pair<const NUdf::TUnboxedValue, NUdf::TUnboxedValue>>
     >;
     struct TEvLookupRequest: NActors::TEventLocal<TEvLookupRequest, TDqComputeEvents::EvLookupRequest> {
-        TEvLookupRequest(std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> alloc, TUnboxedValueMap&& request)
-            : Alloc(alloc)
-            , Request(std::move(request))
+        TEvLookupRequest(std::weak_ptr<TUnboxedValueMap> request)
+            : Request(std::move(request))
         {
         }
-        ~TEvLookupRequest() {
-            auto guard = Guard(*Alloc);
-            TKeyTypeHelper empty;
-            Request = TUnboxedValueMap{0, empty.GetValueHash(), empty.GetValueEqual()};
-        }
-        std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> Alloc;
-        TUnboxedValueMap Request;
+        std::weak_ptr<TUnboxedValueMap> Request;
     };
 
     struct TEvLookupResult: NActors::TEventLocal<TEvLookupResult, TDqComputeEvents::EvLookupResult> {
-        TEvLookupResult(std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> alloc, TUnboxedValueMap&& result)
-            : Alloc(alloc)
-            , Result(std::move(result))
+        TEvLookupResult(std::weak_ptr<TUnboxedValueMap> result)
+            : Result(std::move(result))
         {
         }
-        ~TEvLookupResult() {
-            auto guard = Guard(*Alloc.get());
-            TKeyTypeHelper empty;
-            Result = TUnboxedValueMap{0, empty.GetValueHash(), empty.GetValueEqual()};
-        }
-
-        std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> Alloc;
-        TUnboxedValueMap Result;
+        std::weak_ptr<TUnboxedValueMap> Result;
     };
 
     virtual size_t GetMaxSupportedKeysInRequest() const = 0;
     //Initiate lookup for requested keys
     //Only one request at a time is allowed. Request must contain no more than GetMaxSupportedKeysInRequest() keys
-    //Upon completion, results are sent in TEvLookupResult event to the preconfigured actor
-    virtual void AsyncLookup(TUnboxedValueMap&& request) = 0;
+    //Upon completion, TEvLookupResult event is sent to the preconfigured actor
+    virtual void AsyncLookup(std::weak_ptr<TUnboxedValueMap> request) = 0;
 protected:
     ~IDqAsyncLookupSource() {}
 };
@@ -281,6 +270,7 @@ public:
         std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> Alloc;
         std::shared_ptr<IDqAsyncLookupSource::TKeyTypeHelper> KeyTypeHelper;
         NActors::TActorId ParentId;
+        ::NMonitoring::TDynamicCounterPtr TaskCounters;
         google::protobuf::Any LookupSource; //provider specific data source
         const NKikimr::NMiniKQL::TStructType* KeyType;
         const NKikimr::NMiniKQL::TStructType* PayloadType;
@@ -315,6 +305,7 @@ public:
         const THashMap<TString, TString>& SecureParams;
         const THashMap<TString, TString>& TaskParams;
         const NActors::TActorId& ComputeActorId;
+        ::NMonitoring::TDynamicCounterPtr TaskCounters;
         const NKikimr::NMiniKQL::TTypeEnvironment& TypeEnv;
         const NKikimr::NMiniKQL::THolderFactory& HolderFactory;
         std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> Alloc;

@@ -3,7 +3,7 @@
 #include "defs.h"
 
 #include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_pdiskctx.h>
 #include <library/cpp/time_provider/time_provider.h>
 
@@ -37,6 +37,14 @@ namespace NKikimr {
         }
     };
 
+    struct TEvRecoveryLogCutDone : public TEventLocal<TEvRecoveryLogCutDone, TEvBlobStorage::EvRecoveryLogCutDone> {
+        const ui64 FirstLsnToKeep;
+
+        explicit TEvRecoveryLogCutDone(ui64 firstLsnToKeep)
+            : FirstLsnToKeep(firstLsnToKeep)
+        {}
+    };
+
     class TVDiskContext;
     class TPDiskCtx;
     class TLsnMngr;
@@ -47,6 +55,7 @@ namespace NKikimr {
         TIntrusivePtr<TLsnMngr> LsnMngr;
         TIntrusivePtr<TVDiskConfig> Config;
         TActorId LoggerId;
+        TActorId NotifyId;
     };
 
     IActor* CreateRecoveryLogCutter(TLogCutterCtx &&logCutterCtx);

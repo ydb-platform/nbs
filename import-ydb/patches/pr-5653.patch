@@ -1,0 +1,13 @@
+diff --git a/contrib/ydb/core/mon/mon_impl.h b/contrib/ydb/core/mon/mon_impl.h
+index b2da36acb83..f471c4f9a00 100644
+--- a/contrib/ydb/core/mon/mon_impl.h
++++ b/contrib/ydb/core/mon/mon_impl.h
+@@ -246,7 +246,7 @@ class THtmlResultMonPage: public THtmlMonPage {
+         IOutputStream& out = request.Output();
+
+         out << "HTTP/1.1 200 Ok\r\n"
+-            << "Content-Type: text/html\r\n"
++            << "Content-Type: text/html; charset=utf-8\r\n"
+             << "Connection: Close\r\n";
+         TString origin = TString(request.GetHeader("Origin"));
+         if (origin.empty()) {

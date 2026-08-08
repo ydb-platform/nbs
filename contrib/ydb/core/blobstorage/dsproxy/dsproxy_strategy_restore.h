@@ -24,7 +24,7 @@ public:
             bool isErrorDisk = false;
             for (ui32 partIdx = beginPartIdx; partIdx < endPartIdx; ++partIdx) {
                 if (disk.DiskParts[partIdx].Situation == TBlobState::ESituation::Error) {
-                    R_LOG_DEBUG_SX(logCtx, "BPG50", "Id# " << state.Id.ToString()
+                    DSP_LOG_DEBUG_SX(logCtx, "BPG50", "Id# " << state.Id.ToString()
                         << " restore disk# " << diskIdx
                         << " part# " << partIdx
                         << " error");
@@ -36,7 +36,7 @@ public:
             if (!isErrorDisk) {
                 for (ui32 partIdx = beginPartIdx; partIdx < endPartIdx; ++partIdx) {
                     const TBlobState::ESituation partSituation = disk.DiskParts[partIdx].Situation;
-                    R_LOG_DEBUG_SX(logCtx, "BPG51", "Id# " << state.Id.ToString()
+                    DSP_LOG_DEBUG_SX(logCtx, "BPG51", "Id# " << state.Id.ToString()
                         << " restore disk# " << diskIdx
                         << " part# " << partIdx
                         << " situation# " << TBlobState::SituationToString(partSituation));
@@ -60,14 +60,23 @@ public:
         const ui32 optimisticReplicas = optimisticLayout.CountEffectiveReplicas(info.Type);
         *optimisticState = info.BlobState(optimisticReplicas, errorDisks);
 
-        R_LOG_DEBUG_SX(logCtx, "BPG55", "restore Id# " << state.Id.ToString()
+        DSP_LOG_DEBUG_SX(logCtx, "BPG55", "restore Id# " << state.Id.ToString()
             << " optimisticReplicas# " << optimisticReplicas
             << " optimisticState# " << TBlobStorageGroupInfo::BlobStateToString(*optimisticState));
     }
 
-    std::optional<EStrategyOutcome> SetErrorForUnrecoverableOptimistic(TBlobStorageGroupInfo::EBlobState optimisticState) {
+    std::optional<EStrategyOutcome> SetErrorForUnrecoverableOptimistic(TLogContext &logCtx,
+            TBlobStorageGroupInfo::EBlobState optimisticState,
+            TBlobState& state, const TBlobStorageGroupInfo& info, const TIntrusivePtr<TGroupQueues>& groupQueues) {
         switch (optimisticState) {
-            case TBlobStorageGroupInfo::EBS_DISINTEGRATED:
+            case TBlobStorageGroupInfo::EBS_DISINTEGRATED: {
+                LogDisintegrated(logCtx, "BPX01", "restore", state, info, groupQueues);
+                return EStrategyOutcome::Error(TStringBuilder() << "TRestoreStrategy saw optimisticState# "
+                        << TBlobStorageGroupInfo::BlobStateToString(optimisticState)
+                        << " GroupId# " << info.GroupID
+                        << " BlobId# " << state.Id
+                        << " Reported ErrorReasons# " << state.ReportProblems(info));
+            }
             case TBlobStorageGroupInfo::EBS_UNRECOVERABLE_FRAGMENTARY:
             case TBlobStorageGroupInfo::EBS_RECOVERABLE_FRAGMENTARY:
             case TBlobStorageGroupInfo::EBS_RECOVERABLE_DOUBTED:
@@ -122,7 +131,7 @@ public:
         // Look at the current layout and set the status if possible
         TBlobStorageGroupInfo::EBlobState optimisticState = TBlobStorageGroupInfo::EBS_DISINTEGRATED;
         EvaluateRestoreLayout(logCtx, state, info, &optimisticState);
-        if (auto res = SetErrorForUnrecoverableOptimistic(optimisticState)) {
+        if (auto res = SetErrorForUnrecoverableOptimistic(logCtx, optimisticState, state, info, blackboard.GroupQueues)) {
             return *res;
         }
 

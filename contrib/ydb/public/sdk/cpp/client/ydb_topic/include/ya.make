@@ -24,7 +24,7 @@ PEERDIR(
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/protos
 
-    contrib/ydb/library/yql/public/issue/protos
+    yql/essentials/public/issue/protos
 
     library/cpp/retry
     library/cpp/streams/zstd

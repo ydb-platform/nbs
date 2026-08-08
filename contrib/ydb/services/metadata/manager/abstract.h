@@ -4,17 +4,18 @@
 
 #include <contrib/ydb/core/protos/kqp_physical.pb.h>
 #include <contrib/ydb/core/tx/locks/sys_tables.h>
+
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/library/aclib/aclib.h>
-#include <contrib/ydb/library/conclusion/status.h>
+#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/conclusion/result.h>
-
+#include <contrib/ydb/library/conclusion/status.h>
 #include <contrib/ydb/services/metadata/abstract/kqp_common.h>
 #include <contrib/ydb/services/metadata/abstract/parsing.h>
+#include <contrib/ydb/services/metadata/manager/modification.h>
 
 #include <library/cpp/threading/future/core/future.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
-#include <contrib/ydb/library/yql/sql/settings/translation_settings.h>
+#include <yql/essentials/sql/settings/translation_settings.h>
 
 namespace NKikimr::NMetadata::NModifications {
 
@@ -167,6 +168,11 @@ public:
         typename NModifications::IAlterPreparationController<TObject>::TPtr controller,
         const TInternalModificationContext& context, const TAlterOperationContext& alterContext) const {
         return DoPrepareObjectsBeforeModification(std::move(patchedObjects), controller, context, alterContext);
+    }
+
+    virtual std::vector<TModificationStage::TPtr> GetPreconditions(
+        const std::vector<TObject>& /*objects*/, const IOperationsManager::TInternalModificationContext& /*context*/) const {
+        return {};
     }
 };
 

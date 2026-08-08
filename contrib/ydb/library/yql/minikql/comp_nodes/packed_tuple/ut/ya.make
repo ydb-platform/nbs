@@ -1,27 +1,26 @@
 UNITTEST_FOR(contrib/ydb/library/yql/minikql/comp_nodes/packed_tuple)
 
-TAG(ya:manual)
+IF (SANITIZER_TYPE OR NOT OPENSOURCE)
+    REQUIREMENTS(ram:32)
+ENDIF()
 
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
     SIZE(LARGE)
     TAG(ya:fat)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
-REQUIREMENTS(ram:32)
 
 SRCS(
     packed_tuple_ut.cpp
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/public/udf
-    contrib/ydb/library/yql/public/udf/arrow
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/public/udf
+    yql/essentials/public/udf/arrow
+    yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/pg_dummy
 )
 
 CFLAGS(

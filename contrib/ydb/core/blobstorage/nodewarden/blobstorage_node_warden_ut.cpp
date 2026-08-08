@@ -1,32 +1,23 @@
-#include <contrib/ydb/core/testlib/basics/appdata.h>
-#include <contrib/ydb/core/testlib/basics/runtime.h>
-#include <contrib/ydb/core/testlib/basics/helpers.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
-#include <contrib/ydb/core/base/hive.h>
-
-#include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/tablet_resolver.h>
 #include <contrib/ydb/core/base/statestorage_impl.h>
-#include <contrib/ydb/core/blobstorage/crypto/default.h>
 #include <contrib/ydb/core/blobstorage/nodewarden/node_warden.h>
 #include <contrib/ydb/core/blobstorage/nodewarden/node_warden_impl.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_tools.h>
 #include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_ut_http_request.h>
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
-#include <contrib/ydb/core/mind/local.h>
-#include <contrib/ydb/core/util/testactorsys.h>
+#include <contrib/ydb/core/util/actorsys_test/testactorsys.h>
 
 #include <contrib/ydb/library/pdisk_io/sector_map.h>
-#include <util/random/entropy.h>
-#include <util/string/printf.h>
-#include <util/string/subst.h>
-#include <util/stream/file.h>
+#include <contrib/ydb/core/util/random.h>
 
 #include <google/protobuf/text_format.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <functional>
 
 const bool STRAND_PDISK = true;
 #ifndef NDEBUG
@@ -67,19 +58,30 @@ static yexception LastException;
 
 constexpr ui32 DOMAIN_ID = 1;
 
+using TAppPreprocessor = std::function<void(TAppPrepare&)>;
+using TNodeWardenConfigPreprocessor = std::function<void(ui32, TNodeWardenConfig&)>;
+
 using namespace NActors;
+
+void RegisterSharedControl(TControlBoard& icb, TString name, TAtomicBase defaultValue,
+        TAtomicBase lowerBound, TAtomicBase upperBound, TAtomicBase currentValue) {
+    TControlWrapper control(defaultValue, lowerBound, upperBound);
+    icb.RegisterSharedControl(control, name);
+    TAtomic prevValue = 0;
+    icb.SetValue(name, currentValue, prevValue);
+}
 
 void FormatPDiskRandomKeys(TString path, ui32 diskSize, ui32 chunkSize, ui64 guid, bool isGuidValid,
         TIntrusivePtr<NPDisk::TSectorMap> sectorMap, bool enableSmallDiskOptimization) {
     NPDisk::TKey chunkKey;
     NPDisk::TKey logKey;
     NPDisk::TKey sysLogKey;
-    EntropyPool().Read(&chunkKey, sizeof(NKikimr::NPDisk::TKey));
-    EntropyPool().Read(&logKey, sizeof(NKikimr::NPDisk::TKey));
-    EntropyPool().Read(&sysLogKey, sizeof(NKikimr::NPDisk::TKey));
+    SafeEntropyPoolRead(&chunkKey, sizeof(NKikimr::NPDisk::TKey));
+    SafeEntropyPoolRead(&logKey, sizeof(NKikimr::NPDisk::TKey));
+    SafeEntropyPoolRead(&sysLogKey, sizeof(NKikimr::NPDisk::TKey));
 
     if (!isGuidValid) {
-        EntropyPool().Read(&guid, sizeof(guid));
+        SafeEntropyPoolRead(&guid, sizeof(guid));
     }
 
     NKikimr::FormatPDisk(path, diskSize, 4 << 10, chunkSize,
@@ -106,7 +108,8 @@ void SetupLogging(TTestActorRuntime& runtime) {
     runtime.SetLogPriority(NKikimrServices::BS_SYNCER, otherPriority);
 }
 
-void SetupServices(TTestActorRuntime &runtime, TString extraPath, TIntrusivePtr<NPDisk::TSectorMap> extraSectorMap) {
+void SetupServices(TTestActorRuntime &runtime, TString extraPath, TIntrusivePtr<NPDisk::TSectorMap> extraSectorMap,
+        TAppPreprocessor appPreprocessor = {}, TNodeWardenConfigPreprocessor nodeWardenConfigPreprocessor = {}) {
     const ui32 domainsNum = 1;
     const ui32 disksInDomain = 1;
 
@@ -134,6 +137,9 @@ void SetupServices(TTestActorRuntime &runtime, TString extraPath, TIntrusivePtr<
     }
 
     SetupChannelProfiles(app);
+    if (appPreprocessor) {
+        appPreprocessor(app);
+    }
 
     if (false) { // setup channel profiles
         TIntrusivePtr<TChannelProfiles> channelProfiles = new TChannelProfiles;
@@ -233,6 +239,10 @@ void SetupServices(TTestActorRuntime &runtime, TString extraPath, TIntrusivePtr<
             nodeWardenConfig->SectorMaps[pDiskPath1] = sectorMap1;
         }
 
+        if (nodeWardenConfigPreprocessor) {
+            nodeWardenConfigPreprocessor(nodeIndex, *nodeWardenConfig);
+        }
+
         SetupBSNodeWarden(runtime, nodeIndex, nodeWardenConfig.Release());
         SetupTabletResolver(runtime, nodeIndex);
     }
@@ -259,9 +269,11 @@ void SetupServices(TTestActorRuntime &runtime, TString extraPath, TIntrusivePtr<
     SetupBoxAndStoragePool(runtime, runtime.AllocateEdgeActor());
 }
 
-void Setup(TTestActorRuntime &runtime, TString extraPath, TIntrusivePtr<NPDisk::TSectorMap> extraSectorMap) {
+void Setup(TTestActorRuntime &runtime, TString extraPath, TIntrusivePtr<NPDisk::TSectorMap> extraSectorMap,
+        TAppPreprocessor appPreprocessor = {}, TNodeWardenConfigPreprocessor nodeWardenConfigPreprocessor = {}) {
     SetupLogging(runtime);
-    SetupServices(runtime, extraPath, extraSectorMap);
+    SetupServices(runtime, extraPath, extraSectorMap,
+        std::move(appPreprocessor), std::move(nodeWardenConfigPreprocessor));
 //    runtime.SetLogPriority(NKikimrServices::BS_CONTROLLER, NLog::PRI_DEBUG);
 //    runtime.SetLogPriority(NKikimrServices::BS_NODE, NLog::PRI_DEBUG);
     runtime.SetLogPriority(NKikimrServices::BS_PROXY, NLog::PRI_DEBUG);
@@ -416,6 +428,49 @@ Y_UNIT_TEST_SUITE(TBlobStorageWardenTest) {
         }
     };
 
+    CUSTOM_UNIT_TEST(TestSyncLogLimitControlsPassedToVDiskConfig) {
+        TTestBasicRuntime runtime(1, false);
+
+        constexpr ui64 expectedSyncLogMaxDiskAmount = 96_MB;
+        constexpr ui64 expectedSyncLogMaxMemAmount = 7_MB;
+
+        ui32 observedConfigs = 0;
+        TVector<TString> mismatches;
+
+        auto appPreprocessor = [&](TAppPrepare& app) {
+            app.InitIcb(runtime.GetNodeCount());
+            for (ui32 nodeIndex = 0; nodeIndex < runtime.GetNodeCount(); ++nodeIndex) {
+                RegisterSharedControl(*app.Icb[nodeIndex], "VDiskControls.SyncLogMaxDiskAmount",
+                    0, 0, 1ull << 40, expectedSyncLogMaxDiskAmount);
+                RegisterSharedControl(*app.Icb[nodeIndex], "VDiskControls.SyncLogMaxMemAmount",
+                    64ull << 20, 0, 1ull << 30, expectedSyncLogMaxMemAmount);
+            }
+        };
+
+        auto nodeWardenConfigPreprocessor = [&](ui32, TNodeWardenConfig& config) {
+            config.VDiskConfigPreprocessor = [&](TVDiskConfig& vdiskConfig) {
+                ++observedConfigs;
+                if (vdiskConfig.SyncLogMaxDiskAmount != expectedSyncLogMaxDiskAmount ||
+                        vdiskConfig.SyncLogMaxMemAmount != expectedSyncLogMaxMemAmount) {
+                    mismatches.push_back(TStringBuilder()
+                        << "{SyncLogMaxDiskAmount# " << vdiskConfig.SyncLogMaxDiskAmount
+                        << " SyncLogMaxMemAmount# " << vdiskConfig.SyncLogMaxMemAmount
+                        << "}");
+                }
+            };
+        };
+
+        Setup(runtime, "", nullptr, std::move(appPreprocessor), std::move(nodeWardenConfigPreprocessor));
+
+        UNIT_ASSERT_C(observedConfigs,
+            "VDiskConfigPreprocessor was not called; NodeWarden did not create local VDisk configs");
+        UNIT_ASSERT_C(mismatches.empty(),
+            "NodeWarden did not pass SyncLog immediate controls to TVDiskConfig"
+            << " expectedSyncLogMaxDiskAmount# " << expectedSyncLogMaxDiskAmount
+            << " expectedSyncLogMaxMemAmount# " << expectedSyncLogMaxMemAmount
+            << " mismatches# " << FormatList(mismatches));
+    }
+
     void BlockGroup(TTestBasicRuntime& runtime, TActorId sender, ui64 tabletId, ui32 groupId, ui32 generation, bool isMonitored,
             NKikimrProto::EReplyStatus expectAnsver = NKikimrProto::EReplyStatus::OK) {
         auto request = std::make_unique<TEvBlobStorage::TEvBlock>(tabletId, generation, TInstant::Max());
@@ -430,7 +485,7 @@ Y_UNIT_TEST_SUITE(TBlobStorageWardenTest) {
         auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(tabletId, Max<ui32>(), Max<ui32>(), ui32(0),
                                                                      true, Max<ui32>(), Max<ui32>(),
                                                                      nullptr, nullptr, TInstant::Max(),
-                                                                     true, true);
+                                                                     true, TWriteSource::Unknown, true);
         request->IsMonitored = isMonitored;
         SendToBsProxy(runtime, sender, groupId, request.release());
         auto reply = runtime.GrabEdgeEventRethrow<TEvBlobStorage::TEvCollectGarbageResult>(sender);
@@ -763,7 +818,7 @@ Y_UNIT_TEST_SUITE(TBlobStorageWardenTest) {
         VERBOSE_COUT(" Creating PDisk");
         ui64 guid = 1;
         ui64 pDiskCategory = 0;
-        EntropyPool().Read(&guid, sizeof(guid));
+        SafeEntropyPoolRead(&guid, sizeof(guid));
 //        TODO: look why doesn't sernder 1 work
         ui32 pDiskId = CreatePDisk(runtime, 0, tempDir() + "/new_pdisk.dat", guid, 1001, pDiskCategory);
 
@@ -772,7 +827,7 @@ Y_UNIT_TEST_SUITE(TBlobStorageWardenTest) {
         TVDiskID vDiskId;
         ui64 guid2 = guid;
         while (guid2 == guid) {
-            EntropyPool().Read(&guid2, sizeof(guid2));
+            SafeEntropyPoolRead(&guid2, sizeof(guid2));
         }
         ui32 nodeId = runtime.GetNodeId(0);
         TActorId pDiskActorId = MakeBlobStoragePDiskID(nodeId, pDiskId);

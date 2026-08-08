@@ -102,7 +102,7 @@ public:
             typeCounters->Apply(tabletId, executorCounters, appCounters, tabletType);
         }
         //
-        if (!IsFollower && AppData(ctx)->FeatureFlags.GetEnableDbCounters() && tenantPathId) {
+        if (!IsFollower && DbWatcherActorId && tenantPathId) {
             auto dbCounters = GetDbCounters(tenantPathId, ctx);
             if (dbCounters) {
                 auto* limitedAppCounters = GetOrAddLimitedAppCounters(tabletType);
@@ -765,8 +765,6 @@ private:
         TCounterPtr DatashardSizeBytes;
         TCounterPtr DatashardCacheHitBytes;
         TCounterPtr DatashardCacheMissBytes;
-        TCounterPtr ColumnShardReadRows_;
-        TCounterPtr ColumnShardReadBytes_;
         TCounterPtr ColumnShardScanRows_;
         TCounterPtr ColumnShardScanBytes_;
         TCounterPtr ColumnShardWriteRows_;
@@ -793,7 +791,6 @@ private:
         TCounterPtr ResourcesStreamReservedStorageLimit;
 
         THistogramPtr ShardCpuUtilization;
-        THistogramPtr ColumnShardCpuUtilization;
 
         TCounterPtr RowUpdates;
         TCounterPtr RowUpdateBytes;
@@ -817,9 +814,10 @@ private:
         TCounterPtr ColumnShardScannedRows_;
         TCounterPtr ColumnShardOperationsRowsWritten_;
         TCounterPtr ColumnShardOperationsBytesWritten_;
+        TCounterPtr ColumnShardOperationsBulkRowsWritten_;
+        TCounterPtr ColumnShardOperationsBulkBytesWritten_;
         TCounterPtr ColumnShardErasedBytes_;
         TCounterPtr ColumnShardErasedRows_;
-        THistogramPtr ColumnShardConsumedCpuHistogram;
 
         TCounterPtr DiskSpaceTablesTotalBytes;
         TCounterPtr DiskSpaceTablesTotalBytesOnSsd;
@@ -869,10 +867,6 @@ private:
             DatashardCacheMissBytes = ydbGroup->GetNamedCounter("name",
                 "table.datashard.cache_miss.bytes", true);
 
-            ColumnShardReadRows_ = ydbGroup->GetNamedCounter("name",
-                "table.columnshard.read.rows", true);
-            ColumnShardReadBytes_ = ydbGroup->GetNamedCounter("name",
-                "table.columnshard.read.bytes", true);
             ColumnShardScanRows_ = ydbGroup->GetNamedCounter("name",
                 "table.columnshard.scan.rows", true);
             ColumnShardScanBytes_ = ydbGroup->GetNamedCounter("name",
@@ -930,8 +924,6 @@ private:
 
             ShardCpuUtilization = ydbGroup->GetNamedHistogram("name",
                 "table.datashard.used_core_percents", NMonitoring::LinearHistogram(12, 0, 10), false);
-            ColumnShardCpuUtilization = ydbGroup->GetNamedHistogram("name",
-                "table.columnshard.used_core_percents", NMonitoring::LinearHistogram(12, 0, 10), false);
         };
 
         void Initialize(::NMonitoring::TDynamicCounterPtr counters, bool hasDatashard, bool hasSchemeshard, bool hasColumnShard) {
@@ -969,9 +961,10 @@ private:
                 ColumnShardScannedRows_ = appGroup->GetCounter("ColumnShard/ScannedRows");
                 ColumnShardOperationsRowsWritten_ = appGroup->GetCounter("ColumnShard/OperationsRowsWritten");
                 ColumnShardOperationsBytesWritten_ = appGroup->GetCounter("ColumnShard/OperationsBytesWritten");
+                ColumnShardOperationsBulkRowsWritten_ = appGroup->GetCounter("ColumnShard/OperationsBulkRowsWritten");
+                ColumnShardOperationsBulkBytesWritten_ = appGroup->GetCounter("ColumnShard/OperationsBulkBytesWritten");
                 ColumnShardErasedBytes_ = appGroup->GetCounter("ColumnShard/BytesErased");
                 ColumnShardErasedRows_ = appGroup->GetCounter("ColumnShard/RowsErased");
-                ColumnShardConsumedCpuHistogram = appGroup->FindHistogram("HIST(ConsumedCPU)");
             }
 
             if (hasSchemeshard && !DiskSpaceTablesTotalBytes) {
@@ -1017,20 +1010,14 @@ private:
             }
 
             if (ColumnShardScannedBytes_) {
-                ColumnShardReadRows_->Set(0);
-                ColumnShardReadBytes_->Set(0);
                 ColumnShardScanRows_->Set(ColumnShardScannedRows_->Val());
                 ColumnShardScanBytes_->Set(ColumnShardScannedBytes_->Val());
                 ColumnShardWriteRows_->Set(ColumnShardOperationsRowsWritten_->Val());
                 ColumnShardWriteBytes_->Set(ColumnShardOperationsBytesWritten_->Val());
-                ColumnShardBulkUpsertRows_->Set(ColumnShardOperationsRowsWritten_->Val());
-                ColumnShardBulkUpsertBytes_->Set(ColumnShardOperationsBytesWritten_->Val());
+                ColumnShardBulkUpsertRows_->Set(ColumnShardOperationsBulkRowsWritten_->Val());
+                ColumnShardBulkUpsertBytes_->Set(ColumnShardOperationsBulkBytesWritten_->Val());
                 ColumnShardEraseRows_->Set(ColumnShardErasedRows_->Val());
                 ColumnShardEraseBytes_->Set(ColumnShardErasedBytes_->Val());
-
-                if (ColumnShardConsumedCpuHistogram) {
-                    TransferBuckets(ColumnShardCpuUtilization, ColumnShardConsumedCpuHistogram);
-                }
             }
 
             if (DiskSpaceTablesTotalBytes) {
@@ -1354,9 +1341,9 @@ TTabletCountersAggregatorActor::Bootstrap(const TActorContext &ctx) {
     auto mon = appData->Mon;
     if (mon) {
         if (!Follower)
-            mon->RegisterActorPage(nullptr, "labeledcounters", "Labeled Counters", false, TlsActivationContext->ExecutorThread.ActorSystem, SelfId(), false);
+            mon->RegisterActorPage(nullptr, "labeledcounters", "Labeled Counters", false, TActivationContext::ActorSystem(), SelfId(), false);
         else
-            mon->RegisterActorPage(nullptr, "followercounters", "Follower Counters", false, TlsActivationContext->ExecutorThread.ActorSystem, SelfId(), false);
+            mon->RegisterActorPage(nullptr, "followercounters", "Follower Counters", false, TActivationContext::ActorSystem(), SelfId(), false);
     }
 
     ctx.Schedule(TDuration::Seconds(WAKEUP_TIMEOUT_SECONDS), new TEvents::TEvWakeup());
@@ -1474,7 +1461,7 @@ TTabletCountersAggregatorActor::HandleWork(TEvTabletCounters::TEvTabletLabeledCo
                 groupNames[j] = TString(1, toupper(groupNames[j][0])) + groupNames[j].substr(1);
                 if (groupNames[j] == "Topic") {
                     if (NPersQueue::CorrectName(groups[j])) {
-                        TString dc = to_title(NPersQueue::GetDC(groups[j]));
+                        TString dc = to_title(TString{NPersQueue::GetDC(groups[j])});
                         TString producer = NPersQueue::GetProducer(groups[j]);
                         TString topic = NPersQueue::GetRealTopic(groups[j]);
                         group = group->GetSubgroup("OriginDC", dc);

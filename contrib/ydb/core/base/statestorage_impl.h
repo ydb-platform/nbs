@@ -80,38 +80,6 @@ struct TEvStateStorage::TEvUpdateGroupConfig : public TEventLocal<TEvUpdateGroup
     {}
 };
 
-struct TEvStateStorage::TEvReplicaProbeSubscribe : public TEventLocal<TEvReplicaProbeSubscribe, EvReplicaProbeSubscribe> {
-    const TActorId ReplicaId;
-
-    TEvReplicaProbeSubscribe(TActorId replicaId)
-        : ReplicaId(replicaId)
-    {}
-};
-
-struct TEvStateStorage::TEvReplicaProbeUnsubscribe : public TEventLocal<TEvReplicaProbeUnsubscribe, EvReplicaProbeUnsubscribe> {
-    const TActorId ReplicaId;
-
-    TEvReplicaProbeUnsubscribe(TActorId replicaId)
-        : ReplicaId(replicaId)
-    {}
-};
-
-struct TEvStateStorage::TEvReplicaProbeConnected : public TEventLocal<TEvReplicaProbeConnected, EvReplicaProbeConnected> {
-    const TActorId ReplicaId;
-
-    TEvReplicaProbeConnected(TActorId replicaId)
-        : ReplicaId(replicaId)
-    {}
-};
-
-struct TEvStateStorage::TEvReplicaProbeDisconnected : public TEventLocal<TEvReplicaProbeDisconnected, EvReplicaProbeDisconnected> {
-    const TActorId ReplicaId;
-
-    TEvReplicaProbeDisconnected(TActorId replicaId)
-        : ReplicaId(replicaId)
-    {}
-};
-
 struct TEvStateStorage::TEvResolveReplicas : public TEventLocal<TEvResolveReplicas, EvResolveReplicas> {
     const ui64 TabletID;
     const bool Subscribe;
@@ -185,6 +153,17 @@ struct TEvStateStorage::TEvListStateStorageResult : public TEventLocal<TEvListSt
     TIntrusiveConstPtr<TStateStorageInfo> Info;
 
     TEvListStateStorageResult(const TIntrusiveConstPtr<TStateStorageInfo> &info)
+        : Info(info)
+    {}
+};
+
+struct TEvStateStorage::TEvListBoard : public TEventLocal<TEvListBoard, EvListBoard> {
+};
+
+struct TEvStateStorage::TEvListBoardResult : public TEventLocal<TEvListBoardResult, EvListBoardResult> {
+    TIntrusiveConstPtr<TStateStorageInfo> Info;
+
+    TEvListBoardResult(const TIntrusiveConstPtr<TStateStorageInfo> &info)
         : Info(info)
     {}
 };
@@ -357,7 +336,5 @@ struct TEvStateStorage::TEvReplicaBoardInfoUpdate : public TEventPB<TEvStateStor
         Record.SetPath(path);
     }
 };
-
-IActor* CreateStateStorageReplicaProbe(TActorId replica);
 
 }

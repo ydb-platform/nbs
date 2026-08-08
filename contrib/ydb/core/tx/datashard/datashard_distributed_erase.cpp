@@ -13,7 +13,7 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <contrib/ydb/library/yql/public/udf/udf_types.h>
+#include <yql/essentials/public/udf/udf_types.h>
 
 #include <util/generic/bitmap.h>
 #include <util/generic/hash_set.h>

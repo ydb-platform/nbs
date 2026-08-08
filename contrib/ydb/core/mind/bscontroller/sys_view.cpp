@@ -1,6 +1,7 @@
 #include "sys_view.h"
 #include "group_geometry_info.h"
 #include "storage_stats_calculator.h"
+#include "group_layout_checker.h"
 
 #include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/blobstorage/base/utility.h>
@@ -88,6 +89,7 @@ class TSystemViewsCollector : public TActorBootstrapped<TSystemViewsCollector> {
 
     std::vector<NKikimrSysView::TStorageStatsEntry> StorageStats;
     TActorId StorageStatsCalculatorId;
+    bool InitialCalculation = true;
     static constexpr TDuration StorageStatsUpdatePeriod = TDuration::Minutes(10);
 
 public:
@@ -105,7 +107,6 @@ public:
 
     void Bootstrap(const TActorContext&) {
         Become(&TThis::StateWork);
-        RunStorageStatsCalculator();
     }
 
     STRICT_STFUNC(StateWork,
@@ -130,6 +131,16 @@ public:
         HostRecords = std::move(msg->HostRecords);
         GroupReserveMin = msg->GroupReserveMin;
         GroupReservePart = msg->GroupReservePart;
+
+        if (InitialCalculation) {
+            if (State && HostRecords) {
+                // First time we receive complete BSC state, we need to run storage stats calculator.
+                // We do it here to avoid running it before we have all the data.
+                // Consecutive runs will be scheduled by TEvCalculateStorageStatsRequest event.
+                InitialCalculation = false;
+                RunStorageStatsCalculator();
+            }
+        }
     }
 
     void PassAway() override {
@@ -312,6 +323,7 @@ void CopyInfo(NKikimrSysView::TPDiskInfo* info, const THolder<TBlobStorageContro
     }
     info->SetAvailableSize(pDiskInfo->Metrics.GetAvailableSize());
     info->SetTotalSize(pDiskInfo->Metrics.GetTotalSize());
+    info->SetState(NKikimrBlobStorage::TPDiskState::E_Name(pDiskInfo->Metrics.GetState()));
     info->SetStatusV2(NKikimrBlobStorage::EDriveStatus_Name(pDiskInfo->Status));
     if (pDiskInfo->StatusTimestamp != TInstant::Zero()) {
         info->SetStatusChangeTimestamp(pDiskInfo->StatusTimestamp.GetValue());
@@ -326,7 +338,8 @@ void CopyInfo(NKikimrSysView::TPDiskInfo* info, const THolder<TBlobStorageContro
 
 void SerializeVSlotInfo(NKikimrSysView::TVSlotInfo *pb, const TVDiskID& vdiskId, const NKikimrBlobStorage::TVDiskMetrics& m,
         std::optional<NKikimrBlobStorage::EVDiskStatus> status, NKikimrBlobStorage::TVDiskKind::EVDiskKind kind,
-        bool isBeingDeleted) {
+        bool isBeingDeleted, bool phantomOnly)
+{
     pb->SetGroupId(vdiskId.GroupID.GetRawId());
     pb->SetGroupGeneration(vdiskId.GroupGeneration);
     pb->SetFailRealm(vdiskId.FailRealm);
@@ -341,15 +354,31 @@ void SerializeVSlotInfo(NKikimrSysView::TVSlotInfo *pb, const TVDiskID& vdiskId,
     if (status) {
         pb->SetStatusV2(NKikimrBlobStorage::EVDiskStatus_Name(*status));
     }
+    if (m.HasState()) {
+        pb->SetState(NKikimrWhiteboard::EVDiskState_Name(m.GetState()));
+    }
+    if (m.HasReplicated()) {
+        pb->SetReplicated(m.GetReplicated());
+    }
+    if (m.HasDiskSpace()) {
+        pb->SetDiskSpace(NKikimrWhiteboard::EFlag_Name(m.GetDiskSpace()));
+    }
+    if (m.HasIsThrottling()) {
+        pb->SetIsThrottling(m.GetIsThrottling());
+    }
+    if (m.GetThrottlingRate()) {
+        pb->SetThrottlingRate(m.GetThrottlingRate());
+    }
     pb->SetKind(NKikimrBlobStorage::TVDiskKind::EVDiskKind_Name(kind));
     if (isBeingDeleted) {
         pb->SetIsBeingDeleted(true);
     }
+    pb->SetPhantomOnly(phantomOnly);
 }
 
 void CopyInfo(NKikimrSysView::TVSlotInfo* info, const THolder<TBlobStorageController::TVSlotInfo>& vSlotInfo) {
     SerializeVSlotInfo(info, vSlotInfo->GetVDiskId(), vSlotInfo->Metrics, vSlotInfo->VDiskStatus,
-        vSlotInfo->Kind, vSlotInfo->IsBeingDeleted());
+        vSlotInfo->Kind, vSlotInfo->IsBeingDeleted(), vSlotInfo->IsReplicatingWithPhantomsOnly());
 }
 
 void CopyInfo(NKikimrSysView::TGroupInfo* info, const THolder<TBlobStorageController::TGroupInfo>& groupInfo) {
@@ -381,6 +410,8 @@ void CopyInfo(NKikimrSysView::TGroupInfo* info, const THolder<TBlobStorageContro
     if (latencyStats.GetFast) {
         info->SetGetFastLatency(latencyStats.GetFast->MicroSeconds());
     }
+
+    info->SetLayoutCorrect(groupInfo->LayoutCorrect);
 }
 
 void CopyInfo(NKikimrSysView::TStoragePoolInfo* info, const TBlobStorageController::TStoragePoolInfo& poolInfo) {
@@ -430,12 +461,14 @@ void TBlobStorageController::UpdateSystemViews() {
     for (auto& [key, value] : VSlots) {
         if (!value->VDiskStatus && value->VDiskStatusTimestamp + expiration <= now) {
             value->VDiskStatus = NKikimrBlobStorage::ERROR;
+            value->OnlyPhantomsRemain = false;
             SysViewChangedVSlots.insert(key);
         }
     }
     for (auto& [key, value] : StaticVSlots) {
         if (!value.VDiskStatus && value.VDiskStatusTimestamp + expiration <= now) {
             value.VDiskStatus = NKikimrBlobStorage::ERROR;
+            value.OnlyPhantomsRemain = false;
             SysViewChangedVSlots.insert(key);
         }
     }
@@ -466,6 +499,7 @@ void TBlobStorageController::UpdateSystemViews() {
                 if (pdisk.PDiskMetrics) {
                     pb->SetAvailableSize(pdisk.PDiskMetrics->GetAvailableSize());
                     pb->SetTotalSize(pdisk.PDiskMetrics->GetTotalSize());
+                    pb->SetState(NKikimrBlobStorage::TPDiskState::E_Name(pdisk.PDiskMetrics->GetState()));
                     if (pdisk.PDiskMetrics->HasEnforcedDynamicSlotSize()) {
                         pb->SetEnforcedDynamicSlotSize(pdisk.PDiskMetrics->GetEnforcedDynamicSlotSize());
                     }
@@ -480,7 +514,7 @@ void TBlobStorageController::UpdateSystemViews() {
             if (SysViewChangedVSlots.count(vslotId)) {
                 static const NKikimrBlobStorage::TVDiskMetrics zero;
                 SerializeVSlotInfo(&state.VSlots[vslotId], vslot.VDiskId, vslot.VDiskMetrics ? *vslot.VDiskMetrics : zero,
-                    vslot.VDiskStatus, vslot.VDiskKind, false);
+                    vslot.VDiskStatus, vslot.VDiskKind, false, vslot.IsReplicatingWithPhantomsOnly());
             }
         }
         if (StorageConfig.HasBlobStorageConfig()) {
@@ -499,6 +533,7 @@ void TBlobStorageController::UpdateSystemViews() {
 
                     const NKikimrBlobStorage::TVDiskMetrics zero;
                     std::vector<TGroupDiskInfo> disks;
+                    std::vector<TPDiskId> pdiskIds;
                     for (const auto& realm : group.GetRings()) {
                         for (const auto& domain : realm.GetFailDomains()) {
                             for (const auto& location : domain.GetVDiskLocations()) {
@@ -514,10 +549,28 @@ void TBlobStorageController::UpdateSystemViews() {
                                 if (disk.VDiskMetrics && disk.PDiskMetrics) {
                                     disks.push_back(std::move(disk));
                                 }
+                                pdiskIds.emplace_back(location.GetNodeID(), location.GetPDiskID());
                             }
                         }
                     }
                     CalculateGroupUsageStats(pb, disks, (TBlobStorageGroupType::EErasureSpecies)group.GetErasureSpecies());
+
+                    if (!SelfManagementEnabled) {
+                        pb->SetLayoutCorrect(true);
+                    } else if (auto groupInfo = TBlobStorageGroupInfo::Parse(group, nullptr, nullptr)) {
+                        NLayoutChecker::TGroupLayout layout(groupInfo->GetTopology());
+                        NLayoutChecker::TDomainMapper mapper;
+                        TGroupGeometryInfo geom(groupInfo->Type, StorageConfig.GetSelfManagementConfig().GetGeometry());
+
+                        Y_DEBUG_ABORT_UNLESS(pdiskIds.size() == groupInfo->GetTotalVDisksNum());
+
+                        for (size_t i = 0; i < pdiskIds.size(); ++i) {
+                            const TPDiskId pdiskId = pdiskIds[i];
+                            layout.AddDisk({mapper, HostRecords->GetLocation(pdiskId.NodeId), pdiskId, geom}, i);
+                        }
+
+                        pb->SetLayoutCorrect(layout.IsCorrect());
+                    }
                 }
             }
         }

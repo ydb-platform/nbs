@@ -1,9 +1,9 @@
 #pragma once
 
 #include <contrib/ydb/core/kqp/common/kqp_yql.h>
-#include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
-#include <contrib/ydb/library/yql/core/yql_expr_type_annotation.h>
-#include <contrib/ydb/library/yql/core/yql_opt_utils.h>
+#include <yql/essentials/core/yql_graph_transformer.h>
+#include <yql/essentials/core/yql_expr_type_annotation.h>
+#include <yql/essentials/core/yql_opt_utils.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_settings.h>
 #include <contrib/ydb/core/kqp/provider/yql_kikimr_provider.h>
 
@@ -56,6 +56,9 @@ private:
 
     bool AfterLambdasUnmatched(const TExprNode::TPtr& input);
     
+private:
+    TMaybe<std::pair<TString, TString>> GetTableAndColumnNames(const TCoMember& member);
+
 private:
     THashMap<TExprNode::TPtr, TExprNode::TPtr> KqpTableByExprNode;
     THashMap<TString, THashSet<TString>> ColumnsByTableName;

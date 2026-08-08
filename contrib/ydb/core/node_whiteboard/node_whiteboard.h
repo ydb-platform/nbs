@@ -7,10 +7,14 @@
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo.h>
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo_iter.h>
 #include <contrib/ydb/core/protos/node_whiteboard.pb.h>
+#include <contrib/ydb/core/protos/whiteboard_disk_states.pb.h>
+#include <contrib/ydb/core/protos/whiteboard_flags.pb.h>
+#include <contrib/ydb/core/protos/memory_stats.pb.h>
 #include <contrib/ydb/core/protos/blobstorage_disk.pb.h>
 #include <contrib/ydb/library/actors/interconnect/events_local.h>
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/core/base/tracing.h>
+#include <contrib/ydb/core/protos/blobstorage_vdisk_config.pb.h>
 
 namespace NKikimr {
 
@@ -60,6 +64,7 @@ struct TEvWhiteboard{
         EvVDiskStateGenerationChange,
         EvVDiskDropDonors,
         EvClockSkewUpdate,
+        EvMemoryStatsUpdate,
         EvEnd
     };
 
@@ -220,6 +225,7 @@ struct TEvWhiteboard{
                                      bool replicated,
                                      bool unreplicatedPhantoms,
                                      bool unreplicatedNonPhantoms,
+                                     NKikimrWhiteboard::TVDiskDetailedReplicationStatus::E detailedReplicationStatus,
                                      ui64 unsyncedVDisks,
                                      NKikimrWhiteboard::EFlag frontQueuesLigth,
                                      bool hasUnreadableBlobs) {
@@ -228,6 +234,7 @@ struct TEvWhiteboard{
             Record.SetReplicated(replicated);
             Record.SetUnreplicatedPhantoms(unreplicatedPhantoms);
             Record.SetUnreplicatedNonPhantoms(unreplicatedNonPhantoms);
+            Record.SetDetailedReplicationStatus(detailedReplicationStatus);
             Record.SetUnsyncedVDisks(unsyncedVDisks);
             Record.SetFrontQueues(frontQueuesLigth);
             Record.SetHasUnreadableBlobs(hasUnreadableBlobs);
@@ -380,13 +387,7 @@ struct TEvWhiteboard{
         }
     };
 
-    static TEvSystemStateUpdate *CreateSharedCacheStatsUpdateRequest(ui64 memUsedBytes, ui64 memLimitBytes) {
-        TEvSystemStateUpdate *request = new TEvSystemStateUpdate();
-        auto *pb = request->Record.MutableSharedCacheStats();
-        pb->SetUsedBytes(memUsedBytes);
-        pb->SetLimitBytes(memLimitBytes);
-        return request;
-    }
+    struct TEvMemoryStatsUpdate : TEventPB<TEvMemoryStatsUpdate, NKikimrMemory::TMemoryStats, EvMemoryStatsUpdate> {};
 
     static TEvSystemStateUpdate *CreateTotalSessionsUpdateRequest(ui32 totalSessions) {
         TEvSystemStateUpdate *request = new TEvSystemStateUpdate();
@@ -432,28 +433,8 @@ struct TEvWhiteboard{
 
     struct TEvSystemStateResponse : public TEventPB<TEvSystemStateResponse, NKikimrWhiteboard::TEvSystemStateResponse, EvSystemStateResponse> {};
 
-    struct TEvClockSkewUpdate : TEventPB<TEvClockSkewUpdate, NKikimrWhiteboard::TNodeClockSkew, EvClockSkewUpdate> {
-        TEvClockSkewUpdate() = default;
-
-        TEvClockSkewUpdate(const ui32 peerNodeId, i64 clockSkewUs) {
-            Record.SetPeerNodeId(peerNodeId);
-            Record.SetClockSkewUs(clockSkewUs);
-        }
-    };
-
     struct TEvNodeStateUpdate : TEventPB<TEvNodeStateUpdate, NKikimrWhiteboard::TNodeStateInfo, EvNodeStateUpdate> {
         TEvNodeStateUpdate() = default;
-
-        TEvNodeStateUpdate(const TString& peerName, bool connected) {
-            Record.SetPeerName(peerName);
-            Record.SetConnected(connected);
-        }
-
-        TEvNodeStateUpdate(const TString& peerName, bool connected, NKikimrWhiteboard::EFlag connectStatus) {
-            Record.SetPeerName(peerName);
-            Record.SetConnected(connected);
-            Record.SetConnectStatus(connectStatus);
-        }
     };
 
     struct TEvNodeStateDelete : TEventPB<TEvNodeStateDelete, NKikimrWhiteboard::TNodeStateInfo, EvNodeStateDelete> {
@@ -534,29 +515,8 @@ struct WhiteboardResponse<TEvWhiteboard::TEvNodeStateRequest> {
     using Type = TEvWhiteboard::TEvNodeStateResponse;
 };
 
-template<typename TMessage>
-::google::protobuf::RepeatedField<int> InitDefaultWhiteboardFields() {
-    using namespace ::google::protobuf;
-    const Descriptor& descriptor = *TMessage::GetDescriptor();
-    ::google::protobuf::RepeatedField<int> defaultFields;
-    int fieldCount = descriptor.field_count();
-    for (int index = 0; index < fieldCount; ++index) {
-        const FieldDescriptor* field = descriptor.field(index);
-        const auto& options(field->options());
-        if (options.HasExtension(NKikimrWhiteboard::DefaultField)) {
-            if (options.GetExtension(NKikimrWhiteboard::DefaultField)) {
-                defaultFields.Add(field->number());
-            }
-        }
-    }
-    return defaultFields;
-}
-
-template<typename TMessage>
-::google::protobuf::RepeatedField<int> GetDefaultWhiteboardFields() {
-    static ::google::protobuf::RepeatedField<int> defaultFields = InitDefaultWhiteboardFields<TMessage>();
-    return defaultFields;
-}
+template<typename TResponseType>
+::google::protobuf::RepeatedField<int> GetDefaultWhiteboardFields();
 
 } // NNodeWhiteboard
 } // NKikimr

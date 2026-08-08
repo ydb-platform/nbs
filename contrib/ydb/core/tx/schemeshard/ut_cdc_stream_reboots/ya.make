@@ -4,19 +4,17 @@ FORK_SUBTESTS()
 
 SPLIT_FACTOR(80)
 
-IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
 PEERDIR(
     contrib/ydb/core/tx/schemeshard/ut_helpers
     contrib/ydb/core/persqueue/writer
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/sql/pg_dummy
 )
 
 SRCS(

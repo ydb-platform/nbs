@@ -3,6 +3,7 @@
 #include "rpc_scheme_base.h"
 #include "rpc_common/rpc_common.h"
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/ydb_convert/ydb_convert.h>
 #include <contrib/ydb/core/grpc_services/base/base.h>

@@ -1,0 +1,63 @@
+From b29f2f2d30e0785645c760cd66b3180cc99a0c34 Mon Sep 17 00:00:00 2001
+From: Maxim Deb Natkh <debnatkh@nebius.com>
+Date: Thu, 31 Jul 2025 13:23:34 +0200
+Subject: [PATCH] Use unique_ptr to allocate TInterconnectListenerTCP in
+ kikimr_services_initializers.cpp to aviod memory leak on Bind() failure
+
+---
+ .../driver_lib/run/kikimr_services_initializers.cpp  | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/contrib/ydb/core/driver_lib/run/kikimr_services_initializers.cpp b/contrib/ydb/core/driver_lib/run/kikimr_services_initializers.cpp
+index b8dad074b16..28cca5db1ed 100644
+--- a/contrib/ydb/core/driver_lib/run/kikimr_services_initializers.cpp
++++ b/contrib/ydb/core/driver_lib/run/kikimr_services_initializers.cpp
+@@ -780,14 +780,14 @@ void TBasicServicesInitializer::InitializeServices(NActors::TActorSystemSetup* s
+                     TString address;
+                     if (node.second.first)
+                         address = node.second.first;
+-                    auto listener = new TInterconnectListenerTCP(
++                    auto listener = std::make_unique<TInterconnectListenerTCP>(
+                         address, node.second.second, icCommon);
+                     if (int err = listener->Bind()) {
+                         Cerr << "Failed to set up IC listener on port " << node.second.second
+                             << " errno# " << err << " (" << strerror(err) << ")" << Endl;
+                         exit(1);
+                     }
+-                    setup->LocalServices.emplace_back(MakeInterconnectListenerActorId(false), TActorSetupCmd(listener,
++                    setup->LocalServices.emplace_back(MakeInterconnectListenerActorId(false), TActorSetupCmd(listener.release(),
+                         TMailboxType::ReadAsFilled, interconnectPoolId));
+                 }
+             }
+@@ -801,13 +801,13 @@ void TBasicServicesInitializer::InitializeServices(NActors::TActorSystemSetup* s
+                 if (info.GetAddress()) {
+                     address = info.GetAddress();
+                 }
+-                auto listener = new TInterconnectListenerTCP(address, info.GetPort(), icCommon);
++                auto listener = std::make_unique<TInterconnectListenerTCP>(address, info.GetPort(), icCommon);
+                 if (int err = listener->Bind()) {
+                     Cerr << "Failed to set up IC listener on port " << info.GetPort()
+                         << " errno# " << err << " (" << strerror(err) << ")" << Endl;
+                     exit(1);
+                 }
+-                setup->LocalServices.emplace_back(MakeInterconnectListenerActorId(true), TActorSetupCmd(listener,
++                setup->LocalServices.emplace_back(MakeInterconnectListenerActorId(true), TActorSetupCmd(listener.release(),
+                     TMailboxType::ReadAsFilled, interconnectPoolId));
+             }
+
+@@ -817,13 +817,13 @@ void TBasicServicesInitializer::InitializeServices(NActors::TActorSystemSetup* s
+                     if (nodesManagerConfig.GetEnabled()) {
+                         TFederatedQueryInitializer::SetIcPort(nodesManagerConfig.GetPort());
+                         icCommon->TechnicalSelfHostName = nodesManagerConfig.GetHost();
+-                        auto listener = new TInterconnectListenerTCP({}, nodesManagerConfig.GetPort(), icCommon);
++                        auto listener = std::make_unique<TInterconnectListenerTCP>("", nodesManagerConfig.GetPort(), icCommon);
+                         if (int err = listener->Bind()) {
+                             Cerr << "Failed to set up IC listener on port " << nodesManagerConfig.GetPort()
+                                 << " errno# " << err << " (" << strerror(err) << ")" << Endl;
+                             exit(1);
+                         }
+-                        setup->LocalServices.emplace_back(MakeInterconnectListenerActorId(true), TActorSetupCmd(listener,
++                        setup->LocalServices.emplace_back(MakeInterconnectListenerActorId(true), TActorSetupCmd(listener.release(),
+                             TMailboxType::ReadAsFilled, interconnectPoolId));
+                     }
+                 }

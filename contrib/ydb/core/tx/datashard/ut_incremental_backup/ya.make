@@ -5,12 +5,9 @@ FORK_SUBTESTS()
 SPLIT_FACTOR(4)
 
 IF (SANITIZER_TYPE == "thread" OR WITH_VALGRIND)
-    TIMEOUT(3600)
     SIZE(LARGE)
     TAG(ya:fat)
-    REQUIREMENTS(ram:16)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -22,12 +19,12 @@ PEERDIR(
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    yql/essentials/public/udf/service/exception_policy
     contrib/ydb/public/lib/yson_value
-    contrib/ydb/public/sdk/cpp/client/ydb_datastreams
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public
-    contrib/ydb/public/sdk/cpp/client/ydb_result
+    contrib/ydb/public/sdk/cpp/src/client/datastreams
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public
+    contrib/ydb/public/sdk/cpp/src/client/result
 )
 
 YQL_LAST_ABI_VERSION()
@@ -35,7 +32,5 @@ YQL_LAST_ABI_VERSION()
 SRCS(
     datashard_ut_incremental_backup.cpp
 )
-
-REQUIREMENTS(ram:32)
 
 END()

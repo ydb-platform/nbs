@@ -1,5 +1,4 @@
 #include "agent_impl.h"
-#include "blocks.h"
 
 namespace NKikimr::NBlobDepot {
 
@@ -9,7 +8,6 @@ namespace NKikimr::NBlobDepot {
             const bool SuppressFooter = true;
             const bool IssueUncertainWrites = false;
 
-            std::vector<ui32> BlockChecksRemain;
             ui32 PutsInFlight = 0;
             bool PutsIssued = false;
             bool WaitingForCommitBlobSeq = false;
@@ -44,7 +42,7 @@ namespace NKikimr::NBlobDepot {
                     return EndWithError(NKikimrProto::ERROR, "blob id is zero");
                 }
 
-                BlockChecksRemain.resize(1 + Request.ExtraBlockChecks.size(), 3); // set number of tries for every block
+                BlockChecksRemain = (1 + Request.ExtraBlockChecks.size()) * 3; // set number of tries for every block
                 CheckBlocks();
             }
 
@@ -54,13 +52,9 @@ namespace NKikimr::NBlobDepot {
                     const auto *blkp = i ? &Request.ExtraBlockChecks[i - 1] : nullptr;
                     const ui64 tabletId = blkp ? blkp->first : Request.Id.TabletID();
                     const ui32 generation = blkp ? blkp->second : Request.Id.Generation();
-                    const auto status = Agent.BlocksManager.CheckBlockForTablet(tabletId, generation, this, nullptr);
+                    const auto status = CheckBlockForTablet(tabletId, generation);
                     if (status == NKikimrProto::OK) {
                         continue;
-                    } else if (status != NKikimrProto::UNKNOWN) {
-                        return EndWithError(status, "block race detected");
-                    } else if (!--BlockChecksRemain[i]) {
-                        return EndWithError(NKikimrProto::ERROR, "failed to acquire blocks");
                     } else {
                         someBlocksMissing = true;
                     }
@@ -119,7 +113,9 @@ namespace NKikimr::NBlobDepot {
                     const auto& [id, groupId] = kind.MakeBlobId(Agent, BlobSeqId, type, 0, buffer.size());
                     Y_ABORT_UNLESS(!locator->HasGroupId() || locator->GetGroupId() == groupId);
                     locator->SetGroupId(groupId);
-                    auto ev = std::make_unique<TEvBlobStorage::TEvPut>(id, std::move(buffer), Request.Deadline, Request.HandleClass, Request.Tactic);
+                    auto ev = std::make_unique<TEvBlobStorage::TEvPut>(
+                        id, std::move(buffer), Request.Deadline, Request.HandleClass, Request.Tactic,
+                        Request.WriteSource);
                     ev->ExtraBlockChecks = Request.ExtraBlockChecks;
                     ev->ExtraBlockChecks.emplace_back(Request.Id.TabletID(), Request.Id.Generation());
                     BDEV_QUERY(BDEV10, "TEvPut_sendToProxy", (BlobSeqId, BlobSeqId), (GroupId, groupId), (BlobId, id));

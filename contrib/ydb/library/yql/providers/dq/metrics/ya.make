@@ -11,7 +11,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/actors/core
-    contrib/ydb/library/yql/providers/solomon/async_io
+    contrib/ydb/library/yql/providers/solomon/actors
 )
 
 YQL_LAST_ABI_VERSION()

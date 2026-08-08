@@ -1,6 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/core/grpc_services/rpc_scheme_base.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 #include <contrib/ydb/public/api/grpc/draft/ydb_persqueue_v1.grpc.pb.h>
 #include <contrib/ydb/public/api/protos/persqueue_error_codes_v1.pb.h>
@@ -28,6 +29,10 @@ struct TYdbPqCodes {
         PQCode(PQCode) {}
 };
 
+namespace Ydb::Topic {
+    class CreateTopicRequest;
+    class AlterTopicRequest;
+}
 
 namespace NKikimr::NGRpcProxy::V1 {
 
@@ -82,6 +87,7 @@ namespace NKikimr::NGRpcProxy::V1 {
         const TClientServiceTypes& supportedReadRuleServiceTypes,
         const NKikimrPQ::TPQConfig& pqConfig
     );
+
     TString RemoveReadRuleFromConfig(
         NKikimrPQ::TPQTabletConfig *config,
         const NKikimrPQ::TPQTabletConfig& originalConfig,
@@ -193,7 +199,8 @@ namespace NKikimr::NGRpcProxy::V1 {
                 return static_cast<TDerived*>(this)->HandleCacheNavigateResponse(ev);
             }
             break;
-            case NSchemeCache::TSchemeCacheNavigate::EStatus::PathErrorUnknown: {
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::PathErrorUnknown:
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::AccessDenied: {
                 AddIssue(
                     FillIssue(
                         TStringBuilder() << "path '" << path << "' does not exist or you " <<
@@ -223,6 +230,16 @@ namespace NKikimr::NGRpcProxy::V1 {
                 return RespondWithCode(Ydb::StatusIds::SCHEME_ERROR);
             }
             break;
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::PathNotPath: {
+                AddIssue(
+                    FillIssue(
+                        TStringBuilder() << "path '" << path << "' is not a path",
+                        Ydb::PersQueue::ErrorCode::VALIDATION_ERROR
+                    )
+                );
+                return RespondWithCode(Ydb::StatusIds::SCHEME_ERROR);
+            }
+            break;
             case NSchemeCache::TSchemeCacheNavigate::EStatus::RootUnknown: {
                 AddIssue(
                     FillIssue(
@@ -233,6 +250,16 @@ namespace NKikimr::NGRpcProxy::V1 {
                 return RespondWithCode(Ydb::StatusIds::SCHEME_ERROR);
             }
             break;
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::LookupError:
+            case NSchemeCache::TSchemeCacheNavigate::EStatus::RedirectLookupError: {
+                AddIssue(
+                    FillIssue(
+                        TStringBuilder() << "could not resolve path '" << path << "'",
+                        Ydb::PersQueue::ErrorCode::ERROR
+                    )
+                );
+                return RespondWithCode(Ydb::StatusIds::UNAVAILABLE);
+            }
 
             default:
                 return RespondWithCode(Ydb::StatusIds::GENERIC_ERROR);
@@ -270,8 +297,10 @@ namespace NKikimr::NGRpcProxy::V1 {
         TPQGrpcSchemaBase(NGRpcService::IRequestOpCtx *request, const TString& topicPath)
             : TBase(request)
             , TActorBase(topicPath, this->Request_->GetDatabaseName().GetOrElse(""))
+            , InternalRequest(!!dynamic_cast<NGRpcService::IInternalRequestCtx*>(request))
         {
         }
+
         TPQGrpcSchemaBase(NGRpcService::IRequestOpCtx* request)
             : TBase(request)
             , TActorBase(TBase::GetProtoRequest()->path(), this->Request_->GetDatabaseName().GetOrElse(""))
@@ -279,7 +308,7 @@ namespace NKikimr::NGRpcProxy::V1 {
         }
 
         TString GetTopicPath() const override {
-            auto path = NPersQueue::GetFullTopicPath(this->ActorContext(), this->Request_->GetDatabaseName(), TActorBase::TopicPath);
+            auto path = NPersQueue::GetFullTopicPath(this->Request_->GetDatabaseName(), TActorBase::TopicPath);
             if (PrivateTopicName) {
                 path = JoinPath(ChildPath(NKikimr::SplitPath(path), *PrivateTopicName));
             }
@@ -315,7 +344,7 @@ namespace NKikimr::NGRpcProxy::V1 {
             SetDatabase(proposal.get(), *this->Request_);
             SetPeerName(proposal.get(), *this->Request_);
 
-            if (this->Request_->GetSerializedToken().empty()) {
+            if (this->Request_->GetSerializedToken().empty() && !InternalRequest) {
                 if (AppData(ctx)->EnforceUserTokenRequirement || AppData(ctx)->PQConfig.GetRequireCredentialsInNewProtocol()) {
                     return ReplyWithError(Ydb::StatusIds::UNAUTHORIZED, Ydb::PersQueue::ErrorCode::ACCESS_DENIED,
                                           "Unauthenticated access is forbidden, please provide credentials");
@@ -402,6 +431,7 @@ namespace NKikimr::NGRpcProxy::V1 {
     private:
         TMaybe<TString> PrivateTopicName;
         TMaybe<TString> CdcStreamName;
+        bool InternalRequest = false;
     };
 
     //-----------------------------------------------------------------------------------

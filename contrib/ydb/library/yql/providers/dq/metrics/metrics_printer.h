@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/providers/common/metrics/metrics_registry.h>
+#include <yql/essentials/providers/common/metrics/metrics_registry.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 

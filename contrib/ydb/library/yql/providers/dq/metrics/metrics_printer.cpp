@@ -4,7 +4,7 @@
 #include <contrib/ydb/library/actors/http/http_proxy.h>
 #include <library/cpp/monlib/encode/format.h>
 
-#include <contrib/ydb/library/yql/utils/log/log.h>
+#include <yql/essentials/utils/log/log.h>
 
 namespace NYql {
     using namespace NActors;

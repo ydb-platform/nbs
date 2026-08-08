@@ -1,4 +1,5 @@
 #include <contrib/ydb/core/grpc_services/base/base.h>
+#include <contrib/ydb/core/tx/scheme_board/events.h>
 
 #include <util/system/hostname.h>
 

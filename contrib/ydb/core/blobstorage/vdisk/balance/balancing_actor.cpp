@@ -143,7 +143,7 @@ namespace NBalancing {
 
                 const auto& key = It.GetCurKey().LogoBlobID();
 
-                if (Ctx->Cfg.BalanceOnlyHugeBlobs && !Ctx->HugeBlobCtx->IsHugeBlob(GInfo->Type, key, Ctx->MinREALHugeBlobInBytes)) {
+                if (Ctx->Cfg.BalanceOnlyHugeBlobs && !Ctx->HugeBlobCtx->IsHugeBlob(GInfo->Type, key, Ctx->MinHugeBlobInBytes)) {
                     // skip non huge blobs
                     continue;
                 }
@@ -273,7 +273,7 @@ namespace NBalancing {
                         }
                     }
                 } else {
-                    Y_VERIFY_DEBUG_S(false, "Part not found in TryDeletePartsFullData");
+                    Y_DEBUG_ABORT_S("Part not found in TryDeletePartsFullData");
                 }
             }
         }

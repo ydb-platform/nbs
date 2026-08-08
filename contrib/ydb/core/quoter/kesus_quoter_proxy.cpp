@@ -8,7 +8,7 @@
 #include <contrib/ydb/core/kesus/tablet/quoter_constants.h>
 
 #include <contrib/ydb/library/time_series_vec/time_series_vec.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
@@ -41,7 +41,9 @@
 namespace NKikimr {
 namespace NQuoter {
 
-using NKesus::TEvKesus;
+namespace TEvKesus = NKesus::TEvKesus;
+
+const ui64 KesusReconnectLimit = 5;
 
 class TKesusQuoterProxy : public TActorBootstrapped<TKesusQuoterProxy> {
     struct TResourceState {
@@ -289,12 +291,15 @@ class TKesusQuoterProxy : public TActorBootstrapped<TKesusQuoterProxy> {
     bool Connected = false;
     TInstant DisconnectTime;
     ui64 OfflineAllocationCookie = 0;
+    ui64 KesusReconnectCount = 0;
 
     TMap<TString, THolder<TResourceState>> Resources; // Map because iterators are needed to remain valid during insertions.
     THashMap<ui64, decltype(Resources)::iterator> ResIndex;
 
     THashMap<ui64, std::vector<TString>> CookieToResourcePath;
     ui64 NextCookie = 1;
+
+    TInstant NextReplicationReport = TInstant::Max();
 
     THolder<NKesus::TEvKesus::TEvUpdateConsumptionState> UpdateEv;
     THolder<NKesus::TEvKesus::TEvAccountResources> AccountEv;
@@ -389,6 +394,13 @@ private:
         }
     }
 
+    void SetResProps(TResourceState* resState, const NKikimrKesus::TStreamingQuoterResource& props) {
+        resState->SetProps(props, ServerVersion);
+        if (resState->ReplicationReportPeriod != TDuration::Max()) {
+            NextReplicationReport = Min(NextReplicationReport, TActivationContext::Now());
+        }
+    }
+
     TResourceState* FindResource(ui64 id) {
         const auto indexIt = ResIndex.find(id);
         return indexIt != ResIndex.end() ? indexIt->second->second.Get() : nullptr;
@@ -435,9 +447,14 @@ private:
                         << "Connected: " << (Connected ? "true" : "false") << "\n"
                         << "DisconnectTime: " << DisconnectTime << "\n"
                         << "Resources:\n";
+                    bool firstRes = true;
                     for (auto& [name, res] : Resources) {
+                        if (firstRes) {
+                            firstRes = false;
+                        } else {
+                            str << "\n";
+                        }
                         str << "  Resource: " << name << "\n";
-
                         if (res) {
                             str << "  Id: " << res->ResId << "\n"
                                 << "  Available: " << res->Available << "\n"
@@ -458,17 +475,23 @@ private:
                                 << "  Props: " << res->Props.ShortDebugString() << "\n";
                         }
                     }
-                    str << "UpdateEv: " << (UpdateEv ? "" : "null") << "\n";
+                    str << "UpdateEv: ";
                     if (UpdateEv) {
-
+                        str << UpdateEv->Record.ResourcesInfoSize() << "\n";
+                    } else {
+                        str << "null" << "\n";
                     }
-                    str << "AccountEv: " << (AccountEv ? "" : "null") << "\n";
+                    str << "AccountEv: ";
                     if (AccountEv) {
-
+                        str << AccountEv->Record.ResourcesInfoSize() << "\n";
+                    } else {
+                        str << "null" << "\n";
                     }
-                    str << "ReplicationEv: " << (ReplicationEv ? "" : "null") << "\n";
+                    str << "ReplicationEv: ";
                     if (ReplicationEv) {
-
+                        str << ReplicationEv->Record.ResourcesInfoSize() << "\n";
+                    } else {
+                        str << "null" << "\n";
                     }
                 }
                 str << "</div>";
@@ -572,33 +595,40 @@ private:
     }
 
     void SendDeferredEvents() {
-        for (auto& [_, res] : Resources) {
-            if (res->ReplicationEnabled) {
-                CheckReplicationReport(*res, TActivationContext::Now());
+        const TInstant now = TActivationContext::Now();
+        if (NextReplicationReport != TInstant::Max() && now >= NextReplicationReport) {
+            NextReplicationReport = TInstant::Max();
+            for (auto& [_, res] : Resources) {
+                if (res->ReplicationEnabled) {
+                    CheckReplicationReport(*res, now);
+                }
             }
         }
 
-        if (Connected && UpdateEv) {
-            KESUS_PROXY_LOG_TRACE("UpdateConsumptionState(" << UpdateEv->Record << ")");
-            NTabletPipe::SendData(SelfId(), KesusPipeClient, UpdateEv.Release());
-        }
-        UpdateEv.Reset();
+        if (Connected) {
+            if (UpdateEv) {
+                KESUS_PROXY_LOG_TRACE("UpdateConsumptionState(" << UpdateEv->Record << ")");
+                NTabletPipe::SendData(SelfId(), KesusPipeClient, UpdateEv.Release());
+            }
 
-        if (Connected && AccountEv && AccountEv->Record.GetResourcesInfo().size() > 0) {
-            KESUS_PROXY_LOG_TRACE("AccountResources(" << AccountEv->Record << ")");
-            NTabletPipe::SendData(SelfId(), KesusPipeClient, AccountEv.Release());
-        }
-        AccountEv.Reset();
+            if (AccountEv && AccountEv->Record.GetResourcesInfo().size() > 0) {
+                KESUS_PROXY_LOG_TRACE("AccountResources(" << AccountEv->Record << ")");
+                NTabletPipe::SendData(SelfId(), KesusPipeClient, AccountEv.Release());
+            }
 
-        if (Connected && ReplicationEv && ReplicationEv->Record.GetResourcesInfo().size() > 0) {
-            KESUS_PROXY_LOG_TRACE("ReportResources(" << ReplicationEv->Record << ")");
-            NTabletPipe::SendData(SelfId(), KesusPipeClient, ReplicationEv.Release());
+            if (ReplicationEv && ReplicationEv->Record.GetResourcesInfo().size() > 0) {
+                KESUS_PROXY_LOG_TRACE("ReportResources(" << ReplicationEv->Record << ")");
+                NTabletPipe::SendData(SelfId(), KesusPipeClient, ReplicationEv.Release());
+            }
         }
-        ReplicationEv.Reset();
 
         if (ProxyUpdateEv && ProxyUpdateEv->Resources) {
             SendToService(std::move(ProxyUpdateEv));
         }
+
+        UpdateEv.Reset();
+        AccountEv.Reset();
+        ReplicationEv.Reset();
     }
 
     void ScheduleOfflineAllocation() {
@@ -710,7 +740,8 @@ private:
     }
 
     void ReportReplicationSession(TResourceState& res) {
-        if (Connected && res.ReplicationEnabled) {
+        if (Connected) {
+            Y_ASSERT(res.ReplicationEnabled);
             InitReplicationEv();
             auto* resInfo = ReplicationEv->Record.AddResourcesInfo();
             resInfo->SetResourceId(res.ResId);
@@ -796,6 +827,7 @@ private:
         if (ev->Get()->Status == NKikimrProto::OK) {
             KESUS_PROXY_LOG_DEBUG("Successfully connected to tablet");
             Connected = true;
+            KesusReconnectCount = 0;
             SubscribeToAllResources();
         } else {
             if (ev->Get()->Dead) {
@@ -803,7 +835,13 @@ private:
                 SendToService(CreateUpdateEvent(TEvQuota::EUpdateState::Broken));
             } else {
                 KESUS_PROXY_LOG_WARN("Failed to connect to tablet. Status: " << ev->Get()->Status);
-                ConnectToKesus(true);
+                if (++KesusReconnectCount <= KesusReconnectLimit) {
+                    ConnectToKesus(true);
+                } else {
+                    KESUS_PROXY_LOG_WARN("Too many reconnect attempts in a row, assuming kesus dead");
+                    SendToService(CreateUpdateEvent(TEvQuota::EUpdateState::Broken));
+                    KesusReconnectCount = 0;
+                }
             }
         }
     }
@@ -815,6 +853,7 @@ private:
         ConnectToKesus(true);
         DisconnectTime = TActivationContext::Now();
         OfflineAllocationCookie = NextCookie++;
+        NextReplicationReport = TInstant::Max();
         MarkAllActiveResourcesForOfflineAllocation();
         if (Counters.Disconnects) {
             ++*Counters.Disconnects;
@@ -834,7 +873,8 @@ private:
                 if (resourceIt != Resources.end()) {
                     auto* resState = resourceIt->second.Get();
                     Y_ABORT_UNLESS(resState != nullptr);
-                    if (resResult.GetError().GetStatus() == Ydb::StatusIds::SUCCESS) {
+                    const Ydb::StatusIds::StatusCode resStatus = resResult.GetError().GetStatus();
+                    if (resStatus == Ydb::StatusIds::SUCCESS) {
                         KESUS_PROXY_LOG_INFO("Initialized new session with resource \"" << resourcePaths[i] << "\"");
                         if (resState->ResId != Max<ui64>() && resState->ResId != resResult.GetResourceId()) { // Kesus was disconnected and then resource was recreated.
                             BreakResource(*resState, GetProxyUpdateEv());
@@ -842,7 +882,7 @@ private:
                         }
                         resState->ResId = resResult.GetResourceId();
                         ResIndex[resState->ResId] = resourceIt;
-                        resourceIt->second->SetProps(resResult.GetEffectiveProps(), ServerVersion);
+                        SetResProps(resourceIt->second.Get(), resResult.GetEffectiveProps());
                         if (resourceIt->second->ReplicationEnabled) { // use initial availiable only in replicated mode
                             resourceIt->second->SetAvailable(resResult.GetInitialAvailable());
                         }
@@ -851,7 +891,11 @@ private:
                         SendProxySessionIfNotSent(resState);
                     } else {
                         // TODO: make cache with error results.
-                        KESUS_PROXY_LOG_WARN("Resource \"" << resourcePaths[i] << "\" session initialization error: " << KesusErrorToString(resResult.GetError()));
+                        if (resStatus == Ydb::StatusIds::NOT_FOUND) {
+                            KESUS_PROXY_LOG_INFO("Resource \"" << resourcePaths[i] << "\" session initialization error: " << KesusErrorToString(resResult.GetError()));
+                        } else {
+                            KESUS_PROXY_LOG_ERROR("Resource \"" << resourcePaths[i] << "\" session initialization error: " << KesusErrorToString(resResult.GetError()));
+                        }
                         ProcessSubscribeResourceError(resResult.GetError().GetStatus(), resState);
                     }
                 }
@@ -871,7 +915,7 @@ private:
                 const auto amount = allocatedInfo.GetAmount();
                 KESUS_PROXY_LOG_TRACE("Kesus allocated {\"" << res->Resource << "\", " << amount << "}");
                 if (allocatedInfo.HasEffectiveProps()) { // changed
-                    res->SetProps(allocatedInfo.GetEffectiveProps(), ServerVersion);
+                    SetResProps(res, allocatedInfo.GetEffectiveProps());
                 }
                 res->SetAvailable(res->Available + amount);
                 res->LastAllocated = now;
@@ -1038,14 +1082,15 @@ private:
     }
 
     void CheckReplicationReport(TResourceState& res, TInstant now) {
-        if (res.LastReplicationReport + res.ReplicationReportPeriod < now) {
+        Y_ASSERT(res.ReplicationReportPeriod < TDuration::Max());
+        if (res.LastReplicationReport + res.ReplicationReportPeriod <= now) {
             ReportReplicationSession(res);
             // `LastReplicationReport` must be aligned to send resources' stats in one message
             // in case they have the same `ReportPeriod`
-            Y_ASSERT(res.ReplicationReportPeriod < TDuration::Max());
             ui64 periodUs = res.ReplicationReportPeriod.MicroSeconds();
             res.LastReplicationReport = TInstant::MicroSeconds(now.MicroSeconds() / periodUs * periodUs);
         }
+        NextReplicationReport = Min(NextReplicationReport, res.LastReplicationReport + res.ReplicationReportPeriod);
     }
 
     static TString GetLogPrefix(const TVector<TString>& path) {
@@ -1117,9 +1162,8 @@ public:
         return KesusInfo->Description.GetKesusTabletId();
     }
 
-    NTabletPipe::TClientConfig GetPipeConnectionOptions(bool reconnection) {
+    static NTabletPipe::TClientConfig GetPipeConnectionOptions(bool reconnection) {
         NTabletPipe::TClientConfig cfg;
-        cfg.CheckAliveness = true;
         cfg.RetryPolicy = {
             .RetryLimitCount = 3u,
             .DoFirstRetryInstantly = !reconnection

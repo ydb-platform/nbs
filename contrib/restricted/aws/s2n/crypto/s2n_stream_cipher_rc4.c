@@ -30,7 +30,7 @@ static const EVP_CIPHER *s2n_evp_rc4()
 #endif
 }
 
-static uint8_t s2n_stream_cipher_rc4_available()
+static uint8_t s2n_stream_cipher_rc4_available(void)
 {
     if (s2n_is_in_fips_mode()) {
         return 0;

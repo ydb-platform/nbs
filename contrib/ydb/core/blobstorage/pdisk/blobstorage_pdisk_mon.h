@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/blobstorage/base/common_latency_hist_bounds.h>
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
+#include <contrib/ydb/core/base/blobstorage_write_source.h>
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/protos/blobstorage_disk.pb.h>
 #include <contrib/ydb/core/protos/node_whiteboard.pb.h>
@@ -12,6 +13,7 @@
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/dynamic_counters/percentile/percentile_lg.h>
+#include <util/generic/vector.h>
 
 
 namespace NKikimr {
@@ -29,7 +31,7 @@ public:
 
     void Initialize(const TIntrusivePtr<::NMonitoring::TDynamicCounters> &counters,
                     const TString& group, const TString& subgroup, const TString& name,
-                    const TVector<float> &thresholds, 
+                    const TVector<float> &thresholds,
                     NMonitoring::TCountableBase::EVisibility visibility = NMonitoring::TCountableBase::EVisibility::Public) {
         Tracker.Initialize(counters, group, subgroup, name, thresholds, visibility);
     }
@@ -85,7 +87,7 @@ struct TPDiskMon {
             BootingCommonLogRead,
             BootingFormatMagicChecking,
             BootingDeviceFormattingAndTrimming,
-            ErrorInitialFormatRead,
+            ErrorInitialFormatRead, // deprecated; kept for backward compatibility, replaced with two following states
             ErrorInitialFormatReadDueToGuid,
             ErrorInitialFormatReadIncompleteFormat,
             ErrorDiskCannotBeFormated,
@@ -124,7 +126,7 @@ struct TPDiskMon {
         static const char *DetailedStateToStr(i64 val) {
             switch (val) {
                 case EverythingIsOk: return "EverythingIsOk";
-                case BootingFormatRead: return "BootingSysLogRead";
+                case BootingFormatRead: return "BootingFormatRead";
                 case BootingSysLogRead: return "BootingSysLogRead";
                 case BootingCommonLogRead: return "BootingCommonLogRead";
                 case BootingFormatMagicChecking: return "BootingFormatMagicChecking";
@@ -212,10 +214,10 @@ struct TPDiskMon {
             }
         }
 
-        void UpdateEnded() {
+        float UpdateEnded() {
             NHPTimer::STime updateEndedAt = HPNow();
+            float entireUpdateMs = HPMilliSecondsFloat(updateEndedAt - BeginUpdateAt);
             if (IsLwProbeEnabled) {
-                float entireUpdateMs = HPMilliSecondsFloat(updateEndedAt - BeginUpdateAt);
                 float inputQueueMs = HPMilliSecondsFloat(SchedulingStartAt - BeginUpdateAt);
                 float schedulingMs = HPMilliSecondsFloat(ProcessingStartAt - SchedulingStartAt);
                 float processingMs = HPMilliSecondsFloat(WaitingStartAt - ProcessingStartAt);
@@ -224,6 +226,7 @@ struct TPDiskMon {
                         schedulingMs, processingMs, waitingMs);
             }
             BeginUpdateAt = updateEndedAt;
+            return entireUpdateMs;
         }
     };
 
@@ -244,13 +247,16 @@ struct TPDiskMon {
     // statistics subgroup
     TIntrusivePtr<::NMonitoring::TDynamicCounters> StatsGroup;
     ::NMonitoring::TDynamicCounters::TCounterPtr FreeSpacePerMile;
-    ::NMonitoring::TDynamicCounters::TCounterPtr UsedSpacePerMile;
+    ::NMonitoring::TDynamicCounters::TCounterPtr UsedSpacePerMile; // reflects PDiskUsage
     ::NMonitoring::TDynamicCounters::TCounterPtr SplicedLogChunks;
 
     ::NMonitoring::TDynamicCounters::TCounterPtr TotalSpaceBytes;
     ::NMonitoring::TDynamicCounters::TCounterPtr FreeSpaceBytes;
     ::NMonitoring::TDynamicCounters::TCounterPtr UsedSpaceBytes;
     ::NMonitoring::TDynamicCounters::TCounterPtr SectorMapAllocatedBytes;
+
+    ::NMonitoring::TDynamicCounters::TCounterPtr NumActiveSlots;
+    ::NMonitoring::TDynamicCounters::TCounterPtr ExpectedSlotCount;
 
     // states subgroup
     TIntrusivePtr<::NMonitoring::TDynamicCounters> StateGroup;
@@ -410,6 +416,8 @@ struct TPDiskMon {
     ::NMonitoring::TDynamicCounters::TCounterPtr BandwidthPChunkReadPayload;
     ::NMonitoring::TDynamicCounters::TCounterPtr BandwidthPChunkReadSectorFooter;
 
+    ::NMonitoring::TDynamicCounters::TCounterPtr WriteBufferCompactedBytes;
+
     struct TIoCounters {
         ::NMonitoring::TDynamicCounters::TCounterPtr Requests;
         ::NMonitoring::TDynamicCounters::TCounterPtr Bytes;
@@ -464,6 +472,23 @@ struct TPDiskMon {
         }
     };
 
+    struct TOpCounters {
+        ::NMonitoring::TDynamicCounters::TCounterPtr Requests;
+        ::NMonitoring::TDynamicCounters::TCounterPtr Bytes;
+
+        void Setup(TString metricPrefix, const TIntrusivePtr<::NMonitoring::TDynamicCounters>& group, TString opName,
+                NMonitoring::TCountableBase::EVisibility vis) {
+            TIntrusivePtr<::NMonitoring::TDynamicCounters> subgroup = group->GetSubgroup("op", opName);
+            Requests = subgroup->GetCounter(metricPrefix + "RequestsByOp", true, vis);
+            Bytes = subgroup->GetCounter(metricPrefix + "BytesByOp", true, vis);
+        }
+
+        void CountRequest(ui32 size) {
+            Requests->Inc();
+            *Bytes += size;
+        }
+    };
+
     // yard subgroup
     TIntrusivePtr<::NMonitoring::TDynamicCounters> PDiskGroup;
     TReqCounters YardInit;
@@ -475,13 +500,18 @@ struct TPDiskMon {
     TReqCounters YardSlay;
     TReqCounters YardControl;
 
+    TReqCounters ShredPDisk;
+    TReqCounters PreShredCompactVDisk;
+    TReqCounters ShredVDiskResult;
+    TReqCounters MarkDirty;
+
     TIoCounters WriteSyncLog;
     TIoCounters WriteFresh;
     TIoCounters WriteHugeAsync;
     TIoCounters WriteHugeUser;
     TIoCounters WriteComp;
     TIoCounters Trim;
-
+    TIoCounters ChunkShred;
     TIoCounters ReadSyncLog;
     TIoCounters ReadComp;
     TIoCounters ReadOnlineRt;
@@ -494,8 +524,10 @@ struct TPDiskMon {
     TIoCounters WriteLog;
     TReqCounters WriteHugeLog;
     TIoCounters LogRead;
+    TVector<TOpCounters> LogWriteOpCounters;
+    TVector<TOpCounters> ChunkWriteOpCounters;
 
-
+public:
     // Halter
     i64 LastHaltDeviceTakeoffs = 0;
     i64 LastHaltDeviceLandings = 0;
@@ -518,9 +550,10 @@ struct TPDiskMon {
     void UpdateLights();
     bool UpdateDeviceHaltCounters();
     void UpdateStats();
+    void CountLogWriteOpRequest(const TWriteSource& source, ui32 size);
+    void CountChunkWriteOpRequest(const TWriteSource& source, ui32 size);
     TIoCounters *GetWriteCounter(ui8 priority);
     TIoCounters *GetReadCounter(ui8 priority);
 };
 
 } // NKikimr
-

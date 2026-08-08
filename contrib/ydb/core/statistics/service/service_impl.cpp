@@ -16,6 +16,7 @@
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/protos/statistics.pb.h>
 #include <contrib/ydb/core/protos/data_events.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -23,9 +24,10 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/datetime/cputimer.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_proto/accessor.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
+#include <ydb-cpp-sdk/client/proto/accessor.h>
 #include <contrib/ydb/core/grpc_services/local_rpc/local_rpc.h>
 
 namespace NKikimr {
@@ -186,7 +188,7 @@ public:
         if (mon) {
             NMonitoring::TIndexMonPage *actorsMonPage = mon->RegisterIndexPage("actors", "Actors");
             mon->RegisterActorPage(actorsMonPage, "statservice", "Statistics service",
-                false, TlsActivationContext->ExecutorThread.ActorSystem, SelfId());
+                false, TActivationContext::ActorSystem(), SelfId());
         }
 
         Become(&TStatService::StateWork);
@@ -270,7 +272,7 @@ private:
 
         auto policy = NTabletPipe::TClientRetryPolicy::WithRetries();
         policy.RetryLimitCount = 2;
-        NTabletPipe::TClientConfig pipeConfig{policy};
+        NTabletPipe::TClientConfig pipeConfig{.RetryPolicy = policy};
         pipeConfig.ForceLocal = true;
         localTablets.TabletsPipes[tabletId] = Register(NTabletPipe::CreateClient(SelfId(), tabletId, pipeConfig));
     }
@@ -293,7 +295,7 @@ private:
 
             for (auto& statistic : column.GetStatistics()) {
                 if (statistic.GetType() == NKikimr::NStat::COUNT_MIN_SKETCH) {
-                    auto data = statistic.GetData().Data();
+                    auto data = statistic.GetData().data();
                     auto sketch = reinterpret_cast<const TCountMinSketch*>(data);
                     auto& current = AggregationStatistics.CountMinSketches[tag];
 
@@ -516,7 +518,7 @@ private:
             auto data = it->second.Statistics->AsStringBuf();
             auto statistics = column->AddStatistics();
             statistics->SetType(NKikimr::NStat::COUNT_MIN_SKETCH);
-            statistics->SetData(data.Data(), data.Size());
+            statistics->SetData(data.data(), data.size());
         }
 
         auto failedTablets = record.MutableFailedTablets();
@@ -694,15 +696,9 @@ private:
                 while(parser.TryNextRow()) {
                     auto& col = parser.ColumnParser("data");
                     // may be not optional from versions before fix of bug https://github.com/ydb-platform/ydb/issues/15701
-                    if (col.GetKind() == NYdb::TTypeParser::ETypeKind::Optional) {
-                        if (auto opt = col.GetOptionalString()) {
-                            query_response->Data = opt.GetRef();
-                        } else {
-                            query_response->Data.reset();
-                        }
-                    } else {
-                        query_response->Data = col.GetString();
-                    }
+                    query_response->Data = col.GetKind() == NYdb::TTypeParser::ETypeKind::Optional
+                        ? col.GetOptionalString()
+                        : col.GetString();
                  }
             } else {
                 SA_LOG_E("[TStatService::ReadRowsResponse] QueryId[ "
@@ -1054,13 +1050,13 @@ private:
             columnTags->Add(tag);
         }
 
-        const auto round = AggregationStatistics.Round;
-        NTabletPipe::SendData(SelfId(), clientId, request.release(), round);
-        Schedule(Settings.StatisticsRequestTimeout, new TEvPrivate::TEvStatisticsRequestTimeout(round, tabletId));
-
         SA_LOG_D("TEvStatisticsRequest send"
             << ", client id = " << clientId
             << ", path = " << *path);
+
+        const auto round = AggregationStatistics.Round;
+        NTabletPipe::SendData(SelfId(), clientId, request.release(), round);
+        Schedule(Settings.StatisticsRequestTimeout, new TEvPrivate::TEvStatisticsRequestTimeout(round, tabletId));
     }
 
     void OnTabletError(ui64 tabletId) {
@@ -1217,7 +1213,7 @@ private:
             return;
         }
         auto policy = NTabletPipe::TClientRetryPolicy::WithRetries();
-        NTabletPipe::TClientConfig pipeConfig{policy};
+        NTabletPipe::TClientConfig pipeConfig{.RetryPolicy = policy};
         SAPipeClientId = Register(NTabletPipe::CreateClient(SelfId(), StatisticsAggregatorId, pipeConfig));
 
         SA_LOG_D("ConnectToSA(), pipe client id = " << SAPipeClientId);

@@ -9,7 +9,7 @@
 #include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>
-#include <contrib/ydb/library/yql/public/issue/protos/issue_severity.pb.h>
+#include <yql/essentials/public/issue/protos/issue_severity.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
