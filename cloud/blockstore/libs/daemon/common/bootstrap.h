@@ -54,6 +54,7 @@ protected:
     IRequestStatsPtr RequestStats;
     IVolumeStatsPtr VolumeStats;
     IServerStatsPtr ServerStats;
+    IStatsUpdaterPtr CriticalEventsStatsUpdater;
     IStatsUpdaterPtr ServerStatsUpdater;
     TVector<ITraceReaderPtr> TraceReaders;
     ITraceProcessorPtr TraceProcessor;

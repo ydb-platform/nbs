@@ -297,6 +297,8 @@ void TBootstrapBase::Init()
         ->GetSubgroup("counters", "blockstore");
 
     auto serverGroup = rootGroup->GetSubgroup("component", "server");
+    auto serviceVolumeGroup =
+        rootGroup->GetSubgroup("component", "service_volume");
     auto revisionGroup = serverGroup->GetSubgroup("revision", GetFullVersionString());
 
     auto versionCounter = revisionGroup->GetCounter(
@@ -305,6 +307,16 @@ void TBootstrapBase::Init()
     *versionCounter = 1;
 
     InitCriticalEventsCounter(serverGroup);
+    InitVolumeCriticalEventsCounter(serviceVolumeGroup);
+
+    STORAGE_INFO("CriticalEvents counters initialized");
+
+    CriticalEventsStatsUpdater = CreateStatsUpdater(
+        Timer,
+        BackgroundScheduler,
+        CreateCriticalEventsStatsHandler());
+
+    STORAGE_INFO("CriticalEventsStatsUpdater initialized");
 
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback())
@@ -1020,6 +1032,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(GrpcEndpointListener);
     START_COMMON_COMPONENT(Executor);
     START_COMMON_COMPONENT(Server);
+    START_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     START_COMMON_COMPONENT(ServerStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
@@ -1091,6 +1104,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(GetTraceServiceClient());
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
+    STOP_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
     STOP_COMMON_COMPONENT(Server);
     STOP_COMMON_COMPONENT(CertificateProvider);
