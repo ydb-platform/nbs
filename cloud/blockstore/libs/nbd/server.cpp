@@ -23,6 +23,7 @@
 #include <util/thread/singleton.h>
 
 #include <atomic>
+#include <functional>
 
 namespace NCloud::NBlockStore::NBD {
 
@@ -65,11 +66,13 @@ private:
     TContExecutor* Executor;
     ILimiterPtr Limiter;
     IServerHandlerPtr Handler;
+    std::function<bool(TConnection*)> ConnectionNegotiatedHandler;
     TSocketHolder Socket;
 
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
 
     size_t InFlightBytes = 0;
+    std::atomic_bool ReportErrors = false;
     std::atomic_flag ShuttingDown = false;
 
 public:
@@ -78,12 +81,14 @@ public:
             TContExecutor* e,
             ILimiterPtr limiter,
             IServerHandlerPtr handler,
+            std::function<bool(TConnection*)> connectionNegotiatedHandler,
             TSocketHolder socket)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(e)
         , Limiter(std::move(limiter))
         , Handler(std::move(handler))
+        , ConnectionNegotiatedHandler(std::move(connectionNegotiatedHandler))
         , Socket(std::move(socket))
         , ResponseQueue(e)
     {}
@@ -101,6 +106,7 @@ public:
 
     void Stop() override
     {
+        ReportErrors.store(false, std::memory_order_release);
         ShutDown();
     }
 
@@ -181,7 +187,7 @@ private:
             if (!IsShuttingDown() && !c->Cancelled()) {
                 STORAGE_INFO("lost connection with client, failed to receive: "
                     << CurrentExceptionMessage());
-                Handler->ProcessException(std::current_exception());
+                ReportException(std::current_exception());
             }
         }
 
@@ -192,7 +198,10 @@ private:
     {
         TContIO io(Socket, c);
 
-        if (Handler->NegotiateClient(io, io)) {
+        if (Handler->NegotiateClient(io, io) &&
+            ConnectionNegotiatedHandler(this))
+        {
+            ReportErrors.store(true, std::memory_order_release);
             Handler->ProcessRequests(this, io, io, c);
         }
     }
@@ -205,7 +214,7 @@ private:
         while (ResponseQueue.Dequeue(&response)) {
             if (!response) {
                 // stop signal received
-                Handler->ProcessException(
+                ReportException(
                     std::make_exception_ptr(TSystemError(-ESHUTDOWN)));
                 break;
             }
@@ -215,7 +224,7 @@ private:
             } catch (...) {
                 STORAGE_INFO("lost connection with client, failed to send: "
                     << CurrentExceptionMessage());
-                Handler->ProcessException(std::current_exception());
+                ReportException(std::current_exception());
             }
 
             ReleaseRequest(response->RequestBytes);
@@ -253,6 +262,15 @@ private:
         return false;
     }
 
+    void ReportException(std::exception_ptr e)
+    {
+        if (ReportErrors.load(std::memory_order_acquire) &&
+            !IsShuttingDown())
+        {
+            Handler->ProcessException(std::move(e));
+        }
+    }
+
     void ShutDown()
     {
         if (!ShuttingDown.test_and_set(std::memory_order_acq_rel)) {
@@ -284,6 +302,7 @@ private:
 
     std::unique_ptr<TContListener> Listener;
     TConnectionPtr Connection;
+    TConnectionPtr CandidateConnection;
 
 public:
     TEndpoint(
@@ -337,6 +356,10 @@ public:
                 Connection->Stop();
             };
 
+            if (CandidateConnection) {
+                CandidateConnection->Stop();
+            }
+
             if (Listener) {
                 Listener->Stop();
             }
@@ -363,25 +386,43 @@ private:
     {
         TSocketHolder socket(accept.S->Release());
 
-        auto address = NAddr::GetSockAddr(socket);
+        auto address = NAddr::GetPeerAddr(socket);
         STORAGE_DEBUG("new connection from " << PrintHostAndPort(*address));
 
         if (IsTcpAddress(*address)) {
             SetNoDelay(socket, true);
         }
 
-        if (Connection) {
-            Connection->Stop();
+        if (CandidateConnection) {
+            CandidateConnection->Stop();
         }
 
-        Connection = MakeIntrusive<TConnection>(
+        CandidateConnection = MakeIntrusive<TConnection>(
             AppCtx,
             Executor,
             Limiter,
             HandlerFactory->CreateHandler(),
+            [this](TConnection* connection) {
+                return ActivateConnection(connection);
+            },
             std::move(socket));
 
-        Connection->Start();
+        CandidateConnection->Start();
+    }
+
+    bool ActivateConnection(TConnection* connection)
+    {
+        if (CandidateConnection.Get() != connection) {
+            return false;
+        }
+
+        if (Connection) {
+            Connection->Stop();
+        }
+
+        Connection = CandidateConnection;
+        CandidateConnection.Reset();
+        return true;
     }
 
     void OnError() override
