@@ -7,6 +7,8 @@
 
 namespace NCloud::NBlockStore {
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 
 using namespace NMonitoring;
@@ -97,20 +99,19 @@ Y_UNIT_TEST_SUITE(TCriticalEventsTest)
 
 Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 {
-    // Per-disk GAUGE counters are emitted by the shadow-swap flush,
-    // while the deprecated AppCriticalEvents/* counter (under
-    // component=server) is bumped synchronously
+    // Per-disk GAUGE counters are emitted by the shadow-swap publish,
+    // while the deprecated AppCriticalEvents/* counter is bumped synchronously
     Y_UNIT_TEST(ShouldEmitPerDiskCountersForVolumeCriticalEvents)
     {
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto serverGroup = root->GetSubgroup("component", "server");
-        auto serviceVolumeGroup =
-            root->GetSubgroup("component", "service_volume");
+        auto criticalEventsGroup = root->GetSubgroup("component", "server");
+        auto volumeCriticalEventsGroup =
+            root->GetSubgroup("component", "server");
 
-        InitCriticalEventsCounter(serverGroup);
-        InitVolumeCriticalEventsCounter(serviceVolumeGroup);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
         auto handler = CreateCriticalEventsStatsHandler();
 
@@ -129,42 +130,42 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         UNIT_ASSERT_STRING_CONTAINS(ret1, "folder-1");
 
         // Before the flush the per-disk GAUGE is not yet materialized:
-        // the hot path only bumps the Internal accumulator.
-        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
+        // the hot path only bumps the Unpublished accumulator.
+        auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(
             !volumeGroup || !volumeGroup->FindCounter(GetVolumeSensorName()));
 
         // Deprecated counter is bumped synchronously.
         auto deprecatedCounter =
-            serverGroup->FindCounter(GetDeprecatedSensorName());
+            criticalEventsGroup->FindCounter(GetDeprecatedSensorName());
         UNIT_ASSERT(deprecatedCounter);
         UNIT_ASSERT_VALUES_EQUAL(2, deprecatedCounter->Val());
 
         // Flush materializes and writes the GAUGE.
         handler->UpdateStats(true);
 
-        volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
+        volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(volumeGroup);
         auto volumeCounter = volumeGroup->FindCounter(GetVolumeSensorName());
         UNIT_ASSERT(volumeCounter);
         UNIT_ASSERT_VALUES_EQUAL(2, volumeCounter->Val());
 
-        // Deprecated counter is not changed after update/flush.
+        // Deprecated counter is not changed after update/publish.
         UNIT_ASSERT_VALUES_EQUAL(2, deprecatedCounter->Val());
     }
 
-    // The flush only runs when updateIntervalFinished is true
+    // The publish only runs when updateIntervalFinished is true
     Y_UNIT_TEST(ShouldFlushOnlyOnIntervalFinished)
     {
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto serverGroup = root->GetSubgroup("component", "server");
-        auto serviceVolumeGroup =
-            root->GetSubgroup("component", "service_volume");
+        auto criticalEventsGroup = root->GetSubgroup("component", "server");
+        auto volumeCriticalEventsGroup =
+            root->GetSubgroup("component", "server");
 
-        InitCriticalEventsCounter(serverGroup);
-        InitVolumeCriticalEventsCounter(serviceVolumeGroup);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
         auto handler = CreateCriticalEventsStatsHandler();
 
@@ -175,17 +176,17 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         ReportBlockDigestMismatchInBlob(v, "some msg");
 
-        // Tick without the interval finished -> no flush.
+        // Tick without the interval finished -> no publish.
         handler->UpdateStats(false);
 
-        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
+        auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(
             !volumeGroup || !volumeGroup->FindCounter(GetVolumeSensorName()));
 
-        // Interval finished -> flush writes 1.
+        // Interval finished -> publish writes 1.
         handler->UpdateStats(true);
 
-        volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
+        volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(volumeGroup);
         auto volumeCounter = volumeGroup->FindCounter(GetVolumeSensorName());
         UNIT_ASSERT(volumeCounter);
@@ -198,12 +199,12 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto serverGroup = root->GetSubgroup("component", "server");
-        auto serviceVolumeGroup =
-            root->GetSubgroup("component", "service_volume");
+        auto criticalEventsGroup = root->GetSubgroup("component", "server");
+        auto volumeCriticalEventsGroup =
+            root->GetSubgroup("component", "server");
 
-        InitCriticalEventsCounter(serverGroup);
-        InitVolumeCriticalEventsCounter(serviceVolumeGroup);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
         auto handler = CreateCriticalEventsStatsHandler();
 
@@ -217,13 +218,13 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         handler->UpdateStats(true);
 
-        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
+        auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(volumeGroup);
         UNIT_ASSERT_VALUES_EQUAL(
             2,
             volumeGroup->FindCounter(GetVolumeSensorName())->Val());
 
-        // No new events -> Internal is 0 -> GAUGE set back to 0.
+        // No new events -> Unpublished is 0 -> GAUGE set back to 0.
         handler->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -236,12 +237,12 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto serverGroup = root->GetSubgroup("component", "server");
-        auto serviceVolumeGroup =
-            root->GetSubgroup("component", "service_volume");
+        auto criticalEventsGroup = root->GetSubgroup("component", "server");
+        auto volumeCriticalEventsGroup =
+            root->GetSubgroup("component", "server");
 
-        InitCriticalEventsCounter(serverGroup);
-        InitVolumeCriticalEventsCounter(serviceVolumeGroup);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
         auto handler = CreateCriticalEventsStatsHandler();
 
@@ -265,35 +266,35 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             2,
-            FindVolumeGroup(serviceVolumeGroup, v1)
+            FindVolumeGroup(volumeCriticalEventsGroup, v1)
                 ->FindCounter(GetVolumeSensorName())
                 ->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            FindVolumeGroup(serviceVolumeGroup, v2)
+            FindVolumeGroup(volumeCriticalEventsGroup, v2)
                 ->FindCounter(GetVolumeSensorName())
                 ->Val());
 
         // Deprecated counter should contain summary
         auto deprecatedCounter =
-            serverGroup->FindCounter(GetDeprecatedSensorName());
+            criticalEventsGroup->FindCounter(GetDeprecatedSensorName());
         UNIT_ASSERT(deprecatedCounter);
         UNIT_ASSERT_VALUES_EQUAL(3, deprecatedCounter->Val());
     }
 
     // Events fired before CountersRoot is set must accumulate in
-    // Internal and be flushed once the root becomes available
+    // Unpublished and be published once the root becomes available
     Y_UNIT_TEST(ShouldAccumulateEventsBeforeCountersRootInitialized)
     {
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto serverGroup = root->GetSubgroup("component", "server");
-        auto serviceVolumeGroup =
-            root->GetSubgroup("component", "service_volume");
+        auto criticalEventsGroup = root->GetSubgroup("component", "server");
+        auto volumeCriticalEventsGroup =
+            root->GetSubgroup("component", "server");
 
         // NOTE: InitVolumeCriticalEventsCounter is intentionally deferred.
-        InitCriticalEventsCounter(serverGroup);
+        InitCriticalEventsCounter(criticalEventsGroup);
 
         auto handler = CreateCriticalEventsStatsHandler();
 
@@ -310,10 +311,10 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         // Root becomes available -> the next flush lazily materializes
         // Exported and writes the accumulated value.
-        InitVolumeCriticalEventsCounter(serviceVolumeGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
         handler->UpdateStats(true);
 
-        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
+        auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(volumeGroup);
         UNIT_ASSERT_VALUES_EQUAL(
             3,
@@ -323,7 +324,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         // Inc()'s).
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            serverGroup->FindCounter(GetDeprecatedSensorName())->Val());
+            criticalEventsGroup->FindCounter(GetDeprecatedSensorName())->Val());
 
         // One more event on the hot path (Exported is now non-null,
         // Internal -> 1) is flushed on the next tick.
@@ -340,12 +341,12 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto serverGroup = root->GetSubgroup("component", "server");
-        auto serviceVolumeGroup =
-            root->GetSubgroup("component", "service_volume");
+        auto criticalEventsGroup = root->GetSubgroup("component", "server");
+        auto volumeCriticalEventsGroup =
+            root->GetSubgroup("component", "server");
 
-        InitCriticalEventsCounter(serverGroup);
-        InitVolumeCriticalEventsCounter(serviceVolumeGroup);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
         auto handler = CreateCriticalEventsStatsHandler();
 
@@ -398,14 +399,14 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             .FolderId = folderId};
 
         auto deprecatedCounter =
-            serverGroup->FindCounter(GetDeprecatedSensorName());
+            criticalEventsGroup->FindCounter(GetDeprecatedSensorName());
         UNIT_ASSERT(deprecatedCounter);
-        // Deprecated counter should contain summary immediatly
+        // Deprecated counter should contain summary immediately
         UNIT_ASSERT_VALUES_EQUAL(12, deprecatedCounter->Val());
 
         handler->UpdateStats(true);
 
-        auto volumeGroup = FindVolumeGroup(serviceVolumeGroup, v);
+        auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(volumeGroup);
         UNIT_ASSERT_VALUES_EQUAL(
             12,

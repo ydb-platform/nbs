@@ -297,8 +297,6 @@ void TBootstrapBase::Init()
         ->GetSubgroup("counters", "blockstore");
 
     auto serverGroup = rootGroup->GetSubgroup("component", "server");
-    auto serviceVolumeGroup =
-        rootGroup->GetSubgroup("component", "service_volume");
     auto revisionGroup = serverGroup->GetSubgroup("revision", GetFullVersionString());
 
     auto versionCounter = revisionGroup->GetCounter(
@@ -307,7 +305,7 @@ void TBootstrapBase::Init()
     *versionCounter = 1;
 
     InitCriticalEventsCounter(serverGroup);
-    InitVolumeCriticalEventsCounter(serviceVolumeGroup);
+    InitVolumeCriticalEventsCounter(serverGroup);
 
     STORAGE_INFO("CriticalEvents counters initialized");
 
@@ -1104,8 +1102,8 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(GetTraceServiceClient());
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
-    STOP_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
+    STOP_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     STOP_COMMON_COMPONENT(Server);
     STOP_COMMON_COMPONENT(CertificateProvider);
     STOP_COMMON_COMPONENT(Executor);

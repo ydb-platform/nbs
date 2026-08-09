@@ -10,12 +10,15 @@
 #include <util/generic/hash.h>
 #include <util/str_stl.h>
 #include <util/string/builder.h>
+#include <util/system/guard.h>
+#include <util/system/spinlock.h>
 
 #include <tuple>
 #include <type_traits>
-#include <unordered_map>
 
 namespace NCloud::NBlockStore {
+
+////////////////////////////////////////////////////////////////////////////////
 
 namespace {
 
@@ -24,57 +27,58 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 /*
-TVolumeCriticalEventCounter - per-interval CriticalEvent counter with
+TVolumeCriticalEventCounter - per-interval critical event counter with
 deferred export
 
-Writing the number of CritEvents for an interval directly into the monitoring
-counter (Exported) can lead to registered CriticalEvents being missed in
-monitoring, because the 15s intervals (cycles) - the internal one and the
-monitoring one - generally do not coincide:
+Writing the number of critical events for an interval directly into the
+monitoring counter (Published) can lead to registered critical events being
+missed in monitoring, because the 15s intervals (cycles) - the internal one
+and the monitoring one - generally do not coincide:
 
 1. End of the next monitoring interval - monitoring reads the current counter
-   value (including 0, if no CriticalEvents have been registered in this
+   value (including 0, if no critical events have been registered in this
    internal interval yet)
 
 2. End of the next internal interval -
-   WriteVolumeCriticalEventCounters() resets the counter to 0.
+   PublishVolumeCriticalEventCounters() resets the counter to 0.
 
-3. If a CriticalEvent was registered between (1) and (2) (Report...() was
+3. If a critical event was registered between (1) and (2) (Report...() was
    called with an increment of the counter), that event will be lost and
    not reflected in monitoring
 
 To exclude such a scenario:
 
-- CriticalEvents for the current interval are accumulated in the Internal
+- critical events for the current interval are accumulated in the Unpublished
   counter
 
-- at the end of the interval, the Internal value is written into the Exported
-  counter and held there until the end of the next interval, allowing
+- at the end of the interval, the Unpublished value is written into the
+  Published counter and held there until the end of the next interval, allowing
   monitoring to read the value in its own read cycle
 
 Additionally:
 
-- the separate use of Internal and Exported counters avoids losing
-  CriticalEvents registered before module initialization (before
+- the separate use of Unpublished and Published counters avoids losing
+  critical events registered before module initialization (before
   TVolumeCriticalEvents::CountersRoot is set) - the value accumulated in
-  Internal is not reset at the end of an interval when writing to Exported
+  Unpublished is not reset at the end of an interval when writing to Published
   is not possible. At the end of the first interval after CountersRoot
-  initialization, the value accumulated since startup in the Internal counter
-  will be written into Exported
+  initialization, the value accumulated since startup in the Unpublished counter
+  will be written into Published
 */
 struct TVolumeCriticalEventCounter
 {
-    // Per-interval CriticalEvents counter, not exported
-    std::atomic<i64> Internal{0};
-    // Per-interval CriticalEvents metrics counter, GAUGE.
+    // Per-interval critical events counter, not published yet
+    std::atomic<i64> Unpublished{0};
+    // Per-interval critical events metrics counter, GAUGE.
+    // Published and held until next publish interval.
     // Constructed lazily
-    NMonitoring::TDynamicCounters::TCounterPtr Exported;
+    NMonitoring::TDynamicCounters::TCounterPtr Published;
 };
 
 struct TVolumeCriticalEventKey
 {
     TString Event;        // "VolumeCriticalEvent/<event>"
-    TVolumeId VolumeId;   // exported as the 'volume', 'cloud' and 'folder'
+    TVolumeId VolumeId;   // published as the 'volume', 'cloud' and 'folder'
                           // metric labels
 
     bool operator==(const TVolumeCriticalEventKey& rhs) const
@@ -85,6 +89,8 @@ struct TVolumeCriticalEventKey
 
 }   // namespace
 }   // namespace NCloud::NBlockStore
+
+////////////////////////////////////////////////////////////////////////////////
 
 template <>
 struct THash<NCloud::NBlockStore::TVolumeCriticalEventKey>
@@ -100,55 +106,55 @@ struct THash<NCloud::NBlockStore::TVolumeCriticalEventKey>
 namespace NCloud::NBlockStore {
 namespace {
 
-using TVolumeCriticalEventCounterMap = THashMap<
-    TVolumeCriticalEventKey,
-    std::shared_ptr<TVolumeCriticalEventCounter>>;
+////////////////////////////////////////////////////////////////////////////////
+
+using TVolumeCriticalEventCounterMap =
+    THashMap<TVolumeCriticalEventKey, TVolumeCriticalEventCounter>;
 
 struct TVolumeCriticalEvents
 {
-    TRWMutex Lock;
+    TAdaptiveLock Lock;
     TVolumeCriticalEventCounterMap Counters;
     NMonitoring::TDynamicCountersPtr CountersRoot;
 };
 
 TVolumeCriticalEvents VolumeCriticalEvents;
 
-void WriteVolumeCriticalEventCounters()
+void PublishVolumeCriticalEventCounters()
 {
-    TReadGuard guard(VolumeCriticalEvents.Lock);
+    TGuard<TAdaptiveLock> guard(VolumeCriticalEvents.Lock);
 
     for (auto& [k, e]: VolumeCriticalEvents.Counters) {
         // NOTE: a single instance of TCriticalEventsStatsHandler is expected
-        // (as the sole writer of e->Exported). This simplifies Lock usage
-        // (e->Exported can be written under the read guard only).
-        if (!e->Exported) {
+        // (as the sole writer of e->Published). This simplifies Lock usage
+        // (e->Published can be written under the read guard only).
+        if (!e.Published) {
             if (!VolumeCriticalEvents.CountersRoot) {
-                // Root not initialized yet; keep accumulating in Internal,
+                // Root not initialized yet; keep accumulating in Unpublished,
                 // see the first-fire branch in Report##name().
                 continue;
             }
             // Root became available after the first fire (e.g. Report ran
             // before InitVolumeCriticalEventsCounter) - materialize the
-            // exported GAUGE now so the accumulated Internal can be flushed.
-            e->Exported = VolumeCriticalEvents.CountersRoot
+            // published GAUGE now so the accumulated Unpublished can be
+            // flushed.
+            e.Published = VolumeCriticalEvents.CountersRoot
                               ->GetSubgroup("volume", k.VolumeId.DiskId)
                               ->GetSubgroup("cloud", k.VolumeId.CloudId)
                               ->GetSubgroup("folder", k.VolumeId.FolderId)
                               ->GetCounter(k.Event, /*derivative=*/false);
         }
-        auto v = e->Internal.exchange(0);
-        *e->Exported = v;   // GAUGE set; sticky until next write
+        auto v = e.Unpublished.exchange(0);
+        *e.Published = v;   // GAUGE set; held until next flush
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 struct TCriticalEventsStatsHandler: public NCloud::IStatsHandler
 {
     void UpdateStats(bool updateIntervalFinished) override
     {
         if (updateIntervalFinished) {
-            WriteVolumeCriticalEventCounters();
+            PublishVolumeCriticalEventCounters();
         }
     }
 };
@@ -172,8 +178,6 @@ TString ComposeMessageWithSuffix(const TString& message, const TString& suffix)
 }
 }   // namespace
 
-using namespace NMonitoring;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
@@ -193,8 +197,9 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 
 void InitVolumeCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 {
-    TWriteGuard wguard(VolumeCriticalEvents.Lock);
-    VolumeCriticalEvents.CountersRoot = counters;
+    with_lock (VolumeCriticalEvents.Lock) {
+        VolumeCriticalEvents.CountersRoot = counters;
+    }
 }
 
 NCloud::IStatsHandlerPtr CreateCriticalEventsStatsHandler()
@@ -205,9 +210,10 @@ NCloud::IStatsHandlerPtr CreateCriticalEventsStatsHandler()
 // For unit test purposes
 void ResetVolumeCriticalEventsCounter()
 {
-    TWriteGuard guard(VolumeCriticalEvents.Lock);
-    VolumeCriticalEvents.Counters.clear();
-    VolumeCriticalEvents.CountersRoot.Reset();
+    with_lock (VolumeCriticalEvents.Lock) {
+        VolumeCriticalEvents.Counters.clear();
+        VolumeCriticalEvents.CountersRoot.Reset();
+    }
 }
 
 #define BLOCKSTORE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                         \
@@ -334,7 +340,7 @@ void ResetVolumeCriticalEventsCounter()
             ReportCriticalEvent(                                               \
                 GetDeprecatedCriticalEventFor##name(),                         \
                 submsg,                                                        \
-                false);                                                        \
+                /*verifyDebug=*/false);                                        \
                                                                                \
             auto prefix = TCritEventParams{                                    \
                 {"disk", diskId},                                              \
@@ -346,7 +352,7 @@ void ResetVolumeCriticalEventsCounter()
                     ? ComposeMessageWithSuffix(PrintParams(prefix), submsg)    \
                     : PrintParams(prefix);                                     \
                                                                                \
-            /* Log immediatly */                                               \
+            /* Log immediately */                                              \
             auto retMessage =                                                  \
                 LogCriticalEvent(                                              \
                     GetVolumeCriticalEventFor##name(),                         \
@@ -360,29 +366,12 @@ void ResetVolumeCriticalEventsCounter()
                     .FolderId = folderId}                                      \
             };                                                                 \
                                                                                \
-            /* Hot path - counter already exists */                            \
-            {                                                                  \
-                TReadGuard guard(VolumeCriticalEvents.Lock);                   \
-                if (auto it = VolumeCriticalEvents.Counters.find(key);         \
-                    it != VolumeCriticalEvents.Counters.end())                 \
-                {                                                              \
-                    it->second->Internal++;                                    \
-                    return retMessage;                                         \
-                }                                                              \
-            }                                                                  \
-                                                                               \
-            /* First fire - create the entry.                                  \
-               The Exported GAUGE counter is materialized lazily               \
-               by WriteVolumeCriticalEventCounters() on the publish tick.      \
-               Here we only create and bump the Internal accumulator.          \
-            */                                                                 \
-            {                                                                  \
-                TWriteGuard guard(VolumeCriticalEvents.Lock);                  \
-                auto& e = VolumeCriticalEvents.Counters[key];                  \
-                if (!e) {                                                      \
-                    e = std::make_shared<TVolumeCriticalEventCounter>();       \
-                }                                                              \
-                e->Internal++;                                                 \
+            with_lock (VolumeCriticalEvents.Lock) {                            \
+                /* The Published GAUGE counter is materialized lazily          \
+                   by PublishVolumeCriticalEventCounters() on the publish tick.\
+                   Here we only create and bump the Unpublished accumulator.   \
+                */                                                             \
+                VolumeCriticalEvents.Counters[key].Unpublished++;              \
             }                                                                  \
                                                                                \
             return retMessage;                                                 \

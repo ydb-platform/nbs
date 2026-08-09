@@ -5,6 +5,7 @@
 #include <util/str_stl.h>
 
 #include <memory>
+#include <tuple>
 #include <type_traits>
 
 namespace NCloud::NBlockStore {

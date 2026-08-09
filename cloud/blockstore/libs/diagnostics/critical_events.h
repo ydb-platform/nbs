@@ -254,7 +254,7 @@ void ResetVolumeCriticalEventsCounter();
             const TVolumeIdConstPtr& volumeId,                                 \
             TArgs&&... args)                                                   \
         {                                                                      \
-            Y_DEBUG_ABORT_UNLESS(volumeId);                                    \
+            Y_ABORT_UNLESS(volumeId);                                          \
             return Report##name(*volumeId, std::forward<TArgs>(args)...);      \
         }                                                                      \
         const TString GetVolumeCriticalEventFor##name();                       \
