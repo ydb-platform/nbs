@@ -182,6 +182,8 @@ private:
 
     TSet<NActors::TActorId> WorkerActors;
     TIntrusiveList<TRequestInfo> ActiveRequests;
+    // Handles waiting for their registration tx to commit.
+    THashSet<ui64> PendingCreateHandleCommits;
 
     TInstant ReassignRequestSentTs;
 

@@ -559,6 +559,9 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     EnqueueTruncateIfNeeded(ctx);
 
     if (safeAsync || unsafeAsync) {
+        args.AsyncHandle = args.Response.GetHandle();
+        PendingCreateHandleCommits.insert(args.AsyncHandle);
+
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET,
@@ -651,6 +654,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     TTxIndexTablet::TCreateHandle& args)
 {
     if (args.Completed) {
+        PendingCreateHandleCommits.erase(args.AsyncHandle);
         return;
     }
 
@@ -672,6 +676,29 @@ void TIndexTabletActor::HandleConfirmCreateHandle(
     }
 
     auto* msg = ev->Get();
+    const auto& request = msg->Record;
+
+    // Reply immediately if the handle registration is already durable.
+    const auto* handle = FindHandle(request.GetHandle());
+    if (handle
+            && handle->Session == session
+            && handle->GetNodeId() == request.GetNodeId()
+            && !PendingCreateHandleCommits.contains(request.GetHandle()))
+    {
+        auto response =
+            std::make_unique<TEvService::TEvConfirmCreateHandleResponse>();
+
+        Metrics->ConfirmCreateHandle.Update(1, 0, TDuration::Zero());
+
+        CompleteResponse<TEvService::TConfirmCreateHandleMethod>(
+            response->Record,
+            msg->CallContext,
+            ctx);
+
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -735,8 +762,6 @@ void TIndexTabletActor::ExecuteTx_ConfirmCreateHandle(
     TTransactionContext& tx,
     TTxIndexTablet::TConfirmCreateHandle& args)
 {
-    Y_UNUSED(ctx);
-
     FILESTORE_VALIDATE_TX_ERROR(ConfirmCreateHandle, args);
 
     auto* session = FindSession(args.SessionId);
@@ -749,31 +774,31 @@ void TIndexTabletActor::ExecuteTx_ConfirmCreateHandle(
 
     TIndexTabletDatabase db(tx.DB);
 
-    if (auto* handle = FindHandle(args.Handle)) {
-        if (handle->Session != session || handle->GetNodeId() != args.NodeId) {
-            auto message = TStringBuilder()
-                << "ConfirmCreateHandle collision: "
-                << args.Request.ShortDebugString()
-                << " existing session: " << handle->GetSessionId()
-                << " existing node: " << handle->GetNodeId();
-            args.Error = MakeError(E_INVALID_STATE, std::move(message));
-            return;
-        }
-    } else {
-        handle = UnsafeCreateHandle(
-            db,
-            session,
-            args.Handle,
-            args.NodeId,
-            session->GetCheckpointId() ? args.ReadCommitId : InvalidCommitId,
-            args.Flags);
+    const bool handleExists = FindHandle(args.Handle) != nullptr;
 
-        if (!handle) {
-            auto message = ReportFailedToCreateHandle(TStringBuilder()
-                << "ConfirmCreateHandle: " << args.Request.ShortDebugString());
-            args.Error = MakeError(E_INVALID_STATE, std::move(message));
-            return;
-        }
+    args.Error = RegisterHandle(
+        db,
+        session,
+        args.Handle,
+        args.NodeId,
+        session->GetCheckpointId() ? args.ReadCommitId : InvalidCommitId,
+        args.Flags);
+
+    if (HasError(args.Error)) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s ConfirmCreateHandle failed: %s, %s",
+            LogTag.c_str(),
+            args.Request.ShortDebugString().c_str(),
+            FormatError(args.Error).Quote().c_str());
+        return;
+    }
+
+    if (!handleExists) {
+        // Keep retries off the fast path until this tx commits.
+        args.HandleRegistered = true;
+        PendingCreateHandleCommits.insert(args.Handle);
     }
 
     if (args.CreateRequestId && !session->LookupDupEntry(args.CreateRequestId))
@@ -799,6 +824,10 @@ void TIndexTabletActor::CompleteTx_ConfirmCreateHandle(
     TTxIndexTablet::TConfirmCreateHandle& args)
 {
     RemoveInFlightRequest(*args.RequestInfo);
+
+    if (args.HandleRegistered) {
+        PendingCreateHandleCommits.erase(args.Handle);
+    }
 
     auto response =
         std::make_unique<TEvService::TEvConfirmCreateHandleResponse>(

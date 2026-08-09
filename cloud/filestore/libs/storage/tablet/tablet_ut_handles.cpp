@@ -230,8 +230,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
 
-        // Hold the create tx commit so the async response is acknowledged
-        // before the SessionHandles row becomes durable.
+        // Hold the create tx commit to verify that, with the feature disabled,
+        // no response is sent before the SessionHandles row becomes durable.
         TAutoPtr<IEventHandle> putEvent;
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& ev)
@@ -358,11 +358,33 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             handle,
             TCreateHandleArgs::RDNLY,
             100500);
+
+        // The handle is already created and its tx is committed, so a repeated
+        // confirmation has nothing to persist and must be answered right from
+        // HandleConfirmCreateHandle - count tablet commits to make sure that no
+        // tx is started at all.
+        ui32 commitCount = 0;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvTablet::EvCommit &&
+                    event->Get<TEvTablet::TEvCommit>()->TabletID == tabletId)
+                {
+                    ++commitCount;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
         tablet.ConfirmCreateHandle(
             id,
             handle,
             TCreateHandleArgs::RDNLY,
             100500);
+
+        env.GetRuntime().SetObserverFunc(
+            TTestActorRuntime::DefaultObserverFunc);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, commitCount);
 
         tablet.DescribeData(handle, 0, 1_KB);
         tablet.DestroyHandle(handle);
@@ -617,6 +639,78 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
 
         // Once confirm has replied, the preceding create commit is durable
         // enough for the handle to be reloaded.
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        tablet.DescribeData(handle, 0, 1_KB);
+        tablet.DestroyHandle(handle);
+    }
+
+    Y_UNIT_TEST(ShouldDelayRetriedConfirmCreateHandleUntilRegistrationCommit)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const ui64 handle = 424246;
+
+        // Delay the first confirmation commit.
+        TAutoPtr<IEventHandle> putEvent;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& ev)
+            {
+                Y_UNUSED(runtime);
+                if (!putEvent &&
+                    ev->GetTypeRewrite() == TEvBlobStorage::EvPut)
+                {
+                    putEvent = std::move(ev);
+                    return true;
+                }
+
+                return false;
+            });
+
+        tablet.SendRequest(tablet.CreateConfirmCreateHandleRequest(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500));
+
+        env.GetRuntime().DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return putEvent != nullptr;
+            }});
+
+        tablet.AssertConfirmCreateHandleNoResponse();
+
+        // The retry must wait for the first confirmation to commit.
+        tablet.SendRequest(tablet.CreateConfirmCreateHandleRequest(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500));
+
+        tablet.AssertConfirmCreateHandleNoResponse();
+
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+        env.GetRuntime().Send(putEvent.Release(), nodeIdx);
+
+        for (ui32 i = 0; i < 2; ++i) {
+            auto response = tablet.RecvConfirmCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+        }
+
+        // Both requests completed after the registration became durable.
         tablet.RebootTablet();
         tablet.RecoverSession();
 

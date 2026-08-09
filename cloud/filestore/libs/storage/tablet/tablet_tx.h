@@ -1939,6 +1939,7 @@ struct TTxIndexTablet
         NProto::TOpLogEntry OpLogEntry;
 
         NProto::TCreateHandleResponse Response;
+        ui64 AsyncHandle = 0;
         bool Completed = false;
 
         TCreateHandle(
@@ -1979,6 +1980,7 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+            AsyncHandle = 0;
             Completed = false;
 
             // deliberately not calling TProfileAware::Clear()
@@ -1999,6 +2001,7 @@ struct TTxIndexTablet
 
         ui64 ReadCommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
+        bool HandleRegistered = false;
 
         TConfirmCreateHandle(
                 TRequestInfoPtr requestInfo,
@@ -2018,6 +2021,7 @@ struct TTxIndexTablet
 
             ReadCommitId = InvalidCommitId;
             Node.Clear();
+            HandleRegistered = false;
         }
     };
 
