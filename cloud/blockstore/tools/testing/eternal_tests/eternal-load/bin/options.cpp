@@ -210,7 +210,7 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption(
         "zero-rate",
-        "percentage of write requests issued as Zero (discard) instead of Write")
+        "percentage of zero (discard) requests")
         .RequiredArgument("NUM")
         .StoreResult(&ZeroRate)
         .DefaultValue(0);

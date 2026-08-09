@@ -11,6 +11,12 @@ _BLOCKSIZE = 4096  # KB
 _REQUEST_BLOCK_COUNT = 3
 _BINARY_PATH = "cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin/eternal-load"
 
+_NON_ALIGNED_SCENARIOS = [
+    ("unaligned", "sync", False),
+    ("sequential", "sync", False),
+    ("random", "sync", False),
+]
+
 
 def __run_load_test(
     file_name,
@@ -19,6 +25,8 @@ def __run_load_test(
     direct=True,
     timeout=60,
     test_count=0,
+    write_rate=70,
+    zero_rate=0,
 ):
     eternal_load = yatest_common.binary_path(_BINARY_PATH)
 
@@ -32,7 +40,8 @@ def __run_load_test(
         "--file", str(file_name),
         "--filesize", str(_FILE_SIZE),
         "--iodepth", str(_IO_DEPTH),
-        "--write-rate", "70",
+        "--write-rate", str(write_rate),
+        "--zero-rate", str(zero_rate),
         "--debug",
         "--test-count", str(test_count),
     ]
@@ -86,7 +95,25 @@ def mount_very_small_ext4(tmp_path):
         subprocess.run(["sudo", "umount", "-l", str(mount_dir)], check=False)
 
 
-def test_load_async_io_fails(very_small_ext4):
+@pytest.fixture(name="loop_device")
+def create_loop_device(tmp_path):
+    image_path = tmp_path / "disk.img"
+    # Sparse 1 GiB image is enough for --filesize 1
+    with open(image_path, "wb") as image:
+        image.truncate(_FILE_SIZE * 1024 ** 3)
+
+    device = subprocess.check_output(
+        ["sudo", "losetup", "-f", "--show", str(image_path)],
+        text=True,
+    ).strip()
+
+    try:
+        yield device
+    finally:
+        subprocess.run(["sudo", "losetup", "-d", device], check=False)
+
+
+def test_aligned_without_zero_rate(very_small_ext4):
     file_path = very_small_ext4 / "load.test"
 
     # Run async-io eternal-load on a small loopback ext4 filesystem to raise ENOSPC.
@@ -96,6 +123,7 @@ def test_load_async_io_fails(very_small_ext4):
         engine="asyncio",
         direct=True,
         timeout=60,
+        zero_rate=0,
     )
 
     assert result.returncode == 1
@@ -105,3 +133,41 @@ def test_load_async_io_fails(very_small_ext4):
         "(No space left on device) async IO operation failed"
     )
     assert msg in result.stderr
+
+
+def test_aligned_with_zero_rate(loop_device):
+    timeout = 30
+    try:
+        result = __run_load_test(
+            loop_device,
+            scenario="aligned",
+            engine="asyncio",
+            direct=True,
+            timeout=timeout,
+            write_rate=50,
+            zero_rate=20,
+        )
+        assert result.returncode == 0
+    except subprocess.TimeoutExpired:
+        pass
+    else:
+        pytest.fail(f"Eternal load should not have finished within {timeout} seconds")
+
+
+@pytest.mark.parametrize("scenario,engine,direct", _NON_ALIGNED_SCENARIOS)
+def test_zero_rate_rejected_for_non_aligned(scenario, engine, direct, tmp_path):
+    file_path = tmp_path / "load.test"
+    file_path.write_bytes(b"")
+
+    result = __run_load_test(
+        file_path,
+        scenario=scenario,
+        engine=engine,
+        direct=direct,
+        timeout=10,
+        write_rate=50,
+        zero_rate=20,
+    )
+
+    assert result.returncode != 0
+    assert "zero-rate is only supported for aligned scenario" in result.stderr

@@ -81,6 +81,12 @@ int TTest::Run()
             Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
             Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
             Y_ENSURE(Options->ZeroRate <= 100, "Zero rate should be in range [0, 100]");
+            Y_ENSURE(
+                Options->WriteRate + Options->ZeroRate <= 100,
+                "Sum of write-rate and zero-rate should be in range [0, 100]");
+            Y_ENSURE(
+                Options->Scenario == EScenario::Aligned || Options->ZeroRate == 0,
+                "zero-rate is only supported for aligned scenario");
 
             ConfigHolder = CreateTestConfig(
                 TCreateTestConfigArguments{
@@ -110,6 +116,15 @@ int TTest::Run()
         case ECommand::ReadConfigCmd:
             Y_ENSURE(Options->RestorePath.Defined(), "You need to specify the restore path");
             ConfigHolder = LoadTestConfig(*Options->RestorePath);
+            Y_ENSURE(
+                ConfigHolder->GetConfig().GetWriteRate() +
+                        ConfigHolder->GetConfig().GetZeroRate() <=
+                    100,
+                "Sum of WriteRate and ZeroRate should be in range [0, 100]");
+            Y_ENSURE(
+                Options->Scenario == EScenario::Aligned ||
+                    ConfigHolder->GetConfig().GetZeroRate() == 0,
+                "zero-rate is only supported for aligned scenario");
             break;
         case ECommand::UnknownCmd:
             STORAGE_ERROR("Unknown command, check avaliable commands in the help");

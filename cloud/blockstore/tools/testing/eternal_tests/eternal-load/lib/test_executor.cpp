@@ -1,5 +1,7 @@
 #include "test_executor.h"
 
+#include "device_discard.h"
+
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -17,17 +19,6 @@
 #include <util/thread/pool.h>
 
 #include <atomic>
-#include <cerrno>
-#include <cstring>
-
-#if defined(_linux_)
-#   if !defined(FALLOC_FL_ZERO_RANGE)
-#       define FALLOC_FL_ZERO_RANGE 0x10
-#   endif
-#   include <fcntl.h>
-#   include <linux/fs.h>
-#   include <sys/ioctl.h>
-#endif
 
 namespace NCloud::NBlockStore::NTesting {
 
@@ -63,8 +54,10 @@ private:
 
     std::atomic_uint64_t BytesRead = 0;
     std::atomic_uint64_t BytesWritten = 0;
+    std::atomic_uint64_t BytesZeroed = 0;
     ui64 PreviousBytesRead = 0;
     ui64 PreviousBytesWritten = 0;
+    ui64 PreviousBytesZeroed = 0;
     TInstant PreviousStatsTimestamp;
 
     const TLog Log;
@@ -242,18 +235,22 @@ void TTestExecutor::PrintStats()
     auto now = Now();
     auto currentBytesRead = BytesRead.load();
     auto currentBytesWritten = BytesWritten.load();
+    auto currentBytesZeroed = BytesZeroed.load();
 
     auto elapsedSeconds = (now - PreviousStatsTimestamp).SecondsFloat();
     auto bytesRead = currentBytesRead - PreviousBytesRead;
     auto bytesWritten = currentBytesWritten - PreviousBytesWritten;
+    auto bytesZeroed = currentBytesZeroed - PreviousBytesZeroed;
 
     STORAGE_DEBUG(
         "Read: " << bytesRead / elapsedSeconds / 1_MB << " MiB/s, "
-        "Write: " << bytesWritten / elapsedSeconds / 1_MB << " MiB/s");
+        "Write: " << bytesWritten / elapsedSeconds / 1_MB << " MiB/s, "
+        "Zero: " << bytesZeroed / elapsedSeconds / 1_MB << " MiB/s");
 
     PreviousStatsTimestamp = now;
     PreviousBytesRead = currentBytesRead;
     PreviousBytesWritten = currentBytesWritten;
+    PreviousBytesZeroed = currentBytesZeroed;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -406,56 +403,16 @@ void TTestExecutor::TWorkerService::Zero(
     RequestCount++;
     PendingRequestCount++;
 
-    auto complete = [this, count, callback = std::move(callback)](
-                        const NProto::TError& error)
-    {
-        if (HasError(error)) {
-            Executor.Fail("Can't zero file range: " + error.GetMessage());
-        } else {
-            Executor.BytesWritten += count;
-            callback();
-        }
-        if (HandleRequest()) {
-            Run();
-        }
-    };
-
-#if defined(_linux_)
-    ui64 range[2] = {offset, count};
-    if (ioctl(FHANDLE(Scenario.File), BLKDISCARD, range) == 0) {
-        complete({});
-        return;
+    auto error = DiscardDeviceRange(Scenario.File, offset, count);
+    if (HasError(error)) {
+        Executor.Fail("Can't zero device range: " + error.GetMessage());
+    } else {
+        Executor.BytesZeroed += count;
+        callback();
     }
-
-    const int discardErrno = errno;
-    if (discardErrno != EOPNOTSUPP && discardErrno != ENOTTY) {
-        complete(MakeError(
-            E_IO,
-            TStringBuilder() << "BLKDISCARD failed: " << discardErrno << " "
-                             << strerror(discardErrno)));
-        return;
+    if (HandleRequest()) {
+        Run();
     }
-
-    if (fallocate(
-            FHANDLE(Scenario.File),
-            FALLOC_FL_ZERO_RANGE,
-            static_cast<off_t>(offset),
-            static_cast<off_t>(count)) == 0)
-    {
-        complete({});
-        return;
-    }
-
-    const int fallocateErrno = errno;
-    complete(MakeError(
-        E_IO,
-        TStringBuilder() << "Zero failed (BLKDISCARD errno=" << discardErrno
-                         << ", FALLOC_FL_ZERO_RANGE errno=" << fallocateErrno
-                         << " " << strerror(fallocateErrno) << ")"));
-#else
-    Y_UNUSED(offset);
-    complete(MakeError(E_NOT_IMPLEMENTED, "Zero is not supported"));
-#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

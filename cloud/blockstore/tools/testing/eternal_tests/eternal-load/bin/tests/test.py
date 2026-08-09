@@ -18,9 +18,12 @@ _BINARY_PATH = 'cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin/et
 _MULTIPLE_FILES_TIMEOUT_ENV = 'ETERNAL_LOAD_MULTIPLE_FILES_TIMEOUT'
 _MULTIPLE_FILES_TEST_COUNT_ENV = 'ETERNAL_LOAD_MULTIPLE_FILES_TEST_COUNT'
 
-_SCENARIOS = [
+_ALIGNED_SCENARIOS = [
     ("aligned", "asyncio", True),
     ("aligned", "sync", False),
+]
+
+_SCENARIOS = _ALIGNED_SCENARIOS + [
     ("unaligned", "sync", False)
 ]
 
@@ -29,8 +32,23 @@ _SIMPLE_SCENARIOS = [
     ("random", "sync", False),
 ]
 
+_NON_ALIGNED_SCENARIOS = [
+    ("unaligned", "sync", False),
+    ("sequential", "sync", False),
+    ("random", "sync", False),
+]
 
-def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True, timeout=None, test_count=0):
+
+def __run_load_test(
+    file_name,
+    scenario="aligned",
+    engine="asyncio",
+    direct=True,
+    timeout=None,
+    test_count=0,
+    write_rate=70,
+    zero_rate=0,
+):
     eternal_load = yatest_common.binary_path(_BINARY_PATH)
 
     params = [
@@ -43,7 +61,8 @@ def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True
         '--file', file_name,
         '--filesize', str(_FILE_SIZE),
         '--iodepth', str(_IO_DEPTH),
-        '--write-rate', '70',
+        '--write-rate', str(write_rate),
+        '--zero-rate', str(zero_rate),
         '--debug',
         '--test-count', str(test_count)
     ]
@@ -86,6 +105,40 @@ def test_load_works(scenario, engine, direct):
         pass
     else:
         pytest.fail(f"Eternal load should not have finished within {timeout} seconds")
+
+
+@pytest.mark.parametrize("scenario,engine,direct", _ALIGNED_SCENARIOS)
+def test_aligned_with_zero_rate(scenario, engine, direct):
+    # Zero/discard requires a block device; on a regular file the aligned
+    # scenario must accept zero-rate and fail when issuing Zero.
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
+    result = __run_load_test(
+        tmp_file.name,
+        scenario=scenario,
+        engine=engine,
+        direct=direct,
+        timeout=30,
+        write_rate=50,
+        zero_rate=20,
+    )
+    assert result.returncode == 1
+    assert "only supported for block devices" in result.stderr
+
+
+@pytest.mark.parametrize("scenario,engine,direct", _NON_ALIGNED_SCENARIOS)
+def test_zero_rate_rejected_for_non_aligned(scenario, engine, direct):
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
+    result = __run_load_test(
+        tmp_file.name,
+        scenario=scenario,
+        engine=engine,
+        direct=direct,
+        timeout=10,
+        write_rate=50,
+        zero_rate=20,
+    )
+    assert result.returncode != 0
+    assert "zero-rate is only supported for aligned scenario" in result.stderr
 
 
 def test_multiple_files():

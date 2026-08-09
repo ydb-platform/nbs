@@ -9,6 +9,7 @@
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/digest/numeric.h>
+#include <util/generic/utility.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/info.h>
@@ -43,9 +44,12 @@ ui64 CalculateInverse(ui64 step, ui64 len)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsZeroRequest(ui64 requestNumber, ui32 zeroRate)
+bool IsZeroRequest(ui64 requestNumber, ui32 writeRate, ui32 zeroRate)
 {
-    return IntHash(requestNumber) % 100 < zeroRate;
+    if (zeroRate == 0) {
+        return false;
+    }
+    return IntHash(requestNumber) % (writeRate + zeroRate) < zeroRate;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,17 +212,21 @@ void TAlignedTestScenario::DoRequest(
     IService& service)
 {
     const auto writeRate = GetWriteProbabilityPercent(secondsSinceTestStart);
+    const ui32 zeroRate = ConfigHolder->GetConfig().GetZeroRate();
+    const ui32 mutateRate = Min(100u, writeRate + zeroRate);
 
-    if (RandomNumber(100u) >= writeRate) {
+    if (RandomNumber(100u) >= mutateRate) {
         DoReadRequest(rangeIdx, service);
         return;
     }
 
     auto& range = Ranges[rangeIdx];
     auto [blockIdx, iteration] = range.NextWrite();
-    const ui32 zeroRate = ConfigHolder->GetConfig().GetZeroRate();
 
-    if (IsZeroRequest(iteration, zeroRate)) {
+    // Use configured (non-alternating) write rate so the write/zero choice for
+    // a request number stays stable and can be reconstructed on read.
+    const ui32 configuredWriteRate = ConfigHolder->GetConfig().GetWriteRate();
+    if (IsZeroRequest(iteration, configuredWriteRate, zeroRate)) {
         DoZeroRequest(rangeIdx, blockIdx, service);
     } else {
         DoWriteRequest(rangeIdx, blockIdx, iteration, service);
@@ -259,12 +267,13 @@ void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
     std::tie(blockIdx, expected) = range.RandomRead();
 
     ui64 blockSize = ConfigHolder->GetConfig().GetBlockSize();
+    const ui32 writeRate = ConfigHolder->GetConfig().GetWriteRate();
     const ui32 zeroRate = ConfigHolder->GetConfig().GetZeroRate();
 
     const auto startTs = Now();
 
     auto readHandler =
-        [this, startTs, blockIdx, rangeIdx, expected, zeroRate, &service]()
+        [this, startTs, blockIdx, rangeIdx, expected, writeRate, zeroRate, &service]()
             mutable
     {
         OnResponse(startTs, rangeIdx, "read", service);
@@ -275,7 +284,7 @@ void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
 
         auto& range = Ranges[rangeIdx];
 
-        if (IsZeroRequest(*expected, zeroRate)) {
+        if (IsZeroRequest(*expected, writeRate, zeroRate)) {
             const char* data = range.Data();
             for (ui64 i = 0; i < range.DataSize(); ++i) {
                 if (data[i] != 0) {
