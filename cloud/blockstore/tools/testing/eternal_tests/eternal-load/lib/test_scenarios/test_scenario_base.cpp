@@ -36,6 +36,10 @@ TTestScenarioBase::TTestScenarioBase(
     auto& config = ConfigHolder->GetConfig();
 
     if (config.HasAlternatingPhase()) {
+        Y_ENSURE(
+            config.GetZeroRate() == 0,
+            "Alternating phase is not supported for tests with discard requests"
+            " (zero-rate is " << config.GetZeroRate() << ")");
         PhaseDuration =
             TDuration::Parse(config.GetAlternatingPhase()).SecondsFloat();
     }

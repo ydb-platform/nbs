@@ -65,6 +65,14 @@ struct ITestExecutorIOService
         ui64 offset,
         TCallback callback) = 0;
 
+    // Initiates a discard operation and calls the callback when the operation
+    // is completed successfully. Note that discard is called synchronously.
+    // If it fails, the test is stopped and the error is reported.
+    virtual void Zero(
+        ui32 count,
+        ui64 offset,
+        TCallback callback) = 0;
+
     // Gracefully stop the scenario
     virtual void Stop() = 0;
 
@@ -75,7 +83,7 @@ struct ITestExecutorIOService
 ////////////////////////////////////////////////////////////////////////////////
 
 // Workers are run concurrently - Run method and callbacks passed to
-// ITestExecutorIOService::Read and Write can be called from any thread.
+// ITestExecutorIOService::Read, Write and Zero can be called from any thread.
 struct ITestScenarioWorker
 {
     virtual ~ITestScenarioWorker() = default;

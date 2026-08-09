@@ -208,6 +208,13 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&WriteRate)
         .DefaultValue(0);
 
+    opts.AddLongOption(
+        "zero-rate",
+        "percentage of zero (discard) requests; only supported for aligned scenario; only supproted for block devices; moreover, the block device must actually zero-fill the range on discard request")
+        .RequiredArgument("NUM")
+        .StoreResult(&ZeroRate)
+        .DefaultValue(0);
+
     opts.AddLongOption("write-parts", "number of parts to split one write")
         .RequiredArgument("NUM")
         .StoreResult(&WriteParts)

@@ -32,6 +32,7 @@ struct TCreateTestConfigArguments
     ui16 IoDepth = 0;
     ui64 BlockSize = 0;
     ui16 WriteRate = 0;
+    ui16 ZeroRate = 0;
     ui64 RequestBlockCount = 0;
     ui64 WriteParts = 0;
     TString AlternatingPhase = "";

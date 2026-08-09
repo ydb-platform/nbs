@@ -8,6 +8,8 @@
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 
+#include <util/digest/numeric.h>
+#include <util/generic/utility.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/info.h>
@@ -38,6 +40,16 @@ ui64 CalculateInverse(ui64 step, ui64 len)
     auto [x, _] = ExtendedEuclideanAlgorithm(step, len);
     x = (x + len) % len;
     return x;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsZeroRequest(ui64 requestNumber, ui32 writeRate, ui32 zeroRate)
+{
+    if (zeroRate == 0) {
+        return false;
+    }
+    return IntHash(requestNumber) % (writeRate + zeroRate) < zeroRate;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +153,12 @@ private:
     void
     DoRequest(ui16 rangeIdx, double secondsSinceTestStart, IService& service);
 
-    void DoWriteRequest(ui16 rangeIdx, IService& service);
+    void DoWriteRequest(
+        ui16 rangeIdx,
+        ui64 blockIdx,
+        ui64 iteration,
+        IService& service);
+    void DoZeroRequest(ui16 rangeIdx, ui64 blockIdx, IService& service);
     void DoReadRequest(ui16 rangeIdx, IService& service);
 
     void OnResponse(
@@ -195,11 +212,22 @@ void TAlignedTestScenario::DoRequest(
     IService& service)
 {
     const auto writeRate = GetWriteProbabilityPercent(secondsSinceTestStart);
+    const ui32 zeroRate = ConfigHolder->GetConfig().GetZeroRate();
+    const ui32 mutateRate = Min(100u, writeRate + zeroRate);
 
-    if (RandomNumber(100u) >= writeRate) {
+    if (RandomNumber(100u) >= mutateRate) {
         DoReadRequest(rangeIdx, service);
+        return;
+    }
+
+    auto& range = Ranges[rangeIdx];
+    auto [blockIdx, iteration] = range.NextWrite();
+
+    const ui32 configuredWriteRate = ConfigHolder->GetConfig().GetWriteRate();
+    if (IsZeroRequest(iteration, configuredWriteRate, zeroRate)) {
+        DoZeroRequest(rangeIdx, blockIdx, service);
     } else {
-        DoWriteRequest(rangeIdx, service);
+        DoWriteRequest(rangeIdx, blockIdx, iteration, service);
     }
 }
 
@@ -209,7 +237,7 @@ void TAlignedTestScenario::OnResponse(
     TStringBuf reqType,
     IService& service)
 {
-    if (reqType == "write") {
+    if (reqType == "write" || reqType == "zero") {
         const i64 maxRequestCount =
             ConfigHolder->GetConfig().GetMaxWriteRequestCount();
         if (maxRequestCount &&
@@ -237,11 +265,14 @@ void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
     std::tie(blockIdx, expected) = range.RandomRead();
 
     ui64 blockSize = ConfigHolder->GetConfig().GetBlockSize();
+    const ui32 writeRate = ConfigHolder->GetConfig().GetWriteRate();
+    const ui32 zeroRate = ConfigHolder->GetConfig().GetZeroRate();
 
     const auto startTs = Now();
 
     auto readHandler =
-        [this, startTs, blockIdx, rangeIdx, expected, &service]() mutable
+        [this, startTs, blockIdx, rangeIdx, expected, writeRate, zeroRate, &service]()
+            mutable
     {
         OnResponse(startTs, rangeIdx, "read", service);
 
@@ -250,6 +281,23 @@ void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
         }
 
         auto& range = Ranges[rangeIdx];
+
+        if (IsZeroRequest(*expected, writeRate, zeroRate)) {
+            const char* data = range.Data();
+            for (ui64 i = 0; i < range.DataSize(); ++i) {
+                if (data[i] != 0) {
+                    service.Fail(
+                        TStringBuilder()
+                        << LogTag << "[" << rangeIdx
+                        << "] Wrong data in block " << blockIdx
+                        << " expected zeros after Zero request number "
+                        << expected << " but found non-zero byte at offset "
+                        << i);
+                    return;
+                }
+            }
+            return;
+        }
 
         ui64 partSize = range.DataSize() / range.Config.GetWriteParts();
         for (ui64 part = 0; part < range.Config.GetWriteParts(); ++part) {
@@ -276,12 +324,15 @@ void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
         readHandler);
 }
 
-void TAlignedTestScenario::DoWriteRequest(ui16 rangeIdx, IService& service)
+void TAlignedTestScenario::DoWriteRequest(
+    ui16 rangeIdx,
+    ui64 blockIdx,
+    ui64 iteration,
+    IService& service)
 {
     auto& range = Ranges[rangeIdx];
 
     const auto startTs = Now();
-    auto [blockIdx, iteration] = range.NextWrite();
     TBlockData blockData{
         .RequestNumber = iteration,
         .BlockIndex = blockIdx,
@@ -306,6 +357,25 @@ void TAlignedTestScenario::DoWriteRequest(ui16 rangeIdx, IService& service)
             [this, startTs, rangeIdx, &service]() mutable
             { OnResponse(startTs, rangeIdx, "write", service); });
     }
+}
+
+// The underlying block device must actually zero-fill the range on discard
+// request. Otherwise the test will fail during data validation on read
+// requests.
+void TAlignedTestScenario::DoZeroRequest(
+    ui16 rangeIdx,
+    ui64 blockIdx,
+    IService& service)
+{
+    auto& range = Ranges[rangeIdx];
+    ui64 blockSize = ConfigHolder->GetConfig().GetBlockSize();
+
+    const auto startTs = Now();
+    service.Zero(
+        range.DataSize(),
+        blockIdx * blockSize,
+        [this, startTs, rangeIdx, &service]() mutable
+        { OnResponse(startTs, rangeIdx, "zero", service); });
 }
 
 }   // namespace

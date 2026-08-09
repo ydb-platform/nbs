@@ -1,5 +1,7 @@
 #include "test_executor.h"
 
+#include "device_discard.h"
+
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -52,8 +54,10 @@ private:
 
     std::atomic_uint64_t BytesRead = 0;
     std::atomic_uint64_t BytesWritten = 0;
+    std::atomic_uint64_t BytesZeroed = 0;
     ui64 PreviousBytesRead = 0;
     ui64 PreviousBytesWritten = 0;
+    ui64 PreviousBytesZeroed = 0;
     TInstant PreviousStatsTimestamp;
 
     const TLog Log;
@@ -104,6 +108,11 @@ private:
 
     void Write(
         const void* buffer,
+        ui32 count,
+        ui64 offset,
+        TCallback callback) override;
+
+    void Zero(
         ui32 count,
         ui64 offset,
         TCallback callback) override;
@@ -226,18 +235,22 @@ void TTestExecutor::PrintStats()
     auto now = Now();
     auto currentBytesRead = BytesRead.load();
     auto currentBytesWritten = BytesWritten.load();
+    auto currentBytesZeroed = BytesZeroed.load();
 
     auto elapsedSeconds = (now - PreviousStatsTimestamp).SecondsFloat();
     auto bytesRead = currentBytesRead - PreviousBytesRead;
     auto bytesWritten = currentBytesWritten - PreviousBytesWritten;
+    auto bytesZeroed = currentBytesZeroed - PreviousBytesZeroed;
 
     STORAGE_DEBUG(
         "Read: " << bytesRead / elapsedSeconds / 1_MB << " MiB/s, "
-        "Write: " << bytesWritten / elapsedSeconds / 1_MB << " MiB/s");
+        "Write: " << bytesWritten / elapsedSeconds / 1_MB << " MiB/s, "
+        "Zero: " << bytesZeroed / elapsedSeconds / 1_MB << " MiB/s");
 
     PreviousStatsTimestamp = now;
     PreviousBytesRead = currentBytesRead;
     PreviousBytesWritten = currentBytesWritten;
+    PreviousBytesZeroed = currentBytesZeroed;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -380,6 +393,26 @@ void TTestExecutor::TWorkerService::Write(
                 Run();
             }
         });
+}
+
+void TTestExecutor::TWorkerService::Zero(
+    ui32 count,
+    ui64 offset,
+    TCallback callback)
+{
+    RequestCount++;
+    PendingRequestCount++;
+
+    auto error = DiscardDeviceRange(Scenario.File, offset, count);
+    if (HasError(error)) {
+        Executor.Fail("Can't zero device range: " + error.GetMessage());
+    } else {
+        Executor.BytesZeroed += count;
+        callback();
+    }
+    if (HandleRequest()) {
+        Run();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
