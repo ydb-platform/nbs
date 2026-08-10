@@ -275,6 +275,66 @@ func TestClientUnfreezeTabletError(t *testing.T) {
 	registryMock.AssertAllExpectations(t)
 }
 
+func TestClientGetFileSystemTopologySuccess(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "GetFileSystemTopology", true)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getfilesystemtopology",
+		matchesActionRequest(
+			&private_protos.TGetFileSystemTopologyRequest{
+				FileSystemId: "fs-1",
+			},
+		),
+	).Return(
+		marshalActionResponse(
+			t,
+			&private_protos.TGetFileSystemTopologyResponse{
+				ShardFileSystemIds: []string{"fs-1_s1", "fs-1_s2"},
+				MainFileSystemId:   "fs-1",
+			},
+		),
+		nil,
+	).Once()
+
+	c := newTestClient(nfsMock, registryMock)
+	topology, err := c.GetFileSystemTopology(ctx, "fs-1")
+	require.NoError(t, err)
+	require.Equal(t, nfs.FilesystemTopology{
+		ShardFileSystemIDs: []string{"fs-1_s1", "fs-1_s2"},
+		MainFileSystemID:   "fs-1",
+	}, topology)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
+func TestClientGetFileSystemTopologyError(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "GetFileSystemTopology", false)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getfilesystemtopology",
+		mock.Anything,
+	).Return(nil, testError).Once()
+
+	c := newTestClient(nfsMock, registryMock)
+	topology, err := c.GetFileSystemTopology(ctx, "fs-1")
+	require.ErrorIs(t, err, testError)
+	require.Equal(t, nfs.FilesystemTopology{}, topology)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
 func TestClientCreateFileStoreError(t *testing.T) {
 	ctx := context.Background()
 	registryMock := metrics_mocks.NewRegistryMock()
@@ -940,6 +1000,39 @@ func TestClientTabletStateWrappedErrors(t *testing.T) {
 			metricsMock.AssertExpectations(t)
 		})
 	}
+}
+
+func TestClientGetFileSystemTopologyWrappedError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On(
+		"StatRequest",
+		"GetFileSystemTopology",
+	).Return(func(err *error) {
+		require.Error(t, *err)
+		var clientErr *nfs_client.ClientError
+		require.ErrorAs(t, *err, &clientErr)
+		require.ErrorIs(t, *err, retriableError)
+	}).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getfilesystemtopology",
+		mock.Anything,
+	).Return(nil, testNfsClientError).Once()
+
+	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+	_, err := c.GetFileSystemTopology(ctx, "fs-1")
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.ErrorIs(t, err, retriableError)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
 }
 
 func TestClientDestroyFileStoreWrappedError(t *testing.T) {
@@ -1614,6 +1707,41 @@ func TestClientTabletStateNonRetriableErrors(t *testing.T) {
 			metricsMock.AssertExpectations(t)
 		})
 	}
+}
+
+func TestClientGetFileSystemTopologyNonRetriableError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On(
+		"StatRequest",
+		"GetFileSystemTopology",
+	).Return(func(err *error) {
+		require.Error(t, *err)
+		var clientErr *nfs_client.ClientError
+		require.ErrorAs(t, *err, &clientErr)
+		require.NotErrorIs(t, *err, retriableError)
+		require.ErrorIs(t, *err, testNfsClientNonRetriableError)
+	}).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getfilesystemtopology",
+		mock.Anything,
+	).Return(nil, testNfsClientNonRetriableError).Once()
+
+	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+	_, err := c.GetFileSystemTopology(ctx, "fs-1")
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.NotErrorIs(t, err, retriableError)
+	require.ErrorIs(t, err, testNfsClientNonRetriableError)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
 }
 
 func TestSessionCreateCheckpointNonRetriableError(t *testing.T) {

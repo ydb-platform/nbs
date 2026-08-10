@@ -452,6 +452,37 @@ func checkActionError(errorProto *coreprotos.TError) error {
 	return nil
 }
 
+func (c *client) GetFileSystemTopology(
+	ctx context.Context,
+	filesystemID string,
+) (_ FilesystemTopology, err error) {
+
+	defer c.metrics.StatRequest("GetFileSystemTopology")(&err)
+
+	response := &private_protos.TGetFileSystemTopologyResponse{}
+	err = c.executeAction(
+		ctx,
+		"getfilesystemtopology",
+		&private_protos.TGetFileSystemTopologyRequest{
+			FileSystemId: filesystemID,
+		},
+		response,
+	)
+	if err != nil {
+		return FilesystemTopology{}, err
+	}
+
+	err = checkActionError(response.Error)
+	if err != nil {
+		return FilesystemTopology{}, err
+	}
+
+	return FilesystemTopology{
+		ShardFileSystemIDs: response.ShardFileSystemIds,
+		MainFileSystemID:   response.MainFileSystemId,
+	}, nil
+}
+
 func (c *client) changeTabletState(
 	ctx context.Context,
 	filesystemID string,

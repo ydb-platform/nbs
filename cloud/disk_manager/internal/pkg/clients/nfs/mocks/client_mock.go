@@ -63,6 +63,16 @@ func (c *ClientMock) EnableDirectoryCreationInShards(
 	return args.Error(0)
 }
 
+func (c *ClientMock) GetFileSystemTopology(
+	ctx context.Context,
+	filesystemID string,
+) (nfs.FilesystemTopology, error) {
+
+	args := c.Called(ctx, filesystemID)
+	res, _ := args.Get(0).(nfs.FilesystemTopology)
+	return res, args.Error(1)
+}
+
 func (c *ClientMock) DescribeModel(
 	ctx context.Context,
 	blocksCount uint64,

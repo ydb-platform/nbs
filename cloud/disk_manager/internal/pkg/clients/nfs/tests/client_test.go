@@ -40,6 +40,40 @@ func TestCreateFilesystem(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestGetFileSystemTopology(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+		ShardCount:  2,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, false)
+
+	expectedShardIDs := []string{
+		filesystemID + "_s1",
+		filesystemID + "_s2",
+	}
+
+	topology, err := client.GetFileSystemTopology(ctx, filesystemID)
+	require.NoError(t, err)
+	require.Equal(t, expectedShardIDs, topology.ShardFileSystemIDs)
+	require.Equal(t, filesystemID, topology.MainFileSystemID)
+
+	shardTopology, err := client.GetFileSystemTopology(
+		ctx,
+		expectedShardIDs[0],
+	)
+	require.NoError(t, err)
+	require.Equal(t, filesystemID, shardTopology.MainFileSystemID)
+}
+
 func TestDeleteFilesystem(t *testing.T) {
 	ctx := nfs_testing.NewContext()
 	client := nfs_testing.NewClient(t, ctx)

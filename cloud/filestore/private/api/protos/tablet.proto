@@ -863,46 +863,6 @@ message TUnsafeCreateHandleResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// GetFileSystemTopology request/response.
-
-message TGetFileSystemTopologyRequest
-{
-    // Optional request headers.
-    NProto.THeaders Headers = 1;
-
-    // FileSystem identifier to query its topology.
-    string FileSystemId = 2;
-}
-
-message TGetFileSystemTopologyResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Shard FileSystem identifiers.
-    repeated string ShardFileSystemIds = 2;
-
-    // Shard no (if this fs is a shard itself).
-    uint32 ShardNo = 3;
-
-    bool DirectoryCreationInShardsEnabled = 4;
-
-    bool StrictFileSystemSizeEnforcementEnabled = 5;
-
-    uint32 MaxShardCount = 6;
-
-    bool ForceDirectoryCreationInShards = 7;
-
-    // Shard FileSystem identifiers for regular files.
-    repeated string FileShardFileSystemIds = 8;
-
-    bool CompressNodeRef = 9;
-
-    // Main FileSystem identifier.
-    string MainFileSystemId = 10;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // RestartTablet request/response.
 
 message TRestartTabletRequest
