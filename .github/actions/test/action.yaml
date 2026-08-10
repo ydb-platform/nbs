@@ -142,7 +142,7 @@ runs:
         # checking /etc/hosts to see if vm was created correctly
         cat /etc/hosts
     - name: Setup cache password file
-      shell: bash --noprofile --norc -eo pipefail -x {0}
+      shell: bash --noprofile --norc -eo pipefail {0}
       env:
         BAZEL_REMOTE_PASSWORD: ${{ inputs.bazel_remote_password }}
       run: |
@@ -150,6 +150,15 @@ runs:
         echo -n "$BAZEL_REMOTE_PASSWORD" > "$BAZEL_REMOTE_PASSWORD_FILE"
         echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
         chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
+    - name: Setup Github token file
+      shell: bash --noprofile --norc -eo pipefail {0}
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        export GITHUB_TOKEN_FILE=$(mktemp -p /home/github github.XXXX)
+        echo -n "$GITHUB_TOKEN" > "$GITHUB_TOKEN_FILE"
+        echo "GITHUB_TOKEN_FILE=$GITHUB_TOKEN_FILE" >> "$GITHUB_ENV"
+        chmod 600 "$GITHUB_TOKEN_FILE"
     - name: ya test
       id: check_test_results
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -172,7 +181,6 @@ runs:
         CACHE_UPDATE: ${{ inputs.cache_update }}
         TRUNCATE_ENABLED: ${{ inputs.truncate_enabled }}
         SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
-        GITHUB_TOKEN: ${{ github.token }}
         TMPFS_MOUNT_POINT: ${{ inputs.tmpfs_mount_point }}
       run: |
         extra_params=(
@@ -566,6 +574,10 @@ runs:
             fi
 
             export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
+            set +x
+            GITHUB_TOKEN="$(cat "$GITHUB_TOKEN_FILE")"
+            export GITHUB_TOKEN
+            set -x
             PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                 python3 -m scripts.tests.generate_summary \
                 --summary-out-path "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/" \
@@ -577,6 +589,7 @@ runs:
                 --test-time $((TEST_END_TIME - TEST_START_TIME)) \
                 --build-error-log-url "$BUILD_ERROR_LOG_URL_FOR_ITERATION" \
                 "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
+            unset GITHUB_TOKEN
             echo "report_generated=yes" >> "$GITHUB_OUTPUT"
 
             if [ "$JUNIT_AVAILABLE" -eq 0 ] && [ -n "$BUILD_ERROR_LOG_URL_FOR_ITERATION" ]; then
@@ -806,5 +819,5 @@ runs:
       run: |
         echo "::group::clean-up"
         rm -rf $TMP_DIR $SUMMARY_LINKS $BAZEL_REMOTE_PASSWORD_FILE \
-               $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS
+               $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS $GITHUB_TOKEN_FILE
         echo "::endgroup::"

@@ -42,6 +42,7 @@ for user_home in /home/github /root; do
 done
 
 remove_glob "/home/github/bazel.????"
+remove_glob "/home/github/github.????"
 
 remove_glob "/actions-runner/_work/*/*/.nebius"
 remove_glob "/actions-runner/_work/*/*/.aws"
