@@ -351,9 +351,11 @@ void TIOCompanion::HandlePatchBlobCompleted(
 
     if (FAILED(msg->GetStatus())) {
         ReportTabletBSFailure(
+            PartitionConfig.GetDiskId(),
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
             TStringBuilder() << "Stop tablet because of PatchBlob error: "
-                             << FormatError(msg->GetError()),
-            {{"disk", PartitionConfig.GetDiskId()}});
+                             << FormatError(msg->GetError()));
         Client.Poison(ctx);
         return;
     }

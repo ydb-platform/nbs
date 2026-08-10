@@ -857,6 +857,7 @@ public:
     bool CheckIfDeviceReplacementIsAllowed(
         TInstant now,
         const TDiskId& masterDiskId,
+        const TDiskId& replicaDiskId,
         const TDeviceId& deviceId);
 
     NProto::TError CreateDiskFromDevices(

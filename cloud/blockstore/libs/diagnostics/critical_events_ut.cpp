@@ -135,11 +135,6 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto assertInitialized = [&](const TString& sensorName)
         {
-            // TODO: fails until all per-disk critical events are removed from
-            // AppCriticalEvents API (now are duplicated in VolumeCriticalEvents
-            // API)
-            return;
-
             auto msg = Sprintf(
                 "reportingMode=%s, sensor=%s",
                 NProto::EVolumeCriticalEventsReportingMode_Name(reportingMode)
@@ -220,15 +215,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             UNIT_ASSERT_C(appCounter, msg);
             UNIT_ASSERT_VALUES_EQUAL_C(1, appCounter->Val(), msg);
         } else {
-            // TODO: fails until all per-disk critical events are removed from
-            // AppCriticalEvents API (now are duplicated in VolumeCriticalEvents
-            // API)
-
-            // Restore after removed
-            // UNIT_ASSERT_C(!appCounter, msg);
-
-            // Remove after removed
-            UNIT_ASSERT_VALUES_EQUAL_C(0, appCounter->Val(), msg);
+            UNIT_ASSERT_C(!appCounter, msg);
         }
 
         handler->UpdateStats(true);

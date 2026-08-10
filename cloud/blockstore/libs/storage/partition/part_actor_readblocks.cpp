@@ -264,7 +264,7 @@ public:
     };
 
 private:
-    const TString DiskId;
+    const TVolumeLabelsConstPtr VolumeLabels;
 
     const TRequestInfoPtr RequestInfo;
 
@@ -297,7 +297,7 @@ private:
 
 public:
     TReadBlocksActor(
-        TString diskId,
+        TVolumeLabelsConstPtr volumeLabels,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -361,7 +361,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlocksActor::TReadBlocksActor(
-        TString diskId,
+        TVolumeLabelsConstPtr volumeLabels,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -376,7 +376,7 @@ TReadBlocksActor::TReadBlocksActor(
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         bool waitBaseDiskRequests)
-    : DiskId(std::move(diskId))
+    : VolumeLabels(std::move(volumeLabels))
     , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
     , BlockSize(blockSize)
@@ -578,7 +578,9 @@ bool TReadBlocksActor::VerifyChecksums(
             batch.Requests[i],
             batch.BlobOffsets[i],
             batch.Checksums[i],
-            DiskId);
+            VolumeLabels->DiskId,
+            VolumeLabels->CloudId,
+            VolumeLabels->FolderId);
 
         if (HasError(error)) {
             HandleError(ctx, error);
@@ -1262,7 +1264,7 @@ void TPartitionActor::CompleteReadBlocks(
     if (describeBlocksRange.Defined() || requests) {
         const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
             ctx,
-            PartitionConfig.diskid(),
+            VolumeLabels,
             args.RequestInfo,
             BlockDigestGenerator,
             State->GetBlockSize(),

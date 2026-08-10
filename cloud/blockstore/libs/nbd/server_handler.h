@@ -120,6 +120,8 @@ struct IServerHandlerFactory
 struct TStorageOptions
 {
     TString DiskId;
+    TString CloudId;
+    TString FolderId;
     TString ClientId;
     ui32 BlockSize = 0;
     ui64 BlocksCount = 0;

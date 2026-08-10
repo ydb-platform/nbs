@@ -52,6 +52,10 @@ TPartitionActor::TPartitionActor(
     , TTabletBase(owner, std::move(storage), nullptr)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
+    , VolumeLabels(MakeVolumeLabels(
+          PartitionConfig.GetDiskId(),
+          PartitionConfig.GetCloudId(),
+          PartitionConfig.GetFolderId()))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -260,8 +264,12 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
-        TStringBuilder() << TabletID()
-                         << " Reassign request sent for channels: " << sb);
+        PartitionConfig.GetDiskId(),
+        PartitionConfig.GetCloudId(),
+        PartitionConfig.GetFolderId(),
+        "Reassign request sent",
+        {{"tablet_id", TabletID()},
+         {"channels", sb}});
     ReassignRequestSentTs = ctx.Now();
 }
 

@@ -33,6 +33,8 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           config,
           std::move(diagnosticsConfig),
           srcConfig->GetName(),
+          srcConfig->GetCloudId(),
+          srcConfig->GetFolderId(),
           srcConfig->GetBlockCount(),
           srcConfig->GetBlockSize(),
           std::move(profileLog),
@@ -233,9 +235,11 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
 
             if (device.GetBlocksCount() != target.GetBlocksCount()) {
                 ReportBadMigrationConfig(
+                    SrcConfig->GetName(),
+                    SrcConfig->GetCloudId(),
+                    SrcConfig->GetFolderId(),
                     "source != target blocks count",
-                    {{"disk", SrcConfig->GetName()},
-                     {"source", device.GetDeviceUUID()},
+                    {{"source", device.GetDeviceUUID()},
                      {"source_blocks_count", device.GetBlocksCount()},
                      {"target", target.GetDeviceUUID()},
                      {"target_blocks_count", target.GetBlocksCount()}});
@@ -293,8 +297,10 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
 
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             ReportMigrationFailed(
-                "Finish migration failed",
-                {{"disk", SrcConfig->GetName()}});
+                SrcConfig->GetName(),
+                SrcConfig->GetCloudId(),
+                SrcConfig->GetFolderId(),
+                "Finish migration failed");
             return;
         }
     }

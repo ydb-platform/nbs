@@ -31,6 +31,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         bool waitForAddFreshBlocksResponseBeforeResponse,
         ui64 tabletId,
+        TVolumeLabelsConstPtr volumeLabels,
         TPartitionThreadSafeStatePtr sharedState)
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
@@ -47,6 +48,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , WaitForAddFreshBlocksResponseBeforeResponse(
           waitForAddFreshBlocksResponseBeforeResponse)
     , TabletId(tabletId)
+    , VolumeLabels(std::move(volumeLabels))
     , SharedState(std::move(sharedState))
 {
     if (!IsZeroRequest) {
@@ -370,9 +372,10 @@ void TWriteFreshBlocksActor::HandleAddFreshBlocksResponse(
         error.GetCode() != E_CANCELLED)
     {
         ReportAddFreshBlocksResultedInError(
+            VolumeLabels,
             "unexpected error in AddFreshBlocksResponse",
-            {{"error", FormatError(ev->Get()->GetError())},
-             {"tabletId", TabletId}});
+            TCritEventParams{{"error", FormatError(ev->Get()->GetError())},
+                             {"tabletId", TabletId}});
 
         // If WaitForAddFreshBlocksResponseBeforeResponse is false, this means
         // that we responded to the client with success before adding the blocks

@@ -95,9 +95,11 @@ std::optional<TDeviceLocation> FindTargetMigrationDeviceLocation(
             FindReplicaDeviceLocation(meta, migration.GetSourceDeviceId());
         if (!sourceLocation) {
             ReportDiskAllocationFailure(
+                meta.GetConfig().GetDiskId(),
+                meta.GetConfig().GetCloudId(),
+                meta.GetConfig().GetFolderId(),
                 "Migration source device not found",
-                {{"disk", meta.GetConfig().GetDiskId()},
-                 {"target_device", migration.GetTargetDevice().GetDeviceUUID()},
+                {{"target_device", migration.GetTargetDevice().GetDeviceUUID()},
                  {"source_device", migration.GetSourceDeviceId()}});
             continue;
         }
@@ -192,9 +194,11 @@ TVector<NProto::TLaggingDevice> CollectLaggingDevices(
                 FindReplicaDeviceLocation(meta, migration.GetSourceDeviceId());
             if (!deviceLocation) {
                 ReportDiskAllocationFailure(
+                    meta.GetConfig().GetDiskId(),
+                    meta.GetConfig().GetCloudId(),
+                    meta.GetConfig().GetFolderId(),
                     "Migration inconsistency detected",
-                    {{"disk", meta.GetConfig().GetDiskId()},
-                     {"target_device", targetDevice.GetDeviceUUID()},
+                    {{"target_device", targetDevice.GetDeviceUUID()},
                      {"source_device", migration.GetSourceDeviceId()}});
                 continue;
             }

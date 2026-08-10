@@ -16,69 +16,35 @@ using TCritEventParams =
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CRITICAL_EVENTS(xxx)                                        \
-    xxx(InvalidTabletConfig)                                                   \
-    xxx(ReassignTablet)                                                        \
-    xxx(TabletBSFailure)                                                       \
-    xxx(DiskAllocationFailure)                                                 \
-    xxx(CollectGarbageError)                                                   \
     xxx(VhostQueueRunningError)                                                \
-    xxx(MigrationFailed)                                                       \
-    xxx(BadMigrationConfig)                                                    \
-    xxx(InitFreshBlocksError)                                                  \
-    xxx(TrimFreshLogError)                                                     \
-    xxx(NrdDestructionError)                                                   \
-    xxx(FailedToStartVolumeLocally)                                            \
     xxx(PublishDiskStateError)                                                 \
     xxx(EndpointRestoringError)                                                \
     xxx(HangingYdbStatsRequest)                                                \
     xxx(UserNotificationError)                                                 \
     xxx(BackupPathDescriptionsFailure)                                         \
     xxx(RdmaError)                                                             \
-    xxx(MirroredDiskAllocationCleanupFailure)                                  \
-    xxx(MirroredDiskAllocationPlacementGroupCleanupFailure)                    \
-    xxx(MirroredDiskDeviceReplacementForbidden)                                \
-    xxx(MirroredDiskDeviceReplacementFailure)                                  \
-    xxx(MirroredDiskDeviceReplacementRateLimitExceeded)                        \
-    xxx(MirroredDiskMinorityChecksumMismatch)                                  \
-    xxx(MirroredDiskMajorityChecksumMismatch)                                  \
-    xxx(MirroredDiskChecksumMismatchUponRead)                                  \
-    xxx(MirroredDiskAddTagFailed)                                              \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
-    xxx(ResyncFailed)                                                          \
     xxx(DiskRegistryBackupFailed)                                              \
     xxx(RegisterAgentWithEmptyRackName)                                        \
-    xxx(AddConfirmedBlobsError)                                                \
-    xxx(ConfirmBlobsError)                                                     \
     xxx(ManuallyPreemptedVolumesFileError)                                     \
     xxx(ServiceProxyWakeupTimerHit)                                            \
     xxx(ReceivedUnknownTaskId)                                                 \
-    xxx(MigrationSourceNotFound)                                               \
     xxx(UnexpectedBatchMigration)                                              \
     xxx(FreshDeviceNotFoundInConfig)                                           \
     xxx(DiskRegistryDeviceNotFoundSoft)                                        \
     xxx(DiskRegistrySourceDiskNotFound)                                        \
     xxx(EndpointSwitchFailure)                                                 \
     xxx(ExternalEndpointUnexpectedExit)                                        \
-    xxx(BlockDigestMismatchInBlob)                                             \
     xxx(DiskRegistryResumeDeviceFailed)                                        \
     xxx(DiskRegistryAgentDevicePoolConfigMismatch)                             \
     xxx(DiskRegistryPurgeHostError)                                            \
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
-    xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
-    xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
-    xxx(MirroredDiskResyncChecksumMismatch)                                    \
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
-    xxx(ReleaseShadowDiskError)                                                \
-    xxx(WrongCellIdInDescribeVolume)                                           \
-    xxx(TrimFreshLogTimeout)                                                   \
     xxx(DiskRegistryStateIntegrityBroken)                                      \
-    xxx(AddFreshBlocksResultedInError)                                         \
-    xxx(OverlappingRequestsDetected)                                           \
-    xxx(CrossPartitionRequestDetected)                                         \
-// BLOCKSTORE_CRITICAL_EVENTS
+    // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
     xxx(AcquiredDiskEraseAttempt)                                              \
@@ -162,6 +128,7 @@ using TCritEventParams =
     xxx(ResyncFailed)                                                          \
     xxx(AddConfirmedBlobsError)                                                \
     xxx(ConfirmBlobsError)                                                     \
+    xxx(MigrationSourceNotFound)                                               \
     xxx(BlockDigestMismatchInBlob)                                             \
     xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
     xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \

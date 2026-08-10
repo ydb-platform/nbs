@@ -194,6 +194,9 @@ void TPartitionActor::CompleteLoadState(
         // either a race or a bug (if this situation occurs again after tablet restart)
         // example: CLOUDINC-2027
         ReportInvalidTabletConfig(
+            partitionConfig.GetDiskId(),
+            partitionConfig.GetCloudId(),
+            partitionConfig.GetFolderId(),
             TStringBuilder()
             << LogTitle.GetWithTime()
             << " tablet info differs from config: tabletChannelCount < "

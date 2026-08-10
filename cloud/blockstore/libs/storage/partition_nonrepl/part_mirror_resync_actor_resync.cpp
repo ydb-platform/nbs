@@ -245,9 +245,11 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
             ScheduleRetryResyncNextRange(ctx);
         } else {
             ReportResyncFailed(
+                PartConfig->GetName(),
+                PartConfig->GetCloudId(),
+                PartConfig->GetFolderId(),
                 FormatError(msg->GetError()),
-                {{"disk", PartConfig->GetName()},
-                 {"range", DescribeRange(range)}});
+                {{"range", DescribeRange(range)}});
         }
 
         TDeque<TPostponedRead> postponedReads;
@@ -276,7 +278,10 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
     if (CritOnChecksumMismatch && msg->WriteStartTs > TInstant()) {
         ReportMirroredDiskResyncChecksumMismatch(
-            {{"disk", PartConfig->GetName()}, {"range", range}});
+            PartConfig->GetName(),
+            PartConfig->GetCloudId(),
+            PartConfig->GetFolderId(),
+            {{"range", range}});
     }
 
     auto resyncRange = State.BuildResyncRange();

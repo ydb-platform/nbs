@@ -36,6 +36,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const TActorId Tablet;
+    const TVolumeLabelsConstPtr VolumeLabels;
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 LastGCCommitId;
     const ui64 CollectCommitId;
@@ -57,6 +58,7 @@ public:
     TCollectGarbageActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
+        TVolumeLabelsConstPtr volumeLabels,
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
@@ -99,6 +101,7 @@ private:
 TCollectGarbageActor::TCollectGarbageActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
+        TVolumeLabelsConstPtr volumeLabels,
         TTabletStorageInfoPtr tabletInfo,
         ui64 lastGCCommitId,
         ui64 collectCommitId,
@@ -111,6 +114,7 @@ TCollectGarbageActor::TCollectGarbageActor(
         TDuration timeout)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
+    , VolumeLabels(std::move(volumeLabels))
     , TabletInfo(std::move(tabletInfo))
     , LastGCCommitId(lastGCCommitId)
     , CollectCommitId(collectCommitId)
@@ -223,6 +227,7 @@ void TCollectGarbageActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
         ReportCollectGarbageError(
+            VolumeLabels,
             TStringBuilder()
             << "Garbage collection failed: " << FormatError(error));
         Error = std::move(error);
@@ -318,6 +323,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const TActorId Tablet;
+    const TVolumeLabelsConstPtr VolumeLabels;
     const TTabletStorageInfoPtr TabletInfo;
     const ui64 CollectCommitId;
     const ui32 RecordGeneration;
@@ -335,6 +341,7 @@ public:
     TCollectGarbageHardActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
+        TVolumeLabelsConstPtr volumeLabels,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
         ui32 recordGeneration,
@@ -369,6 +376,7 @@ private:
 TCollectGarbageHardActor::TCollectGarbageHardActor(
         TRequestInfoPtr requestInfo,
         const TActorId& tablet,
+        TVolumeLabelsConstPtr volumeLabels,
         TTabletStorageInfoPtr tabletInfo,
         ui64 collectCommitId,
         ui32 recordGeneration,
@@ -378,6 +386,7 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
         TDuration timeout)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
+    , VolumeLabels(std::move(volumeLabels))
     , TabletInfo(std::move(tabletInfo))
     , CollectCommitId(collectCommitId)
     , RecordGeneration(recordGeneration)
@@ -461,6 +470,7 @@ void TCollectGarbageHardActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
         ReportCollectGarbageError(
+            VolumeLabels,
             TStringBuilder()
             << "Hard garbage collection failed: " << FormatError(error));
         Error = std::move(error);
@@ -680,6 +690,7 @@ void TPartitionActor::HandleCollectGarbage(
         ctx,
         requestInfo,
         SelfId(),
+        VolumeLabels,
         Info(),
         State->GetLastCollectCommitId(),
         commitId,
@@ -779,6 +790,7 @@ void TPartitionActor::CompleteCollectGarbage(
         ctx,
         args.RequestInfo,
         SelfId(),
+        VolumeLabels,
         Info(),
         args.CollectCommitId,
         Executor()->Generation(),

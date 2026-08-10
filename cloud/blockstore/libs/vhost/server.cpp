@@ -385,6 +385,8 @@ IDeviceHandlerPtr TServer::CreateDeviceHandler(
     TDeviceHandlerParams params{
         .Storage = std::move(storage),
         .DiskId = options.DiskId,
+        .CloudId = options.CloudId,
+        .FolderId = options.FolderId,
         .ClientId = options.ClientId,
         .BlockSize = options.BlockSize,
         .MaxZeroBlocksSubRequestSize = options.MaxZeroBlocksSubRequestSize,

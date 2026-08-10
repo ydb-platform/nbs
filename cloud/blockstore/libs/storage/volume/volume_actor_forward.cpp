@@ -999,8 +999,10 @@ void TVolumeActor::ForwardRequest(
                                   ORP_ENABLE_WITH_CRIT_EVENT)
                 {
                     ReportOverlappingRequestsDetected(
-                        {{"disk", State->GetDiskId()},
-                         {"Inflight", *addResult.InflightRange},
+                        State->GetDiskId(),
+                        State->GetMeta().GetVolumeConfig().GetCloudId(),
+                        State->GetMeta().GetVolumeConfig().GetFolderId(),
+                        {{"Inflight", *addResult.InflightRange},
                          {"New", blockRange}});
                 }
 

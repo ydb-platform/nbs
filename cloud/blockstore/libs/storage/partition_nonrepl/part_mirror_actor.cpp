@@ -69,6 +69,8 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , RdmaClient(std::move(rdmaClient))
     , PartitionBudgetManager(std::move(partitionBudgetManager))
     , DiskId(partConfig->GetName())
+    , CloudId(partConfig->GetCloudId())
+    , FolderId(partConfig->GetFolderId())
     , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , ResyncActorId(resyncActorId)
@@ -256,10 +258,16 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         const bool hasQuorum = majorCount > checksums.size() / 2;
         if (hasQuorum) {
             ReportMirroredDiskMinorityChecksumMismatch(
-                {{"disk", DiskId}, {"range", GetScrubbingRange()}});
+                DiskId,
+                CloudId,
+                FolderId,
+                {{"range", GetScrubbingRange()}});
         } else {
             ReportMirroredDiskMajorityChecksumMismatch(
-                {{"disk", DiskId}, {"range", GetScrubbingRange()}});
+                DiskId,
+                CloudId,
+                FolderId,
+                {{"range", GetScrubbingRange()}});
         }
         if (Config->GetResyncRangeAfterScrubbing() &&
             CanFixMismatch(hasQuorum, Config->GetScrubbingResyncPolicy()))
@@ -714,8 +722,11 @@ void TMirrorPartitionActor::HandleAddTagsResponse(
 
     if (HasError(error)) {
         ReportMirroredDiskAddTagFailed(
+            DiskId,
+            CloudId,
+            FolderId,
             FormatError(error),
-            {{"disk", DiskId}, {"tag", IntermediateWriteBufferTagName}});
+            {{"tag", IntermediateWriteBufferTagName}});
         return;
     }
     LOG_WARN(
