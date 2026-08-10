@@ -2689,6 +2689,75 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             "gh++jkl",
             readResponse.GetBuffer().substr(readResponse.GetBufferOffset()));
     }
+
+    Y_UNIT_TEST(ResumeFlushOnSessionRestore)
+    {
+        TBootstrap b({
+            // Control flush batches
+            .FlushWritesInParallelEnabled = false,
+        });
+
+        TManualProceedHandlers write(b.Session->WriteDataHandler);
+
+        b.WriteToCacheSync(1, 10, "abc");
+        b.WriteToCacheSync(1, 20, "def");
+        b.WriteToCacheSync(1, 30, "ghi");
+        b.WriteToCacheSync(1, 40, "jkl");
+
+        b.RecreateCache();
+
+        write.ProceedAll();
+
+        // 3 requests should be flushed, 1 remaining
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.Flush.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
+    }
+
+    Y_UNIT_TEST(ResumeFlushOnSessionRestoreForDestroyedHandles)
+    {
+        TBootstrap b({
+            .UseTestTimerAndScheduler = true,
+            // Control flush batches
+            .FlushWritesInParallelEnabled = false,
+        });
+
+        TVector<ui64> requestedHandles;
+
+        b.Session->WriteDataHandler = [&](auto, const auto& request)
+        {
+            requestedHandles.push_back(request->GetHandle());
+            NProto::TWriteDataResponse errorResponse;
+            errorResponse.MutableError()->SetCode(E_FAIL);
+            return MakeFuture(std::move(errorResponse));
+        };
+
+        b.WriteToCacheSync(1, 101, 10, "abc");
+        b.WriteToCacheSync(1, 102, 20, "def");
+        b.WriteToCacheSync(1, 101, 30, "ghi");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, requestedHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, requestedHandles[0]);
+
+        auto releaseHandleFuture = b.Cache.ReleaseHandle(1, 101);
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, requestedHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, requestedHandles[1]);
+
+        UNIT_ASSERT(releaseHandleFuture.HasValue());
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(3, requestedHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, requestedHandles[2]);
+
+        b.RecreateCache();
+
+        UNIT_ASSERT_VALUES_EQUAL(4, requestedHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, requestedHandles[3]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
