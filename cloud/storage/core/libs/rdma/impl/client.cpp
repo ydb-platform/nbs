@@ -64,7 +64,7 @@ struct TRequest;
 using TRequestPtr = std::unique_ptr<TRequest>;
 
 struct TRequestResources;
-using TRequestResourcesPtr = TIntrusivePtr<TRequestResources>;
+using TRequestResourcesPtr = std::unique_ptr<TRequestResources>;
 
 struct TEndpointCounters;
 using TEndpointCountersPtr = std::shared_ptr<TEndpointCounters>;
@@ -434,7 +434,6 @@ struct TClientRequestId: TListNode<TClientRequestId>
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequestResources
-    : TAtomicRefCount<TRequestResources>
 {
     enum class ERecyclePolicy
     {
@@ -461,11 +460,6 @@ struct TRequestResources
     ui64 BufferPoolGeneration = 0;
     NProto::TError Error;
 
-    // Cleanup is performed only after the user releases TRequest and every
-    // posted WR chain has either completed or been destroyed with its QP.
-    bool UserReleased = false;
-    bool HardwareOwned = false;
-
     ui32 Status = RDMA_PROTO_FAIL;
     ui32 ResponseBytes = 0;
 };
@@ -476,8 +470,6 @@ struct TInvalidationRequest
     : TIntrusiveListItem<TInvalidationRequest>
 {
     TRequestPtr Request;
-    TRequestResourcesPtr Resources;
-    bool UserCompleted = false;
     bool QpOwnedSendSlot = false;
 };
 
@@ -696,8 +688,6 @@ private:
 
     // Resource lifetime and allocation helpers.
     void ReleaseRequestResources(TRequestResourcesPtr resources) noexcept;
-    void AcquireHardwareResources(const TRequestResourcesPtr& resources) noexcept;
-    void ReleaseHardwareResources(const TRequestResourcesPtr& resources) noexcept;
     void CleanupRequestResourcesLocked(TRequestResources& resources) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
     NVerbs::TMemoryWindowPtr AcquireMemoryWindowLocked();
@@ -943,10 +933,7 @@ void TClientEndpoint::DestroyQP() noexcept
     while (PostedInvalidationRequests) {
         auto* req = PostedInvalidationRequests.PopFront();
         Y_ABORT_UNLESS(req);
-        ReleaseHardwareResources(req->Resources);
-        if (!req->UserCompleted) {
-            CompleteInvalidationRequest(req);
-        }
+        CompleteInvalidationRequest(req);
         delete req;
     }
     QpOwnedSendSlots = 0;
@@ -1010,7 +997,7 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
         shared_from_this(),
         std::move(handler),
         std::move(context));
-    req->Resources = MakeIntrusive<TRequestResources>();
+    req->Resources = std::make_unique<TRequestResources>();
     req->Resources->BufferPoolGeneration = BufferPoolGeneration.load();
 
     try {
@@ -1879,7 +1866,6 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv, ibv_wc* wc) noexcept
 
     if (needsLocalInvalidate) {
         auto* invalidationRequest = new TInvalidationRequest();
-        invalidationRequest->Resources = req->Resources;
         invalidationRequest->Request = std::move(req);
         PendingInvalidationRequests.PushBack(invalidationRequest);
         HandlePendingInvalidationRequests();
@@ -1991,36 +1977,7 @@ void TClientEndpoint::ReleaseRequestResources(TRequestResourcesPtr resources) no
     }
 
     with_lock (AllocationLock) {
-        resources->UserReleased = true;
-        if (!resources->HardwareOwned) {
-            CleanupRequestResourcesLocked(*resources);
-        }
-    }
-}
-
-void TClientEndpoint::AcquireHardwareResources(
-    const TRequestResourcesPtr& resources) noexcept
-{
-    Y_ABORT_UNLESS(resources);
-    with_lock (AllocationLock) {
-        Y_ABORT_UNLESS(!resources->HardwareOwned);
-        resources->HardwareOwned = true;
-    }
-}
-
-void TClientEndpoint::ReleaseHardwareResources(
-    const TRequestResourcesPtr& resources) noexcept
-{
-    if (!resources) {
-        return;
-    }
-
-    with_lock (AllocationLock) {
-        Y_ABORT_UNLESS(resources->HardwareOwned);
-        resources->HardwareOwned = false;
-        if (resources->UserReleased) {
-            CleanupRequestResourcesLocked(*resources);
-        }
+        CleanupRequestResourcesLocked(*resources);
     }
 }
 
@@ -2081,10 +2038,10 @@ void TClientEndpoint::CompleteInvalidationRequest(
     TInvalidationRequest* req) noexcept
 {
     Y_ABORT_UNLESS(req);
-    Y_ABORT_UNLESS(!req->UserCompleted);
-    req->UserCompleted = true;
-    if (req->Resources) {
-        req->Resources->RecyclePolicy = TRequestResources::ERecyclePolicy::Drop;
+    Y_ABORT_UNLESS(req->Request);
+    if (req->Request->Resources) {
+        req->Request->Resources->RecyclePolicy =
+            TRequestResources::ERecyclePolicy::Drop;
     }
     FinalizeRequest(std::move(req->Request));
 }
@@ -2110,8 +2067,9 @@ void TClientEndpoint::DrainInvalidationRequests() noexcept
 
     for (auto& req: PostedInvalidationRequests) {
         MarkInvalidationAsQpOwned(&req);
-        if (!req.UserCompleted) {
-            CompleteInvalidationRequest(&req);
+        if (req.Request && req.Request->Resources) {
+            req.Request->Resources->RecyclePolicy =
+                TRequestResources::ERecyclePolicy::Drop;
         }
     }
 }
@@ -2129,8 +2087,9 @@ void TClientEndpoint::PostLocalInvalidation(
     TSendWr* send) noexcept
 {
     Y_ABORT_UNLESS(req);
-    Y_ABORT_UNLESS(req->Resources);
-    auto* resources = req->Resources.Get();
+    Y_ABORT_UNLESS(req->Request);
+    Y_ABORT_UNLESS(req->Request->Resources);
+    auto* resources = req->Request->Resources.get();
     const bool needLocalInvalidateOut =
         resources->OutMode ==
         TRequestResources::EOutMode::LocalInvalidate;
@@ -2175,7 +2134,6 @@ void TClientEndpoint::PostLocalInvalidation(
     send->context = req;
     Y_ABORT_UNLESS(tail);
     tail->send_flags |= IBV_SEND_SIGNALED;
-    AcquireHardwareResources(req->Resources);
 
     ibv_send_wr* badWr = nullptr;
     try {
@@ -2187,15 +2145,14 @@ void TClientEndpoint::PostLocalInvalidation(
         Counters->Error();
         PostedInvalidationRequests.Remove(req);
         if (badWr == head) {
-            ReleaseHardwareResources(req->Resources);
             SendQueue.Push(send);
             CompleteInvalidationRequest(req);
             delete req;
         } else {
             // At least one invalidation was accepted. Its MW must remain alive
             // until QP destruction even though no terminal WR was posted.
-            if (req->Resources) {
-                req->Resources->RecyclePolicy =
+            if (req->Request && req->Request->Resources) {
+                req->Request->Resources->RecyclePolicy =
                     TRequestResources::ERecyclePolicy::Drop;
             }
             PostedInvalidationRequests.PushBack(req);
@@ -2233,10 +2190,7 @@ void TClientEndpoint::LocalInvalidationCompleted(TSendWr* send) noexcept
         Y_ABORT_UNLESS(QpOwnedSendSlots.load() > 0);
         --QpOwnedSendSlots;
     }
-    ReleaseHardwareResources(rawReq->Resources);
-    if (!rawReq->UserCompleted) {
-        FinalizeRequest(std::move(rawReq->Request));
-    }
+    FinalizeRequest(std::move(rawReq->Request));
     delete rawReq;
     HandlePendingInvalidationRequests();
 }
