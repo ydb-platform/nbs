@@ -1687,4 +1687,12 @@ message TStorageServiceConfig
 
     // Enables approximate garbage compaction for partition v2.
     optional bool V2GarbageCompactionEnabled = 529;
+
+/////////////////////////////// Partition v2 ///////////////////////////////
+
+    // L0 range size for partition v2.
+    optional uint64 L0RangeSizeV2 = 523;
+
+    // L1 range size for partition v2.
+    optional uint64 L1RangeSizeV2 = 524;
 }

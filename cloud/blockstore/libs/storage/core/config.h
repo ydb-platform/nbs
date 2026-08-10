@@ -894,6 +894,10 @@ public:
     [[nodiscard]] TDuration GetMixedBlocksFilterAllowedCpuTimePerSecond() const;
 
     [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
+
+    [[nodiscard]] ui64 GetL0RangeSizeV2() const;
+
+    [[nodiscard]] ui64 GetL1RangeSizeV2() const;
 };
 
 ui64 GetAllocationUnit(
