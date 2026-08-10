@@ -8,6 +8,12 @@ IF (OS_LINUX)
     ALLOCATOR(TCMALLOC_256K)
 ENDIF()
 
+IF (SANITIZER_TYPE == "undefined")
+    SUPPRESSIONS(
+        ubsan.supp
+    )
+ENDIF()
+
 IF (OS_DARWIN)
     STRIP()
     NO_SPLIT_DWARF()
@@ -69,7 +75,7 @@ PEERDIR(
     yql/essentials/udfs/common/url_base
     yql/essentials/udfs/common/yson2
     yql/essentials/udfs/logs/dsv
-    contrib/ydb/library/breakpad 
+    contrib/ydb/library/breakpad
     contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/codecs
 )
 
