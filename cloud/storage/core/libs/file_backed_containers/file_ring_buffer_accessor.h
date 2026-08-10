@@ -137,7 +137,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileMapFileRingBufferAccessor: public TFileRingBufferAccessor
+class TFileMapFileRingBufferAccessor final: public TFileRingBufferAccessor
 {
 private:
     const TString FileName;

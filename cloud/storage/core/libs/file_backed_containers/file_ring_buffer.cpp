@@ -182,8 +182,10 @@ private:
                     return TEntryInfo::CreateInvalid();
                 }
 
+                // When entry header is not written atomically, we cannot be
+                // sure that the checksum is not stale
                 if (eh.FreeFlag && eh.DataChecksum != 0 &&
-                    Capabilities().EntryHeaderIsCoveredByChecksum)
+                    Capabilities().EntryHeaderIsProcessedAtomically)
                 {
                     return TEntryInfo::CreateInvalid();
                 }
@@ -219,8 +221,10 @@ private:
             return TEntryInfo::CreateInvalid();
         }
 
+        // When entry header is not written atomically, we cannot be
+        // sure that the checksum is not stale
         if (eh.FreeFlag && eh.DataChecksum != 0 &&
-            Capabilities().EntryHeaderIsCoveredByChecksum)
+            Capabilities().EntryHeaderIsProcessedAtomically)
         {
             return TEntryInfo::CreateInvalid();
         }
@@ -282,12 +286,16 @@ private:
 
     bool ResizeMetadata(ui64 desiredMetadataCapacity)
     {
-        Header()->MetadataCapacity =
-            Min(Header()->MetadataCapacity,
+        // We cannot shrink below the existing metadata size
+        const ui64 newMetadataCapacity =
+            Max(desiredMetadataCapacity,
                 static_cast<ui64>(Header()->MetadataSize));
 
-        const ui64 newMetadataCapacity =
-            Max(desiredMetadataCapacity, Header()->MetadataCapacity);
+        if (Header()->MetadataCapacity == newMetadataCapacity) {
+            return true;
+        }
+
+        Header()->MetadataCapacity = static_cast<ui64>(Header()->MetadataSize);
 
         const ui64 newDataOffset = AlignUp(
             Header()->MetadataOffset + newMetadataCapacity,

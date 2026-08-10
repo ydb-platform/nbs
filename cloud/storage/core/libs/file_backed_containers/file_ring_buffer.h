@@ -79,7 +79,7 @@ public:
     ui64 Size() const;
     bool Empty() const;
 
-    // Checks data and structure integrity
+    // Checks data and structure integrity including data checksum validation
     // Sets IsCorrupted flag if any issues are found and returns false
     // Returns true if everything is valid
     // Fires a critical event and doesn't visit entries if a buffer is corrupted

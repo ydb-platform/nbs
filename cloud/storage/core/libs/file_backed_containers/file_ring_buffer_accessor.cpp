@@ -148,6 +148,8 @@ TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
                 pos));
         }
 
+        // When entry header is not written atomically, we cannot be sure that
+        // the checksum is not stale so we skip this check
         if (capabilities.EntryHeaderIsProcessedAtomically &&
             eh.DataChecksum != 0)
         {
@@ -167,6 +169,8 @@ TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
         }
 
         if (eh.FreeFlag) {
+            // When entry header is not written atomically, we cannot be sure
+            // that the checksum is not slate so we skip this check
             if (capabilities.EntryHeaderIsProcessedAtomically &&
                 eh.DataChecksum != 0)
             {
@@ -355,7 +359,7 @@ EValidationStatus TFileRingBufferAccessor::DoValidateAndInitialize()
     if (AlignDown(RawData.data(), sizeof(ui64)) != RawData.data()) {
         // Memory mapping is done in multiples of the page size, which is a
         // multiple of 8 bytes on all supported platforms.
-        // Therefore, the raw data size should be aligned to 8 bytes.
+        // Therefore, the raw data address should be aligned to 8 bytes.
         LastValidationError =
             MakeError("Buffer is not aligned to 8 bytes");
         return EValidationStatus::Failed;
@@ -463,7 +467,7 @@ NProto::TError TFileMapFileRingBufferAccessor::ResizeAndRemap(size_t newSize)
         return MakeError(
             E_IO,
             Sprintf(
-                "Failed to map file %s: %s",
+                "Failed to resize and remap file %s: %s",
                 FileName.c_str(),
                 CurrentExceptionMessage().c_str()));
     }

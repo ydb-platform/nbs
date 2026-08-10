@@ -15,16 +15,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILE_RING_BUFFER_TEST(name)                  \
-    void TestImpl##name(EFileRingBufferVersion ver); \
-    Y_UNIT_TEST(name##V5)                            \
-    {                                                \
-        TestImpl##name(EFileRingBufferVersion::V5);  \
-    }                                                \
-    Y_UNIT_TEST(name##V6)                            \
-    {                                                \
-        TestImpl##name(EFileRingBufferVersion::V6);  \
-    }                                                \
+#define FILE_RING_BUFFER_TEST(name)                                            \
+    void TestImpl##name(EFileRingBufferVersion ver);                           \
+    Y_UNIT_TEST(name##V5)                                                      \
+    {                                                                          \
+        TestImpl##name(EFileRingBufferVersion::V5);                            \
+    }                                                                          \
+    Y_UNIT_TEST(name##V6)                                                      \
+    {                                                                          \
+        TestImpl##name(EFileRingBufferVersion::V6);                            \
+    }                                                                          \
     void TestImpl##name(EFileRingBufferVersion ver)   // FILE_RING_BUFFER_TEST
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -438,6 +438,50 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.AssertValidateFailed("Invalid file ring buffer read position");
     }
 
+    FILE_RING_BUFFER_TEST(ShouldNotValidateUnalignedReadPos)
+    {
+        TBootstrap b;
+        b.ResizeAndRemap(sizeof(TFileRingBufferHeader) + sizeof(ui64));
+
+        auto& header = b.RawDataHeader();
+        header.Version = ver;
+        header.HeaderSize = sizeof(TFileRingBufferHeader);
+        header.MetadataOffset = sizeof(TFileRingBufferHeader);
+        header.MetadataCapacity = 0;
+        header.MetadataSize = 0;
+        header.DataOffset = sizeof(TFileRingBufferHeader);
+        header.DataCapacity = sizeof(ui64);
+        header.ReadPos = 0;
+
+        b.AssertValidateSuccess();
+
+        const auto alignment = b.Accessor.GetCapabilities().Alignment;
+        if (alignment == 1) {
+            return;
+        }
+
+        b.RawDataHeader().ReadPos = 1;
+
+        if (alignment > 1) {
+            b.AssertValidateFailed(
+                "Invalid file ring buffer read position 1 (expected to be "
+                "aligned");
+        } else {
+            b.AssertValidateSuccess();
+        }
+
+        b.RawDataHeader().ReadPos = 0;
+        b.RawDataHeader().WritePos = 1;
+
+        if (alignment > 1) {
+            b.AssertValidateFailed(
+                "Invalid file ring buffer write position 1 (expected to be "
+                "aligned");
+        } else {
+            b.AssertValidateSuccess();
+        }
+    }
+
     FILE_RING_BUFFER_TEST(ShouldNotValidateInvalidWritePos)
     {
         TBootstrap b;
@@ -491,6 +535,51 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
             ver);
 
         b.AssertValidateSuccess();
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldValidateWrappedFileWithAllocWithoutCommit)
+    {
+        TBootstrap b;
+        b.Execute(
+            [](TFileRingBuffer& rb)
+            {
+                while (rb.PushBack("ABCD")) {
+                    // Add elements until the buffer is full
+                }
+
+                rb.PopFront();
+                rb.PopFront();
+
+                rb.Alloc(4);
+            },
+            ver);
+
+        b.AssertValidateSuccess();
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldValidateWrappedFileWithAbortedAlloc)
+    {
+        TBootstrap b;
+
+        // Initialize empty file
+        b.Execute([](TFileRingBuffer&) {}, ver);
+
+        b.AssertValidateSuccess();
+        const auto alignment = b.Accessor.GetCapabilities().Alignment;
+
+        auto& header = b.RawDataHeader();
+        header.ReadPos = alignment > 0 ? alignment : 1;
+
+        b.Accessor.GetDataProcessor()->WriteEntryHeader(header.ReadPos, {});
+
+        b.AssertValidateSuccess();
+
+        b.Accessor.GetDataProcessor()->WriteEntryHeader(
+            header.ReadPos,
+            {.DataSize = 4, .FreeFlag = true});
+
+        b.AssertValidateFailed(
+            "expected to point to a slack space when WritePos == 0)");
     }
 
     FILE_RING_BUFFER_TEST(ShouldNotValidateFileWithZeroDataSizeAndSkipFlag)
