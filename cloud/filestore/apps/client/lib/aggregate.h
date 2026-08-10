@@ -3,7 +3,6 @@
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
-
 #include <util/system/yassert.h>
 
 #include <utility>
