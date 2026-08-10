@@ -79,6 +79,7 @@ private:
     const TLog Log;
     const TString LogTag;
     const TString FileSystemId;
+    const TString FilePath;
 
     IPersistentStoragePtr PersistentStorage;
     TWriteBackCacheState State;
@@ -107,6 +108,7 @@ public:
               args.FileSystemId.c_str(),
               args.ClientId.c_str()))
         , FileSystemId(args.FileSystemId)
+        , FilePath(args.FilePath)
         , State(
               *this,
               Timer,
@@ -144,7 +146,8 @@ public:
             1024 * 1024 + 1016);
     }
 
-    // This method should be called outside the construction
+    // This method should be called outside TImpl constructor because
+    // it captures weak_from_this()
     void Init()
     {
         if (!PersistentStorage) {
@@ -157,7 +160,7 @@ public:
                 << LogTag
                 << " WriteBackCache failed to deserialize requests from the "
                    "persistent storage due to corruption"
-                << PersistentStorage->GetFilePath().Quote());
+                << ", FilePath: " << FilePath.Quote());
         }
 
         ScheduleAutomaticFlushIfNeeded();

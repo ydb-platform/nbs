@@ -36,7 +36,6 @@ public:
     void Free(const void* ptr) override;
     void SetTag(const void* ptr, ui32 tag) override;
     void UpdateStats() const override;
-    const TString& GetFilePath() const override;
 
     void SetCapacity(size_t capacity);
 
