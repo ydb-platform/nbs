@@ -1172,13 +1172,14 @@ void TPartitionDatabaseImpl<TCounters>::WriteL0Blob(
     Y_ABORT_UNLESS(!blobMeta.HasMergedBlocks());
     Y_ABORT_UNLESS(blobMeta.HasMixedBlocks());
 
-    Table<TTable>()
-        .Key(
-            blockRange.Start,
-            blockRange.End,
-            blobId.CommitId(),
-            blobId.UniqueId())
-        .template Update<TTable::BlobMeta>(blobMeta);
+    auto value = Table<TTable>().Key(
+        blockRange.End,
+        blobId.CommitId(),
+        blobId.UniqueId());
+
+    value.Update(
+        NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start),
+        NIceDb::TUpdate<TTable::BlobMeta>(std::move(blobMeta)));
 }
 
 template <typename TTable, typename TCounters>

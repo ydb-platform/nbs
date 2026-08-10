@@ -447,7 +447,7 @@ struct TPartitionSchema
             using Type = NProto::TBlobMeta;
         };
 
-        using TKey = TableKey<RangeStart, RangeEnd, BlobCommitId, BlobId>;
+        using TKey = TableKey<RangeEnd, BlobCommitId, BlobId>;
         using TColumns =
             TableColumns<RangeStart, RangeEnd, BlobCommitId, BlobId, BlobMeta>;
 
