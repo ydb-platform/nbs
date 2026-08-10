@@ -32,24 +32,29 @@ void Aggregate(
     TVector<TString>& labels,
     TVector<TResult<T>>& result)
 {
-    TResult<T> aggregate{labels, {}};
-    for (const auto& row: rows) {
-        aggregate.GroupAggregate.Add(row.Data);
-    }
-    result.push_back(std::move(aggregate));
+    if (firstLabel >= labels.size()) {
+        TResult<T> aggregate{labels, {}};
 
-    for (size_t i = firstLabel; i < labels.size(); ++i) {
-        THashMap<TString, TVector<TRow<T>>> groups;
         for (const auto& row: rows) {
-            groups[row.Labels[i]].push_back(row);
+            aggregate.GroupAggregate.Add(row.Data);
         }
+        result.push_back(std::move(aggregate));
 
-        for (const auto& [label, group]: groups) {
-            labels[i] = label;
-            Aggregate(group, i + 1, labels, result);
-        }
-        labels[i].clear();
+        return;
     }
+
+    THashMap<TString, TVector<TRow<T>>> groups;
+    for (const auto& row: rows) {
+        groups[row.Labels[firstLabel]].push_back(row);
+    }
+
+    for (const auto& [label, group]: groups) {
+        labels[firstLabel] = label;
+        Aggregate(group, firstLabel + 1, labels, result);
+    }
+
+    labels[firstLabel].clear();
+    Aggregate(rows, firstLabel + 1, labels, result);
 }
 
 template <typename T>
