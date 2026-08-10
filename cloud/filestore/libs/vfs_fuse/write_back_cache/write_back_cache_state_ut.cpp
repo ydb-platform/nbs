@@ -1396,7 +1396,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
         b.State->ReleaseBarrier(3, barrier.GetResult());
         UNIT_ASSERT_VALUES_EQUAL("3", b.DumpEvents());
-
     }
 }
 
