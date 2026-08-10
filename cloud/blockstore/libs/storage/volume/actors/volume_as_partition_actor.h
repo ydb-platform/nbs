@@ -12,6 +12,8 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/datetime/base.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -36,17 +38,25 @@ public:
         Local,
     };
 
+    enum class ERequestType
+    {
+        WriteBlocks,
+        ZeroBlocks,
+    };
+
 private:
     struct TRequestCtx
     {
         const NActors::TActorId OriginalSender;
         const ui64 OriginalCookie = 0;
         const EReplyType ReplyType = EReplyType::Ordinary;
+        const ERequestType RequestType = ERequestType::WriteBlocks;
     };
 
     const TChildLogTitle LogTitle;
     const ui32 OriginalBlockSize;
     const TString DiskId;
+    const TDuration ShutdownTimeout;
 
     EState State = EState::Describing;
     ui64 BlockCount = 0;
@@ -62,7 +72,8 @@ public:
     TVolumeAsPartitionActor(
         TChildLogTitle logTitle,
         ui32 originalBlockSize,
-        TString diskId);
+        TString diskId,
+        TDuration shutdownTimeout);
 
     ~TVolumeAsPartitionActor() override;
 
@@ -75,7 +86,8 @@ private:
     void ForwardRequestToFollower(
         const TEvent& ev,
         const NActors::TActorContext& ctx,
-        EReplyType replyType);
+        EReplyType replyType,
+        ERequestType requestType);
 
     template <typename TMethod>
     void ForwardResponse(
@@ -102,6 +114,7 @@ private:
         EReplyType replyType);
 
     void ReplyAndDie(const NActors::TActorContext& ctx);
+    void CancelRequests(const NActors::TActorContext& ctx);
 
     void HandleDescribeVolumeResponse(
         const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
@@ -119,6 +132,9 @@ private:
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleShutdownTimeout(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
 private:

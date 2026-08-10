@@ -149,7 +149,8 @@ Y_UNIT_TEST_SUITE(TVolumeAsPartitionActorTests)
                 ActorSystem.Register(new TVolumeAsPartitionActor{
                     LogTitle.GetChild(GetCycleCount()),
                     LeaderBlockSize,
-                    FollowerDiskId});
+                    FollowerDiskId,
+                    TDuration::Seconds(30)});
         }
 
         template <typename TEvent>
