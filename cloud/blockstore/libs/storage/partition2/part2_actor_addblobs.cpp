@@ -156,6 +156,10 @@ public:
             UpdateCompactionCounters(blob);
         }
 
+        for (const auto& blob: Args.L0Blobs) {
+            ProcessNewBlob(ctx, db, blob);
+        }
+
         if (Args.Mode == ADD_COMPACTION_RESULT) {
             ProcessAffectedBlobs(db);
             ProcessAffectedBlocks(db);
@@ -399,6 +403,56 @@ private:
         State.IncrementMixedBlobsCount(1);
         if (!IsDeletionMarker(blob.BlobId)) {
             State.IncrementMixedBlocksCount(blob.Blocks.size());
+        }
+    }
+
+    void ProcessNewBlob(
+        const TActorContext& ctx,
+        TPartitionDatabase& db,
+        const TAddL0Blob& blob)
+    {
+        NProto::TBlobMeta blobMeta;
+
+        auto* mixedBlocks = blobMeta.MutableMixedBlocks();
+        mixedBlocks->MutableBlocks()->Reserve(blob.Blocks.size());
+        mixedBlocks->MutableCommitIds()->Reserve(blob.Blocks.size());
+
+        for (const auto& block: blob.Blocks) {
+            STORAGE_VERIFY(
+                mixedBlocks->BlocksSize() == 0 ||
+                    mixedBlocks->GetBlocks(mixedBlocks->BlocksSize() - 1) <
+                        block.BlockIndex,
+                TWellKnownEntityTypes::TABLET,
+                TabletId)
+            mixedBlocks->AddBlocks(block.BlockIndex);
+            mixedBlocks->AddCommitIds(block.CommitId);
+        }
+
+        for (ui32 checksum: blob.Checksums) {
+            blobMeta.AddBlockChecksums(checksum);
+        }
+
+        TBlockRange32 blockRange = TBlockRange32::MakeClosedInterval(
+            blob.Blocks.front().BlockIndex,
+            blob.Blocks.back().BlockIndex);
+
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "Add L0Blob @%lu (blob: %s, range: %s)",
+            Args.CommitId,
+            ToString(MakeBlobId(TabletId, blob.BlobId)).c_str(),
+            DescribeRange(blockRange).c_str());
+
+        db.WriteL0Blob(blob.BlobId, blockRange, blobMeta);
+
+        if (!IsDeletionMarker(blob.BlobId)) {
+            bool added = State.GetGarbageQueue().AddNewBlob(blob.BlobId);
+            Y_ABORT_UNLESS(added);
+        }
+
+        for (const auto& block: blob.Blocks) {
+            State.DeleteFreshBlock(block.BlockIndex, block.CommitId);
         }
     }
 
@@ -737,6 +791,7 @@ void TPartitionActor::HandleAddBlobs(
             std::move(msg->MixedBlobs),
             std::move(msg->MergedBlobs),
             std::move(msg->FreshBlobs),
+            std::move(msg->L0Blobs),
             msg->Mode,
             std::move(msg->AffectedBlobs),
             std::move(msg->AffectedBlocks),

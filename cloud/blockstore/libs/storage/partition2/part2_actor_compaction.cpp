@@ -915,6 +915,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         std::move(mixedBlobs),
         std::move(mergedBlobs),
         TVector<TAddFreshBlob>(),
+        TVector<TAddL0Blob>(),
         ADD_COMPACTION_RESULT,
         std::move(affectedBlobs),
         std::move(affectedBlocks),

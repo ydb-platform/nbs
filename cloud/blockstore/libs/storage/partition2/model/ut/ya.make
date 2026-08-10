@@ -16,6 +16,7 @@ SRCS(
     garbage_queue_ut.cpp
     group_downtimes_ut.cpp
     mixed_index_cache_ut.cpp
+    promote_compaction_visitor_ut.cpp
 )
 
 PEERDIR(

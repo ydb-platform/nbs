@@ -122,6 +122,24 @@ struct TWriteFreshBlocksRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TAddL0Blob
+{
+    const TPartialBlobId BlobId;
+    const TVector<TBlock> Blocks;
+    const TVector<ui32> Checksums;
+
+    TAddL0Blob(
+        const TPartialBlobId& blobId,
+        TVector<TBlock> blocks,
+        TVector<ui32> checksums)
+        : BlobId(blobId)
+        , Blocks(std::move(blocks))
+        , Checksums(std::move(checksums))
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TAffectedBlock
 {
     ui32 BlockIndex = 0;
@@ -261,6 +279,7 @@ struct TEvPartitionPrivate
         TVector<TAddMixedBlob> MixedBlobs;
         TVector<TAddMergedBlob> MergedBlobs;
         TVector<TAddFreshBlob> FreshBlobs;
+        TVector<TAddL0Blob> L0Blobs;
         EAddBlobMode Mode = ADD_WRITE_RESULT;
 
         // compaction
@@ -276,6 +295,7 @@ struct TEvPartitionPrivate
                 TVector<TAddMixedBlob> mixedBlobs,
                 TVector<TAddMergedBlob> mergedBlobs,
                 TVector<TAddFreshBlob> freshBlobs,
+                TVector<TAddL0Blob> l0Blobs,
                 EAddBlobMode mode,
                 TAffectedBlobs affectedBlobs = {},
                 TAffectedBlocks affectedBlocks = {},
@@ -285,6 +305,7 @@ struct TEvPartitionPrivate
             , MixedBlobs(std::move(mixedBlobs))
             , MergedBlobs(std::move(mergedBlobs))
             , FreshBlobs(std::move(freshBlobs))
+            , L0Blobs(std::move(l0Blobs))
             , Mode(mode)
             , AffectedBlobs(std::move(affectedBlobs))
             , AffectedBlocks(std::move(affectedBlocks))

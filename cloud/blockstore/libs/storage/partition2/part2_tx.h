@@ -310,6 +310,7 @@ struct TTxPartition
         const TVector<TAddMixedBlob> MixedBlobs;
         const TVector<TAddMergedBlob> MergedBlobs;
         const TVector<TAddFreshBlob> FreshBlobs;
+        const TVector<TAddL0Blob> L0Blobs;
         const EAddBlobMode Mode;
 
         // compaction
@@ -326,6 +327,7 @@ struct TTxPartition
                 TVector<TAddMixedBlob> mixedBlobs,
                 TVector<TAddMergedBlob> mergedBlobs,
                 TVector<TAddFreshBlob> freshBlobs,
+                TVector<TAddL0Blob> l0Blobs,
                 EAddBlobMode mode,
                 TAffectedBlobs affectedBlobs,
                 TAffectedBlocks affectedBlocks,
@@ -336,6 +338,7 @@ struct TTxPartition
             , MixedBlobs(std::move(mixedBlobs))
             , MergedBlobs(std::move(mergedBlobs))
             , FreshBlobs(std::move(freshBlobs))
+            , L0Blobs(std::move(l0Blobs))
             , Mode(mode)
             , AffectedBlobs(std::move(affectedBlobs))
             , AffectedBlocks(std::move(affectedBlocks))

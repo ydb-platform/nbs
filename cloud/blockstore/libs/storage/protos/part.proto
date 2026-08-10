@@ -170,6 +170,10 @@ message TPartitionMeta
 
     // Progress marker for checkpoint-aware cleanup.
     TCleanupMilestone CleanupMilestone = 6;
+
+    uint64 L0RangeSize = 7;
+
+    uint64 L1RangeSize = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -187,6 +191,7 @@ message TBlobMeta
         uint32 Start = 1;
         uint32 End = 2;
         uint32 Skipped = 3;
+        uint64 CommitId = 4;
     }
 
     oneof Blocks

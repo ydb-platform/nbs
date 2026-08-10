@@ -738,16 +738,20 @@ private:
     TTabletStorageInfo& TabletInfo;
     TTxPartition::TReadBlocks& Args;
 
+    const NActors::TActorContext& Ctx;
+
 public:
     TReadBlocksVisitor(
             IBlockDigestGeneratorPtr blockDigestGenerator,
             ui32 blockSize,
             TTabletStorageInfo& tabletInfo,
-            TTxPartition::TReadBlocks& args)
+            TTxPartition::TReadBlocks& args,
+            const NActors::TActorContext& ctx)
         : BlockDigestGenerator(std::move(blockDigestGenerator))
         , BlockSize(blockSize)
         , TabletInfo(tabletInfo)
         , Args(args)
+        , Ctx(ctx)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -794,6 +798,15 @@ public:
         }
 
         TBlockMark blockMark = TZeroMark();
+
+        LOG_DEBUG(
+            Ctx,
+            TBlockStoreComponents::PARTITION,
+            "Visit block %lu, %lu, %s, %u",
+            blockIndex,
+            commitId,
+            ToString(blobId).c_str(),
+            blobOffset);
 
         if (!IsDeletionMarker(blobId)) {
             const auto group = TabletInfo.GroupFor(
@@ -1059,7 +1072,10 @@ bool TPartitionActor::PrepareReadBlocks(
     Y_UNUSED(ctx);
 
     TRequestScope timer(*args.RequestInfo);
-    TPartitionDatabase db(tx.DB);
+    TPartitionDatabase db(
+        tx.DB,
+        State->GetMeta().GetL0RangeSize(),
+        State->GetMeta().GetL1RangeSize());
 
     ui64 commitId = args.CommitId;
 
@@ -1079,14 +1095,12 @@ bool TPartitionActor::PrepareReadBlocks(
         BlockDigestGenerator,
         State->GetBlockSize(),
         *Info(),
-        args
+        args,
+        ctx
     );
     State->FindFreshBlocks(visitor, args.ReadRange, commitId);
-    auto ready = db.FindMixedBlocks(
-        visitor,
-        args.ReadRange,
-        false,   // precharge
-        commitId);
+
+    auto ready = db.FindBlocksInL0Index(visitor, args.ReadRange, commitId);
     ready &= db.FindMergedBlocks(
         visitor,
         args.ReadRange,
