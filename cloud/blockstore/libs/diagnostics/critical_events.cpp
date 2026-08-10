@@ -77,15 +77,18 @@ struct TVolumeCriticalEventCounter
 
 struct TVolumeCriticalEventKey
 {
-    TString Event;        // "VolumeCriticalEvent/<event>"
-    TVolumeId VolumeId;   // published as the 'volume', 'cloud' and 'folder'
-                          // metric labels
-
-    bool operator==(const TVolumeCriticalEventKey& rhs) const
-    {
-        return std::tie(Event, VolumeId) == std::tie(rhs.Event, rhs.VolumeId);
-    }
+    TString Event;                // == "VolumeCriticalEvent/<event>"
+    TVolumeLabels VolumeLabels;   // published as the 'volume', 'cloud' and
+                                  // 'folder' metric labels
 };
+
+inline bool operator==(
+    const TVolumeCriticalEventKey& lhs,
+    const TVolumeCriticalEventKey& rhs)
+{
+    return std::tie(lhs.Event, lhs.VolumeLabels) ==
+           std::tie(rhs.Event, rhs.VolumeLabels);
+}
 
 }   // namespace
 }   // namespace NCloud::NBlockStore
@@ -98,7 +101,7 @@ struct THash<NCloud::NBlockStore::TVolumeCriticalEventKey>
     size_t operator()(
         const NCloud::NBlockStore::TVolumeCriticalEventKey& val) const
     {
-        const auto& a = std::tie(val.Event, val.VolumeId);
+        const auto& a = std::tie(val.Event, val.VolumeLabels);
         return THash<std::decay_t<decltype(a)>>{}(a);
     }
 };
@@ -139,9 +142,9 @@ void PublishVolumeCriticalEventCounters()
             // published GAUGE now so the accumulated Unpublished can be
             // flushed.
             e.Published = VolumeCriticalEvents.CountersRoot
-                              ->GetSubgroup("volume", k.VolumeId.DiskId)
-                              ->GetSubgroup("cloud", k.VolumeId.CloudId)
-                              ->GetSubgroup("folder", k.VolumeId.FolderId)
+                              ->GetSubgroup("volume", k.VolumeLabels.DiskId)
+                              ->GetSubgroup("cloud", k.VolumeLabels.CloudId)
+                              ->GetSubgroup("folder", k.VolumeLabels.FolderId)
                               ->GetCounter(k.Event, /*derivative=*/false);
         }
         auto v = e.Unpublished.exchange(0);
@@ -360,7 +363,7 @@ void ResetVolumeCriticalEventsCounter()
                                                                                \
             auto key = TVolumeCriticalEventKey{                                \
                 .Event    = GetVolumeCriticalEventFor##name(),                 \
-                .VolumeId = {                                                  \
+                .VolumeLabels = {                                              \
                     .DiskId   = diskId,                                        \
                     .CloudId  = cloudId,                                       \
                     .FolderId = folderId}                                      \

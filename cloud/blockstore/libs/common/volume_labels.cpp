@@ -1,15 +1,15 @@
-#include "volume_id.h"
+#include "volume_labels.h"
 
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumeIdPtr MakeVolumeId(
+TVolumeLabelsPtr MakeVolumeLabels(
     const TString& diskId,
     const TString& cloudId,
     const TString& folderId)
 {
-    return std::make_shared<TVolumeId>(TVolumeId{
+    return std::make_shared<TVolumeLabels>(TVolumeLabels{
         .DiskId = diskId,
         .CloudId = cloudId,
         .FolderId = folderId});

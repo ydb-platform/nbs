@@ -30,7 +30,7 @@ TIntrusivePtr<TDynamicCounters> FindNestedGroup(
 // Resolves the per-disk counter group under component=service_volume.
 TIntrusivePtr<TDynamicCounters> FindVolumeGroup(
     TDynamicCountersPtr serviceVolumeGroup,
-    const TVolumeId& v)
+    const TVolumeLabels& v)
 {
     return FindNestedGroup(
         serviceVolumeGroup,
@@ -115,7 +115,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumeId v{
+        const TVolumeLabels v{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
@@ -169,7 +169,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumeId v{
+        const TVolumeLabels v{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
@@ -208,7 +208,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumeId v{
+        const TVolumeLabels v{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
@@ -246,12 +246,12 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumeId v1{
+        const TVolumeLabels v1{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
 
-        const TVolumeId v2{
+        const TVolumeLabels v2{
             .DiskId = "disk-2",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
@@ -298,7 +298,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
-        const TVolumeId v{
+        const TVolumeLabels v{
             .DiskId = "disk-1",
             .CloudId = "cloud-1",
             .FolderId = "folder-1"};
@@ -370,9 +370,9 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
                 params);
         }
 
-        // Report...(TVolumeId, ...)
+        // Report...(TVolumeLabels, ...)
         {
-            const auto v = TVolumeId{
+            const auto v = TVolumeLabels{
                 .DiskId = diskId,
                 .CloudId = cloudId,
                 .FolderId = folderId};
@@ -383,9 +383,9 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             ReportBlockDigestMismatchInBlob(v, msg, params);
         }
 
-        // Report...(TVolumeIdConstPtr, ...)
+        // Report...(TVolumeLabelsConstPtr, ...)
         {
-            const auto v = MakeVolumeId(diskId, cloudId, folderId);
+            const auto v = MakeVolumeLabels(diskId, cloudId, folderId);
 
             ReportBlockDigestMismatchInBlob(v);
             ReportBlockDigestMismatchInBlob(v, msg);
@@ -393,7 +393,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             ReportBlockDigestMismatchInBlob(v, msg, params);
         }
 
-        const auto v = TVolumeId{
+        const auto v = TVolumeLabels{
             .DiskId = diskId,
             .CloudId = cloudId,
             .FolderId = folderId};
