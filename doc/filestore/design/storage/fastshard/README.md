@@ -154,10 +154,10 @@ coordinated via 2PC.
 * [silk.md](silk.md) - the async framework.
 
 ## Literature
-* [https://homepages.cwi.nl/~boncz/lsde/papers/aurora.pdf](original Aurora whitepaper) - describes how you can define the boundary between compute and storage and how you can design LSN advancement and checkpointing
-* [https://metebalci.com/blog/a-minimum-complete-tutorial-of-linux-ext4-file-system/](ext4 layout and design) - a good source of information about the data structures that can be used for filesystem implementation
-* [https://users.soe.ucsc.edu/~scott/courses/Fall04/221/zfs_overview.pdf](original ZFS whitepaper) - a bit less relevant but still a nice source of ideas regarding the separation of concerns among the layers
-* [https://datatracker.ietf.org/doc/html/rfc8435](pNFS Flexible File Layout) - contains some useful ideas regarding the design of the direct client <-> storage-group communication (but the NFS protocol specifics are not relevant for us)
+* [original Aurora whitepaper](https://homepages.cwi.nl/~boncz/lsde/papers/aurora.pdf) - describes how you can define the boundary between compute and storage and how you can design LSN advancement and checkpointing
+* [ext4 layout and design](https://metebalci.com/blog/a-minimum-complete-tutorial-of-linux-ext4-file-system/) - a good source of information about the data structures that can be used for filesystem implementation
+* [pNFS Flexible File Layout](https://datatracker.ietf.org/doc/html/rfc8435) - contains some useful ideas regarding the design of the direct client <-> storage-group communication (but the NFS protocol specifics are not relevant for us)
+* [original ZFS whitepaper](https://users.soe.ucsc.edu/~scott/courses/Fall04/221/zfs_overview.pdf) - a bit less relevant but still a nice source of ideas regarding the separation of concerns among the layers
 
 ## Tracking
 * https://github.com/ydb-platform/nbs/issues/5895

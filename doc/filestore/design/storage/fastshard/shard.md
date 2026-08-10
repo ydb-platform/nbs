@@ -36,7 +36,30 @@ groups of 8 consecutive pages.
   `StoragePageClusterNo` values.
 * Production: an extent tree / a radix tree hybrid per file.
 
-> **TBD**: per-file tree design.
+#### Page index tree
+
+The current plan is to use a radix tree data structure as the foundation and
+enhance it with the ability to store extents instead of just individual block
+numbers. The advantages of radix trees compared to b-trees are:
+1. simplicity - down-pointer lookup is just a lookup in an array; growth doesn't
+ require splits - we just need to add a new parent whose first down-pointer
+ would point to the current block
+2. lookup performance - because of the same reasons the performance is expected
+ to be higher (but most probably both extent b-trees and extent radix trees
+ should be good enough so this is probably not the main selling point)
+
+A radix tree for a large file might look like this:
+![fastshard_page_index_tree_large](../../../excalidraw/fastshard_page_index_tree_large.svg)
+
+For small files most of the paths will collapse and the tree might look similar
+to a plain array:
+![fastshard_page_index_tree_small](../../../excalidraw/fastshard_page_index_tree_small.svg)
+
+Down-pointers at the L1 level of the tree can point to the blocks local to the
+inode's storage-group and can also point to the blocks in other storage-groups.
+This is needed for the files which don't fit into a single storage-group. The
+size of such "remote" down-pointers will be larger but each L1 node would still
+fit into a single 16KiB physical page.
 
 ### Page allocator
 
