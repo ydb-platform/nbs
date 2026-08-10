@@ -170,7 +170,7 @@ public:
         if (UseFlushCommitIdAsTrimFreshLogToCommitId &&
             Args.Mode == ADD_FLUSH_RESULT)
         {
-            const auto trimFreshLogToCommitId =
+            const ui64 trimFreshLogToCommitId =
                 Max(State.GetTrimFreshLogToCommitId(), Args.CommitId);
             State.AccessMeta().SetTrimFreshLogToCommitId(
                 trimFreshLogToCommitId);

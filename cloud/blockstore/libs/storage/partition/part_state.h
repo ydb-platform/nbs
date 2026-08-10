@@ -1092,7 +1092,7 @@ public:
 public:
     void UpdateTrimFreshLogToCommitIdInMeta()
     {
-        auto commitId =
+        ui64 commitId =
             Max(GetTrimFreshLogToCommitId(), Meta.GetTrimFreshLogToCommitId());
         Meta.SetTrimFreshLogToCommitId(commitId);
     }
