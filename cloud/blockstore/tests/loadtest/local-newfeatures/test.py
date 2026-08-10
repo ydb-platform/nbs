@@ -197,6 +197,7 @@ def storage_config_with_new_features_enabled():
     storage.FreshBlocksWriterEnabled = True
     storage.IgnoringZeroedCompactionEnabled = True
     storage.MixedBlocksFilterEnabled = True
+    storage.WaitForFreshWritesBeforeFlushEnabled = True
 
     return storage
 
@@ -392,6 +393,14 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
         [
             storage_config_with_mixed_blocks_filter_enabled(),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-with-new-features",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
+        [
+            storage_config_with_new_features_enabled(),
         ],
         None,
     ),
