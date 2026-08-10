@@ -2750,20 +2750,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.WriteData(headers, fsConfig.FsId, nodeId2, handle2, 0, data2);
 
         auto testFileSystemTopology =
-            [&](const ui32 shardNo, const TString& shardId)
+            [&] (const ui32 shardNo,
+                 const TString& shardId,
+                 const TString& mainFileSystemId)
         {
             const auto response = GetFileSystemTopology(service, shardId);
             const auto& shardIds = response.GetShardFileSystemIds();
             UNIT_ASSERT_EQUAL(shardNo, response.GetShardNo());
+            UNIT_ASSERT_EQUAL(
+                mainFileSystemId,
+                response.GetMainFileSystemId());
             UNIT_ASSERT_EQUAL(2, shardIds.size());
             UNIT_ASSERT_EQUAL(fsConfig.Shard1Id, shardIds[0]);
             UNIT_ASSERT_EQUAL(fsConfig.Shard2Id, shardIds[1]);
             UNIT_ASSERT(response.GetStrictFileSystemSizeEnforcementEnabled());
         };
 
-        testFileSystemTopology(0, fsConfig.FsId);
-        testFileSystemTopology(1, fsConfig.Shard1Id);
-        testFileSystemTopology(2, fsConfig.Shard2Id);
+        testFileSystemTopology(0, fsConfig.FsId, fsConfig.FsId);
+        testFileSystemTopology(1, fsConfig.Shard1Id, fsConfig.FsId);
+        testFileSystemTopology(2, fsConfig.Shard2Id, fsConfig.FsId);
     }
 
     SERVICE_TEST(ShouldGetStorageStatsInDifferentModes)
