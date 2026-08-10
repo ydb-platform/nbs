@@ -70,19 +70,6 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    const auto commitId = State->GenerateCommitId();
-
-    if (commitId == InvalidCommitId) {
-        for (auto& r: requestsInBuffer) {
-            r.Data.RequestInfo->CancelRequest(ctx);
-        }
-        RebootPartitionOnCommitIdOverflow(ctx, "WriteFreshBlocks");
-
-        return;
-    }
-
-    State->AccessCommitQueue()->AcquireBarrier(commitId);
-
     const bool freshChannelWriteRequestsEnabled =
         Config->GetFreshChannelWriteRequestsEnabled() ||
         Config->IsFreshChannelWriteRequestsFeatureEnabled(
@@ -120,9 +107,16 @@ void TPartitionActor::WriteFreshBlocks(
             writeHandlers.push_back(r.Data.Handler);
         }
 
-        State->AccessTrimFreshLogBarriers()->AcquireBarrierN(
-            commitId,
-            blockCount);
+        const ui64 commitId = SharedState->StartFreshWrite(blockCount);
+
+        if (commitId == InvalidCommitId) {
+            for (auto& r: requestsInBuffer) {
+                r.Data.RequestInfo->CancelRequest(ctx);
+            }
+            RebootPartitionOnCommitIdOverflow(ctx, "WriteFreshBlocks");
+
+            return;
+        }
 
         const ui32 channel = State->PickNextChannel(
             EChannelDataKind::Fresh,
@@ -145,6 +139,19 @@ void TPartitionActor::WriteFreshBlocks(
 
         Actors.Insert(actor);
     } else {
+        const ui64 commitId = State->GenerateCommitId();
+
+        if (commitId == InvalidCommitId) {
+            for (auto& r: requestsInBuffer) {
+                r.Data.RequestInfo->CancelRequest(ctx);
+            }
+            RebootPartitionOnCommitIdOverflow(ctx, "WriteFreshBlocks");
+
+            return;
+        }
+
+        State->AccessCommitQueue()->AcquireBarrier(commitId);
+
         // write fresh blocks to FreshBlocks table
         TVector<TTxPartition::TWriteBlocks::TSubRequestInfo> subRequests(
             Reserve(requestsInBuffer.size()));
@@ -438,8 +445,7 @@ void TPartitionActor::CompleteWriteBlocks(
 void TPartitionActor::ZeroFreshBlocks(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
-    TBlockRange32 writeRange,
-    ui64 commitId)
+    TBlockRange32 writeRange)
 {
     STORAGE_VERIFY_C(
         !IsFreshBlocksWriterEnabled(),
@@ -471,15 +477,6 @@ void TPartitionActor::ZeroFreshBlocks(
 
     SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
-    LOG_TRACE(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "%s Start zero blocks @%lu (range: %s)",
-        LogTitle.GetWithTime().c_str(),
-        commitId,
-        DescribeRange(writeRange).c_str());
-
-    State->AccessCommitQueue()->AcquireBarrier(commitId);
     const bool freshChannelZeroRequestsEnabled =
         Config->GetFreshChannelZeroRequestsEnabled();
 
@@ -493,9 +490,20 @@ void TPartitionActor::ZeroFreshBlocks(
         requests.emplace_back(requestInfo, EFreshRequestType::ZeroBlocks);
         blockRanges.emplace_back(writeRange);
 
-        State->AccessTrimFreshLogBarriers()->AcquireBarrierN(
+        const ui64 commitId = SharedState->StartFreshWrite(blockCount);
+        if (commitId == InvalidCommitId) {
+            requestInfo->CancelRequest(ctx);
+            RebootPartitionOnCommitIdOverflow(ctx, "ZeroFreshBlocks");
+            return;
+        }
+
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Start zero blocks @%lu (range: %s)",
+            LogTitle.GetWithTime().c_str(),
             commitId,
-            blockCount);
+            DescribeRange(writeRange).c_str());
 
         const ui32 channel = State->PickNextChannel(
             EChannelDataKind::Fresh,
@@ -518,6 +526,23 @@ void TPartitionActor::ZeroFreshBlocks(
 
         Actors.Insert(actor);
     } else {
+        const ui64 commitId = State->GenerateCommitId();
+        if (commitId == InvalidCommitId) {
+            requestInfo->CancelRequest(ctx);
+            RebootPartitionOnCommitIdOverflow(ctx, "ZeroFreshBlocks");
+            return;
+        }
+
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Start zero blocks @%lu (range: %s)",
+            LogTitle.GetWithTime().c_str(),
+            commitId,
+            DescribeRange(writeRange).c_str());
+
+        State->AccessCommitQueue()->AcquireBarrier(commitId);
+
         AddTransaction<TEvService::TZeroBlocksMethod>(*requestInfo);
 
         auto tx = CreateTx<TZeroBlocks>(requestInfo, commitId, writeRange);
