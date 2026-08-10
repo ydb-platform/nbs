@@ -74,6 +74,7 @@ TPartitionState::TPartitionState(
           reassignSystemChannelsImmediately,
           channelCount)
     , TCommitIdsState()
+    , TPartitionFreshBlobState(tabletId)
     , TPartitionTrimFreshLogState()
     , TPartitionFreshBlocksState(*this, *this, threadSafeState)
     , Meta(std::move(meta))
@@ -114,7 +115,9 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
     const auto& cleanupFeature = BPConfig.CleanupQueueBytesFeatureConfig;
 
     const auto freshByteCount =
-        GetUntrimmedFreshBlobByteCount() + GetUnflushedFreshBlobByteCount() +
+        Max<ui64>(
+            GetUntrimmedFreshBlobByteCount(),
+            GetUnflushedFreshBlobByteCount()) +
         GetStats().GetFreshBlocksCount() * GetBlockSize();
 
     return {
@@ -345,10 +348,10 @@ BLOCKSTORE_PARTITION2_PROTO_COUNTERS(BLOCKSTORE_PARTITION2_IMPLEMENT_COUNTER)
 
 #undef BLOCKSTORE_PARTITION2_IMPLEMENT_COUNTER
 
-void TPartitionState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)
+void TPartitionState::AddFreshBlob(ui64 commitId, ui64 blobSize)
 {
-    Y_ABORT_UNLESS(freshBlobMeta.CommitId > GetLastTrimFreshLogToCommitId());
-    TPartitionFreshBlobState::AddFreshBlob(freshBlobMeta);
+    Y_ABORT_UNLESS(commitId > GetLastTrimFreshLogToCommitId());
+    TPartitionFreshBlobState::AddFreshBlob(commitId, blobSize);
 }
 
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)
@@ -720,7 +723,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 TABLER() {
                     TABLED() { out << "Flush"; }
                     TABLED () {
-                        DumpOperationState(out, GetFlushState());
+                        DumpOperationState(
+                            out,
+                            GetFlushState().GetOperationState());
                     }
                 }                TABLER() {
                     TABLED() { out << "Compaction"; }
@@ -761,7 +766,7 @@ TJsonValue TPartitionState::AsJson() const
         state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
         state["FreshBlocksQueued"] = GetFreshBlocksQueued();
         state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
-        state["FlushState"] = ToJson(GetFlushState());
+        state["FlushState"] = ToJson(GetFlushState().GetOperationState());
         state["Compaction"] = ToJson(CompactionState);
         state["Cleanup"] = ToJson(CleanupState);
         state["CollectGarbage"] = ToJson(CollectGarbageState);

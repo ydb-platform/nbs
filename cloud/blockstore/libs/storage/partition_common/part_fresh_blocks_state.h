@@ -22,7 +22,7 @@ namespace NCloud::NBlockStore::NStorage {
 class TFlushOperationState
 {
 private:
-    NPartition::TOperationState OperationState;
+    TOperationState OperationState;
     ui64 FlushCommitId = 0;
     TRequestInfoPtr RequestInfo;
 
@@ -42,15 +42,15 @@ public:
         TRequestInfoPtr requestInfo,
         TInstant timestamp)
     {
-        if (OperationState.Status != NPartition::EOperationStatus::Enqueued &&
-            OperationState.Status != NPartition::EOperationStatus::Idle)
+        if (OperationState.Status != EOperationStatus::Enqueued &&
+            OperationState.Status != EOperationStatus::Idle)
         {
             return false;
         }
         FlushCommitId = flushCommitId;
         RequestInfo = std::move(requestInfo);
         OperationState.SetStatus(
-            NPartition::EOperationStatus::Started,
+            EOperationStatus::Started,
             timestamp);
 
         return true;
@@ -58,12 +58,12 @@ public:
 
     [[nodiscard]] bool SetEnqueued(TInstant timestamp)
     {
-        if (OperationState.Status != NPartition::EOperationStatus::Idle) {
+        if (OperationState.Status != EOperationStatus::Idle) {
             return false;
         }
 
         OperationState.SetStatus(
-            NPartition::EOperationStatus::Enqueued,
+            EOperationStatus::Enqueued,
             timestamp);
 
         return true;
@@ -73,10 +73,10 @@ public:
     {
         FlushCommitId = 0;
         RequestInfo = nullptr;
-        OperationState.SetStatus(NPartition::EOperationStatus::Idle, timestamp);
+        OperationState.SetStatus(EOperationStatus::Idle, timestamp);
     }
 
-    [[nodiscard]] const NPartition::TOperationState& GetOperationState() const
+    [[nodiscard]] const TOperationState& GetOperationState() const
     {
         return OperationState;
     }

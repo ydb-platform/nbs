@@ -11,28 +11,26 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCommitQueue
-    : public TBarriers
+template <typename TItem>
+class TCommitQueueImpl: public TBarriers
 {
-    using TTxPtr = std::unique_ptr<ITransactionBase>;
-
-    struct TItem
+    struct TItemWithCommitId
     {
         const ui64 CommitId;
-        TTxPtr Tx;
+        TItem Item;
 
-        TItem(ui64 commitId, TTxPtr tx)
+        TItemWithCommitId(ui64 commitId, TItem item)
             : CommitId(commitId)
-            , Tx(std::move(tx))
+            , Item(std::move(item))
         {}
     };
 
 private:
-    TDeque<TItem> Items;
+    TDeque<TItemWithCommitId> Items;
 
 public:
-    void Enqueue(TTxPtr tx, ui64 commitId);
-    TTxPtr Dequeue();
+    void Enqueue(TItem item, ui64 commitId);
+    TItem Dequeue();
 
     bool Empty() const
     {
@@ -41,5 +39,7 @@ public:
 
     ui64 Peek() const;
 };
+
+using TCommitQueue = TCommitQueueImpl<std::unique_ptr<ITransactionBase>>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

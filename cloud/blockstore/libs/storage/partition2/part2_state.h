@@ -422,7 +422,7 @@ public:
     //
 
 public:
-    void AddFreshBlob(TFreshBlobMeta freshBlobMeta);
+    void AddFreshBlob(ui64 commitId, ui64 blobSize);
 
     //
     // Fresh Blocks
