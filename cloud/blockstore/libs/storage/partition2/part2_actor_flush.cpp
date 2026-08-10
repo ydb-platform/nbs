@@ -564,6 +564,24 @@ void TPartitionActor::HandleFlush(
         State->GetGarbageQueue().AcquireBarrier(commitId);
     }
 
+    SharedState->WaitFreshWritesToComplete(
+        [partActorId = ctx.SelfID](const NActors::TActorSystem* actorSystem)
+        {
+            auto ev = std::make_unique<TEvPartitionPrivate::TEvResumeFlush>();
+            actorSystem->Send(partActorId, ev.release());
+        },
+        commitId);
+}
+
+void TPartitionActor::HandleResumeFlush(
+    const TEvPartitionPrivate::TEvResumeFlush::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    auto requestInfo = State->AccessFlushState().GetRequestInfo();
+    TRequestScope timer(*requestInfo);
+
     StartFlush(ctx);
 }
 

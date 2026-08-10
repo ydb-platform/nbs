@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/block.h>
 #include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
@@ -848,6 +849,10 @@ struct TEvPartitionPrivate
     {
     };
 
+    struct TResumeFlush
+    {
+    };
+
     //
     // Events declaration
     //
@@ -878,6 +883,7 @@ struct TEvPartitionPrivate
         EvConfirmBlobsCompleted,
         EvLoadCompactionMapChunkRequest,
         EvUpdateResourceMetrics,
+        EvResumeFlush,
 
         EvEnd
     };
@@ -908,6 +914,8 @@ struct TEvPartitionPrivate
     using TEvConfirmBlobsCompleted = TResponseEvent<TConfirmBlobsCompleted, EvConfirmBlobsCompleted>;
     using TEvUpdateResourceMetrics =
         TResponseEvent<TUpdateResourceMetrics, EvUpdateResourceMetrics>;
+
+    using TEvResumeFlush = TResponseEvent<TResumeFlush, EvResumeFlush>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

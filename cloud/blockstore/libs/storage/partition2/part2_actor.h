@@ -810,6 +810,10 @@ private:
         const TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleResumeFlush(
+        const TEvPartitionPrivate::TEvResumeFlush::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
     BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)
     BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionCommonPrivate)
