@@ -220,7 +220,7 @@ PoolsConfig: <
     OptimizeBaseDisksTaskScheduleInterval: "10s"
     MinOptimizedPoolAge: "1s"
     BaseDiskIdPrefix: "{base_disk_id_prefix}"
-    BaseDiskIdleTTL: "10m"
+    BaseDiskIdleTTL: "1m"
 >
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"
