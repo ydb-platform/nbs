@@ -1656,4 +1656,8 @@ message TStorageServiceConfig
     // if block is present in mixed index. If filter says that block is not present
     // in mixed index, we skip reading mixed index.
     optional bool MixedBlocksFilterEnabled = 520;
+
+    // Wait for all in-flight fresh writes started before a flush to complete
+    // before building flush blobs.
+    optional bool WaitForFreshWritesBeforeFlushEnabled = 521;
 }

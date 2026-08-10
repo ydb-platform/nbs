@@ -41,6 +41,8 @@ public:
     ui64 Peek() const;
 };
 
+using TCommitQueueCallback = std::function<void(const NActors::TActorSystem* actorSystem)>;
 using TCommitQueue = TCommitQueueImpl<std::unique_ptr<ITransactionBase>>;
+using TCommitQueueWithCallback = TCommitQueueImpl<TCommitQueueCallback>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

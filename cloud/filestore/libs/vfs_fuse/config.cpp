@@ -31,6 +31,7 @@ namespace {
                                                                                \
     xxx(AsyncDestroyHandleEnabled,          bool,       false                 )\
     xxx(AsyncDestroyReadOnlyHandleEnabled,  bool,       false                 )\
+    xxx(AsyncCreateHandleEnabled,           bool,       false                 )\
     xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::MilliSeconds(50)   )\
                                                                                \
     xxx(DirectIoEnabled,            bool,       false                         )\
@@ -110,6 +111,27 @@ FILESTORE_FILESYSTEM_CONFIG(FILESTORE_FS_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 #undef FILESTORE_FS_GETTER
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsAsyncDestroyEnabled(const TFileSystemConfig& config)
+{
+    return config.GetAsyncDestroyHandleEnabled() ||
+        config.GetAsyncDestroyReadOnlyHandleEnabled();
+}
+
+bool IsAsyncCreateEnabled(const TFileSystemConfig& config)
+{
+    // Async create is safe only when close uses the same queue. Otherwise a
+    // sync DestroyHandle can run before the queued ConfirmCreateHandle.
+    return config.GetAsyncCreateHandleEnabled() &&
+        IsAsyncDestroyEnabled(config);
+}
+
+bool ShouldCreateHandleOpsQueue(const TFileSystemConfig& config)
+{
+    return IsAsyncDestroyEnabled(config) || IsAsyncCreateEnabled(config);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

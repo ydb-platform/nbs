@@ -53,6 +53,9 @@
     "test.test_rm": {
         "uri": "file://test.test_rm/results.txt"
     },
+    "test.test_set_node_attr_quota_id": {
+        "uri": "file://test.test_set_node_attr_quota_id/results.txt"
+    },
     "test.test_stat": {
         "uri": "file://test.test_stat/results.txt"
     },
