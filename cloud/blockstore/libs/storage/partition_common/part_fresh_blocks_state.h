@@ -19,23 +19,84 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TFlushOperationState
+{
+private:
+    TOperationState OperationState;
+    ui64 FlushCommitId = 0;
+    TRequestInfoPtr RequestInfo;
+
+public:
+    ui64 GetFlushCommitId() const
+    {
+        return FlushCommitId;
+    }
+
+    TRequestInfoPtr GetRequestInfo() const
+    {
+        return RequestInfo;
+    }
+
+    [[nodiscard]] bool SetStarted(
+        ui64 flushCommitId,
+        TRequestInfoPtr requestInfo,
+        TInstant timestamp)
+    {
+        if (OperationState.Status != EOperationStatus::Enqueued &&
+            OperationState.Status != EOperationStatus::Idle)
+        {
+            return false;
+        }
+        FlushCommitId = flushCommitId;
+        RequestInfo = std::move(requestInfo);
+        OperationState.SetStatus(
+            EOperationStatus::Started,
+            timestamp);
+
+        return true;
+    }
+
+    [[nodiscard]] bool SetEnqueued(TInstant timestamp)
+    {
+        if (OperationState.Status != EOperationStatus::Idle) {
+            return false;
+        }
+
+        OperationState.SetStatus(
+            EOperationStatus::Enqueued,
+            timestamp);
+
+        return true;
+    }
+
+    void SetIdle(TInstant timestamp)
+    {
+        FlushCommitId = 0;
+        RequestInfo = nullptr;
+        OperationState.SetStatus(EOperationStatus::Idle, timestamp);
+    }
+
+    [[nodiscard]] const TOperationState& GetOperationState() const
+    {
+        return OperationState;
+    }
+};
+
 class TPartitionFlushState
 {
 private:
-    TOperationState FlushState;
+    TFlushOperationState FlushState;
     TRequestBuffer<TWriteBufferRequestData> WriteBuffer;
-    ui32 UnflushedFreshBlobCount = 0;
-    ui64 UnflushedFreshBlobByteCount = 0;
 
     THashSet<ui64> FlushedCommitIdsInProgress;
 
 public:
-    TOperationState& AccessFlushState()
+    TFlushOperationState& AccessFlushState()
     {
         return FlushState;
     }
 
-    [[nodiscard]] const TOperationState& GetFlushState() const
+    [[nodiscard]] const TFlushOperationState& GetFlushState() const
     {
         return FlushState;
     }
@@ -56,21 +117,6 @@ public:
         return WriteBuffer.GetWeight();
     }
 
-    [[nodiscard]] ui32 GetUnflushedFreshBlobCount() const
-    {
-        return UnflushedFreshBlobCount;
-    }
-
-    [[nodiscard]] ui32 GetUnflushedFreshBlobByteCount() const
-    {
-        return UnflushedFreshBlobByteCount;
-    }
-
-    void IncrementUnflushedFreshBlobCount(ui32 value);
-    void DecrementUnflushedFreshBlobCount(ui32 value);
-    void IncrementUnflushedFreshBlobByteCount(ui64 value);
-    void DecrementUnflushedFreshBlobByteCount(ui64 value);
-
     [[nodiscard]] THashSet<ui64>& AccessFlushedCommitIdsInProgress()
     {
         return FlushedCommitIdsInProgress;
@@ -84,30 +130,42 @@ public:
 
 class TPartitionFreshBlobState
 {
-public:
-    struct TFreshBlobMeta
-    {
-        const ui64 CommitId;
-        const ui64 BlobSize;
-
-        bool operator<(const TFreshBlobMeta& other) const
-        {
-            return CommitId < other.CommitId;
-        }
-    };
-
 private:
+    ui64 TabletID = 0;
+
     ui64 UntrimmedFreshBlobByteCount = 0;
-    TSet<TFreshBlobMeta> UntrimmedFreshBlobs;
+    TMap<ui64, ui64> UntrimmedFreshBlobByteCountByCommitId;
+
+    ui32 UnflushedFreshBlobCount = 0;
+    ui64 UnflushedFreshBlobByteCount = 0;
+    TMap<ui64, ui64> UnflushedFreshBlobByteCountByCommitId;
 
 public:
+    explicit TPartitionFreshBlobState(ui64 tabletID)
+        : TabletID(tabletID)
+    {}
+
     [[nodiscard]] ui64 GetUntrimmedFreshBlobByteCount() const
     {
         return UntrimmedFreshBlobByteCount;
     }
 
-    void AddFreshBlob(TFreshBlobMeta freshBlobMeta);
+    [[nodiscard]] ui64 GetUnflushedFreshBlobCount() const
+    {
+        return UnflushedFreshBlobCount;
+    }
+
+    [[nodiscard]] ui64 GetUnflushedFreshBlobByteCount() const
+    {
+        return UnflushedFreshBlobByteCount;
+    }
+
+    [[nodiscard]] TVector<ui64> GetUnflushedFreshBlobCommitIds(
+        ui64 commitId) const;
+
+    void AddFreshBlob(ui64 commitId, ui64 blobSize);
     void TrimFreshBlobs(ui64 commitId);
+    ui64 FlushFreshBlob(ui64 commitId);
 };
 
 class TPartitionTrimFreshLogState
@@ -126,7 +184,8 @@ public:
         return TrimFreshLogState;
     }
 
-    [[nodiscard]] const TOperationState& GetTrimFreshLogState() const
+    [[nodiscard]] const TOperationState&
+    GetTrimFreshLogState() const
     {
         return TrimFreshLogState;
     }

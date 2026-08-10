@@ -74,8 +74,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
             return;
         }
 
-        FreshBlobState.AddFreshBlob({blob.CommitId, blob.Data.size()});
-        FlushState.IncrementUnflushedFreshBlobByteCount(blob.Data.size());
+        FreshBlobState.AddFreshBlob(blob.CommitId, blob.Data.size());
     }
 
     for (const auto& block: blocks) {
@@ -84,7 +83,6 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
     }
 
     FreshBlocksState.InitFreshBlocks(blocks);
-    FlushState.IncrementUnflushedFreshBlobCount(msg->Blobs.size());
     FreshBlocksState.IncrementUnflushedFreshBlocksFromChannelCount(
         blocks.size());
 

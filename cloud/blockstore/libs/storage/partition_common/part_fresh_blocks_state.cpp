@@ -41,46 +41,87 @@ T SafeDecrement(T counter, size_t value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionFlushState::IncrementUnflushedFreshBlobCount(ui32 value)
+TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
+    ui64 commitId) const
 {
-    UnflushedFreshBlobCount = SafeIncrement(UnflushedFreshBlobCount, value);
+    TVector<ui64> commitIds;
+    for (const auto& [blobCommitId, blobSize]:
+         UnflushedFreshBlobByteCountByCommitId)
+    {
+        if (blobCommitId > commitId) {
+            break;
+        }
+        commitIds.push_back(blobCommitId);
+    }
+    return commitIds;
 }
 
-void TPartitionFlushState::DecrementUnflushedFreshBlobCount(ui32 value)
+void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
 {
-    UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, value);
-}
+    {
+        const bool inserted =
+            UntrimmedFreshBlobByteCountByCommitId.insert({commitId, blobSize})
+                .second;
+        STORAGE_VERIFY_C(
+            inserted,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId);
+        UntrimmedFreshBlobByteCount += blobSize;
+    }
 
-void TPartitionFlushState::IncrementUnflushedFreshBlobByteCount(ui64 value)
-{
-    UnflushedFreshBlobByteCount =
-        SafeIncrement(UnflushedFreshBlobByteCount, value);
-}
-
-void TPartitionFlushState::DecrementUnflushedFreshBlobByteCount(ui64 value)
-{
-    UnflushedFreshBlobByteCount =
-        SafeDecrement(UnflushedFreshBlobByteCount, value);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TPartitionFreshBlobState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)
-{
-    const bool inserted = UntrimmedFreshBlobs.insert(freshBlobMeta).second;
-    Y_ABORT_UNLESS(inserted);
-    UntrimmedFreshBlobByteCount += freshBlobMeta.BlobSize;
+    {
+        const bool inserted =
+            UnflushedFreshBlobByteCountByCommitId.insert({commitId, blobSize})
+                .second;
+        STORAGE_VERIFY_C(
+            inserted,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId);
+        UnflushedFreshBlobCount = SafeIncrement(UnflushedFreshBlobCount, 1);
+        UnflushedFreshBlobByteCount =
+            SafeIncrement(UnflushedFreshBlobByteCount, blobSize);
+    }
 }
 
 void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 {
-    auto& blobs = UntrimmedFreshBlobs;
+    auto& blobs = UntrimmedFreshBlobByteCountByCommitId;
 
-    while (blobs && blobs.begin()->CommitId <= commitId) {
-        Y_ABORT_UNLESS(UntrimmedFreshBlobByteCount >= blobs.begin()->BlobSize);
-        UntrimmedFreshBlobByteCount -= blobs.begin()->BlobSize;
+    while (blobs && blobs.begin()->first <= commitId) {
+        auto blobSize = blobs.begin()->second;
+        STORAGE_VERIFY_C(
+            UntrimmedFreshBlobByteCount >= blobSize,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "UntrimmedFreshBlobByteCount: " << UntrimmedFreshBlobByteCount
+                                            << " < BlobSize: " << blobSize);
+        UntrimmedFreshBlobByteCount -= blobSize;
         blobs.erase(blobs.begin());
     }
+}
+
+ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
+{
+    auto& blobs = UnflushedFreshBlobByteCountByCommitId;
+
+    auto it = blobs.find(commitId);
+    STORAGE_VERIFY_C(
+        it != blobs.end(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID,
+        "Commit id: " << commitId);
+
+    ui64 blobSize = it->second;
+
+    UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, 1);
+    UnflushedFreshBlobByteCount =
+        SafeDecrement(UnflushedFreshBlobByteCount, blobSize);
+
+    blobs.erase(it);
+
+    return blobSize;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

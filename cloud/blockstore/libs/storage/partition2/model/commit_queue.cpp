@@ -4,31 +4,36 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TCommitQueue::Enqueue(TTxPtr tx, ui64 commitId)
+template <typename TItem>
+void TCommitQueueImpl<TItem>::Enqueue(TItem item, ui64 commitId)
 {
     if (Items) {
         Y_ABORT_UNLESS(Items.back().CommitId < commitId);
     }
-    Items.emplace_back(commitId, std::move(tx));
+    Items.emplace_back(commitId, std::move(item));
 }
 
-TCommitQueue::TTxPtr TCommitQueue::Dequeue()
+template <typename TItem>
+TItem TCommitQueueImpl<TItem>::Dequeue()
 {
-    TTxPtr tx;
+    TItem item;
     if (Items) {
-        auto& item = Items.front();
-        tx = std::move(item.Tx);
+        auto& entry = Items.front();
+        item = std::move(entry.Item);
         Items.pop_front();
     }
-    return tx;
+    return item;
 }
 
-ui64 TCommitQueue::Peek() const
+template <typename TItem>
+ui64 TCommitQueueImpl<TItem>::Peek() const
 {
     if (Items) {
         return Items.front().CommitId;
     }
     return Max();
 }
+
+template class TCommitQueueImpl<std::unique_ptr<ITransactionBase>>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2
