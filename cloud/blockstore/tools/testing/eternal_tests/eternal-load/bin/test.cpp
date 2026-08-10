@@ -123,6 +123,10 @@ int TTest::Run()
         Options->Scenario == EScenario::Aligned ||
             ConfigHolder->GetConfig().GetZeroRate() == 0,
         "zero-rate is only supported for aligned scenario");
+    Y_ENSURE(
+        Options->Engine == EIoEngine::Sync ||
+            ConfigHolder->GetConfig().GetZeroRate() == 0,
+        "zero-rate is only supported for sync engine");
 
     return RunTest();
 }

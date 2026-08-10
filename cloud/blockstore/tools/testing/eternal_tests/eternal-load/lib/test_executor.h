@@ -2,6 +2,10 @@
 
 #include "public.h"
 
+#include "device_discard.h"
+
+#include <cloud/storage/core/libs/common/file_io_service.h>
+
 #include <library/cpp/logger/log.h>
 
 #include <util/generic/string.h>
@@ -41,6 +45,16 @@ using ITestExecutorPtr = std::shared_ptr<ITestExecutor>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct ITestFileIOService
+    : public IFileIOService
+    , public IDiscardService
+{
+};
+
+using ITestFileIOServicePtr = std::shared_ptr<ITestFileIOService>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct ITestExecutorIOService
 {
     using TCallback = std::function<void()>;
@@ -65,8 +79,8 @@ struct ITestExecutorIOService
         ui64 offset,
         TCallback callback) = 0;
 
-    // Initiates a discard operation and calls the callback when the operation
-    // is completed successfully. Note that discard is called synchronously.
+    // Initiates an asynchronous zero (discard) operation and calls the
+    // callback when the operation is completed successfully.
     // If it fails, the test is stopped and the error is reported.
     virtual void Zero(
         ui32 count,

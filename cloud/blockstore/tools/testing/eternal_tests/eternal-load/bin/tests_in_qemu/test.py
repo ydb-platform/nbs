@@ -140,7 +140,7 @@ def test_aligned_with_zero_rate(loop_device):
         result = __run_load_test(
             loop_device,
             scenario="aligned",
-            engine="asyncio",
+            engine="sync",
             direct=True,
             timeout=timeout,
             write_rate=50,
