@@ -27,24 +27,21 @@ struct IDiscardService
 
     template <typename F>
         requires std::is_invocable_v<F, NProto::TError, ui32>
-    void AsyncZero(
-        TFileHandle& file,
-        i64 offset,
-        ui32 count,
-        F&& callback)
+    void AsyncZero(TFileHandle& file, i64 offset, ui32 count, F&& callback)
     {
         auto cb = std::make_unique<TCallbackCompletion<std::decay_t<F>>>(
             std::forward<F>(callback));
 
         AsyncZero(file, offset, count, cb.get());
 
-        Y_UNUSED(cb.release());  // ownership transferred
+        Y_UNUSED(cb.release());   // ownership transferred
     }
 
 private:
+    // TODO: deduplicate with TFileIOCompletion in file_io_service.h:
+    // https://github.com/ydb-platform/nbs/blob/main/cloud/storage/core/libs/common/file_io_service.h
     template <typename F>
-    struct TCallbackCompletion
-        : TFileIOCompletion
+    struct TCallbackCompletion: TFileIOCompletion
     {
         F Func;
 
@@ -71,9 +68,6 @@ private:
 
 // Issues BLKDISCARD for [offset, offset + length) on a block device.
 // Returns an error if the file handle is not a block device or discard fails.
-NProto::TError DiscardDeviceRange(
-    TFileHandle& file,
-    ui64 offset,
-    ui64 length);
+NProto::TError DiscardDeviceRange(TFileHandle& file, ui64 offset, ui64 length);
 
 }   // namespace NCloud::NBlockStore::NTesting

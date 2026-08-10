@@ -6,19 +6,16 @@
 #include <cstring>
 
 #if defined(_linux_)
-#   include <linux/fs.h>
-#   include <sys/ioctl.h>
-#   include <sys/stat.h>
+#include <linux/fs.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
 #endif
 
 namespace NCloud::NBlockStore::NTesting {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError DiscardDeviceRange(
-    TFileHandle& file,
-    ui64 offset,
-    ui64 length)
+NProto::TError DiscardDeviceRange(TFileHandle& file, ui64 offset, ui64 length)
 {
 #if defined(_linux_)
     struct stat st;

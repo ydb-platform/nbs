@@ -412,8 +412,7 @@ void TTestExecutor::TWorkerService::Zero(
             ui32 value)
         {
             if (HasError(error)) {
-                Executor.Fail(
-                    "Can't zero device range: " + error.GetMessage());
+                Executor.Fail("Can't zero device range: " + error.GetMessage());
             } else if (value < count) {
                 Executor.Fail(
                     TStringBuilder() << "Zeroed less than expected: " << value
@@ -642,10 +641,8 @@ public:
         auto added = ThreadPool.AddFunc(
             [&file, offset, count, completion]()
             {
-                auto error = DiscardDeviceRange(
-                    file,
-                    static_cast<ui64>(offset),
-                    count);
+                auto error =
+                    DiscardDeviceRange(file, static_cast<ui64>(offset), count);
                 if (HasError(error)) {
                     completion->Func(completion, error, 0);
                 } else {

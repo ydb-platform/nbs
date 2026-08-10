@@ -127,6 +127,10 @@ int TTest::Run()
         Options->Engine == EIoEngine::Sync ||
             ConfigHolder->GetConfig().GetZeroRate() == 0,
         "zero-rate is only supported for sync engine");
+    Y_ENSURE(
+        !ConfigHolder->GetConfig().HasAlternatingPhase() ||
+            ConfigHolder->GetConfig().GetZeroRate() == 0,
+        "zero-rate is not supported for tests with alternating phase");
 
     return RunTest();
 }

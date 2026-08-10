@@ -288,8 +288,8 @@ void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
                 if (data[i] != 0) {
                     service.Fail(
                         TStringBuilder()
-                        << LogTag << "[" << rangeIdx
-                        << "] Wrong data in block " << blockIdx
+                        << LogTag << "[" << rangeIdx << "] Wrong data in block "
+                        << blockIdx
                         << " expected zeros after Zero request number "
                         << expected << " but found non-zero byte at offset "
                         << i);
@@ -359,9 +359,6 @@ void TAlignedTestScenario::DoWriteRequest(
     }
 }
 
-// The underlying block device must actually zero-fill the range on discard
-// request. Otherwise the test will fail during data validation on read
-// requests.
 void TAlignedTestScenario::DoZeroRequest(
     ui16 rangeIdx,
     ui64 blockIdx,
