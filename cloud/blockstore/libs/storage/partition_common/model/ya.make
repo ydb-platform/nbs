@@ -13,6 +13,7 @@ SRCS(
     commit_queue.cpp
     fresh_blob.cpp
     group_downtimes.cpp
+    blocks_filter.cpp
     operation_status.cpp
     part_counters_wrapper.cpp
     resource_metrics_updates_queue.cpp
