@@ -276,13 +276,6 @@ void TPartitionActor::HandleZeroBlocks(
         return;
     }
 
-    ui64 commitId = State->GenerateCommitId();
-    if (commitId == InvalidCommitId) {
-        requestInfo->CancelRequest(ctx);
-        RebootPartitionOnCommitIdOverflow(ctx, "ZeroBlocks");
-        return;
-    }
-
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
     const bool isFreshRequest = IsFreshRequest(
         *Config,
@@ -294,8 +287,14 @@ void TPartitionActor::HandleZeroBlocks(
         ZeroFreshBlocks(
             ctx,
             requestInfo,
-            ConvertRangeSafe(writeRange),
-            commitId);
+            ConvertRangeSafe(writeRange));
+        return;
+    }
+
+    ui64 commitId = State->GenerateCommitId();
+    if (commitId == InvalidCommitId) {
+        requestInfo->CancelRequest(ctx);
+        RebootPartitionOnCommitIdOverflow(ctx, "ZeroBlocks");
         return;
     }
 
@@ -402,12 +401,10 @@ void TPartitionActor::HandleZeroBlocksCompletedImpl(
     auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
-    State->AccessCommitQueue()->ReleaseBarrier(commitId);
-
-    if (freshBlocksRequest && HasError(error)) {
-        State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
-            commitId,
-            blocksCount);
+    if (freshBlocksRequest) {
+        SharedState->FinishFreshWrite(ctx, commitId, blocksCount, HasError(error));
+    } else {
+        State->AccessCommitQueue()->ReleaseBarrier(commitId);
     }
 
     Actors.Erase(sender);
