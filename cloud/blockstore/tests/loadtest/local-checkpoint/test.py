@@ -23,6 +23,7 @@ def default_storage_config_patch():
     storage.DigestedBlocksPercentage = 100
     storage.DumpBlockCommitIdsIntoProfileLog = True
     storage.DumpBlobUpdatesIntoProfileLog = True
+    storage.CheckpointAwareCleanupEnabled = True
 
     return storage
 

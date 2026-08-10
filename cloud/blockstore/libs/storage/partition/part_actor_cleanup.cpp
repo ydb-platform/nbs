@@ -51,16 +51,10 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
         State->GetCleanupCommitId(IsCheckpointAwareCleanupEnabled());
 
     if (IsCheckpointAwareCleanupEnabled()) {
-        const ui64 minCheckpointCommitId = State->GetMinCheckpointCommitId();
-        const ui64 maxCheckpointCommitId = State->GetMaxCheckpointCommitId();
-        State->ResetCleanupMilestoneIfNeeded(
-            minCheckpointCommitId,
-            maxCheckpointCommitId);
+        State->ResetCleanupMilestoneIfNeeded();
     }
 
     if (!State->HasBlobCountToCleanupReachedThreshold(
-            State->GetCleanupMilestoneCommitId(),
-            State->GetCleanupMilestoneBlobId(),
             cleanupCommitId,
             Config->GetCleanupThreshold()))
     {
@@ -163,14 +157,8 @@ void TPartitionActor::HandleCleanup(
     const ui64 cleanupCommitId =
         State->GetCleanupCommitId(IsCheckpointAwareCleanupEnabled());
 
-    ui64 minCheckpointCommitId = 0;
-    ui64 maxCheckpointCommitId = 0;
     if (IsCheckpointAwareCleanupEnabled()) {
-        minCheckpointCommitId = State->GetMinCheckpointCommitId();
-        maxCheckpointCommitId = State->GetMaxCheckpointCommitId();
-        State->ResetCleanupMilestoneIfNeeded(
-            minCheckpointCommitId,
-            maxCheckpointCommitId);
+        State->ResetCleanupMilestoneIfNeeded();
     }
 
     auto cleanupQueue = State->GetCleanupQueue().GetItems(
@@ -205,8 +193,8 @@ void TPartitionActor::HandleCleanup(
         IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
         std::move(cleanupQueue),
         IsCheckpointAwareCleanupEnabled(),
-        minCheckpointCommitId,
-        maxCheckpointCommitId);
+        State->GetMinCheckpointCommitId(),
+        State->GetMaxCheckpointCommitId());
 
     ExecuteTx(ctx, std::move(tx));
 }

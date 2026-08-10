@@ -985,36 +985,8 @@ public:
     }
 
     bool HasBlobCountToCleanupReachedThreshold(
-        ui64 milestoneCommitId,
-        const TPartialBlobId& milestoneBlobId,
         ui64 cleanupCommitId,
-        ui32 threshold) const
-    {
-        auto& estimate = BlobCountToCleanupEstimate;
-
-        const bool milestoneNotAdvanced =
-            std::forward_as_tuple(milestoneCommitId, milestoneBlobId) <=
-            std::forward_as_tuple(
-                estimate.MilestoneCommitId,
-                estimate.MilestoneBlobId);
-
-        if (estimate.BlobCount >= threshold &&
-            cleanupCommitId >= estimate.CleanupCommitId && milestoneNotAdvanced)
-        {
-            // No need to recalculate the blob count: it is definitely greater
-            // than or equal to the threshold.
-            return true;
-        }
-
-        estimate = TBlobCountToCleanupEstimate(
-            CleanupQueue
-                .GetCount(milestoneCommitId, milestoneBlobId, cleanupCommitId),
-            cleanupCommitId,
-            milestoneCommitId,
-            milestoneBlobId);
-
-        return estimate.BlobCount >= threshold;
-    }
+        ui32 threshold) const;
 
     ui64 GetCleanupMilestoneCommitId() const
     {
@@ -1033,44 +1005,15 @@ public:
         ui64 newCommitId,
         TPartialBlobId newBlobId,
         ui64 minCheckpointCommitId,
-        ui64 maxCheckpointCommitId)
-    {
-        const auto& milestone = Meta.GetCleanupMilestone();
+        ui64 maxCheckpointCommitId);
 
-        if (minCheckpointCommitId != milestone.GetMinCheckpointCommitId() ||
-            maxCheckpointCommitId != milestone.GetMaxCheckpointCommitId())
-        {
-            // Checkpoints changed, need to reset milestone.
-            newCommitId = 0;
-            newBlobId = {};
-        }
-
-        if (maxCheckpointCommitId == 0 ||
-            minCheckpointCommitId == InvalidCommitId ||
-            maxCheckpointCommitId == InvalidCommitId)
-        {
-            // No checkpoints, should be no milestone.
-            newCommitId = 0;
-            newBlobId = {};
-        }
-
-        auto& updated = *Meta.MutableCleanupMilestone();
-        updated.SetCommitId(newCommitId);
-        updated.SetBlobCommitId(newBlobId.CommitId());
-        updated.SetBlobUniqueId(newBlobId.UniqueId());
-        updated.SetMinCheckpointCommitId(minCheckpointCommitId);
-        updated.SetMaxCheckpointCommitId(maxCheckpointCommitId);
-    }
-
-    void ResetCleanupMilestoneIfNeeded(
-        ui64 minCheckpointCommitId,
-        ui64 maxCheckpointCommitId)
+    void ResetCleanupMilestoneIfNeeded()
     {
         UpdateOrResetCleanupMilestone(
             GetCleanupMilestoneCommitId(),
             GetCleanupMilestoneBlobId(),
-            minCheckpointCommitId,
-            maxCheckpointCommitId);
+            GetMinCheckpointCommitId(),
+            GetMaxCheckpointCommitId());
     }
 
     void RemoveCleanupQueueItem(const TCleanupQueueItem& item)
@@ -1132,7 +1075,7 @@ public:
 
     ui64 GetMinCheckpointCommitId() const;
 
-    ui64 GetCleanupCommitId(bool cleanupAboveCheckpoint) const;
+    ui64 GetCleanupCommitId(bool checkpointAware) const;
 
     ui64 CalculateCheckpointBytes() const;
 

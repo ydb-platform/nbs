@@ -70,8 +70,10 @@ struct TCleanupQueue::TImpl
         const TPartialBlobId& fromBlobId,
         ui64 toCommitId) const
     {
-        auto it =
-            Items.upper_bound(TCleanupQueueItem{fromBlobId, fromCommitId, {}});
+        auto it = Items.upper_bound(TCleanupQueueItem{
+            .BlobId = fromBlobId,
+            .CommitId = fromCommitId,
+            .BlobMeta = {}});
 
         size_t result = 0;
         for (; it != Items.end(); ++it) {
@@ -94,8 +96,10 @@ struct TCleanupQueue::TImpl
         ui64 toCommitId,
         size_t limit) const
     {
-        auto it =
-            Items.upper_bound(TCleanupQueueItem{fromBlobId, fromCommitId, {}});
+        auto it = Items.upper_bound(TCleanupQueueItem{
+            .BlobId = fromBlobId,
+            .CommitId = fromCommitId,
+            .BlobMeta = {}});
 
         TVector<TCleanupQueueItem> result;
         for (; it != Items.end(); ++it) {
