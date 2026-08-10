@@ -21,6 +21,7 @@ using namespace NMonitoring;
 
 class TProfileLog final
     : public IProfileLog
+    , public IEventLog::ISuccessCallback
     , public std::enable_shared_from_this<TProfileLog>
 {
 private:
@@ -28,6 +29,7 @@ private:
     {
         TDynamicCounters::TCounterPtr Requests;
         TDynamicCounters::TCounterPtr Bytes;
+        TDynamicCounters::TCounterPtr CompressedFrameBytes;
         TDynamicCounters::TCounterPtr Flushes;
         TDynamicCounters::TCounterPtr Discards;
     };
@@ -54,6 +56,7 @@ public:
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
     {
+        EventLog.SetSuccessCallback(this);
     }
 
     ~TProfileLog() override;
@@ -66,6 +69,8 @@ public:
     void RegisterCounters(NMonitoring::TDynamicCounters& root) override;
 
 private:
+    void OnWriteSuccess(const TBuffer& frameData) override;
+
     void ScheduleFlush();
     void Flush();
 };
@@ -100,9 +105,19 @@ void TProfileLog::RegisterCounters(NMonitoring::TDynamicCounters& root)
     auto pg = root.GetSubgroup("counters", "profile_log");
     Counters.Requests = pg->GetCounter("Count", true);
     Counters.Bytes = pg->GetCounter("RequestBytes", true);
+    Counters.CompressedFrameBytes =
+        pg->GetCounter("CompressedFrameBytes", true);
     Counters.Flushes = pg->GetCounter("FlushCount", true);
     Counters.Discards = pg->GetCounter("DiscardCount", true);
     CountersRegistered = true;
+}
+
+void TProfileLog::OnWriteSuccess(const TBuffer& frameData)
+{
+    if (CountersRegistered) {
+        Counters.CompressedFrameBytes->Add(
+            static_cast<i64>(frameData.Size()));
+    }
 }
 
 void TProfileLog::ScheduleFlush()
