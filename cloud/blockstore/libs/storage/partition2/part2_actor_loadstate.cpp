@@ -215,6 +215,11 @@ void TPartitionActor::CompleteLoadState(
 
     SharedState->Init(SelfId(), Executor()->Generation(), 0);
 
+    if (!args.Meta->GetL0RangeSize() || !args.Meta->GetL1RangeSize()) {
+        args.Meta->SetL0RangeSize(Config->GetL0RangeSizeV2());
+        args.Meta->SetL1RangeSize(Config->GetL1RangeSizeV2());
+    }
+
     State = std::make_unique<TPartitionState>(
         *args.Meta,
         BuildCompactionPolicy(partitionConfig, *Config, SiblingCount),
