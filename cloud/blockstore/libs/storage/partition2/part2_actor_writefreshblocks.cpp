@@ -260,6 +260,7 @@ bool TPartitionActor::PrepareWriteBlocks(
     TTransactionContext& tx,
     TTxPartition::TWriteBlocks& args)
 {
+    Y_ABORT();
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
     Y_UNUSED(args);

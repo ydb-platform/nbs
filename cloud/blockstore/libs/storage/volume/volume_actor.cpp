@@ -633,7 +633,8 @@ bool TVolumeActor::IsFreshBlocksWriterEnabled(ui64 partTabletId) const
 {
     const auto* part = State->GetPartition(partTabletId);
     if (!part ||
-        part->StorageInfo->TabletType != TTabletTypes::BlockStorePartition)
+        (part->StorageInfo->TabletType != TTabletTypes::BlockStorePartition &&
+         part->StorageInfo->TabletType != TTabletTypes::BlockStorePartition2))
     {
         return false;
     }

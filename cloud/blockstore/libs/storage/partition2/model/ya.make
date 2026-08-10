@@ -16,6 +16,7 @@ SRCS(
     fresh_blob.cpp
     garbage_queue.cpp
     mixed_index_cache.cpp
+    promote_compaction_visitor.cpp
 )
 
 PEERDIR(

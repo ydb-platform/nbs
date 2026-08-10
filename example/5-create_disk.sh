@@ -19,6 +19,7 @@ Creates disk with requested kind and attach it to device
 -b, --base-disk-id             the base disk if you want to create an overlay disk. Should use together with the base-disk-checkpoint-id
 -c, --base-disk-checkpoint-id  the checkpoint-id if you want to create an overlay disk. Should use together with the base-disk-id
 -e, --encrypted                Encrypt disk with default encryption key
+-v, --tablet-version           Tablet version to use for the disk (default: 1)
 EOF
 }
 
@@ -27,11 +28,12 @@ kind="ssd"
 disk_id=""
 cloud_id="test-cloud"
 folder_id="test-folder"
-options=$(getopt -l "help,kind:,disk-id:,encrypted,base-disk-id:,base-disk-checkpoint-id:,cloud-id:,folder-id:" -o "hk:d:eb:c:" -a -- "$@")
+options=$(getopt -l "help,kind:,disk-id:,encrypted,base-disk-id:,base-disk-checkpoint-id:,cloud-id:,folder-id:,tablet-version:" -o "hk:d:eb:c:v:" -a -- "$@")
 block_size=4096
 encryption=""
 base_disk_id=""
 base_disk_checkpoint_id=""
+tablet_version=1
 
 if [ $? != 0 ] ; then
     echo "Incorrect options provided"
@@ -72,6 +74,10 @@ do
         ;;
     --folder-id )
         folder_id=${2}
+        shift 2
+        ;;
+    -v | --tablet-version )
+        tablet_version=${2}
         shift 2
         ;;
     --)
@@ -121,6 +127,7 @@ blockstore-client createvolume \
     --disk-id $disk_id \
     --cloud-id $cloud_id \
     --folder-id $folder_id \
+    --tablet-version $tablet_version \
     $encryption $base_disk \
 
 if [ $? -ne 0 ]; then

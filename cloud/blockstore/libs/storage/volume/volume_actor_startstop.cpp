@@ -855,6 +855,7 @@ void TVolumeActor::HandleBootExternalResponse(
                        std::move(blockDigestGenerator),
                        std::move(partitionConfig),
                        storageAccessMode,
+                       partitionIndex,
                        siblingCount,
                        selfId,
                        volumeTabletId)

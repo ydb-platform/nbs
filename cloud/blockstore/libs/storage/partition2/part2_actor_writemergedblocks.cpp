@@ -247,8 +247,8 @@ void TWriteMergedBlocksActor::AddBlobs(
             TVector<TAddMixedBlob>(),
             std::move(blobs),
             TVector<TAddFreshBlob>(),
-            ADD_WRITE_RESULT
-        );
+            TVector<TAddL0Blob>(),
+            ADD_WRITE_RESULT);
     } else {
         BlobsToConfirm.reserve(WriteBlobRequests.size());
 

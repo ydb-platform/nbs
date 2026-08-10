@@ -152,6 +152,10 @@ message TPartitionMeta
     // Commit id up to which it's safe to trim fresh log (valid only for
     // partition v1).
     uint64 TrimFreshLogToCommitId = 5;
+
+    uint64 L0RangeSize = 6;
+
+    uint64 L1RangeSize = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -169,6 +173,7 @@ message TBlobMeta
         uint32 Start = 1;
         uint32 End = 2;
         uint32 Skipped = 3;
+        uint64 CommitId = 4;
     }
 
     oneof Blocks

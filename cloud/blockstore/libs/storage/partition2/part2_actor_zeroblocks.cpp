@@ -108,6 +108,7 @@ void TZeroBlocksActor::AddBlobs(const TActorContext& ctx)
         TVector<TAddMixedBlob>(),
         std::move(MergedBlobs),
         TVector<TAddFreshBlob>(),
+        TVector<TAddL0Blob>(),
         ADD_WRITE_RESULT
     );
 
