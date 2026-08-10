@@ -40,7 +40,29 @@ which low latency for small requests is critical. The main issues are:
  makes tail latency upon each read and write worse
 * actor system is pretty expensive because a lot of calls which could've been
  implemented via a lock-free op or a very short-term spinlock require creating
- an actor
+ an actor and sending messages (and these things are very expensive)
+* and also at the VDisk level we have yet another LSM - an LSM or LSM-like
+ structure at this layer of the system is also an overkill
+
+All of these issues make it hard (I would personally say "impossible") to
+achieve the latency goals that we want to achieve (and that are possible with
+modern commodity hardware):
+* average single-block read/write latency in the 100-200us range
+* open/close latency in the same range
+* hundreds of thousands (200-300k) read/write/open/close IOPS per shard
+
+By "modern" hardware I mean:
+* NVMe SSD devices capable of providing around 20-30us avg latency for single
+ physical page read/write operations
+* Ethernet-based network capable of providing 20-30 us RTT between any two
+ healthy nodes within a DC
+
+The latency is given as a range because the place in the stack where you
+measure it matters:
+* for the `filestore-vhost <-> shard <-> storage-group` data path I would expect
+ a value closer to 100us
+* for the whole e2e stack - `fio <-> virtio-fs-driver <-> filestore-vhost <-> shard <-> storage-group` -
+ I would expect a value somewhere in the 150-200us range
 
 ## Fastshard position in the current architecture
 
@@ -130,3 +152,13 @@ coordinated via 2PC.
 * [page-store.md](page-store.md) - page cache and dirty page tracking.
 * [shard.md](shard.md) - shard data structures and on-disk layout.
 * [silk.md](silk.md) - the async framework.
+
+## Literature
+* [https://homepages.cwi.nl/~boncz/lsde/papers/aurora.pdf](original Aurora whitepaper) - describes how you can define the boundary between compute and storage and how you can design LSN advancement and checkpointing
+* [https://metebalci.com/blog/a-minimum-complete-tutorial-of-linux-ext4-file-system/](ext4 layout and design) - a good source of information about the data structures that can be used for filesystem implementation
+* [https://users.soe.ucsc.edu/~scott/courses/Fall04/221/zfs_overview.pdf](original ZFS whitepaper) - a bit less relevant but still a nice source of ideas regarding the separation of concerns among the layers
+* [https://datatracker.ietf.org/doc/html/rfc8435](pNFS Flexible File Layout) - contains some useful ideas regarding the design of the direct client <-> storage-group communication (but the NFS protocol specifics are not relevant for us)
+
+## Tracking
+* https://github.com/ydb-platform/nbs/issues/5895
+* https://github.com/ydb-platform/nbs/issues/5894

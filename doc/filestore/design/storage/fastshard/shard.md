@@ -34,9 +34,9 @@ groups of 8 consecutive pages.
 
 * Prototype: `TPersistentHashTable` with `<NodeId, PageClusterNo>` keys and
   `StoragePageClusterNo` values.
-* Production: a radix tree per file.
+* Production: an extent tree / a radix tree hybrid per file.
 
-> **TBD**: per-file radix tree design.
+> **TBD**: per-file tree design.
 
 ### Page allocator
 
