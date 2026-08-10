@@ -71,6 +71,9 @@ message TNodeAttr
     bytes ShardNodeName = 12;
 
     uint64 DevId = 13;
+
+    // Id of the quota this node (a directory) is attached to, or 0 if none.
+    uint32 QuotaId = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

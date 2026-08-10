@@ -138,6 +138,7 @@ void ConvertNodeFromAttrs(
     dst.SetSize(src.GetSize());
     dst.SetLinks(src.GetLinks());
     dst.SetDevId(src.GetDevId());
+    dst.SetQuotaId(src.GetQuotaId());
 }
 
 void ConvertAttrsToNode(const NProto::TNodeAttr& src, NProto::TNode* dst)
@@ -152,6 +153,7 @@ void ConvertAttrsToNode(const NProto::TNodeAttr& src, NProto::TNode* dst)
     dst->SetSize(src.GetSize());
     dst->SetLinks(src.GetLinks());
     dst->SetDevId(src.GetDevId());
+    dst->SetQuotaId(src.GetQuotaId());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
