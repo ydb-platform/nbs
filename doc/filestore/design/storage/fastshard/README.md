@@ -26,10 +26,12 @@ database are stored in channels 0, 1 and 2 of the tablet and the data blobs are
 stored in the remaining channels. Actor system is used as the async framework on
 which everything is built. This architecture works more or less okay for some
 workloads (preferably highly parallel, preferably large requests) but doesn't
-work good enough in the other important workloads - mostly the workloads for
-which low latency for small requests is critical. The main issues are:
+work good enough for the other important workloads - mostly the workloads for
+which low latency for small requests is critical.
+
+The main issues are:
 * the blobs are immutable which leads to the need to modify both the index and
- the data every time we need to rewrite a portion of the file even if that
+ the data every time we need to rewrite a portion of a file even if that
  portion is already allocated
 * even though we have some complex features that allow us to do index updates
  and data blob writing in parallel it's still not 100% parallel - there're
@@ -37,12 +39,12 @@ which low latency for small requests is critical. The main issues are:
  the shard
 * it's impossible to implement true direct client<->storage group writes because
  the index needs to be updated every time
-* the blobs are pretty small which leads to needing a large index - it's
- different from what most filesystems do which is being able to allocate large
- consecutive extents and indexing each extent with a single index entry (the
- index is usually implemented as some kind of a tree with large fanout - e.g.
- extent tree, b-tree, radix tree) - a large index doesn't fit into RAM which
- drastically increases both read and write latency
+* the blobs are pretty small (up to several MiBs max) which leads to the need
+ for a large index - it's different from what most filesystems do which is being
+ able to allocate large consecutive extents and indexing each extent with a
+ single index entry (the index is usually implemented as some kind of a tree
+ with large fanout - e.g. extent b-tree, radix tree) - a large index doesn't fit
+ into RAM which drastically increases both read and write latency
 * the inode, index and data are scattered across multiple storage groups which
  makes tail latency upon each read and write worse
 * actor system is pretty expensive because a lot of calls which could've been
@@ -60,12 +62,12 @@ modern commodity hardware):
 
 By "modern" hardware I mean:
 * NVMe SSD devices capable of providing around 20-30us avg latency for single
- physical page read/write operations
-* Ethernet-based network capable of providing 20-30 us RTT between any two
+ physical page (around 16KiB) read/write operations
+* Ethernet-based network capable of providing 20-30us RTT between any two
  healthy nodes within a DC
 
-The latency is given as a range because the place in the stack where you
-measure it matters:
+The latency is given as a range because the place in the stack where we it
+matters:
 * for the `filestore-vhost <-> shard <-> storage-group` data path I would expect
  a value closer to 100us
 * for the whole e2e stack - `fio <-> virtio-fs-driver <-> filestore-vhost <-> shard <-> storage-group` -
@@ -73,10 +75,11 @@ measure it matters:
 
 ## Fastshard position in the current architecture
 
-We want to be able to plug in a new solution right into the current architecture
-and would like to deliver the first version as soon as possible. That's why we
-strive to reuse most of the current components that are not 100% critical for
-achieving our latency goals for the most latency-critical operations:
+We want to be able to plug in the new solution right into the current
+architecture and would like to deliver the first version as soon as possible.
+That's why we strive to reuse most of the current components that are not 100%
+critical for achieving our latency goals for the most latency-critical
+operations:
 * `open(inode_id) -> handle_id`
 * `write(handle_id, offset, data)`
 * `read(handle_id, offset, len) -> data`
@@ -87,7 +90,8 @@ stays as is:
 
 * **Bootstrap** - fastshard code is bootstrapped via the tablet
   infrastructure. The tablet actor creates the `IFileSystemShard` instance
-  when it loads its state (`tablet_actor_loadstate.cpp`).
+  when it loads its state (`tablet_actor_loadstate.cpp`). Tablet `Generation`
+  can be reused for storage group locking.
 * **Integration point** - `TIndexTabletActor`'s Adapter mode
   (`StateAdapter`). In this mode the tablet does not execute local
   transactions against BlobStorage; it forwards session requests to the
@@ -99,13 +103,17 @@ stays as is:
   carries `IsFastShard` and `TFastShardConfig`; the per-filesystem config
   reaches the tablet through the regular config pipeline.
 * **Devices** - storage devices are hosted by blockstore-disk-agent with a
-  journalled device layer on top (`journalled_device_tcp_server`).
+  journalled device layer on top (`journalled_device_tcp_server`). Devices are
+  allocated and monitored via `DiskRegistry` (same as for
+  `network-ssd-nonreplicated` and `network-ssd-io-m3` disks).
 
-In addition to the actor-system path there is a TCP side channel: the tablet
-registers its shard in `NFastShard::IServer`, which serves the same
+In addition to the actor-system path there is an optional TCP side channel: the
+tablet registers its shard in `NFastShard::IServer`, which serves the same
 `IFileSystemShard` methods over a length-prefixed protobuf protocol
 (`server/protos/fastshard.proto`). The host and port are published through
-the filestore backend info.
+the filestore backend info. This optional side channel can be used to bypass
+actor system and interconnect for `ReadData` and `WriteData` requests
+potentially improving read/write latency.
 
 ## What fastshard implements
 
@@ -121,7 +129,7 @@ the filestore backend info.
          |
      page store           page cache, dirty pages, request forwarding
          |
-  [storage groups]        quorum, recovery, Lsn ordering
+  [storage groups]        quorum, recovery, LSN ordering
          |
    storage nodes          journalled devices in blockstore-disk-agent
 ```
@@ -129,9 +137,7 @@ the filestore backend info.
 Each shard works on top of multiple storage groups. The data and metadata of
 a single inode are co-located inside one storage group. A file that does not
 fit into a single group spans several groups; writes to multiple groups are
-coordinated via 2PC.
-
-> **TBD**: detailed description of cross-group 2PC.
+coordinated by the shard.
 
 ## High-level diagram
 
@@ -154,7 +160,7 @@ coordinated via 2PC.
 ## Per-layer documents
 
 * [storage-node.md](storage-node.md) - journalled storage node.
-* [storage-group.md](storage-group.md) - quorum, crash recovery, Lsn
+* [storage-group.md](storage-group.md) - quorum, crash recovery, LSN
   advancement.
 * [page-store.md](page-store.md) - page cache and dirty page tracking.
 * [shard.md](shard.md) - shard data structures and on-disk layout.
