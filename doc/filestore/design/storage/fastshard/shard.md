@@ -107,5 +107,3 @@ into one group span several; writes to multiple groups are coordinated via
 ## Diagram
 
 ![fastshard_shard_structures](../../../excalidraw/fastshard_shard_structures.svg)
-
-Diagram source: [fastshard_shard_structures.excalidraw](../../../excalidraw/fastshard_shard_structures.excalidraw).

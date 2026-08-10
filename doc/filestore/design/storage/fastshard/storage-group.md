@@ -45,5 +45,3 @@ the group to every device (see
 ## Diagram
 
 ![fastshard_storage_group](../../../excalidraw/fastshard_storage_group.svg)
-
-Diagram source: [fastshard_storage_group.excalidraw](../../../excalidraw/fastshard_storage_group.excalidraw).

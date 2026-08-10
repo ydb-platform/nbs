@@ -58,5 +58,3 @@ The caller must treat `E_REJECTED` as a retryable conflict, distinct from
 ## Diagram
 
 ![fastshard_page_store](../../../excalidraw/fastshard_page_store.svg)
-
-Diagram source: [fastshard_page_store.excalidraw](../../../excalidraw/fastshard_page_store.excalidraw).

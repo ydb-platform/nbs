@@ -55,5 +55,3 @@ the page groups in place.
 ## Diagram
 
 ![fastshard_storage_node](../../../excalidraw/fastshard_storage_node.svg)
-
-Diagram source: [fastshard_storage_node.excalidraw](../../../excalidraw/fastshard_storage_node.excalidraw).

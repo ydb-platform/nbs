@@ -1,8 +1,15 @@
 # Fastshard
 
 Fastshard is a filesystem shard implementation that does not use YDB
-BlobStorage. It is file-only: it stores regular inodes (files) and nothing
-else. Shards that host directories and other inode types keep the existing
+BlobStorage. It is file-only - it stores:
+* regular inodes (files)
+* handles to these files
+* flat name to inode id mapping
+* file data
+* block allocation metadata
+* file xattrs and file locks
+
+Shards that host directories and other inode types keep the existing
 `TIndexTabletActor` implementation on top of BlobStorage. Shards that host
 files can be implemented via fastshard.
 
