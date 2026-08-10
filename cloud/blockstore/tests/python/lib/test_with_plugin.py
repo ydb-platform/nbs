@@ -68,86 +68,89 @@ def run_plugin_test(
         nbs_binary_path=nbs_binary_path,
         restart_interval=restart_interval)
     nbs.start()
-    wait_for_nbs_server(nbs.nbs_port)
+    try:
+        wait_for_nbs_server(nbs.nbs_port)
 
-    client_binary_path = common.binary_path(
-        "cloud/blockstore/apps/client/blockstore-client")
+        client_binary_path = common.binary_path(
+            "cloud/blockstore/apps/client/blockstore-client")
 
-    result = call([
-        client_binary_path, "createvolume",
-        "--disk-id", disk_id,
-        "--blocks-count", "100000",
-        "--host", "localhost",
-        "--port", str(nbs.nbs_port),
-    ], stderr=stderr_file)
-    assert result == 0
-
-    endpoint_folder = tempfile.gettempdir()
-    client_id = "client_id"
-
-    if endpoint is not None:
-        os.mkdir(endpoint_storage_dir)
-
-        socket = endpoint_folder + "/" + endpoint
         result = call([
-            client_binary_path, "startendpoint",
-            "--socket", socket,
+            client_binary_path, "createvolume",
             "--disk-id", disk_id,
-            "--ipc-type", server_ipc_type,
-            "--client-id", client_id,
+            "--blocks-count", "100000",
             "--host", "localhost",
             "--port", str(nbs.nbs_port),
-            "--persistent",
         ], stderr=stderr_file)
         assert result == 0
 
-    client_config_path = os.path.join(common.output_path(), "client.txt")
+        endpoint_folder = tempfile.gettempdir()
+        client_id = "client_id"
 
-    with open(client_config_path, "w") as cc:
-        client = TClientAppConfig()
-        client.LogConfig.CopyFrom(TLogConfig())
-        client.LogConfig.LogLevel = 7   # debug
-        client.ClientConfig.CopyFrom(TClientConfig())
-        client.ClientConfig.Host = "localhost"
-        client.ClientConfig.Port = nbs.nbs_data_port
-        client.ClientConfig.IpcType = __convert_to_proto(client_ipc_type)
-        client.ClientConfig.NbdSocketSuffix = nbd_socket_suffix
-        cc.write(str(client))
+        if endpoint is not None:
+            os.mkdir(endpoint_storage_dir)
 
-    plugin_config = TPluginConfig()
-    plugin_config.ClientConfig = client_config_path
-    plugin_config.ClientId = client_id
+            socket = endpoint_folder + "/" + endpoint
+            result = call([
+                client_binary_path, "startendpoint",
+                "--socket", socket,
+                "--disk-id", disk_id,
+                "--ipc-type", server_ipc_type,
+                "--client-id", client_id,
+                "--host", "localhost",
+                "--port", str(nbs.nbs_port),
+                "--persistent",
+            ], stderr=stderr_file)
+            assert result == 0
 
-    test_binary_path = common.binary_path(
-        "cloud/blockstore/tools/testing/plugintest/blockstore-plugintest")
+        client_config_path = os.path.join(common.output_path(), "client.txt")
 
-    if plugin_version == "trunk":
-        plugin_lib_path = common.binary_path(
-            "cloud/vm/blockstore/libblockstore-plugin.so")
-    elif plugin_version == "stable":
-        plugin_lib_path = common.binary_path(
-            "cloud/blockstore/tools/testing/stable-plugin/libblockstore-plugin.so")
-    else:
-        raise RuntimeError("Invalid plugin version: {}".format(plugin_version))
+        with open(client_config_path, "w") as cc:
+            client = TClientAppConfig()
+            client.LogConfig.CopyFrom(TLogConfig())
+            client.LogConfig.LogLevel = 7   # debug
+            client.ClientConfig.CopyFrom(TClientConfig())
+            client.ClientConfig.Host = "localhost"
+            client.ClientConfig.Port = nbs.nbs_data_port
+            client.ClientConfig.IpcType = __convert_to_proto(client_ipc_type)
+            client.ClientConfig.NbdSocketSuffix = nbd_socket_suffix
+            cc.write(str(client))
 
-    results_path = os.path.join(
-        common.output_path(),
-        "%s_results.txt" % test_tag)
-    with open(results_path, "w") as stdout_file:
-        params = [
-            test_binary_path,
-            "--plugin-options", str(plugin_config),
-            "--plugin-lib", plugin_lib_path,
-            "--test-config", common.source_path(test_config),
-            "--host-major", str(host_major),
-            "--host-minor", str(host_minor),
-            "--endpoint-folder", endpoint_folder,
-            "--run-count", str(run_count),
-        ]
+        plugin_config = TPluginConfig()
+        plugin_config.ClientConfig = client_config_path
+        plugin_config.ClientId = client_id
 
-        result = call(params, stdout=stdout_file, stderr=stderr_file)
-        assert result == 0
+        test_binary_path = common.binary_path(
+            "cloud/blockstore/tools/testing/plugintest/blockstore-plugintest")
 
-    ret = common.canonical_file(results_path, local=True)
-    nbs.stop()
+        if plugin_version == "trunk":
+            plugin_lib_path = common.binary_path(
+                "cloud/vm/blockstore/libblockstore-plugin.so")
+        elif plugin_version == "stable":
+            plugin_lib_path = common.binary_path(
+                "cloud/blockstore/tools/testing/stable-plugin/libblockstore-plugin.so")
+        else:
+            raise RuntimeError("Invalid plugin version: {}".format(plugin_version))
+
+        results_path = os.path.join(
+            common.output_path(),
+            "%s_results.txt" % test_tag)
+        with open(results_path, "w") as stdout_file:
+            params = [
+                test_binary_path,
+                "--plugin-options", str(plugin_config),
+                "--plugin-lib", plugin_lib_path,
+                "--test-config", common.source_path(test_config),
+                "--host-major", str(host_major),
+                "--host-minor", str(host_minor),
+                "--endpoint-folder", endpoint_folder,
+                "--run-count", str(run_count),
+            ]
+
+            result = call(params, stdout=stdout_file, stderr=stderr_file)
+            assert result == 0
+
+        ret = common.canonical_file(results_path, local=True)
+    finally:
+        nbs.stop()
+
     return ret
