@@ -97,7 +97,8 @@ enum class ECanceledTargetFailure
 };
 
 void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
-    ECanceledTargetFailure failure)
+    ECanceledTargetFailure failure,
+    bool reloadState = false)
 {
     TTestExecutor executor;
     executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -206,6 +207,29 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
         UNIT_ASSERT(diskInfo.FinishedMigrations[0].IsCanceled);
     }
 
+    std::unique_ptr<TDiskRegistryState> reloadedStatePtr;
+    if (reloadState) {
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                reloadedStatePtr = TDiskRegistryStateBuilder::LoadState(db)
+                                       .WithKnownAgents(agents)
+                                       .Build();
+            });
+
+        TDiskInfo diskInfo;
+        UNIT_ASSERT_SUCCESS(
+            reloadedStatePtr->GetDiskInfo(replicaId, diskInfo));
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.FinishedMigrations.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            target.GetDeviceUUID(),
+            diskInfo.FinishedMigrations[0].DeviceId);
+        UNIT_ASSERT(diskInfo.FinishedMigrations[0].IsCanceled);
+    }
+
+    TDiskRegistryState& testedState =
+        reloadState ? *reloadedStatePtr : state;
+
     NMonitoring::TDynamicCountersPtr counters =
         new NMonitoring::TDynamicCounters();
     InitCriticalEventsCounter(counters);
@@ -220,7 +244,7 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
             switch (failure) {
                 case ECanceledTargetFailure::Agent: {
                     TVector<TString> affectedDisks;
-                    UNIT_ASSERT_SUCCESS(state.UpdateAgentState(
+                    UNIT_ASSERT_SUCCESS(testedState.UpdateAgentState(
                         db,
                         target.GetAgentId(),
                         NProto::AGENT_STATE_UNAVAILABLE,
@@ -231,7 +255,7 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
                 }
                 case ECanceledTargetFailure::Device: {
                     TString affectedDisk;
-                    UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
+                    UNIT_ASSERT_SUCCESS(testedState.UpdateDeviceState(
                         db,
                         target.GetDeviceUUID(),
                         NProto::DEVICE_STATE_ERROR,
@@ -261,17 +285,19 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
                     device->SetStateMessage("test");
 
                     UNIT_ASSERT_SUCCESS(
-                        state.RegisterAgent(db, agent, Now()).GetError());
+                        testedState.RegisterAgent(db, agent, Now()).GetError());
                     break;
                 }
             }
         });
 
     UNIT_ASSERT_VALUES_EQUAL(0, critCounter->Val());
-    UNIT_ASSERT_VALUES_EQUAL(0, state.GetAutomaticallyReplacedDevices().size());
+    UNIT_ASSERT_VALUES_EQUAL(
+        0,
+        testedState.GetAutomaticallyReplacedDevices().size());
 
     TDiskInfo diskInfo;
-    UNIT_ASSERT_SUCCESS(state.GetDiskInfo(replicaId, diskInfo));
+    UNIT_ASSERT_SUCCESS(testedState.GetDiskInfo(replicaId, diskInfo));
     UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Devices.size());
     UNIT_ASSERT_VALUES_EQUAL(sourceId, diskInfo.Devices[0].GetDeviceUUID());
     UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
@@ -1947,6 +1973,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
     {
         DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
             ECanceledTargetFailure::Registration);
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotReplaceCanceledMigrationTargetOnRegistrationAfterStateReload)
+    {
+        DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
+            ECanceledTargetFailure::Registration,
+            true);
     }
 
     Y_UNIT_TEST(ShouldNotStartAlreadyFinishedMigrationDevice)
