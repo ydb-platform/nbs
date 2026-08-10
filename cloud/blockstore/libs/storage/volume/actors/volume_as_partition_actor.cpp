@@ -556,7 +556,7 @@ void TVolumeAsPartitionActor::CancelRequests(const TActorContext& ctx)
 
         const auto& requestCtx = request->Value;
         auto error = MakeError(
-            E_CANCELLED,
+            E_REJECTED,
             "Follower request timed out during shutdown");
 
         switch (requestCtx.RequestType) {
