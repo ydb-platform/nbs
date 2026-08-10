@@ -7,7 +7,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -24,6 +23,10 @@ type factory struct {
 	sessionMetricsRegistry metrics.Registry
 	// map from zone
 	endpointPickers map[string]*endpointPicker
+}
+
+type FactoryOptions struct {
+	TLSProvider nfs_client.TLSConfigProvider
 }
 
 func (f *factory) NewClient(
@@ -111,10 +114,10 @@ func (f *factory) NewClientFromDefaultZone(
 func NewFactoryWithCreds(
 	ctx context.Context,
 	config *nfs_config.ClientConfig,
-	refreshCertsPeriod time.Duration,
 	credentials auth.Credentials,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
+	options FactoryOptions,
 ) Factory {
 
 	clientMetrics := client_metrics.NewClientMetrics(clientMetricsRegistry)
@@ -122,28 +125,9 @@ func NewFactoryWithCreds(
 		credentials = nil
 	}
 
-	var tlsProvider nfs_client.TLSConfigProvider
-	var err error
-	if !config.GetInsecure() && refreshCertsPeriod > 0 {
-		tlsProvider, err = common.NewReloadableTLSConfigProvider(
-			ctx,
-			common.ReloadableTLSConfigProviderConfig{
-				RootCertsFile: config.GetRootCertsFile(),
-				RefreshPeriod: refreshCertsPeriod,
-			},
-		)
-		if err != nil {
-			logging.Warn(
-				ctx,
-				"Failed to initialize NFS TLS provider: %v",
-				err,
-			)
-		}
-	}
-
 	clientCredentials := &nfs_client.ClientCredentials{
 		RootCertsFile: config.GetRootCertsFile(),
-		TLSProvider:   tlsProvider,
+		TLSProvider:   options.TLSProvider,
 		IAMClient:     credentials,
 	}
 	if config.GetInsecure() {
@@ -171,17 +155,17 @@ func NewFactoryWithCreds(
 func NewFactory(
 	ctx context.Context,
 	config *nfs_config.ClientConfig,
-	refreshCertsPeriod time.Duration,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
+	options FactoryOptions,
 ) Factory {
 
 	return NewFactoryWithCreds(
 		ctx,
 		config,
-		refreshCertsPeriod,
 		nil,
 		clientMetricsRegistry,
 		sessionMetricsRegistry,
+		options,
 	)
 }

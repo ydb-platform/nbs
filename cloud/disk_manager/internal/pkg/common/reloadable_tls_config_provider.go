@@ -7,10 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,7 +27,8 @@ type ReloadableTLSConfigProviderConfig struct {
 }
 
 type ReloadableTLSConfigProvider struct {
-	config ReloadableTLSConfigProviderConfig
+	config   ReloadableTLSConfigProviderConfig
+	registry metrics.Registry
 
 	lock      sync.RWMutex
 	tlsConfig *tls.Config
@@ -33,16 +37,19 @@ type ReloadableTLSConfigProvider struct {
 func NewReloadableTLSConfigProvider(
 	ctx context.Context,
 	config ReloadableTLSConfigProviderConfig,
+	registry metrics.Registry,
 ) (*ReloadableTLSConfigProvider, error) {
 	provider := &ReloadableTLSConfigProvider{
-		config: config,
+		config:   config,
+		registry: registry,
 	}
 
-	cfg, err := provider.readTLSConfig()
+	cfg, rootCertFingerprint, err := provider.readTLSConfig()
 	if err != nil {
 		return nil, err
 	}
 	provider.tlsConfig = cfg
+	provider.publishRootCertFingerprint(rootCertFingerprint)
 
 	if config.RefreshPeriod > 0 {
 		go provider.runRefreshLoop(ctx)
@@ -73,7 +80,7 @@ func (p *ReloadableTLSConfigProvider) runRefreshLoop(
 	for {
 		select {
 		case <-ticker.C:
-			cfg, err := p.readTLSConfig()
+			cfg, rootCertFingerprint, err := p.readTLSConfig()
 			if err != nil {
 				logging.Warn(
 					ctx,
@@ -86,13 +93,33 @@ func (p *ReloadableTLSConfigProvider) runRefreshLoop(
 			p.lock.Lock()
 			p.tlsConfig = cfg
 			p.lock.Unlock()
+			p.publishRootCertFingerprint(rootCertFingerprint)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (p *ReloadableTLSConfigProvider) readTLSConfig() (*tls.Config, error) {
+func (p *ReloadableTLSConfigProvider) publishRootCertFingerprint(
+	fingerprint *uint64,
+) {
+	if fingerprint == nil {
+		return
+	}
+
+	p.registry.WithTags(
+		map[string]string{
+			"subsystem": "certificates",
+			"cert":      filepath.Base(p.config.RootCertsFile),
+		},
+	).Gauge("Fingerprint").Set(float64(*fingerprint))
+}
+
+func (p *ReloadableTLSConfigProvider) readTLSConfig() (
+	*tls.Config,
+	*uint64,
+	error,
+) {
 	cfg := &tls.Config{}
 
 	if p.config.CertFile != "" {
@@ -101,7 +128,7 @@ func (p *ReloadableTLSConfigProvider) readTLSConfig() (*tls.Config, error) {
 			p.config.CertPrivateKeyFile,
 		)
 		if err != nil {
-			return nil, fmt.Errorf(
+			return nil, nil, fmt.Errorf(
 				"failed to load client certificate/key: %w",
 				err,
 			)
@@ -113,15 +140,16 @@ func (p *ReloadableTLSConfigProvider) readTLSConfig() (*tls.Config, error) {
 	if p.config.UseSystemCertPool {
 		cp, err := x509.SystemCertPool()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		cfg.RootCAs = cp
 	}
 
+	var rootCertFingerprint *uint64
 	if p.config.RootCertsFile != "" {
 		pem, err := os.ReadFile(p.config.RootCertsFile)
 		if err != nil {
-			return nil, fmt.Errorf(
+			return nil, nil, fmt.Errorf(
 				"failed to read root cert file: %w",
 				err,
 			)
@@ -134,11 +162,13 @@ func (p *ReloadableTLSConfigProvider) readTLSConfig() (*tls.Config, error) {
 
 		ok := pool.AppendCertsFromPEM(pem)
 		if !ok {
-			return nil, errors.New("failed to parse PEM")
+			return nil, nil, errors.New("failed to parse PEM")
 		}
 
 		cfg.RootCAs = pool
+		fingerprint := cityhash.Hash64(pem) & ((1 << 53) - 1)
+		rootCertFingerprint = &fingerprint
 	}
 
-	return cfg, nil
+	return cfg, rootCertFingerprint, nil
 }

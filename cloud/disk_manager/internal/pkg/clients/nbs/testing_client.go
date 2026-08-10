@@ -32,7 +32,6 @@ func newFactory(
 	return newFactoryWithCreds(
 		ctx,
 		client_config,
-		0,
 		nil, // creds
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),

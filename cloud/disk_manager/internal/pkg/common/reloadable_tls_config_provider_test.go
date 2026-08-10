@@ -15,7 +15,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	metrics_mocks "github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
+	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,6 +48,7 @@ func TestReloadableTLSConfigProviderRefreshAndKeepLastGood(t *testing.T) {
 			RefreshPeriod:     10 * time.Millisecond,
 			UseSystemCertPool: true,
 		},
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -86,6 +90,45 @@ func TestReloadableTLSConfigProviderRefreshAndKeepLastGood(t *testing.T) {
 	cfg, err := provider.GetTLSConfig(ctx)
 	require.NoError(t, err)
 	require.True(t, containsSubject(cfg.RootCAs, cert2Subject))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestReloadableTLSConfigProviderReportsRootCertFingerprintWithoutRefresh(
+	t *testing.T,
+) {
+	ctx := logging.SetLogger(
+		context.Background(),
+		logging.NewStderrLogger(logging.DebugLevel),
+	)
+
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "root_ca.pem")
+	certPEM, _ := mustGenerateRootCertificate(
+		t,
+		"disk-manager-test-cert",
+	)
+	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
+
+	fingerprint := cityhash.Hash64(certPEM) & ((1 << 53) - 1)
+	registry := metrics_mocks.NewRegistryMock()
+	registry.GetGauge(
+		"Fingerprint",
+		map[string]string{
+			"subsystem": "certificates",
+			"cert":      filepath.Base(certPath),
+		},
+	).On("Set", float64(fingerprint)).Once()
+
+	_, err := NewReloadableTLSConfigProvider(
+		ctx,
+		ReloadableTLSConfigProviderConfig{
+			RootCertsFile: certPath,
+		},
+		registry,
+	)
+	require.NoError(t, err)
+	require.True(t, registry.AssertAllExpectations(t))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

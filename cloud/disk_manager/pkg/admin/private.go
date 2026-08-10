@@ -3,7 +3,6 @@ package admin
 import (
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/spf13/cobra"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
@@ -766,21 +765,9 @@ type getCheckpointSizeCmd struct {
 
 func (c *getCheckpointSizeCmd) run() error {
 	ctx := newContext(c.clientConfig)
-	var refreshCertsPeriod time.Duration
-	var err error
-	if !c.serverConfig.GetGrpcConfig().GetInsecure() {
-		refreshCertsPeriod, err = time.ParseDuration(
-			c.serverConfig.GetGrpcConfig().GetRefreshCertsPeriod(),
-		)
-		if err != nil {
-			return err
-		}
-	}
-
 	nbsFactory, err := nbs.NewFactory(
 		ctx,
 		c.serverConfig.NbsConfig,
-		refreshCertsPeriod,
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
 	)

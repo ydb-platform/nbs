@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"time"
@@ -28,53 +27,12 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-
-func readCertificates(
-	certs []*server_config.Cert,
-) ([]tls.Certificate, error) {
-	certificates := make([]tls.Certificate, 0, len(certs))
-	for _, cert := range certs {
-		certificate, err := tls.LoadX509KeyPair(
-			cert.GetCertFile(),
-			cert.GetPrivateKeyFile(),
-		)
-		if err != nil {
-			return nil, errors.NewNonRetriableErrorf(
-				"failed to load cert file %v: %w",
-				cert.CertFile,
-				err,
-			)
-		}
-
-		certificates = append(certificates, certificate)
-	}
-
-	return certificates, nil
-}
-
-func newTransportCredentials(
-	certificates []tls.Certificate,
-) credentials.TransportCredentials {
-	cfg := &tls.Config{
-		Certificates: certificates,
-		MinVersion:   tls.VersionTLS12,
-	}
-	// TODO: https://golang.org/doc/go1.14#crypto/tls
-	// nolint:SA1019
-	cfg.BuildNameToCertificate()
-
-	return credentials.NewTLS(cfg)
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -146,38 +104,23 @@ func newGRPCServer(
 			return nil, err
 		}
 
-		if refreshCertsPeriod == 0 {
-			certificates, err := readCertificates(certs)
-			if err != nil {
-				logging.Error(
-					ctx,
-					"Failed to create GRPC transport credentials: %v",
-					err,
-				)
-				return nil, err
-			}
-
-			transportCreds := newTransportCredentials(certificates)
-			serverOptions = append(serverOptions, grpc.Creds(transportCreds))
-		} else {
-			tlsProvider, err := common.NewGRPCServerTLSProvider(
+		tlsProvider, err := common.NewGRPCServerTLSProvider(
+			ctx,
+			certs,
+			refreshCertsPeriod,
+			facadeMetricsRegistry,
+		)
+		if err != nil {
+			logging.Error(
 				ctx,
-				certs,
-				refreshCertsPeriod,
-				facadeMetricsRegistry,
+				"Failed to create GRPC TLS provider: %v",
+				err,
 			)
-			if err != nil {
-				logging.Error(
-					ctx,
-					"Failed to create GRPC TLS provider: %v",
-					err,
-				)
-				return nil, err
-			}
-
-			transportCreds := tlsProvider.NewTransportCredentials()
-			serverOptions = append(serverOptions, grpc.Creds(transportCreds))
+			return nil, err
 		}
+
+		transportCreds := tlsProvider.NewTransportCredentials()
+		serverOptions = append(serverOptions, grpc.Creds(transportCreds))
 	}
 
 	return grpc.NewServer(serverOptions...), nil
@@ -355,6 +298,7 @@ func initControlplane(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
+	nfsFactoryOptions nfs.FactoryOptions,
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
@@ -365,25 +309,15 @@ func initControlplane(
 		return nil, err
 	}
 
-	var refreshCertsPeriod time.Duration
-	if !config.GetGrpcConfig().GetInsecure() {
-		refreshCertsPeriod, err = time.ParseDuration(
-			config.GetGrpcConfig().GetRefreshCertsPeriod(),
-		)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
 	nfsSessionMetricsRegistry := mon.NewRegistry("nfs_session")
 	nfsFactory := nfs.NewFactoryWithCreds(
 		ctx,
 		config.GetNfsConfig(),
-		refreshCertsPeriod,
 		creds,
 		nfsClientMetricsRegistry,
 		nfsSessionMetricsRegistry,
+		nfsFactoryOptions,
 	)
 
 	poolService := pools.NewService(taskScheduler, poolStorage)

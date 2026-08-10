@@ -214,9 +214,9 @@ func createServices(
 			},
 			Insecure: &insecure,
 		},
-		0,
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
+		nfs.FactoryOptions{},
 	)
 
 	deletedFilesystemExpirationTimeout := "1s"
