@@ -126,9 +126,9 @@ func (f *factory) initClients(
 
 	var tlsProvider nbs_client.TLSConfigProvider
 	if !f.config.GetInsecure() && f.config.GetRootCertsFile() != "" {
-		tlsProvider, err = common.NewReloadableTLSConfigProvider(
+		tlsProvider, err = common.NewGRPCClientTLSProvider(
 			ctx,
-			common.ReloadableTLSConfigProviderConfig{
+			common.GRPCClientTLSProviderConfig{
 				RootCertsFile: f.config.GetRootCertsFile(),
 				RefreshPeriod: refreshCertsPeriod,
 			},

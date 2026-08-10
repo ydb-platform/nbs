@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	storage_grpc "github.com/ydb-platform/nbs/cloud/storage/core/go/grpc"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -32,9 +33,7 @@ type TokenProvider interface {
 	Token(ctx context.Context) (string, error)
 }
 
-type TLSConfigProvider interface {
-	GetTLSConfig(ctx context.Context) (*tls.Config, error)
-}
+type TLSConfigProvider = storage_grpc.TLSConfigProvider
 
 type grpcTokenProvider struct {
 	provider TokenProvider
@@ -89,7 +88,7 @@ func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, e
 	var transportCredentials credentials.TransportCredentials
 
 	if creds.TLSProvider != nil {
-		transportCredentials = NewReloadableTransportCredentials(
+		transportCredentials = storage_grpc.NewGRPCClientTransportCredentials(
 			creds.TLSProvider,
 		)
 	} else {

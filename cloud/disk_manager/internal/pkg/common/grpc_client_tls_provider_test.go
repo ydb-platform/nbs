@@ -23,7 +23,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestReloadableTLSConfigProviderRefreshAndKeepLastGood(t *testing.T) {
+func TestGRPCClientTLSProviderRefreshAndKeepLastGood(t *testing.T) {
 	ctx, cancel := context.WithCancel(
 		logging.SetLogger(
 			context.Background(),
@@ -41,9 +41,9 @@ func TestReloadableTLSConfigProviderRefreshAndKeepLastGood(t *testing.T) {
 	)
 	require.NoError(t, os.WriteFile(certPath, cert1PEM, 0o600))
 
-	provider, err := NewReloadableTLSConfigProvider(
+	provider, err := NewGRPCClientTLSProvider(
 		ctx,
-		ReloadableTLSConfigProviderConfig{
+		GRPCClientTLSProviderConfig{
 			RootCertsFile:     certPath,
 			RefreshPeriod:     10 * time.Millisecond,
 			UseSystemCertPool: true,
@@ -94,7 +94,7 @@ func TestReloadableTLSConfigProviderRefreshAndKeepLastGood(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestReloadableTLSConfigProviderReportsRootCertFingerprintWithoutRefresh(
+func TestGRPCClientTLSProviderReportsRootCertFingerprintWithoutRefresh(
 	t *testing.T,
 ) {
 	ctx := logging.SetLogger(
@@ -120,9 +120,9 @@ func TestReloadableTLSConfigProviderReportsRootCertFingerprintWithoutRefresh(
 		},
 	).On("Set", float64(fingerprint)).Once()
 
-	_, err := NewReloadableTLSConfigProvider(
+	_, err := NewGRPCClientTLSProvider(
 		ctx,
-		ReloadableTLSConfigProviderConfig{
+		GRPCClientTLSProviderConfig{
 			RootCertsFile: certPath,
 		},
 		registry,

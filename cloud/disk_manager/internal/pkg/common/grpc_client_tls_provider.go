@@ -18,7 +18,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type ReloadableTLSConfigProviderConfig struct {
+type GRPCClientTLSProviderConfig struct {
 	UseSystemCertPool  bool
 	RootCertsFile      string
 	CertFile           string
@@ -26,20 +26,20 @@ type ReloadableTLSConfigProviderConfig struct {
 	RefreshPeriod      time.Duration
 }
 
-type ReloadableTLSConfigProvider struct {
-	config   ReloadableTLSConfigProviderConfig
+type GRPCClientTLSProvider struct {
+	config   GRPCClientTLSProviderConfig
 	registry metrics.Registry
 
 	lock      sync.RWMutex
 	tlsConfig *tls.Config
 }
 
-func NewReloadableTLSConfigProvider(
+func NewGRPCClientTLSProvider(
 	ctx context.Context,
-	config ReloadableTLSConfigProviderConfig,
+	config GRPCClientTLSProviderConfig,
 	registry metrics.Registry,
-) (*ReloadableTLSConfigProvider, error) {
-	provider := &ReloadableTLSConfigProvider{
+) (*GRPCClientTLSProvider, error) {
+	provider := &GRPCClientTLSProvider{
 		config:   config,
 		registry: registry,
 	}
@@ -58,7 +58,7 @@ func NewReloadableTLSConfigProvider(
 	return provider, nil
 }
 
-func (p *ReloadableTLSConfigProvider) GetTLSConfig(
+func (p *GRPCClientTLSProvider) GetTLSConfig(
 	_ context.Context,
 ) (*tls.Config, error) {
 	p.lock.RLock()
@@ -71,7 +71,7 @@ func (p *ReloadableTLSConfigProvider) GetTLSConfig(
 	return p.tlsConfig.Clone(), nil
 }
 
-func (p *ReloadableTLSConfigProvider) runRefreshLoop(
+func (p *GRPCClientTLSProvider) runRefreshLoop(
 	ctx context.Context,
 ) {
 	ticker := time.NewTicker(p.config.RefreshPeriod)
@@ -100,7 +100,7 @@ func (p *ReloadableTLSConfigProvider) runRefreshLoop(
 	}
 }
 
-func (p *ReloadableTLSConfigProvider) publishRootCertFingerprint(
+func (p *GRPCClientTLSProvider) publishRootCertFingerprint(
 	fingerprint *uint64,
 ) {
 	if fingerprint == nil {
@@ -115,7 +115,7 @@ func (p *ReloadableTLSConfigProvider) publishRootCertFingerprint(
 	).Gauge("Fingerprint").Set(float64(*fingerprint))
 }
 
-func (p *ReloadableTLSConfigProvider) readTLSConfig() (
+func (p *GRPCClientTLSProvider) readTLSConfig() (
 	*tls.Config,
 	*uint64,
 	error,

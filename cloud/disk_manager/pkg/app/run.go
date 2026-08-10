@@ -190,9 +190,9 @@ func run(
 			return err
 		}
 
-		nfsFactoryOptions.TLSProvider, err = common.NewReloadableTLSConfigProvider(
+		nfsFactoryOptions.TLSProvider, err = common.NewGRPCClientTLSProvider(
 			ctx,
-			common.ReloadableTLSConfigProviderConfig{
+			common.GRPCClientTLSProviderConfig{
 				RootCertsFile: nfsConfig.GetRootCertsFile(),
 				RefreshPeriod: refreshCertsPeriod,
 			},

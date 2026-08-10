@@ -1,4 +1,4 @@
-package client
+package grpc
 
 import (
 	"context"
@@ -12,22 +12,26 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type reloadableTransportCredentials struct {
+type TLSConfigProvider interface {
+	GetTLSConfig(ctx context.Context) (*tls.Config, error)
+}
+
+type grpcClientTransportCredentials struct {
 	provider TLSConfigProvider
 
 	lock               sync.RWMutex
 	serverNameOverride string
 }
 
-func NewReloadableTransportCredentials(
+func NewGRPCClientTransportCredentials(
 	provider TLSConfigProvider,
 ) credentials.TransportCredentials {
-	return &reloadableTransportCredentials{
+	return &grpcClientTransportCredentials{
 		provider: provider,
 	}
 }
 
-func (c *reloadableTransportCredentials) ClientHandshake(
+func (c *grpcClientTransportCredentials) ClientHandshake(
 	ctx context.Context,
 	authority string,
 	rawConn net.Conn,
@@ -61,13 +65,13 @@ func (c *reloadableTransportCredentials) ClientHandshake(
 	)
 }
 
-func (c *reloadableTransportCredentials) ServerHandshake(
+func (c *grpcClientTransportCredentials) ServerHandshake(
 	rawConn net.Conn,
 ) (net.Conn, credentials.AuthInfo, error) {
 	return nil, nil, errors.New("server handshake is not supported")
 }
 
-func (c *reloadableTransportCredentials) Info() credentials.ProtocolInfo {
+func (c *grpcClientTransportCredentials) Info() credentials.ProtocolInfo {
 	c.lock.RLock()
 	serverNameOverride := c.serverNameOverride
 	c.lock.RUnlock()
@@ -79,18 +83,18 @@ func (c *reloadableTransportCredentials) Info() credentials.ProtocolInfo {
 	return credentials.NewTLS(cfg).Info()
 }
 
-func (c *reloadableTransportCredentials) Clone() credentials.TransportCredentials {
+func (c *grpcClientTransportCredentials) Clone() credentials.TransportCredentials {
 	c.lock.RLock()
 	serverNameOverride := c.serverNameOverride
 	c.lock.RUnlock()
 
-	return &reloadableTransportCredentials{
+	return &grpcClientTransportCredentials{
 		provider:           c.provider,
 		serverNameOverride: serverNameOverride,
 	}
 }
 
-func (c *reloadableTransportCredentials) OverrideServerName(
+func (c *grpcClientTransportCredentials) OverrideServerName(
 	serverNameOverride string,
 ) error {
 	c.lock.Lock()
