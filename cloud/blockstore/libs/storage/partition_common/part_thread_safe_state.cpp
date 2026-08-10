@@ -45,6 +45,7 @@ ui64 TPartitionThreadSafeState::StartFreshWrite(ui64 blockCount)
 
     TrimFreshLogBarriers.AcquireBarrierN(commitId, blockCount);
     CommitQueue.AcquireBarrier(commitId);
+    FreshWritesCommitQueue.AcquireBarrier(commitId);
     return commitId;
 }
 
@@ -55,16 +56,21 @@ void TPartitionThreadSafeState::FinishFreshWrite(
     bool isError)
 {
     TVector<std::unique_ptr<ITransactionBase>> txs;
+    TVector<TCommitQueueCallback> callbacks;
 
     with_lock (StateLock) {
         CommitQueue.ReleaseBarrier(commitId);
+        FreshWritesCommitQueue.ReleaseBarrier(commitId);
         if (isError) {
             TrimFreshLogBarriers.ReleaseBarrierN(commitId, blockCount);
         }
-        ProcessCommitQueueImpl(txs);
+        ProcessCommitQueueImpl(txs, callbacks);
     }
 
     ExecuteTxs(ctx, std::move(txs));
+    for (auto& callback: callbacks) {
+        callback(TActorContext::ActorSystem());
+    }
 }
 
 ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
@@ -100,6 +106,23 @@ void TPartitionThreadSafeState::WaitCommitForCompaction(
     ExecuteTxs(ctx, std::move(txs));
 }
 
+void TPartitionThreadSafeState::WaitFreshWritesToComplete(
+    TCommitQueueCallback callback,
+    ui64 commitId)
+{
+    with_lock (StateLock) {
+        ui64 minCommitId = FreshWritesCommitQueue.GetMinCommitId();
+
+        if (minCommitId <= commitId) {
+            // delay execution until all previous commits completed
+            FreshWritesCommitQueue.Enqueue(std::move(callback), commitId);
+            return;
+        }
+    }
+
+    callback(TActorContext::ActorSystem());
+}
+
 void TPartitionThreadSafeState::WaitCommitForCheckpoint(
     const NActors::TActorContext& ctx,
     std::unique_ptr<ITransactionBase> tx,
@@ -127,12 +150,16 @@ void TPartitionThreadSafeState::ProcessCommitQueue(
     const NActors::TActorContext& ctx)
 {
     TVector<std::unique_ptr<ITransactionBase>> txs;
+    TVector<TCommitQueueCallback> callbacks;
 
     with_lock (StateLock) {
-        ProcessCommitQueueImpl(txs);
+        ProcessCommitQueueImpl(txs, callbacks);
     }
 
     ExecuteTxs(ctx, std::move(txs));
+    for (auto& callback: callbacks) {
+        callback(TActorContext::ActorSystem());
+    }
 }
 
 void TPartitionThreadSafeState::ProcessCheckpointQueue(
@@ -209,7 +236,8 @@ void TPartitionThreadSafeState::ExecuteTxs(
 }
 
 void TPartitionThreadSafeState::ProcessCommitQueueImpl(
-    TVector<std::unique_ptr<ITransactionBase>>& txs)
+    TVector<std::unique_ptr<ITransactionBase>>& txs,
+    TVector<TCommitQueueCallback>& callbacks)
 {
     ui64 minCommitId = CommitQueue.GetMinCommitId();
 
@@ -220,6 +248,19 @@ void TPartitionThreadSafeState::ProcessCommitQueueImpl(
         if (minCommitId == commitId) {
             // start execution
             txs.push_back(CommitQueue.Dequeue());
+        } else {
+            // delay execution until all previous commits completed
+            break;
+        }
+    }
+
+    ui64 minFreshWritesCommitId = FreshWritesCommitQueue.GetMinCommitId();
+    while (!FreshWritesCommitQueue.Empty()) {
+        ui64 commitId = FreshWritesCommitQueue.Peek();
+
+        if (minFreshWritesCommitId > commitId) {
+            // start execution
+            callbacks.push_back(FreshWritesCommitQueue.Dequeue());
         } else {
             // delay execution until all previous commits completed
             break;

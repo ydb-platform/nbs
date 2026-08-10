@@ -35,5 +35,6 @@ ui64 TCommitQueueImpl<TItem>::Peek() const
 }
 
 template class TCommitQueueImpl<std::unique_ptr<ITransactionBase>>;
+template class TCommitQueueImpl<TCommitQueueCallback>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
