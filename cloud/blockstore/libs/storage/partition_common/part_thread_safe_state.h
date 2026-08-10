@@ -92,6 +92,7 @@ private:
 
     TBarriers TrimFreshLogBarriers;
     TCommitQueue CommitQueue;
+    TCommitQueueWithCallback FreshWritesCommitQueue;
 
     TCommitQueueWithCallback FreshWritesCommitQueue;
     TCheckpointsInFlight CheckpointsInFlight;

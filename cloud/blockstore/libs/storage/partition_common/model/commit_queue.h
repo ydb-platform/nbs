@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/partition_common/model/public.h>
+#include "public.h"
 
 #include "barrier.h"
 
@@ -41,7 +41,8 @@ public:
     ui64 Peek() const;
 };
 
-using TCommitQueueCallback = std::function<void(const NActors::TActorSystem* actorSystem)>;
+using TCommitQueueCallback =
+    std::function<void(const NActors::TActorSystem* actorSystem)>;
 using TCommitQueue = TCommitQueueImpl<std::unique_ptr<ITransactionBase>>;
 using TCommitQueueWithCallback = TCommitQueueImpl<TCommitQueueCallback>;
 
