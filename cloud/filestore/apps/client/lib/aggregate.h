@@ -67,6 +67,10 @@ TVector<TResult<T>> Aggregate(const TVector<TRow<T>>& rows)
     const size_t labelCount = rows.front().Labels.size();
     for (const auto& row: rows) {
         Y_ABORT_UNLESS(row.Labels.size() == labelCount);
+
+        for (const auto& label: row.Labels) {
+            Y_ABORT_UNLESS(!label.empty());
+        }
     }
 
     TVector<TResult<T>> result;
