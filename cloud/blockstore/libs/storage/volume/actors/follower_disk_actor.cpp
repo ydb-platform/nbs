@@ -100,7 +100,8 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
         ctx,
         LogTitle,
         LeaderBlockSize,
-        FollowerDiskInfo.Link.FollowerDiskId);
+        FollowerDiskInfo.Link.FollowerDiskId,
+        GetConfig()->GetDestroyVolumeTimeout());
 
     InitWork(
         ctx,

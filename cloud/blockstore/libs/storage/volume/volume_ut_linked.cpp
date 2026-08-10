@@ -2,6 +2,8 @@
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_actor.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_actor.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.h>
@@ -2046,6 +2048,216 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 checkZero(volume2, clientInfo1.GetClientId(), S_OK);
             }
         }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCompleteGracefulShutdownDuringFollowerMigration,
+        TFixture)
+    {
+        TActorId latestSourcePartitionActor;
+        TActorId migrationSourcePartitionActor;
+        TActorId followerDiskActor;
+        TActorId followerPartitionActor;
+
+        auto prevRegistrationObserver =
+            Runtime->SetRegistrationObserverFunc({});
+        Runtime->SetRegistrationObserverFunc(
+            [&](TTestActorRuntimeBase& runtime,
+                const TActorId& parentId,
+                const TActorId& actorId)
+            {
+                if (prevRegistrationObserver) {
+                    prevRegistrationObserver(runtime, parentId, actorId);
+                }
+
+                auto* actor = runtime.FindActor(actorId);
+                if (!followerDiskActor &&
+                    (dynamic_cast<TNonreplicatedPartitionActor*>(actor) ||
+                     dynamic_cast<TMirrorPartitionActor*>(actor)))
+                {
+                    latestSourcePartitionActor = actorId;
+                } else if (
+                    !followerDiskActor &&
+                    dynamic_cast<TFollowerDiskActor*>(actor))
+                {
+                    followerDiskActor = actorId;
+                    migrationSourcePartitionActor = latestSourcePartitionActor;
+                } else if (
+                    followerDiskActor && !followerPartitionActor &&
+                    parentId == followerDiskActor)
+                {
+                    followerPartitionActor = actorId;
+                }
+            });
+
+        TTestActorRuntimeBase::TEventFilter prevEventFilter;
+        TTestActorRuntimeBase::TScheduledEventFilter prevScheduledEventFilter;
+        std::optional<TFollowerDiskInfo::EState> followerState;
+        bool followerResponseDropped = false;
+        bool shutdownTimeoutScheduled = false;
+        auto scheduledEventFilter =
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event,
+                TDuration delay,
+                TInstant& deadline)
+        {
+            if (event->GetTypeRewrite() == TEvents::TEvWakeup::EventType &&
+                event->Recipient == followerPartitionActor)
+            {
+                shutdownTimeoutScheduled = true;
+            }
+
+            return prevScheduledEventFilter
+                       ? prevScheduledEventFilter(
+                             runtime,
+                             event,
+                             delay,
+                             deadline)
+                       : false;
+        };
+        prevScheduledEventFilter =
+            Runtime->SetScheduledEventFilter(scheduledEventFilter);
+
+        auto eventFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvUpdateFollowerStateResponse)
+            {
+                const auto* msg = event->Get<
+                    TEvVolumePrivate::TEvUpdateFollowerStateResponse>();
+                followerState = msg->Follower.State;
+            }
+
+            const bool isFollowerWriteResponse =
+                event->GetTypeRewrite() == TEvService::EvWriteBlocksResponse ||
+                event->GetTypeRewrite() == TEvService::EvZeroBlocksResponse;
+            if (!followerResponseDropped && followerPartitionActor &&
+                event->Recipient == followerPartitionActor &&
+                isFollowerWriteResponse)
+            {
+                followerResponseDropped = true;
+                return true;
+            }
+
+            return prevEventFilter ? prevEventFilter(runtime, event) : false;
+        };
+        prevEventFilter = Runtime->SetEventFilter(eventFilter);
+
+        TVolumeClient volume1(*Runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            VolumeBlockCount,
+            "vol1"));
+        volume1.WaitReady();
+
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume1.AddClient(clientInfo1);
+        Volumes["vol1"] = {
+            .VolumeClient = &volume1,
+            .VolumeClientInfo = &clientInfo1};
+
+        TVolumeClient volume2(*Runtime, 0, TestVolumeTablets[1]);
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD,
+            VolumeBlockCount,
+            "vol2"));
+        volume2.WaitReady();
+        Volumes["vol2"] = {
+            .VolumeClient = &volume2,
+            .VolumeClientInfo = nullptr};
+
+        volume1.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo1.GetClientId(),
+            'a');
+
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .LeaderShardId = "su1",
+            .FollowerDiskId = "vol2",
+            .FollowerShardId = "su2"};
+        auto linkResponse = volume1.LinkLeaderVolumeToFollower(link);
+        link.LinkUUID = linkResponse->Record.GetLinkUUID();
+
+        volume1.ReconnectPipe();
+        volume1.AddClient(clientInfo1);
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return followerResponseDropped;
+        };
+        Runtime->DispatchEvents(options, TDuration::Seconds(10));
+
+        UNIT_ASSERT_C(followerState, "Follower state was not observed");
+        UNIT_ASSERT_VALUES_EQUAL(
+            TFollowerDiskInfo::EState::Preparing,
+            *followerState);
+        UNIT_ASSERT_C(
+            migrationSourcePartitionActor && followerDiskActor &&
+                followerPartitionActor,
+            "Failed to capture the follower migration actor tree");
+        UNIT_ASSERT_C(
+            followerResponseDropped,
+            "Failed to leave a follower request in flight");
+
+        volume1.SendGracefulShutdownRequest();
+        options.CustomFinalCondition = [&]
+        {
+            return shutdownTimeoutScheduled;
+        };
+        Runtime->DispatchEvents(options, TDuration::Seconds(10));
+        UNIT_ASSERT_C(
+            shutdownTimeoutScheduled,
+            "Follower partition did not schedule its shutdown timeout");
+
+        Runtime->AdvanceCurrentTime(TDuration::Minutes(1));
+        auto shutdownResponse =
+            volume1.RecvGracefulShutdownResponse(TDuration::Seconds(1));
+
+        const bool sourcePartitionStopped =
+            !Runtime->FindActor(migrationSourcePartitionActor);
+        const bool followerDiskStopped = !Runtime->FindActor(followerDiskActor);
+        const bool followerPartitionStopped =
+            !Runtime->FindActor(followerPartitionActor);
+
+        Runtime->SetEventFilter(std::move(prevEventFilter));
+        Runtime->SetScheduledEventFilter(
+            std::move(prevScheduledEventFilter));
+        Runtime->SetRegistrationObserverFunc(
+            std::move(prevRegistrationObserver));
+
+        UNIT_ASSERT_C(
+            shutdownResponse,
+            "Graceful shutdown did not complete after a stuck follower "
+            "request");
+        UNIT_ASSERT_C(
+            sourcePartitionStopped,
+            "Source partition is still alive after graceful shutdown");
+        UNIT_ASSERT_C(
+            followerDiskStopped,
+            "Follower disk actor is still alive after graceful shutdown");
+        UNIT_ASSERT_C(
+            followerPartitionStopped,
+            "Follower partition adapter is still alive after graceful "
+            "shutdown");
     }
 }
 
