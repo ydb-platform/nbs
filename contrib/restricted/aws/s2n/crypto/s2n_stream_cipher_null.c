@@ -18,7 +18,7 @@
 #include "utils/s2n_blob.h"
 #include "utils/s2n_safety.h"
 
-static uint8_t s2n_stream_cipher_null_available(void)
+static uint8_t s2n_stream_cipher_null_available()
 {
     return 1;
 }
