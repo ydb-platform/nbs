@@ -30,5 +30,5 @@ message S3Config {
 
 message S3ControlplaneConfig {
     required string Endpoint = 1;
-    required string CallTimeout = 2 [default = "60s"];
+    optional string CallTimeout = 2 [default = "60s"];
 }
