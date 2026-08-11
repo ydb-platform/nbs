@@ -9,7 +9,9 @@
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 
+#include <algorithm>
 #include <ctime>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -22,10 +24,6 @@ namespace {
 using TBioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
 using TX509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
 using TEvpPkeyPtr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
-using TX509StorePtr = std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)>;
-using TX509StoreCtxPtr =
-    std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)>;
-using TX509StackPtr = std::unique_ptr<STACK_OF(X509), decltype(&sk_X509_free)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -224,17 +222,9 @@ TResultOrError<void> PrivateKeyAndCertificateMatch(
     return {};
 }
 
-TResultOrError<void> ValidateIdentityCertificateWithRoot(
-    TStringBuf rootCertPem,
+TResultOrError<void> ValidateIdentityCertificateValidity(
     TStringBuf certChainPem)
 {
-    TSslErrorQueueGuard errorGuard;
-
-    auto rootsResult =
-        ParseNonEmptyPemCertificates(rootCertPem, "Root certificate chain");
-    if (HasError(rootsResult.GetError())) {
-        return rootsResult.GetError();
-    }
     auto identityChainResult = ParseNonEmptyPemCertificates(
         certChainPem,
         "Identity certificate chain");
@@ -242,76 +232,36 @@ TResultOrError<void> ValidateIdentityCertificateWithRoot(
         return identityChainResult.GetError();
     }
 
-    auto roots = rootsResult.ExtractResult();
-    auto identityChain = identityChainResult.ExtractResult();
-
-    const X509* leaf = identityChain.front().get();
-    if (X509_cmp_current_time(X509_get0_notBefore(leaf)) > 0 ||
-        X509_cmp_current_time(X509_get0_notAfter(leaf)) < 0)
-    {
-        return TErrorResponse(
-            E_INVALID_STATE,
-            "Identity certificate is not currently valid");
-    }
-
-    TX509StorePtr store(X509_STORE_new(), X509_STORE_free);
-    if (!store) {
-        return MakeOpenSslError("Failed to create X509_STORE");
-    }
-
-    for (const auto& root: roots) {
-        if (X509_STORE_add_cert(store.get(), root.get()) == 1) {
-            continue;
+    const auto& identityChain = identityChainResult.GetResult();
+    for (size_t i = 0; i < identityChain.size(); ++i) {
+        const X509* certificate = identityChain[i].get();
+        const int notBeforeComparison =
+            X509_cmp_current_time(X509_get0_notBefore(certificate));
+        const int notAfterComparison =
+            X509_cmp_current_time(X509_get0_notAfter(certificate));
+        if (notBeforeComparison == 0 || notAfterComparison == 0) {
+            return TErrorResponse(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Failed to parse validity period for identity "
+                    << "certificate #" << i);
         }
-        const ui64 error = ERR_peek_last_error();
-        if (ERR_GET_LIB(error) == ERR_LIB_X509 &&
-            ERR_GET_REASON(error) == X509_R_CERT_ALREADY_IN_HASH_TABLE)
-        {
-            // Duplicate root certificate, not an error.
-            ERR_clear_error();
-            continue;
+        if (notBeforeComparison > 0) {
+            return TErrorResponse(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Identity certificate #" << i
+                    << " is not valid yet");
         }
-        return MakeOpenSslError(
-            "Failed to add root certificates to X509_STORE");
-    }
-
-    TX509StackPtr untrusted(sk_X509_new_null(), sk_X509_free);
-    if (!untrusted) {
-        return MakeOpenSslError(
-            "Failed to allocate untrusted certificate stack");
-    }
-    bool chainOk = true;
-    for (size_t i = 1; i < identityChain.size(); ++i) {
-        if (sk_X509_push(untrusted.get(), identityChain[i].get()) == 0) {
-            chainOk = false;
-            break;
+        if (notAfterComparison < 0) {
+            return TErrorResponse(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Identity certificate #" << i
+                    << " has expired");
         }
     }
-    if (!chainOk) {
-        return MakeOpenSslError(
-            "Failed to build untrusted identity certificate chain");
-    }
 
-    TX509StoreCtxPtr ctx(X509_STORE_CTX_new(), X509_STORE_CTX_free);
-    if (!ctx) {
-        return MakeOpenSslError("Failed to create X509_STORE_CTX");
-    }
-    const bool initOk =
-        X509_STORE_CTX_init(
-            ctx.get(),
-            store.get(),
-            identityChain.front().get(),
-            untrusted.get()) == 1;
-    if (!initOk) {
-        return MakeOpenSslError("Failed to initialize X509_STORE_CTX");
-    }
-    if (X509_verify_cert(ctx.get()) != 1) {
-        const int verifyError = X509_STORE_CTX_get_error(ctx.get());
-        auto message = TStringBuilder()
-            << "X509_verify_cert failed for identity certificate chain: "
-            << X509_verify_cert_error_string(verifyError);
-        return TErrorResponse(MAKE_SYSTEM_ERROR(verifyError), message);
-    }
     return {};
 }
 
@@ -326,29 +276,40 @@ TResultOrError<ui64> GetCertificateNotAfterTimestampSec(TStringBuf certChainPem)
         return chainResult.GetError();
     }
 
-    auto chain = chainResult.ExtractResult();
+    const auto& chain = chainResult.GetResult();
+    ui64 earliestTimestamp = std::numeric_limits<ui64>::max();
+    for (size_t i = 0; i < chain.size(); ++i) {
+        const ASN1_TIME* notAfter = X509_get0_notAfter(chain[i].get());
+        if (!notAfter) {
+            return TErrorResponse(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Failed to get notAfter field for identity "
+                    << "certificate #" << i);
+        }
 
-    const X509* leaf = chain.front().get();
-    const ASN1_TIME* notAfter = X509_get0_notAfter(leaf);
-    if (!notAfter) {
-        return TErrorResponse(
-            E_INVALID_STATE,
-            "Failed to get certificate notAfter field");
+        tm tmValue{};
+        if (ASN1_TIME_to_tm(notAfter, &tmValue) != 1) {
+            return MakeOpenSslError(
+                TStringBuilder()
+                    << "Failed to parse notAfter field for identity "
+                    << "certificate #" << i);
+        }
+
+        const time_t timestamp = timegm(&tmValue);
+        if (timestamp < 0) {
+            return TErrorResponse(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Invalid notAfter timestamp for identity "
+                    << "certificate #" << i);
+        }
+        earliestTimestamp = std::min(
+            earliestTimestamp,
+            static_cast<ui64>(timestamp));
     }
 
-    tm tmValue{};
-    if (ASN1_TIME_to_tm(notAfter, &tmValue) != 1) {
-        return MakeOpenSslError("Failed to parse certificate notAfter field");
-    }
-
-    const time_t timestamp = timegm(&tmValue);
-    if (timestamp < 0) {
-        return TErrorResponse(
-            E_INVALID_STATE,
-            "Invalid certificate notAfter timestamp");
-    }
-
-    return static_cast<ui64>(timestamp);
+    return earliestTimestamp;
 }
 
 TResultOrError<TString> ReadAndValidateRootCertificate(
@@ -482,12 +443,7 @@ TCertificatesUpdateResult UpdateCertificates(
 
     for (size_t i = 0; i < certificates.size(); ++i) {
         const auto& cert = certificates[i];
-        auto identityResult = NTlsUtils::ReadAndValidateIdentityPair(cert.Files);
-        if (HasError(identityResult.GetError())) {
-            STORAGE_WARN(
-                "Identity certificate update is skipped for "
-                << cert.Files.CertChainPath.Quote() << ": "
-                << FormatError(identityResult.GetError()));
+        const auto usePreviousCertificate = [&] {
             if (!cert.PrivateKey.empty() && !cert.CertChain.empty()) {
                 grpc_core::PemKeyCertPairList fallback;
                 fallback.emplace_back(cert.PrivateKey, cert.CertChain);
@@ -495,15 +451,37 @@ TCertificatesUpdateResult UpdateCertificates(
                     .CertificatesChain = std::move(fallback),
                 };
             }
+        };
+
+        auto identityResult = NTlsUtils::ReadAndValidateIdentityPair(cert.Files);
+        if (HasError(identityResult.GetError())) {
+            STORAGE_WARN(
+                "Identity certificate update is skipped for "
+                << cert.Files.CertChainPath.Quote() << ": "
+                << FormatError(identityResult.GetError()));
+            usePreviousCertificate();
+            continue;
+        }
+
+        const auto& pair = identityResult.GetResult().front();
+        auto validityResult =
+            NTlsUtils::ValidateIdentityCertificateValidity(pair.cert_chain());
+        if (HasError(validityResult.GetError())) {
+            STORAGE_WARN(
+                "Identity certificate update is skipped for "
+                << cert.Files.CertChainPath.Quote() << ": "
+                << FormatError(validityResult.GetError()));
+            usePreviousCertificate();
             continue;
         }
 
         TCertificate newCert;
         newCert.CertificatesChain = identityResult.ExtractResult();
 
-        const auto& pair = newCert.CertificatesChain.front();
+        const auto& identityPair = newCert.CertificatesChain.front();
         auto notAfterTs =
-            NTlsUtils::GetCertificateNotAfterTimestampSec(pair.cert_chain());
+            NTlsUtils::GetCertificateNotAfterTimestampSec(
+                identityPair.cert_chain());
         if (HasError(notAfterTs.GetError())) {
             STORAGE_WARN(
                 "Unable to parse certificate notAfter date for "
