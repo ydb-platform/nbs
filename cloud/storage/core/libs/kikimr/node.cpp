@@ -184,7 +184,8 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
 
 TDriverConfig CreateDriverConfig(
     const TRegisterDynamicNodeOptions& options,
-    const TString& addr)
+    const TString& addr,
+    const std::string& database)
 {
     TDriverConfig config;
 
@@ -200,6 +201,7 @@ TDriverConfig CreateDriverConfig(
         config.UseClientCertificate(certificate.c_str(), privateKey.c_str());
     }
 
+    config.SetDatabase(TString(database));
     config.SetAuthToken(options.Settings.NodeRegistrationToken);
     config.SetEndpoint(addr);
 
@@ -213,7 +215,8 @@ NDiscovery::TNodeRegistrationResult TryToRegisterDynamicNodeViaDiscoveryService(
     const TString& addr,
     const NDiscovery::TNodeRegistrationSettings& settings)
 {
-    auto connection = TDriver(CreateDriverConfig(options, addr));
+    auto connection =
+        TDriver(CreateDriverConfig(options, addr, settings.DomainPath_));
 
     auto client = NDiscovery::TDiscoveryClient(connection);
     NDiscovery::TNodeRegistrationResult result =
