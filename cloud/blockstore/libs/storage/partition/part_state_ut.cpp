@@ -725,8 +725,14 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         auto state = MakeState();
 
         const ui64 cleanupCommitId = MakeCommitId(0, 100);
-        UNIT_ASSERT(
-            !state.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 1));
+        UNIT_ASSERT(!state.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            1,
+            true /* checkpointAware */));
+        UNIT_ASSERT(!state.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            1,
+            false /* checkpointAware */));
 
         state.GetCleanupQueue().Add(
             {{1, 1, 4, 4_KB, 0, 0}, MakeCommitId(0, 10), {}});
@@ -737,33 +743,44 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         UNIT_ASSERT(!state.HasBlobCountToCleanupReachedThreshold(
             MakeCommitId(0, 15),
-            2));
-        UNIT_ASSERT(
-            state.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 3));
+            2,
+            true /* checkpointAware */));
+        UNIT_ASSERT(state.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            3,
+            true /* checkpointAware */));
+        UNIT_ASSERT(state.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            3,
+            false /* checkpointAware */));
 
-        const ui64 minCheckpointCommitId = MakeCommitId(0, 1);
-        const ui64 maxCheckpointCommitId = MakeCommitId(0, 1);
-        const TPartialBlobId milestoneBlobId(1, 3, 4, 4_KB, 0, 0);
-        // Align milestone checkpoint bounds with the current checkpoints,
-        // then set the milestone position with the same bounds.
-        state.UpdateOrResetCleanupMilestone(
-            0,
-            {},
-            minCheckpointCommitId,
-            maxCheckpointCommitId);
-        state.UpdateOrResetCleanupMilestone(
+        // Default milestone bounds are (0, 0), so the update is applied.
+        const TPartialBlobId milestoneBlobId(1, 2, 4, 4_KB, 0, 0);
+        state.UpdateCleanupMilestoneIfNeeded(
             MakeCommitId(0, 20),
             milestoneBlobId,
-            minCheckpointCommitId,
-            maxCheckpointCommitId);
+            0,
+            0);
 
-        UNIT_ASSERT(
-            !state.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 2));
-        UNIT_ASSERT(
-            state.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 1));
+        // Checkpoint-aware cleanup respects the milestone.
+        UNIT_ASSERT(!state.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            2,
+            true /* checkpointAware */));
+        UNIT_ASSERT(state.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            1,
+            true /* checkpointAware */));
+
+        // Non-checkpoint-aware cleanup ignores the milestone and still sees
+        // all blobs.
+        UNIT_ASSERT(state.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            3,
+            false /* checkpointAware */));
     }
 
-    Y_UNIT_TEST(ShouldUpdateOrResetCleanupMilestone)
+    Y_UNIT_TEST(ShouldUpdateCleanupMilestoneIfNeeded)
     {
         auto state = MakeState();
 
@@ -772,17 +789,35 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         const ui64 milestoneCommitId = MakeCommitId(0, 15);
         const TPartialBlobId milestoneBlobId(1, 7);
 
-        // Changing checkpoint bounds resets the milestone position.
-        state.UpdateOrResetCleanupMilestone(
+        // Stale checkpoint bounds: milestone is not updated.
+        state.UpdateCleanupMilestoneIfNeeded(
             milestoneCommitId,
             milestoneBlobId,
             minCheckpointCommitId,
             maxCheckpointCommitId);
 
-        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             TPartialBlobId(),
-            state.GetCleanupMilestoneBlobId());
+            state.GetCleanupMilestoneBlobId(true /* checkpointAware */));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+
+        state.AccessCheckpoints().Add(
+            {"c1", minCheckpointCommitId, "idemp1", Now(), {}});
+        state.AccessCheckpoints().Add(
+            {"c2", maxCheckpointCommitId, "idemp2", Now(), {}});
+        state.ResetCleanupMilestoneIfNeeded();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             minCheckpointCommitId,
             state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
@@ -790,8 +825,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             maxCheckpointCommitId,
             state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
 
-        // Same checkpoint bounds: milestone position can advance.
-        state.UpdateOrResetCleanupMilestone(
+        // Matching checkpoint bounds: milestone position is updated.
+        state.UpdateCleanupMilestoneIfNeeded(
             milestoneCommitId,
             milestoneBlobId,
             minCheckpointCommitId,
@@ -799,14 +834,21 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             milestoneCommitId,
-            state.GetCleanupMilestoneCommitId());
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             milestoneBlobId,
-            state.GetCleanupMilestoneBlobId());
+            state.GetCleanupMilestoneBlobId(true /* checkpointAware */));
+        // Non-checkpoint-aware getters always return an empty milestone.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetCleanupMilestoneCommitId(false /* checkpointAware */));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TPartialBlobId(),
+            state.GetCleanupMilestoneBlobId(false /* checkpointAware */));
 
         const ui64 advancedCommitId = MakeCommitId(0, 18);
         const TPartialBlobId advancedBlobId(1, 9);
-        state.UpdateOrResetCleanupMilestone(
+        state.UpdateCleanupMilestoneIfNeeded(
             advancedCommitId,
             advancedBlobId,
             minCheckpointCommitId,
@@ -814,51 +856,34 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             advancedCommitId,
-            state.GetCleanupMilestoneCommitId());
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             advancedBlobId,
-            state.GetCleanupMilestoneBlobId());
+            state.GetCleanupMilestoneBlobId(true /* checkpointAware */));
 
-        // Checkpoint bounds changed: milestone position is reset.
-        state.UpdateOrResetCleanupMilestone(
+        // Checkpoint set changed, but milestone bounds were not reset yet:
+        // update is ignored and the previous position is kept.
+        const ui64 newMaxCheckpointCommitId = MakeCommitId(0, 30);
+        state.AccessCheckpoints().Add(
+            {"c3", newMaxCheckpointCommitId, "idemp3", Now(), {}});
+        state.UpdateCleanupMilestoneIfNeeded(
             MakeCommitId(0, 19),
             TPartialBlobId(1, 11),
             minCheckpointCommitId,
-            MakeCommitId(0, 30));
+            newMaxCheckpointCommitId);
 
-        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
         UNIT_ASSERT_VALUES_EQUAL(
-            TPartialBlobId(),
-            state.GetCleanupMilestoneBlobId());
+            advancedCommitId,
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
+        UNIT_ASSERT_VALUES_EQUAL(
+            advancedBlobId,
+            state.GetCleanupMilestoneBlobId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             minCheckpointCommitId,
             state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
         UNIT_ASSERT_VALUES_EQUAL(
-            MakeCommitId(0, 30),
+            maxCheckpointCommitId,
             state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
-
-        // No checkpoints: milestone must stay empty.
-        state.UpdateOrResetCleanupMilestone(
-            milestoneCommitId,
-            milestoneBlobId,
-            InvalidCommitId,
-            InvalidCommitId);
-
-        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
-        UNIT_ASSERT_VALUES_EQUAL(
-            TPartialBlobId(),
-            state.GetCleanupMilestoneBlobId());
-
-        state.UpdateOrResetCleanupMilestone(
-            milestoneCommitId,
-            milestoneBlobId,
-            InvalidCommitId,
-            InvalidCommitId);
-
-        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
-        UNIT_ASSERT_VALUES_EQUAL(
-            TPartialBlobId(),
-            state.GetCleanupMilestoneBlobId());
     }
 
     Y_UNIT_TEST(ShouldResetCleanupMilestoneIfNeeded)
@@ -874,12 +899,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         // Align milestone checkpoint bounds with the current checkpoints,
         // then set the milestone position with the same bounds.
-        state.UpdateOrResetCleanupMilestone(
-            0,
-            {},
-            checkpointCommitId,
-            checkpointCommitId);
-        state.UpdateOrResetCleanupMilestone(
+        state.ResetCleanupMilestoneIfNeeded();
+        state.UpdateCleanupMilestoneIfNeeded(
             milestoneCommitId,
             milestoneBlobId,
             checkpointCommitId,
@@ -887,16 +908,16 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             milestoneCommitId,
-            state.GetCleanupMilestoneCommitId());
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
 
         // Bounds still match: milestone is preserved.
         state.ResetCleanupMilestoneIfNeeded();
         UNIT_ASSERT_VALUES_EQUAL(
             milestoneCommitId,
-            state.GetCleanupMilestoneCommitId());
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             milestoneBlobId,
-            state.GetCleanupMilestoneBlobId());
+            state.GetCleanupMilestoneBlobId(true /* checkpointAware */));
 
         const ui64 checkpointCommitId2 = MakeCommitId(0, 20);
         state.AccessCheckpoints().Add(
@@ -904,18 +925,20 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         state.ResetCleanupMilestoneIfNeeded();
 
         // Bounds changed: milestone is reset.
-        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             TPartialBlobId(),
-            state.GetCleanupMilestoneBlobId());
+            state.GetCleanupMilestoneBlobId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             checkpointCommitId,
             state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
         UNIT_ASSERT_VALUES_EQUAL(
-            MakeCommitId(0, 20),
+            checkpointCommitId2,
             state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
 
-        state.UpdateOrResetCleanupMilestone(
+        state.UpdateCleanupMilestoneIfNeeded(
             milestoneCommitId,
             milestoneBlobId,
             checkpointCommitId,
@@ -924,16 +947,18 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         state.ResetCleanupMilestoneIfNeeded();
         UNIT_ASSERT_VALUES_EQUAL(
             milestoneCommitId,
-            state.GetCleanupMilestoneCommitId());
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             milestoneBlobId,
-            state.GetCleanupMilestoneBlobId());
+            state.GetCleanupMilestoneBlobId(true /* checkpointAware */));
 
         state.AccessCheckpoints().Delete("c1");
         state.AccessCheckpoints().Delete("c2");
         state.ResetCleanupMilestoneIfNeeded();
 
-        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetCleanupMilestoneCommitId(true /* checkpointAware */));
         UNIT_ASSERT_VALUES_EQUAL(
             InvalidCommitId,
             state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());

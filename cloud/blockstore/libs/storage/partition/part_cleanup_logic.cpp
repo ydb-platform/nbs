@@ -365,6 +365,7 @@ void ExecuteCleanupTransaction(
                 item.CommitId,
                 args.MinCheckpointCommitId,
                 args.MaxCheckpointCommitId);
+            ++args.BlobsSkipped;
             continue;
         }
 
@@ -449,7 +450,7 @@ void ExecuteCleanupTransaction(
 
     if (args.CheckpointAware) {
         if (!args.CleanupQueue.empty()) {
-            state.UpdateOrResetCleanupMilestone(
+            state.UpdateCleanupMilestoneIfNeeded(
                 args.CleanupQueue.back().CommitId,
                 args.CleanupQueue.back().BlobId,
                 args.MinCheckpointCommitId,

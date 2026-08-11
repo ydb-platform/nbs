@@ -405,6 +405,10 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter CleanupBlobsSkipped{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter ScrubbingThroughput{
@@ -437,6 +441,7 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionAddBlobsTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionExecutionTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionTotalTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CleanupBlobsSkipped>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };

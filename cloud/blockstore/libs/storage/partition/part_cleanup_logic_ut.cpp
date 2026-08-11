@@ -1033,6 +1033,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         const size_t remainingCount =
             remainingMergedBlobs + remainingMixedBlobs;
         UNIT_ASSERT_VALUES_EQUAL(cleanedUpCount, args.CleanupQueue.size());
+        UNIT_ASSERT_VALUES_EQUAL(remainingCount, args.BlobsSkipped);
         UNIT_ASSERT_VALUES_EQUAL(
             remainingCount,
             state.GetCleanupQueue().GetCount());

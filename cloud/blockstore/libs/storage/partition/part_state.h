@@ -968,6 +968,12 @@ private:
     TInstant LastCleanupFinishTs;
     TDuration CleanupDelay;
 
+    void UpdateOrResetCleanupMilestone(
+        ui64 newCommitId,
+        TPartialBlobId newBlobId,
+        ui64 minCheckpointCommitId,
+        ui64 maxCheckpointCommitId);
+
 public:
     TOperationState& GetCleanupState()
     {
@@ -986,35 +992,44 @@ public:
 
     bool HasBlobCountToCleanupReachedThreshold(
         ui64 cleanupCommitId,
-        ui32 threshold) const;
+        ui32 threshold,
+        bool checkpointAware) const;
 
-    ui64 GetCleanupMilestoneCommitId() const
+    ui64 GetCleanupMilestoneCommitId(bool checkpointAware) const
     {
+        if (!checkpointAware) {
+            return 0;
+        }
+
         return Meta.GetCleanupMilestone().GetCommitId();
     }
 
-    TPartialBlobId GetCleanupMilestoneBlobId() const
+    TPartialBlobId GetCleanupMilestoneBlobId(bool checkpointAware) const
     {
+        if (!checkpointAware) {
+            return {};
+        }
+
         const auto& milestone = Meta.GetCleanupMilestone();
         return MakePartialBlobId(
             milestone.GetBlobCommitId(),
             milestone.GetBlobUniqueId());
     }
 
-    void UpdateOrResetCleanupMilestone(
+    void ResetCleanupMilestoneIfNeeded()
+    {
+        UpdateOrResetCleanupMilestone(
+            GetCleanupMilestoneCommitId(true /* checkpointAware */),
+            GetCleanupMilestoneBlobId(true /* checkpointAware */),
+            GetMinCheckpointCommitId(),
+            GetMaxCheckpointCommitId());
+    }
+
+    void UpdateCleanupMilestoneIfNeeded(
         ui64 newCommitId,
         TPartialBlobId newBlobId,
         ui64 minCheckpointCommitId,
         ui64 maxCheckpointCommitId);
-
-    void ResetCleanupMilestoneIfNeeded()
-    {
-        UpdateOrResetCleanupMilestone(
-            GetCleanupMilestoneCommitId(),
-            GetCleanupMilestoneBlobId(),
-            GetMinCheckpointCommitId(),
-            GetMaxCheckpointCommitId());
-    }
 
     void RemoveCleanupQueueItem(const TCleanupQueueItem& item)
     {

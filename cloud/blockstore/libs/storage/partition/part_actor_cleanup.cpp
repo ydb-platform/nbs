@@ -56,7 +56,8 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
 
     if (!State->HasBlobCountToCleanupReachedThreshold(
             cleanupCommitId,
-            Config->GetCleanupThreshold()))
+            Config->GetCleanupThreshold(),
+            IsCheckpointAwareCleanupEnabled()))
     {
         // Not ready
         return;
@@ -154,16 +155,17 @@ void TPartitionActor::HandleCleanup(
         return;
     }
 
+    const bool checkpointAware = IsCheckpointAwareCleanupEnabled();
     const ui64 cleanupCommitId =
-        State->GetCleanupCommitId(IsCheckpointAwareCleanupEnabled());
+        State->GetCleanupCommitId(checkpointAware);
 
-    if (IsCheckpointAwareCleanupEnabled()) {
+    if (checkpointAware) {
         State->ResetCleanupMilestoneIfNeeded();
     }
 
     auto cleanupQueue = State->GetCleanupQueue().GetItems(
-        State->GetCleanupMilestoneCommitId(),
-        State->GetCleanupMilestoneBlobId(),
+        State->GetCleanupMilestoneCommitId(checkpointAware),
+        State->GetCleanupMilestoneBlobId(checkpointAware),
         cleanupCommitId,
         Config->GetMaxBlobsToCleanup());
 
@@ -192,9 +194,9 @@ void TPartitionActor::HandleCleanup(
         IsUseRecreatedBlobMetasOnCleanupEnabled(),
         IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
         std::move(cleanupQueue),
-        IsCheckpointAwareCleanupEnabled(),
-        State->GetMinCheckpointCommitId(),
-        State->GetMaxCheckpointCommitId());
+        checkpointAware,
+        checkpointAware ? State->GetMinCheckpointCommitId() : InvalidCommitId,
+        checkpointAware ? State->GetMaxCheckpointCommitId() : InvalidCommitId);
 
     ExecuteTx(ctx, std::move(tx));
 }
@@ -286,6 +288,7 @@ void TPartitionActor::CompleteCleanup(
 
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.Cleanup.AddRequest(time);
+    PartCounters->Cumulative.CleanupBlobsSkipped.Increment(args.BlobsSkipped);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

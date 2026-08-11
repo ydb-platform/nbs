@@ -181,10 +181,12 @@ ui64 TPartitionState::GetCleanupCommitId(bool checkpointAware) const
 
 bool TPartitionState::HasBlobCountToCleanupReachedThreshold(
     ui64 cleanupCommitId,
-    ui32 threshold) const
+    ui32 threshold,
+    bool checkpointAware) const
 {
-    const ui64 milestoneCommitId = GetCleanupMilestoneCommitId();
-    const TPartialBlobId milestoneBlobId = GetCleanupMilestoneBlobId();
+    const ui64 milestoneCommitId = GetCleanupMilestoneCommitId(checkpointAware);
+    const TPartialBlobId milestoneBlobId =
+        GetCleanupMilestoneBlobId(checkpointAware);
     auto& estimate = BlobCountToCleanupEstimate;
 
     const bool milestoneNotAdvanced =
@@ -227,21 +229,33 @@ void TPartitionState::UpdateOrResetCleanupMilestone(
         newBlobId = {};
     }
 
-    if (maxCheckpointCommitId == 0 ||
-        minCheckpointCommitId == InvalidCommitId ||
-        maxCheckpointCommitId == InvalidCommitId)
-    {
-        // No checkpoints, should be no milestone.
-        newCommitId = 0;
-        newBlobId = {};
-    }
-
     auto& updated = *Meta.MutableCleanupMilestone();
     updated.SetCommitId(newCommitId);
     updated.SetBlobCommitId(newBlobId.CommitId());
     updated.SetBlobUniqueId(newBlobId.UniqueId());
     updated.SetMinCheckpointCommitId(minCheckpointCommitId);
     updated.SetMaxCheckpointCommitId(maxCheckpointCommitId);
+}
+
+void TPartitionState::UpdateCleanupMilestoneIfNeeded(
+    ui64 newCommitId,
+    TPartialBlobId newBlobId,
+    ui64 minCheckpointCommitId,
+    ui64 maxCheckpointCommitId)
+{
+    const auto& milestone = Meta.GetCleanupMilestone();
+    if (minCheckpointCommitId != milestone.GetMinCheckpointCommitId() ||
+        maxCheckpointCommitId != milestone.GetMaxCheckpointCommitId())
+    {
+        // Checkpoint bounds are stale, should not update the milestone.
+        return;
+    }
+
+    UpdateOrResetCleanupMilestone(
+        newCommitId,
+        newBlobId,
+        minCheckpointCommitId,
+        maxCheckpointCommitId);
 }
 
 ui64 TPartitionState::CalculateCheckpointBytes() const

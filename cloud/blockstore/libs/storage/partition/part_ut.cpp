@@ -4103,7 +4103,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCheckpointAwareCleanupEnabled)
+    Y_UNIT_TEST(ShouldPerformCheckpointAwareCleanupCorrectly)
     {
         auto config = DefaultConfig();
         config.SetCheckpointAwareCleanupEnabled(true);
@@ -4184,7 +4184,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             GetBlockContent(partition.ReadBlocks(0)));
     }
 
-    Y_UNIT_TEST(ShouldCheckpointAwareCleanupEnabledInBatches)
+    Y_UNIT_TEST(ShouldRunCheckpointAwareCleanupInBatchesCorrectly)
     {
         auto config = DefaultConfig();
         config.SetCheckpointAwareCleanupEnabled(true);

@@ -663,6 +663,7 @@ struct TTxPartition
         TVector<NProto::TBlobMeta> BlobsMeta;
 
         ui64 ReadBlobMetasCount = 0;
+        ui64 BlobsSkipped = 0;
 
         TCleanup(
             TRequestInfoPtr requestInfo,
@@ -687,6 +688,7 @@ struct TTxPartition
         void Clear()
         {
             ReadBlobMetasCount = 0;
+            BlobsSkipped = 0;
             BlobsMeta.clear();
         }
     };
