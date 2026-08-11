@@ -7992,7 +7992,6 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-        config.SetWaitForFreshWritesBeforeFlushEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
 

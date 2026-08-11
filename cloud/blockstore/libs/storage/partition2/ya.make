@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     fresh_blocks_companion_client.cpp
     io_companion_client.cpp
+    part2_addblobs_logic.cpp
     part2.cpp
     part2_actor.cpp
     part2_actor_addblobs.cpp
