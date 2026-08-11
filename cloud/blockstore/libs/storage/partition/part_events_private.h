@@ -703,16 +703,14 @@ struct TEvPartitionPrivate
     struct TFlushCompleted
         : TOperationCompleted
     {
-        ui32 FlushedFreshBlobCount;
-        ui64 FlushedFreshBlobByteCount;
+        TVector<ui64> FlushedFreshBlobCommitIds;
         TFlushedCommitIds FlushedCommitIdsFromChannel;
 
         TFlushCompleted(
-                ui32 flushedFreshBlobCount,
-                ui64 flushedFreshBlobByteCount,
+                TVector<ui64> flushedFreshBlobCommitIds,
                 TFlushedCommitIds flushedCommitIdsFromChannel)
-            : FlushedFreshBlobCount(flushedFreshBlobCount)
-            , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
+            : FlushedFreshBlobCommitIds(
+                  std::move(flushedFreshBlobCommitIds))
             , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
         {
         }

@@ -231,9 +231,7 @@ void TPartitionActor::HandleAddFreshBlocks(
         }
     }
 
-    State->AddFreshBlob({msg->CommitId, msg->BlobSize});
-    State->IncrementUnflushedFreshBlobCount(1);
-    State->IncrementUnflushedFreshBlobByteCount(msg->BlobSize);
+    State->AddFreshBlob(msg->CommitId, msg->BlobSize);
 
     // TODO(NBS-1976): update used blocks map
 

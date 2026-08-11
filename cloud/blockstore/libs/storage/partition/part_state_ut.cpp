@@ -126,7 +126,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.DiskSpaceScore);
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CleanupScore);
 
-        state.IncrementUnflushedFreshBlobByteCount(100 * 4_KB);
+        state.AddFreshBlob(1, 400_KB);
         state.GetCompactionMap().Update(0, 10, 10, 10, 0, false);
         state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111, {}});
 
@@ -137,13 +137,13 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         // Backpressure caused by increased FreshBlobByteCount
         {
-            state.AddFreshBlob({ 1, 50 * 4096 });
+            state.AddFreshBlob(2, 50 * 4096);
 
             const auto bp = state.CalculateCurrentBackpressure();
             UNIT_ASSERT_DOUBLES_EQUAL(2.5, bp.FreshIndexScore, 1e-5);
         }
 
-        state.IncrementUnflushedFreshBlobByteCount(300 * 4_KB);
+        state.AddFreshBlob(3, 300 * 4_KB);
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
         state.GetCleanupQueue().Add({{1, 2, 4, 4_MB, 0, 0}, 111, {}});
 
