@@ -338,11 +338,6 @@ const NKikimrBlobStorage::TEvControllerSelectGroupsResult::TGroupParameters* TLe
             }
         }
     }
-
-    BLOG_I(
-        "TLeaderTabletInfo::FindFreeAllocationUnit, Storage pool is not found "
-        "for channel "
-        << channelId);
     return nullptr;
 }
 

@@ -206,16 +206,7 @@ namespace NKikimr {
                     }
 
                 switch (ev->GetTypeRewrite()) {
-                    HANDLE_EVENT(TEvBlobStorage::TEvPut)
-                    HANDLE_EVENT(TEvBlobStorage::TEvGet)
-                    HANDLE_EVENT(TEvBlobStorage::TEvBlock)
-                    HANDLE_EVENT(TEvBlobStorage::TEvDiscover)
-                    HANDLE_EVENT(TEvBlobStorage::TEvRange)
-                    HANDLE_EVENT(TEvBlobStorage::TEvCollectGarbage)
-                    HANDLE_EVENT(TEvBlobStorage::TEvStatus)
-                    HANDLE_EVENT(TEvBlobStorage::TEvPatch)
-                    HANDLE_EVENT(TEvBlobStorage::TEvAssimilate)
-
+                    DSPROXY_ENUM_EVENTS(HANDLE_EVENT)
                     case TEvents::TEvPoison::EventType: {
                         TActor::PassAway();
                         [[fallthrough]];

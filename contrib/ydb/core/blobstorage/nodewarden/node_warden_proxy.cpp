@@ -112,7 +112,7 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
     }
 
     group.ProxyId = id;
-    as->RegisterLocalService(MakeBlobStorageProxyID(groupId), id);
+    as->RegisterLocalService(MakeBlobStorageProxyID(groupId), group.ProxyId);
 }
 
 void TNodeWarden::StartVirtualGroupAgent(ui32 groupId) {

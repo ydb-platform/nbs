@@ -54,6 +54,11 @@ public:
         TrimmedFreeChunks.Push(chunkIdx);
     }
 
+    void SetFreeChunksSortingEnabled(bool enabled) {
+        UntrimmedFreeChunks.SetSortingEnabled(enabled);
+        TrimmedFreeChunks.SetSortingEnabled(enabled);
+    }
+
     //
     // Add/remove owner
     //
@@ -91,6 +96,10 @@ public:
 
     i64 GetLogChunkCount() const {
         return ChunkTracker.GetLogChunkCount();
+    }
+
+    i64 GetUserChunkPoolSize() const {
+      return ChunkTracker.GetTotalHardLimit();
     }
 
     TChunkIdx PopOwnerFreeChunk(TOwner owner, TString &outErrorReason) {
@@ -162,6 +171,22 @@ public:
 
     ui32 ColorFlagLimit(TOwner owner, NKikimrBlobStorage::TPDiskSpaceColor::E color) {
         return ChunkTracker.ColorFlagLimit(owner, color);
+    }
+
+    //
+    // Runtime (re)configuration
+    //
+
+    void SetExpectedOwnerCount(size_t newOwnerCount) {
+        ChunkTracker.SetExpectedOwnerCount(newOwnerCount);
+    }
+
+    void SetExpectedOwnerSize(i64 newOwnerSize) {
+        ChunkTracker.SetExpectedOwnerSize(newOwnerSize);
+    }
+
+    void SetExpectedOwnerSettings(size_t newOwnerCount, i64 newOwnerSize) {
+        ChunkTracker.SetExpectedOwnerSettings(newOwnerCount, newOwnerSize);
     }
 
     //

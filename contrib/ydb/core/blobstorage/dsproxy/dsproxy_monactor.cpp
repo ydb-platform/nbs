@@ -406,8 +406,8 @@ public:
                 .Title = name,
                 .RelPath = path,
                 .ActorSystem = TActivationContext::ActorSystem(),
-                .Index = proxiesMonPage,
-                .PreTag = false,
+                .Index = proxiesMonPage, 
+                .PreTag = false, 
                 .ActorId = SelfId(),
                 .MonServiceName = "dsproxy_mon"
             });
@@ -494,3 +494,4 @@ IActor* CreateBlobStorageGroupProxyMon(TIntrusivePtr<TBlobStorageGroupProxyMon> 
 }
 
 } // NKikimr
+

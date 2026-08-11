@@ -8,6 +8,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/core/blobstorage/base
     contrib/ydb/core/protos
     contrib/ydb/core/formats/arrow/serializer
     library/cpp/protobuf/json

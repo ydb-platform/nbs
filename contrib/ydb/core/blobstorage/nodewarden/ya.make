@@ -41,6 +41,7 @@ PEERDIR(
     library/cpp/openssl/crypto
     contrib/ydb/core/base
     contrib/ydb/core/blob_depot/agent
+    contrib/ydb/core/blobstorage/base
     contrib/ydb/core/blobstorage/common
     contrib/ydb/core/blobstorage/crypto
     contrib/ydb/core/blobstorage/groupinfo
@@ -51,6 +52,7 @@ PEERDIR(
     contrib/ydb/core/control
     contrib/ydb/library/pdisk_io
     contrib/ydb/library/yaml_config
+    contrib/ydb/core/util/actorsys_test
 )
 
 END()

@@ -6,8 +6,11 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/group_sessions.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/dsproxy_nodemon.h>
+#include <contrib/ydb/core/blobstorage/dsproxy/mock/dsproxy_mock.h>
 #include <contrib/ydb/core/blobstorage/incrhuge/incrhuge.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+#include <contrib/ydb/core/cms/console/configs_dispatcher.h>
+#include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/protos/blobstorage_distributed_config.pb.h>
 #include <contrib/ydb/core/util/backoff.h>
 
@@ -84,6 +87,9 @@ namespace NKikimr::NStorage {
 
         ui32 RefCount = 0;
         bool Temporary = false;
+        ui32 ExpectedSlotCount = 0;
+        ui64 ExpectedSlotSize = 0;
+        TString PDiskConfigWarning;
 
         std::optional<ui64> ShredGenerationIssued;
         std::variant<std::monostate, ui64, TString> ShredState; // not issued, finished with generation, aborted
@@ -117,6 +123,8 @@ namespace NKikimr::NStorage {
 
         ui32 LocalNodeId; // NodeId for local node
         TActorId WhiteboardId;
+
+        NKikimrBlobStorage::TInferPDiskSlotCountSettings InferPDiskSlotCountSettings;
 
         NKikimrBlobStorage::TNodeWardenServiceSet StaticServices; // these are obtained on start
         NKikimrBlobStorage::TNodeWardenServiceSet DynamicServices; // these are controlled by BSC
@@ -279,7 +287,10 @@ namespace NKikimr::NStorage {
             return LocalPDiskInitOwnerRound;
         }
 
-        TIntrusivePtr<TPDiskConfig> CreatePDiskConfig(const NKikimrBlobStorage::TNodeWardenServiceSet::TPDisk& pdisk);
+        TIntrusivePtr<TPDiskConfig> CreatePDiskConfig(const NKikimrBlobStorage::TNodeWardenServiceSet::TPDisk& pdisk,
+            TString *configWarning = nullptr);
+        static void InferPDiskSlotCount(TIntrusivePtr<TPDiskConfig> pdiskConfig, ui64 driveSize,
+            ui64 unitSizeInBytes, ui32 maxSlots);
         void StartLocalPDisk(const NKikimrBlobStorage::TNodeWardenServiceSet::TPDisk& pdisk, bool temporary);
         void AskBSCToRestartPDisk(ui32 pdiskId, bool ignoreDegradedGroups, ui64 requestCookie);
         void OnPDiskRestartFinished(ui32 pdiskId, NKikimrProto::EReplyStatus status);
@@ -663,6 +674,10 @@ namespace NKikimr::NStorage {
         THashSet<TActorId> StorageConfigSubscribers;
 
         void Handle(TEvNodeWardenQueryStorageConfig::TPtr ev);
+        void Handle(NPDisk::TEvChangeExpectedSlotCountResult::TPtr ev);
+        void Handle(NConsole::TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::TPtr ev);
+        void Handle(NConsole::TEvConfigsDispatcher::TEvRemoveConfigSubscriptionResponse::TPtr ev);
+        void Handle(NConsole::TEvConsole::TEvConfigNotificationRequest::TPtr ev);
         void Handle(TEvNodeWardenStorageConfig::TPtr ev);
         void HandleUnsubscribe(STATEFN_SIG);
         void ApplyStorageConfig(const NKikimrBlobStorage::TNodeWardenServiceSet& current,

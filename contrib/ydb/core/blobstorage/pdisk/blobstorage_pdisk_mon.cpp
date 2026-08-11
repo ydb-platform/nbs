@@ -74,6 +74,7 @@ TPDiskMon::TPDiskMon(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& count
 
     COUNTER_INIT(StatsGroup, NumActiveSlots, false);
     COUNTER_INIT(StatsGroup, ExpectedSlotCount, false);
+    COUNTER_INIT(StatsGroup, SlotSizeBytes, false);
 
     // states subgroup
     COUNTER_INIT(StateGroup, PDiskState, false);
@@ -148,6 +149,7 @@ TPDiskMon::TPDiskMon(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& count
 
     TRACKER_INIT_IF_EXTENDED(UpdateDurationTracker.UpdateCycleTime, updateCycle, Time in millisec);
 
+    HISTOGRAM_INIT(DeviceWritesSizes, deviceWritesSizes);
     HISTOGRAM_INIT(DeviceReadDuration, deviceReadDuration);
     HISTOGRAM_INIT(DeviceWriteDuration, deviceWriteDuration);
     HISTOGRAM_INIT(DeviceTrimDuration, deviceTrimDuration);
@@ -229,6 +231,7 @@ TPDiskMon::TPDiskMon(const TIntrusivePtr<::NMonitoring::TDynamicCounters>& count
 
     // pdisk (interface)
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, YardInit, YardInit);
+    IO_REQ_INIT_IF_EXTENDED(PDiskGroup, ChangeExpectedSlotCount, ChangeExpectedSlotCount);
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, CheckSpace, YardCheckSpace);
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, YardConfigureScheduler, YardConfigureScheduler);
     IO_REQ_INIT_IF_EXTENDED(PDiskGroup, ChunkReserve, YardChunkReserve);
