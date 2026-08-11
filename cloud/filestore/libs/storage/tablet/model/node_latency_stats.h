@@ -4,6 +4,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
+#include <util/digest/multi.h>
 #include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -18,6 +19,24 @@ struct TNodeLatencyStats
     ui64 TotalLatencyUs = 0;
     double AverageLatencyDecayedUs = 0.0;
     TInstant LastAccessed;
+};
+
+struct TLatencyKey
+{
+    ui64 NodeId = 0;
+    EFileStoreRequest RequestType = EFileStoreRequest::MAX;
+
+    bool operator==(const TLatencyKey&) const = default;
+};
+
+struct TLatencyKeyHash
+{
+    size_t operator()(const TLatencyKey& key) const noexcept
+    {
+        return MultiHash(
+            key.NodeId,
+            static_cast<ui32>(key.RequestType));
+    }
 };
 
 class TNodeLatencyStatsTracker
@@ -46,9 +65,8 @@ private:
 
     size_t MaxEntries = 0;
     TDuration DecayHalfLife;
-    using TLatencyKey = std::pair<ui64, EFileStoreRequest>;
     using TLatencyRanking = TSet<TNodeLatencyStats, TNodeLatencyStatsComparator>;
-    THashMap<TLatencyKey, TLatencyRanking::iterator> Key2Stats;
+    THashMap<TLatencyKey, TLatencyRanking::iterator, TLatencyKeyHash> Key2Stats;
     TLatencyRanking LatencyStats;
 
     void EvictSmallestLatencyEntries()
