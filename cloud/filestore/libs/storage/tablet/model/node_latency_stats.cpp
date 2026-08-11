@@ -54,7 +54,11 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
 
     auto [newLatencyIterator, inserted] = LatencyStats.insert(stats);
     Y_ABORT_UNLESS(inserted);
-    Key2Stats[key] = newLatencyIterator;
+    if (it != Key2Stats.end()) {
+        it->second = newLatencyIterator;
+    } else {
+        Key2Stats.emplace(key, newLatencyIterator);
+    }
 
     EvictSmallestLatencyEntries();
 }

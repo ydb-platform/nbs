@@ -10,23 +10,22 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 {
     Y_UNIT_TEST(ShouldTrackRequestCountAndRequestTypeAndLatency)
     {
-        TNodeLatencyStatsTracker tracker;
-        tracker.Initialize(2);
+        TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto now = TInstant::Now();
+        const auto start = TInstant::MilliSeconds(10'000'000);
 
         tracker.UpdateLatencyStats(
             1,
             EFileStoreRequest::ReadData,
-            now,
+            start,
             TDuration::MilliSeconds(50));
         tracker.UpdateLatencyStats(
             1,
             EFileStoreRequest::WriteData,
-            now,
+            start,
             TDuration::MilliSeconds(60));
 
-        const auto stats = tracker.GetLatencyStats(now);
+        const auto stats = tracker.GetLatencyStats(start, 10);
 
         UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
         UNIT_ASSERT_VALUES_EQUAL(1, stats[0].NodeId);
@@ -42,29 +41,28 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, stats[1].RequestCount);
         UNIT_ASSERT_DOUBLES_EQUAL(60.0, stats[0].AverageLatencyDecayedMs, 1e-9);
         UNIT_ASSERT_DOUBLES_EQUAL(50.0, stats[1].AverageLatencyDecayedMs, 1e-9);
-        UNIT_ASSERT_VALUES_EQUAL(now, stats[0].LastAccessed);
-        UNIT_ASSERT_VALUES_EQUAL(now, stats[1].LastAccessed);
+        UNIT_ASSERT_VALUES_EQUAL(start, stats[0].LastAccessed);
+        UNIT_ASSERT_VALUES_EQUAL(start, stats[1].LastAccessed);
     }
 
     Y_UNIT_TEST(DecayCalculation)
     {
-        TNodeLatencyStatsTracker tracker;
-        tracker.Initialize(1);
+        TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto now = TInstant::Now();
+        const auto start = TInstant::MilliSeconds(10'000'000);
 
         tracker.UpdateLatencyStats(
             1,
             EFileStoreRequest::ReadData,
-            now,
+            start,
             TDuration::MilliSeconds(50));
         tracker.UpdateLatencyStats(
             1,
             EFileStoreRequest::ReadData,
-            now,
+            start,
             TDuration::MilliSeconds(150));
 
-        auto stats = tracker.GetLatencyStats(now);
+        auto stats = tracker.GetLatencyStats(start, 2);
 
         UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
         UNIT_ASSERT_VALUES_EQUAL(2, stats[0].RequestCount);
@@ -75,18 +73,17 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         const auto decayed = TNodeLatencyStatsTracker::CalculateLatencyDecay(
             stats[0],
-            now + TDuration::Minutes(10));
+            start + TDuration::Minutes(10), TDuration::Minutes(10));
 
         UNIT_ASSERT_DOUBLES_EQUAL(50.0, decayed, 1e-9);
     }
 
     Y_UNIT_TEST(ShouldOrderByDecayedLatency)
     {
-        TNodeLatencyStatsTracker tracker;
-        tracker.Initialize(2);
+        TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto now = TInstant::Now();
-        const auto old = now - TDuration::Minutes(10);
+        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto old = start - TDuration::Minutes(10);
 
         tracker.UpdateLatencyStats(
             1,
@@ -96,10 +93,10 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
         tracker.UpdateLatencyStats(
             2,
             EFileStoreRequest::ReadData,
-            now,
+            start,
             TDuration::MilliSeconds(50));
 
-        const auto stats = tracker.GetLatencyStats(now);
+        const auto stats = tracker.GetLatencyStats(start, 2);
 
         UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
@@ -109,23 +106,22 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
     Y_UNIT_TEST(ShouldUseNodeIdAsTieBreaker)
     {
-        TNodeLatencyStatsTracker tracker;
-        tracker.Initialize(2);
+        TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto now = TInstant::Now();
+        const auto start = TInstant::MilliSeconds(10'000'000);
 
         tracker.UpdateLatencyStats(
             1,
             EFileStoreRequest::ReadData,
-            now,
+            start,
             TDuration::MilliSeconds(50));
         tracker.UpdateLatencyStats(
             2,
             EFileStoreRequest::ReadData,
-            now,
+            start,
             TDuration::MilliSeconds(50));
 
-        const auto stats = tracker.GetLatencyStats(now);
+        const auto stats = tracker.GetLatencyStats(start, 2);
 
         UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
@@ -135,38 +131,37 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
     Y_UNIT_TEST(ShouldEvictLeastLatentNodeAndRequest)
     {
-        TNodeLatencyStatsTracker tracker;
-        tracker.Initialize(2);
+        TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto now = TInstant::Now();
+        const auto start = TInstant::MilliSeconds(10'000'000);
 
         tracker.UpdateLatencyStats(
             1,
             EFileStoreRequest::ReadData,
-            now - TDuration::Minutes(10),
+            start - TDuration::Minutes(10),
             TDuration::MilliSeconds(100));
         tracker.UpdateLatencyStats(
             2,
             EFileStoreRequest::WriteData,
-            now,
+            start,
             TDuration::MilliSeconds(50));
         tracker.UpdateLatencyStats(
             2,
             EFileStoreRequest::WriteData,
-            now,
+            start,
             TDuration::MilliSeconds(150));
         tracker.UpdateLatencyStats(
             3,
             EFileStoreRequest::AddData,
-            now,
+            start,
             TDuration::MilliSeconds(200));
         tracker.UpdateLatencyStats(
             4,
             EFileStoreRequest::GetNodeAttr,
-            now,
+            start,
             TDuration::MilliSeconds(300));
 
-        const auto stats = tracker.GetLatencyStats(now);
+        const auto stats = tracker.GetLatencyStats(start, 2);
 
         UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
