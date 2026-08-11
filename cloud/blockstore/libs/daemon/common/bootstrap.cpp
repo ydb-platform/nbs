@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_config.h>
 #include <cloud/blockstore/libs/diagnostics/fault_injection.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_request_processor.h>
 #include <cloud/blockstore/libs/diagnostics/probes.h>
@@ -107,9 +108,9 @@
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_reader.h>
-#include <cloud/storage/core/libs/version/version.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
+#include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/lwtrace/probes.h>
@@ -297,6 +298,8 @@ void TBootstrapBase::Init()
         ->GetSubgroup("counters", "blockstore");
 
     auto serverGroup = rootGroup->GetSubgroup("component", "server");
+    auto volumeCriticalEventsGroup =
+        rootGroup->GetSubgroup("component", "critical_events");
     auto revisionGroup = serverGroup->GetSubgroup("revision", GetFullVersionString());
 
     auto versionCounter = revisionGroup->GetCounter(
@@ -304,8 +307,10 @@ void TBootstrapBase::Init()
         false);
     *versionCounter = 1;
 
+    SetVolumeCriticalEventsReportingMode(
+        Configs->DiagnosticsConfig->GetVolumeCriticalEventsReportingMode());
     InitCriticalEventsCounter(serverGroup);
-    InitVolumeCriticalEventsCounter(serverGroup);
+    InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
     STORAGE_INFO("CriticalEvents counters initialized");
 

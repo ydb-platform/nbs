@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_config.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/rdma_test/client_test.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>

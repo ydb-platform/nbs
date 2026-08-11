@@ -1,6 +1,7 @@
 #include "device_handler.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_config.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
 #include <cloud/storage/core/libs/common/error.h>

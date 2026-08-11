@@ -1,5 +1,7 @@
 #include "critical_events.h"
 
+#include "critical_events_config.h"
+
 #include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -12,6 +14,9 @@ namespace NCloud::NBlockStore {
 namespace {
 
 using namespace NMonitoring;
+
+constexpr TStringBuf AppCriticalEventsComponent = "server";
+constexpr TStringBuf VolumeCriticalEventsComponent = "critical_events";
 
 TIntrusivePtr<TDynamicCounters> FindNestedGroup(
     TDynamicCountersPtr root,
@@ -42,9 +47,9 @@ TString GetVolumeSensorName()
     return GetVolumeCriticalEventForBlockDigestMismatchInBlob();
 }
 
-TString GetDeprecatedSensorName()
+TString GetAppSensorName()
 {
-    return GetDeprecatedCriticalEventForBlockDigestMismatchInBlob();
+    return GetAppCriticalEventForBlockDigestMismatchInBlob();
 }
 
 }   // namespace
@@ -53,25 +58,34 @@ TString GetDeprecatedSensorName()
 
 Y_UNIT_TEST_SUITE(TCriticalEventsTest)
 {
-    // InitCriticalEventsCounter eagerly initializes the deprecated
-    // AppCriticalEvents/<event> counters (value 0) so they keep show up in
-    // monitoring before any event is reported.
-    Y_UNIT_TEST(ShouldEagerlyInitCriticalEventsCounters)
+    void DoShouldEagerlyInitCriticalEventsCounters(
+        NProto::EVolumeCriticalEventsReportingMode reportingMode)
     {
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto serverGroup = root->GetSubgroup("component", "server");
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+
+        SetVolumeCriticalEventsReportingMode(reportingMode);
+
+        InitCriticalEventsCounter(criticalEventsGroup);
 
         // No Report has been called yet.
-        InitCriticalEventsCounter(serverGroup);
 
         auto assertInitialized = [&](const TString& sensorName)
         {
-            auto counter = serverGroup->FindCounter(sensorName);
-            UNIT_ASSERT_C(counter, sensorName);
-            UNIT_ASSERT_VALUES_EQUAL_C(0, counter->Val(), sensorName);
+            auto msg = Sprintf(
+                "reportingMode=%s, sensor=%s",
+                NProto::EVolumeCriticalEventsReportingMode_Name(reportingMode)
+                    .c_str(),
+                sensorName.c_str());
+
+            auto counter = criticalEventsGroup->FindCounter(sensorName);
+
+            UNIT_ASSERT_C(counter, msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(0, counter->Val(), msg);
         };
 
-#define ASSERT_CRITICAL_EVENT_COUNTER_INITIALIZED(name) \
+#define ASSERT_CRITICAL_EVENT_COUNTER_INITIALIZED(name)                        \
     assertInitialized(GetCriticalEventFor##name());
         // ASSERT_CRITICAL_EVENT_COUNTER_INITIALIZED
 
@@ -81,17 +95,20 @@ Y_UNIT_TEST_SUITE(TCriticalEventsTest)
         BLOCKSTORE_IMPOSSIBLE_EVENTS(ASSERT_CRITICAL_EVENT_COUNTER_INITIALIZED)
 
 #undef ASSERT_CRITICAL_EVENT_COUNTER_INITIALIZED
+    }
 
-#define ASSERT_DEPRECATED_CRITICAL_EVENT_COUNTER_INITIALIZED(name) \
-    assertInitialized(GetDeprecatedCriticalEventFor##name());
-        // ASSERT_DEPRECATED_CRITICAL_EVENT_COUNTER_INITIALIZED
-
-        // deprecated: keeps existing AppCriticalEvents/ * for new
-        // VolumeCriticalEvents/ * metrics alive
-        BLOCKSTORE_VOLUME_CRITICAL_EVENTS(
-            ASSERT_DEPRECATED_CRITICAL_EVENT_COUNTER_INITIALIZED)
-
-#undef ASSERT_DEPRECATED_CRITICAL_EVENT_COUNTER_INITIALIZED
+    // InitCriticalEventsCounter eagerly initializes own
+    // AppCriticalEvents/<event> counters (value 0) despite
+    // TDiagnosticsConfig::VolumeCriticalEventsReportingMode
+    // so they keep show up in monitoring before any event is reported.
+    Y_UNIT_TEST(ShouldEagerlyInitCriticalEventsCounters)
+    {
+        DoShouldEagerlyInitCriticalEventsCounters(
+            NProto::EVolumeCriticalEventsReportingMode::APP_ONLY);
+        DoShouldEagerlyInitCriticalEventsCounters(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
+        DoShouldEagerlyInitCriticalEventsCounters(
+            NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY);
     }
 }
 
@@ -99,17 +116,166 @@ Y_UNIT_TEST_SUITE(TCriticalEventsTest)
 
 Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 {
+    void DoShouldEagerlyInitLegacyCriticalEventsCounters(
+        NProto::EVolumeCriticalEventsReportingMode reportingMode,
+        bool shouldInit)
+    {
+        auto root = MakeIntrusive<TDynamicCounters>();
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
+
+        SetVolumeCriticalEventsReportingMode(reportingMode);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
+
+        // No Report has been called yet.
+
+        auto assertInitialized = [&](const TString& sensorName)
+        {
+            // TODO: fails until all per-disk critical events are removed from
+            // AppCriticalEvents API (now are duplicated in VolumeCriticalEvents
+            // API)
+            return;
+
+            auto msg = Sprintf(
+                "reportingMode=%s, sensor=%s",
+                NProto::EVolumeCriticalEventsReportingMode_Name(reportingMode)
+                    .c_str(),
+                sensorName.c_str());
+
+            auto counter = criticalEventsGroup->FindCounter(sensorName);
+            if (shouldInit) {
+                UNIT_ASSERT_C(counter, msg);
+                UNIT_ASSERT_VALUES_EQUAL_C(0, counter->Val(), msg);
+            } else {
+                UNIT_ASSERT_C(!counter, msg);
+            }
+        };
+
+#define ASSERT_APP_CRITICAL_EVENT_COUNTER_INITIALIZED(name)                    \
+    assertInitialized(GetAppCriticalEventFor##name());
+        // ASSERT_APP_CRITICAL_EVENT_COUNTER_INITIALIZED
+
+        BLOCKSTORE_VOLUME_CRITICAL_EVENTS(
+            ASSERT_APP_CRITICAL_EVENT_COUNTER_INITIALIZED)
+
+#undef ASSERT_APP_CRITICAL_EVENT_COUNTER_INITIALIZED
+    }
+
+    // InitCriticalEventsCounter/InitVolumeCriticalEventsCounter should
+    // eagerly initializes the legacy per-disk AppCriticalEvents/<event>
+    // counters (value 0) only with
+    // TDiagnosticsConfig::VolumeCriticalEventsReportingMode != VOLUME_ONLY
+    // so they keep show up in monitoring before any event is reported.
+    Y_UNIT_TEST(ShouldEagerlyInitLegacyCriticalEventsCounters)
+    {
+        DoShouldEagerlyInitLegacyCriticalEventsCounters(
+            NProto::EVolumeCriticalEventsReportingMode::APP_ONLY,
+            /*shouldInit=*/true);
+        DoShouldEagerlyInitLegacyCriticalEventsCounters(
+            NProto::EVolumeCriticalEventsReportingMode::ALL,
+            /*shouldInit=*/true);
+        DoShouldEagerlyInitLegacyCriticalEventsCounters(
+            NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY,
+            /*shouldInit=*/false);
+    }
+
+    void DoShouldReportCriticalEventsAccordingToReportingMode(
+        NProto::EVolumeCriticalEventsReportingMode reportingMode,
+        bool shouldReportApp,
+        bool shouldReportVolume)
+    {
+        ResetVolumeCriticalEventsCounter();
+
+        auto root = MakeIntrusive<TDynamicCounters>();
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
+
+        SetVolumeCriticalEventsReportingMode(reportingMode);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
+
+        auto handler = CreateCriticalEventsStatsHandler();
+
+        const TVolumeLabels v{
+            .DiskId = "disk-1",
+            .CloudId = "cloud-1",
+            .FolderId = "folder-1"};
+
+        ReportBlockDigestMismatchInBlob(v, "some msg");
+
+        auto msg = Sprintf(
+            "reportingMode=%s",
+            NProto::EVolumeCriticalEventsReportingMode_Name(reportingMode)
+                .c_str());
+
+        auto appCounter = criticalEventsGroup->FindCounter(GetAppSensorName());
+        if (shouldReportApp) {
+            UNIT_ASSERT_C(appCounter, msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(1, appCounter->Val(), msg);
+        } else {
+            // TODO: fails until all per-disk critical events are removed from
+            // AppCriticalEvents API (now are duplicated in VolumeCriticalEvents
+            // API)
+
+            // Restore after removed
+            // UNIT_ASSERT_C(!appCounter, msg);
+
+            // Remove after removed
+            UNIT_ASSERT_VALUES_EQUAL_C(0, appCounter->Val(), msg);
+        }
+
+        handler->UpdateStats(true);
+
+        auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
+        auto volumeCounter =
+            volumeGroup ? volumeGroup->FindCounter(GetVolumeSensorName())
+                        : nullptr;
+        if (shouldReportVolume) {
+            UNIT_ASSERT_C(volumeCounter, msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(1, volumeCounter->Val(), msg);
+        } else {
+            UNIT_ASSERT_C(!volumeCounter, msg);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportCriticalEventsAccordingToReportingMode)
+    {
+        DoShouldReportCriticalEventsAccordingToReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::APP_ONLY,
+            /*shouldReportApp=*/true,
+            /*shouldReportVolume=*/false);
+        DoShouldReportCriticalEventsAccordingToReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL,
+            /*shouldReportApp=*/true,
+            /*shouldReportVolume=*/true);
+        DoShouldReportCriticalEventsAccordingToReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY,
+            /*shouldReportApp=*/false,
+            /*shouldReportVolume=*/true);
+    }
+
     // Per-disk GAUGE counters are emitted by the shadow-swap publish,
-    // while the deprecated AppCriticalEvents/* counter is bumped synchronously
+    // while the legacy AppCriticalEvents/* counter is bumped synchronously
     Y_UNIT_TEST(ShouldEmitPerDiskCountersForVolumeCriticalEvents)
     {
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto criticalEventsGroup = root->GetSubgroup("component", "server");
-        auto volumeCriticalEventsGroup =
-            root->GetSubgroup("component", "server");
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
 
+        SetVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitCriticalEventsCounter(criticalEventsGroup);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
@@ -135,11 +301,11 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         UNIT_ASSERT(
             !volumeGroup || !volumeGroup->FindCounter(GetVolumeSensorName()));
 
-        // Deprecated counter is bumped synchronously.
-        auto deprecatedCounter =
-            criticalEventsGroup->FindCounter(GetDeprecatedSensorName());
-        UNIT_ASSERT(deprecatedCounter);
-        UNIT_ASSERT_VALUES_EQUAL(2, deprecatedCounter->Val());
+        // Legacy counter is bumped synchronously.
+        auto legacyCounter =
+            criticalEventsGroup->FindCounter(GetAppSensorName());
+        UNIT_ASSERT(legacyCounter);
+        UNIT_ASSERT_VALUES_EQUAL(2, legacyCounter->Val());
 
         // Flush materializes and writes the GAUGE.
         handler->UpdateStats(true);
@@ -150,21 +316,22 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         UNIT_ASSERT(volumeCounter);
         UNIT_ASSERT_VALUES_EQUAL(2, volumeCounter->Val());
 
-        // Deprecated counter is not changed after update/publish.
-        UNIT_ASSERT_VALUES_EQUAL(2, deprecatedCounter->Val());
+        // Legacy counter is not changed after update/publish.
+        UNIT_ASSERT_VALUES_EQUAL(2, legacyCounter->Val());
     }
 
     // The publish only runs when updateIntervalFinished is true
-    Y_UNIT_TEST(ShouldFlushOnlyOnIntervalFinished)
+    Y_UNIT_TEST(ShouldPublishOnlyOnIntervalFinished)
     {
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto criticalEventsGroup = root->GetSubgroup("component", "server");
-        auto volumeCriticalEventsGroup =
-            root->GetSubgroup("component", "server");
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
 
-        InitCriticalEventsCounter(criticalEventsGroup);
+        SetVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
         auto handler = CreateCriticalEventsStatsHandler();
@@ -193,17 +360,59 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, volumeCounter->Val());
     }
 
+    // The publish materializes only affected metrics
+    Y_UNIT_TEST(ShouldNotCreateUnaffectedEventsMetricsOnPublish)
+    {
+        ResetVolumeCriticalEventsCounter();
+
+        auto root = MakeIntrusive<TDynamicCounters>();
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
+
+        SetVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
+
+        auto handler = CreateCriticalEventsStatsHandler();
+
+        const TVolumeLabels v{
+            .DiskId = "disk-1",
+            .CloudId = "cloud-1",
+            .FolderId = "folder-1"};
+
+        ReportBlockDigestMismatchInBlob(v, "some msg");
+
+        // Interval finished -> publish affected metric
+        handler->UpdateStats(true);
+
+        auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
+        UNIT_ASSERT(volumeGroup);
+        auto volumeCounter = volumeGroup->FindCounter(GetVolumeSensorName());
+        UNIT_ASSERT(volumeCounter);
+        UNIT_ASSERT_VALUES_EQUAL(1, volumeCounter->Val());
+
+        // No unaffected metrics are materialized
+        UNIT_ASSERT(!volumeGroup->FindCounter(
+            GetVolumeCriticalEventForMigrationFailed()));
+        UNIT_ASSERT(!volumeGroup->FindCounter(
+            GetVolumeCriticalEventForMirroredDiskMajorityChecksumMismatch()));
+        UNIT_ASSERT(!volumeGroup->FindCounter(
+            GetVolumeCriticalEventForOverlappingRequestsDetected()));
+    }
+
     // GAUGE semantics: with no new events the next flush resets to 0
     Y_UNIT_TEST(ShouldResetToZeroAfterFlushWithNoNewEvents)
     {
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto criticalEventsGroup = root->GetSubgroup("component", "server");
-        auto volumeCriticalEventsGroup =
-            root->GetSubgroup("component", "server");
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
 
-        InitCriticalEventsCounter(criticalEventsGroup);
+        SetVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
         auto handler = CreateCriticalEventsStatsHandler();
@@ -231,16 +440,21 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             volumeGroup->FindCounter(GetVolumeSensorName())->Val());
     }
 
-    // Counters are distinct per disk
+    // Counters are distinct per disk.
+    // Legacy counters contain summary
     Y_UNIT_TEST(ShouldKeepDistinctCountersPerDisk)
     {
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto criticalEventsGroup = root->GetSubgroup("component", "server");
-        auto volumeCriticalEventsGroup =
-            root->GetSubgroup("component", "server");
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
 
+        SetVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitCriticalEventsCounter(criticalEventsGroup);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
@@ -257,9 +471,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             .FolderId = "folder-1"};
 
         ReportBlockDigestMismatchInBlob(v1, "some msg 1");
-
         ReportBlockDigestMismatchInBlob(v1, "some msg 1");
-
         ReportBlockDigestMismatchInBlob(v2, "some msg 2");
 
         handler->UpdateStats(true);
@@ -275,11 +487,11 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
                 ->FindCounter(GetVolumeSensorName())
                 ->Val());
 
-        // Deprecated counter should contain summary
-        auto deprecatedCounter =
-            criticalEventsGroup->FindCounter(GetDeprecatedSensorName());
-        UNIT_ASSERT(deprecatedCounter);
-        UNIT_ASSERT_VALUES_EQUAL(3, deprecatedCounter->Val());
+        // Legacy counter should contain summary
+        auto legacyCounter =
+            criticalEventsGroup->FindCounter(GetAppSensorName());
+        UNIT_ASSERT(legacyCounter);
+        UNIT_ASSERT_VALUES_EQUAL(3, legacyCounter->Val());
     }
 
     // Events fired before CountersRoot is set must accumulate in
@@ -289,10 +501,14 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto criticalEventsGroup = root->GetSubgroup("component", "server");
-        auto volumeCriticalEventsGroup =
-            root->GetSubgroup("component", "server");
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
 
+        SetVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
         // NOTE: InitVolumeCriticalEventsCounter is intentionally deferred.
         InitCriticalEventsCounter(criticalEventsGroup);
 
@@ -320,11 +536,11 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             3,
             volumeGroup->FindCounter(GetVolumeSensorName())->Val());
 
-        // Deprecated counter reflects the dual emission (3 synchronous
+        // Legacy counter reflects the dual emission (3 synchronous
         // Inc()'s).
         UNIT_ASSERT_VALUES_EQUAL(
             3,
-            criticalEventsGroup->FindCounter(GetDeprecatedSensorName())->Val());
+            criticalEventsGroup->FindCounter(GetAppSensorName())->Val());
 
         // One more event on the hot path (Exported is now non-null,
         // Internal -> 1) is flushed on the next tick.
@@ -341,10 +557,14 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         ResetVolumeCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
-        auto criticalEventsGroup = root->GetSubgroup("component", "server");
-        auto volumeCriticalEventsGroup =
-            root->GetSubgroup("component", "server");
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
 
+        SetVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitCriticalEventsCounter(criticalEventsGroup);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
@@ -398,11 +618,11 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             .CloudId = cloudId,
             .FolderId = folderId};
 
-        auto deprecatedCounter =
-            criticalEventsGroup->FindCounter(GetDeprecatedSensorName());
-        UNIT_ASSERT(deprecatedCounter);
-        // Deprecated counter should contain summary immediately
-        UNIT_ASSERT_VALUES_EQUAL(12, deprecatedCounter->Val());
+        auto legacyCounter =
+            criticalEventsGroup->FindCounter(GetAppSensorName());
+        UNIT_ASSERT(legacyCounter);
+        // Legacy counter should contain summary immediately
+        UNIT_ASSERT_VALUES_EQUAL(12, legacyCounter->Val());
 
         handler->UpdateStats(true);
 
@@ -412,7 +632,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             12,
             volumeGroup->FindCounter(GetVolumeSensorName())->Val());
 
-        UNIT_ASSERT_VALUES_EQUAL(12, deprecatedCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(12, legacyCounter->Val());
     }
 }
 

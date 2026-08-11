@@ -2,6 +2,7 @@
 
 #include "ut_env.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events_config.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 

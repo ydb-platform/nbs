@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "critical_events_config.h"
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 
@@ -68,7 +70,7 @@ Additionally:
 struct TVolumeCriticalEventCounter
 {
     // Per-interval critical events counter, not published yet
-    std::atomic<i64> Unpublished{0};
+    i64 Unpublished{0};
     // Per-interval critical events metrics counter, GAUGE.
     // Published and held until next publish interval.
     // Constructed lazily
@@ -121,6 +123,8 @@ struct TVolumeCriticalEvents
     NMonitoring::TDynamicCountersPtr CountersRoot;
 };
 
+NProto::EVolumeCriticalEventsReportingMode VolumeCriticalEventsReportingMode =
+    NProto::EVolumeCriticalEventsReportingMode::APP_ONLY;
 TVolumeCriticalEvents VolumeCriticalEvents;
 
 void PublishVolumeCriticalEventCounters()
@@ -147,8 +151,8 @@ void PublishVolumeCriticalEventCounters()
                               ->GetSubgroup("folder", k.VolumeLabels.FolderId)
                               ->GetCounter(k.Event, /*derivative=*/false);
         }
-        auto v = e.Unpublished.exchange(0);
-        *e.Published = v;   // GAUGE set; held until next flush
+        *e.Published = e.Unpublished;   // GAUGE set; held until next flush
+        e.Unpublished = 0;
     }
 }
 
@@ -183,6 +187,12 @@ TString ComposeMessageWithSuffix(const TString& message, const TString& suffix)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void SetVolumeCriticalEventsReportingMode(
+    NProto::EVolumeCriticalEventsReportingMode reportingMode)
+{
+    VolumeCriticalEventsReportingMode = reportingMode;
+}
+
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 {
 #define BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER(name)                           \
@@ -194,6 +204,20 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
         BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER)
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER)
 #undef BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER
+
+// Keeps existing AppCriticalEvents/ * for new VolumeCriticalEvents/ * metrics
+// alive
+#define BLOCKSTORE_INIT_APP_CRITICAL_EVENT_COUNTER(name)                       \
+    *counters->GetCounter(GetAppCriticalEventFor##name(), true) = 0;
+
+    if (VolumeCriticalEventsReportingMode !=
+        NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY)
+    {
+        BLOCKSTORE_VOLUME_CRITICAL_EVENTS(
+            BLOCKSTORE_INIT_APP_CRITICAL_EVENT_COUNTER)
+    }
+
+#undef BLOCKSTORE_INIT_APP_CRITICAL_EVENT_COUNTER
 
     NCloud::InitCriticalEventsCounter(std::move(counters));
 }
@@ -336,19 +360,31 @@ void ResetVolumeCriticalEventsCounter()
             const TString& message,                                            \
             const TCritEventParams& keyValues)                                 \
         {                                                                      \
+            TString retMessage;                                                \
             TString submsg =                                                   \
                 ComposeMessageWithSuffix(message, PrintParams(keyValues));     \
                                                                                \
-            /* deprecated: keeps existing AppCriticalEvents/ metrics alive */  \
-            ReportCriticalEvent(                                               \
-                GetDeprecatedCriticalEventFor##name(),                         \
-                submsg,                                                        \
-                /*verifyDebug=*/false);                                        \
+            /* Keep legacy AppCriticalEvents/ metrics alive */                 \
+            if (VolumeCriticalEventsReportingMode !=                           \
+                    NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY)   \
+            {                                                                  \
+                retMessage = ReportCriticalEvent(                              \
+                    GetAppCriticalEventFor##name(),                            \
+                    submsg,                                                    \
+                    /*verifyDebug=*/false);                                    \
+            }                                                                  \
+                                                                               \
+            if (VolumeCriticalEventsReportingMode ==                           \
+                    NProto::EVolumeCriticalEventsReportingMode::APP_ONLY)      \
+            {                                                                  \
+                                                                               \
+                return retMessage;                                             \
+            }                                                                  \
                                                                                \
             auto prefix = TCritEventParams{                                    \
-                {"disk", diskId},                                              \
-                {"cloud", cloudId},                                            \
-                {"folder", folderId}};                                         \
+                {"disk", diskId.empty() ? "<empty>" : diskId},                 \
+                {"cloud", cloudId.empty() ? "<empty>" : cloudId},              \
+                {"folder", folderId.empty() ? "<empty>" : folderId}};          \
                                                                                \
             TString logMessage =                                               \
                 !submsg.empty()                                                \
@@ -356,13 +392,13 @@ void ResetVolumeCriticalEventsCounter()
                     : PrintParams(prefix);                                     \
                                                                                \
             /* Log immediately */                                              \
-            auto retMessage =                                                  \
+            retMessage =                                                       \
                 LogCriticalEvent(                                              \
                     GetVolumeCriticalEventFor##name(),                         \
                     logMessage);                                               \
                                                                                \
             auto key = TVolumeCriticalEventKey{                                \
-                .Event    = GetVolumeCriticalEventFor##name(),                 \
+                .Event        = GetVolumeCriticalEventFor##name(),             \
                 .VolumeLabels = {                                              \
                     .DiskId   = diskId,                                        \
                     .CloudId  = cloudId,                                       \
@@ -370,9 +406,14 @@ void ResetVolumeCriticalEventsCounter()
             };                                                                 \
                                                                                \
             with_lock (VolumeCriticalEvents.Lock) {                            \
-                /* The Published GAUGE counter is materialized lazily          \
+                /*                                                             \
+                1. The Published GAUGE counter is materialized lazily          \
                    by PublishVolumeCriticalEventCounters() on the publish tick.\
                    Here we only create and bump the Unpublished accumulator.   \
+                2. The footprint of the unbounded-lifetime VolumeCriticalEvents\
+                   metric is not deemed a measurable concern due to rare tablet\
+                   migrations, rare critical events, and periodic              \
+                   (release-based) process restarts.                           \
                 */                                                             \
                 VolumeCriticalEvents.Counters[key].Unpublished++;              \
             }                                                                  \
@@ -391,7 +432,7 @@ void ResetVolumeCriticalEventsCounter()
         {                                                                      \
             return "VolumeCriticalEvents/" #name;                              \
         }                                                                      \
-        const TString GetDeprecatedCriticalEventFor##name()                    \
+        const TString GetAppCriticalEventFor##name()                           \
         {                                                                      \
             return "AppCriticalEvents/" #name;                                 \
         }                                                                      \

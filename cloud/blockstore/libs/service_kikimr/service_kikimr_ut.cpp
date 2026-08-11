@@ -3,6 +3,7 @@
 #include <cloud/blockstore/config/server.pb.h>
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_config.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service_kikimr/ut/kikimr_test_env.h>

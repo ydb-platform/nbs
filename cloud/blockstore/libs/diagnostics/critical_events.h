@@ -176,14 +176,6 @@ using TCritEventParams =
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
-void InitVolumeCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
-
-NCloud::IStatsHandlerPtr CreateCriticalEventsStatsHandler();
-
-// For unit test purposes
-void ResetVolumeCriticalEventsCounter();
-
 #define BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                        \
     TString Report##name(const TString& message = "");                         \
     TString Report##name(                                                      \
@@ -260,7 +252,7 @@ void ResetVolumeCriticalEventsCounter();
             return Report##name(*volumeLabels, std::forward<TArgs>(args)...);  \
         }                                                                      \
         const TString GetVolumeCriticalEventFor##name();                       \
-        const TString GetDeprecatedCriticalEventFor##name();                   \
+        const TString GetAppCriticalEventFor##name();                          \
         // BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
 
     BLOCKSTORE_VOLUME_CRITICAL_EVENTS(
