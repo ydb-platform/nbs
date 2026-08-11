@@ -1,5 +1,7 @@
 #include "nvme.h"
 
+#include "utils.h"
+
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -697,7 +699,7 @@ public:
             .data_len = sizeof(log),
             .cdw10 = (numd << 16) | (cntts << 12) | (scp << 8) |
                      NVME_LOG_LID_CMD_AND_FEAT_LOCKDOWN,
-            .cdw11 = 0, // LSI = 0, NUMDU = 0
+            .cdw11 = 0,   // LSI = 0, NUMDU = 0
             .timeout_ms = static_cast<ui32>(AdminCmdTimeout.MilliSeconds()),
         };
 
@@ -768,25 +770,12 @@ public:
 
     static TVector<ui8> CalculateOpcodesToLock(
         TVector<ui8> allowedOpcodes,
-        TLockdownScopeState scope)
+        const TLockdownScopeState& scope)
     {
-        SortUnique(scope.Supported);
-        SortUnique(scope.Prohibited);
-        SortUnique(allowedOpcodes);
-
-        TVector<ui8> supportedOpcodesToLock;
-        std::ranges::set_difference(
+        return NNvme::CalculateOpcodesToLock(
+            std::move(allowedOpcodes),
             scope.Supported,
-            allowedOpcodes,
-            std::back_inserter(supportedOpcodesToLock));
-
-        TVector<ui8> opcodesToLock;
-        std::ranges::set_difference(
-            supportedOpcodesToLock,
-            scope.Prohibited,
-            std::back_inserter(opcodesToLock));
-
-        return opcodesToLock;
+            scope.Prohibited);
     }
 
     NProto::TError EnsureLockdown(
