@@ -133,20 +133,20 @@ func (p *GRPCClientTLSProvider) readTLSConfig(validateValidity bool) (
 				err,
 			)
 		}
-		if len(cert.Certificate) == 0 {
-			return nil, nil, errors.New("client certificate chain is empty")
-		}
-		parsed, err := x509.ParseCertificate(cert.Certificate[0])
+		parsedCertificates, err := parseCertificateChain(cert.Certificate)
 		if err != nil {
 			return nil, nil, fmt.Errorf(
-				"failed to parse client certificate: %w",
+				"failed to parse client certificate chain: %w",
 				err,
 			)
 		}
 		if validateValidity {
-			if err := validateCertificateCurrentlyValid(parsed, time.Now()); err != nil {
+			if err := validateCertificateChainCurrentlyValid(
+				parsedCertificates,
+				time.Now(),
+			); err != nil {
 				return nil, nil, fmt.Errorf(
-					"failed to validate client certificate: %w",
+					"failed to validate client certificate chain: %w",
 					err,
 				)
 			}

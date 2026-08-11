@@ -3,7 +3,6 @@ package common
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"sync"
@@ -200,25 +199,21 @@ func (p *GRPCServerTLSProvider) readCertificate(
 			err,
 		)
 	}
-	if len(certificate.Certificate) == 0 {
-		return tls.Certificate{}, certificateExpiration{}, fmt.Errorf(
-			"certificate chain is empty for cert file %v",
-			cert.CertFile,
-		)
-	}
-
-	parsed, err := x509.ParseCertificate(certificate.Certificate[0])
+	parsedCertificates, err := parseCertificateChain(certificate.Certificate)
 	if err != nil {
 		return tls.Certificate{}, certificateExpiration{}, fmt.Errorf(
-			"failed to parse cert file %v: %w",
+			"failed to parse certificate chain from cert file %v: %w",
 			cert.CertFile,
 			err,
 		)
 	}
 	if validateValidity {
-		if err := validateCertificateCurrentlyValid(parsed, time.Now()); err != nil {
+		if err := validateCertificateChainCurrentlyValid(
+			parsedCertificates,
+			time.Now(),
+		); err != nil {
 			return tls.Certificate{}, certificateExpiration{}, fmt.Errorf(
-				"failed to validate cert file %v: %w",
+				"failed to validate certificate chain from cert file %v: %w",
 				cert.CertFile,
 				err,
 			)
@@ -227,6 +222,6 @@ func (p *GRPCServerTLSProvider) readCertificate(
 
 	return certificate, certificateExpiration{
 		path:  cert.GetCertFile(),
-		after: parsed.NotAfter,
+		after: getCertificateChainExpiration(parsedCertificates),
 	}, nil
 }

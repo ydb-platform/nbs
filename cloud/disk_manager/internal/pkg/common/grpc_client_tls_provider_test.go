@@ -214,18 +214,63 @@ func TestGRPCClientTLSProviderChecksIdentityValidityOnlyOnRefresh(
 		10*time.Millisecond,
 	)
 
-	futureCertPEM, futureKeyPEM, _ := mustGenerateServerCertificatePairWithValidity(
+	candidateCertPEM, candidateKeyPEM, _ := mustGenerateServerCertificatePair(
 		t,
-		"future-client-cert",
-		time.Now().Add(24*time.Hour),
-		time.Now().Add(48*time.Hour),
+		"candidate-client-cert",
 	)
-	require.NoError(t, os.WriteFile(certPath, futureCertPEM, 0o600))
-	require.NoError(t, os.WriteFile(keyPath, futureKeyPEM, 0o600))
+	expiredIntermediatePEM, _, _ := mustGenerateServerCertificatePairWithValidity(
+		t,
+		"expired-intermediate",
+		time.Now().Add(-48*time.Hour),
+		time.Now().Add(-24*time.Hour),
+	)
+	require.NoError(
+		t,
+		os.WriteFile(
+			certPath,
+			concatenateCertificatePEM(
+				candidateCertPEM,
+				expiredIntermediatePEM,
+			),
+			0o600,
+		),
+	)
+	require.NoError(t, os.WriteFile(keyPath, candidateKeyPEM, 0o600))
 	time.Sleep(100 * time.Millisecond)
 	require.True(
 		t,
 		clientProviderCertificateSerialEquals(ctx, provider, validSerial),
+	)
+	require.True(
+		t,
+		clientProviderCertificateChainLengthEquals(ctx, provider, 1),
+	)
+
+	futureIntermediatePEM, _, _ := mustGenerateServerCertificatePairWithValidity(
+		t,
+		"future-intermediate",
+		time.Now().Add(24*time.Hour),
+		time.Now().Add(48*time.Hour),
+	)
+	require.NoError(
+		t,
+		os.WriteFile(
+			certPath,
+			concatenateCertificatePEM(
+				candidateCertPEM,
+				futureIntermediatePEM,
+			),
+			0o600,
+		),
+	)
+	time.Sleep(100 * time.Millisecond)
+	require.True(
+		t,
+		clientProviderCertificateSerialEquals(ctx, provider, validSerial),
+	)
+	require.True(
+		t,
+		clientProviderCertificateChainLengthEquals(ctx, provider, 1),
 	)
 }
 
@@ -241,6 +286,17 @@ func clientProviderCertificateSerialEquals(
 
 	serial, err := parseCertificateSerial(&cfg.Certificates[0])
 	return err == nil && serial.Cmp(expected) == 0
+}
+
+func clientProviderCertificateChainLengthEquals(
+	ctx context.Context,
+	provider *GRPCClientTLSProvider,
+	expected int,
+) bool {
+	cfg, err := provider.GetTLSConfig(ctx)
+	return err == nil &&
+		len(cfg.Certificates) == 1 &&
+		len(cfg.Certificates[0].Certificate) == expected
 }
 
 ////////////////////////////////////////////////////////////////////////////////

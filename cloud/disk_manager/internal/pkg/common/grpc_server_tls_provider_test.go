@@ -101,27 +101,52 @@ func TestGRPCServerTLSProviderRefreshAndKeepLastGood(t *testing.T) {
 	requireProviderCertificateSerial(t, provider, serial2)
 	require.NoError(t, os.WriteFile(keyPath, key2PEM, 0o600))
 
-	expiredCertPEM, expiredKeyPEM, _ := mustGenerateServerCertificatePairWithValidity(
+	candidateCertPEM, candidateKeyPEM, _ := mustGenerateServerCertificatePair(
 		t,
-		"disk-manager-expired-cert",
+		"disk-manager-candidate-cert",
+	)
+	expiredIntermediatePEM, _, _ := mustGenerateServerCertificatePairWithValidity(
+		t,
+		"disk-manager-expired-intermediate",
 		time.Now().Add(-48*time.Hour),
 		time.Now().Add(-24*time.Hour),
 	)
-	require.NoError(t, os.WriteFile(certPath, expiredCertPEM, 0o600))
-	require.NoError(t, os.WriteFile(keyPath, expiredKeyPEM, 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(
+			certPath,
+			concatenateCertificatePEM(
+				candidateCertPEM,
+				expiredIntermediatePEM,
+			),
+			0o600,
+		),
+	)
+	require.NoError(t, os.WriteFile(keyPath, candidateKeyPEM, 0o600))
 	time.Sleep(100 * time.Millisecond)
 	requireProviderCertificateSerial(t, provider, serial2)
+	require.True(t, providerCertificateChainLengthEquals(provider, 0, 1))
 
-	futureCertPEM, futureKeyPEM, _ := mustGenerateServerCertificatePairWithValidity(
+	futureIntermediatePEM, _, _ := mustGenerateServerCertificatePairWithValidity(
 		t,
-		"disk-manager-future-cert",
+		"disk-manager-future-intermediate",
 		time.Now().Add(24*time.Hour),
 		time.Now().Add(48*time.Hour),
 	)
-	require.NoError(t, os.WriteFile(certPath, futureCertPEM, 0o600))
-	require.NoError(t, os.WriteFile(keyPath, futureKeyPEM, 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(
+			certPath,
+			concatenateCertificatePEM(
+				candidateCertPEM,
+				futureIntermediatePEM,
+			),
+			0o600,
+		),
+	)
 	time.Sleep(100 * time.Millisecond)
 	requireProviderCertificateSerial(t, provider, serial2)
+	require.True(t, providerCertificateChainLengthEquals(provider, 0, 1))
 
 	require.NoError(
 		t,
@@ -278,11 +303,19 @@ func TestGRPCServerTLSProviderReportsCertificateExpirationsIndependently(
 
 	now := time.Now().Truncate(time.Second)
 	initialExpiration1 := now.Add(24 * time.Hour)
+	initialLeafExpiration1 := now.Add(36 * time.Hour)
 	initialExpiration2 := now.Add(48 * time.Hour)
 	rotatedExpiration1 := now.Add(72 * time.Hour)
+	rotatedLeafExpiration1 := now.Add(96 * time.Hour)
 	cert1PEM, key1PEM, _ := mustGenerateServerCertificatePairWithValidity(
 		t,
 		"server-1",
+		now.Add(-time.Hour),
+		initialLeafExpiration1,
+	)
+	intermediate1PEM, _, _ := mustGenerateServerCertificatePairWithValidity(
+		t,
+		"server-1-intermediate",
 		now.Add(-time.Hour),
 		initialExpiration1,
 	)
@@ -292,7 +325,14 @@ func TestGRPCServerTLSProviderReportsCertificateExpirationsIndependently(
 		now.Add(-time.Hour),
 		initialExpiration2,
 	)
-	require.NoError(t, os.WriteFile(cert1Path, cert1PEM, 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(
+			cert1Path,
+			concatenateCertificatePEM(cert1PEM, intermediate1PEM),
+			0o600,
+		),
+	)
 	require.NoError(t, os.WriteFile(key1Path, key1PEM, 0o600))
 	require.NoError(t, os.WriteFile(cert2Path, cert2PEM, 0o600))
 	require.NoError(t, os.WriteFile(key2Path, key2PEM, 0o600))
@@ -355,9 +395,26 @@ func TestGRPCServerTLSProviderReportsCertificateExpirationsIndependently(
 			t,
 			"server-1-rotated",
 			now.Add(-time.Hour),
+			rotatedLeafExpiration1,
+		)
+	rotatedIntermediate1PEM, _, _ :=
+		mustGenerateServerCertificatePairWithValidity(
+			t,
+			"server-1-rotated-intermediate",
+			now.Add(-time.Hour),
 			rotatedExpiration1,
 		)
-	require.NoError(t, os.WriteFile(cert1Path, rotatedCert1PEM, 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(
+			cert1Path,
+			concatenateCertificatePEM(
+				rotatedCert1PEM,
+				rotatedIntermediate1PEM,
+			),
+			0o600,
+		),
+	)
 	require.NoError(t, os.WriteFile(key1Path, rotatedKey1PEM, 0o600))
 	require.NoError(
 		t,
@@ -386,6 +443,18 @@ func providerCertificateSerialEquals(
 	}
 	serial, err := parseCertificateSerial(&provider.certificates[index])
 	return err == nil && serial.Cmp(expected) == 0
+}
+
+func providerCertificateChainLengthEquals(
+	provider *GRPCServerTLSProvider,
+	index int,
+	expected int,
+) bool {
+	provider.lock.RLock()
+	defer provider.lock.RUnlock()
+
+	return index < len(provider.certificates) &&
+		len(provider.certificates[index].Certificate) == expected
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -485,4 +554,12 @@ func mustGenerateServerCertificatePairWithValidity(
 	)
 
 	return certPEM, keyPEM, serialNumber
+}
+
+func concatenateCertificatePEM(certificates ...[]byte) []byte {
+	var result []byte
+	for _, certificate := range certificates {
+		result = append(result, certificate...)
+	}
+	return result
 }
