@@ -710,11 +710,11 @@ struct TEvPartitionPrivate
         TFlushedCommitIds FlushedCommitIdsFromChannel;
 
         TFlushCompleted(
-            TVector<ui64> flushedFreshBlobCommitIds,
-            TFlushedCommitIds flushedCommitIdsFromChannel)
-            : FlushedFreshBlobCommitIds(std::move(flushedFreshBlobCommitIds))
-            , FlushedCommitIdsFromChannel(
-                  std::move(flushedCommitIdsFromChannel))
+                TVector<ui64> flushedFreshBlobCommitIds,
+                TFlushedCommitIds flushedCommitIdsFromChannel)
+            : FlushedFreshBlobCommitIds(
+                  std::move(flushedFreshBlobCommitIds))
+            , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
         {
         }
     };

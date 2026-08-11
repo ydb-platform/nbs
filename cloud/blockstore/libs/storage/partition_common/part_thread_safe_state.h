@@ -112,6 +112,11 @@ public:
         , TabletId(tabletId)
     {}
 
+    ui64 GetTabletId() const
+    {
+        return TabletId;
+    }
+
     void Init(
         NActors::TActorId partitionActorId,
         ui32 generation,
@@ -197,7 +202,7 @@ public:
         ui64 commitId);
 
     void WaitFreshWritesToComplete(
-        NPartition::TCommitQueueCallback callback,
+        TCommitQueueCallback callback,
         ui64 commitId);
 
     void WaitCommitForCheckpoint(
@@ -249,7 +254,7 @@ private:
 
     void ProcessCommitQueueImpl(
         TVector<std::unique_ptr<ITransactionBase>>& txs,
-        TVector<NPartition::TCommitQueueCallback>& callbacks);
+        TVector<TCommitQueueCallback>& callbacks);
 
     void CollectCheckpointQueueTransactions(
         TVector<std::unique_ptr<ITransactionBase>>& txs);

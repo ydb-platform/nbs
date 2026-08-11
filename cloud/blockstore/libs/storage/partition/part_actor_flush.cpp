@@ -120,15 +120,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TFlushActor::TFlushActor(
-    TRequestInfoPtr requestInfo,
-    ui32 blockSize,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
-    const TActorId& tablet,
-    ui64 commitId,
-    TFlushedCommitIds flushedCommitIdsFromChannel,
-    TVector<ui64> flushedFreshBlobCommitIds,
-    TDuration blobStorageAsyncRequestTimeout,
-    TVector<TRequest> requests)
+        TRequestInfoPtr requestInfo,
+        ui32 blockSize,
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        const TActorId& tablet,
+        ui64 commitId,
+        TFlushedCommitIds flushedCommitIdsFromChannel,
+        TVector<ui64> flushedFreshBlobCommitIds,
+        TDuration blobStorageAsyncRequestTimeout,
+        TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -440,7 +440,9 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
 
 void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 {
-    if (State->GetFlushState().GetOperationState().Status != EOperationStatus::Idle) {
+    if (State->GetFlushState().GetOperationState().Status !=
+        EOperationStatus::Idle)
+    {
         // already enqueued
         return;
     }
@@ -460,7 +462,8 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    bool stateTransitionOk = State->AccessFlushState().SetEnqueued(ctx.Now());
+    const bool stateTransitionOk =
+        State->AccessFlushState().SetEnqueued(ctx.Now());
     STORAGE_VERIFY_C(
         stateTransitionOk,
         TWellKnownEntityTypes::TABLET,
