@@ -21,6 +21,7 @@ class TVhostEndpointListener final
 private:
     const NVhost::IServerPtr Server;
     const NProto::TChecksumFlags ChecksumFlags;
+    const TVhostEndpointThreadCounts ThreadCounts;
     const bool VhostDiscardEnabled;
     const bool VhostWriteZeroesEnabled;
     const bool DropDiscardRequests;
@@ -31,6 +32,7 @@ public:
     TVhostEndpointListener(
             NVhost::IServerPtr server,
             NProto::TChecksumFlags checksumFlags,
+            const TVhostEndpointThreadCounts& threadCounts,
             bool vhostDiscardEnabled,
             bool vhostWriteZeroesEnabled,
             bool dropDiscardRequests,
@@ -38,6 +40,7 @@ public:
             ui32 optimalIoSize)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
+        , ThreadCounts(threadCounts)
         , VhostDiscardEnabled(vhostDiscardEnabled)
         , VhostWriteZeroesEnabled(vhostWriteZeroesEnabled)
         , DropDiscardRequests(dropDiscardRequests)
@@ -58,7 +61,10 @@ public:
         options.ClientId = request.GetClientId();
         options.BlockSize = volume.GetBlockSize();
         options.BlocksCount = volume.GetBlocksCount();
-        options.VhostQueuesCount = request.GetVhostQueuesCount();
+        options.VhostQueuesCount = Max<ui32>(1, request.GetVhostQueuesCount());
+        options.ThreadCount = GetVhostEndpointThreadCount(
+            ThreadCounts,
+            volume.GetStorageMediaKind());
         options.UnalignedRequestsDisabled = request.GetUnalignedRequestsDisabled();
         options.StorageMediaKind = volume.GetStorageMediaKind();
         options.DiscardEnabled =
@@ -135,9 +141,33 @@ bool ShouldDropDiscardRequestsForVolume(
            IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
 }
 
+ui32 GetVhostEndpointThreadCount(
+    const TVhostEndpointThreadCounts& threadCounts,
+    NCloud::NProto::EStorageMediaKind mediaKind)
+{
+    switch (mediaKind) {
+        case NCloud::NProto::STORAGE_MEDIA_SSD:
+            return threadCounts.SSD;
+        case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
+        case NCloud::NProto::STORAGE_MEDIA_HYBRID:
+        case NCloud::NProto::STORAGE_MEDIA_HDD:
+            return threadCounts.HDD;
+        case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+            return threadCounts.NonReplicated;
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
+            return threadCounts.Mirror2;
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
+            return threadCounts.Mirror3;
+        default:
+            return 0;
+    }
+}
+
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
+    const TVhostEndpointThreadCounts& threadCounts,
     bool vhostDiscardEnabled,
     bool vhostWriteZeroesEnabled,
     bool dropDiscardRequests,
@@ -147,6 +177,7 @@ IEndpointListenerPtr CreateVhostEndpointListener(
     return std::make_shared<TVhostEndpointListener>(
         std::move(server),
         checksumFlags,
+        threadCounts,
         vhostDiscardEnabled,
         vhostWriteZeroesEnabled,
         dropDiscardRequests,

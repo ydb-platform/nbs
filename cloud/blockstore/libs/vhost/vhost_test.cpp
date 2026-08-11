@@ -210,37 +210,13 @@ public:
         Y_ABORT_UNLESS(wasRun || State.load() == Broken);
     }
 
-    IVhostDevicePtr CreateDevice(
-        TString socketPath,
-        TString deviceName,
-        ui32 blockSize,
-        ui64 blocksCount,
-        ui32 queuesCount,
-        bool discardEnabled,
-        bool writeZeroesEnabled,
-        ui32 optimalIoSize,
-        void* cookie,
-        const TVhostCallbacks& callbacks,
-        bool readOnly) override
+    // A device may be served by several queues at once, so the same device can
+    // be registered in more than one queue.
+    void AddDevice(std::weak_ptr<TTestVhostDevice> device)
     {
-        Y_UNUSED(deviceName);
-        Y_UNUSED(blockSize);
-        Y_UNUSED(blocksCount);
-        Y_UNUSED(queuesCount);
-        Y_UNUSED(discardEnabled);
-        Y_UNUSED(writeZeroesEnabled);
-        Y_UNUSED(callbacks);
-        Y_UNUSED(readOnly);
-
-        auto vhostDevice = std::make_shared<TTestVhostDevice>(
-            std::move(socketPath),
-            cookie,
-            optimalIoSize);
-
         with_lock (Lock) {
-            Devices.push_back(vhostDevice);
+            Devices.push_back(std::move(device));
         }
-        return vhostDevice;
     }
 
     TVhostRequestPtr DequeueRequest() override
@@ -293,6 +269,43 @@ IVhostQueuePtr TTestVhostQueueFactory::CreateQueue()
     auto queue = std::make_shared<TTestVhostQueue>(FailedEvent);
     Queues.push_back(queue);
     return queue;
+}
+
+IVhostDevicePtr TTestVhostQueueFactory::CreateDevice(
+    TString socketPath,
+    TString deviceName,
+    ui32 blockSize,
+    ui64 blocksCount,
+    ui32 queuesCount,
+    bool discardEnabled,
+    bool writeZeroesEnabled,
+    ui32 optimalIoSize,
+    TVector<IVhostQueuePtr> queues,
+    void* cookie,
+    const TVhostCallbacks& callbacks,
+    bool readOnly)
+{
+    Y_UNUSED(deviceName);
+    Y_UNUSED(blockSize);
+    Y_UNUSED(blocksCount);
+    Y_UNUSED(discardEnabled);
+    Y_UNUSED(writeZeroesEnabled);
+    Y_UNUSED(callbacks);
+    Y_UNUSED(readOnly);
+
+    Y_ABORT_UNLESS(!queues.empty());
+    Y_ABORT_UNLESS(queues.size() <= queuesCount);
+
+    auto vhostDevice = std::make_shared<TTestVhostDevice>(
+        std::move(socketPath),
+        cookie,
+        optimalIoSize);
+
+    for (const auto& queue: queues) {
+        static_cast<TTestVhostQueue*>(queue.get())->AddDevice(vhostDevice);
+    }
+
+    return vhostDevice;
 }
 
 }   // namespace NCloud::NBlockStore::NVhost

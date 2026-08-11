@@ -13,6 +13,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/map.h>
+#include <util/generic/utility.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
@@ -41,7 +43,12 @@ private:
     TVector<TExecutorPtr> Executors;
 
     THashMap<TString, TEndpointPtr> Endpoints;
-    THashMap<TString, TEndpointPtr> StoppingEndpoints;
+    struct TStoppingEndpoint
+    {
+        TEndpointPtr Endpoint;
+        TFuture<NProto::TError> Future;
+    };
+    THashMap<TString, TStoppingEndpoint> StoppingEndpoints;
 
 public:
     TServer(
@@ -74,9 +81,9 @@ public:
 private:
     void InitExecutors();
 
-    TExecutor* PickExecutor() const;
-
-    ui32 GetVhostQueuesCount(const TExecutor* executor) const;
+    // Picks |count| distinct executors with the lowest number of assigned
+    // vhost queues. Must be called under Lock.
+    TVector<TExecutor*> PickExecutors(ui32 count);
 
     void StopAllEndpoints();
 
@@ -146,7 +153,7 @@ size_t TServer::CollectRequests(const TIncompleteRequestsCollector& collector)
             count += it.second->CollectRequests(collector);
         }
         for (auto& it: StoppingEndpoints) {
-            count += it.second->CollectRequests(collector);
+            count += it.second.Endpoint->CollectRequests(collector);
         }
     }
     return count;
@@ -157,6 +164,8 @@ TFuture<NProto::TError> TServer::StartEndpoint(
     IStoragePtr storage,
     const TStorageOptions& options)
 {
+    Y_ABORT_UNLESS(options.VhostQueuesCount > 0);
+
     if (ShouldStop.test()) {
         NProto::TError error;
         error.SetCode(E_FAIL);
@@ -164,7 +173,25 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         return MakeFuture(error);
     }
 
-    TExecutor* executor;
+    // There is no point in taking more executors than there are
+    // virtqueues (and libvhost forbids it).
+    const ui32 maxExecutorsCount =
+        Min<ui32>(options.VhostQueuesCount, Executors.size());
+    const ui32 executorsCount =
+        std::clamp<ui32>(options.ThreadCount, 1, maxExecutorsCount);
+
+    if (options.ThreadCount > maxExecutorsCount) {
+        STORAGE_WARN(
+            "Endpoint " << socketPath.Quote() << " requested "
+                        << options.ThreadCount << " threads"
+                        << ", but only " << maxExecutorsCount << " can be used"
+                        << " (vhost queues: " << options.VhostQueuesCount
+                        << ", thread pool size: " << Executors.size() << ")");
+    }
+
+    auto deviceHandler = CreateDeviceHandler(options, std::move(storage));
+    TEndpointPtr endpoint;
+    TVector<IVhostQueuePtr> queues;
 
     with_lock (Lock) {
         auto it = Endpoints.find(socketPath);
@@ -177,19 +204,32 @@ TFuture<NProto::TError> TServer::StartEndpoint(
             return MakeFuture(error);
         }
 
-        executor = PickExecutor();
-        Y_ABORT_UNLESS(executor);
+        auto executors = PickExecutors(executorsCount);
+        Y_ABORT_UNLESS(executors.size() == executorsCount);
+
+        queues.reserve(executors.size());
+        for (auto* executor: executors) {
+            queues.push_back(executor->GetQueue());
+        }
+
+        // The ctor bumps the assignment counters of the picked executors, so
+        // it has to run under Lock together with PickExecutors.
+        endpoint = std::make_shared<TEndpoint>(
+            *this,
+            std::move(deviceHandler),
+            socketPath,
+            options,
+            Config.SocketAccessMode,
+            std::move(executors));
     }
 
-    auto endpoint = std::make_shared<TEndpoint>(
-        *this,
-        CreateDeviceHandler(options, std::move(storage)),
-        socketPath,
-        options,
-        Config.SocketAccessMode,
-        executor);
+    STORAGE_INFO(
+        "Start endpoint " << socketPath.Quote() << " with "
+                          << options.VhostQueuesCount << " vhost queues"
+                          << " served by " << executorsCount << " executors"
+                          << " (" << options.ThreadCount << " requested)");
 
-    auto vhostDevice = executor->GetQueue()->CreateDevice(
+    auto vhostDevice = VhostQueueFactory->CreateDevice(
         socketPath,
         options.DeviceName.empty() ? options.DiskId : options.DeviceName,
         options.BlockSize,
@@ -198,6 +238,7 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         options.DiscardEnabled,
         options.WriteZeroesEnabled,
         options.OptimalIoSize,
+        std::move(queues),
         endpoint->GetCookie(),
         Callbacks,
         options.ReadOnly);
@@ -227,6 +268,7 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
     }
 
     TEndpointPtr endpoint;
+    TFuture<NProto::TError> stopFuture;
 
     with_lock (Lock) {
         auto it = Endpoints.find(socketPath);
@@ -242,11 +284,14 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
         endpoint = std::move(it->second);
         Endpoints.erase(it);
 
-        StoppingEndpoints.emplace(socketPath, endpoint);
+        stopFuture = endpoint->Stop(true);
+        StoppingEndpoints.emplace(
+            socketPath,
+            TStoppingEndpoint{endpoint, stopFuture});
     }
 
     auto ptr = shared_from_this();
-    return endpoint->Stop(true).Apply(
+    return stopFuture.Apply(
         [ptr = std::move(ptr), socketPath](const auto& future)
         {
             const auto& error = future.GetValue();
@@ -294,14 +339,22 @@ void TServer::StopAllEndpoints()
     TVector<TFuture<NProto::TError>> futures;
 
     with_lock (Lock) {
+        for (const auto& [socketPath, stoppingEndpoint]: StoppingEndpoints) {
+            sockets.push_back(socketPath);
+            futures.push_back(stoppingEndpoint.Future);
+        }
+
         for (auto& it: Endpoints) {
             const auto& socketPath = it.first;
             auto endpoint = std::move(it.second);
+            auto future = endpoint->Stop(false);
 
-            StoppingEndpoints.emplace(socketPath, endpoint);
+            StoppingEndpoints.emplace(
+                socketPath,
+                TStoppingEndpoint{endpoint, future});
 
             sockets.push_back(socketPath);
-            futures.push_back(endpoint->Stop(false));
+            futures.push_back(std::move(future));
         }
 
         Endpoints.clear();
@@ -320,17 +373,19 @@ void TServer::HandleStoppedEndpoint(
     const TString& socketPath,
     const NProto::TError& error)
 {
-    if (HasError(error)) {
-        STORAGE_ERROR(
-            "Failed to stop endpoint: " << socketPath.Quote()
-                                        << ". Error: " << error);
-    }
-
+    bool erased = false;
     with_lock (Lock) {
         auto it = StoppingEndpoints.find(socketPath);
         if (it != StoppingEndpoints.end()) {
             StoppingEndpoints.erase(it);
+            erased = true;
         }
+    }
+
+    if (erased && HasError(error)) {
+        STORAGE_ERROR(
+            "Failed to stop endpoint: " << socketPath.Quote()
+                                        << ". Error: " << error);
     }
 }
 
@@ -349,33 +404,31 @@ void TServer::InitExecutors()
     }
 }
 
-TExecutor* TServer::PickExecutor() const
+TVector<TExecutor*> TServer::PickExecutors(ui32 count)
 {
-    TExecutor* result = nullptr;
-    ui32 resultQueuesCount = 0;
+    Y_ABORT_UNLESS(count > 0);
+    Y_ABORT_UNLESS(count <= Executors.size());
 
+    TMultiMap<ui32, TExecutor*> byLoad;
     for (const auto& executor: Executors) {
-        const ui32 queuesCount = GetVhostQueuesCount(executor.get());
-        if (result == nullptr || queuesCount < resultQueuesCount) {
-            result = executor.get();
-            resultQueuesCount = queuesCount;
-        }
+        byLoad.emplace(
+            executor->GetAssignedVhostQueuesCount(),
+            executor.get());
     }
 
-    return result;
-}
-
-ui32 TServer::GetVhostQueuesCount(const TExecutor* executor) const
-{
-    ui32 queuesCount = 0;
-
-    for (const auto& it: Endpoints) {
-        if (it.second->GetExecutor() == executor) {
-            queuesCount += it.second->GetVhostQueuesCount();
+    TVector<TExecutor*> picked;
+    picked.reserve(count);
+    // NOTE: The order can be significant: libvhost assigns any remainder from
+    // the round-robin distribution to the first queues.
+    for (const auto& [_, executor]: byLoad) {
+        if (picked.size() == count) {
+            break;
         }
+        picked.push_back(executor);
     }
 
-    return queuesCount;
+    Y_ABORT_UNLESS(picked.size() == count);
+    return picked;
 }
 
 IDeviceHandlerPtr TServer::CreateDeviceHandler(
