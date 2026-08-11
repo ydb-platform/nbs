@@ -112,7 +112,9 @@ TPartitionState::TPartitionState(
                 *MixedBlocksFilter,
                 CeilDiv<ui64>(Config.GetBlocksCount(), GetMaxBlocksInBlob()),
                 mixedBlocksFilterRangesToLoadPerTx,
-                mixedBlocksFilterAllowedCpuTimePerSecond);
+                mixedBlocksFilterAllowedCpuTimePerSecond
+                    ? mixedBlocksFilterAllowedCpuTimePerSecond
+                    : TDuration::Seconds(1));
         }
     }
     InitChannels();

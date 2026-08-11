@@ -646,6 +646,8 @@ void TPartitionActor::ExecuteLoadMixedBlocksFilterChunk(
         TabletID(),
         "Mixed blocks filter is disabled");
 
+    // We atommically readed blocks from mixed index, so it is safe to update
+    // blocks filter here.
     for (const auto& block: args.Blocks) {
         filter->BlocksAddedToMixedIndex(block.BlockIndex, block.CommitId);
     }
@@ -654,6 +656,8 @@ void TPartitionActor::ExecuteLoadMixedBlocksFilterChunk(
          ++rangeIndex)
     {
         if (!filter->IsCompactionRangeInitialized(rangeIndex)) {
+            // We read all mixed blocks from range, so we can choose zero as
+            // baseline commit.
             filter->InitializeCompactionRange(rangeIndex, 0);
         }
     }
