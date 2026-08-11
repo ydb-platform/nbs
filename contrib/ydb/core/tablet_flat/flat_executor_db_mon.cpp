@@ -223,8 +223,8 @@ public:
                     str << "<tr>";
                     for (ui32 column : columns) {
                         const auto &columnInfo = tableInfo->Columns.find(column)->second;
-                        str << "<th>" 
-                            << column << ":" << NScheme::TypeName(columnInfo.PType, columnInfo.PTypeMod) 
+                        str << "<th>"
+                            << column << ":" << NScheme::TypeName(columnInfo.PType, columnInfo.PTypeMod)
                             << " " << columnInfo.Name
                         << "</th>";
                     }
@@ -238,6 +238,8 @@ public:
                     const ssize_t rowsEnd = rowLimit > Max<ssize_t>() - rowOffset
                         ? Max<ssize_t>()
                         : rowOffset + rowLimit;
+                    ssize_t stringlimit = FromStringWithDefault<ssize_t>(cgi.Get("MaxString"), 1024);
+                    stringlimit = Max<ssize_t>(stringlimit, 1);
                     ssize_t rowCount = RowsScanned;
 
                     auto rememberIteratorKey = [&] {
@@ -345,7 +347,7 @@ public:
                                         case NScheme::NTypeIds::String:
                                         case NScheme::NTypeIds::String4k:
                                         case NScheme::NTypeIds::String2m:
-                                            row << EncodeHtmlPcdata(EscapeC(TStringBuf(static_cast<const char*>(data), Min(size, (ui32)1024))));
+                                            row << EncodeHtmlPcdata(EscapeC(TStringBuf(static_cast<const char*>(data), Min(size, (ui32)stringlimit))));
                                             break;
                                         case NScheme::NTypeIds::ActorId:
                                             row << *(TActorId*)data;
