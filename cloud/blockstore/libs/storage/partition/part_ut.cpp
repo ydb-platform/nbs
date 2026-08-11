@@ -13338,17 +13338,28 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(TBlockRange32::WithLength(4 * rangeSize, 1), 2);
         partition.Flush();
 
-        TVector<TBlockRange32> ranges;
         TVector<std::pair<ui32, char>> writtenBlocks;
         const auto writeClient = runtime->AllocateEdgeActor();
         ui32 flushCount = 0;
+        ui32 loadRequestCount = 0;
         auto observer = runtime->AddObserver<
             TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest>(
             [&](TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest::TPtr&
                     event)
             {
-                const auto range = event->Get()->Range;
-                ranges.push_back(range);
+                ++loadRequestCount;
+
+                // The last request only discovers that all ranges have been
+                // loaded. The ranges themselves are selected by its handler,
+                // not carried by the scheduled event.
+                if (loadRequestCount > 3) {
+                    return;
+                }
+
+                const auto range = TBlockRange32::MakeClosedIntervalWithLimit(
+                    (loadRequestCount - 1) * 2,
+                    loadRequestCount * 2 - 1,
+                    4);
 
                 for (ui32 rangeIndex = range.Start;
                      rangeIndex <= range.End;
@@ -13376,13 +13387,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WaitReady();
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(3, ranges.size());
-        UNIT_ASSERT_VALUES_EQUAL(0, ranges[0].Start);
-        UNIT_ASSERT_VALUES_EQUAL(2, ranges[0].Size());
-        UNIT_ASSERT_VALUES_EQUAL(2, ranges[1].Start);
-        UNIT_ASSERT_VALUES_EQUAL(2, ranges[1].Size());
-        UNIT_ASSERT_VALUES_EQUAL(4, ranges[2].Start);
-        UNIT_ASSERT_VALUES_EQUAL(1, ranges[2].Size());
+        UNIT_ASSERT_VALUES_EQUAL(4, loadRequestCount);
 
         for (size_t i = 0; i < writtenBlocks.size(); ++i) {
             const auto response = runtime->GrabEdgeEventRethrow<

@@ -24,15 +24,13 @@ void InitializeRanges(
 }
 
 void AssertRange(
-    const TMixedBlocksFilterLoadState::TLoadNextRangesResult& result,
+    const std::optional<TBlockRange32>& range,
     ui32 start,
-    ui32 end,
-    TDuration throttling = TDuration::Zero())
+    ui32 end)
 {
-    UNIT_ASSERT(result.CompactionRanges);
-    UNIT_ASSERT_VALUES_EQUAL(start, result.CompactionRanges->Start);
-    UNIT_ASSERT_VALUES_EQUAL(end, result.CompactionRanges->End);
-    UNIT_ASSERT_VALUES_EQUAL(throttling, result.Throttling);
+    UNIT_ASSERT(range);
+    UNIT_ASSERT_VALUES_EQUAL(start, range->Start);
+    UNIT_ASSERT_VALUES_EQUAL(end, range->End);
 }
 
 }   // namespace
@@ -51,19 +49,15 @@ Y_UNIT_TEST_SUITE(TMixedBlocksFilterLoadStateTest)
             3,
             TDuration::MilliSeconds(100));
 
-        const auto now = TInstant::Seconds(1);
-
         UNIT_ASSERT(!state.IsAllRangesLoaded());
-        AssertRange(state.LoadNextRanges(now, TDuration::Zero()), 0, 2);
+        AssertRange(state.LoadNextRanges(), 0, 2);
         UNIT_ASSERT(!state.IsAllRangesLoaded());
-        AssertRange(state.LoadNextRanges(now, TDuration::Zero()), 3, 5);
+        AssertRange(state.LoadNextRanges(), 3, 5);
         UNIT_ASSERT(!state.IsAllRangesLoaded());
-        AssertRange(state.LoadNextRanges(now, TDuration::Zero()), 6, 6);
+        AssertRange(state.LoadNextRanges(), 6, 6);
         UNIT_ASSERT(state.IsAllRangesLoaded());
 
-        const auto result = state.LoadNextRanges(now, TDuration::Zero());
-        UNIT_ASSERT(!result.CompactionRanges);
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), result.Throttling);
+        UNIT_ASSERT(!state.LoadNextRanges());
     }
 
     Y_UNIT_TEST(ShouldSkipInitializedBatches)
@@ -78,31 +72,30 @@ Y_UNIT_TEST_SUITE(TMixedBlocksFilterLoadStateTest)
             3,
             TDuration::MilliSeconds(100));
 
-        const auto now = TInstant::Seconds(1);
-        AssertRange(state.LoadNextRanges(now, TDuration::Zero()), 3, 5);
+        AssertRange(state.LoadNextRanges(), 3, 5);
 
-        const auto result = state.LoadNextRanges(now, TDuration::Zero());
-        UNIT_ASSERT(!result.CompactionRanges);
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), result.Throttling);
+        UNIT_ASSERT(!state.LoadNextRanges());
         UNIT_ASSERT(state.IsAllRangesLoaded());
     }
 
-    Y_UNIT_TEST(ShouldStartCompletedWhenThereAreNoRanges)
+    Y_UNIT_TEST(ShouldSkipRangesInitializedAfterTransactionRegistration)
     {
-        auto filter = MakeFilter(1);
+        constexpr ui64 RangeCount = 3;
+        auto filter = MakeFilter(RangeCount);
         TMixedBlocksFilterLoadState state(
             filter,
-            0,
+            RangeCount,
             1,
             TDuration::MilliSeconds(100));
 
-        UNIT_ASSERT(state.IsAllRangesLoaded());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            state.RegisterTransaction(
+                TInstant::Seconds(1),
+                TDuration::Zero()));
 
-        const auto result = state.LoadNextRanges(
-            TInstant::Seconds(1),
-            TDuration::Seconds(1));
-        UNIT_ASSERT(!result.CompactionRanges);
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), result.Throttling);
+        InitializeRanges(filter, {0});
+        AssertRange(state.LoadNextRanges(), 1, 1);
     }
 
     Y_UNIT_TEST(ShouldThrottleAccordingToCpuTime)
@@ -116,18 +109,22 @@ Y_UNIT_TEST_SUITE(TMixedBlocksFilterLoadStateTest)
             TDuration::MilliSeconds(100));
 
         const auto now = TInstant::Seconds(1);
-        AssertRange(state.LoadNextRanges(now, TDuration::Zero()), 0, 0);
-        AssertRange(
-            state.LoadNextRanges(now, TDuration::MilliSeconds(150)),
-            1,
-            1,
-            TDuration::MilliSeconds(500));
-        AssertRange(
-            state.LoadNextRanges(
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            state.RegisterTransaction(now, TDuration::Zero()));
+        AssertRange(state.LoadNextRanges(), 0, 0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(500),
+            state.RegisterTransaction(now, TDuration::MilliSeconds(150)));
+        AssertRange(state.LoadNextRanges(), 1, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(1500),
+            state.RegisterTransaction(
                 now + TDuration::MilliSeconds(500),
-                TDuration::MilliSeconds(150)),
-            2,
-            2);
+                TDuration::MilliSeconds(150)));
+        AssertRange(state.LoadNextRanges(), 2, 2);
     }
 }
 

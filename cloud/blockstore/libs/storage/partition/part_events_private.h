@@ -815,7 +815,6 @@ struct TEvPartitionPrivate
 
     struct TLoadMixedBlocksFilterChunkRequest
     {
-        TBlockRange32 Range;
     };
 
     //

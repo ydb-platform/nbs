@@ -16,25 +16,33 @@ TMixedBlocksFilterLoadState::TMixedBlocksFilterLoadState(
           allowedCpuTimePerSecond.SecondsFloat(),
           allowedCpuTimePerSecond.SecondsFloat(),
           allowedCpuTimePerSecond.SecondsFloat())
-{}
+{
+    Y_ABORT_UNLESS(rangesCount > 0, "Ranges count must be greater than 0");
+    Y_ABORT_UNLESS(
+        rangesToLoadPerTx > 0,
+        "Ranges to load per tx must be greater than 0");
+    Y_ABORT_UNLESS(
+        allowedCpuTimePerSecond.SecondsFloat() > 0,
+        "Allowed cpu time per second must be greater than 0");
+}
 
 [[nodiscard]] bool TMixedBlocksFilterLoadState::IsAllRangesLoaded() const
 {
     return CompactionRangeToLoadIndex >= RangesCount;
 }
 
-auto TMixedBlocksFilterLoadState::LoadNextRanges(
-    TInstant now,
-    TDuration cpuTimeSpentDuringLastTx) -> TLoadNextRangesResult
+[[nodiscard]] std::optional<TBlockRange32>
+TMixedBlocksFilterLoadState::LoadNextRanges()
 {
-    auto waitTimeRaw =
-        Throttling.Register(now, cpuTimeSpentDuringLastTx.SecondsFloat());
-    TDuration waitTime = TDuration::MicroSeconds(waitTimeRaw * 1e6);
-
     while (!IsAllRangesLoaded()) {
+        const auto endCompactionRange =
+            Max<ui64>() - RangesToLoadPerTx + 1 <= CompactionRangeToLoadIndex
+                ? Max<ui64>()
+                : CompactionRangeToLoadIndex + RangesToLoadPerTx - 1;
+
         auto compactionRanges = TBlockRange32::MakeClosedIntervalWithLimit(
             CompactionRangeToLoadIndex,
-            CompactionRangeToLoadIndex + RangesToLoadPerTx - 1,
+            endCompactionRange,
             RangesCount - 1);
 
         CompactionRangeToLoadIndex =
@@ -57,10 +65,27 @@ auto TMixedBlocksFilterLoadState::LoadNextRanges(
             continue;
         }
 
-        return {.CompactionRanges = compactionRanges, .Throttling = waitTime};
+        return compactionRanges;
     }
 
-    return {.CompactionRanges = std::nullopt, .Throttling = TDuration::Zero()};
+    return std::nullopt;
+}
+
+[[nodiscard]] TDuration TMixedBlocksFilterLoadState::RegisterTransaction(
+    TInstant now,
+    TDuration cpuTimeSpentDuringLastTx)
+{
+    auto postponeTime = TDuration::MicroSeconds(
+        Throttling.CalculatePostponeTime(
+            now,
+            cpuTimeSpentDuringLastTx.SecondsFloat()) *
+        1e6);
+
+    Throttling.Register(
+        now + postponeTime,
+        cpuTimeSpentDuringLastTx.SecondsFloat());
+
+    return postponeTime;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

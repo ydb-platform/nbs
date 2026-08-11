@@ -33,16 +33,10 @@ public:
 
     [[nodiscard]] bool IsAllRangesLoaded() const;
 
-    struct TLoadNextRangesResult
-    {
-        // nullopt means that all compaction ranges are loaded.
-        std::optional<TBlockRange32> CompactionRanges;
+    // nullopt means that all compaction ranges are loaded.
+    [[nodiscard]] std::optional<TBlockRange32> LoadNextRanges();
 
-        // Load transaction should be executed after this duration.
-        TDuration Throttling;
-    };
-
-    [[nodiscard]] TLoadNextRangesResult LoadNextRanges(
+    [[nodiscard]] TDuration RegisterTransaction(
         TInstant now,
         TDuration cpuTimeSpentDuringLastTx);
 };

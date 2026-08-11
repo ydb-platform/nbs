@@ -558,9 +558,30 @@ void TPartitionActor::LoadNextMixedBlocksFilterChunkIfNeeded(
         return;
     }
 
-    auto [nextRange, throttlingTime] = loadState->LoadNextRanges(
-        ctx.Now(),
-        cpuTimeSpentDuringLastTx);
+    auto postponeTime =
+        loadState->RegisterTransaction(ctx.Now(), cpuTimeSpentDuringLastTx);
+
+    auto request = std::make_unique<
+        TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest>();
+
+    ctx.Schedule(postponeTime, request.release());
+}
+
+void TPartitionActor::HandleLoadMixedBlocksFilterChunk(
+    const TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto* loadState = State->AccessMixedBlocksFilterLoadState();
+
+    STORAGE_VERIFY_C(
+        loadState,
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "Mixed blocks filter load state is not initialized");
+
+    auto nextRange = loadState->LoadNextRanges();
 
     if (!nextRange) {
         State->FinishMixedBlocksFilterLoad();
@@ -574,28 +595,16 @@ void TPartitionActor::LoadNextMixedBlocksFilterChunkIfNeeded(
         return;
     }
 
-    auto request = std::make_unique<
-        TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest>(*nextRange);
-
-    ctx.Schedule(throttlingTime, request.release());
-}
-
-void TPartitionActor::HandleLoadMixedBlocksFilterChunk(
-    const TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "%s Loading mixed blocks filter chunk %s",
         LogTitle.GetWithTime().c_str(),
-        msg->Range.Print().c_str());
+        nextRange->Print().c_str());
 
     ExecuteTx<TLoadMixedBlocksFilterChunk>(
         ctx,
-        msg->Range,
+        *nextRange,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
 }
 
