@@ -1088,9 +1088,20 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             b.ValidateCache();
 
             UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
-            UNIT_ASSERT_VALUES_EQUAL(
-                stats.GetUnflushedQueueRequestCount(),
-                b.Metrics.UnflushedQueue.Count->Get());
+
+            if (args.FlushWritesInParallelEnabled) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    stats.GetUnflushedQueueRequestCount(),
+                    b.Metrics.UnflushedQueue.Count->Get());
+            } else {
+                // If parallel writes are disabled, flush may be triggered in
+                // background because of completed flush batches so there can
+                // be less unflushed requests than expected
+                UNIT_ASSERT_LE(
+                    static_cast<ui64>(b.Metrics.UnflushedQueue.Count->Get()),
+                    stats.GetUnflushedQueueRequestCount());
+            }
+
             UNIT_ASSERT_VALUES_EQUAL(
                 stats.GetNodeCount(),
                 b.Metrics.Nodes.Count->Get());
@@ -2350,11 +2361,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 101, 1, "abc");
         b.WriteToCacheSync(1, 102, 10, "123");
 
-        auto releaseFuture = b.Cache.ReleaseHandle(1, 101);
-
         // An attempt to flush via handle=101 should have been made
         UNIT_ASSERT_VALUES_EQUAL(1, writeHandles.size());
         UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[0]);
+
+        auto releaseFuture = b.Cache.ReleaseHandle(1, 101);
+
+        // An attempt to retry flush via handle=101 should have been made
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[1]);
 
         // Confirm that handle 101 is released
         UNIT_ASSERT(releaseFuture.HasValue());
@@ -2362,8 +2378,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // Flush should be retried using handle 102
         b.RunAllScheduledTasks();
-        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
-        UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[1]);
+        UNIT_ASSERT_VALUES_EQUAL(3, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[2]);
     }
 
     Y_UNIT_TEST(ShouldHandleFlushWritesInParallelEnabled)
@@ -2672,6 +2688,75 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "gh++jkl",
             readResponse.GetBuffer().substr(readResponse.GetBufferOffset()));
+    }
+
+    Y_UNIT_TEST(ResumeFlushOnSessionRestore)
+    {
+        TBootstrap b({
+            // Control flush batches
+            .FlushWritesInParallelEnabled = false,
+        });
+
+        TManualProceedHandlers write(b.Session->WriteDataHandler);
+
+        b.WriteToCacheSync(1, 10, "abc");
+        b.WriteToCacheSync(1, 20, "def");
+        b.WriteToCacheSync(1, 30, "ghi");
+        b.WriteToCacheSync(1, 40, "jkl");
+
+        b.RecreateCache();
+
+        write.ProceedAll();
+
+        // 3 requests should be flushed, 1 remaining
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.Flush.CompletedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
+    }
+
+    Y_UNIT_TEST(ResumeFlushOnSessionRestoreForDestroyedHandles)
+    {
+        TBootstrap b({
+            .UseTestTimerAndScheduler = true,
+            // Control flush batches
+            .FlushWritesInParallelEnabled = false,
+        });
+
+        TVector<ui64> requestedHandles;
+
+        b.Session->WriteDataHandler = [&](auto, const auto& request)
+        {
+            requestedHandles.push_back(request->GetHandle());
+            NProto::TWriteDataResponse errorResponse;
+            errorResponse.MutableError()->SetCode(E_FAIL);
+            return MakeFuture(std::move(errorResponse));
+        };
+
+        b.WriteToCacheSync(1, 101, 10, "abc");
+        b.WriteToCacheSync(1, 102, 20, "def");
+        b.WriteToCacheSync(1, 101, 30, "ghi");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, requestedHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, requestedHandles[0]);
+
+        auto releaseHandleFuture = b.Cache.ReleaseHandle(1, 101);
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, requestedHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(101, requestedHandles[1]);
+
+        UNIT_ASSERT(releaseHandleFuture.HasValue());
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(3, requestedHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, requestedHandles[2]);
+
+        b.RecreateCache();
+
+        UNIT_ASSERT_VALUES_EQUAL(4, requestedHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(102, requestedHandles[3]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
     }
 }
 
