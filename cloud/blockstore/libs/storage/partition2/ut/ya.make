@@ -3,6 +3,7 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/partition2)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
+    part2_addblobs_logic_ut.cpp
     part2_cleanup_logic_ut.cpp
     part2_compaction_logic_ut.cpp
     part2_database_ut.cpp
