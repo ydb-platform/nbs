@@ -89,12 +89,12 @@ N - node slots per group, M - page clusters per group. This is the storage group
 layout for the prototype.
 
 ```
-Offset 0: --------------------------------------------- Node Table - 100 bytes per slot, N slots
-Offset 100 * N: --------------------------------------- Name Table - 32 bytes per slot, N slots
-Offset 100 * N + 32 * N: ------------------------------ Handle Table - 16 bytes per slot, 10 * N slots
-Offset 100 * N + 32 * N + 160 * N: -------------------- Page Index - 24 bytes per slot, M slots
-Offset 100 * N + 32 * N + 160 * N + 24 * M ------------ Page Allocator Bitmap - M bits, M / 2^15 pages
-Offset 100 * N + 32 * N + 160 * N + 24 * M + M / 8 ---- Data Pages
+Offset 0: --------------------------------------------- Node Table - 96 bytes per slot, N slots
+Offset 96 * N: ---------------------------------------- Name Table - 32 bytes per slot, N slots
+Offset 96 * N + 32 * N: ------------------------------- Handle Table - 16 bytes per slot, 10 * N slots
+Offset 96 * N + 32 * N + 160 * N: --------------------- Page Index - 24 bytes per slot, M slots
+Offset 96 * N + 32 * N + 160 * N + 24 * M ------------- Page Allocator Bitmap - M bits, M / 2^15 pages
+Offset 96 * N + 32 * N + 160 * N + 24 * M + M / 8 ----- Data Pages
 ```
 
 For N == 100'000 (100k files per storage group), M == 3'000'000 (3m page
@@ -102,8 +102,8 @@ clusters, i.e. 3m x 32KiB = 91.5GiB of space) and a hash table load factor
 of 0.5, the metadata takes:
 
 ```
-(100000 * 100 + 100000 * 32 + 10 * 100000 * 16 + 3000000 * 24 + 3000000 / 8)
-    / 1024 / 1024 / 0.5 = 194MiB
+(100000 * 96 + 100000 * 32 + 10 * 100000 * 16 + 3000000 * 24 + 3000000 / 8)
+    / 1024 / 1024 / 0.5 = 193MiB
 ```
 
 ## Multiple groups
@@ -112,6 +112,7 @@ Each shard works on top of multiple storage groups. The data and metadata
 of one inode are co-located inside a single group. Files that do not fit
 into one group span several; writes to multiple groups are coordinated by the
 shard in the following manner:
+
 0. Choose the page ranges to allocate from other storage groups (in-memory
   operation in the shard)
 1. Write a log-record to the journal of the group holding the inode stating the

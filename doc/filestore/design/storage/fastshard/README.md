@@ -166,6 +166,19 @@ coordinated by the shard.
 * [shard.md](shard.md) - shard data structures and on-disk layout.
 * [silk.md](silk.md) - the async framework.
 
+## Not covered (but can be implemented within the proposed architecture)
+
+* Snapshots - can be implemented via adding an integer snapshot-id counter to
+  the keys in the shard data structures or via copy-on-write whenever an active
+  snapshot exists.
+* Erasure coding - can be implemented either at the journal checkpointing stage
+  or via tiering (eviction of cold data into another distributed storage which
+  supports erasure coding)
+* Encryption - can be implemented at the shard level - we can simply encrypt
+  each page or each page cluster if needed.
+* Compression - there're multiple techniques, no obvious contradictions with the
+  proposed architecture.
+
 ## Literature
 * [original Aurora whitepaper](https://homepages.cwi.nl/~boncz/lsde/papers/aurora.pdf) - describes how you can define the boundary between compute and storage and how you can design LSN advancement and checkpointing
 * [ext4 layout and design](https://metebalci.com/blog/a-minimum-complete-tutorial-of-linux-ext4-file-system/) - a good source of information about the data structures that can be used for filesystem implementation
