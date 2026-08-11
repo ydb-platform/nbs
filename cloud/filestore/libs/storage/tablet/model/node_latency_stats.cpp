@@ -12,8 +12,7 @@ TNodeLatencyStatsTracker::TNodeLatencyStatsTracker(
     TDuration decayHalfLife)
     : MaxEntries(maxEntries)
     , DecayHalfLife(decayHalfLife)
-    , LatencyStats(
-        TNodeLatencyStatsComparator{decayHalfLife})
+    , LatencyStats(TNodeLatencyStatsComparator{decayHalfLife})
 {}
 
 double TNodeLatencyStatsTracker::CalculateLatencyDecay(
@@ -60,15 +59,19 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
     EvictSmallestLatencyEntries();
 }
 
-TVector<TNodeLatencyStats> TNodeLatencyStatsTracker::GetLatencyStats(TInstant now) const
+TVector<TNodeLatencyStats> TNodeLatencyStatsTracker::GetLatencyStats(
+    TInstant now,
+    ui32 n) const
 {
     TVector<TNodeLatencyStats> result;
-    result.reserve(LatencyStats.size());
-    for (auto it = LatencyStats.rbegin(); it != LatencyStats.rend();
-            ++it)
+    result.reserve(Min<size_t>(n, LatencyStats.size()));
+    for (auto it = LatencyStats.rbegin();
+         it != LatencyStats.rend() && result.size() < n;
+         ++it)
     {
         auto stats = *it;
-        stats.AverageLatencyDecayedMs = CalculateLatencyDecay(stats, now, DecayHalfLife);
+        stats.AverageLatencyDecayedMs =
+            CalculateLatencyDecay(stats, now, DecayHalfLife);
         result.push_back(stats);
     };
     return result;

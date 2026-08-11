@@ -78,7 +78,7 @@ public:
         TInstant now,
         TDuration halfLife);
 
-    TVector<TNodeLatencyStats> GetLatencyStats(TInstant now) const;
+    TVector<TNodeLatencyStats> GetLatencyStats(TInstant now, ui32 n) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
