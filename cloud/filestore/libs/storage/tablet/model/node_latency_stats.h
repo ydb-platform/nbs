@@ -8,6 +8,8 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TNodeLatencyStats
 {
     ui64 NodeId = 0;
@@ -29,13 +31,18 @@ class TNodeLatencyStatsTracker
 private:
     struct TNodeLatencyStatsComparator
     {
+        TDuration DecayHalfLife;
+
+        explicit TNodeLatencyStatsComparator(TDuration decayHalfLife)
+            : DecayHalfLife(decayHalfLife)
+        {}
         bool operator()(
             const TNodeLatencyStats& lhs,
             const TNodeLatencyStats& rhs) const
         {
             const auto comparisonTime = Max(lhs.LastAccessed, rhs.LastAccessed);
-            const double lhsScore = CalculateLatencyDecay(lhs, comparisonTime);
-            const double rhsScore = CalculateLatencyDecay(rhs, comparisonTime);
+            const double lhsScore = CalculateLatencyDecay(lhs, comparisonTime, DecayHalfLife);
+            const double rhsScore = CalculateLatencyDecay(rhs, comparisonTime, DecayHalfLife);
 
             // AverageLatencyDecayedMs ASC, NodeId ASC
             return std::tie(lhsScore, lhs.NodeId) <
@@ -44,22 +51,23 @@ private:
     };
 
     size_t MaxEntries = 0;
+    TDuration DecayHalfLife;
     using TLatencyRanking = TSet<TNodeLatencyStats, TNodeLatencyStatsComparator>;
     THashMap<TLatencyKey, TLatencyRanking::iterator> Key2Stats;
-    TLatencyRanking NodeLatencyStats;
+    TLatencyRanking LatencyStats;
 
     void EvictSmallestLatencyEntries()
     {
-        while (NodeLatencyStats.size() > MaxEntries) {
-            auto it = NodeLatencyStats.begin();
+        while (LatencyStats.size() > MaxEntries) {
+            auto it = LatencyStats.begin();
             TLatencyKey key = {it->NodeId, it->RequestType};
             Key2Stats.erase(key);
-            NodeLatencyStats.erase(it);
+            LatencyStats.erase(it);
         }
     }
 
 public:
-    void Initialize(size_t maxEntries);
+    TNodeLatencyStatsTracker(size_t maxEntries, TDuration decayHalfLife);
     void UpdateLatencyStats(
         ui64 nodeId,
         EFileStoreRequest requestType,
@@ -67,21 +75,10 @@ public:
         TDuration latency);
     static double CalculateLatencyDecay(
         const TNodeLatencyStats& stats,
-        TInstant now);
+        TInstant now,
+        TDuration halfLife);
 
-    TVector<TNodeLatencyStats> GetLatencyStats(TInstant now) const
-    {
-        TVector<TNodeLatencyStats> result;
-        result.reserve(NodeLatencyStats.size());
-        for (auto it = NodeLatencyStats.rbegin(); it != NodeLatencyStats.rend();
-             ++it)
-        {
-            auto stats = *it;
-            stats.AverageLatencyDecayedMs = CalculateLatencyDecay(stats, now);
-            result.push_back(stats);
-        };
-        return result;
-    }
+    TVector<TNodeLatencyStats> GetLatencyStats(TInstant now) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
