@@ -47,6 +47,7 @@ type ClusterSpec struct {
 	ZoneCfgOverride                 map[string]CfgFileOverride `yaml:"zoneCfgOverride"`
 	ZoneCfgOverrideSeed             map[string]CfgFileOverride `yaml:"zoneCfgOverrideSeed"`
 	AdditionalFiles                 []string                   `yaml:"additionalFiles"`
+	AdditionalFileMappings          map[string]string          `yaml:"additionalFileMappings"`
 	AdditionalFilesPath             string                     `yaml:"additionalFilesPath"`
 	AdditionalFilesPathTargetPrefix string                     `yaml:"additionalFilesPathTargetPrefix"`
 	TargetForSeed                   string                     `yaml:"targetForSeed"`
@@ -307,7 +308,7 @@ func (g *ConfigGenerator) dumpConfigs(
 
 	clusterConfig := g.spec.ServiceSpec.Clusters[cluster]
 
-	for _, fileName := range clusterConfig.AdditionalFiles {
+	appendAdditionalFile := func(fileName string, resultFileName string) error {
 		var filePath string
 		if strings.HasPrefix(fileName, "/") {
 			filePath = path.Join(g.spec.ArcadiaPath, fileName)
@@ -338,7 +339,25 @@ func (g *ConfigGenerator) dumpConfigs(
 		}
 		resultConfigs = append(
 			resultConfigs,
-			ResultConfig{filepath.Base(fileName), string(fileData)})
+			ResultConfig{resultFileName, string(fileData)})
+		return nil
+	}
+
+	for _, fileName := range clusterConfig.AdditionalFiles {
+		if err := appendAdditionalFile(fileName, filepath.Base(fileName)); err != nil {
+			return err
+		}
+	}
+
+	mappedFiles := maps.Keys(clusterConfig.AdditionalFileMappings)
+	sort.Sort(sort.Reverse(sort.StringSlice(mappedFiles)))
+	for _, fileName := range mappedFiles {
+		if err := appendAdditionalFile(
+			fileName,
+			clusterConfig.AdditionalFileMappings[fileName],
+		); err != nil {
+			return err
+		}
 	}
 
 	if g.spec.ServiceSpec.Clusters[cluster].Configs.Generate && !seed {

@@ -26,6 +26,13 @@ func TestGenerator(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
+	extraConfigsDir := filepath.Join(tmpDir, "extra_configs")
+	require.NoError(t, os.MkdirAll(extraConfigsDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(extraConfigsDir, "nbs-names.txt"),
+		[]byte("canonical data\n"),
+		0644))
+
 	cmd := exec.Command(binary, "--arcadia-root-path", tmpDir, "--service-path", testServicePath)
 	cmd.Stderr = os.Stderr
 	_, err = cmd.Output()
