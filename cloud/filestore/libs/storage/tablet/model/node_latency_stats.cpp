@@ -22,7 +22,7 @@ double TNodeLatencyStatsTracker::CalculateLatencyDecay(
 {
     const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
                                                    : TDuration::Zero();
-    return stats.AverageLatencyDecayedMs *
+    return stats.AverageLatencyDecayedUs *
            exp(-log(2) * elapsed.MilliSeconds() / halfLife.MilliSeconds());
 }
 
@@ -43,13 +43,13 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
         stats.RequestType = requestType;
     }
 
-    stats.AverageLatencyDecayedMs =
+    stats.AverageLatencyDecayedUs =
         CalculateLatencyDecay(stats, now, DecayHalfLife);
 
     ++stats.RequestCount;
-    stats.TotalLatencyMs += latency.MilliSeconds();
-    stats.AverageLatencyDecayedMs =
-        static_cast<double>(stats.TotalLatencyMs) / stats.RequestCount;
+    stats.TotalLatencyUs += latency.MicroSeconds();
+    stats.AverageLatencyDecayedUs =
+        static_cast<double>(stats.TotalLatencyUs) / stats.RequestCount;
     stats.LastAccessed = now;
 
     auto [newLatencyIterator, inserted] = LatencyStats.insert(stats);
@@ -74,7 +74,7 @@ TVector<TNodeLatencyStats> TNodeLatencyStatsTracker::GetLatencyStats(
          ++it)
     {
         auto stats = *it;
-        stats.AverageLatencyDecayedMs =
+        stats.AverageLatencyDecayedUs =
             CalculateLatencyDecay(stats, now, DecayHalfLife);
         result.push_back(stats);
     };

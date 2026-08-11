@@ -15,15 +15,9 @@ struct TNodeLatencyStats
     ui64 NodeId = 0;
     EFileStoreRequest RequestType = EFileStoreRequest::MAX;
     ui64 RequestCount = 0;
-    ui64 TotalLatencyMs = 0;
-    double AverageLatencyDecayedMs = 0.0;
+    ui64 TotalLatencyUs = 0;
+    double AverageLatencyDecayedUs = 0.0;
     TInstant LastAccessed;
-};
-
-struct TLatencyKey
-{
-    ui64 NodeId = 0;
-    EFileStoreRequest RequestType = EFileStoreRequest::MAX;
 };
 
 class TNodeLatencyStatsTracker
@@ -44,14 +38,15 @@ private:
             const double lhsScore = CalculateLatencyDecay(lhs, comparisonTime, DecayHalfLife);
             const double rhsScore = CalculateLatencyDecay(rhs, comparisonTime, DecayHalfLife);
 
-            // AverageLatencyDecayedMs ASC, NodeId ASC
-            return std::tie(lhsScore, lhs.NodeId) <
-                   std::tie(rhsScore, rhs.NodeId);
+            // AverageLatencyDecayedMs ASC, NodeId ASC, RequestType ASC
+            return std::tie(lhsScore, lhs.NodeId, lhs.RequestType) <
+                   std::tie(rhsScore, rhs.NodeId, rhs.RequestType);
         }
     };
 
     size_t MaxEntries = 0;
     TDuration DecayHalfLife;
+    using TLatencyKey = std::pair<ui64, EFileStoreRequest>;
     using TLatencyRanking = TSet<TNodeLatencyStats, TNodeLatencyStatsComparator>;
     THashMap<TLatencyKey, TLatencyRanking::iterator> Key2Stats;
     TLatencyRanking LatencyStats;

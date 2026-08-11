@@ -18,12 +18,12 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
             1,
             EFileStoreRequest::ReadData,
             start,
-            TDuration::MilliSeconds(50));
+            TDuration::MicroSeconds(50));
         tracker.UpdateLatencyStats(
             1,
             EFileStoreRequest::WriteData,
             start,
-            TDuration::MilliSeconds(60));
+            TDuration::MicroSeconds(60));
 
         const auto stats = tracker.GetLatencyStats(start, 10);
 
@@ -39,8 +39,8 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
             GetFileStoreRequestName(EFileStoreRequest::ReadData),
             GetFileStoreRequestName(stats[1].RequestType));
         UNIT_ASSERT_VALUES_EQUAL(1, stats[1].RequestCount);
-        UNIT_ASSERT_DOUBLES_EQUAL(60.0, stats[0].AverageLatencyDecayedMs, 1e-9);
-        UNIT_ASSERT_DOUBLES_EQUAL(50.0, stats[1].AverageLatencyDecayedMs, 1e-9);
+        UNIT_ASSERT_DOUBLES_EQUAL(60.0, stats[0].AverageLatencyDecayedUs, 1e-9);
+        UNIT_ASSERT_DOUBLES_EQUAL(50.0, stats[1].AverageLatencyDecayedUs, 1e-9);
         UNIT_ASSERT_VALUES_EQUAL(start, stats[0].LastAccessed);
         UNIT_ASSERT_VALUES_EQUAL(start, stats[1].LastAccessed);
     }
@@ -55,12 +55,12 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
             1,
             EFileStoreRequest::ReadData,
             start,
-            TDuration::MilliSeconds(50));
+            TDuration::MicroSeconds(50));
         tracker.UpdateLatencyStats(
             1,
             EFileStoreRequest::ReadData,
             start,
-            TDuration::MilliSeconds(150));
+            TDuration::MicroSeconds(150));
 
         auto stats = tracker.GetLatencyStats(start, 2);
 
@@ -68,7 +68,7 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(2, stats[0].RequestCount);
         UNIT_ASSERT_DOUBLES_EQUAL(
             100.0,
-            stats[0].AverageLatencyDecayedMs,
+            stats[0].AverageLatencyDecayedUs,
             1e-9);
 
         const auto decayed = TNodeLatencyStatsTracker::CalculateLatencyDecay(
@@ -89,12 +89,12 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
             1,
             EFileStoreRequest::ReadData,
             old,
-            TDuration::MilliSeconds(50));
+            TDuration::MicroSeconds(50));
         tracker.UpdateLatencyStats(
             2,
             EFileStoreRequest::ReadData,
             start,
-            TDuration::MilliSeconds(50));
+            TDuration::MicroSeconds(50));
 
         const auto stats = tracker.GetLatencyStats(start, 2);
 
@@ -114,12 +114,12 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
             1,
             EFileStoreRequest::ReadData,
             start,
-            TDuration::MilliSeconds(50));
+            TDuration::MicroSeconds(50));
         tracker.UpdateLatencyStats(
             2,
             EFileStoreRequest::ReadData,
             start,
-            TDuration::MilliSeconds(50));
+            TDuration::MicroSeconds(50));
 
         const auto stats = tracker.GetLatencyStats(start, 2);
 
@@ -139,27 +139,27 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
             1,
             EFileStoreRequest::ReadData,
             start - TDuration::Minutes(10),
-            TDuration::MilliSeconds(100));
+            TDuration::MicroSeconds(100));
         tracker.UpdateLatencyStats(
             2,
             EFileStoreRequest::WriteData,
             start,
-            TDuration::MilliSeconds(50));
+            TDuration::MicroSeconds(50));
         tracker.UpdateLatencyStats(
             2,
             EFileStoreRequest::WriteData,
             start,
-            TDuration::MilliSeconds(150));
+            TDuration::MicroSeconds(150));
         tracker.UpdateLatencyStats(
             3,
             EFileStoreRequest::AddData,
             start,
-            TDuration::MilliSeconds(200));
+            TDuration::MicroSeconds(200));
         tracker.UpdateLatencyStats(
             4,
             EFileStoreRequest::GetNodeAttr,
             start,
-            TDuration::MilliSeconds(300));
+            TDuration::MicroSeconds(300));
 
         const auto stats = tracker.GetLatencyStats(start, 2);
 
