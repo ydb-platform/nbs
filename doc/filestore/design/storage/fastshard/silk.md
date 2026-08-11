@@ -36,5 +36,3 @@ system threads) interact with the fiber world through silk's proxy-fiber
 support.
 
 ![fastshard_silk](../../../excalidraw/fastshard_silk.svg)
-
-Diagram source: [fastshard_silk.excalidraw](../../../excalidraw/fastshard_silk.excalidraw).
