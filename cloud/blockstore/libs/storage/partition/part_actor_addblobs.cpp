@@ -83,7 +83,7 @@ public:
             TString diskId,
             ui64 deletionCommitId,
             ui32 maxBlocksInBlob,
-            const bool useFlushCommitIdAsTrimFreshLogToCommitId,
+            bool useFlushCommitIdAsTrimFreshLogToCommitId,
             TChildLogTitle logTitle)
         : State(state)
         , Args(args)
@@ -170,6 +170,12 @@ public:
         if (UseFlushCommitIdAsTrimFreshLogToCommitId &&
             Args.Mode == ADD_FLUSH_RESULT)
         {
+            // Persist the flush commit id to avoid reloading and flushing the
+            // same fresh blobs again after a restart (see
+            // ShouldNotReloadFlushedFreshBlobsAfterRestartBeforeTrim). Trim
+            // barriers are released later, after this transaction commits:
+            // trimming before AddBlobs commits could cause data loss if the
+            // transaction fails.
             const ui64 trimFreshLogToCommitId =
                 Max(State.GetTrimFreshLogToCommitId(), Args.CommitId);
             State.AccessMeta().SetTrimFreshLogToCommitId(
