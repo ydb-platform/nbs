@@ -1905,6 +1905,130 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingForRestoredDirectoryContent)
+    {
+        const TString sessionId = CreateGuidAsString();
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        auto createSessionHandler = [&](auto, auto)
+        {
+            NProto::TVfsSessionState state;
+            state.SetProtoMajor(7);
+            state.SetProtoMinor(33);
+            state.SetBufferSize(256 * 1024);
+
+            NProto::TCreateSessionResponse result;
+            result.MutableSession()->SetSessionId(sessionId);
+            UNIT_ASSERT(state.SerializeToString(
+                result.MutableSession()->MutableSessionState()));
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(features);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
+            return MakeFuture(result);
+        };
+
+        std::atomic<ui32> numCalls = 0;
+        auto listNodesHandler = [&](auto, auto)
+        {
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+            for (ui32 i = 1; i <= 10; ++i) {
+                result.AddNames()->assign("file_" + ToString(i) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(100 + i);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            return MakeFuture(result);
+        };
+
+        const ui64 nodeId = 123;
+        ui64 handleId = 0;
+
+        TFsPath tmpPathForCache(
+            TFsPath(GetSystemTempDir()) / "directory_handles_storage.restore");
+        TString pathToCache;
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            pathToCache = TFsPath(bootstrap.DirectoryHandleStoragePath) /
+                          FileSystemId / sessionId /
+                          "directory_handles_storage";
+
+            auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(handle.Wait(WaitTimeout));
+            handleId = handle.GetValue();
+
+            auto read =
+                bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_GT(read.GetValue(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
+
+            TFsPath(pathToCache).CopyTo(tmpPathForCache.GetPath(), true);
+        }
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            tmpPathForCache.CopyTo(pathToCache, true);
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            //
+            // The guest doesn't reinitialize the connection after a vhost
+            // restart, so the restored directory content is served without
+            // FUSE_INIT.
+            //
+
+            bootstrap.Start(false /* sendInitRequest */);
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            auto rq = std::make_shared<TReadDirRequest>(
+                nodeId,
+                handleId,
+                dotSize + dotDotSize);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(rf.GetValue(WaitTimeout));
+
+            // Restored content should be served from the handle cache
+            UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
+
+            auto buf = TStringBuf(
+                reinterpret_cast<const char*>(rq->Out->Data()),
+                rq->Out->Header.len - sizeof(rq->Out->Header));
+            UNIT_ASSERT_LE(sizeof(fuse_direntplus), buf.size());
+            const auto* de =
+                reinterpret_cast<const fuse_direntplus*>(buf.data());
+
+            //
+            // Restored content was persisted before the restart and the cache
+            // versions are lost, so neither entries nor attrs can be trusted
+            // to be up-to-date.
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(101, de->entry_out.nodeid);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid_nsec);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleForgetRequestsForUnknownNodes)
     {
         TBootstrap bootstrap;
