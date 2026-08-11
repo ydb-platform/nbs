@@ -12,6 +12,7 @@
 #include <util/folder/tempdir.h>
 #include <util/generic/algorithm.h>
 #include <util/string/builder.h>
+#include <util/system/fstat.h>
 
 namespace NCloud::NFileStore {
 
@@ -475,12 +476,17 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         auto pg = Counters->GetSubgroup("counters", "profile_log");
         auto requests = pg->FindCounter("Count");
         auto bytes = pg->FindCounter("RequestBytes");
+        auto compressedFrameBytes = pg->FindCounter("CompressedFrameBytes");
         auto flushes = pg->FindCounter("FlushCount");
         auto discards = pg->FindCounter("DiscardCount");
         UNIT_ASSERT(requests);
         UNIT_ASSERT_VALUES_EQUAL(7, requests->Val());
         UNIT_ASSERT(bytes);
         UNIT_ASSERT_VALUES_EQUAL(177, bytes->Val());
+        UNIT_ASSERT(compressedFrameBytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetFileLength(ProfilePath.c_str()),
+            compressedFrameBytes->Val());
         UNIT_ASSERT(flushes);
         UNIT_ASSERT_VALUES_EQUAL(3, flushes->Val());
         UNIT_ASSERT(discards);
@@ -562,6 +568,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         auto pg = env.Counters->GetSubgroup("counters", "profile_log");
         auto requests = pg->FindCounter("Count");
         auto bytes = pg->FindCounter("RequestBytes");
+        auto compressedFrameBytes = pg->FindCounter("CompressedFrameBytes");
         auto flushes = pg->FindCounter("FlushCount");
         auto discards = pg->FindCounter("DiscardCount");
         UNIT_ASSERT(requests);
@@ -570,6 +577,10 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
             requests->Val());
         UNIT_ASSERT(bytes);
         UNIT_ASSERT_VALUES_EQUAL(578, bytes->Val());
+        UNIT_ASSERT(compressedFrameBytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetFileLength(env.ProfilePath.c_str()),
+            compressedFrameBytes->Val());
         UNIT_ASSERT(flushes);
         UNIT_ASSERT_VALUES_EQUAL(1, flushes->Val());
         UNIT_ASSERT(discards);
