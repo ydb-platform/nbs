@@ -139,7 +139,21 @@ def prepare_logging():
 def main():
     prepare_logging()
 
-    if sys.argv[1] == 'run':
+    argv = sys.argv[1:]
+    subcmd_idx = None
+    for i, cmd in enumerate(argv):
+        if cmd in ('run', 'scp', 'list'):
+            subcmd_idx = i
+            break
+
+    if subcmd_idx is None:
+        logging.error("No command provided. Expected one of: run, scp, list")
+        return 1
+
+    subcmd = argv[subcmd_idx]
+    subcmd_args = argv[subcmd_idx + 1:]
+
+    if subcmd == 'run':
         parser = argparse.ArgumentParser()
         parser.add_argument(
             "--format",
@@ -155,16 +169,24 @@ def main():
             "target",
             type=str)
 
-        args = parser.parse_args(sys.argv[2:])
+        args = parser.parse_args(subcmd_args)
 
         return run_mock(args)
 
-    if sys.argv[1] == 'scp':
-        return scp_mock(sys.argv[2], sys.argv[3])
+    if subcmd == 'scp':
+        if len(subcmd_args) < 2:
+            logging.error("scp requires SRC and DST arguments")
+            return 1
+        return scp_mock(subcmd_args[0], subcmd_args[1])
 
-    if sys.argv[1] == 'list':
-        return list_mock(sys.argv[2])
+    if subcmd == 'list':
+        if not subcmd_args:
+            logging.error("list requires arguments")
+            return 1
+        target = subcmd_args[-1]
+        return list_mock(target)
 
+    logging.error("Unknown subcommand: '%s'", subcmd)
     return 1
 
 
