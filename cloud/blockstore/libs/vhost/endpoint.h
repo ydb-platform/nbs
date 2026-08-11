@@ -16,6 +16,7 @@
 
 #include <util/generic/intrlist.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 #include <util/system/spinlock.h>
 
 #include <atomic>
@@ -47,8 +48,12 @@ using TRequestPtr = TIntrusivePtr<TRequest>;
 ////////////////////////////////////////////////////////////////////////////////
 
 // A single vhost block device exposed to the guest. Translates the vhost
-// requests dispatched to it by its executor into the IDeviceHandler API and
+// requests dispatched to it by its executors into the IDeviceHandler API and
 // keeps track of the requests in flight.
+//
+// The endpoint exposes VhostQueuesCount virtqueues to the guest. These are
+// spread over the executors assigned to the endpoint, so requests of a single
+// endpoint may be processed by several threads simultaneously.
 class TEndpoint final
     : public IRequestProcessor
     , public std::enable_shared_from_this<TEndpoint>
@@ -59,7 +64,7 @@ private:
     const TString SocketPath;
     const TStorageOptions Options;
     const ui32 SocketAccessMode;
-    TExecutor* const Executor;
+    const TVector<TExecutor*> Executors;
     IVhostDevicePtr VhostDevice;
 
     TIntrusiveList<TRequest> RequestsInFlight;
@@ -74,16 +79,13 @@ public:
         TString socketPath,
         TStorageOptions options,
         ui32 socketAccessMode,
-        TExecutor* executor);
+        TVector<TExecutor*> executors);
+
+    ~TEndpoint() override;
 
     void* GetCookie()
     {
         return static_cast<IRequestProcessor*>(this);
-    }
-
-    TExecutor* GetExecutor() const
-    {
-        return Executor;
     }
 
     void SetVhostDevice(IVhostDevicePtr vhostDevice);
@@ -93,11 +95,6 @@ public:
     NThreading::TFuture<NProto::TError> Stop(bool deleteSocket);
 
     void Update(ui64 blocksCount);
-
-    ui32 GetVhostQueuesCount() const
-    {
-        return Options.VhostQueuesCount;
-    }
 
     size_t CollectRequests(const TIncompleteRequestsCollector& collector);
 

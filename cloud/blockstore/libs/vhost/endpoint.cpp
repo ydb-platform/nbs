@@ -73,21 +73,42 @@ struct TZeroBlocksMethod
 ////////////////////////////////////////////////////////////////////////////////
 
 TEndpoint::TEndpoint(
-    TAppContext& appCtx,
-    IDeviceHandlerPtr deviceHandler,
-    TString socketPath,
-    TStorageOptions options,
-    ui32 socketAccessMode,
-    TExecutor* executor)
+        TAppContext& appCtx,
+        IDeviceHandlerPtr deviceHandler,
+        TString socketPath,
+        TStorageOptions options,
+        ui32 socketAccessMode,
+        TVector<TExecutor*> executors)
     : AppCtx(appCtx)
     , DeviceHandler(std::move(deviceHandler))
     , SocketPath(std::move(socketPath))
     , Options(std::move(options))
     , SocketAccessMode(socketAccessMode)
-    , Executor(executor)
+    , Executors(std::move(executors))
 {
     Y_ABORT_UNLESS(DeviceHandler);
-    Y_ABORT_UNLESS(Executor);
+    Y_ABORT_UNLESS(!Executors.empty());
+    Y_ABORT_UNLESS(Options.VhostQueuesCount > 0);
+
+    const ui32 executorsCount = Executors.size();
+    Y_ABORT_UNLESS(executorsCount <= Options.VhostQueuesCount);
+
+    // Both counts are normally powers of two. Round up just in case.
+    const ui32 queuesPerExecutor = std::ceil(
+        static_cast<double>(Options.VhostQueuesCount) / executorsCount);
+    for (auto* executor: Executors) {
+        executor->OnVhostQueuesAssigned(queuesPerExecutor);
+    }
+}
+
+TEndpoint::~TEndpoint()
+{
+    // Both counts are normally powers of two. Round up just in case.
+    const ui32 queuesPerExecutor = std::ceil(
+        static_cast<double>(Options.VhostQueuesCount) / Executors.size());
+    for (auto* executor: Executors) {
+        executor->OnVhostQueuesReleased(queuesPerExecutor);
+    }
 }
 
 void TEndpoint::SetVhostDevice(IVhostDevicePtr vhostDevice)
