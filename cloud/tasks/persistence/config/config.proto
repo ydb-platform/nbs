@@ -25,4 +25,10 @@ message S3Config {
     required string CredentialsFilePath = 3;
     optional string CallTimeout = 4 [default = "60s"];
     optional uint64 MaxRetriableErrorCount = 5 [default = 3];
+    optional S3ControlPlaneConfig ControlPlaneConfig = 6;
+}
+
+message S3ControlPlaneConfig {
+    required string Endpoint = 1;
+    optional string CallTimeout = 2 [default = "60s"];
 }
