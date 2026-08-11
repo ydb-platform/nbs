@@ -13,6 +13,7 @@ import (
 	internal_auth "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
@@ -187,6 +188,24 @@ func run(
 		return err
 	}
 
+	nfsFactoryOptions := nfs.FactoryOptions{}
+	nfsConfig := config.GetNfsConfig()
+	if nfsConfig != nil &&
+		!nfsConfig.GetInsecure() &&
+		nfsConfig.GetRootCertsFile() != "" {
+
+		tlsProvider, err := common.NewGRPCClientTLSProvider(
+			common.GRPCClientTLSProviderConfig{
+				RootCertsFile: nfsConfig.GetRootCertsFile(),
+			},
+			mon.NewRegistry("nfs_tls"),
+		)
+		if err != nil {
+			return err
+		}
+		nfsFactoryOptions.TLSProvider = tlsProvider
+	}
+
 	var s3 *persistence.S3Client
 	var s3Bucket string
 
@@ -328,6 +347,7 @@ func run(
 				creds,
 				nfsClientMetricsRegistry,
 				nfsSessionMetricsRegistry,
+				nfsFactoryOptions,
 			)
 
 			filesystemDB, err := persistence.NewYDBClient(
@@ -372,6 +392,7 @@ func run(
 			taskRegistry,
 			taskScheduler,
 			nbsFactory,
+			nfsFactoryOptions,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize GRPC services: %v", err)

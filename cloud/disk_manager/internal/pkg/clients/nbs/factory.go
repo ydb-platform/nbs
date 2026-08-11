@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -23,6 +24,7 @@ import (
 type factory struct {
 	config                 *nbs_config.ClientConfig
 	credentials            auth.Credentials
+	clientMetricsRegistry  metrics.Registry
 	sessionMetricsRegistry metrics.Registry
 	metrics                client_metrics.Metrics
 	clients                map[string]client
@@ -116,9 +118,23 @@ func (f *factory) initClients(
 		return err
 	}
 
+	var tlsProvider *common.GRPCClientTLSProvider
+	if !f.config.GetInsecure() && f.config.GetRootCertsFile() != "" {
+		tlsProvider, err = common.NewGRPCClientTLSProvider(
+			common.GRPCClientTLSProviderConfig{
+				RootCertsFile: f.config.GetRootCertsFile(),
+			},
+			f.clientMetricsRegistry,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	for zoneID, zone := range f.config.GetZones() {
 		clientCreds := &nbs_client.ClientCredentials{
 			RootCertsFile: f.config.GetRootCertsFile(),
+			TLSProvider:   tlsProvider,
 			IAMClient:     f.credentials,
 		}
 
@@ -303,6 +319,7 @@ func newFactoryWithCreds(
 	f := &factory{
 		config:                 config,
 		credentials:            creds,
+		clientMetricsRegistry:  clientMetricsRegistry,
 		sessionMetricsRegistry: sessionMetricsRegistry,
 		metrics:                client_metrics.NewClientMetrics(clientMetricsRegistry),
 	}

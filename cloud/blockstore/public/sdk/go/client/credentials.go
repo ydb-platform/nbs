@@ -15,6 +15,8 @@ import (
 	"google.golang.org/grpc/credentials/oauth"
 	grpc_metadata "google.golang.org/grpc/metadata"
 	grpc_status "google.golang.org/grpc/status"
+
+	storage_grpc "github.com/ydb-platform/nbs/cloud/storage/core/go/grpc"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,43 +28,54 @@ type ClientCredentials struct {
 	RootCertsFile      string
 	CertFile           string
 	CertPrivateKeyFile string
+	TLSProvider        TLSConfigProvider
 	AuthToken          string
 	IAMClient          TokenProvider
 }
+
+type TLSConfigProvider = storage_grpc.TLSConfigProvider
 
 type TokenProvider interface {
 	Token(ctx context.Context) (string, error)
 }
 
 func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, error) {
-	cfg := tls.Config{}
+	var transportCredentials credentials.TransportCredentials
+	if creds.TLSProvider != nil {
+		transportCredentials = storage_grpc.NewGRPCClientTransportCredentials(
+			creds.TLSProvider,
+		)
+	} else {
+		cfg := &tls.Config{}
+		if creds.CertFile != "" {
+			cert, err := tls.LoadX509KeyPair(creds.CertFile, creds.CertPrivateKeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load client certificate/key: %w", err)
+			}
 
-	if creds.CertFile != "" {
-		cert, err := tls.LoadX509KeyPair(creds.CertFile, creds.CertPrivateKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load client certificate/key: %w", err)
+			cfg.Certificates = []tls.Certificate{cert}
 		}
 
-		cfg.Certificates = []tls.Certificate{cert}
-	}
+		if creds.RootCertsFile != "" {
+			pem, err := os.ReadFile(creds.RootCertsFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read root cert file: %w", err)
+			}
 
-	if creds.RootCertsFile != "" {
-		pem, err := os.ReadFile(creds.RootCertsFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read root cert file: %w", err)
+			pool := x509.NewCertPool()
+			ok := pool.AppendCertsFromPEM(pem)
+			if !ok {
+				return nil, errors.New("failed to parse PEM")
+			}
+
+			cfg.RootCAs = pool
 		}
 
-		pool := x509.NewCertPool()
-		ok := pool.AppendCertsFromPEM(pem)
-		if !ok {
-			return nil, errors.New("failed to parse PEM")
-		}
-
-		cfg.RootCAs = pool
+		transportCredentials = credentials.NewTLS(cfg)
 	}
 
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(credentials.NewTLS(&cfg)),
+		grpc.WithTransportCredentials(transportCredentials),
 	}
 
 	if creds.AuthToken != "" {
