@@ -247,6 +247,12 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             }
         }
 
+        if (!BehaveAsShard(args.Request.GetHeaders())) {
+            // args.ParentNode is only a real parent when behaveAsShard is
+            // false.
+            args.QuotaId = args.ParentNode->Attrs.GetQuotaId();
+        }
+
         // check whether child node exists
         TMaybe<INodeIndexTabletDatabase::TNodeRef> ref;
         if (!ReadNodeRef(*db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
@@ -378,6 +384,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         if (args.ShardId.empty()) {
             NProto::TNode attrs =
                 CreateRegularAttrs(args.Mode, args.Uid, args.Gid);
+            attrs.SetQuotaId(args.QuotaId);
             args.TargetNodeId = CreateNode(
                 *db,
                 args.WriteCommitId,
@@ -496,6 +503,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->MutableFile()->SetMode(args.Mode);
         shardRequest->SetUid(args.Uid);
         shardRequest->SetGid(args.Gid);
+        shardRequest->SetQuotaId(args.QuotaId);
         shardRequest->SetFileSystemId(args.ShardId);
         shardRequest->SetNodeId(RootNodeId);
         shardRequest->SetName(args.ShardNodeName);

@@ -207,6 +207,12 @@ message TCreateNodeRequest
     // on retry.
     // TODO(#2667): remove once hardlinks are created on the tablet side
     TNodeAttr ShardNodeAttr = 19;
+
+    // Id of the quota this node's parent is attached to (or inherited
+    // itself), 0 if none. Resolved by whichever tablet owns the real
+    // parent and carried along for the cross-shard hop, since the target
+    // shard doesn't have the real parent loaded locally.
+    uint32 QuotaId = 20;
 }
 
 message TCreateNodeResponse

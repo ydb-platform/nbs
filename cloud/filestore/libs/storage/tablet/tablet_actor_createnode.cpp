@@ -87,6 +87,8 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
             request.GetGid(),
             bdev.GetDevice());
     }
+
+    attrs.SetQuotaId(request.GetQuotaId());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -646,6 +648,12 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
                 args.Request.MutableDirectory()->SetMode(args.Attrs.GetMode());
             }
         }
+    }
+
+    if (!behaveAsShard) {
+        // args.ParentNode is only a real parent when behaveAsShard is false.
+        args.Attrs.SetQuotaId(args.ParentNode->Attrs.GetQuotaId());
+        args.Request.SetQuotaId(args.ParentNode->Attrs.GetQuotaId());
     }
 
     // TODO: AccessCheck
