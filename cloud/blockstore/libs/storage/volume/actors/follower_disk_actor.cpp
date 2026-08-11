@@ -92,6 +92,8 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
         LogTitle.GetWithTime().c_str(),
         ToString(FollowerDiskInfo.State).Quote().c_str());
 
+    PoisonPillHelper.TakeOwnership(ctx, LeaderPartitionActorId);
+
     if (!ApplyLinkState(ctx)) {
         return;
     }
@@ -109,7 +111,7 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
             .MigrationSrcActorId = LeaderPartitionActorId,
             .SrcActorId = LeaderPartitionActorId,
             .DstActorId = FollowerPartitionActorId,
-            .TakeOwnershipOverSrcActor = true,
+            .TakeOwnershipOverSrcActor = false, // already taken in the line 95
             .TakeOwnershipOverDstActor = true,
             .SendWritesToSrc = true,
             .TimeoutCalculator = std::make_unique<TMigrationTimeoutCalculator>(

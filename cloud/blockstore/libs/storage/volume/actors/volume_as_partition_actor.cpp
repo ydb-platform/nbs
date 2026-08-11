@@ -67,8 +67,8 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
     const ui64 requestId = RequestsInProgress.AddWriteRequest(
         BuildRequestBlockRange(*msg, OriginalBlockSize),
         TRequestCtx{
-            .OriginalSender = ev->Sender,
-            .OriginalCookie = ev->Cookie,
+            .Sender = ev->Sender,
+            .Cookie = ev->Cookie,
             .RequestType = requestType});
 
     NActors::TActorId nondeliveryActor = SelfId();
@@ -91,18 +91,16 @@ void TVolumeAsPartitionActor::ForwardResponse(
 
     if (auto requestCtx = RequestsInProgress.ExtractRequest(ev->Cookie)) {
         if (requestCtx->Value.RequestType == ERequestType::WriteBlocksLocal) {
-            ctx.Send(
-                requestCtx->Value.OriginalSender,
-                new TEvService::TEvWriteBlocksLocalResponse(
-                    msg->Record.GetError()),
-                0,   // flags
-                requestCtx->Value.OriginalCookie);
+            NCloud::Reply(
+                ctx,
+                requestCtx->Value,
+                std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                    msg->Record.GetError()));
         } else {
-            ctx.Send(
-                requestCtx->Value.OriginalSender,
-                ev->ReleaseBase().Release(),
-                0,   // flags
-                requestCtx->Value.OriginalCookie);
+            NCloud::Reply(
+                ctx,
+                requestCtx->Value,
+                NActors::IEventBasePtr(ev->ReleaseBase().Release()));
         }
     } else {
         LOG_ERROR(
@@ -136,20 +134,17 @@ void TVolumeAsPartitionActor::ReplyUndelivery(
             message.c_str());
 
         if (requestCtx->Value.RequestType == ERequestType::WriteBlocksLocal) {
-            ctx.Send(
-                requestCtx->Value.OriginalSender,
-                std::make_unique<
-                    TEvService::TWriteBlocksLocalMethod::TResponse>(
-                    MakeError(E_REJECTED, std::move(message))),
-                0,   // flags
-                requestCtx->Value.OriginalCookie);
+            NCloud::Reply(
+                ctx,
+                requestCtx->Value,
+                std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                    MakeError(E_REJECTED, std::move(message))));
         } else {
-            ctx.Send(
-                requestCtx->Value.OriginalSender,
+            NCloud::Reply(
+                ctx,
+                requestCtx->Value,
                 std::make_unique<typename TMethod::TResponse>(
-                    MakeError(E_REJECTED, std::move(message))),
-                0,   // flags
-                requestCtx->Value.OriginalCookie);
+                    MakeError(E_REJECTED, std::move(message))));
         }
     } else {
         LOG_ERROR(
@@ -213,7 +208,7 @@ void TVolumeAsPartitionActor::ReplyInvalidRange(
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvService::TWriteBlocksLocalMethod::TResponse>(
+            std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
                 MakeError(E_ARGUMENT, std::move(message))));
     } else {
         NCloud::Reply(
@@ -249,20 +244,19 @@ void TVolumeAsPartitionActor::DoWriteBlocks(
             LogTitle.GetWithTime().c_str(),
             message.c_str());
 
+        auto error = MakeError(E_NOT_IMPLEMENTED, std::move(message));
         if (requestType == ERequestType::WriteBlocksLocal) {
-            ctx.Send(
-                ev->Sender,
+            NCloud::Reply(
+                ctx,
+                *ev,
                 std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
-                    MakeError(E_NOT_IMPLEMENTED, std::move(message))),
-                0,   // flags
-                ev->Cookie);
+                    std::move(error)));
         } else {
-            ctx.Send(
-                ev->Sender,
+            NCloud::Reply(
+                ctx,
+                *ev,
                 std::make_unique<TEvService::TEvWriteBlocksResponse>(
-                    MakeError(E_NOT_IMPLEMENTED, std::move(message))),
-                0,   // flags
-                ev->Cookie);
+                    std::move(error)));
         }
 
         return;
@@ -555,34 +549,33 @@ void TVolumeAsPartitionActor::CancelRequests(const TActorContext& ctx)
         }
 
         const auto& requestCtx = request->Value;
+        // The requester may still be alive, so return E_REJECTED to allow it to
+        // retry the request.
         auto error = MakeError(
             E_REJECTED,
             "Follower request timed out during shutdown");
 
         switch (requestCtx.RequestType) {
             case ERequestType::WriteBlocks:
-                ctx.Send(
-                    requestCtx.OriginalSender,
+                NCloud::Reply(
+                    ctx,
+                    requestCtx,
                     std::make_unique<TEvService::TEvWriteBlocksResponse>(
-                        std::move(error)),
-                    0,   // flags
-                    requestCtx.OriginalCookie);
+                        std::move(error)));
                 break;
             case ERequestType::WriteBlocksLocal:
-                ctx.Send(
-                    requestCtx.OriginalSender,
+                NCloud::Reply(
+                    ctx,
+                    requestCtx,
                     std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
-                        std::move(error)),
-                    0,   // flags
-                    requestCtx.OriginalCookie);
+                        std::move(error)));
                 break;
             case ERequestType::ZeroBlocks:
-                ctx.Send(
-                    requestCtx.OriginalSender,
+                NCloud::Reply(
+                    ctx,
+                    requestCtx,
                     std::make_unique<TEvService::TEvZeroBlocksResponse>(
-                        std::move(error)),
-                    0,   // flags
-                    requestCtx.OriginalCookie);
+                        std::move(error)));
                 break;
         }
     }

@@ -48,6 +48,46 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TPoisonableTestActor final
+    : public TActorBootstrapped<TPoisonableTestActor>
+{
+public:
+    void Bootstrap(const TActorContext& ctx)
+    {
+        Become(&TThis::StateWork);
+        Y_UNUSED(ctx);
+    }
+
+private:
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        ctx.Send(
+            ev->Sender,
+            new TEvents::TEvPoisonTaken(),
+            0,   // flags
+            ev->Cookie);
+        Die(ctx);
+    }
+
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::PARTITION,
+                    __PRETTY_FUNCTION__);
+                break;
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TFixture: public NUnitTest::TBaseFixture
 {
     struct TVolumeInfo
@@ -695,7 +735,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
     }
 
     void DoShouldPrepareFollowerVolume(
-        TFixture & fixture,
+        TFixture& fixture,
         NProto::EStorageMediaKind leaderMediaType,
         NProto::EStorageMediaKind followerMediaType,
         ECheckpointBehaviour checkpoint,
@@ -2258,6 +2298,94 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             followerPartitionStopped,
             "Follower partition adapter is still alive after graceful "
             "shutdown");
+    }
+
+    void DoShouldOwnSourcePartitionAfterRecovery(
+        TFixture& fixture,
+        TFollowerDiskInfo::EState persistedState)
+    {
+        auto config = std::make_shared<TStorageConfig>(
+            NProto::TStorageServiceConfig{},
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        const auto sourcePartitionActor =
+            fixture.Runtime->Register(new TPoisonableTestActor());
+        const auto leaderVolumeActor = fixture.Runtime->AllocateEdgeActor();
+        const auto poisoner = fixture.Runtime->AllocateEdgeActor();
+
+        auto followerDiskActor = std::make_unique<TFollowerDiskActor>(
+            TLogTitle(
+                GetCycleCount(),
+                TLogTitle::TVolume{
+                    .TabletId = TestVolumeTablets[0],
+                    .DiskId = "vol1"}),
+            std::move(config),
+            CreateTestDiagnosticsConfig(),
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            TFollowerDiskActorParams{
+                .LeaderMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                .LeaderDiskId = "vol1",
+                .LeaderBlockCount = fixture.VolumeBlockCount,
+                .LeaderBlockSize = DefaultBlockSize,
+                .LeaderVolumeActorId = leaderVolumeActor,
+                .LeaderPartitionActorId = sourcePartitionActor,
+                .ClientId = "client",
+                .FollowerDiskInfo = {
+                    .Link =
+                        {.LinkUUID = "link-id",
+                         .LeaderDiskId = "vol1",
+                         .LeaderShardId = "leader-shard",
+                         .FollowerDiskId = "vol2",
+                         .FollowerShardId = "follower-shard"},
+                    .CreatedAt = TInstant::Now(),
+                    .State = persistedState,
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD}});
+
+        const auto followerDiskActorId =
+            fixture.Runtime->Register(followerDiskActor.release());
+
+        fixture.Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        fixture.Runtime->Send(new IEventHandle(
+            followerDiskActorId,
+            poisoner,
+            new TEvents::TEvPoisonPill()));
+
+        TAutoPtr<IEventHandle> handle;
+        fixture.Runtime->GrabEdgeEvent<TEvents::TEvPoisonTaken>(
+            handle,
+            TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(handle, "Follower disk actor did not complete shutdown");
+        UNIT_ASSERT_C(
+            !fixture.Runtime->FindActor(sourcePartitionActor),
+            TStringBuilder() << "Source partition " << sourcePartitionActor
+                             << " is still alive after recovery from "
+                             << ToString(persistedState));
+    }
+
+    Y_UNIT_TEST_F(ShouldOwnSourcePartitionAfterDataReadyRecovery, TFixture)
+    {
+        DoShouldOwnSourcePartitionAfterRecovery(
+            *this,
+            TFollowerDiskInfo::EState::DataReady);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldOwnSourcePartitionAfterLeadershipTransferredRecovery,
+        TFixture)
+    {
+        DoShouldOwnSourcePartitionAfterRecovery(
+            *this,
+            TFollowerDiskInfo::EState::LeadershipTransferred);
+    }
+
+    Y_UNIT_TEST_F(ShouldOwnSourcePartitionAfterErrorRecovery, TFixture)
+    {
+        DoShouldOwnSourcePartitionAfterRecovery(
+            *this,
+            TFollowerDiskInfo::EState::Error);
     }
 }
 
