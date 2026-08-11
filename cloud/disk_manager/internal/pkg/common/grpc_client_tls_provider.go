@@ -44,7 +44,7 @@ func NewGRPCClientTLSProvider(
 		registry: registry,
 	}
 
-	cfg, rootCertFingerprint, err := provider.readTLSConfig()
+	cfg, rootCertFingerprint, err := provider.readTLSConfig(false)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func (p *GRPCClientTLSProvider) runRefreshLoop(
 	for {
 		select {
 		case <-ticker.C:
-			cfg, rootCertFingerprint, err := p.readTLSConfig()
+			cfg, rootCertFingerprint, err := p.readTLSConfig(true)
 			if err != nil {
 				logging.Warn(
 					ctx,
@@ -115,7 +115,7 @@ func (p *GRPCClientTLSProvider) publishRootCertFingerprint(
 	).Gauge("Fingerprint").Set(float64(*fingerprint))
 }
 
-func (p *GRPCClientTLSProvider) readTLSConfig() (
+func (p *GRPCClientTLSProvider) readTLSConfig(validateValidity bool) (
 	*tls.Config,
 	*uint64,
 	error,
@@ -133,7 +133,24 @@ func (p *GRPCClientTLSProvider) readTLSConfig() (
 				err,
 			)
 		}
-
+		if len(cert.Certificate) == 0 {
+			return nil, nil, errors.New("client certificate chain is empty")
+		}
+		parsed, err := x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			return nil, nil, fmt.Errorf(
+				"failed to parse client certificate: %w",
+				err,
+			)
+		}
+		if validateValidity {
+			if err := validateCertificateCurrentlyValid(parsed, time.Now()); err != nil {
+				return nil, nil, fmt.Errorf(
+					"failed to validate client certificate: %w",
+					err,
+				)
+			}
+		}
 		cfg.Certificates = []tls.Certificate{cert}
 	}
 
@@ -154,7 +171,6 @@ func (p *GRPCClientTLSProvider) readTLSConfig() (
 				err,
 			)
 		}
-
 		pool := cfg.RootCAs
 		if pool == nil {
 			pool = x509.NewCertPool()

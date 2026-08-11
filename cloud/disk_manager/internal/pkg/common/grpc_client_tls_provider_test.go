@@ -11,9 +11,11 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -80,6 +82,24 @@ func TestGRPCClientTLSProviderRefreshAndKeepLastGood(t *testing.T) {
 		10*time.Millisecond,
 	)
 
+	expiredCertPEM, expiredCertSubject := mustGenerateRootCertificateWithValidity(
+		t,
+		"disk-manager-expired-cert",
+		time.Now().Add(-48*time.Hour),
+		time.Now().Add(-24*time.Hour),
+	)
+	require.NoError(t, os.WriteFile(certPath, expiredCertPEM, 0o600))
+	require.Eventually(
+		t,
+		func() bool {
+			cfg, err := provider.GetTLSConfig(ctx)
+			return err == nil &&
+				containsSubject(cfg.RootCAs, expiredCertSubject)
+		},
+		time.Second,
+		10*time.Millisecond,
+	)
+
 	require.NoError(
 		t,
 		os.WriteFile(certPath, []byte("broken certificate"), 0o600),
@@ -89,7 +109,138 @@ func TestGRPCClientTLSProviderRefreshAndKeepLastGood(t *testing.T) {
 
 	cfg, err := provider.GetTLSConfig(ctx)
 	require.NoError(t, err)
-	require.True(t, containsSubject(cfg.RootCAs, cert2Subject))
+	require.True(t, containsSubject(cfg.RootCAs, expiredCertSubject))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestGRPCClientTLSProviderRejectsInvalidInitialRootCertificate(
+	t *testing.T,
+) {
+	certPath := filepath.Join(t.TempDir(), "root_ca.pem")
+	require.NoError(
+		t,
+		os.WriteFile(certPath, []byte("broken certificate"), 0o600),
+	)
+
+	_, err := NewGRPCClientTLSProvider(
+		context.Background(),
+		GRPCClientTLSProviderConfig{
+			RootCertsFile: certPath,
+		},
+		metrics.NewEmptyRegistry(),
+	)
+	require.Error(t, err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestGRPCClientTLSProviderAcceptsExpiredInitialRootCertificate(
+	t *testing.T,
+) {
+	certPath := filepath.Join(t.TempDir(), "root_ca.pem")
+	certPEM, _ := mustGenerateRootCertificateWithValidity(
+		t,
+		"expired-root",
+		time.Now().Add(-48*time.Hour),
+		time.Now().Add(-24*time.Hour),
+	)
+	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
+
+	_, err := NewGRPCClientTLSProvider(
+		context.Background(),
+		GRPCClientTLSProviderConfig{
+			RootCertsFile: certPath,
+		},
+		metrics.NewEmptyRegistry(),
+	)
+	require.NoError(t, err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestGRPCClientTLSProviderChecksIdentityValidityOnlyOnRefresh(
+	t *testing.T,
+) {
+	ctx, cancel := context.WithCancel(
+		logging.SetLogger(
+			context.Background(),
+			logging.NewStderrLogger(logging.DebugLevel),
+		),
+	)
+	defer cancel()
+
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "client.crt")
+	keyPath := filepath.Join(tempDir, "client.key")
+
+	expiredCertPEM, expiredKeyPEM, expiredSerial :=
+		mustGenerateServerCertificatePairWithValidity(
+			t,
+			"expired-client-cert",
+			time.Now().Add(-48*time.Hour),
+			time.Now().Add(-24*time.Hour),
+		)
+	require.NoError(t, os.WriteFile(certPath, expiredCertPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, expiredKeyPEM, 0o600))
+
+	provider, err := NewGRPCClientTLSProvider(
+		ctx,
+		GRPCClientTLSProviderConfig{
+			CertFile:           certPath,
+			CertPrivateKeyFile: keyPath,
+			RefreshPeriod:      10 * time.Millisecond,
+		},
+		metrics.NewEmptyRegistry(),
+	)
+	require.NoError(t, err)
+	require.True(
+		t,
+		clientProviderCertificateSerialEquals(ctx, provider, expiredSerial),
+	)
+
+	validCertPEM, validKeyPEM, validSerial := mustGenerateServerCertificatePair(
+		t,
+		"valid-client-cert",
+	)
+	require.NoError(t, os.WriteFile(certPath, validCertPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, validKeyPEM, 0o600))
+	require.Eventually(
+		t,
+		func() bool {
+			return clientProviderCertificateSerialEquals(ctx, provider, validSerial)
+		},
+		time.Second,
+		10*time.Millisecond,
+	)
+
+	futureCertPEM, futureKeyPEM, _ := mustGenerateServerCertificatePairWithValidity(
+		t,
+		"future-client-cert",
+		time.Now().Add(24*time.Hour),
+		time.Now().Add(48*time.Hour),
+	)
+	require.NoError(t, os.WriteFile(certPath, futureCertPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, futureKeyPEM, 0o600))
+	time.Sleep(100 * time.Millisecond)
+	require.True(
+		t,
+		clientProviderCertificateSerialEquals(ctx, provider, validSerial),
+	)
+}
+
+func clientProviderCertificateSerialEquals(
+	ctx context.Context,
+	provider *GRPCClientTLSProvider,
+	expected *big.Int,
+) bool {
+	cfg, err := provider.GetTLSConfig(ctx)
+	if err != nil || len(cfg.Certificates) == 0 {
+		return false
+	}
+
+	serial, err := parseCertificateSerial(&cfg.Certificates[0])
+	return err == nil && serial.Cmp(expected) == 0
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,6 +284,85 @@ func TestGRPCClientTLSProviderReportsRootCertFingerprintWithoutRefresh(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func TestGRPCClientTLSProviderRefreshesRootCertFingerprint(t *testing.T) {
+	ctx, cancel := context.WithCancel(
+		logging.SetLogger(
+			context.Background(),
+			logging.NewStderrLogger(logging.DebugLevel),
+		),
+	)
+	defer cancel()
+
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "root_ca.pem")
+	cert1PEM, _ := mustGenerateRootCertificate(t, "root-cert-1")
+	cert2PEM, _ := mustGenerateRootCertificate(t, "root-cert-2")
+	require.NoError(t, os.WriteFile(certPath, cert1PEM, 0o600))
+
+	fingerprint1 := cityhash.Hash64(cert1PEM) & ((1 << 53) - 1)
+	fingerprint2 := cityhash.Hash64(cert2PEM) & ((1 << 53) - 1)
+	brokenCert := []byte("broken certificate")
+	brokenFingerprint := cityhash.Hash64(brokenCert) & ((1 << 53) - 1)
+
+	registry := metrics_mocks.NewRegistryMock()
+	gauge := registry.GetGauge(
+		"Fingerprint",
+		map[string]string{
+			"subsystem": "certificates",
+			"cert":      filepath.Base(certPath),
+		},
+	)
+	gauge.Test(t)
+
+	initialReported := make(chan struct{})
+	rotatedReported := make(chan struct{})
+	var initialOnce sync.Once
+	var rotatedOnce sync.Once
+	gauge.On("Set", float64(fingerprint1)).Run(func(mock.Arguments) {
+		initialOnce.Do(func() { close(initialReported) })
+	}).Maybe()
+	gauge.On("Set", float64(fingerprint2)).Run(func(mock.Arguments) {
+		rotatedOnce.Do(func() { close(rotatedReported) })
+	}).Maybe()
+	// Accept the call so that its absence can be asserted explicitly below.
+	gauge.On("Set", float64(brokenFingerprint)).Maybe()
+
+	_, err := NewGRPCClientTLSProvider(
+		ctx,
+		GRPCClientTLSProviderConfig{
+			RootCertsFile: certPath,
+			RefreshPeriod: 10 * time.Millisecond,
+		},
+		registry,
+	)
+	require.NoError(t, err)
+
+	requireSignal(t, initialReported)
+	require.NoError(t, os.WriteFile(certPath, cert2PEM, 0o600))
+	requireSignal(t, rotatedReported)
+
+	require.NoError(t, os.WriteFile(certPath, brokenCert, 0o600))
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	gauge.AssertNotCalled(t, "Set", float64(brokenFingerprint))
+	require.True(t, registry.AssertAllExpectations(t))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func requireSignal(t *testing.T, signal <-chan struct{}) {
+	t.Helper()
+
+	select {
+	case <-signal:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for metric update")
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func containsSubject(pool *x509.CertPool, subject []byte) bool {
 	if pool == nil {
 		return false
@@ -150,13 +380,24 @@ func mustGenerateRootCertificate(
 	t *testing.T,
 	commonName string,
 ) ([]byte, []byte) {
+	return mustGenerateRootCertificateWithValidity(
+		t,
+		commonName,
+		time.Now().Add(-time.Hour),
+		time.Now().Add(24*time.Hour),
+	)
+}
+
+func mustGenerateRootCertificateWithValidity(
+	t *testing.T,
+	commonName string,
+	notBefore time.Time,
+	notAfter time.Time,
+) ([]byte, []byte) {
 	t.Helper()
 
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-
-	notBefore := time.Now().Add(-time.Hour)
-	notAfter := time.Now().Add(24 * time.Hour)
 
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(notBefore.UnixNano()),

@@ -103,12 +103,34 @@ func (p *GRPCServerTLSProvider) runRefreshLoop(
 	for {
 		select {
 		case <-ticker.C:
-			certificates, expirations, err := p.readCertificates()
-			if err != nil {
+			p.lock.RLock()
+			certificates := append([]tls.Certificate(nil), p.certificates...)
+			expirations := append(
+				[]certificateExpiration(nil),
+				p.expirations...,
+			)
+			p.lock.RUnlock()
+
+			for i, cert := range p.certs {
+				certificate, expiration, err := p.readCertificate(cert, true)
+				if err != nil {
+					logging.Warn(
+						ctx,
+						"Failed to refresh GRPC server certificate %v: %v",
+						cert.GetCertFile(),
+						err,
+					)
+					continue
+				}
+
+				certificates[i] = certificate
+				expirations[i] = expiration
+			}
+
+			if len(certificates) == 0 {
 				logging.Warn(
 					ctx,
-					"Failed to refresh GRPC server certificates: %v",
-					err,
+					"Failed to refresh GRPC server certificates: no certificates loaded",
 				)
 				continue
 			}
@@ -151,42 +173,60 @@ func (p *GRPCServerTLSProvider) readCertificates() (
 	expirations := make([]certificateExpiration, 0, len(p.certs))
 
 	for _, cert := range p.certs {
-		certificate, err := tls.LoadX509KeyPair(
-			cert.GetCertFile(),
-			cert.GetPrivateKeyFile(),
-		)
+		certificate, expiration, err := p.readCertificate(cert, false)
 		if err != nil {
-			return nil, nil, fmt.Errorf(
-				"failed to load cert file %v: %w",
-				cert.CertFile,
-				err,
-			)
-		}
-		if len(certificate.Certificate) == 0 {
-			return nil, nil, fmt.Errorf(
-				"certificate chain is empty for cert file %v",
-				cert.CertFile,
-			)
-		}
-
-		parsed, err := x509.ParseCertificate(certificate.Certificate[0])
-		if err != nil {
-			return nil, nil, fmt.Errorf(
-				"failed to parse cert file %v: %w",
-				cert.CertFile,
-				err,
-			)
+			return nil, nil, err
 		}
 
 		certificates = append(certificates, certificate)
-		expirations = append(
-			expirations,
-			certificateExpiration{
-				path:  cert.GetCertFile(),
-				after: parsed.NotAfter,
-			},
-		)
+		expirations = append(expirations, expiration)
 	}
 
 	return certificates, expirations, nil
+}
+
+func (p *GRPCServerTLSProvider) readCertificate(
+	cert *server_config.Cert,
+	validateValidity bool,
+) (tls.Certificate, certificateExpiration, error) {
+	certificate, err := tls.LoadX509KeyPair(
+		cert.GetCertFile(),
+		cert.GetPrivateKeyFile(),
+	)
+	if err != nil {
+		return tls.Certificate{}, certificateExpiration{}, fmt.Errorf(
+			"failed to load cert file %v: %w",
+			cert.CertFile,
+			err,
+		)
+	}
+	if len(certificate.Certificate) == 0 {
+		return tls.Certificate{}, certificateExpiration{}, fmt.Errorf(
+			"certificate chain is empty for cert file %v",
+			cert.CertFile,
+		)
+	}
+
+	parsed, err := x509.ParseCertificate(certificate.Certificate[0])
+	if err != nil {
+		return tls.Certificate{}, certificateExpiration{}, fmt.Errorf(
+			"failed to parse cert file %v: %w",
+			cert.CertFile,
+			err,
+		)
+	}
+	if validateValidity {
+		if err := validateCertificateCurrentlyValid(parsed, time.Now()); err != nil {
+			return tls.Certificate{}, certificateExpiration{}, fmt.Errorf(
+				"failed to validate cert file %v: %w",
+				cert.CertFile,
+				err,
+			)
+		}
+	}
+
+	return certificate, certificateExpiration{
+		path:  cert.GetCertFile(),
+		after: parsed.NotAfter,
+	}, nil
 }

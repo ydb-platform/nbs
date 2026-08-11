@@ -7,6 +7,7 @@ SET(
 
 SRCS(
     assert.go
+    certificate_validity.go
     channel_with_cancellation.go
     channel_with_inflight_queue.go
     cond.go
