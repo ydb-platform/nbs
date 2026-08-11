@@ -29,6 +29,8 @@ NProto::TPartitionMeta DefaultConfig(size_t blockCount)
     config.SetBlockSize(DefaultBlockSize);
     config.SetBlocksCount(blockCount);
     config.SetMaxBlocksInBlob(MaxBlocksInBlob);
+    meta.SetL0RangeSize(MaxBlocksInBlob * DefaultBlockSize);
+    meta.SetL1RangeSize(2 * MaxBlocksInBlob * DefaultBlockSize);
 
     auto cps = config.MutableExplicitChannelProfiles();
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
@@ -86,14 +88,17 @@ TTxPartition::TAddBlobs MakeArgs(
     TVector<TAddL0Blob> l0Blobs = {}, EAddBlobMode mode = ADD_WRITE_RESULT,
     TAffectedBlobs affectedBlobs = {}, TAffectedBlocks affectedBlocks = {},
     TVector<TBlobCompactionInfo> mixedBlobCompactionInfos = {},
-    TVector<TBlobCompactionInfo> mergedBlobCompactionInfos = {})
+    TVector<TBlobCompactionInfo> mergedBlobCompactionInfos = {},
+    ui64 fromLevel = 0,
+    ui64 toLevel = 0,
+    ui64 rangeIndex = 0)
 {
     return TTxPartition::TAddBlobs(
         MakeIntrusive<TRequestInfo>(), commitId, std::move(mixedBlobs),
         std::move(mergedBlobs), std::move(freshBlobs), std::move(l0Blobs), mode,
         std::move(affectedBlobs), std::move(affectedBlocks),
         std::move(mixedBlobCompactionInfos),
-        std::move(mergedBlobCompactionInfos));
+        std::move(mergedBlobCompactionInfos), fromLevel, toLevel, rangeIndex);
 }
 
 void RunExecute(TTestExecutor& executor, TPartitionState& state,
@@ -354,6 +359,54 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
                 UNIT_ASSERT(db.ReadFreshBlocks(blocks));
                 UNIT_ASSERT(blocks.empty());
             });
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCompactionMapCountersWhenAddingL0Blobs)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        const ui64 commitId = MakeCommitId(0, 10);
+        const auto firstBlobId =
+            TPartialBlobId(0, 10, 0, 2 * DefaultBlockSize, 0, 0);
+        const auto secondBlobId =
+            TPartialBlobId(0, 10, 0, 3 * DefaultBlockSize, 1, 0);
+
+        const TVector<TOwningFreshBlock> freshBlocks = {
+            {{1, MakeCommitId(0, 5), false}, "one", {}},
+            {{2, MakeCommitId(0, 5), false}, "two", {}},
+            {{2, MakeCommitId(0, 7), false}, "two-new", {}},
+            {{3, MakeCommitId(0, 7), false}, "three", {}},
+            {{4, MakeCommitId(0, 7), false}, "four", {}},
+        };
+        state.InitFreshBlocks(freshBlocks);
+        state.IncrementUnflushedFreshBlocksFromChannelCount(
+            freshBlocks.size());
+
+        auto args = MakeArgs(
+            commitId,
+            {},
+            {},
+            {},
+            {{firstBlobId,
+              {{1, MakeCommitId(0, 5), false},
+               {2, MakeCommitId(0, 5), false}},
+              {11, 22}},
+             {secondBlobId,
+              {{2, MakeCommitId(0, 7), false},
+               {3, MakeCommitId(0, 7), false},
+               {4, MakeCommitId(0, 7), false}},
+              {23, 33, 44}}},
+            ADD_FLUSH_RESULT);
+
+        RunExecute(executor, state, args, MakeCommitId(0, 50));
+
+        const auto rangeStat =
+            state.GetCompactionMapL0().GetCompactionMap().Get(1);
+        UNIT_ASSERT_VALUES_EQUAL(2, rangeStat.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(5, rangeStat.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(4, rangeStat.UsedBlockCount);
     }
 
     Y_UNIT_TEST(ShouldApplyCompactionResultsAndQueueAffectedBlobs)

@@ -71,7 +71,10 @@ void TPartitionActor::HandleAddBlobs(
             std::move(msg->AffectedBlobs),
             std::move(msg->AffectedBlocks),
             std::move(msg->MixedBlobCompactionInfos),
-            std::move(msg->MergedBlobCompactionInfos)));
+            std::move(msg->MergedBlobCompactionInfos),
+            msg->FromLevel,
+            msg->ToLevel,
+            msg->RangeIndex));
 }
 
 bool TPartitionActor::PrepareAddBlobs(

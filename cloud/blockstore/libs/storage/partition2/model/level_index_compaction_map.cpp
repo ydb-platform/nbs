@@ -1,0 +1,172 @@
+#include "level_index_compaction_map.h"
+
+#include <cloud/storage/core/libs/common/verify.h>
+
+#include <util/generic/algorithm.h>
+
+#include <algorithm>
+
+namespace NCloud::NBlockStore::NStorage::NPartition2 {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TLevelIndexCompactionMap::TLevelIndexCompactionMap(
+    ui64 tabletId,
+    ui32 blocksPerRange,
+    TBlocksFilter& blocksFilter,
+    ICompactionPolicyPtr compactionPolicy)
+    : TabletId(tabletId)
+    , BlocksPerRange(blocksPerRange)
+    , BlocksFilter(blocksFilter)
+    , CompactionMap(blocksPerRange, std::move(compactionPolicy))
+{
+    STORAGE_VERIFY(BlocksPerRange, TWellKnownEntityTypes::TABLET, TabletId);
+}
+
+void TLevelIndexCompactionMap::BlobAdded(
+    const TVector<TBlock>& blocks,
+    ui64 commitId)
+{
+    STORAGE_VERIFY(!blocks.empty(), TWellKnownEntityTypes::TABLET, TabletId);
+    STORAGE_VERIFY(
+        IsSorted(blocks.begin(), blocks.end()),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    const ui32 rangeIndex =
+        CompactionMap.GetRangeIndex(blocks.front().BlockIndex);
+    STORAGE_VERIFY(
+        rangeIndex == CompactionMap.GetRangeIndex(blocks.back().BlockIndex),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    auto stat = CompactionMap.Get(blocks.front().BlockIndex);
+    TCompactionMap::UpdateCompactionCounter(
+        stat.BlobCount + 1,
+        &stat.BlobCount);
+    TCompactionMap::UpdateCompactionCounter(
+        stat.BlockCount + blocks.size(),
+        &stat.BlockCount);
+
+    for (const auto& block: blocks) {
+        if (BlocksFilter.BlocksAddedToMixedIndex(block.BlockIndex, commitId)) {
+            TCompactionMap::UpdateCompactionCounter(
+                stat.UsedBlockCount + 1,
+                &stat.UsedBlockCount);
+        }
+    }
+
+    CompactionMap.Update(
+        blocks.front().BlockIndex,
+        stat.BlobCount,
+        stat.BlockCount,
+        stat.UsedBlockCount,
+        0,        // newlyZeroedBlocks
+        false);   // compacted
+
+    for (auto& compaction: Compactions) {
+        if (compaction.CommitId > commitId) {
+            break;
+        }
+
+        if (BinarySearch(
+                compaction.RangeIndices.begin(),
+                compaction.RangeIndices.end(),
+                rangeIndex))
+        {
+            auto& concurrentStat = compaction.ConcurrentRangeStats[rangeIndex];
+            TCompactionMap::UpdateCompactionCounter(
+                concurrentStat.BlobCount + 1,
+                &concurrentStat.BlobCount);
+            TCompactionMap::UpdateCompactionCounter(
+                concurrentStat.BlockCount + blocks.size(),
+                &concurrentStat.BlockCount);
+        }
+    }
+}
+
+void TLevelIndexCompactionMap::CompactionStarted(
+    TVector<ui32> rangeIndices,
+    ui64 commitId)
+{
+    STORAGE_VERIFY(
+        Compactions.empty() || Compactions.back().CommitId < commitId,
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    Sort(rangeIndices);
+    STORAGE_VERIFY(
+        std::adjacent_find(rangeIndices.begin(), rangeIndices.end()) ==
+            rangeIndices.end(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    // TBlocksFilter validates every range index.
+    BlocksFilter.CompactionStarted(rangeIndices, commitId);
+    Compactions.push_back(
+        {.RangeIndices = std::move(rangeIndices),
+         .CommitId = commitId,
+         .ConcurrentRangeStats = {}});
+}
+
+void TLevelIndexCompactionMap::CompactionFinished()
+{
+    STORAGE_VERIFY(
+        !Compactions.empty(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    BlocksFilter.CompactionFinished();
+
+    const auto& compaction = Compactions.front();
+    for (ui32 rangeIndex: compaction.RangeIndices) {
+        TConcurrentRangeStat concurrentStat;
+        if (const auto* stat =
+                compaction.ConcurrentRangeStats.FindPtr(rangeIndex))
+        {
+            concurrentStat = *stat;
+        }
+
+        UpdateRange(
+            rangeIndex,
+            concurrentStat.BlobCount,
+            concurrentStat.BlockCount,
+            true);   // compacted
+    }
+
+    Compactions.pop_front();
+}
+
+void TLevelIndexCompactionMap::CompactionFailed()
+{
+    STORAGE_VERIFY(
+        !Compactions.empty(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    BlocksFilter.CompactionFailed();
+    Compactions.pop_front();
+}
+
+void TLevelIndexCompactionMap::UpdateRange(
+    ui32 rangeIndex,
+    ui32 blobCount,
+    ui32 blockCount,
+    bool compacted)
+{
+    const ui64 blockIndex = static_cast<ui64>(rangeIndex) * BlocksPerRange;
+    STORAGE_VERIFY(
+        blockIndex <= Max<ui32>(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    CompactionMap.Update(
+        blockIndex,
+        blobCount,
+        blockCount,
+        BlocksFilter.GetBlocksCount(rangeIndex),
+        0,   // newlyZeroedBlocks
+        compacted);
+}
+
+}   // namespace NCloud::NBlockStore::NStorage::NPartition2

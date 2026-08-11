@@ -158,6 +158,16 @@ public:
 
         for (const auto& blob: Args.L0Blobs) {
             ProcessNewBlob(actorSystem, db, blob);
+
+            auto& cm = [&]() -> TLevelIndexCompactionMap&
+            {
+                if (Args.FromLevel == 0) {
+                    return State.GetCompactionMapL0();
+                }
+                return State.GetCompactionMapL1();
+            }();
+
+            cm.BlobAdded(blob.Blocks, Args.CommitId);
         }
 
         if (Args.Mode == ADD_COMPACTION_RESULT) {

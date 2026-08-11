@@ -74,7 +74,7 @@ TPartitionState::TPartitionState(
           reassignSystemChannelsImmediately,
           channelCount)
     , TCommitIdsState()
-    , TPartitionFreshBlobState(tabletId)
+    , TPartitionFreshBlobState(threadSafeState->GetTabletId())
     , TPartitionTrimFreshLogState()
     , TPartitionFreshBlocksState(*this, *this, threadSafeState)
     , Meta(std::move(meta))
@@ -84,7 +84,7 @@ TPartitionState::TPartitionState(
     , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
-    , CompactionMap(GetMaxBlocksInBlob(), std::move(compactionPolicy))
+    , CompactionMap(GetMaxBlocksInBlob(), compactionPolicy)
     , CompactionScoreHistory(compactionScoreHistorySize)
     , UsedBlocks(Config.GetBlocksCount())
     , LogicalUsedBlocks(Config.GetBlocksCount())
@@ -96,6 +96,24 @@ TPartitionState::TPartitionState(
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
+    , BlocksFilterL0(
+          ThreadSafeState->GetTabletId(),
+          Meta.GetL0RangeSize() / Meta.GetConfig().GetBlockSize(),
+          Meta.GetConfig().GetBlocksCount())
+    , BlocksFilterL1(
+          ThreadSafeState->GetTabletId(),
+          Meta.GetL1RangeSize() / Meta.GetConfig().GetBlockSize(),
+          Meta.GetConfig().GetBlocksCount())
+    , CompactionMapL0(
+          ThreadSafeState->GetTabletId(),
+          Meta.GetL0RangeSize() / Meta.GetConfig().GetBlockSize(),
+          BlocksFilterL0,
+          compactionPolicy)
+    , CompactionMapL1(
+          ThreadSafeState->GetTabletId(),
+          Meta.GetL1RangeSize() / Meta.GetConfig().GetBlockSize(),
+          BlocksFilterL1,
+          std::move(compactionPolicy))
 {
     InitChannels();
 }
