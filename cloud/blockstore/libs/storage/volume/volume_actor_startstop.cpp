@@ -165,7 +165,7 @@ void TVolumeActor::OnPartitionStateChanged(
                 TActorsStack::EActorPurpose::MultiPartitionWrapper);
 
             actorStack =
-                WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), true);
+                WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
 
             State->SetMultiPartitionWrapperActor(std::move(actorStack));
         }
@@ -355,7 +355,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         ctx,
         std::move(actorStack),
         nonreplicatedConfig);
-    actorStack = WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), false);
+    actorStack = WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
 
     State->SetDiskRegistryBasedPartitionActor(
         std::move(actorStack),
@@ -403,8 +403,7 @@ TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
 
 TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
     const TActorContext& ctx,
-    TActorsStack actors,
-    bool takePartitionOwnership)
+    TActorsStack actors)
 {
     for (const auto& follower: State->GetAllFollowers()) {
         switch (follower.State) {
@@ -445,7 +444,6 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                         .LeaderBlockSize = State->GetBlockSize(),
                         .LeaderVolumeActorId = SelfId(),
                         .LeaderPartitionActorId = actors.GetTop(),
-                        .TakePartitionOwnership = takePartitionOwnership,
                         .ClientId = State->GetReadWriteAccessClientId(),
                         .FollowerDiskInfo = follower});
                 actors.Push(
@@ -944,10 +942,8 @@ void TVolumeActor::HandleTabletStatus(
             }
 
             if (State->GetPartitions().size() == 1) {
-                actorStack = WrapWithFollowerActorIfNeeded(
-                    ctx,
-                    std::move(actorStack),
-                    true);
+                actorStack =
+                    WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
             }
             partition->SetStarted(std::move(actorStack));
 

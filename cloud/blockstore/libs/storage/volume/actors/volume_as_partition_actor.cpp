@@ -13,6 +13,8 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <util/generic/vector.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -22,10 +24,12 @@ using namespace NActors;
 TVolumeAsPartitionActor::TVolumeAsPartitionActor(
         TChildLogTitle logTitle,
         ui32 originalBlockSize,
-        TString diskId)
+        TString diskId,
+        TDuration shutdownTimeout)
     : LogTitle(std::move(logTitle))
     , OriginalBlockSize(originalBlockSize)
     , DiskId(std::move(diskId))
+    , ShutdownTimeout(shutdownTimeout)
 {}
 
 TVolumeAsPartitionActor::~TVolumeAsPartitionActor() = default;
@@ -55,7 +59,7 @@ template <typename TEvent>
 void TVolumeAsPartitionActor::ForwardRequestToFollower(
     const TEvent& ev,
     const TActorContext& ctx,
-    EReplyType replyType)
+    ERequestType requestType)
 {
     auto* msg = ev->Get();
     msg->Record.MutableHeaders()->SetExactDiskIdMatch(true);
@@ -65,7 +69,7 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
         TRequestCtx{
             .OriginalSender = ev->Sender,
             .OriginalCookie = ev->Cookie,
-            .ReplyType = replyType});
+            .RequestType = requestType});
 
     NActors::TActorId nondeliveryActor = SelfId();
     auto message = std::make_unique<NActors::IEventHandle>(
@@ -86,7 +90,7 @@ void TVolumeAsPartitionActor::ForwardResponse(
     auto* msg = ev->Get();
 
     if (auto requestCtx = RequestsInProgress.ExtractRequest(ev->Cookie)) {
-        if (requestCtx->Value.ReplyType == EReplyType::Local) {
+        if (requestCtx->Value.RequestType == ERequestType::WriteBlocksLocal) {
             ctx.Send(
                 requestCtx->Value.OriginalSender,
                 new TEvService::TEvWriteBlocksLocalResponse(
@@ -131,7 +135,7 @@ void TVolumeAsPartitionActor::ReplyUndelivery(
             LogTitle.GetWithTime().c_str(),
             message.c_str());
 
-        if (requestCtx->Value.ReplyType == EReplyType::Local) {
+        if (requestCtx->Value.RequestType == ERequestType::WriteBlocksLocal) {
             ctx.Send(
                 requestCtx->Value.OriginalSender,
                 std::make_unique<
@@ -191,7 +195,7 @@ template <typename TMethod>
 void TVolumeAsPartitionActor::ReplyInvalidRange(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx,
-    EReplyType replyType)
+    ERequestType requestType)
 {
     auto message =
         TStringBuilder()
@@ -205,7 +209,7 @@ void TVolumeAsPartitionActor::ReplyInvalidRange(
         LogTitle.GetWithTime().c_str(),
         message.c_str());
 
-    if (replyType == EReplyType::Local) {
+    if (requestType == ERequestType::WriteBlocksLocal) {
         NCloud::Reply(
             ctx,
             *ev,
@@ -223,7 +227,7 @@ void TVolumeAsPartitionActor::ReplyInvalidRange(
 void TVolumeAsPartitionActor::DoWriteBlocks(
     const TEvService::TEvWriteBlocksRequest::TPtr& ev,
     const TActorContext& ctx,
-    EReplyType replyType)
+    ERequestType requestType)
 {
     auto* msg = ev->Get();
 
@@ -245,7 +249,7 @@ void TVolumeAsPartitionActor::DoWriteBlocks(
             LogTitle.GetWithTime().c_str(),
             message.c_str());
 
-        if (replyType == EReplyType::Local) {
+        if (requestType == ERequestType::WriteBlocksLocal) {
             ctx.Send(
                 ev->Sender,
                 std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -279,7 +283,7 @@ void TVolumeAsPartitionActor::DoWriteBlocks(
         needReadModifyWrite ? " with RMW" : "");
 
     if (!CheckRange(destRange)) {
-        ReplyInvalidRange<TEvService::TWriteBlocksMethod>(ev, ctx, replyType);
+        ReplyInvalidRange<TEvService::TWriteBlocksMethod>(ev, ctx, requestType);
         return;
     }
 
@@ -300,7 +304,7 @@ void TVolumeAsPartitionActor::DoWriteBlocks(
     msg->Record.SetDiskId(DiskId);
     msg->Record.MutableHeaders()->SetClientId(TString(CopyVolumeClientId));
 
-    ForwardRequestToFollower(ev, ctx, replyType);
+    ForwardRequestToFollower(ev, ctx, requestType);
 }
 
 void TVolumeAsPartitionActor::ReplyAndDie(const NActors::TActorContext& ctx)
@@ -370,7 +374,7 @@ void TVolumeAsPartitionActor::HandleWriteBlocks(
         return;
     }
 
-    DoWriteBlocks(ev, ctx, EReplyType::Ordinary);
+    DoWriteBlocks(ev, ctx, ERequestType::WriteBlocks);
 }
 
 void TVolumeAsPartitionActor::HandleWriteBlocksLocal(
@@ -428,7 +432,7 @@ void TVolumeAsPartitionActor::HandleWriteBlocksLocal(
         IEventHandle::Downcast<TEvService::TEvWriteBlocksRequest>(
             std::move(newEv)),
         ctx,
-        EReplyType::Local);
+        ERequestType::WriteBlocksLocal);
 }
 
 void TVolumeAsPartitionActor::HandleZeroBlocks(
@@ -490,7 +494,7 @@ void TVolumeAsPartitionActor::HandleZeroBlocks(
         ReplyInvalidRange<TEvService::TZeroBlocksMethod>(
             ev,
             ctx,
-            EReplyType::Ordinary);
+            ERequestType::ZeroBlocks);
         return;
     }
 
@@ -502,7 +506,10 @@ void TVolumeAsPartitionActor::HandleZeroBlocks(
     msg->Record.SetDiskId(DiskId);
     msg->Record.MutableHeaders()->SetClientId(TString(CopyVolumeClientId));
 
-    ForwardRequestToFollower(ev, ctx, EReplyType::Ordinary);
+    ForwardRequestToFollower(
+        ev,
+        ctx,
+        ERequestType::ZeroBlocks);
 }
 
 void TVolumeAsPartitionActor::HandlePoisonPill(
@@ -517,9 +524,88 @@ void TVolumeAsPartitionActor::HandlePoisonPill(
         MakeIntrusive<TCallContext>());
 
     if (!RequestsInProgress.Empty()) {
+        ctx.Schedule(ShutdownTimeout, new TEvents::TEvWakeup());
         return;
     }
 
+    ReplyAndDie(ctx);
+}
+
+void TVolumeAsPartitionActor::CancelRequests(const TActorContext& ctx)
+{
+    TVector<ui64> requestIds;
+    requestIds.reserve(RequestsInProgress.GetRequestCount());
+    RequestsInProgress.EnumerateRequests(
+        [&](ui64 requestId,
+            bool write,
+            TBlockRange64 range,
+            const TRequestCtx& requestCtx)
+        {
+            Y_UNUSED(write);
+            Y_UNUSED(range);
+            Y_UNUSED(requestCtx);
+            requestIds.push_back(requestId);
+        });
+
+    for (const ui64 requestId: requestIds) {
+        auto request = RequestsInProgress.ExtractRequest(requestId);
+        Y_DEBUG_ABORT_UNLESS(request);
+        if (!request) {
+            continue;
+        }
+
+        const auto& requestCtx = request->Value;
+        auto error = MakeError(
+            E_REJECTED,
+            "Follower request timed out during shutdown");
+
+        switch (requestCtx.RequestType) {
+            case ERequestType::WriteBlocks:
+                ctx.Send(
+                    requestCtx.OriginalSender,
+                    std::make_unique<TEvService::TEvWriteBlocksResponse>(
+                        std::move(error)),
+                    0,   // flags
+                    requestCtx.OriginalCookie);
+                break;
+            case ERequestType::WriteBlocksLocal:
+                ctx.Send(
+                    requestCtx.OriginalSender,
+                    std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                        std::move(error)),
+                    0,   // flags
+                    requestCtx.OriginalCookie);
+                break;
+            case ERequestType::ZeroBlocks:
+                ctx.Send(
+                    requestCtx.OriginalSender,
+                    std::make_unique<TEvService::TEvZeroBlocksResponse>(
+                        std::move(error)),
+                    0,   // flags
+                    requestCtx.OriginalCookie);
+                break;
+        }
+    }
+}
+
+void TVolumeAsPartitionActor::HandleShutdownTimeout(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    if (State != EState::Zombie || !Poisoner) {
+        return;
+    }
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Cancelling %lu follower requests during shutdown",
+        LogTitle.GetWithTime().c_str(),
+        RequestsInProgress.GetRequestCount());
+
+    CancelRequests(ctx);
     ReplyAndDie(ctx);
 }
 
@@ -545,6 +631,7 @@ STFUNC(TVolumeAsPartitionActor::StateWork)
             ForwardResponse<TEvService::TZeroBlocksMethod>);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvWakeup, HandleShutdownTimeout);
 
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,

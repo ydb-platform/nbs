@@ -4,7 +4,12 @@ A storage group is N storage devices treated as one replicated unit. The
 shard's page store addresses a group, never an individual device. The
 interface is `IStorageGroup` (`sn/quorum/storage_group.h`): `AcquireDevices`,
 `ReleaseDevices`, `WriteLogRecord`, `ReadPages` - synchronous, called from
-silk fibers.
+silk fibers. In the production implementation we'll also need the methods for:
+* advancing LSN low watermark (below which the journal can be checkpointed and
+  trimmed)
+* locking the storage group (to ensure that an old instance of the same shard
+  dies upon access attempt and doesn't corrupt anything)
+* reading the tail of the journal (to do recovery upon restart)
 
 ## Responsibilities
 
@@ -17,22 +22,24 @@ silk fibers.
   bringing all devices to a consistent state before accepting new writes.
   *Missing in the prototype.*
 * **Retries and ordering** - the group retries per-device failures and
-  guarantees that the Lsn moves forward monotonically and without gaps.
+  guarantees that the LSN moves forward monotonically and without gaps.
   *Missing in the prototype.*
 
-## Lsn advancement
+## LSN advancement
 
-Every `WriteLogRecord` carries an Lsn. The group is the layer that
-guarantees the Lsn sequence observed by every device is monotone and
-gapless: a device that has applied Lsn X has applied every record below X.
+Every `WriteLogRecord` carries an LSN. The group is the layer that
+guarantees the LSN sequence observed by every device is monotone and
+gapless: a device that has applied LSN X has applied every record below X.
 This property is what makes tail replay after a crash well-defined: the
-recovery procedure finds the highest Lsn present on a quorum of devices and
-completes or discards records above it.
+recovery procedure finds the highest LSN present on a quorum of devices and
+completes or discards records above it. If an operation gets cancelled the shard
+is still responsible for notifying the group of the LSN of this operation. It
+doesn't need to happen as a separate event - these cancelled LSNs can be
+piggybacked with the next write-log-record message.
 
-The Lsn low watermark - the boundary below which journal records may be
+The LSN low watermark - the boundary below which journal records may be
 applied to their final locations - is moved by the shard and forwarded by
-the group to every device (see
-[storage-node.md](storage-node.md)).
+the group to every device (see [storage-node.md](storage-node.md)).
 
 ## Prototype
 
@@ -40,10 +47,8 @@ the group to every device (see
 
 * writes are mirrored to all devices, n/n - no write quorum;
 * reads go to one device selected round-robin, 1/n;
-* no locking, no recovery, no Lsn enforcement, no retries.
+* no locking, no recovery, no LSN enforcement, no retries.
 
 ## Diagram
 
 ![fastshard_storage_group](../../../excalidraw/fastshard_storage_group.svg)
-
-Diagram source: [fastshard_storage_group.excalidraw](../../../excalidraw/fastshard_storage_group.excalidraw).

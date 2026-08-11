@@ -97,7 +97,7 @@ struct TFileRingBufferCapabilities
     ui64 MaxAllocationByteCount = 0;
     ui64 MaxTag = 0;
     ui64 Alignment = 0;
-    bool EntryHeaderIsCoveredByChecksum = false;
+    bool EntryHeaderIsProcessedAtomically = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
