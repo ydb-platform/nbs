@@ -3,13 +3,8 @@
 #include <cloud/filestore/libs/service/request.h>
 
 #include <util/datetime/base.h>
-#include <util/digest/multi.h>
 #include <util/generic/hash.h>
-#include <util/generic/hash_set.h>
-#include <util/generic/maybe.h>
 #include <util/generic/set.h>
-#include <util/generic/string.h>
-#include <util/generic/vector.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -21,6 +16,12 @@ struct TNodeLatencyStats
     ui64 TotalLatencyMs = 0;
     double AverageLatencyDecayedMs = 0.0;
     TInstant LastAccessed;
+};
+
+struct TLatencyKey
+{
+    ui64 NodeId = 0;
+    EFileStoreRequest RequestType = EFileStoreRequest::MAX;
 };
 
 class TNodeLatencyStatsTracker
@@ -42,18 +43,17 @@ private:
         }
     };
 
-    using LatencyKey = std::pair<ui64, EFileStoreRequest>;
     size_t MaxEntries = 0;
-    using LatencyRanking = TSet<TNodeLatencyStats, TNodeLatencyStatsComparator>;
-    THashMap<LatencyKey, LatencyRanking::iterator> IdAndRequest2Stats;
-    LatencyRanking NodeLatencyStats;
+    using TLatencyRanking = TSet<TNodeLatencyStats, TNodeLatencyStatsComparator>;
+    THashMap<TLatencyKey, TLatencyRanking::iterator> Key2Stats;
+    TLatencyRanking NodeLatencyStats;
 
     void EvictSmallestLatencyEntries()
     {
         while (NodeLatencyStats.size() > MaxEntries) {
             auto it = NodeLatencyStats.begin();
-            LatencyKey key = {it->NodeId, it->RequestType};
-            IdAndRequest2Stats.erase(key);
+            TLatencyKey key = {it->NodeId, it->RequestType};
+            Key2Stats.erase(key);
             NodeLatencyStats.erase(it);
         }
     }

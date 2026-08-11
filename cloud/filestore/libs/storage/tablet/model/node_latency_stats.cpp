@@ -10,7 +10,7 @@ void TNodeLatencyStatsTracker::Initialize(size_t maxEntries)
 {
     MaxEntries = maxEntries;
     NodeLatencyStats.clear();
-    IdAndRequest2Stats.clear();
+    Key2Stats.clear();
 }
 
 double TNodeLatencyStatsTracker::CalculateLatencyDecay(
@@ -30,10 +30,10 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
     TInstant now,
     TDuration latency)
 {
-    LatencyKey key = {nodeId, requestType};
-    auto it = IdAndRequest2Stats.find(key);
+    TLatencyKey key = {nodeId, requestType};
+    auto it = Key2Stats.find(key);
     TNodeLatencyStats stats;
-    if (it != IdAndRequest2Stats.end()) {
+    if (it != Key2Stats.end()) {
         stats = *it->second;
         NodeLatencyStats.erase(it->second);
     } else {
@@ -51,7 +51,7 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
 
     auto [newLatencyIterator, inserted] = NodeLatencyStats.insert(stats);
     Y_ABORT_UNLESS(inserted);
-    IdAndRequest2Stats[key] = newLatencyIterator;
+    Key2Stats[key] = newLatencyIterator;
 
     EvictSmallestLatencyEntries();
 }
