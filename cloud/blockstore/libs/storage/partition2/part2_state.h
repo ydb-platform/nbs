@@ -19,13 +19,15 @@
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob_to_confirm.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition2/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition2/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition2/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition2/model/level_index_compaction_map.h>
 #include <cloud/blockstore/libs/storage/partition2/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/block_index.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/blocks_filter.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/part_counters_wrapper.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
@@ -1177,6 +1179,38 @@ public:
     void ConfirmBlobs(
         TPartitionDatabase& db,
         const TVector<TPartialBlobId>& unrecoverableBlobs);
+
+    //
+    // LevelIndex
+    //
+
+private:
+    TBlocksFilter BlocksFilterL0;
+    TBlocksFilter BlocksFilterL1;
+
+    TLevelIndexCompactionMap CompactionMapL0;
+    TLevelIndexCompactionMap CompactionMapL1;
+
+public:
+    TLevelIndexCompactionMap& GetCompactionMapL0()
+    {
+        return CompactionMapL0;
+    }
+
+    TLevelIndexCompactionMap& GetCompactionMapL1()
+    {
+        return CompactionMapL1;
+    }
+
+    TBlocksFilter& GetBlocksFilterL0()
+    {
+        return BlocksFilterL0;
+    }
+
+    TBlocksFilter& GetBlocksFilterL1()
+    {
+        return BlocksFilterL1;
+    }
 
     //
     // Stats
