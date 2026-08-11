@@ -1,3 +1,6 @@
+/extra_configs/nbs-names.txt:
+canonical data
+
 /generated-configs/cluster1/zone1/seed/values.yaml:
 config:
 
@@ -226,4 +229,7 @@ UseBlackBox: true
 
 /generated-configs/cluster2/zoneA/target1/nbs-storage.txt:
 SchemeShardDir: "/pre-prod_myt/NBS"
+
+/generated-configs/cluster2/zoneA/target1/nfs-names.txt:
+canonical data
 
