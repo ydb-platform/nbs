@@ -216,6 +216,7 @@ func createServices(
 		},
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
+		nil,
 	)
 
 	deletedFilesystemExpirationTimeout := "1s"

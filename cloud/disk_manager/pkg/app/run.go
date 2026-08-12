@@ -188,13 +188,13 @@ func run(
 		return err
 	}
 
-	nfsFactoryOptions := nfs.FactoryOptions{}
+	var nfsTLSProvider nfs.TLSConfigProvider
 	nfsConfig := config.GetNfsConfig()
 	if nfsConfig != nil &&
 		!nfsConfig.GetInsecure() &&
 		nfsConfig.GetRootCertsFile() != "" {
 
-		tlsProvider, err := common.NewGRPCClientTLSProvider(
+		nfsTLSProvider, err = common.NewGRPCClientTLSProvider(
 			common.GRPCClientTLSProviderConfig{
 				RootCertsFile: nfsConfig.GetRootCertsFile(),
 			},
@@ -203,7 +203,6 @@ func run(
 		if err != nil {
 			return err
 		}
-		nfsFactoryOptions.TLSProvider = tlsProvider
 	}
 
 	var s3 *persistence.S3Client
@@ -347,7 +346,7 @@ func run(
 				creds,
 				nfsClientMetricsRegistry,
 				nfsSessionMetricsRegistry,
-				nfsFactoryOptions,
+				nfsTLSProvider,
 			)
 
 			filesystemDB, err := persistence.NewYDBClient(
@@ -392,7 +391,7 @@ func run(
 			taskRegistry,
 			taskScheduler,
 			nbsFactory,
-			nfsFactoryOptions,
+			nfsTLSProvider,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize GRPC services: %v", err)

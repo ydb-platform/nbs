@@ -25,9 +25,7 @@ type factory struct {
 	endpointPickers map[string]*endpointPicker
 }
 
-type FactoryOptions struct {
-	TLSProvider nfs_client.TLSConfigProvider
-}
+type TLSConfigProvider = nfs_client.TLSConfigProvider
 
 func (f *factory) NewClient(
 	ctx context.Context,
@@ -117,7 +115,7 @@ func NewFactoryWithCreds(
 	credentials auth.Credentials,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
-	options ...FactoryOptions,
+	tlsProvider TLSConfigProvider,
 ) Factory {
 
 	clientMetrics := client_metrics.NewClientMetrics(clientMetricsRegistry)
@@ -126,10 +124,8 @@ func NewFactoryWithCreds(
 	}
 	clientCredentials := &nfs_client.ClientCredentials{
 		RootCertsFile: config.GetRootCertsFile(),
+		TLSProvider:   tlsProvider,
 		IAMClient:     credentials,
-	}
-	if len(options) != 0 {
-		clientCredentials.TLSProvider = options[0].TLSProvider
 	}
 	if config.GetInsecure() {
 		clientCredentials = nil
@@ -158,7 +154,7 @@ func NewFactory(
 	config *nfs_config.ClientConfig,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
-	options ...FactoryOptions,
+	tlsProvider TLSConfigProvider,
 ) Factory {
 
 	return NewFactoryWithCreds(
@@ -167,6 +163,6 @@ func NewFactory(
 		nil,
 		clientMetricsRegistry,
 		sessionMetricsRegistry,
-		options...,
+		tlsProvider,
 	)
 }

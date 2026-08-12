@@ -409,6 +409,7 @@ func NewNfsTestingClient(
 		newNfsClientConfig(),
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
+		nil,
 	)
 	client, err := nfsFactory.NewClient(ctx, zoneID)
 	require.NoError(t, err)

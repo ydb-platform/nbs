@@ -285,7 +285,7 @@ func initControlplane(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
-	nfsFactoryOptions nfs.FactoryOptions,
+	nfsTLSProvider nfs.TLSConfigProvider,
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
@@ -304,7 +304,7 @@ func initControlplane(
 		creds,
 		nfsClientMetricsRegistry,
 		nfsSessionMetricsRegistry,
-		nfsFactoryOptions,
+		nfsTLSProvider,
 	)
 
 	poolService := pools.NewService(taskScheduler, poolStorage)
