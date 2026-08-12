@@ -16,6 +16,7 @@ SRCS(
     garbage_queue_ut.cpp
     group_downtimes_ut.cpp
     mixed_blocks_filter_ut.cpp
+    mixed_blocks_filter_load_state_ut.cpp
     mixed_index_cache_ut.cpp
 )
 

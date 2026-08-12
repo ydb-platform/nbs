@@ -40,6 +40,31 @@ ui32 GetMaxIORequestsInFlight(
     }
 }
 
+class TMixedBlocksFilterLoadVisitor final
+    : public IMixedBlocksIndexVisitor
+{
+private:
+    TVector<TBlock>& Blocks;
+
+public:
+    explicit TMixedBlocksFilterLoadVisitor(TVector<TBlock>& blocks)
+        : Blocks(blocks)
+    {}
+
+    bool VisitBlock(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui8 compactionRangeCount) override
+    {
+        Y_UNUSED(blobId, blobOffset, compactionRangeCount);
+
+        Blocks.emplace_back(blockIndex, commitId, false);
+        return true;
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -215,6 +240,13 @@ void TPartitionActor::CompleteLoadState(
 
     SharedState->Init(SelfId(), Executor()->Generation(), 0);
 
+    std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig;
+    if (IsMixedBlocksFilterEnabled()) {
+        mixedBlocksFilterConfig = TMixedBlocksFilterConfig{
+            Config->GetMixedBlocksFilterRangesToLoadPerTx(),
+            Config->GetMixedBlocksFilterAllowedCpuTimePerSecond()};
+    }
+
     State = std::make_unique<TPartitionState>(
         *args.Meta,
         BuildCompactionPolicy(partitionConfig, *Config, SiblingCount),
@@ -235,7 +267,7 @@ void TPartitionActor::CompleteLoadState(
         Config->GetCompactionRangeCountPerRun(),
         SharedState,
         TabletID(),
-        IsMixedBlocksFilterEnabled());
+        mixedBlocksFilterConfig);
 
     CreateFreshBlocksCompanionClient();
 
@@ -284,6 +316,8 @@ void TPartitionActor::CompleteLoadState(
             args.CompactionMap,
             &State->GetUsedBlocks());
     }
+
+    LoadNextMixedBlocksFilterChunkIfNeeded(ctx, TDuration::Zero());
 
     State->AccessCheckpoints().Add(args.Checkpoints);
     State->AccessCheckpoints().SetCheckpointMappings(
@@ -515,6 +549,141 @@ void TPartitionActor::HandleLoadCompactionMapChunk(
         ev->Get()->Range.Print().c_str());
 
     ExecuteTx<TLoadCompactionMapChunk>(ctx, ev->Get()->Range);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TPartitionActor::LoadNextMixedBlocksFilterChunkIfNeeded(
+    const TActorContext& ctx,
+    TDuration cpuTimeSpentDuringLastTx)
+{
+    auto* loadState = State->AccessMixedBlocksFilterLoadState();
+
+    if (!loadState) {
+        // Mixed blocks filter load from mixed index is disabled or already
+        // finished.
+        return;
+    }
+
+    auto postponeTime =
+        loadState->RegisterTransaction(ctx.Now(), cpuTimeSpentDuringLastTx);
+
+    auto request = std::make_unique<
+        TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest>();
+
+    ctx.Schedule(postponeTime, request.release());
+}
+
+void TPartitionActor::HandleLoadMixedBlocksFilterChunk(
+    const TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto* loadState = State->AccessMixedBlocksFilterLoadState();
+
+    STORAGE_VERIFY_C(
+        loadState,
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "Mixed blocks filter load state is not initialized");
+
+    auto nextRanges = loadState->LoadNextRanges();
+
+    if (!nextRanges) {
+        State->MixedBlocksFilterLoaded();
+
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Mixed blocks filter loaded",
+            LogTitle.GetWithTime().c_str());
+
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Loading mixed blocks filter chunk: range index=%lu, range count=%lu",
+        LogTitle.GetWithTime().c_str(),
+        nextRanges->RangeIndex,
+        nextRanges->RangeCount);
+
+    ExecuteTx<TLoadMixedBlocksFilterChunk>(
+        ctx,
+        *nextRanges,
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TPartitionActor::PrepareLoadMixedBlocksFilterChunk(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TLoadMixedBlocksFilterChunk& args)
+{
+    Y_UNUSED(ctx);
+    TRequestScope timer(*args.RequestInfo);
+
+    TPartitionDatabase db(tx.DB);
+    TMixedBlocksFilterLoadVisitor visitor(args.Blocks);
+    const auto rangeSize = State->GetCompactionMap().GetRangeSize();
+    return db.FindMixedBlocks(
+        visitor,
+        TBlockRange32::WithLength(
+            SafeIntegerCast<ui32>(args.Ranges.RangeIndex * rangeSize),
+            SafeIntegerCast<ui32>(args.Ranges.RangeCount * rangeSize)),
+        true);   // precharge
+}
+
+void TPartitionActor::ExecuteLoadMixedBlocksFilterChunk(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TLoadMixedBlocksFilterChunk& args)
+{
+    Y_UNUSED(ctx, tx);
+
+    TRequestScope timer(*args.RequestInfo);
+
+    auto* filter = State->AccessMixedBlocksFilter();
+    STORAGE_VERIFY_C(
+        filter,
+        TWellKnownEntityTypes::TABLET,
+        TabletID(),
+        "Mixed blocks filter is disabled");
+
+    // We atommically readed blocks from mixed index, so it is safe to update
+    // blocks filter here.
+    for (const auto& block: args.Blocks) {
+        filter->BlocksAddedToMixedIndex(block.BlockIndex, block.CommitId);
+    }
+
+    for (ui64 offset = 0; offset < args.Ranges.RangeCount; ++offset) {
+        const ui64 rangeIndex = args.Ranges.RangeIndex + offset;
+        if (!filter->IsCompactionRangeInitialized(rangeIndex)) {
+            // We read all mixed blocks from range, so we can choose zero as
+            // baseline commit.
+            filter->InitializeCompactionRange(rangeIndex, 0);
+        }
+    }
+}
+
+void TPartitionActor::CompleteLoadMixedBlocksFilterChunk(
+    const TActorContext& ctx,
+    TTxPartition::TLoadMixedBlocksFilterChunk& args)
+{
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Mixed blocks filter chunk updated: range index=%lu, range count=%lu",
+        LogTitle.GetWithTime().c_str(),
+        args.Ranges.RangeIndex,
+        args.Ranges.RangeCount);
+
+    LoadNextMixedBlocksFilterChunkIfNeeded(
+        ctx,
+        CyclesToDurationSafe(args.RequestInfo->ExecCycles));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter_load_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
@@ -65,6 +66,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(ConfirmBlobs,               __VA_ARGS__)                               \
     xxx(DeleteUnconfirmedBlobs,     __VA_ARGS__)                               \
     xxx(LoadCompactionMapChunk,     __VA_ARGS__)                               \
+    xxx(LoadMixedBlocksFilterChunk, __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1284,6 +1286,31 @@ struct TTxPartition
         void Clear()
         {
             Counters.clear();
+        }
+    };
+
+    //
+    // LoadMixedBlocksFilterChunk
+    //
+
+    struct TLoadMixedBlocksFilterChunk
+    {
+        const TCompactionRangesToLoad Ranges;
+        const TRequestInfoPtr RequestInfo;
+
+        // Blocks loaded from mixed index.
+        TVector<TBlock> Blocks;
+
+        TLoadMixedBlocksFilterChunk(
+            TCompactionRangesToLoad ranges,
+            TRequestInfoPtr requestInfo)
+            : Ranges(ranges)
+            , RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear()
+        {
+            Blocks.clear();
         }
     };
 };
