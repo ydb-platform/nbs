@@ -116,7 +116,7 @@ Y_UNIT_TEST_SUITE(TCriticalEventsTest)
 
 Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 {
-    void DoShouldEagerlyInitLegacyCriticalEventsCounters(
+    void DoShouldEagerlyInitAppCriticalEventsCounters(
         NProto::EVolumeCriticalEventsReportingMode reportingMode,
         bool shouldInit)
     {
@@ -166,19 +166,19 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     }
 
     // InitCriticalEventsCounter/InitVolumeCriticalEventsCounter should
-    // eagerly initializes the legacy per-disk AppCriticalEvents/<event>
-    // counters (value 0) only with
+    // eagerly initialize the per-host AppCriticalEvents/<event>
+    // counters (value 0) for disk critical events only with
     // TDiagnosticsConfig::VolumeCriticalEventsReportingMode != VOLUME_ONLY
     // so they keep show up in monitoring before any event is reported.
-    Y_UNIT_TEST(ShouldEagerlyInitLegacyCriticalEventsCounters)
+    Y_UNIT_TEST(ShouldEagerlyInitAppCriticalEventsCounters)
     {
-        DoShouldEagerlyInitLegacyCriticalEventsCounters(
+        DoShouldEagerlyInitAppCriticalEventsCounters(
             NProto::EVolumeCriticalEventsReportingMode::APP_ONLY,
             /*shouldInit=*/true);
-        DoShouldEagerlyInitLegacyCriticalEventsCounters(
+        DoShouldEagerlyInitAppCriticalEventsCounters(
             NProto::EVolumeCriticalEventsReportingMode::ALL,
             /*shouldInit=*/true);
-        DoShouldEagerlyInitLegacyCriticalEventsCounters(
+        DoShouldEagerlyInitAppCriticalEventsCounters(
             NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY,
             /*shouldInit=*/false);
     }
@@ -262,7 +262,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     }
 
     // Per-disk GAUGE counters are emitted by the shadow-swap publish,
-    // while the legacy AppCriticalEvents/* counter is bumped synchronously
+    // while the per-host AppCriticalEvents/* counter is bumped synchronously
     Y_UNIT_TEST(ShouldEmitPerDiskCountersForVolumeCriticalEvents)
     {
         ResetVolumeCriticalEventsCounter();
@@ -301,11 +301,11 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         UNIT_ASSERT(
             !volumeGroup || !volumeGroup->FindCounter(GetVolumeSensorName()));
 
-        // Legacy counter is bumped synchronously.
-        auto legacyCounter =
-            criticalEventsGroup->FindCounter(GetAppSensorName());
-        UNIT_ASSERT(legacyCounter);
-        UNIT_ASSERT_VALUES_EQUAL(2, legacyCounter->Val());
+        // Per-host counter is bumped synchronously.
+        auto appCounter = criticalEventsGroup->FindCounter(GetAppSensorName());
+        UNIT_ASSERT(appCounter);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, appCounter->Val());
 
         // Flush materializes and writes the GAUGE.
         handler->UpdateStats(true);
@@ -314,10 +314,11 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         UNIT_ASSERT(volumeGroup);
         auto volumeCounter = volumeGroup->FindCounter(GetVolumeSensorName());
         UNIT_ASSERT(volumeCounter);
+
         UNIT_ASSERT_VALUES_EQUAL(2, volumeCounter->Val());
 
-        // Legacy counter is not changed after update/publish.
-        UNIT_ASSERT_VALUES_EQUAL(2, legacyCounter->Val());
+        // Per-host counter is not changed after update/publish.
+        UNIT_ASSERT_VALUES_EQUAL(2, appCounter->Val());
     }
 
     // The publish only runs when updateIntervalFinished is true
@@ -429,19 +430,18 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(volumeGroup);
-        UNIT_ASSERT_VALUES_EQUAL(
-            2,
-            volumeGroup->FindCounter(GetVolumeSensorName())->Val());
+        auto volumeCounter = volumeGroup->FindCounter(GetVolumeSensorName());
+        UNIT_ASSERT(volumeCounter);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, volumeCounter->Val());
 
         // No new events -> Unpublished is 0 -> GAUGE set back to 0.
         handler->UpdateStats(true);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            volumeGroup->FindCounter(GetVolumeSensorName())->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, volumeCounter->Val());
     }
 
     // Counters are distinct per disk.
-    // Legacy counters contain summary
+    // Per-host counters contain summary
     Y_UNIT_TEST(ShouldKeepDistinctCountersPerDisk)
     {
         ResetVolumeCriticalEventsCounter();
@@ -487,11 +487,10 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
                 ->FindCounter(GetVolumeSensorName())
                 ->Val());
 
-        // Legacy counter should contain summary
-        auto legacyCounter =
-            criticalEventsGroup->FindCounter(GetAppSensorName());
-        UNIT_ASSERT(legacyCounter);
-        UNIT_ASSERT_VALUES_EQUAL(3, legacyCounter->Val());
+        // Per-host counter should contain summary
+        auto appCounter = criticalEventsGroup->FindCounter(GetAppSensorName());
+        UNIT_ASSERT(appCounter);
+        UNIT_ASSERT_VALUES_EQUAL(3, appCounter->Val());
     }
 
     // Events fired before CountersRoot is set must accumulate in
@@ -532,23 +531,21 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(volumeGroup);
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            volumeGroup->FindCounter(GetVolumeSensorName())->Val());
+        auto volumeCounter = volumeGroup->FindCounter(GetVolumeSensorName());
+        UNIT_ASSERT(volumeCounter);
 
-        // Legacy counter reflects the dual emission (3 synchronous
-        // Inc()'s).
+        UNIT_ASSERT_VALUES_EQUAL(3, volumeCounter->Val());
+
+        // Per-host counter reflects the dual emission (3 synchronous Inc()'s).
         UNIT_ASSERT_VALUES_EQUAL(
             3,
             criticalEventsGroup->FindCounter(GetAppSensorName())->Val());
 
-        // One more event on the hot path (Exported is now non-null,
-        // Internal -> 1) is flushed on the next tick.
+        // One more event (Published is now non-null, Unpublished -> 1)
+        // is flushed on the next tick.
         ReportBlockDigestMismatchInBlob(v, "some msg");
         handler->UpdateStats(true);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            volumeGroup->FindCounter(GetVolumeSensorName())->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, volumeCounter->Val());
     }
 
     // All Report...() overloads works
@@ -618,21 +615,22 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             .CloudId = cloudId,
             .FolderId = folderId};
 
-        auto legacyCounter =
-            criticalEventsGroup->FindCounter(GetAppSensorName());
-        UNIT_ASSERT(legacyCounter);
-        // Legacy counter should contain summary immediately
-        UNIT_ASSERT_VALUES_EQUAL(12, legacyCounter->Val());
+        // Per-host counter should contain summary immediately.
+        auto appCounter = criticalEventsGroup->FindCounter(GetAppSensorName());
+        UNIT_ASSERT(appCounter);
+        UNIT_ASSERT_VALUES_EQUAL(12, appCounter->Val());
 
         handler->UpdateStats(true);
 
         auto volumeGroup = FindVolumeGroup(volumeCriticalEventsGroup, v);
         UNIT_ASSERT(volumeGroup);
-        UNIT_ASSERT_VALUES_EQUAL(
-            12,
-            volumeGroup->FindCounter(GetVolumeSensorName())->Val());
+        auto volumeCounter = volumeGroup->FindCounter(GetVolumeSensorName());
+        UNIT_ASSERT(volumeCounter);
 
-        UNIT_ASSERT_VALUES_EQUAL(12, legacyCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(12, volumeCounter->Val());
+
+        // Per-host counter is not changed after update/publish.
+        UNIT_ASSERT_VALUES_EQUAL(12, appCounter->Val());
     }
 }
 

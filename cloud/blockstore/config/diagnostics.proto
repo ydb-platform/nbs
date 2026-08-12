@@ -22,14 +22,15 @@ enum EHostNameScheme
 // Volume critical events reporting mode (for per-disk critical events)
 enum EVolumeCriticalEventsReportingMode
 {
-    // Report only via legacy per-host AppCriticalEvents metrics.
+    // Report disk critical events only via per-host AppCriticalEvents metrics.
     APP_ONLY = 0;
 
-    // Report both via legacy per-host AppCriticalEvents and via per-volume
-    // VolumeCriticalEvents metrics.
+    // Report disk critical events both via per-host AppCriticalEvents
+    // and via per-volume VolumeCriticalEvents metrics.
     ALL = 1;
 
-    // Report only via per-volume VolumeCriticalEvents metrics.
+    // Report disk critical events only via per-volume VolumeCriticalEvents
+    // metrics.
     VOLUME_ONLY = 2;
 };
 
