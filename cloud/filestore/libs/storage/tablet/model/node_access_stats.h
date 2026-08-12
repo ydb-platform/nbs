@@ -2,13 +2,11 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
-#include <util/generic/hash_set.h>
-#include <util/generic/maybe.h>
 #include <util/generic/set.h>
-#include <util/generic/string.h>
-#include <util/generic/vector.h>
 
 namespace NCloud::NFileStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TNodeAccessStats
 {
@@ -31,16 +29,15 @@ private:
             const double lhsScore = DecayedScore(lhs, comparisonTime);
             const double rhsScore = DecayedScore(rhs, comparisonTime);
 
-            if (lhsScore == rhsScore) {
-                return lhs.NodeId < rhs.NodeId;
-            }
-            return lhsScore < rhsScore;
+            // DecayedScore ASC, NodeId ASC
+            return std::tie(lhsScore, lhs.NodeId) <
+                   std::tie(rhsScore, rhs.NodeId);
         }
     };
 
     using TStatsSet = TSet<TNodeAccessStats, TNodeAccessComparator>;
     size_t MaxEntries = 0;
-    THashMap<ui64, TStatsSet::iterator> NodeId2StatsIter;
+    THashMap<ui64, TStatsSet::iterator> NodeId2Stats;
     TStatsSet StatsRanking;
 
     void EvictLeastUsedNodes()
@@ -49,27 +46,16 @@ private:
             auto leastAccessed = StatsRanking.begin();
             const ui64 nodeId = leastAccessed->NodeId;
 
-            NodeId2StatsIter.erase(nodeId);
+            NodeId2Stats.erase(nodeId);
             StatsRanking.erase(leastAccessed);
         }
     }
 
 public:
-    void Initialize(size_t maxEntries);
+    explicit TNodeAccessStatsTracker(size_t maxEntries);
     void RequestStarted(ui64 nodeId, TInstant now);
     static double DecayedScore(const TNodeAccessStats& stats, TInstant now);
-
-    TVector<TNodeAccessStats> GetStats(TInstant now) const
-    {
-        TVector<TNodeAccessStats> result;
-        result.reserve(StatsRanking.size());
-        for (auto it = StatsRanking.rbegin(); it != StatsRanking.rend(); ++it) {
-            auto stats = *it;
-            stats.AccessScore = DecayedScore(stats, now);
-            result.push_back(stats);
-        }
-        return result;
-    }
+    TVector<TNodeAccessStats> GetStats(TInstant now, ui32 n) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

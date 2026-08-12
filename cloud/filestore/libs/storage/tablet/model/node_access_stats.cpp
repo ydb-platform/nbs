@@ -1,17 +1,15 @@
 #include <cloud/filestore/libs/storage/tablet/model/node_access_stats.h>
 
 #include <util/datetime/base.h>
-#include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 
 namespace NCloud::NFileStore::NStorage {
 
-void TNodeAccessStatsTracker::Initialize(size_t maxEntries)
-{
-    MaxEntries = maxEntries;
-    NodeId2StatsIter.clear();
-    StatsRanking.clear();
-}
+////////////////////////////////////////////////////////////////////////////////
+
+TNodeAccessStatsTracker::TNodeAccessStatsTracker(size_t maxEntries)
+    : MaxEntries(maxEntries)
+{}
 
 double TNodeAccessStatsTracker::DecayedScore(
     const TNodeAccessStats& stats,
@@ -27,10 +25,10 @@ double TNodeAccessStatsTracker::DecayedScore(
 
 void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
 {
-    auto it = NodeId2StatsIter.find(nodeId);
+    auto it = NodeId2Stats.find(nodeId);
     TNodeAccessStats stats;
 
-    if (it != NodeId2StatsIter.end()) {
+    if (it != NodeId2Stats.end()) {
         stats = *it->second;
         StatsRanking.erase(it->second);
     } else {
@@ -43,9 +41,31 @@ void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
 
     auto [newStatsIt, inserted] = StatsRanking.insert(stats);
     Y_ABORT_UNLESS(inserted);
-    NodeId2StatsIter[nodeId] = newStatsIt;
+    NodeId2Stats[nodeId] = newStatsIt;
+    if (it != NodeId2Stats.end()) {
+        it->second = newStatsIt;
+    } else {
+        NodeId2Stats.emplace(nodeId, newStatsIt);
+    }
 
     EvictLeastUsedNodes();
+}
+
+TVector<TNodeAccessStats> TNodeAccessStatsTracker::GetStats(
+    TInstant now,
+    ui32 n) const
+{
+    TVector<TNodeAccessStats> result;
+    result.reserve(StatsRanking.size());
+    for (auto it = StatsRanking.rbegin();
+         it != StatsRanking.rend() && result.size() < n;
+         ++it)
+    {
+        auto stats = *it;
+        stats.AccessScore = DecayedScore(stats, now);
+        result.push_back(stats);
+    }
+    return result;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

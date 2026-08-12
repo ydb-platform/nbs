@@ -10,33 +10,31 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 {
     Y_UNIT_TEST(ShouldTrackRequestCountAndScore)
     {
-        TNodeAccessStatsTracker tracker;
-        tracker.Initialise(1);
+        TNodeAccessStatsTracker tracker(1);
 
-        const auto now = TInstant::Now();
+        const auto start = TInstant::MilliSeconds(10'000'000);
 
-        tracker.RequestStarted(1, now);
+        tracker.RequestStarted(1, start);
 
-        const auto stats = tracker.GetStats(now);
+        const auto stats = tracker.GetStats(start, 3);
 
         UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
         UNIT_ASSERT_VALUES_EQUAL(1, stats[0].NodeId);
         UNIT_ASSERT_VALUES_EQUAL(1, stats[0].RequestCount);
         UNIT_ASSERT_DOUBLES_EQUAL(1.0, stats[0].AccessScore, 1e-9);
-        UNIT_ASSERT_VALUES_EQUAL(now, stats[0].LastAccessed);
+        UNIT_ASSERT_VALUES_EQUAL(start, stats[0].LastAccessed);
     }
 
     Y_UNIT_TEST(ShouldDecayScoreBeforeAdding)
     {
-        TNodeAccessStatsTracker tracker;
-        tracker.Initialise(1);
+        TNodeAccessStatsTracker tracker(1);
 
-        const auto now = TInstant::Now();
+        const auto start = TInstant::MilliSeconds(10'000'000);
 
-        tracker.RequestStarted(1, now);
-        tracker.RequestStarted(1, now);
+        tracker.RequestStarted(1, start);
+        tracker.RequestStarted(1, start);
 
-        const auto stats = tracker.GetStats(now);
+        const auto stats = tracker.GetStats(start, 3);
 
         UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
         UNIT_ASSERT_VALUES_EQUAL(2, stats[0].RequestCount);
@@ -44,27 +42,26 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto decayed = TNodeAccessStatsTracker::DecayedScore(
             stats[0],
-            now + TDuration::Minutes(10));
+            start + TDuration::Minutes(10));
 
         UNIT_ASSERT_DOUBLES_EQUAL(1.0, decayed, 1e-9);
     }
 
     Y_UNIT_TEST(ShouldOrderByCurrentDecayedScore)
     {
-        TNodeAccessStatsTracker tracker;
-        tracker.Initialise(2);
+        TNodeAccessStatsTracker tracker(2);
 
-        const auto now = TInstant::Now();
-        const auto old = now - TDuration::Minutes(10);
+        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto old = start - TDuration::Minutes(10);
 
         for (ui32 i = 0; i < 10; ++i) {
             tracker.RequestStarted(1, old);
         }
         for (ui32 i = 0; i < 9; ++i) {
-            tracker.RequestStarted(2, now);
+            tracker.RequestStarted(2, start);
         }
 
-        const auto stats = tracker.GetStats(now);
+        const auto stats = tracker.GetStats(start, 5);
 
         UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
@@ -74,15 +71,14 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
     Y_UNIT_TEST(ShouldUseNodeIdAsTieBreaker)
     {
-        TNodeAccessStatsTracker tracker;
-        tracker.Initialise(2);
+        TNodeAccessStatsTracker tracker(2);
 
-        const auto now = TInstant::Now();
+        const auto start = TInstant::MilliSeconds(10'000'000);
 
-        tracker.RequestStarted(1, now);
-        tracker.RequestStarted(2, now);
+        tracker.RequestStarted(1, start);
+        tracker.RequestStarted(2, start);
 
-        const auto stats = tracker.GetStats(now);
+        const auto stats = tracker.GetStats(start, 5);
 
         UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
@@ -92,18 +88,17 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
     Y_UNIT_TEST(ShouldEvictLeastAccessedNode)
     {
-        TNodeAccessStatsTracker tracker;
-        tracker.Initialise(2);
+        TNodeAccessStatsTracker tracker(2);
 
-        const auto now = TInstant::Now();
+        const auto start = TInstant::MilliSeconds(10'000'000);
 
-        tracker.RequestStarted(1, now - TDuration::Minutes(10));
-        tracker.RequestStarted(2, now);
-        tracker.RequestStarted(3, now);
-        tracker.RequestStarted(4, now);
-        tracker.RequestStarted(4, now);
+        tracker.RequestStarted(1, start - TDuration::Minutes(10));
+        tracker.RequestStarted(2, start);
+        tracker.RequestStarted(3, start);
+        tracker.RequestStarted(4, start);
+        tracker.RequestStarted(4, start);
 
-        const auto stats = tracker.GetStats(now);
+        const auto stats = tracker.GetStats(start, 5);
 
         UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
