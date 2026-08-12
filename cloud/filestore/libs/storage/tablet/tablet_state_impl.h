@@ -51,6 +51,8 @@ struct TIndexTabletState::TImpl
 
     // TODO: move to TSession
     TSessionHandleMap HandleById;
+    // Handles waiting for their registration tx to commit.
+    THashSet<ui64> PendingCreateHandleCommits;
     TSessionLockMap LockById;
     TSessionLockMultiMap LocksByHandle;
     ui64 MaxSessionHistoryEntryId = 1;

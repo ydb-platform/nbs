@@ -560,7 +560,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
     if (safeAsync || unsafeAsync) {
         args.AsyncHandle = args.Response.GetHandle();
-        PendingCreateHandleCommits.insert(args.AsyncHandle);
+        StartCreateHandleCommit(args.AsyncHandle);
 
         LOG_DEBUG(
             ctx,
@@ -654,7 +654,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     TTxIndexTablet::TCreateHandle& args)
 {
     if (args.Completed) {
-        PendingCreateHandleCommits.erase(args.AsyncHandle);
+        EndCreateHandleCommit(args.AsyncHandle);
         return;
     }
 
@@ -683,7 +683,7 @@ void TIndexTabletActor::HandleConfirmCreateHandle(
     if (handle
             && handle->Session == session
             && handle->GetNodeId() == request.GetNodeId()
-            && !PendingCreateHandleCommits.contains(request.GetHandle()))
+            && !HasPendingCreateHandleCommit(request.GetHandle()))
     {
         auto response =
             std::make_unique<TEvService::TEvConfirmCreateHandleResponse>();
@@ -750,7 +750,7 @@ bool TIndexTabletActor::PrepareTx_ConfirmCreateHandle(
     }
 
     if (args.Node->Attrs.GetType() != NProto::E_REGULAR_NODE) {
-        args.Error = ErrorIsDirectory(args.NodeId);
+        args.Error = ErrorInvalidNodeType(args.NodeId);
         return true;
     }
 
@@ -796,9 +796,15 @@ void TIndexTabletActor::ExecuteTx_ConfirmCreateHandle(
     }
 
     if (!handleExists) {
-        // Keep retries off the fast path until this tx commits.
+        // RegisterHandle makes the new handle visible in memory before this
+        // transaction is durably committed. Mark the commit as pending so a
+        // concurrent confirmation skips the fast path and runs as a tablet
+        // transaction. Its response will then be ordered after this handle
+        // registration commits. Otherwise the client could remove its durable
+        // confirmation request, and a tablet restart could leave it with a
+        // handle that was never persisted.
         args.HandleRegistered = true;
-        PendingCreateHandleCommits.insert(args.Handle);
+        StartCreateHandleCommit(args.Handle);
     }
 
     if (args.CreateRequestId && !session->LookupDupEntry(args.CreateRequestId))
@@ -826,7 +832,7 @@ void TIndexTabletActor::CompleteTx_ConfirmCreateHandle(
     RemoveInFlightRequest(*args.RequestInfo);
 
     if (args.HandleRegistered) {
-        PendingCreateHandleCommits.erase(args.Handle);
+        EndCreateHandleCommit(args.Handle);
     }
 
     auto response =

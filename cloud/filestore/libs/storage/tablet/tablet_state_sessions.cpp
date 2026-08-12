@@ -742,6 +742,21 @@ TSessionHandle* TIndexTabletState::FindHandle(ui64 handle) const
     return nullptr;
 }
 
+bool TIndexTabletState::HasPendingCreateHandleCommit(ui64 handle) const
+{
+    return Impl->PendingCreateHandleCommits.contains(handle);
+}
+
+void TIndexTabletState::StartCreateHandleCommit(ui64 handle)
+{
+    Impl->PendingCreateHandleCommits.insert(handle);
+}
+
+void TIndexTabletState::EndCreateHandleCommit(ui64 handle)
+{
+    Impl->PendingCreateHandleCommits.erase(handle);
+}
+
 void TIndexTabletState::ChangeNodeCounters(
     const TNodeToSessionStat::EKind nodeKind,
     i64 amount)

@@ -865,6 +865,12 @@ public:
 
     TSessionHandle* FindHandle(ui64 handle) const;
 
+    bool HasPendingCreateHandleCommit(ui64 handle) const;
+
+    void StartCreateHandleCommit(ui64 handle);
+
+    void EndCreateHandleCommit(ui64 handle);
+
     bool HasOpenHandles(ui64 nodeId) const;
 
 private:

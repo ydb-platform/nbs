@@ -833,6 +833,43 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             response->Record.GetError().GetMessage());
     }
 
+    Y_UNIT_TEST(ShouldRejectConfirmCreateHandleForUnsupportedNodeTypes)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto dir = CreateNode(
+            tablet,
+            TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        auto response = tablet.AssertConfirmCreateHandleFailed(
+            dir,
+            424247,
+            TCreateHandleArgs::RDNLY,
+            100500);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NODEV,
+            response->Record.GetError().GetCode(),
+            response->Record.GetError().GetMessage());
+
+        auto link = CreateNode(
+            tablet,
+            TCreateNodeArgs::SymLink(RootNodeId, "link", "target"));
+        response = tablet.AssertConfirmCreateHandleFailed(
+            link,
+            424248,
+            TCreateHandleArgs::RDNLY,
+            100501);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NODEV,
+            response->Record.GetError().GetCode(),
+            response->Record.GetError().GetMessage());
+    }
+
     Y_UNIT_TEST(ShouldSetGuestKeepCacheProperlyForOffloadedNodes)
     {
         NProto::TStorageConfig storageConfig;
