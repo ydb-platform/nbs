@@ -3,6 +3,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/set.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NFileStore::NStorage {
 
