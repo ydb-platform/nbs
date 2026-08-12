@@ -1,3 +1,10 @@
+/*******************************************************************************
+
+This file is intended for initialization only and must not be included in
+critical event reporting to avoid potential PEERDIR cyclic dependencies.
+
+*******************************************************************************/
+
 #pragma once
 
 #include "public.h"
@@ -8,7 +15,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void SetVolumeCriticalEventsReportingMode(
+void InitVolumeCriticalEventsReportingMode(
     NProto::EVolumeCriticalEventsReportingMode reportingMode);
 
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);

@@ -139,8 +139,8 @@ CloudIdsWithStrictSLA: "cloud3"
     {
         TDiagnosticsConfig defaultConfig;
         UNIT_ASSERT_VALUES_EQUAL(
-            defaultConfig.GetVolumeCriticalEventsReportingMode(),
-            NProto::EVolumeCriticalEventsReportingMode::APP_ONLY);
+            NProto::EVolumeCriticalEventsReportingMode::APP_ONLY,
+            defaultConfig.GetVolumeCriticalEventsReportingMode());
 
         NProto::TDiagnosticsConfig protoConfig = CreateConfig(R"(
 VolumeCriticalEventsReportingMode: ALL
@@ -148,8 +148,8 @@ VolumeCriticalEventsReportingMode: ALL
         TDiagnosticsConfig config(protoConfig);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            config.GetVolumeCriticalEventsReportingMode(),
-            NProto::EVolumeCriticalEventsReportingMode::ALL);
+            NProto::EVolumeCriticalEventsReportingMode::ALL,
+            config.GetVolumeCriticalEventsReportingMode());
     }
 }
 

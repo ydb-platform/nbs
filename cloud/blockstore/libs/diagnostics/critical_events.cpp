@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include "critical_events_config.h"
+#include "critical_events_init.h"
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_handler.h>
@@ -20,8 +20,6 @@
 
 namespace NCloud::NBlockStore {
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,7 +28,7 @@ namespace {
 
 /*
 TVolumeCriticalEventCounter - per-interval critical event counter with
-deferred export
+deferred publishing
 
 Writing the number of critical events for an interval directly into the
 monitoring counter (Published) can lead to registered critical events being
@@ -93,6 +91,7 @@ inline bool operator==(
 }
 
 }   // namespace
+
 }   // namespace NCloud::NBlockStore
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,6 +108,7 @@ struct THash<NCloud::NBlockStore::TVolumeCriticalEventKey>
 };
 
 namespace NCloud::NBlockStore {
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -187,7 +187,7 @@ TString ComposeMessageWithSuffix(const TString& message, const TString& suffix)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void SetVolumeCriticalEventsReportingMode(
+void InitVolumeCriticalEventsReportingMode(
     NProto::EVolumeCriticalEventsReportingMode reportingMode)
 {
     VolumeCriticalEventsReportingMode = reportingMode;

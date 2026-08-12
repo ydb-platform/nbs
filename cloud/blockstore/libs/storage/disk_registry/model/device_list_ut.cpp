@@ -2,9 +2,10 @@
 
 #include "agent_list.h"
 
-#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/diagnostics/critical_events_config.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
+
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

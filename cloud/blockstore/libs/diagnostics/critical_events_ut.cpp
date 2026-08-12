@@ -1,6 +1,6 @@
 #include "critical_events.h"
 
-#include "critical_events_config.h"
+#include "critical_events_init.h"
 
 #include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 
@@ -65,7 +65,7 @@ Y_UNIT_TEST_SUITE(TCriticalEventsTest)
         auto criticalEventsGroup =
             root->GetSubgroup("component", AppCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(reportingMode);
+        InitVolumeCriticalEventsReportingMode(reportingMode);
 
         InitCriticalEventsCounter(criticalEventsGroup);
 
@@ -127,7 +127,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             "component",
             VolumeCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(reportingMode);
+        InitVolumeCriticalEventsReportingMode(reportingMode);
         InitCriticalEventsCounter(criticalEventsGroup);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
@@ -197,7 +197,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             "component",
             VolumeCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(reportingMode);
+        InitVolumeCriticalEventsReportingMode(reportingMode);
         InitCriticalEventsCounter(criticalEventsGroup);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
@@ -274,7 +274,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             "component",
             VolumeCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(
+        InitVolumeCriticalEventsReportingMode(
             NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitCriticalEventsCounter(criticalEventsGroup);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
@@ -330,7 +330,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             "component",
             VolumeCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(
+        InitVolumeCriticalEventsReportingMode(
             NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
@@ -370,7 +370,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             "component",
             VolumeCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(
+        InitVolumeCriticalEventsReportingMode(
             NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
@@ -411,7 +411,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             "component",
             VolumeCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(
+        InitVolumeCriticalEventsReportingMode(
             NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
@@ -453,7 +453,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             "component",
             VolumeCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(
+        InitVolumeCriticalEventsReportingMode(
             NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitCriticalEventsCounter(criticalEventsGroup);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
@@ -507,7 +507,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             "component",
             VolumeCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(
+        InitVolumeCriticalEventsReportingMode(
             NProto::EVolumeCriticalEventsReportingMode::ALL);
         // NOTE: InitVolumeCriticalEventsCounter is intentionally deferred.
         InitCriticalEventsCounter(criticalEventsGroup);
@@ -563,7 +563,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             "component",
             VolumeCriticalEventsComponent.data());
 
-        SetVolumeCriticalEventsReportingMode(
+        InitVolumeCriticalEventsReportingMode(
             NProto::EVolumeCriticalEventsReportingMode::ALL);
         InitCriticalEventsCounter(criticalEventsGroup);
         InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);

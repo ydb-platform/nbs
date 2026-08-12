@@ -1,7 +1,7 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/common/constants.h>
-#include <cloud/blockstore/libs/diagnostics/critical_events_config.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>

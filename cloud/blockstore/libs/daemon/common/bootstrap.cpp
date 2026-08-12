@@ -11,7 +11,7 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/diagnostics/critical_events_config.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/fault_injection.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_request_processor.h>
 #include <cloud/blockstore/libs/diagnostics/probes.h>
@@ -307,7 +307,7 @@ void TBootstrapBase::Init()
         false);
     *versionCounter = 1;
 
-    SetVolumeCriticalEventsReportingMode(
+    InitVolumeCriticalEventsReportingMode(
         Configs->DiagnosticsConfig->GetVolumeCriticalEventsReportingMode());
     InitCriticalEventsCounter(serverGroup);
     InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
