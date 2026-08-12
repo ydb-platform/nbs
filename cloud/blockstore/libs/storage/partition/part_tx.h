@@ -1295,8 +1295,9 @@ struct TTxPartition
     struct TLoadMixedBlocksFilterChunk
     {
         const TBlockRange32 Range;
-
         const TRequestInfoPtr RequestInfo;
+
+        // Blocks loaded from mixed index.
         TVector<TBlock> Blocks;
 
         TLoadMixedBlocksFilterChunk(

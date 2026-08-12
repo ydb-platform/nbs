@@ -240,6 +240,13 @@ void TPartitionActor::CompleteLoadState(
 
     SharedState->Init(SelfId(), Executor()->Generation(), 0);
 
+    std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig;
+    if (IsMixedBlocksFilterEnabled()) {
+        mixedBlocksFilterConfig = TMixedBlocksFilterConfig{
+            Config->GetMixedBlocksFilterRangesToLoadPerTx(),
+            Config->GetMixedBlocksFilterAllowedCpuTimePerSecond()};
+    }
+
     State = std::make_unique<TPartitionState>(
         *args.Meta,
         BuildCompactionPolicy(partitionConfig, *Config, SiblingCount),
@@ -260,9 +267,7 @@ void TPartitionActor::CompleteLoadState(
         Config->GetCompactionRangeCountPerRun(),
         SharedState,
         TabletID(),
-        IsMixedBlocksFilterEnabled(),
-        Config->GetMixedBlocksFilterRangesToLoadPerTx(),
-        Config->GetMixedBlocksFilterAllowedCpuTimePerSecond());
+        mixedBlocksFilterConfig);
 
     CreateFreshBlocksCompanionClient();
 
@@ -555,6 +560,8 @@ void TPartitionActor::LoadNextMixedBlocksFilterChunkIfNeeded(
     auto* loadState = State->AccessMixedBlocksFilterLoadState();
 
     if (!loadState) {
+        // Mixed blocks filter load from mixed index is disabled or already
+        // finished.
         return;
     }
 
@@ -584,7 +591,7 @@ void TPartitionActor::HandleLoadMixedBlocksFilterChunk(
     auto nextRange = loadState->LoadNextRanges();
 
     if (!nextRange) {
-        State->FinishMixedBlocksFilterLoad();
+        State->MixedBlocksFilterLoaded();
 
         LOG_INFO(
             ctx,
@@ -626,7 +633,7 @@ bool TPartitionActor::PrepareLoadMixedBlocksFilterChunk(
         TBlockRange32::WithLength(
             args.Range.Start * rangeSize,
             args.Range.Size() * rangeSize),
-        false);   // precharge
+        true);   // precharge
 }
 
 void TPartitionActor::ExecuteLoadMixedBlocksFilterChunk(
@@ -634,8 +641,7 @@ void TPartitionActor::ExecuteLoadMixedBlocksFilterChunk(
     TTransactionContext& tx,
     TTxPartition::TLoadMixedBlocksFilterChunk& args)
 {
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
+    Y_UNUSED(ctx, tx);
 
     TRequestScope timer(*args.RequestInfo);
 

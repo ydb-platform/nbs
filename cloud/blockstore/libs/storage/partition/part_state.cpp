@@ -65,9 +65,8 @@ TPartitionState::TPartitionState(
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
-        const bool mixedBlocksFilterEnabled,
-        const ui64 mixedBlocksFilterRangesToLoadPerTx,
-        const TDuration mixedBlocksFilterAllowedCpuTimePerSecond)
+        const std::optional<TMixedBlocksFilterConfig>
+            mixedBlocksFilterConfig)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -101,20 +100,19 @@ TPartitionState::TPartitionState(
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
 {
-    if (mixedBlocksFilterEnabled) {
+    if (mixedBlocksFilterConfig) {
         MixedBlocksFilter.emplace(
             tabletId,
             GetMaxBlocksInBlob(),
             Config.GetBlocksCount());
 
-        if (mixedBlocksFilterRangesToLoadPerTx) {
+        if (mixedBlocksFilterConfig->MixedBlocksFilterRangesToLoadPerTx) {
             MixedBlocksFilterLoadState.emplace(
                 *MixedBlocksFilter,
                 CeilDiv<ui64>(Config.GetBlocksCount(), GetMaxBlocksInBlob()),
-                mixedBlocksFilterRangesToLoadPerTx,
-                mixedBlocksFilterAllowedCpuTimePerSecond
-                    ? mixedBlocksFilterAllowedCpuTimePerSecond
-                    : TDuration::Seconds(1));
+                mixedBlocksFilterConfig->MixedBlocksFilterRangesToLoadPerTx,
+                mixedBlocksFilterConfig
+                    ->MixedBlocksFilterAllowedCpuTimePerSecond);
         }
     }
     InitChannels();

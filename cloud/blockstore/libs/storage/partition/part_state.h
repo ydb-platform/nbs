@@ -283,6 +283,14 @@ struct TBackpressureFeaturesConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TMixedBlocksFilterConfig
+{
+    ui64 MixedBlocksFilterRangesToLoadPerTx = 0;
+    TDuration MixedBlocksFilterAllowedCpuTimePerSecond;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TPartitionState
     : public TPartitionChannelsState
     , public TCommitIdsState
@@ -320,9 +328,7 @@ public:
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
-        const bool mixedBlocksFilterEnabled,
-        const ui64 mixedBlocksFilterRangesToLoadPerTx,
-        const TDuration mixedBlocksFilterAllowedCpuTimePerSecond);
+        const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig);
 
 private:
     bool LoadStateFinished = false;
@@ -610,7 +616,7 @@ public:
                                           : nullptr;
     }
 
-    void FinishMixedBlocksFilterLoad()
+    void MixedBlocksFilterLoaded()
     {
         MixedBlocksFilterLoadState = std::nullopt;
     }

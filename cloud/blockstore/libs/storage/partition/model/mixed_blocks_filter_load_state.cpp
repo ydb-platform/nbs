@@ -12,17 +12,20 @@ TMixedBlocksFilterLoadState::TMixedBlocksFilterLoadState(
     : MixedBlocksFilter(mixedBlocksFilter)
     , RangesCount(rangesCount)
     , RangesToLoadPerTx(rangesToLoadPerTx)
+    , AllowedCpuTimePerSecond(
+          allowedCpuTimePerSecond ? allowedCpuTimePerSecond
+                                  : TDuration::Seconds(1))
     , Throttling(
-          allowedCpuTimePerSecond.SecondsFloat(),
-          allowedCpuTimePerSecond.SecondsFloat(),
-          allowedCpuTimePerSecond.SecondsFloat())
+          AllowedCpuTimePerSecond.SecondsFloat(),
+          AllowedCpuTimePerSecond.SecondsFloat(),
+          AllowedCpuTimePerSecond.SecondsFloat())
 {
-    Y_ABORT_UNLESS(rangesCount > 0, "Ranges count must be greater than 0");
+    Y_ABORT_UNLESS(RangesCount > 0, "Ranges count must be greater than 0");
     Y_ABORT_UNLESS(
-        rangesToLoadPerTx > 0,
+        RangesToLoadPerTx > 0,
         "Ranges to load per tx must be greater than 0");
     Y_ABORT_UNLESS(
-        allowedCpuTimePerSecond.SecondsFloat() > 0,
+        AllowedCpuTimePerSecond.SecondsFloat() > 0,
         "Allowed cpu time per second must be greater than 0");
 }
 
@@ -35,33 +38,31 @@ TMixedBlocksFilterLoadState::TMixedBlocksFilterLoadState(
 TMixedBlocksFilterLoadState::LoadNextRanges()
 {
     while (!IsAllRangesLoaded()) {
-        const auto endCompactionRange =
+        const auto endIndex =
             Max<ui64>() - RangesToLoadPerTx + 1 <= CompactionRangeToLoadIndex
                 ? Max<ui64>()
                 : CompactionRangeToLoadIndex + RangesToLoadPerTx - 1;
 
         auto compactionRanges = TBlockRange32::MakeClosedIntervalWithLimit(
             CompactionRangeToLoadIndex,
-            endCompactionRange,
+            endIndex,
             RangesCount - 1);
 
         CompactionRangeToLoadIndex =
             static_cast<ui64>(compactionRanges.End) + 1;
 
-        bool compactionRangesAlreadyInitialized = true;
-        for (ui64 compactionRangeIndex = compactionRanges.Start;
-             compactionRangeIndex <= compactionRanges.End;
-             ++compactionRangeIndex)
+        bool allRangesInitialized = true;
+        for (ui64 rangeIndex = compactionRanges.Start;
+             rangeIndex <= compactionRanges.End;
+             ++rangeIndex)
         {
-            if (!MixedBlocksFilter.IsCompactionRangeInitialized(
-                    compactionRangeIndex))
-            {
-                compactionRangesAlreadyInitialized = false;
+            if (!MixedBlocksFilter.IsCompactionRangeInitialized(rangeIndex)) {
+                allRangesInitialized = false;
                 break;
             }
         }
 
-        if (compactionRangesAlreadyInitialized) {
+        if (allRangesInitialized) {
             continue;
         }
 

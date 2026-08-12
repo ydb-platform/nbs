@@ -187,7 +187,14 @@ void TMixedBlocksFilter::InitializeCompactionRange(
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    CompactionRangeCommitIds[compactionRangeIndex] = commitId;
+    STORAGE_VERIFY_DEBUG(
+        !CompactionRangeCommitIds[compactionRangeIndex],
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    if (!CompactionRangeCommitIds[compactionRangeIndex]) {
+        CompactionRangeCommitIds[compactionRangeIndex] = commitId;
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
