@@ -22,5 +22,5 @@ message SnapshotConfig {
     optional string S3Bucket = 11;
     optional string ChunkBlobsS3KeyPrefix = 12 [default = "snapshot/chunks"];
     map<string, uint32> ProbeCompressionPercentage = 13;  // by codec
-    optional string S3BucketId = 14; // bucket id for controlplane operations (e.g. fetching metrics)
+    optional string S3BucketId = 14;  // bucket id for controlplane operations (e.g. fetching metrics)
 }
