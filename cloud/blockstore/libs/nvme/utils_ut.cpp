@@ -3,6 +3,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/random/shuffle.h>
+#include <util/stream/format.h>
 #include <util/string/join.h>
 
 #include <array>
