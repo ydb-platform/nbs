@@ -128,6 +128,40 @@ func newListFilesystemsCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type filesystemKind disk_manager.FilesystemKind
+
+var stringToFilesystemKind = map[string]filesystemKind{
+	"ssd": filesystemKind(disk_manager.FilesystemKind_FILESYSTEM_KIND_SSD),
+	"hdd": filesystemKind(disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD),
+}
+
+func (k *filesystemKind) String() string {
+	for name, val := range stringToFilesystemKind {
+		if val == *k {
+			return name
+		}
+	}
+
+	log.Fatalf("Unknown filesystem kind: %v", *k)
+	return ""
+}
+
+func (k *filesystemKind) Set(val string) error {
+	var ok bool
+	*k, ok = stringToFilesystemKind[val]
+	if !ok {
+		return fmt.Errorf("unknown kind %v", val)
+	}
+
+	return nil
+}
+
+func (k *filesystemKind) Type() string {
+	return "FilesystemKind"
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type createFilesystem struct {
 	clientConfig  *client_config.ClientConfig
 	zoneID        string
@@ -136,6 +170,7 @@ type createFilesystem struct {
 	folderID      string
 	blockSize     int64
 	size          int64
+	kind          filesystemKind
 	srcSnapshotID string
 }
 
@@ -157,6 +192,7 @@ func (c *createFilesystem) run() error {
 		FolderId:  c.folderID,
 		BlockSize: c.blockSize,
 		Size:      c.size,
+		Kind:      disk_manager.FilesystemKind(c.kind),
 	}
 	if c.srcSnapshotID != "" {
 		req.Src = &disk_manager.CreateFilesystemRequest_SrcSnapshotId{
@@ -177,6 +213,7 @@ func (c *createFilesystem) run() error {
 func newCreateFilesystemCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
 	c := &createFilesystem{
 		clientConfig: clientConfig,
+		kind:         filesystemKind(disk_manager.FilesystemKind_FILESYSTEM_KIND_HDD),
 	}
 
 	cmd := &cobra.Command{
@@ -202,6 +239,7 @@ func newCreateFilesystemCmd(clientConfig *client_config.ClientConfig) *cobra.Com
 	}
 
 	cmd.Flags().Int64Var(&c.blockSize, "block-size", 0, "block size in bytes. 0 - use default")
+	cmd.Flags().Var(&c.kind, "kind", "filesystem kind")
 
 	cmd.Flags().StringVar(&c.cloudID, "cloud-id", "", "cloud ID of the filesystem owner; required")
 	if err := cmd.MarkFlagRequired("cloud-id"); err != nil {
