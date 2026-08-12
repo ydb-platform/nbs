@@ -227,11 +227,6 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
 
 #undef FILESTORE_TABLET_MERGE_COUNTER
 
-    for(const auto& latencyStats : src.GetLatencyStats())
-    {
-        *dst.AddLatencyStats() = latencyStats;
-    }
-
     dst.SetSevenBytesHandlesCount(
         dst.GetSevenBytesHandlesCount() + src.GetSevenBytesHandlesCount());
 
@@ -735,10 +730,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         // If shardIds isn't empty and the current tablet is a shard, it will
         // collect self stats via TAggregateStatsActor
         if (shardIds.empty() || IsMainTablet()) {
-            FillSelfStorageStats(
-                stats,
-                ctx.Now(),
-                false /* collectNodeStats */);
+            FillSelfStorageStats(stats);
         }
         if (shardIds.empty()) {
             CachedAggregateStats = std::move(*stats);
@@ -777,9 +769,7 @@ void TIndexTabletActor::HandleUpdateCounters(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::FillSelfStorageStats(
-    NProtoPrivate::TStorageStats* stats,
-    TInstant now,
-    bool collectNodeStats)
+    NProtoPrivate::TStorageStats* stats)
 {
 #define FILESTORE_TABLET_UPDATE_COUNTER(name, ...)                             \
     stats->Set##name(Get##name());                                             \
@@ -820,20 +810,6 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetUnconfirmedDataCount(
         UnconfirmedData.size() + UnconfirmedDataInProgress.size());
     stats->SetConfirmedDataCount(ConfirmedData.size());
-
-    if (collectNodeStats) {
-        for (const auto& latencyStats: GetLatencyStats(now)) {
-            auto* out = stats->AddLatencyStats();
-            out->SetShardId(GetFileSystemId());
-            out->SetNodeId(latencyStats.NodeId);
-            out->SetRequestType(GetFileStoreRequestName(latencyStats.RequestType));
-            out->SetRequestCount(latencyStats.RequestCount);
-            out->SetTotalLatencyMs(latencyStats.TotalLatencyMs);
-            out->SetAverageLatencyDecayedMs(latencyStats.AverageLatencyDecayedMs);
-            out->SetLastAccessedTimestampUs(latencyStats.LastAccessed.MicroSeconds());
-        }
-
-    }
 }
 
 void TIndexTabletActor::HandleGetStorageStats(
@@ -874,7 +850,7 @@ void TIndexTabletActor::HandleGetStorageStats(
     if (allowCache && pollShards) {
         *stats = CachedAggregateStats;
     } else {
-        FillSelfStorageStats(stats, ctx.Now(), true /* collectNodeStats */);
+        FillSelfStorageStats(stats);
     }
 
     TVector<TCompactionRangeInfo> topRanges;

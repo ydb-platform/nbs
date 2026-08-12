@@ -58,6 +58,7 @@ private:
     };
 
     ui32 Top;
+    ui32 BatchSize = 10;
     TString SortBy;
     ui32 TopNodes;
 
@@ -77,6 +78,12 @@ public:
             .RequiredArgument("NUM")
             .DefaultValue(10)
             .StoreResult(&TopNodes);
+        Opts.AddLongOption(
+        "batch-size",
+        "maximum number of shard latency requests in flight")
+            .RequiredArgument("NUM")
+            .DefaultValue(10)
+            .StoreResult(&BatchSize);
     }
 
 private:
@@ -120,6 +127,22 @@ private:
         }
     }
 
+    template <typename TRequest>
+    NThreading::TFuture<NProto::TExecuteActionResponse> SendAction(
+        const TString& action,
+        const TRequest& requestProto)
+    {
+        TString input;
+        google::protobuf::util::MessageToJsonString(requestProto, &input);
+
+        auto request = std::make_shared<NProto::TExecuteActionRequest>();
+        request->SetAction(action);
+        request->SetInput(std::move(input));
+        return Client->ExecuteAction(
+            MakeIntrusive<TCallContext>(FileSystemId, GetRequestId(*request)),
+            std::move(request));
+    }
+
 public:
     bool Execute() override
     {
@@ -137,7 +160,7 @@ public:
 
         const auto& stats = response.GetStats();
         rows.reserve(stats.ShardStatsSize());
-        latencyRows.reserve(stats.LatencyStatsSize());
+        //latencyRows.reserve(stats.LatencyStatsSize());
 
         for (const auto& shardStats: stats.GetShardStats()) {
             TShardRow row;
@@ -158,7 +181,7 @@ public:
                  nodeStats.GetLastAccessedTimestampUs()});
         }
 
-        for (const auto& latencyStats: stats.GetLatencyStats()) {
+        auto processLatencyStats = [&](const auto& latencyStats) {
             NAggregation::TRow<TLatency> row;
             row.Labels = {
                 ToString(latencyStats.GetNodeId()),
@@ -172,6 +195,51 @@ public:
             row.Data.LastAccessedTimestampUs =
                 latencyStats.GetLastAccessedTimestampUs();
             latencyRows.push_back(std::move(row));
+        };
+
+        if (BatchSize == 0) {
+            STORAGE_THROW_SERVICE_ERROR(
+                MakeError(E_ARGUMENT, "batch-size should be greater than zero"));
+        }
+
+        const auto& shardStats = stats.GetShardStats();
+        for (int batchStart = 0;
+             batchStart < shardStats.size();
+             batchStart += BatchSize)
+        {
+            TVector<NThreading::TFuture<NProto::TExecuteActionResponse>> futures;
+            const auto batchEnd = Min<size_t>(
+                batchStart + BatchSize,
+                shardStats.size());
+            futures.reserve(batchEnd - batchStart);
+
+            for (size_t i = batchStart; i < batchEnd; ++i) {
+                NProtoPrivate::TGetDiagnosticStatsRequest request;
+                request.SetFileSystemId(shardStats[i].GetShardId());
+                request.SetLimit(TopNodes);
+                futures.push_back(SendAction("getnodelatencystats", request));
+            }
+
+            for (auto& future: futures) {
+                auto result = WaitFor(std::move(future));
+                if (HasError(result)) {
+                    STORAGE_THROW_SERVICE_ERROR(result.GetError());
+                }
+
+                NProtoPrivate::TGetDiagnosticStatsResponse response;
+                if (!google::protobuf::util::JsonStringToMessage(
+                        result.GetOutput(),
+                        &response)
+                         .ok())
+                {
+                    STORAGE_THROW_SERVICE_ERROR(
+                        MakeError(E_BADMSG, "failed to parse node latency response"));
+                }
+                CheckResponse(response);
+                for (const auto& latencyStats: response.GetLatencyStats()) {
+                    processLatencyStats(latencyStats);
+                }
+            }
         }
 
         auto latencyAggregates = NAggregation::Aggregate(latencyRows);
@@ -193,7 +261,7 @@ public:
             } else if (!hasNodeId && hasShardId && !hasRequestType) {
                 shardLatencyRows.push_back(std::move(aggregate));
             }
-        }
+        };
 
         Sort(
             nodeLatencyRows,
