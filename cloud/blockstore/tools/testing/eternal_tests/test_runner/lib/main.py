@@ -38,6 +38,7 @@ def get_generate_load_command(load_config: LoadConfig) -> str:
         io_depth=load_config.io_depth,
         write_rate=load_config.write_rate,
         write_parts=load_config.write_parts,
+        zero_rate=load_config.zero_rate,
     )
 
 
@@ -46,6 +47,7 @@ def render_load_config(load_config: LoadConfig):
         ioDepth=load_config.io_depth,
         fileSize=load_config.size * 1024**3,
         writeRate=load_config.write_rate,
+        zeroRate=load_config.zero_rate,
         blockSize=load_config.bs,
         filePath=load_config.test_file,
     )
@@ -79,6 +81,7 @@ class EternalTestHelper:
                        '--dump-config-path {dump_config_path} '
                        '--write-rate {write_rate} '
                        '--write-parts {write_parts} '
+                       '--zero-rate {zero_rate} '
                        '>> {log_path} 2>&1')
 
     _START_LOAD_WITH_CONFIG_CMD = ('/usr/bin/eternal-load --config-type file '

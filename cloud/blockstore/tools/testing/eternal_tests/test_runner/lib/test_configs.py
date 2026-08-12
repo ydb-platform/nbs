@@ -90,6 +90,7 @@ class LoadConfig(ITestCreateConfig):
     need_filling: bool
     io_depth: int
     write_rate: int
+    zero_rate: int
     write_parts: int
     run_in_systemd: bool
     test_file: str
@@ -106,11 +107,13 @@ class LoadConfig(ITestCreateConfig):
             size,
             bs,
             write_parts=1,
-            run_in_systemd=False):
+            run_in_systemd=False,
+            zero_rate=0):
         self.use_requests_with_different_sizes = use_requests_with_different_sizes
         self.need_filling = need_filling
         self.io_depth = io_depth
         self.write_rate = write_rate
+        self.zero_rate = zero_rate
         self.size = size
         self.bs = bs
         self.write_parts = write_parts
@@ -164,6 +167,7 @@ class FioSequentialConfig:
 _DISK_CONFIGS = {
     'eternal-640gb-verify-checkpoint': DiskCreateConfig(640, 4096, 'network-ssd'),
     'eternal-320gb': DiskCreateConfig(320, 4096, 'network-ssd'),
+    'eternal-320gb-with-zero': DiskCreateConfig(320, 4096, 'network-ssd'),
     'eternal-4tb': DiskCreateConfig(4096, 4096, 'network-ssd'),
     'eternal-4tb-one-partition': DiskCreateConfig(4096, 4096, 'network-ssd', initial_size=1),
     'eternal-320gb-mirror-3of4-no-throttling':
@@ -236,6 +240,7 @@ _DISK_CONFIGS = {
             type='network-ssd-io-m3'),
 
     'eternal-512gb-different-size-requests': DiskCreateConfig(512, 4096, 'network-ssd'),
+    'eternal-512gb-different-size-requests-with-zero': DiskCreateConfig(512, 4096, 'network-ssd'),
     'eternal-1tb-different-size-requests': DiskCreateConfig(1024, 4096, 'network-ssd'),
 
     'eternal-1tb-mysql': DiskCreateConfig(1024, 4096, 'network-ssd'),
@@ -324,6 +329,7 @@ _FS_CONFIGS = {
 _LOAD_CONFIGS = {
     'eternal-640gb-verify-checkpoint': LoadConfig(False, True, 32, 50, 640, 4096),
     'eternal-320gb': LoadConfig(False, True, 32, 50, 320, 4096),
+    'eternal-320gb-with-zero': LoadConfig(False, True, 32, 50, 320, 4096, zero_rate=10),
     'eternal-4tb': LoadConfig(False, True, 32, 50, 4096, 4096),
     'eternal-4tb-one-partition': LoadConfig(False, True, 32, 50, 4096, 4096),
     'eternal-320gb-mirror-3of4-no-throttling': LoadConfig(False, True, 32, 50, 320, 4096),
@@ -343,6 +349,8 @@ _LOAD_CONFIGS = {
     'eternal-1023gb-mirror3-rdma': LoadConfig(False, False, 32, 50, 1023, 4096),
 
     'eternal-512gb-different-size-requests': LoadConfig(True, True, 32, 50, 512, 4096),
+    'eternal-512gb-different-size-requests-with-zero': LoadConfig(
+        True, True, 32, 50, 512, 4096, zero_rate=10),
     'eternal-1tb-different-size-requests': LoadConfig(True, True, 32, 50, 1024, 4096),
 
     'eternal-320gb-overlay': LoadConfig(True, False, 32, 25, 320, 4096),
