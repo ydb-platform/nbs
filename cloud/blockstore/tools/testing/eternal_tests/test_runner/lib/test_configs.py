@@ -173,6 +173,7 @@ _DISK_CONFIGS = {
     'eternal-320gb-mirror-3of4-no-throttling':
         DiskCreateConfig(320, 4096, 'network-ssd'),
     'eternal-1024gb-hdd-no-throttling': DiskCreateConfig(1024, 4096, 'network-hdd'),
+    'eternal-1024gb-hdd-no-throttling-with-zero': DiskCreateConfig(1024, 4096, 'network-hdd'),
     'eternal-1024gb-mirror-3of4-hdd-no-throttling':
         DiskCreateConfig(1024, 4096, 'network-hdd'),
     'eternal-1023gb-nonrepl':
@@ -242,6 +243,7 @@ _DISK_CONFIGS = {
     'eternal-512gb-different-size-requests': DiskCreateConfig(512, 4096, 'network-ssd'),
     'eternal-512gb-different-size-requests-with-zero': DiskCreateConfig(512, 4096, 'network-ssd'),
     'eternal-1tb-different-size-requests': DiskCreateConfig(1024, 4096, 'network-ssd'),
+    'eternal-1tb-different-size-requests-with-zero': DiskCreateConfig(1024, 4096, 'network-ssd'),
 
     'eternal-1tb-mysql': DiskCreateConfig(1024, 4096, 'network-ssd'),
     'eternal-1tb-postgresql': DiskCreateConfig(1024, 4096, 'network-ssd'),
@@ -334,6 +336,7 @@ _LOAD_CONFIGS = {
     'eternal-4tb-one-partition': LoadConfig(False, True, 32, 50, 4096, 4096),
     'eternal-320gb-mirror-3of4-no-throttling': LoadConfig(False, True, 32, 50, 320, 4096),
     'eternal-1024gb-hdd-no-throttling': LoadConfig(False, True, 8, 50, 1024, 4096),
+    'eternal-1024gb-hdd-no-throttling-with-zero': LoadConfig(False, True, 8, 50, 1024, 4096, zero_rate=10),
     'eternal-1024gb-mirror-3of4-hdd-no-throttling': LoadConfig(False, True, 8, 50, 1024, 4096),
     'eternal-1023gb-nonrepl': LoadConfig(False, False, 32, 50, 1023, 4096),
     'eternal-1023gb-nonrepl-vhost': LoadConfig(False, False, 32, 50, 1023, 4096),
@@ -352,6 +355,7 @@ _LOAD_CONFIGS = {
     'eternal-512gb-different-size-requests-with-zero': LoadConfig(
         True, True, 32, 50, 512, 4096, zero_rate=10),
     'eternal-1tb-different-size-requests': LoadConfig(True, True, 32, 50, 1024, 4096),
+    'eternal-1tb-different-size-requests-with-zero': LoadConfig(True, True, 32, 50, 1024, 4096, zero_rate=10),
 
     'eternal-320gb-overlay': LoadConfig(True, False, 32, 25, 320, 4096),
 
