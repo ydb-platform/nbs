@@ -560,9 +560,7 @@ private:
     bool BehaveAsShard(const NProto::THeaders& headers) const;
 
     void FillSelfStorageStats(
-        NProtoPrivate::TStorageStats* stats,
-        TInstant now,
-        bool collectNodeStats);
+        NProtoPrivate::TStorageStats* stats);
 
 private:
     template <typename TMethod>
