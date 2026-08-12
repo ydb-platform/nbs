@@ -1,11 +1,11 @@
 DLL(blockstore-plugin)
 EXPORTS_SCRIPT(plugin.symlist)
 
-IF (ARCH_ARM64 AND ALLOCATOR == "TCMALLOC_256K")                                                                                                                           
+IF (ARCH_ARM64 AND ALLOCATOR == "TCMALLOC_256K")
     # For arm builds with forced -DALLOCATOR=TCMALLOC_256K we should preserve FAKE allocator for DLL
     # Without this plugin will be linked with tcmalloc and cant be used
-    DISABLE(COMMON_LINK_SETTINGS)                                                                                                                                              
-ENDIF()                                                                                                                                                                    
+    DISABLE(COMMON_LINK_SETTINGS)
+ENDIF()
 
 SRCS(
     bootstrap.cpp
