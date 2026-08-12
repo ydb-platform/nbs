@@ -148,6 +148,48 @@ bool IsEmptyPair(const TCertificateFiles& certPair)
     return !certPair.PrivateKeyPath && !certPair.CertChainPath;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TMaybe<TString> UpdateRootCa(
+    const TRootCaPair& root,
+    TLog& Log)
+{
+    if (root.RootCaPath.empty()) {
+        return Nothing();
+    }
+
+    auto result = NTlsUtils::ReadAndValidateRootCertificate(root.RootCaPath);
+    if (HasError(result.GetError())) {
+        STORAGE_WARN(
+            "Root certificate update is skipped: "
+            << FormatError(result.GetError()));
+
+        return root.RootCa.empty()
+            ? Nothing()
+            : TMaybe<TString>(root.RootCa);
+    }
+
+    return result.ExtractResult();
+}
+
+TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityCertificate(
+    const TCertificateFiles& files)
+{
+    auto identityResult = NTlsUtils::ReadAndValidateIdentityPair(files);
+    if (HasError(identityResult)) {
+        return identityResult.GetError();
+    }
+
+    const auto& pair = identityResult.GetResult().front();
+    auto validityResult =
+        NTlsUtils::ValidateIdentityCertificateValidity(pair.cert_chain());
+    if (HasError(validityResult)) {
+        return validityResult.GetError();
+    }
+
+    return identityResult.ExtractResult();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -422,28 +464,18 @@ TCertificatesUpdateResult UpdateCertificates(
 
     TCertificatesUpdateResult updateResult;
     updateResult.Certificates.resize(certificates.size());
-
-    const bool needsRoot = !root.RootCaPath.empty();
-    if (!needsRoot) {
-        updateResult.RootCa = Nothing();
-    } else {
-        auto rootResult =
-            NTlsUtils::ReadAndValidateRootCertificate(root.RootCaPath);
-        if (HasError(rootResult.GetError())) {
-            STORAGE_WARN(
-                "Root certificate update is skipped: "
-                << FormatError(rootResult.GetError()));
-            updateResult.RootCa = root.RootCa.empty()
-                ? Nothing()
-                : TMaybe<TString>(root.RootCa);
-        } else {
-            updateResult.RootCa = rootResult.ExtractResult();
-        }
-    }
+    updateResult.RootCa = UpdateRootCa(root, Log);
 
     for (size_t i = 0; i < certificates.size(); ++i) {
-        const auto& cert = certificates[i];
-        const auto usePreviousCertificate = [&] {
+        const TCertificatePair& cert = certificates[i];
+        auto identityResult = ReadAndValidateIdentityCertificate(cert.Files);
+
+        if (HasError(identityResult)) {
+            STORAGE_WARN(
+                "Identity certificate update is skipped for "
+                << cert.Files.CertChainPath.Quote() << ": "
+                << FormatError(identityResult.GetError()));
+
             if (!cert.PrivateKey.empty() && !cert.CertChain.empty()) {
                 grpc_core::PemKeyCertPairList fallback;
                 fallback.emplace_back(cert.PrivateKey, cert.CertChain);
@@ -451,27 +483,7 @@ TCertificatesUpdateResult UpdateCertificates(
                     .CertificatesChain = std::move(fallback),
                 };
             }
-        };
 
-        auto identityResult = NTlsUtils::ReadAndValidateIdentityPair(cert.Files);
-        if (HasError(identityResult.GetError())) {
-            STORAGE_WARN(
-                "Identity certificate update is skipped for "
-                << cert.Files.CertChainPath.Quote() << ": "
-                << FormatError(identityResult.GetError()));
-            usePreviousCertificate();
-            continue;
-        }
-
-        const auto& pair = identityResult.GetResult().front();
-        auto validityResult =
-            NTlsUtils::ValidateIdentityCertificateValidity(pair.cert_chain());
-        if (HasError(validityResult.GetError())) {
-            STORAGE_WARN(
-                "Identity certificate update is skipped for "
-                << cert.Files.CertChainPath.Quote() << ": "
-                << FormatError(validityResult.GetError()));
-            usePreviousCertificate();
             continue;
         }
 
@@ -482,7 +494,7 @@ TCertificatesUpdateResult UpdateCertificates(
         auto notAfterTs =
             NTlsUtils::GetCertificateNotAfterTimestampSec(
                 identityPair.cert_chain());
-        if (HasError(notAfterTs.GetError())) {
+        if (HasError(notAfterTs)) {
             STORAGE_WARN(
                 "Unable to parse certificate notAfter date for "
                 << cert.Files.CertChainPath.Quote() << ": "
