@@ -34,8 +34,15 @@ type FilesystemModel struct {
 }
 
 type FilesystemTopology struct {
-	ShardFileSystemIDs []string
-	MainFileSystemID   string
+	ShardFileSystemIDs                     []string
+	ShardNo                                uint32
+	DirectoryCreationInShardsEnabled       bool
+	StrictFileSystemSizeEnforcementEnabled bool
+	MaxShardCount                          uint32
+	ForceDirectoryCreationInShards         bool
+	FileShardFileSystemIDs                 []string
+	CompressNodeRef                        bool
+	MainFileSystemID                       string
 }
 
 type ConfigureAsShardParams struct {

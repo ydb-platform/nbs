@@ -478,8 +478,15 @@ func (c *client) GetFileSystemTopology(
 	}
 
 	return FilesystemTopology{
-		ShardFileSystemIDs: response.ShardFileSystemIds,
-		MainFileSystemID:   response.MainFileSystemId,
+		ShardFileSystemIDs:                     response.ShardFileSystemIds,
+		ShardNo:                                response.ShardNo,
+		DirectoryCreationInShardsEnabled:       response.DirectoryCreationInShardsEnabled,
+		StrictFileSystemSizeEnforcementEnabled: response.StrictFileSystemSizeEnforcementEnabled,
+		MaxShardCount:                          response.MaxShardCount,
+		ForceDirectoryCreationInShards:         response.ForceDirectoryCreationInShards,
+		FileShardFileSystemIDs:                 response.FileShardFileSystemIds,
+		CompressNodeRef:                        response.CompressNodeRef,
+		MainFileSystemID:                       response.MainFileSystemId,
 	}, nil
 }
 

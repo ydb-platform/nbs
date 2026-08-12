@@ -294,8 +294,15 @@ func TestClientGetFileSystemTopologySuccess(t *testing.T) {
 		marshalActionResponse(
 			t,
 			&private_protos.TGetFileSystemTopologyResponse{
-				ShardFileSystemIds: []string{"fs-1_s1", "fs-1_s2"},
-				MainFileSystemId:   "fs-1",
+				ShardFileSystemIds:                     []string{"fs-1_s1", "fs-1_s2"},
+				ShardNo:                                1,
+				DirectoryCreationInShardsEnabled:       true,
+				StrictFileSystemSizeEnforcementEnabled: true,
+				MaxShardCount:                          10,
+				ForceDirectoryCreationInShards:         true,
+				FileShardFileSystemIds:                 []string{"fs-1_file_s1"},
+				CompressNodeRef:                        true,
+				MainFileSystemId:                       "fs-1",
 			},
 		),
 		nil,
@@ -305,8 +312,15 @@ func TestClientGetFileSystemTopologySuccess(t *testing.T) {
 	topology, err := c.GetFileSystemTopology(ctx, "fs-1")
 	require.NoError(t, err)
 	require.Equal(t, nfs.FilesystemTopology{
-		ShardFileSystemIDs: []string{"fs-1_s1", "fs-1_s2"},
-		MainFileSystemID:   "fs-1",
+		ShardFileSystemIDs:                     []string{"fs-1_s1", "fs-1_s2"},
+		ShardNo:                                1,
+		DirectoryCreationInShardsEnabled:       true,
+		StrictFileSystemSizeEnforcementEnabled: true,
+		MaxShardCount:                          10,
+		ForceDirectoryCreationInShards:         true,
+		FileShardFileSystemIDs:                 []string{"fs-1_file_s1"},
+		CompressNodeRef:                        true,
+		MainFileSystemID:                       "fs-1",
 	}, topology)
 
 	nfsMock.AssertExpectations(t)
