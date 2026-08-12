@@ -1,5 +1,34 @@
+/extra_configs/nbs-domains.txt:
+Domain {
+  DomainId: 1
+  SchemeRoot: 1
+  SSId: 1
+  HiveUid: 1
+  PlanResolution: 10
+  Name: "example_global"
+}
+StateStorage {
+  SSId: 1
+  Ring {
+    NToSelect: 1
+    Node: 1
+  }
+}
+
 /extra_configs/nbs-names.txt:
-canonical data
+Node {
+  NodeId: 1
+  Port: 19001
+  Host: "node-1.example-cluster.internal"
+  InterconnectHost: "node-1.example-cluster.internal"
+  Location {
+    DataCenter: "zone-a"
+    Rack: "rack-1:1"
+    Body: 1
+  }
+}
+ClusterUUID: "00000000"
+AcceptUUID: "00000000"
 
 /generated-configs/cluster1/zone1/seed/values.yaml:
 config:
@@ -230,6 +259,35 @@ UseBlackBox: true
 /generated-configs/cluster2/zoneA/target1/nbs-storage.txt:
 SchemeShardDir: "/pre-prod_myt/NBS"
 
+/generated-configs/cluster2/zoneA/target1/nfs-domains.txt:
+Domain {
+  DomainId: 1
+  SchemeRoot: 1
+  SSId: 1
+  HiveUid: 1
+  PlanResolution: 10
+  Name: "example_global"
+}
+StateStorage {
+  SSId: 1
+  Ring {
+    NToSelect: 1
+    Node: 1
+  }
+}
+
 /generated-configs/cluster2/zoneA/target1/nfs-names.txt:
-canonical data
+Node {
+  NodeId: 1
+  Port: 19001
+  Host: "node-1.example-cluster.internal"
+  InterconnectHost: "node-1.example-cluster.internal"
+  Location {
+    DataCenter: "zone-a"
+    Rack: "rack-1:1"
+    Body: 1
+  }
+}
+ClusterUUID: "00000000"
+AcceptUUID: "00000000"
 

@@ -309,6 +309,16 @@ func (g *ConfigGenerator) dumpConfigs(
 	clusterConfig := g.spec.ServiceSpec.Clusters[cluster]
 
 	appendAdditionalFile := func(fileName string, resultFileName string) error {
+		for _, existing := range resultConfigs {
+			if existing.FileName == resultFileName {
+				return fmt.Errorf(
+					"duplicate additional file name %v (from %v)",
+					resultFileName,
+					fileName,
+				)
+			}
+		}
+
 		var filePath string
 		if strings.HasPrefix(fileName, "/") {
 			filePath = path.Join(g.spec.ArcadiaPath, fileName)

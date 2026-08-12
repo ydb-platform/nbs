@@ -1,0 +1,13 @@
+Node {
+  NodeId: 1
+  Port: 19001
+  Host: "node-1.example-cluster.internal"
+  InterconnectHost: "node-1.example-cluster.internal"
+  Location {
+    DataCenter: "zone-a"
+    Rack: "rack-1:1"
+    Body: 1
+  }
+}
+ClusterUUID: "00000000"
+AcceptUUID: "00000000"

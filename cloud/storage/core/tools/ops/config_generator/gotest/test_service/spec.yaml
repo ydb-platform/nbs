@@ -35,6 +35,7 @@ clusters:
     zones: ['zoneA']
     additionalFileMappings:
       /extra_configs/nbs-names.txt: 'nfs-names.txt'
+      /extra_configs/nbs-domains.txt: 'nfs-domains.txt'
     configs:
       generate: true
       dumpPath: 'generated-configs/cluster2'
