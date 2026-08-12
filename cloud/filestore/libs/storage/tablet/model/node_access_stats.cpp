@@ -7,20 +7,25 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNodeAccessStatsTracker::TNodeAccessStatsTracker(size_t maxEntries)
+TNodeAccessStatsTracker::TNodeAccessStatsTracker(
+    size_t maxEntries,
+    TDuration decayHalfLife)
     : MaxEntries(maxEntries)
+    , DecayHalfLife(decayHalfLife)
+    , AccessStats(TNodeAccessComparator{decayHalfLife})
 {}
 
 double TNodeAccessStatsTracker::DecayedScore(
     const TNodeAccessStats& stats,
-    TInstant now)
+    TInstant now,
+    TDuration halfLife)
 {
     const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
                                                    : TDuration::Zero();
 
-    // Access Score has a half-life of 10 minutes
-    return stats.AccessScore * exp(-log(2.0) * elapsed.GetValue() /
-                                   TDuration::Minutes(10).MicroSeconds());
+    // Access Score has a parametarised half-life
+    return stats.AccessScore *
+           exp(-log(2.0) * elapsed.MilliSeconds() / halfLife.MilliSeconds());
 }
 
 void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
@@ -30,16 +35,16 @@ void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
 
     if (it != NodeId2Stats.end()) {
         stats = *it->second;
-        StatsRanking.erase(it->second);
+        AccessStats.erase(it->second);
     } else {
         stats.NodeId = nodeId;
     }
 
     ++stats.RequestCount;
-    stats.AccessScore = DecayedScore(stats, now) + 1;
+    stats.AccessScore = DecayedScore(stats, now, DecayHalfLife) + 1;
     stats.LastAccessed = now;
 
-    auto [newStatsIt, inserted] = StatsRanking.insert(stats);
+    auto [newStatsIt, inserted] = AccessStats.insert(stats);
     Y_ABORT_UNLESS(inserted);
     NodeId2Stats[nodeId] = newStatsIt;
     if (it != NodeId2Stats.end()) {
@@ -56,13 +61,13 @@ TVector<TNodeAccessStats> TNodeAccessStatsTracker::GetStats(
     ui32 n) const
 {
     TVector<TNodeAccessStats> result;
-    result.reserve(StatsRanking.size());
-    for (auto it = StatsRanking.rbegin();
-         it != StatsRanking.rend() && result.size() < n;
+    result.reserve(AccessStats.size());
+    for (auto it = AccessStats.rbegin();
+         it != AccessStats.rend() && result.size() < n;
          ++it)
     {
         auto stats = *it;
-        stats.AccessScore = DecayedScore(stats, now);
+        stats.AccessScore = DecayedScore(stats, now, DecayHalfLife);
         result.push_back(stats);
     }
     return result;

@@ -10,7 +10,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 {
     Y_UNIT_TEST(ShouldTrackRequestCountAndScore)
     {
-        TNodeAccessStatsTracker tracker(1);
+        TNodeAccessStatsTracker tracker(1, TDuration::Minutes(10));
 
         const auto start = TInstant::MilliSeconds(10'000'000);
 
@@ -27,7 +27,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
     Y_UNIT_TEST(ShouldDecayScoreBeforeAdding)
     {
-        TNodeAccessStatsTracker tracker(1);
+        TNodeAccessStatsTracker tracker(1, TDuration::Minutes(10));
 
         const auto start = TInstant::MilliSeconds(10'000'000);
 
@@ -42,14 +42,15 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto decayed = TNodeAccessStatsTracker::DecayedScore(
             stats[0],
-            start + TDuration::Minutes(10));
+            start + TDuration::Minutes(10),
+            TDuration::Minutes(10));
 
         UNIT_ASSERT_DOUBLES_EQUAL(1.0, decayed, 1e-9);
     }
 
     Y_UNIT_TEST(ShouldOrderByCurrentDecayedScore)
     {
-        TNodeAccessStatsTracker tracker(2);
+        TNodeAccessStatsTracker tracker(2, TDuration::Minutes(10));
 
         const auto start = TInstant::MilliSeconds(10'000'000);
         const auto old = start - TDuration::Minutes(10);
@@ -71,7 +72,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
     Y_UNIT_TEST(ShouldUseNodeIdAsTieBreaker)
     {
-        TNodeAccessStatsTracker tracker(2);
+        TNodeAccessStatsTracker tracker(2, TDuration::Minutes(10));
 
         const auto start = TInstant::MilliSeconds(10'000'000);
 
@@ -88,7 +89,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
     Y_UNIT_TEST(ShouldEvictLeastAccessedNode)
     {
-        TNodeAccessStatsTracker tracker(2);
+        TNodeAccessStatsTracker tracker(2, TDuration::Minutes(10));
 
         const auto start = TInstant::MilliSeconds(10'000'000);
 

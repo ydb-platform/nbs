@@ -22,13 +22,19 @@ class TNodeAccessStatsTracker
 private:
     struct TNodeAccessComparator
     {
+        TDuration DecayHalfLife;
+
+        explicit TNodeAccessComparator(TDuration decayHalfLife)
+            : DecayHalfLife(decayHalfLife)
+        {}
+
         bool operator()(
             const TNodeAccessStats& lhs,
             const TNodeAccessStats& rhs) const
         {
             const auto comparisonTime = Max(lhs.LastAccessed, rhs.LastAccessed);
-            const double lhsScore = DecayedScore(lhs, comparisonTime);
-            const double rhsScore = DecayedScore(rhs, comparisonTime);
+            const double lhsScore = DecayedScore(lhs, comparisonTime, DecayHalfLife);
+            const double rhsScore = DecayedScore(rhs, comparisonTime, DecayHalfLife);
 
             // DecayedScore ASC, NodeId ASC
             return std::tie(lhsScore, lhs.NodeId) <
@@ -36,26 +42,32 @@ private:
         }
     };
 
-    using TStatsSet = TSet<TNodeAccessStats, TNodeAccessComparator>;
     size_t MaxEntries = 0;
+    TDuration DecayHalfLife;
+    using TStatsSet = TSet<TNodeAccessStats, TNodeAccessComparator>;
     THashMap<ui64, TStatsSet::iterator> NodeId2Stats;
-    TStatsSet StatsRanking;
+    TStatsSet AccessStats;
 
     void EvictLeastUsedNodes()
     {
-        while (StatsRanking.size() > MaxEntries) {
-            auto leastAccessed = StatsRanking.begin();
+        while (AccessStats.size() > MaxEntries) {
+            auto leastAccessed = AccessStats.begin();
             const ui64 nodeId = leastAccessed->NodeId;
 
             NodeId2Stats.erase(nodeId);
-            StatsRanking.erase(leastAccessed);
+            AccessStats.erase(leastAccessed);
         }
     }
 
 public:
-    explicit TNodeAccessStatsTracker(size_t maxEntries);
+    explicit TNodeAccessStatsTracker(
+        size_t maxEntries,
+        TDuration decayHalfLife);
     void RequestStarted(ui64 nodeId, TInstant now);
-    static double DecayedScore(const TNodeAccessStats& stats, TInstant now);
+    static double DecayedScore(
+        const TNodeAccessStats& stats,
+        TInstant now,
+        TDuration halfLife);
     TVector<TNodeAccessStats> GetStats(TInstant now, ui32 n) const;
 };
 
