@@ -42,8 +42,8 @@ public:
 private:
     struct TRequestCtx
     {
-        const NActors::TActorId OriginalSender;
-        const ui64 OriginalCookie = 0;
+        const NActors::TActorId Sender;
+        const ui64 Cookie = 0;
         const ERequestType RequestType = ERequestType::WriteBlocks;
     };
 
