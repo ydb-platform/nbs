@@ -13,15 +13,16 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type storageYDB struct {
-	db                       *persistence.YDBClient
-	tablesPath               string
-	metrics                  metrics.Metrics
-	deleteWorkerCount        int
-	shallowCopyWorkerCount   int
-	shallowCopyInflightLimit int
-	chunkCompression         string
-	chunkStorageS3           *chunks.StorageS3
-	chunkStorageYDB          *chunks.StorageYDB
+	db                            *persistence.YDBClient
+	tablesPath                    string
+	metrics                       metrics.Metrics
+	deleteWorkerCount             int
+	shallowCopyWorkerCount        int
+	shallowCopyInflightLimit      int
+	relocateChunksToS3WorkerCount int
+	chunkCompression              string
+	chunkStorageS3                *chunks.StorageS3
+	chunkStorageYDB               *chunks.StorageYDB
 }
 
 func (s *storageYDB) CreateSnapshot(
@@ -271,4 +272,54 @@ func (s *storageYDB) ListSnapshots(
 		},
 	)
 	return ids, err
+}
+
+func (s *storageYDB) StreamReadySnapshotIDs(
+	ctx context.Context,
+) (<-chan string, <-chan error) {
+
+	ids := make(chan string)
+	errors := make(chan error, 1)
+
+	go func() {
+		defer close(ids)
+		defer close(errors)
+
+		err := s.db.Execute(
+			ctx,
+			func(ctx context.Context, session *persistence.Session) error {
+				return s.streamReadySnapshotIDs(ctx, session, ids)
+			},
+		)
+		if err != nil {
+			errors <- err
+		}
+	}()
+
+	return ids, errors
+}
+
+func (s *storageYDB) StreamStillYdbChunkIDs(
+	ctx context.Context,
+) (<-chan string, <-chan error) {
+
+	ids := make(chan string)
+	errors := make(chan error, 1)
+
+	go func() {
+		defer close(ids)
+		defer close(errors)
+
+		err := s.db.Execute(
+			ctx,
+			func(ctx context.Context, session *persistence.Session) error {
+				return s.streamStillYdbChunkIDs(ctx, session, ids)
+			},
+		)
+		if err != nil {
+			errors <- err
+		}
+	}()
+
+	return ids, errors
 }

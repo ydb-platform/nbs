@@ -36,13 +36,14 @@ func NewStorage(
 
 	ydbMetrics := metrics.New(metricsRegistry, "ydb")
 	return &storageYDB{
-		db:                       db,
-		tablesPath:               tablesPath,
-		metrics:                  ydbMetrics,
-		deleteWorkerCount:        int(config.GetDeleteWorkerCount()),
-		shallowCopyWorkerCount:   int(config.GetShallowCopyWorkerCount()),
-		shallowCopyInflightLimit: int(config.GetShallowCopyInflightLimit()),
-		chunkCompression:         config.GetChunkCompression(),
+		db:                             db,
+		tablesPath:                     tablesPath,
+		metrics:                        ydbMetrics,
+		deleteWorkerCount:              int(config.GetDeleteWorkerCount()),
+		shallowCopyWorkerCount:         int(config.GetShallowCopyWorkerCount()),
+		shallowCopyInflightLimit:       int(config.GetShallowCopyInflightLimit()),
+		relocateChunksToS3WorkerCount:  int(config.GetRelocateChunksToS3WorkerCount()),
+		chunkCompression:               config.GetChunkCompression(),
 		chunkStorageYDB: chunks.NewStorageYDB(
 			db,
 			tablesPath,

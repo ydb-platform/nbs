@@ -495,6 +495,149 @@ func newMigrateSnapshotDatabaseCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type scheduleRelocateSnapshotDataFromYDBToS3TaskCmd struct {
+	commandWithScheduler
+	snapshotID  string
+	keepYdbData bool
+}
+
+func (c *scheduleRelocateSnapshotDataFromYDBToS3TaskCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	taskID, err := c.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.RelocateSnapshotDataFromYDBToS3Task_"+c.snapshotID+"_"+generateID(),
+		),
+		"dataplane.RelocateSnapshotDataFromYDBToS3Task",
+		"",
+		&dataplane_protos.RelocateSnapshotDataFromYDBToS3Request{
+			SnapshotId:  c.snapshotID,
+			KeepYdbData: c.keepYdbData,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newScheduleRelocateSnapshotDataFromYDBToS3TaskCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &scheduleRelocateSnapshotDataFromYDBToS3TaskCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "schedule-relocate-snapshot-data-from-ydb-to-s3-task",
+		Aliases: []string{"schedule_relocate_snapshot_data_from_ydb_to_s3_task"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to relocate chunk blobs to S3; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	cmd.Flags().BoolVar(
+		&c.keepYdbData,
+		"keep-ydb-data",
+		false,
+		"copy to S3 and flip stored_in_s3, but do not clear YDB blob payload",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd struct {
+	commandWithScheduler
+	keepYdbData    bool
+	stillYdbChunks bool
+}
+
+func (c *scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	taskID, err := c.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.RelocateAllSnapshotsDataFromYDBToS3Task_"+generateID(),
+		),
+		"dataplane.RelocateAllSnapshotsDataFromYDBToS3Task",
+		"",
+		&dataplane_protos.RelocateAllSnapshotsDataFromYDBToS3Request{
+			KeepYdbData:    c.keepYdbData,
+			StillYdbChunks: c.stillYdbChunks,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newScheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &scheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "schedule-relocate-all-snapshots-data-from-ydb-to-s3-task",
+		Aliases: []string{"schedule_relocate_all_snapshots_data_from_ydb_to_s3_task"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().BoolVar(
+		&c.keepYdbData,
+		"keep-ydb-data",
+		false,
+		"copy to S3 and flip stored_in_s3, but do not clear YDB blob payload",
+	)
+
+	cmd.Flags().BoolVar(
+		&c.stillYdbChunks,
+		"still-ydb-chunks",
+		false,
+		"drain still_ydb chunk_map tails (incl. orphan snapshot ids) via RelocateChunkDataFromYDBToS3Task; one finite pass",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -520,6 +663,14 @@ func newSnapshotsCmd(
 			serverConfig,
 		),
 		newMigrateSnapshotDatabaseCmd(
+			clientConfig,
+			serverConfig,
+		),
+		newScheduleRelocateSnapshotDataFromYDBToS3TaskCmd(
+			clientConfig,
+			serverConfig,
+		),
+		newScheduleRelocateAllSnapshotsDataFromYDBToS3TaskCmd(
 			clientConfig,
 			serverConfig,
 		),
