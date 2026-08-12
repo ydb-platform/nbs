@@ -766,3 +766,20 @@ TEST(NaiveMirroredShardTest, UnalignedAppend)
             << FormatError(response.GetError());
     }
 }
+
+TEST(NaiveMirroredShardTest, ReturnsENOTSUPPForUnsupportedRequests)
+{
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
+    TStorageFixture fx;
+
+    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+
+    {
+        TGetNodeXAttrRequest request;
+        auto f = shard->GetNodeXAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(NCloud::E_FS_NOTSUPP, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+}
