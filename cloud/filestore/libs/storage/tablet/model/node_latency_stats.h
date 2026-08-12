@@ -51,16 +51,7 @@ private:
         {}
         bool operator()(
             const TNodeLatencyStats& lhs,
-            const TNodeLatencyStats& rhs) const
-        {
-            const auto comparisonTime = Max(lhs.LastAccessed, rhs.LastAccessed);
-            const double lhsScore = CalculateLatencyDecay(lhs, comparisonTime, DecayHalfLife);
-            const double rhsScore = CalculateLatencyDecay(rhs, comparisonTime, DecayHalfLife);
-
-            // AverageLatencyDecayedMs ASC, NodeId ASC, RequestType ASC
-            return std::tie(lhsScore, lhs.NodeId, lhs.RequestType) <
-                   std::tie(rhsScore, rhs.NodeId, rhs.RequestType);
-        }
+            const TNodeLatencyStats& rhs) const;
     };
 
     size_t MaxEntries = 0;
@@ -69,15 +60,7 @@ private:
     THashMap<TLatencyKey, TLatencyRanking::iterator, TLatencyKeyHash> Key2Stats;
     TLatencyRanking LatencyStats;
 
-    void EvictSmallestLatencyEntries()
-    {
-        while (LatencyStats.size() > MaxEntries) {
-            auto it = LatencyStats.begin();
-            TLatencyKey key = {it->NodeId, it->RequestType};
-            Key2Stats.erase(key);
-            LatencyStats.erase(it);
-        }
-    }
+    void EvictSmallestLatencyEntries();
 
 public:
     TNodeLatencyStatsTracker(size_t maxEntries, TDuration decayHalfLife);

@@ -15,6 +15,31 @@ TNodeLatencyStatsTracker::TNodeLatencyStatsTracker(
     , LatencyStats(TNodeLatencyStatsComparator{decayHalfLife})
 {}
 
+bool TNodeLatencyStatsTracker::TNodeLatencyStatsComparator::operator()(
+    const TNodeLatencyStats& lhs,
+    const TNodeLatencyStats& rhs) const
+{
+    const auto comparisonTime = Max(lhs.LastAccessed, rhs.LastAccessed);
+    const double lhsScore =
+        CalculateLatencyDecay(lhs, comparisonTime, DecayHalfLife);
+    const double rhsScore =
+        CalculateLatencyDecay(rhs, comparisonTime, DecayHalfLife);
+
+    // AverageLatencyDecayedMs ASC, NodeId ASC, RequestType ASC
+    return std::tie(lhsScore, lhs.NodeId, lhs.RequestType) <
+           std::tie(rhsScore, rhs.NodeId, rhs.RequestType);
+}
+
+void TNodeLatencyStatsTracker::EvictSmallestLatencyEntries()
+{
+    while (LatencyStats.size() > MaxEntries) {
+        auto it = LatencyStats.begin();
+        TLatencyKey key = {it->NodeId, it->RequestType};
+        Key2Stats.erase(key);
+        LatencyStats.erase(it);
+    }
+}
+
 double TNodeLatencyStatsTracker::CalculateLatencyDecay(
     const TNodeLatencyStats& stats,
     TInstant now,
@@ -22,6 +47,8 @@ double TNodeLatencyStatsTracker::CalculateLatencyDecay(
 {
     const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
                                                    : TDuration::Zero();
+
+    // Average Latency has a parameterised half-life
     return stats.AverageLatencyDecayedUs *
            exp(-log(2) * elapsed.MilliSeconds() / halfLife.MilliSeconds());
 }
