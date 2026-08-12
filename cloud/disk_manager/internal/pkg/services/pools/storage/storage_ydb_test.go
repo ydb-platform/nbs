@@ -313,8 +313,7 @@ func TestStorageYDBCreateBaseDisksPool(t *testing.T) {
 	require.Equal(t, uint64(0), poolInfos[0].ImageSize)
 	require.NotZero(t, poolInfos[0].CreatedAt)
 
-	disks := make([]BaseDisk, 0)
-	disks, err = storage.GetIdleBaseDisks(
+	disks, err := storage.GetIdleBaseDisks(
 		ctx,
 		poolInfos[0].ImageID,
 		poolInfos[0].ZoneID,
