@@ -34,8 +34,6 @@ TWriteBackCacheState::TWriteBackCacheState(
 
 bool TWriteBackCacheState::Init(IPersistentStoragePtr persistentStorage)
 {
-    auto guard = LockStateAndPostponeQueuedOperations();
-
     RequestManager = TWriteDataRequestManager(
         SequenceIdGenerator,
         std::move(persistentStorage),
