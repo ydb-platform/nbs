@@ -23,14 +23,14 @@ void InitializeRanges(
     filter.CompactionFinished();
 }
 
-void AssertRange(
-    const std::optional<TBlockRange32>& range,
-    ui32 start,
-    ui32 end)
+void AssertRanges(
+    const std::optional<TCompactionRangesToLoad>& ranges,
+    ui64 rangeIndex,
+    ui64 rangeCount)
 {
-    UNIT_ASSERT(range);
-    UNIT_ASSERT_VALUES_EQUAL(start, range->Start);
-    UNIT_ASSERT_VALUES_EQUAL(end, range->End);
+    UNIT_ASSERT(ranges);
+    UNIT_ASSERT_VALUES_EQUAL(rangeIndex, ranges->RangeIndex);
+    UNIT_ASSERT_VALUES_EQUAL(rangeCount, ranges->RangeCount);
 }
 
 }   // namespace
@@ -50,11 +50,11 @@ Y_UNIT_TEST_SUITE(TMixedBlocksFilterLoadStateTest)
             TDuration::MilliSeconds(100));
 
         UNIT_ASSERT(!state.IsAllRangesLoaded());
-        AssertRange(state.LoadNextRanges(), 0, 2);
+        AssertRanges(state.LoadNextRanges(), 0, 3);
         UNIT_ASSERT(!state.IsAllRangesLoaded());
-        AssertRange(state.LoadNextRanges(), 3, 5);
+        AssertRanges(state.LoadNextRanges(), 3, 3);
         UNIT_ASSERT(!state.IsAllRangesLoaded());
-        AssertRange(state.LoadNextRanges(), 6, 6);
+        AssertRanges(state.LoadNextRanges(), 6, 1);
         UNIT_ASSERT(state.IsAllRangesLoaded());
 
         UNIT_ASSERT(!state.LoadNextRanges());
@@ -72,7 +72,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksFilterLoadStateTest)
             3,
             TDuration::MilliSeconds(100));
 
-        AssertRange(state.LoadNextRanges(), 3, 5);
+        AssertRanges(state.LoadNextRanges(), 3, 3);
 
         UNIT_ASSERT(!state.LoadNextRanges());
         UNIT_ASSERT(state.IsAllRangesLoaded());
@@ -95,7 +95,7 @@ Y_UNIT_TEST_SUITE(TMixedBlocksFilterLoadStateTest)
                 TDuration::Zero()));
 
         InitializeRanges(filter, {0});
-        AssertRange(state.LoadNextRanges(), 1, 1);
+        AssertRanges(state.LoadNextRanges(), 1, 1);
     }
 
     Y_UNIT_TEST(ShouldThrottleAccordingToCpuTime)
@@ -112,19 +112,19 @@ Y_UNIT_TEST_SUITE(TMixedBlocksFilterLoadStateTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Zero(),
             state.RegisterTransaction(now, TDuration::Zero()));
-        AssertRange(state.LoadNextRanges(), 0, 0);
+        AssertRanges(state.LoadNextRanges(), 0, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MilliSeconds(500),
             state.RegisterTransaction(now, TDuration::MilliSeconds(150)));
-        AssertRange(state.LoadNextRanges(), 1, 1);
+        AssertRanges(state.LoadNextRanges(), 1, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::MilliSeconds(1500),
             state.RegisterTransaction(
                 now + TDuration::MilliSeconds(500),
                 TDuration::MilliSeconds(150)));
-        AssertRange(state.LoadNextRanges(), 2, 2);
+        AssertRanges(state.LoadNextRanges(), 2, 1);
     }
 }
 

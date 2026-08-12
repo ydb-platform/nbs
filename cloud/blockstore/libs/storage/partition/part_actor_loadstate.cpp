@@ -588,9 +588,9 @@ void TPartitionActor::HandleLoadMixedBlocksFilterChunk(
         TabletID(),
         "Mixed blocks filter load state is not initialized");
 
-    auto nextRange = loadState->LoadNextRanges();
+    auto nextRanges = loadState->LoadNextRanges();
 
-    if (!nextRange) {
+    if (!nextRanges) {
         State->MixedBlocksFilterLoaded();
 
         LOG_INFO(
@@ -605,13 +605,14 @@ void TPartitionActor::HandleLoadMixedBlocksFilterChunk(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Loading mixed blocks filter chunk %s",
+        "%s Loading mixed blocks filter chunk: range index=%lu, range count=%lu",
         LogTitle.GetWithTime().c_str(),
-        nextRange->Print().c_str());
+        nextRanges->RangeIndex,
+        nextRanges->RangeCount);
 
     ExecuteTx<TLoadMixedBlocksFilterChunk>(
         ctx,
-        *nextRange,
+        *nextRanges,
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext));
 }
 
@@ -631,8 +632,8 @@ bool TPartitionActor::PrepareLoadMixedBlocksFilterChunk(
     return db.FindMixedBlocks(
         visitor,
         TBlockRange32::WithLength(
-            args.Range.Start * rangeSize,
-            args.Range.Size() * rangeSize),
+            SafeIntegerCast<ui32>(args.Ranges.RangeIndex * rangeSize),
+            SafeIntegerCast<ui32>(args.Ranges.RangeCount * rangeSize)),
         true);   // precharge
 }
 
@@ -658,9 +659,8 @@ void TPartitionActor::ExecuteLoadMixedBlocksFilterChunk(
         filter->BlocksAddedToMixedIndex(block.BlockIndex, block.CommitId);
     }
 
-    for (ui64 rangeIndex = args.Range.Start; rangeIndex <= args.Range.End;
-         ++rangeIndex)
-    {
+    for (ui64 offset = 0; offset < args.Ranges.RangeCount; ++offset) {
+        const ui64 rangeIndex = args.Ranges.RangeIndex + offset;
         if (!filter->IsCompactionRangeInitialized(rangeIndex)) {
             // We read all mixed blocks from range, so we can choose zero as
             // baseline commit.
@@ -676,9 +676,10 @@ void TPartitionActor::CompleteLoadMixedBlocksFilterChunk(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Mixed blocks filter chunk %s updated",
+        "%s Mixed blocks filter chunk updated: range index=%lu, range count=%lu",
         LogTitle.GetWithTime().c_str(),
-        args.Range.Print().c_str());
+        args.Ranges.RangeIndex,
+        args.Ranges.RangeCount);
 
     LoadNextMixedBlocksFilterChunkIfNeeded(
         ctx,

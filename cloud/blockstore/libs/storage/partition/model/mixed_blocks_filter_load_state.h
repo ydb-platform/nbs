@@ -2,11 +2,19 @@
 
 #include "mixed_blocks_filter.h"
 
-#include <cloud/blockstore/libs/common/block_range.h>
-
 #include <cloud/storage/core/libs/throttling/leaky_bucket.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TCompactionRangesToLoad
+{
+    ui64 RangeIndex = 0;
+    ui64 RangeCount = 0;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -32,7 +40,7 @@ public:
     [[nodiscard]] bool IsAllRangesLoaded() const;
 
     // nullopt means that all compaction ranges are loaded.
-    [[nodiscard]] std::optional<TBlockRange32> LoadNextRanges();
+    [[nodiscard]] std::optional<TCompactionRangesToLoad> LoadNextRanges();
 
     // Register a transaction in leaky bucket and return the time to wait before
     // the next transaction.

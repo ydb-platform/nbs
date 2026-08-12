@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter_load_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
@@ -1294,16 +1295,16 @@ struct TTxPartition
 
     struct TLoadMixedBlocksFilterChunk
     {
-        const TBlockRange32 Range;
+        const TCompactionRangesToLoad Ranges;
         const TRequestInfoPtr RequestInfo;
 
         // Blocks loaded from mixed index.
         TVector<TBlock> Blocks;
 
         TLoadMixedBlocksFilterChunk(
-            TBlockRange32 range,
+            TCompactionRangesToLoad ranges,
             TRequestInfoPtr requestInfo)
-            : Range(range)
+            : Ranges(ranges)
             , RequestInfo(std::move(requestInfo))
         {}
 

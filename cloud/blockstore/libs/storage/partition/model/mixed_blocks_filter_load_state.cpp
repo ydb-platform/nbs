@@ -34,26 +34,21 @@ TMixedBlocksFilterLoadState::TMixedBlocksFilterLoadState(
     return CompactionRangeToLoadIndex >= RangesCount;
 }
 
-[[nodiscard]] std::optional<TBlockRange32>
+[[nodiscard]] std::optional<TCompactionRangesToLoad>
 TMixedBlocksFilterLoadState::LoadNextRanges()
 {
     while (!IsAllRangesLoaded()) {
-        const auto endIndex =
-            Max<ui64>() - RangesToLoadPerTx + 1 <= CompactionRangeToLoadIndex
-                ? Max<ui64>()
-                : CompactionRangeToLoadIndex + RangesToLoadPerTx - 1;
+        const TCompactionRangesToLoad compactionRanges{
+            .RangeIndex = CompactionRangeToLoadIndex,
+            .RangeCount =
+                Min(RangesToLoadPerTx,
+                    RangesCount - CompactionRangeToLoadIndex)};
 
-        auto compactionRanges = TBlockRange32::MakeClosedIntervalWithLimit(
-            CompactionRangeToLoadIndex,
-            endIndex,
-            RangesCount - 1);
-
-        CompactionRangeToLoadIndex =
-            static_cast<ui64>(compactionRanges.End) + 1;
+        CompactionRangeToLoadIndex += compactionRanges.RangeCount;
 
         bool allRangesInitialized = true;
-        for (ui64 rangeIndex = compactionRanges.Start;
-             rangeIndex <= compactionRanges.End;
+        for (ui64 rangeIndex = compactionRanges.RangeIndex;
+             rangeIndex < CompactionRangeToLoadIndex;
              ++rangeIndex)
         {
             if (!MixedBlocksFilter.IsCompactionRangeInitialized(rangeIndex)) {
