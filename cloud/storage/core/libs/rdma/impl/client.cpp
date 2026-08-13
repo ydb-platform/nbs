@@ -183,6 +183,7 @@ struct TRequest
     const ui64 StartedCycles;
 
     std::weak_ptr<TClientEndpoint> Endpoint;
+    std::shared_ptr<TClientEndpoint> CompletedEndpoint;
 
     TCallContextBasePtr CallContext;
     ui32 ReqId = 0;   // 16-bit RDMA request id
@@ -671,7 +672,7 @@ private:
         TRequestPtr req,
         ui32 status,
         size_t responseBytes) noexcept;
-    void ResponseDispatched() noexcept;
+    void ResponseReleased() noexcept;
     void FreeRequest(TRequest* creq) noexcept;
     int ValidateCompletion(ibv_wc* wc) noexcept;
     ui64 GetNewReqId() noexcept;
@@ -681,6 +682,13 @@ private:
 
 TRequest::~TRequest()
 {
+    if (CompletedEndpoint) {
+        auto clientEndpoint = std::move(CompletedEndpoint);
+        clientEndpoint->FreeRequest(this);
+        clientEndpoint->ResponseReleased();
+        return;
+    }
+
     auto clientEndpoint = Endpoint.lock();
     if (clientEndpoint) {
         clientEndpoint->FreeRequest(this);
@@ -1407,17 +1415,14 @@ void TClientEndpoint::DispatchResponse(
     ui32 status,
     size_t responseBytes) noexcept
 {
+    Y_DEBUG_ABORT_UNLESS(!req->CompletedEndpoint);
+    req->CompletedEndpoint = shared_from_this();
     ++PendingResponses;
     ResponseDispatcher->Dispatch(
-        [endpoint = shared_from_this(),
-         req = std::move(req),
+        [req = std::move(req),
          status,
          responseBytes]() mutable
         {
-            Y_DEFER {
-                endpoint->ResponseDispatched();
-            };
-
             auto* handler = req->Handler.get();
             handler->HandleResponse(
                 std::move(req),
@@ -1426,7 +1431,7 @@ void TClientEndpoint::DispatchResponse(
         });
 }
 
-void TClientEndpoint::ResponseDispatched() noexcept
+void TClientEndpoint::ResponseReleased() noexcept
 {
     const ui64 pending = PendingResponses.fetch_sub(1);
     Y_DEBUG_ABORT_UNLESS(pending > 0);

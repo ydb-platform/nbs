@@ -16,7 +16,9 @@
 #include <util/generic/scope.h>
 #include <util/generic/yexception.h>
 #include <util/stream/printf.h>
+#include <util/system/mutex.h>
 
+#include <cstring>
 #include <thread>
 
 namespace NCloud::NStorage::NRdma {
@@ -905,6 +907,198 @@ TEST(TRdmaClientTest, ShouldDispatchResponsesOutsideCompletionPollerInPollMode)
 TEST(TRdmaClientTest, ShouldContinueDispatchingAfterResponseHandlerThrows)
 {
     TestDispatchResponsesOutsideCompletionPoller(EWaitMode::BusyWait, true);
+}
+
+void TestDeferredResponsePreventsReconnect(
+    bool abortRequest,
+    EWaitMode waitMode)
+{
+    constexpr ui32 QueueSize = 2;
+    const TString RequestMarker = "deferred request";
+    const TString ResponseMarker = "deferred response";
+
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    std::atomic<ui32> qpCount = 0;
+    TManualEvent firstQpCreated;
+    TManualEvent secondQpCreated;
+    testContext->CreateQP = [&](auto* id, auto* attr) {
+        Y_UNUSED(id, attr);
+        switch (qpCount.fetch_add(1) + 1) {
+            case 1:
+                firstQpCreated.Signal();
+                break;
+            case 2:
+                secondQpCreated.Signal();
+                break;
+        }
+    };
+
+    TManualEvent requestSent;
+    testContext->PostSend = [&](auto* qp, auto* wr) {
+        PostSend<TRequestMessage>(testContext, qp, wr);
+        requestSent.Signal();
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->WaitMode = waitMode;
+    clientConfig->SendQueueSize = QueueSize;
+    clientConfig->RecvQueueSize = QueueSize;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+    auto client = CreateTestClient(
+        verbs,
+        logging,
+        monitoring,
+        clientConfig);
+
+    struct TDeferredHandler final: IClientHandler
+    {
+        TMutex Lock;
+        TClientRequestPtr DeferredRequest;
+        ui32 Status = 0;
+        size_t ResponseBytes = 0;
+        TManualEvent Handled;
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            {
+                auto guard = Guard(Lock);
+                DeferredRequest = std::move(req);
+                Status = status;
+                ResponseBytes = responseBytes;
+            }
+            Handled.Signal();
+        }
+
+        TString ReadRequest(size_t bytes)
+        {
+            auto guard = Guard(Lock);
+            Y_ABORT_UNLESS(DeferredRequest);
+            return TString(DeferredRequest->RequestBuffer.Head(bytes));
+        }
+
+        TString ReadResponse(size_t bytes)
+        {
+            auto guard = Guard(Lock);
+            Y_ABORT_UNLESS(DeferredRequest);
+            return TString(DeferredRequest->ResponseBuffer.Head(bytes));
+        }
+
+        std::pair<ui32, size_t> GetResult()
+        {
+            auto guard = Guard(Lock);
+            return {Status, ResponseBytes};
+        }
+
+        void Release()
+        {
+            TClientRequestPtr request;
+            {
+                auto guard = Guard(Lock);
+                request = std::move(DeferredRequest);
+            }
+        }
+    };
+
+    auto handler = std::make_shared<TDeferredHandler>();
+    client->Start();
+    Y_DEFER
+    {
+        handler->Release();
+        client->Stop();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    ASSERT_TRUE(firstQpCreated.WaitT(5s));
+
+    auto request = endpoint->AllocateRequest(
+        handler,
+        std::make_unique<TNullContext>(),
+        1024,
+        1024);
+    ASSERT_FALSE(HasError(request.GetError()));
+
+    auto clientRequest = request.ExtractResult();
+    std::memcpy(
+        const_cast<char*>(clientRequest->RequestBuffer.data()),
+        RequestMarker.data(),
+        RequestMarker.size());
+    std::memcpy(
+        const_cast<char*>(clientRequest->ResponseBuffer.data()),
+        ResponseMarker.data(),
+        ResponseMarker.size());
+
+    endpoint->SendRequest(
+        std::move(clientRequest),
+        MakeIntrusive<TCallContextBase>(0u));
+    ASSERT_TRUE(requestSent.WaitT(5s));
+
+    if (abortRequest) {
+        Disconnect(testContext);
+    } else {
+        auto guard = Guard(testContext->CompletionLock);
+        ASSERT_FALSE(testContext->ReqIds.empty());
+        ASSERT_FALSE(testContext->RecvEvents.empty());
+
+        auto* recv = testContext->RecvEvents.front();
+        testContext->RecvEvents.pop_front();
+
+        auto* response = reinterpret_cast<TResponseMessage*>(
+            recv->sg_list[0].addr);
+        Zero(*response);
+        InitMessageHeader(response, RDMA_PROTO_VERSION);
+        response->ReqId = testContext->ReqIds.front();
+        response->Status = RDMA_PROTO_OK;
+        response->ResponseBytes = ResponseMarker.size();
+        testContext->ReqIds.pop_front();
+
+        testContext->ProcessedRecvEvents.push_back(recv);
+        testContext->CompletionHandle.Set();
+    }
+
+    ASSERT_TRUE(handler->Handled.WaitT(5s));
+    if (!abortRequest) {
+        Disconnect(testContext);
+    }
+    endpoint->TryForceReconnect();
+
+    ASSERT_FALSE(secondQpCreated.WaitT(500ms));
+    ASSERT_EQ(RequestMarker, handler->ReadRequest(RequestMarker.size()));
+
+    const auto [status, responseBytes] = handler->GetResult();
+    if (abortRequest) {
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), status);
+        const auto error = ParseError(handler->ReadResponse(responseBytes));
+        ASSERT_EQ(E_RDMA_UNAVAILABLE, error.GetCode());
+    } else {
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_OK), status);
+        ASSERT_EQ(ResponseMarker.size(), responseBytes);
+        ASSERT_EQ(
+            ResponseMarker,
+            handler->ReadResponse(ResponseMarker.size()));
+    }
+
+    handler->Release();
+    endpoint->TryForceReconnect();
+    ASSERT_TRUE(secondQpCreated.WaitT(5s));
+}
+
+TEST(TRdmaClientTest, ShouldKeepCompletedRequestBuffersUntilRequestIsReleased)
+{
+    TestDeferredResponsePreventsReconnect(false, EWaitMode::Poll);
+}
+
+TEST(TRdmaClientTest, ShouldKeepAbortedRequestBuffersUntilRequestIsReleased)
+{
+    TestDeferredResponsePreventsReconnect(true, EWaitMode::BusyWait);
 }
 
 TEST(TRdmaClientTest, ShouldCancelRequests)
