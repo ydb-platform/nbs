@@ -1,7 +1,12 @@
 import json
 from pathlib import Path
 
-from scripts.tracing.otlp import Ns
+from scripts.tracing.otlp import (
+    Ns,
+    ResourceAttributes,
+    decode_attributes,
+)
+from scripts.tracing.yatrace.projection import build_ya_trace
 from scripts.tracing.yatrace.trace_loader import load_trace_files
 from scripts.tracing.yatrace.trace_model import Chunk, SuiteTrace
 
@@ -99,6 +104,25 @@ def test_identityless_starts_follow_finishes_to_their_chunks(
     assert [attempt.finish.name for attempt in chunks[(0, 2)].attempts] == ["one"]
     assert [attempt.start.name for attempt in chunks[(1, 2)].attempts] == ["two"]
     assert [attempt.finish.name for attempt in chunks[(1, 2)].attempts] == ["two"]
+
+    trace = build_ya_trace(
+        [source],
+        root_start_ns=Ns.from_s_or_zero(0),
+        root_end_ns=Ns.from_s_or_zero(10),
+        exit_code=0,
+        resource=ResourceAttributes(),
+    )
+    test_spans = list(trace.spans("ya.test"))
+    assert len(test_spans) == 2
+    assert {span.name for span in test_spans} == {"Case::one", "Case::two"}
+    assert all(
+        decode_attributes(span.attributes)["test.status"] == "good"
+        for span in test_spans
+    )
+    assert all(
+        decode_attributes(span.attributes).get("test.incomplete") is not True
+        for span in test_spans
+    )
 
 
 def test_repeated_attempts_remain_distinct(tmp_path: Path) -> None:
