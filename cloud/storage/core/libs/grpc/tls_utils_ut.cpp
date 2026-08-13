@@ -8,9 +8,19 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 
+#include <openssl/bio.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+
+#include <memory>
+
 namespace NCloud::NTlsUtils {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr long YearSeconds = 365 * 24 * 60 * 60;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -44,6 +54,54 @@ TCertificateFiles CreateCertificatePair(
         .PrivateKeyPath = privateKeyPath,
         .CertChainPath = certChainPath,
     };
+}
+
+TString SetCertificateValidity(
+    TStringBuf pem,
+    long notBeforeOffsetSec,
+    long notAfterOffsetSec)
+{
+    using TBioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+    using TX509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
+    using TAsn1TimePtr =
+        std::unique_ptr<ASN1_TIME, decltype(&ASN1_TIME_free)>;
+
+    TBioPtr input(
+        BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size())),
+        BIO_free);
+    UNIT_ASSERT(input);
+
+    TX509Ptr certificate(
+        PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr),
+        X509_free);
+    UNIT_ASSERT(certificate);
+
+    TAsn1TimePtr notBefore(
+        X509_gmtime_adj(nullptr, notBeforeOffsetSec),
+        ASN1_TIME_free);
+    TAsn1TimePtr notAfter(
+        X509_gmtime_adj(nullptr, notAfterOffsetSec),
+        ASN1_TIME_free);
+    UNIT_ASSERT(notBefore);
+    UNIT_ASSERT(notAfter);
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        X509_set1_notBefore(certificate.get(), notBefore.get()));
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        X509_set1_notAfter(certificate.get(), notAfter.get()));
+    UNIT_ASSERT(i2d_re_X509_tbs(certificate.get(), nullptr) > 0);
+
+    TBioPtr output(BIO_new(BIO_s_mem()), BIO_free);
+    UNIT_ASSERT(output);
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        PEM_write_bio_X509(output.get(), certificate.get()));
+
+    char* data = nullptr;
+    const long size = BIO_get_mem_data(output.get(), &data);
+    UNIT_ASSERT(size > 0);
+    return TString(data, size);
 }
 
 }   // namespace
@@ -81,12 +139,29 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT(HasError(result.GetError()));
     }
 
-    Y_UNIT_TEST(ShouldValidateIdentityWithRoot)
+    Y_UNIT_TEST(ShouldValidateIdentityCertificateValidity)
     {
-        const auto root = ReadCertResource("ca.crt");
         const auto cert = ReadCertResource("server1.crt");
-        const auto result = ValidateIdentityCertificateWithRoot(root, cert);
+        const auto result = ValidateIdentityCertificateValidity(cert);
         UNIT_ASSERT(!HasError(result.GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldRejectExpiredAndNotYetValidIdentityCertificates)
+    {
+        const auto cert = ReadCertResource("server1.crt");
+        const auto expired = SetCertificateValidity(
+            cert,
+            -10 * YearSeconds,
+            -5 * YearSeconds);
+        const auto notYetValid = SetCertificateValidity(
+            cert,
+            5 * YearSeconds,
+            10 * YearSeconds);
+
+        UNIT_ASSERT(HasError(
+            ValidateIdentityCertificateValidity(cert + expired).GetError()));
+        UNIT_ASSERT(HasError(
+            ValidateIdentityCertificateValidity(cert + notYetValid).GetError()));
     }
 
     Y_UNIT_TEST(ShouldExtractCertificateNotAfterTimestamp)
@@ -95,6 +170,30 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         const auto result = GetCertificateNotAfterTimestampSec(cert);
         UNIT_ASSERT(!HasError(result.GetError()));
         UNIT_ASSERT(result.GetResult() > 0);
+    }
+
+    Y_UNIT_TEST(ShouldExtractEarliestNotAfterTimestampFromChain)
+    {
+        const auto cert = ReadCertResource("server1.crt");
+        const auto earlier = SetCertificateValidity(
+            cert,
+            -YearSeconds,
+            5 * YearSeconds);
+        const auto later = SetCertificateValidity(
+            cert,
+            -YearSeconds,
+            10 * YearSeconds);
+
+        const auto earlierResult =
+            GetCertificateNotAfterTimestampSec(earlier);
+        UNIT_ASSERT(!HasError(earlierResult.GetError()));
+
+        const auto chainResult =
+            GetCertificateNotAfterTimestampSec(later + earlier);
+        UNIT_ASSERT(!HasError(chainResult.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            earlierResult.GetResult(),
+            chainResult.GetResult());
     }
 
     Y_UNIT_TEST(ShouldReadAndValidateRootCertificate)
@@ -147,28 +246,6 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT(HasError(result.GetError()));
     }
 
-    Y_UNIT_TEST(ShouldRejectIdentityNotSignedByRoot)
-    {
-        const auto root = ReadCertResource("server2.crt");
-        const auto cert = ReadCertResource("server1.crt");
-        const auto result = ValidateIdentityCertificateWithRoot(root, cert);
-        UNIT_ASSERT(HasError(result.GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldRejectIdentityValidationWithEmptyRoot)
-    {
-        const auto cert = ReadCertResource("server1.crt");
-        const auto result = ValidateIdentityCertificateWithRoot("", cert);
-        UNIT_ASSERT(HasError(result.GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldRejectIdentityValidationWithEmptyIdentity)
-    {
-        const auto root = ReadCertResource("ca.crt");
-        const auto result = ValidateIdentityCertificateWithRoot(root, "");
-        UNIT_ASSERT(HasError(result.GetError()));
-    }
-
     Y_UNIT_TEST(ShouldFailExtractingNotAfterFromInvalidCertificate)
     {
         const auto result =
@@ -197,17 +274,6 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         };
         const auto result = ReadAndValidateIdentityPair(files);
         UNIT_ASSERT(HasError(result.GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldReportSystemErrorOnVerificationFailure)
-    {
-        const auto root = ReadCertResource("server2.crt");
-        const auto cert = ReadCertResource("server1.crt");
-        const auto result = ValidateIdentityCertificateWithRoot(root, cert);
-        UNIT_ASSERT(HasError(result.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(FACILITY_SYSTEM),
-            FACILITY_FROM_CODE(result.GetError().GetCode()));
     }
 
     Y_UNIT_TEST(ShouldUpdateAllCertificatesWhenValid)
@@ -287,6 +353,67 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             TString(result.Certificates[0]
                         ->CertificatesChain.front()
                         .cert_chain()));
+    }
+
+    Y_UNIT_TEST(ShouldFallBackToPreviousIdentityWhenValidityCheckFails)
+    {
+        TTempDir tempDir;
+        const auto validCert = ReadCertResource("server1.crt");
+        const auto privateKey = ReadCertResource("server1.key");
+        const auto files = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            privateKey,
+            validCert);
+
+        TVector<TCertificatePair> certs{TCertificatePair{
+            .Files = files,
+            .PrivateKey = privateKey,
+            .CertChain = validCert,
+        }};
+        TLog log;
+
+        for (const auto& invalidCert: {
+                 SetCertificateValidity(
+                     validCert,
+                     -10 * YearSeconds,
+                     -5 * YearSeconds),
+                 SetCertificateValidity(
+                     validCert,
+                     5 * YearSeconds,
+                     10 * YearSeconds)})
+        {
+            WriteTextFile(files.CertChainPath, validCert + invalidCert);
+            const auto result =
+                UpdateCertificates(certs, TRootCaPair{}, log);
+
+            UNIT_ASSERT(result.Certificates[0].Defined());
+            UNIT_ASSERT_VALUES_EQUAL(
+                validCert,
+                TString(result.Certificates[0]
+                            ->CertificatesChain.front()
+                            .cert_chain()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAcceptExpiredIdentityDuringInitialLoad)
+    {
+        TTempDir tempDir;
+        const auto validCert = ReadCertResource("server1.crt");
+        const auto expiredCert = SetCertificateValidity(
+            validCert,
+            -10 * YearSeconds,
+            -5 * YearSeconds);
+        const auto files = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            validCert + expiredCert);
+
+        const auto pairs = LoadCertificatePairs({files});
+
+        UNIT_ASSERT_VALUES_EQUAL(1, pairs.size());
+        UNIT_ASSERT_VALUES_EQUAL(validCert + expiredCert, pairs[0].CertChain);
     }
 
     Y_UNIT_TEST(ShouldLeaveIdentityUndefinedWhenInvalidAndNoPrevious)
