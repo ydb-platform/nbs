@@ -1666,4 +1666,9 @@ message TStorageServiceConfig
 
     // Allowed CPU time spent on loading filter per second (in ms).
     optional uint64 MixedBlocksFilterAllowedCpuTimePerSecond = 523;
+
+    // Maximum number of blocks per AddBlobs transaction during flush.
+    // Flush may be split into several AddBlobs transactions so that each
+    // transaction handles no more than this many blocks.
+    optional uint32 MaxBlocksPerFlush = 524;
 }

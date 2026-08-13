@@ -86,6 +86,7 @@ public:
     ui32 GetFlushThreshold() const;
     ui32 GetFreshBlobCountFlushThreshold() const;
     ui32 GetFreshBlobByteCountFlushThreshold() const;
+    ui32 GetMaxBlocksPerFlush() const;
     ui32 GetFlushBlobSizeThreshold() const;
     bool GetFlushToDevNull() const;
 

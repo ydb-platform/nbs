@@ -65,8 +65,11 @@ private:
     TFlushedCommitIds FlushedCommitIdsFromChannel;
     TVector<ui64> FlushedFreshBlobCommitIds;
     const TDuration BlobStorageAsyncRequestTimeout;
+    const ui32 MaxBlocksPerFlush;
 
     TVector<TRequest> Requests;
+    TVector<TAddFreshBlob> FreshBlobs;
+    size_t NextFreshBlobIndex = 0;
     TVector<TBlockRange64> AffectedRanges;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t RequestsCompleted = 0;
@@ -86,6 +89,7 @@ public:
         TFlushedCommitIds flushedCommitIdsFromChannel,
         TVector<ui64> flushedFreshBlobCommitIds,
         TDuration blobStorageAsyncRequestTimeout,
+        ui32 maxBlocksPerFlush,
         TVector<TRequest> requests);
 
     void Bootstrap(const TActorContext& ctx);
@@ -128,6 +132,7 @@ TFlushActor::TFlushActor(
     TFlushedCommitIds flushedCommitIdsFromChannel,
     TVector<ui64> flushedFreshBlobCommitIds,
     TDuration blobStorageAsyncRequestTimeout,
+    ui32 maxBlocksPerFlush,
     TVector<TRequest> requests)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
@@ -137,6 +142,7 @@ TFlushActor::TFlushActor(
     , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
     , FlushedFreshBlobCommitIds(std::move(flushedFreshBlobCommitIds))
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
+    , MaxBlocksPerFlush(maxBlocksPerFlush)
     , Requests(std::move(requests))
 {}
 
@@ -228,15 +234,37 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
 
 void TFlushActor::AddBlobs(const TActorContext& ctx)
 {
-    TVector<TAddFreshBlob> freshBlobs(Reserve(Requests.size()));
+    if (!FreshBlobs) {
+        FreshBlobs.reserve(Requests.size());
+        for (auto& req: Requests) {
+            BlocksCount += req.Blocks.size();
+            FreshBlobs.emplace_back(
+                req.BlobId,
+                std::move(req.Blocks),
+                std::move(req.Checksums),
+                req.CompactionRangeCount);
+        }
+        Requests.clear();
+    }
 
-    for (auto& req: Requests) {
-        BlocksCount += req.Blocks.size();
-        freshBlobs.emplace_back(
-            req.BlobId,
-            std::move(req.Blocks),
-            std::move(req.Checksums),
-            req.CompactionRangeCount);
+    Y_ABORT_UNLESS(NextFreshBlobIndex < FreshBlobs.size());
+
+    TVector<TAddFreshBlob> batch;
+    ui64 blocksInBatch = 0;
+
+    while (NextFreshBlobIndex < FreshBlobs.size()) {
+        auto& blob = FreshBlobs[NextFreshBlobIndex];
+        const ui64 blobBlocks = blob.Blocks.size();
+
+        if (!batch.empty() &&
+            blocksInBatch + blobBlocks > MaxBlocksPerFlush)
+        {
+            break;
+        }
+
+        blocksInBatch += blobBlocks;
+        batch.push_back(std::move(blob));
+        ++NextFreshBlobIndex;
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -244,9 +272,20 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
         CommitId,
         TVector<TAddMixedBlob>(),
         TVector<TAddMergedBlob>(),
-        freshBlobs,
+        std::move(batch),
         ADD_FLUSH_RESULT
     );
+    request->AllowFlushCommitIdAsTrimFreshLogToCommitId =
+        NextFreshBlobIndex >= FreshBlobs.size();
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "CHECK AddBlobs request on Flush @%lu (blobs: %lu, blocks: %lu), AllowFlushCommitIdAsTrimFreshLogToCommitId: %s",
+        CommitId,
+        batch.size(),
+        blocksInBatch,
+        request->AllowFlushCommitIdAsTrimFreshLogToCommitId ? "true" : "false");
 
     NCloud::Send(
         ctx,
@@ -367,6 +406,11 @@ void TFlushActor::HandleAddBlobsResponse(
     RequestInfo->AddExecCycles(msg->ExecCycles);
 
     if (HandleError(ctx, msg->GetError())) {
+        return;
+    }
+
+    if (NextFreshBlobIndex < FreshBlobs.size()) {
+        AddBlobs(ctx);
         return;
     }
 
@@ -710,6 +754,7 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
             std::move(flushedCommitIdsFromChannel),
             std::move(unflushedFreshBlobCommitIds),
             GetBlobStorageAsyncRequestTimeout(),
+            Config->GetMaxBlocksPerFlush(),
             std::move(requests));
 
         Actors.Insert(actor);
