@@ -40,7 +40,7 @@ def __run_test_suite(target_path, suite, tests, verbose=False):
 
     # Tests expect 002 umask
     # cloud/filestore/tests/fs_posix_compliance/mount-local-test : open/02.t : +not ok 2 (line: 12)
-    os.umask(0o002)
+    # os.umask(0o002)
 
     env = os.environ.copy()
 
