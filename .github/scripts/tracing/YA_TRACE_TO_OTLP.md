@@ -252,3 +252,95 @@ Malformed JSON records are skipped and counted. Each loaded trace remembers
 its count so the root span can set
 `ya.trace.malformed_json_record.count` and
 `ya.trace.input.incomplete=true`.
+
+## Input 2: ya event log
+
+[`load_ya_evlog`](yatrace/evlog_loader.py) recognizes:
+
+| Namespace/event | Result |
+| --- | --- |
+| `stages` / `stage-finished` | Top-level ya phase node |
+| `worker_threads` / `node-finished` | Build or test graph node |
+| `worker_threads` / `node-detailed` | `setup`, `exec_cmd`, `post_cmd`, `node_result`, or `finalize` detail |
+| `dump_debug` / `log`, key `stats` | Cache, execution, language, and critical-path statistics |
+| `devtools.ya.build.reports.failed_node_info` / `node-failed` | Failed UID and optional process exit code |
+
+Malformed JSON records are skipped without stopping later valid records. Their
+count is reported as `ya.evlog.malformed_json_record.count`; the root also sets
+`ya.trace.input.incomplete=true` when either trace or event-log input contains
+malformed JSON.
+
+Example, shown pretty-printed rather than in the event log's one-record-per-line
+form:
+
+```json
+{
+  "namespace": "stages",
+  "event": "stage-finished",
+  "value": {
+    "name": "dispatch_build",
+    "tag": "dispatch_build",
+    "time": [
+      104,
+      110
+    ]
+  }
+}
+
+{
+  "thread_name": "worker-1",
+  "namespace": "worker_threads",
+  "event": "node-finished",
+  "value": {
+    "uid": "test-node-1",
+    "name": "Run(test-node-1$(BUILD_ROOT)/cloud/blockstore/libs/root_kms/impl/client_ut/test-results/unittest/meta.json)",
+    "tag": "TS",
+    "time": [
+      105.5,
+      109.2
+    ]
+  }
+}
+
+{
+  "thread_name": "worker-1",
+  "namespace": "worker_threads",
+  "event": "node-detailed",
+  "value": {
+    "name": "exec_cmd",
+    "tag": "exec_cmd",
+    "time": [
+      106.0,
+      108.8
+    ]
+  }
+}
+```
+
+Every accepted stage, worker, and detail becomes one
+[`YaNode`](yatrace/node.py). `YaNode.from_raw` derives these fields once:
+
+```text
+Interval, kind, tool, thread, UID, output paths, cache source,
+test (suite, result-folder) identity, chunk index, test size, details
+```
+
+Details are attached to the most recently finished node on the same worker
+thread and kept only if their interval is contained by the node interval.
+
+Important classifications include:
+
+| Form | `YaNode.kind` |
+| --- | --- |
+| `TS`, `TM`, `TL`, `YT` with test-result output | `test_execute` |
+| `TL` without test-result output | `test_list` |
+| `TA` / `TR` | `test_aggregate` / `test_merge` |
+| `restore[...]`, `restore_from_dist_cache[...]` | `cache_restore` or `test_cache_restore` |
+| `result[...]` | `materialize` or `test_materialize` |
+| cache-put wrappers | `cache_store` or `test_cache_store` |
+| `Run(...)` outside test results | `execute` |
+| other test/build records | test or build orchestration |
+
+`YaEvlog.from_raw` freezes the nodes and failures and constructs
+`YaBuildStatistics` and `YaCriticalPath`. Projection remains outside these
+models.
