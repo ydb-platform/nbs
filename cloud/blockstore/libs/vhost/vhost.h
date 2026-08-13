@@ -66,7 +66,8 @@ struct IVhostQueue
         bool writeZeroesEnabled,
         ui32 optimalIoSize,
         void* cookie,
-        const TVhostCallbacks& callbacks) = 0;
+        const TVhostCallbacks& callbacks,
+        bool readOnly) = 0;
 
     virtual TVhostRequestPtr DequeueRequest() = 0;
 };
