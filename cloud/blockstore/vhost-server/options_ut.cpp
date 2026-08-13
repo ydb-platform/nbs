@@ -39,6 +39,7 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
         UNIT_ASSERT(!options.NoChmod);
         UNIT_ASSERT_VALUES_EQUAL(1024, options.BatchSize);
         UNIT_ASSERT_VALUES_EQUAL(12345678900, options.PteFlushByteThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(2, options.RdmaClient.ResponseHandlerThreads);
         UNIT_ASSERT_VALUES_EQUAL(3, options.QueueCount);
         UNIT_ASSERT_VALUES_EQUAL(3, options.Layout.size());
         UNIT_ASSERT_VALUES_EQUAL("path-nvme:v3-1", options.Layout[0].DevicePath);
@@ -52,6 +53,28 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, options.Layout[0].Offset);
         UNIT_ASSERT_VALUES_EQUAL(1111111, options.Layout[1].Offset);
         UNIT_ASSERT_VALUES_EQUAL(0, options.Layout[2].Offset);
+    }
+
+    Y_UNIT_TEST(ShouldParseRdmaResponseHandlerThreads)
+    {
+        TOptions options;
+
+        TVector<TString> params {
+            "binary-path",
+            "--socket-path", "vhost.sock",
+            "--serial", "id",
+            "--device", "rdma://host:10020/device:4096:0",
+            "--rdma-response-handler-threads", "4"
+        };
+
+        TVector<char*> argv;
+        for (auto& p: params) {
+            argv.push_back(&p[0]);
+        }
+
+        options.Parse(argv.size(), argv.data());
+
+        UNIT_ASSERT_VALUES_EQUAL(4, options.RdmaClient.ResponseHandlerThreads);
     }
 }
 

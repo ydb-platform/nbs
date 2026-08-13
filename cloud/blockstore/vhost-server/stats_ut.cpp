@@ -8,8 +8,11 @@
 #include <util/generic/size_literals.h>
 #include <util/stream/str.h>
 
+#include <atomic>
 #include <chrono>
+#include <thread>
 #include <tuple>
+#include <vector>
 
 using namespace std::chrono_literals;
 using namespace NCloud::NBlockStore::NVHostServer;
@@ -18,6 +21,80 @@ using namespace NCloud::NBlockStore::NVHostServer;
 
 Y_UNIT_TEST_SUITE(TStatsTest)
 {
+    Y_UNIT_TEST(ShouldSynchronizeConcurrentCompletionStats)
+    {
+        constexpr ui32 threadCount = 8;
+        constexpr ui32 completionsPerThread = 1000;
+        constexpr ui64 requestBytes = 4_KB;
+
+        TAtomicStats stats;
+        std::vector<std::thread> threads;
+        threads.reserve(threadCount);
+
+        for (ui32 i = 0; i != threadCount; ++i) {
+            threads.emplace_back([&] {
+                for (ui32 j = 0; j != completionsPerThread; ++j) {
+                    ++stats.Completed;
+                    ++stats.Requests[0].Count;
+                    stats.Requests[0].Bytes += requestBytes;
+                    stats.Sizes[0].Increment(requestBytes);
+                    stats.Times[0].Increment(1);
+                }
+            });
+        }
+
+        for (auto& thread: threads) {
+            thread.join();
+        }
+
+        auto completionStats = CreateCompletionStats();
+        UNIT_ASSERT(!completionStats->Get(TDuration::Zero()));
+
+        std::atomic<ui32> ready = 0;
+        std::atomic_bool start = false;
+        threads.clear();
+        for (ui32 i = 0; i != threadCount; ++i) {
+            threads.emplace_back([&] {
+                ++ready;
+                while (!start.load(std::memory_order_acquire)) {
+                    std::this_thread::yield();
+                }
+                completionStats->Sync(stats);
+            });
+        }
+
+        while (ready.load(std::memory_order_acquire) != threadCount) {
+            std::this_thread::yield();
+        }
+        start.store(true, std::memory_order_release);
+
+        for (auto& thread: threads) {
+            thread.join();
+        }
+
+        auto snapshot = completionStats->Get(TDuration::Seconds(1));
+        UNIT_ASSERT(snapshot);
+
+        const ui64 completionCount = threadCount * completionsPerThread;
+        UNIT_ASSERT_VALUES_EQUAL(completionCount, snapshot->Completed);
+        UNIT_ASSERT_VALUES_EQUAL(
+            completionCount,
+            snapshot->Requests[0].Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            completionCount * requestBytes,
+            snapshot->Requests[0].Bytes);
+
+        ui64 sizeSamples = 0;
+        snapshot->Sizes[0].IterateBuckets(
+            [&] (ui64, ui64, ui64 count) { sizeSamples += count; });
+        UNIT_ASSERT_VALUES_EQUAL(completionCount, sizeSamples);
+
+        ui64 timeSamples = 0;
+        snapshot->Times[0].IterateBuckets(
+            [&] (ui64, ui64, ui64 count) { timeSamples += count; });
+        UNIT_ASSERT_VALUES_EQUAL(completionCount, timeSamples);
+    }
+
     Y_UNIT_TEST(ShouldDumpStats)
     {
         constexpr ui64 cyclesPerSecond = 2000000000;

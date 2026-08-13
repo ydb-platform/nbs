@@ -132,7 +132,7 @@ private:
     NProto::TVolume Volume;
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
-    TSimpleStats CompletionStatsData;
+    TAtomicStats CompletionStatsData;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
@@ -190,6 +190,8 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
     rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
+    rdmaClientConfig->ResponseHandlerThreads =
+        options.RdmaClient.ResponseHandlerThreads;
 
     auto monitoring = NCloud::CreateMonitoringServiceStub();
     RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
@@ -460,6 +462,8 @@ void TRdmaBackend::CompleteRequest(
         CompletionStatsData.Requests[bio->type].Errors += 1;
     }
 
+    // vhd_complete_bio may be called from arbitrary threads. It queues the
+    // completion onto the request queue's event loop.
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
 
     CompletionStats->Sync(CompletionStatsData);

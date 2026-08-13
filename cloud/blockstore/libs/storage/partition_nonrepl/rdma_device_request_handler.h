@@ -67,6 +67,8 @@ private:
     // Results of requests for each device.
     TStackVec<TDeviceRequestResult, 2> RequestResults;
 
+    // Serializes response aggregation with request-start tracking. Response
+    // callbacks may run concurrently and out of order.
     TAdaptiveLock Lock;
     NProto::TError Error;
 
@@ -200,6 +202,8 @@ void TRdmaDeviceRequestHandlerBase<TDerived>::OnRequestStarted(
     ui32 deviceIdx,
     TDeviceOperationTracker::ERequestType requestType)
 {
+    auto guard = Guard(Lock);
+
     if (!DeviceOperationId) {
         // Tracking of this request is disabled.
         return;

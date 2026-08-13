@@ -8,6 +8,7 @@
 #include <util/stream/output.h>
 #include <util/system/event.h>
 
+#include <mutex>
 #include <numeric>
 
 namespace NCloud::NBlockStore::NVHostServer {
@@ -20,50 +21,24 @@ class TCompletionStats
 {
 private:
     TSimpleStats CompletionStats;
+    std::mutex CompletionStatsMutex;
     bool IsCompletionStatsWaitTimeout = false;
     std::atomic_bool NeedUpdateCompletionStats = false;
     TAutoEvent CompletionStatsEvent;
 
-public:
-    std::optional<TSimpleStats> Get(TDuration timeout) override
+private:
+    template <typename T>
+    void DoSync(const TStats<T>& stats)
     {
-        if (!IsCompletionStatsWaitTimeout) {
-            NeedUpdateCompletionStats = true;
-        }
-
-        bool signaled =
-            CompletionStatsEvent.WaitT(timeout);
-        if (!signaled) {
-            IsCompletionStatsWaitTimeout = true;
-            return {};
-        }
-
-        IsCompletionStatsWaitTimeout = false;
-
-        return CompletionStats;
-    }
-
-    void Sync(const TSimpleStats& stats) override
-    {
-        if (!NeedUpdateCompletionStats) {
+        if (!NeedUpdateCompletionStats.load(std::memory_order_acquire)) {
             return;
         }
 
-        CompletionStats.Completed = stats.Completed;
-        CompletionStats.CompFailed = stats.CompFailed;
-        CompletionStats.EncryptorErrors = stats.EncryptorErrors;
-
-        CompletionStats.Requests = stats.Requests;
-        CompletionStats.Times = stats.Times;
-        CompletionStats.Sizes = stats.Sizes;
-
-        NeedUpdateCompletionStats = false;
-        CompletionStatsEvent.Signal();
-    }
-
-    void Sync(const TAtomicStats& stats) override
-    {
-        if (!NeedUpdateCompletionStats) {
+        std::lock_guard guard(CompletionStatsMutex);
+        if (!NeedUpdateCompletionStats.exchange(
+                false,
+                std::memory_order_acq_rel))
+        {
             return;
         }
 
@@ -75,8 +50,37 @@ public:
         std::ranges::copy(stats.Times, CompletionStats.Times.begin());
         std::ranges::copy(stats.Sizes, CompletionStats.Sizes.begin());
 
-        NeedUpdateCompletionStats = false;
         CompletionStatsEvent.Signal();
+    }
+
+public:
+    std::optional<TSimpleStats> Get(TDuration timeout) override
+    {
+        if (!IsCompletionStatsWaitTimeout) {
+            NeedUpdateCompletionStats.store(true, std::memory_order_release);
+        }
+
+        bool signaled =
+            CompletionStatsEvent.WaitT(timeout);
+        if (!signaled) {
+            IsCompletionStatsWaitTimeout = true;
+            return {};
+        }
+
+        IsCompletionStatsWaitTimeout = false;
+
+        std::lock_guard guard(CompletionStatsMutex);
+        return CompletionStats;
+    }
+
+    void Sync(const TSimpleStats& stats) override
+    {
+        DoSync(stats);
+    }
+
+    void Sync(const TAtomicStats& stats) override
+    {
+        DoSync(stats);
     }
 };
 

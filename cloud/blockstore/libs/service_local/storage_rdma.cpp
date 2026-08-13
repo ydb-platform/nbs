@@ -340,6 +340,8 @@ class TRdmaStorage final
     , public std::enable_shared_from_this<TRdmaStorage>
 {
 private:
+    // Concurrent, out-of-order callbacks are safe: mutable response state is
+    // owned by the individual request handler stored in req->Context.
     const TString Uuid;
     const ui64 BlockSize;
 

@@ -99,6 +99,9 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 
 // IClientHandler interface is used to process the response on the user side.
+// If TClientConfig::ResponseHandlerThreads is greater than one, calls for
+// different requests may be concurrent and out of response-arrival order.
+// Implementations used with that configuration must synchronize shared state.
 struct IClientHandler
 {
     virtual ~IClientHandler() = default;

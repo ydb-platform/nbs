@@ -618,6 +618,8 @@ class TRdmaDataEndpoint
     , public NRdma::IClientHandler
     , public std::enable_shared_from_this<TRdmaDataEndpoint>
 {
+    // Concurrent, out-of-order callbacks are safe: mutable response state is
+    // owned by the individual request handler stored in req->Context.
     const ITraceSerializerPtr TraceSerializer;
     const ITaskQueuePtr TaskQueue;
     const bool IsAlignedDataEnabled;

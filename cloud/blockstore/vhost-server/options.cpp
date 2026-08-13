@@ -131,6 +131,12 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResultDef(&RdmaClient.MaxBufferSize);
 
     opts.AddLongOption(
+            "rdma-response-handler-threads",
+            "number of Rdma client response handler threads")
+        .RequiredArgument("INT")
+        .StoreResultDef(&RdmaClient.ResponseHandlerThreads);
+
+    opts.AddLongOption(
             "wait-after-parent-exit",
             "How many seconds keep alive after the parent process is exited")
         .OptionalArgument("NUM")
