@@ -194,6 +194,21 @@ public:
                 authorizer.release(),
                 TMailboxType::Revolving,
                 appData->UserPoolId));
+
+        //
+        // BlobStorage LoadActorService
+        //
+
+        if (Args.StorageConfig->GetEnableLoadActor()) {
+            IActorPtr loadActorService(CreateLoadTestActor(appData->Counters));
+
+            setup->LocalServices.emplace_back(
+                MakeLoadServiceID(Args.NodeId),
+                TActorSetupCmd(
+                    loadActorService.release(),
+                    TMailboxType::HTSwap,
+                    appData->UserPoolId));
+        }
     }
 };
 
@@ -393,6 +408,7 @@ void TActorSystem::Init()
         Args.StorageConfig->GetConfigsDispatcherServiceEnabled();
     servicesMask.EnableViewerService =
         Args.StorageConfig->GetYdbViewerServiceEnabled();
+    servicesMask.EnableLoadService = Args.StorageConfig->GetEnableLoadActor();
 
     if (Args.AppConfig->HasAuthConfig()) {
         servicesMask.EnableSecurityServices = 1;

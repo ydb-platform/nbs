@@ -870,4 +870,7 @@ message TStorageConfig
 
     // Async processing of read-only create handle requests.
     optional bool AsyncCreateHandleEnabled = 532;
+
+    // Allow to create load actor.
+    optional bool EnableLoadActor = 533;
 }
