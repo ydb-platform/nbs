@@ -140,6 +140,12 @@ public:
         Impl.reset();
     }
 
+    void RequestStop() override
+    {
+        Y_ABORT_UNLESS(Impl);
+        Impl->RequestStop();
+    }
+
     auto StartEndpoint(TString host, ui32 port) -> NThreading::TFuture<
         NCloud::NStorage::NRdma::IClientEndpointPtr> override
     {

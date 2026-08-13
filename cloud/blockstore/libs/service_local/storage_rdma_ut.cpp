@@ -49,6 +49,9 @@ class TDummyClientEndpoint: public NCloud::NStorage::NRdma::IClientEndpoint
         Y_UNUSED(reqId);
     }
 
+    void RequestStop() override
+    {}
+
     NThreading::TFuture<void> Stop() override
     {
         return MakeFuture();
@@ -75,6 +78,9 @@ public:
     }
 
     void Start() override
+    {}
+
+    void RequestStop() override
     {}
 
     void Stop() override
