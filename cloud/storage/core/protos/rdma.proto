@@ -118,4 +118,15 @@ message TRdmaClient
     // Sets the "min_rnr_timer" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 31].
     uint32 QpMinRnrTimer = 21;
+
+    // Number of threads that execute response handlers. Values greater than
+    // one allow concurrent, out-of-order HandleResponse() calls and require
+    // concurrency-safe handlers.
+    uint32 ResponseHandlerThreads = 22;
+
+    // Soft global callback-backlog watermark. CQ processing continues after
+    // this is reached, but queued requests are not issued until the backlog
+    // drains. Already-active requests can complete past the watermark, so it
+    // is not a hard bound. Zero disables request-admission backpressure.
+    uint64 ResponseCallbackBacklogLimit = 23;
 }

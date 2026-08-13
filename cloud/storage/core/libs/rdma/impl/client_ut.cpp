@@ -58,6 +58,21 @@ ui64 GetHistogramSampleCount(
     return count;
 }
 
+bool WaitForCounterValue(
+    const NMonitoring::TDynamicCounters::TCounterPtr& counter,
+    i64 expected,
+    TDuration timeout = TDuration::Seconds(5))
+{
+    const auto deadline = TInstant::Now() + timeout;
+    while (TInstant::Now() < deadline) {
+        if (counter->Val() == expected) {
+            return true;
+        }
+        std::this_thread::sleep_for(1ms);
+    }
+    return counter->Val() == expected;
+}
+
 IClientPtr CreateTestClient(
     NVerbs::IVerbsPtr verbs,
     const ILoggingServicePtr& logging,
@@ -761,7 +776,8 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
 
 void TestDispatchResponsesOutsideCompletionPoller(
     EWaitMode waitMode,
-    bool throwFirst = false)
+    bool throwFirst = false,
+    ui32 responseHandlerThreads = 1)
 {
     constexpr ui32 QueueSize = 2;
     constexpr ui32 ExpectedPostedRecvs = 2 * QueueSize;
@@ -793,6 +809,7 @@ void TestDispatchResponsesOutsideCompletionPoller(
     clientConfig->WaitMode = waitMode;
     clientConfig->SendQueueSize = QueueSize;
     clientConfig->RecvQueueSize = QueueSize;
+    clientConfig->ResponseHandlerThreads = responseHandlerThreads;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -895,7 +912,11 @@ void TestDispatchResponsesOutsideCompletionPoller(
     ASSERT_EQ(
         ExpectedPostedRecvs,
         AtomicGet(testContext->PostRecvCounter));
-    ASSERT_FALSE(handler->SecondDone.WaitT(100ms));
+    if (responseHandlerThreads == 1) {
+        ASSERT_FALSE(handler->SecondDone.WaitT(100ms));
+    } else {
+        ASSERT_TRUE(handler->SecondDone.WaitT(5s));
+    }
 
     auto counters = GetClientCounters(monitoring);
     auto queuedCallbacks =
@@ -906,9 +927,13 @@ void TestDispatchResponsesOutsideCompletionPoller(
         counters->GetCounter("CompletedResponseCallbacks");
     auto callbackErrors = counters->GetCounter("ResponseCallbackErrors");
 
-    ASSERT_EQ(1, queuedCallbacks->Val());
+    if (responseHandlerThreads > 1) {
+        ASSERT_TRUE(WaitForCounterValue(completedCallbacks, 1));
+    }
+
+    ASSERT_EQ(responseHandlerThreads == 1 ? 1 : 0, queuedCallbacks->Val());
     ASSERT_EQ(1, activeCallbacks->Val());
-    ASSERT_EQ(0, completedCallbacks->Val());
+    ASSERT_EQ(responseHandlerThreads == 1 ? 0 : 1, completedCallbacks->Val());
     ASSERT_EQ(0, callbackErrors->Val());
 
     TManualEvent clientStopped;
@@ -959,6 +984,217 @@ TEST(TRdmaClientTest, ShouldDispatchResponsesOutsideCompletionPollerInPollMode)
 TEST(TRdmaClientTest, ShouldContinueDispatchingAfterResponseHandlerThrows)
 {
     TestDispatchResponsesOutsideCompletionPoller(EWaitMode::BusyWait, true);
+}
+
+TEST(TRdmaClientTest, ShouldUseConfiguredResponseHandlerThreads)
+{
+    TestDispatchResponsesOutsideCompletionPoller(
+        EWaitMode::BusyWait,
+        false,
+        2);
+}
+
+void TestResponseCallbackBackpressure(
+    EWaitMode waitMode,
+    ui64 backlogLimit = 1)
+{
+    constexpr ui32 QueueSize = 3;
+    constexpr ui32 InitiallySentRequests = 2;
+    constexpr ui32 RequestCount = 3;
+
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    std::atomic<ui32> postedSends = 0;
+    TManualEvent initialRequestsSent;
+    TManualEvent thirdRequestSent;
+    testContext->PostSend = [&](auto* qp, auto* wr) {
+        PostSend<TRequestMessage>(testContext, qp, wr);
+        switch (postedSends.fetch_add(1) + 1) {
+            case InitiallySentRequests:
+                initialRequestsSent.Signal();
+                break;
+            case RequestCount:
+                thirdRequestSent.Signal();
+                break;
+        }
+    };
+
+    std::atomic<ui32> postedRecvs = 0;
+    TManualEvent initialResponsesReposted;
+    testContext->PostRecv = [&](auto* qp, auto* wr) {
+        Y_UNUSED(qp, wr);
+        if (postedRecvs.fetch_add(1) + 1 ==
+            QueueSize + InitiallySentRequests)
+        {
+            initialResponsesReposted.Signal();
+        }
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->WaitMode = waitMode;
+    clientConfig->SendQueueSize = QueueSize;
+    clientConfig->RecvQueueSize = QueueSize;
+    clientConfig->ResponseHandlerThreads = 1;
+    clientConfig->ResponseCallbackBacklogLimit = backlogLimit;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+    auto client = CreateTestClient(
+        verbs,
+        logging,
+        monitoring,
+        clientConfig);
+
+    struct TResponseContext final: TNullContext
+    {
+        bool Block = false;
+    };
+
+    struct TBlockingHandler final: IClientHandler
+    {
+        const ui32 ExpectedResponses;
+        std::atomic<ui32> Handled = 0;
+        TManualEvent FirstStarted;
+        TManualEvent ReleaseFirst;
+        TManualEvent AllHandled;
+
+        explicit TBlockingHandler(ui32 expectedResponses)
+            : ExpectedResponses(expectedResponses)
+        {}
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            Y_UNUSED(responseBytes);
+            EXPECT_EQ(static_cast<ui32>(RDMA_PROTO_OK), status);
+
+            auto* context = static_cast<TResponseContext*>(req->Context.get());
+            if (context->Block) {
+                FirstStarted.Signal();
+                ReleaseFirst.WaitI();
+            }
+
+            if (Handled.fetch_add(1) + 1 == ExpectedResponses) {
+                AllHandled.Signal();
+            }
+        }
+    };
+
+    auto handler = std::make_shared<TBlockingHandler>(RequestCount);
+    client->Start();
+    Y_DEFER
+    {
+        handler->ReleaseFirst.Signal();
+        client->Stop();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    auto sendRequest = [&](bool block) {
+        auto context = std::make_unique<TResponseContext>();
+        context->Block = block;
+
+        auto request = endpoint->AllocateRequest(
+            handler,
+            std::move(context),
+            1024,
+            1024);
+        ASSERT_FALSE(HasError(request.GetError()));
+
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+    };
+
+    auto completeResponses = [&](ui32 count) {
+        auto guard = Guard(testContext->CompletionLock);
+        ASSERT_GE(testContext->ReqIds.size(), count);
+        ASSERT_GE(testContext->RecvEvents.size(), count);
+
+        for (ui32 i = 0; i < count; ++i) {
+            auto* recv = testContext->RecvEvents.front();
+            testContext->RecvEvents.pop_front();
+
+            auto* response = reinterpret_cast<TResponseMessage*>(
+                recv->sg_list[0].addr);
+            Zero(*response);
+            InitMessageHeader(response, RDMA_PROTO_VERSION);
+            response->ReqId = testContext->ReqIds.front();
+            testContext->ReqIds.pop_front();
+
+            testContext->ProcessedRecvEvents.push_back(recv);
+        }
+        testContext->CompletionHandle.Set();
+    };
+
+    sendRequest(true);
+    sendRequest(false);
+    ASSERT_TRUE(initialRequestsSent.WaitT(5s));
+    completeResponses(InitiallySentRequests);
+
+    ASSERT_TRUE(handler->FirstStarted.WaitT(5s));
+    ASSERT_TRUE(initialResponsesReposted.WaitT(5s));
+
+    auto counters = GetClientCounters(monitoring);
+    auto backpressuredEndpoints =
+        counters->GetCounter("BackpressuredEndpoints");
+    auto backpressureEvents =
+        counters->GetCounter("ResponseCallbackBackpressureEvents");
+    auto queuedCallbacks =
+        counters->GetCounter("QueuedResponseCallbacks");
+    auto completedCallbacks =
+        counters->GetCounter("CompletedResponseCallbacks");
+
+    ASSERT_TRUE(WaitForCounterValue(queuedCallbacks, 1));
+    ASSERT_EQ(
+        QueueSize + InitiallySentRequests,
+        postedRecvs.load());
+
+    sendRequest(false);
+    if (backlogLimit != 0) {
+        ASSERT_TRUE(WaitForCounterValue(backpressuredEndpoints, 1));
+        ASSERT_FALSE(thirdRequestSent.WaitT(100ms));
+        ASSERT_EQ(InitiallySentRequests, postedSends.load());
+        ASSERT_EQ(1, backpressureEvents->Val());
+
+        handler->ReleaseFirst.Signal();
+        ASSERT_TRUE(thirdRequestSent.WaitT(5s));
+        ASSERT_TRUE(WaitForCounterValue(backpressuredEndpoints, 0));
+        completeResponses(1);
+    } else {
+        ASSERT_TRUE(thirdRequestSent.WaitT(5s));
+        ASSERT_EQ(0, backpressuredEndpoints->Val());
+        ASSERT_EQ(0, backpressureEvents->Val());
+        completeResponses(1);
+        ASSERT_TRUE(WaitForCounterValue(queuedCallbacks, 2));
+        ASSERT_EQ(QueueSize + RequestCount, postedRecvs.load());
+        handler->ReleaseFirst.Signal();
+    }
+
+    ASSERT_TRUE(handler->AllHandled.WaitT(5s));
+    ASSERT_TRUE(WaitForCounterValue(completedCallbacks, RequestCount));
+    ASSERT_EQ(0, queuedCallbacks->Val());
+    ASSERT_EQ(backlogLimit != 0 ? 1 : 0, backpressureEvents->Val());
+}
+
+TEST(TRdmaClientTest, ShouldBackpressureNewRequestsInBusyWaitMode)
+{
+    TestResponseCallbackBackpressure(EWaitMode::BusyWait);
+}
+
+TEST(TRdmaClientTest, ShouldBackpressureNewRequestsInPollMode)
+{
+    TestResponseCallbackBackpressure(EWaitMode::Poll);
+}
+
+TEST(TRdmaClientTest, ShouldNotBackpressureNewRequestsByDefault)
+{
+    TestResponseCallbackBackpressure(EWaitMode::BusyWait, 0);
 }
 
 enum class EStopFromResponseScenario

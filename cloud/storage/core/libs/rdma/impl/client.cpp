@@ -42,6 +42,8 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
+#include <functional>
+
 namespace NCloud::NStorage::NRdma {
 
 using namespace NMonitoring;
@@ -62,7 +64,6 @@ constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
 constexpr TDuration RESPONSE_DISPATCHER_SHUTDOWN_WARNING_INTERVAL =
     TDuration::Seconds(30);
-constexpr ui32 RESPONSE_HANDLER_THREADS = 1;
 const TBucketBounds RESPONSE_CALLBACK_TIME_BUCKETS_US = {
     1,
     10,
@@ -100,6 +101,8 @@ struct TResponseDispatcherCounters
     TDynamicCounters::TCounterPtr Active;
     TDynamicCounters::TCounterPtr Completed;
     TDynamicCounters::TCounterPtr Errors;
+    TDynamicCounters::TCounterPtr BackpressuredEndpoints;
+    TDynamicCounters::TCounterPtr BackpressureEvents;
 
     THistogramPtr QueueWait;
     THistogramPtr ExecutionTime;
@@ -110,6 +113,10 @@ struct TResponseDispatcherCounters
         Active = counters.GetCounter("ActiveResponseCallbacks");
         Completed = counters.GetCounter("CompletedResponseCallbacks", true);
         Errors = counters.GetCounter("ResponseCallbackErrors", true);
+        BackpressuredEndpoints =
+            counters.GetCounter("BackpressuredEndpoints");
+        BackpressureEvents =
+            counters.GetCounter("ResponseCallbackBackpressureEvents", true);
 
         QueueWait = RegisterTimeHistogram(
             counters,
@@ -143,6 +150,17 @@ struct TResponseDispatcherCounters
         }
     }
 
+    void EndpointBackpressured()
+    {
+        BackpressuredEndpoints->Inc();
+        BackpressureEvents->Inc();
+    }
+
+    void EndpointResumed()
+    {
+        BackpressuredEndpoints->Dec();
+    }
+
 private:
     static THistogramPtr RegisterTimeHistogram(
         TDynamicCounters& counters,
@@ -171,19 +189,26 @@ private:
     const ITaskQueuePtr Queue;
     const TResponseDispatcherCountersPtr Counters;
     const TLog Log;
+    const ui64 BacklogLimit;
+    const std::function<void()> BacklogAvailable;
 
     TMutex Lock;
     TManualEvent Drained;
-    ui64 Pending = 0;
+    std::atomic<ui64> Pending = 0;
     bool Accepting = false;
 
 public:
     TResponseDispatcher(
             TResponseDispatcherCountersPtr counters,
+            ui32 workerCount,
+            ui64 backlogLimit,
+            std::function<void()> backlogAvailable,
             TLog log)
-        : Queue(CreateThreadPool("RDMA.RSP", RESPONSE_HANDLER_THREADS))
+        : Queue(CreateThreadPool("RDMA.RSP", workerCount))
         , Counters(std::move(counters))
         , Log(std::move(log))
+        , BacklogLimit(backlogLimit)
+        , BacklogAvailable(std::move(backlogAvailable))
     {}
 
     void Start()
@@ -199,7 +224,7 @@ public:
     {
         with_lock (Lock) {
             Accepting = false;
-            if (Pending == 0) {
+            if (Pending.load() == 0) {
                 Drained.Signal();
             }
         }
@@ -212,10 +237,7 @@ public:
         while (!Drained.WaitT(
             RESPONSE_DISPATCHER_SHUTDOWN_WARNING_INTERVAL))
         {
-            ui64 pending;
-            with_lock (Lock) {
-                pending = Pending;
-            }
+            const ui64 pending = Pending.load();
             RDMA_WARN(
                 Log,
                 "waiting for response callbacks during shutdown"
@@ -230,6 +252,21 @@ public:
         return CurrentDispatcher == this;
     }
 
+    bool IsBackpressured() const noexcept
+    {
+        return BacklogLimit != 0 && Pending.load() >= BacklogLimit;
+    }
+
+    void EndpointBackpressured()
+    {
+        Counters->EndpointBackpressured();
+    }
+
+    void EndpointResumed()
+    {
+        Counters->EndpointResumed();
+    }
+
     template <typename TCallback>
     void Dispatch(TCallback callback) noexcept
     {
@@ -241,7 +278,7 @@ public:
                     executeInline = true;
                 } else {
                     Counters->ResponseQueued();
-                    if (Pending++ == 0) {
+                    if (Pending.fetch_add(1) == 0) {
                         Drained.Reset();
                     }
                 }
@@ -302,10 +339,27 @@ private:
 
     void Complete() noexcept
     {
-        with_lock (Lock) {
-            Y_DEBUG_ABORT_UNLESS(Pending > 0);
-            if (--Pending == 0) {
-                Drained.Signal();
+        bool backlogAvailable = false;
+        {
+            with_lock (Lock) {
+                const ui64 pending = Pending.fetch_sub(1);
+                Y_DEBUG_ABORT_UNLESS(pending > 0);
+                if (pending == 1) {
+                    Drained.Signal();
+                }
+                backlogAvailable =
+                    BacklogLimit != 0 && pending == BacklogLimit;
+            }
+        }
+
+        if (backlogAvailable && BacklogAvailable) {
+            try {
+                BacklogAvailable();
+            } catch (...) {
+                RDMA_ERROR(
+                    Log,
+                    "response-backlog notification failed: "
+                        << CurrentExceptionMessage());
             }
         }
     }
@@ -736,6 +790,7 @@ private:
     TSimpleList<TRequest> QueuedRequests;
     TActiveRequests ActiveRequests;
     std::atomic<ui64> PendingResponses = 0;
+    bool ResponseBackpressured = false;
 
     std::atomic<ui64> ReqIdPool{0};
 
@@ -807,7 +862,8 @@ public:
 
 private:
     // called from CQ thread
-    void HandleQueuedRequests() noexcept;
+    bool HandleQueuedRequests() noexcept;
+    void SetResponseBackpressured(bool value) noexcept;
     void SendRequest(TRequestPtr req, TSendWr* send) noexcept;
     void SendRequestCompleted(TSendWr* send) noexcept;
     void RecvResponse(TRecvWr* recv) noexcept;
@@ -881,6 +937,8 @@ TClientEndpoint::TClientEndpoint(
 
 TClientEndpoint::~TClientEndpoint()
 {
+    SetResponseBackpressured(false);
+
     // release any leftover resources if endpoint hasn't been properly stopped
     if (Connection) {
         RDMA_INFO("release resources");
@@ -1160,38 +1218,70 @@ bool TClientEndpoint::HandleInputRequests() noexcept
     }
 
     auto requests = InputRequests.DequeueAll();
-    if (!requests) {
-        return false;
+    const bool hadInput = !!requests;
+    if (requests) {
+        QueuedRequests.Append(std::move(requests));
     }
 
-    QueuedRequests.Append(std::move(requests));
-    HandleQueuedRequests();
-    return true;
+    return HandleQueuedRequests() || hadInput;
 }
 
-void TClientEndpoint::HandleQueuedRequests() noexcept
+bool TClientEndpoint::HandleQueuedRequests() noexcept
 {
+    bool madeProgress = false;
+
     while (QueuedRequests) {
         if (CheckState(EEndpointState::Connected)) {
-            auto* send = SendQueue.Pop();
-            if (!send) {
+            if (SendQueue.Size() == 0) {
                 // no more WRs available
                 break;
             }
+            if (ResponseDispatcher->IsBackpressured()) {
+                SetResponseBackpressured(true);
+                break;
+            }
+            SetResponseBackpressured(false);
+
+            auto* send = SendQueue.Pop();
+            Y_ABORT_UNLESS(send);
 
             auto req = QueuedRequests.Dequeue();
             Y_ABORT_UNLESS(req);
 
             Counters->RequestDequeued();
             SendRequest(std::move(req), send);
+            madeProgress = true;
         }
         else {
+            SetResponseBackpressured(false);
+
             auto req = QueuedRequests.Dequeue();
             Y_ABORT_UNLESS(req);
 
             Counters->RequestDequeued();
             AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
+            madeProgress = true;
         }
+    }
+
+    if (!QueuedRequests) {
+        SetResponseBackpressured(false);
+    }
+
+    return madeProgress;
+}
+
+void TClientEndpoint::SetResponseBackpressured(bool value) noexcept
+{
+    if (ResponseBackpressured == value) {
+        return;
+    }
+
+    ResponseBackpressured = value;
+    if (value) {
+        ResponseDispatcher->EndpointBackpressured();
+    } else {
+        ResponseDispatcher->EndpointResumed();
     }
 }
 
@@ -1254,6 +1344,10 @@ bool TClientEndpoint::HandleCancelRequests() noexcept
         AbortRequest(std::move(req), E_CANCELLED, "request was cancelled");
     }
 
+    if (!QueuedRequests) {
+        SetResponseBackpressured(false);
+    }
+
     // cancel active requests
     cancelled.Append(ActiveRequests.PopCancelledRequests(clientRequestIdToCancel));
     while (auto req = cancelled.Dequeue()) {
@@ -1280,6 +1374,8 @@ void TClientEndpoint::AbortRequests() noexcept
     if (!CheckState(EEndpointState::Disconnecting)) {
         return;
     }
+
+    SetResponseBackpressured(false);
 
     auto requests = InputRequests.DequeueAll();
     if (requests) {
@@ -1996,6 +2092,18 @@ public:
         }
     }
 
+    void NotifyResponseBacklogAvailable()
+    {
+        if (Config->WaitMode != EWaitMode::Poll) {
+            return;
+        }
+
+        auto endpoints = Endpoints.Get();
+        for (const auto& endpoint: *endpoints) {
+            endpoint->RequestEvent.Set();
+        }
+    }
+
     auto GetEndpoints()
     {
         return Endpoints.Get();
@@ -2238,6 +2346,7 @@ private:
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event) noexcept;
     TCompletionPoller& PickPoller() noexcept;
+    void NotifyResponseBacklogAvailable() noexcept;
     void ReleaseResources(TClientEndpoint* endpoint) noexcept;
 };
 
@@ -2267,6 +2376,8 @@ void TClient::Start() noexcept
 
     RDMA_INFO("start client");
 
+    Config->Validate(Log);
+
     auto countersGroup = ObservabilityProvider.CreateCounters();
     Counters->Register(*countersGroup);
 
@@ -2275,6 +2386,11 @@ void TClient::Start() noexcept
     responseDispatcherCounters->Register(*countersGroup);
     ResponseDispatcher = std::make_shared<TResponseDispatcher>(
         std::move(responseDispatcherCounters),
+        Config->ResponseHandlerThreads,
+        Config->ResponseCallbackBacklogLimit,
+        [this] {
+            NotifyResponseBacklogAvailable();
+        },
         Log);
     ResponseDispatcher->Start();
 
@@ -2286,8 +2402,6 @@ void TClient::Start() noexcept
             Log);
         CompletionPollers[i]->Start();
     }
-
-    Config->Validate(Log);
 
     try {
         ConnectionPoller = std::make_unique<TConnectionPoller>(Verbs, this, Log);
@@ -2869,6 +2983,21 @@ TCompletionPoller& TClient::PickPoller() noexcept
 {
     size_t index = RandomNumber(CompletionPollers.size());
     return *CompletionPollers[index];
+}
+
+void TClient::NotifyResponseBacklogAvailable() noexcept
+{
+    with_lock (ShutdownLock) {
+        if (StopRequested) {
+            return;
+        }
+
+        for (const auto& poller: CompletionPollers) {
+            if (poller) {
+                poller->NotifyResponseBacklogAvailable();
+            }
+        }
+    }
 }
 
 void TClient::DumpHtml(IOutputStream& out) const

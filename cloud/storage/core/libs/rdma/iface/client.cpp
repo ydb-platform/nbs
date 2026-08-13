@@ -20,6 +20,12 @@ TClientConfig::TClientConfig()
 void TClientConfig::Validate(TLog& log)
 {
     BufferPool.Validate(log);
+    if (ResponseHandlerThreads == 0) {
+        RDMA_WARN(
+            log,
+            "ResponseHandlerThreads=0, set ResponseHandlerThreads=1");
+        ResponseHandlerThreads = 1;
+    }
     constexpr ui8 ThreeBitsMax = 7;
     constexpr ui8 FiveBitsMax = 31;
     if (QpRetryCount > ThreeBitsMax) {
@@ -67,6 +73,10 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(MaxBufferSize, MaxBufferSize);
                 ENTRY(WaitMode, WaitMode);
                 ENTRY(PollerThreads, PollerThreads);
+                ENTRY(ResponseHandlerThreads, ResponseHandlerThreads);
+                ENTRY(
+                    ResponseCallbackBacklogLimit,
+                    ResponseCallbackBacklogLimit);
                 ENTRY(MaxReconnectDelay, MaxReconnectDelay.ToString());
                 ENTRY(MaxResponseDelay, MaxResponseDelay.ToString());
                 ENTRY(AdaptiveWaitSleepDelay, AdaptiveWaitSleepDelay.ToString());

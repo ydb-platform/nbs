@@ -31,6 +31,14 @@ struct TClientConfig
     ui32 MaxBufferSize = 4_MB + 4_KB;
     EWaitMode WaitMode = EWaitMode::Poll;
     ui32 PollerThreads = 1;
+    // Values greater than one permit concurrent, out-of-order callbacks and
+    // must be used only with handlers that support that contract.
+    ui32 ResponseHandlerThreads = 1;
+    // Soft global watermark. Once reached, the CQ pollers continue processing
+    // completions but pause issuing queued requests until callbacks drain.
+    // Already-active requests can complete after the watermark is reached,
+    // so this is not a hard bound. Zero disables admission backpressure.
+    ui64 ResponseCallbackBacklogLimit = 0;
     TDuration MaxReconnectDelay = TDuration::Seconds(60);
     TDuration MaxResponseDelay = TDuration::Seconds(60);
     TDuration AdaptiveWaitSleepDelay = TDuration::MilliSeconds(10);

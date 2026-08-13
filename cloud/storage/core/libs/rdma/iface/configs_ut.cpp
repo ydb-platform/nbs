@@ -135,4 +135,24 @@ TYPED_TEST(
     EXPECT_EQ(TTraits::DefaultQueueSize, config.RecvQueueSize);
 }
 
+TEST(TRdmaClientConfigTest, ShouldUseResponseDispatcherDefaults)
+{
+    const auto config = CreateClientConfig(NProto::TRdmaClient{});
+
+    EXPECT_EQ(1u, config.ResponseHandlerThreads);
+    EXPECT_EQ(0u, config.ResponseCallbackBacklogLimit);
+}
+
+TEST(TRdmaClientConfigTest, ShouldUseConfiguredResponseDispatcherSettings)
+{
+    NProto::TRdmaClient proto;
+    proto.SetResponseHandlerThreads(4);
+    proto.SetResponseCallbackBacklogLimit(123);
+
+    const auto config = CreateClientConfig(proto);
+
+    EXPECT_EQ(4u, config.ResponseHandlerThreads);
+    EXPECT_EQ(123u, config.ResponseCallbackBacklogLimit);
+}
+
 }   // namespace NCloud::NStorage::NRdma
