@@ -155,6 +155,11 @@ runs:
         echo -n "$GITHUB_TOKEN" > "$GITHUB_TOKEN_FILE"
         echo "GITHUB_TOKEN_FILE=$GITHUB_TOKEN_FILE" >> "$GITHUB_ENV"
         chmod 600 "$GITHUB_TOKEN_FILE"
+    - name: Install trace dependencies
+      continue-on-error: true
+      shell: bash
+      run: |
+        pip install -r .github/scripts/requirements.txt
     - name: ya test
       id: check_test_results
       shell: bash --noprofile --norc -eo pipefail -x {0}
@@ -294,13 +299,14 @@ runs:
 
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         echo "report_generated=no" >> "$GITHUB_OUTPUT"
-        RETRY_FLAG=""
+        retry_params=()
         i=0
         echo "LAST_STEP=0" | tee -a "$GITHUB_ENV"
         # setting variable in case that test will be interrupter by OOM killer that
         # will kill VM with runner
         echo "failed_tests=yes" >> $GITHUB_OUTPUT
         while [ "$RETRIES" -gt 0 ]; do
+            TRACE_START_TIME_NS=$(date +%s%N)
             TEST_START_TIME=$(date +%s)
             echo TEST_START_TIME=$TEST_START_TIME | tee -a "$GITHUB_ENV"
             RETRIES=$((RETRIES - 1))
@@ -333,7 +339,7 @@ runs:
                     --junit "${JUNIT_REPORT_XML}.${i}" \
                     --log-file "$RETRY_LOG_DIR/ya_log.txt" \
                     --evlog-file "$RETRY_LOG_DIR/ya_evlog.jsonl" \
-                    "$RETRY_FLAG"
+                    "${retry_params[@]}"
                 echo $? > "$EXIT_CODE_FILE"
             } |& tee "$RETRY_LOG_DIR/ya_make_output.txt"
             set -e
@@ -371,7 +377,7 @@ runs:
                         echo "ya test returned $RC after timeout killed it with SIGKILL"
                         ATTEMPT_TIMED_OUT=1
                         DO_RETRY=1
-                        RETRY_FLAG="-X"
+                        retry_params=(-X)
                     else
                         echo "ya test returned $RC it was killed by OOM killer"
                         if [ $OOM_CAN_BE_RETRIED -eq 0 ]; then
@@ -397,11 +403,12 @@ runs:
                     # disabling retries here for now until we will be able to
                     # process junit with retried runs
                     DO_RETRY=1
-                    RETRY_FLAG="-X"
+                    retry_params=(-X)
                     ;;
             esac
 
             touch "$LOG_DIR/${i}_build_finished"
+            TRACE_END_TIME_NS=$(date +%s%N)
             TEST_END_TIME=$(date +%s)
             echo TEST_END_TIME=$TEST_END_TIME | tee -a "$GITHUB_ENV"
 
@@ -568,6 +575,15 @@ runs:
                 fi
             fi
 
+            REPORT_DIR="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}"
+            TRACE_REPORT_URL="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/trace.html"
+            TRACE_OTLP_URL="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/trace.otlp.jsonl.gz"
+            TRACE_INPUTS_URL="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/trace-inputs.tar.gz"
+            if [ -n "${S3_REPORTS_WEBSITE_PREFIX:-}" ]; then
+                TRACE_REPORT_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace.html"
+                TRACE_OTLP_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace.otlp.jsonl.gz"
+                TRACE_INPUTS_URL="$S3_REPORTS_WEBSITE_PREFIX/${COMPONENT_DIR}${i}/trace-inputs.tar.gz"
+            fi
             export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
             set +x
             GITHUB_TOKEN="$(cat "$GITHUB_TOKEN_FILE")"
@@ -583,6 +599,7 @@ runs:
                 --test-target "${TEST_TARGET//\"/}" \
                 --test-time $((TEST_END_TIME - TEST_START_TIME)) \
                 --build-error-log-url "$BUILD_ERROR_LOG_URL_FOR_ITERATION" \
+                --trace-report-url "$TRACE_REPORT_URL" \
                 "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
             unset GITHUB_TOKEN
             echo "report_generated=yes" >> "$GITHUB_OUTPUT"
@@ -593,6 +610,29 @@ runs:
                     echo "[Extracted build errors]($BUILD_ERROR_LOG_URL_FOR_ITERATION)"
                 } >> "$SUMMARY_OUT_ENV_PATH"
             fi
+            PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                bash "$GITHUB_WORKSPACE/.github/scripts/tracing/render_ya_trace_bundle.sh" \
+                --warning-title "Trace report" \
+                --report-dir "$REPORT_DIR" \
+                --ya-out "$OUT_DIR" \
+                --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
+                --html-url "$TRACE_REPORT_URL" \
+                --otlp-url "$TRACE_OTLP_URL" \
+                --inputs-url "$TRACE_INPUTS_URL" \
+                --summary "$SUMMARY_OUT_ENV_PATH" \
+                -- \
+                --attempt-start-ns "$TRACE_START_TIME_NS" \
+                --attempt-end-ns "$TRACE_END_TIME_NS" \
+                --exit-code "$RC" \
+                --result-code "$FAIL_CHECKER_RC" \
+                --component "${COMPONENT_DIR%/}" \
+                --build-preset "$BUILD_PRESET" \
+                --test-target "$TEST_TARGET" \
+                --test-type "$TEST_TYPE" \
+                --test-size "$TEST_SIZE" \
+                --retry "$i" \
+                --test-log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
+                --test-data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE/"
             cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
             echo "::endgroup::"
 
@@ -608,11 +648,21 @@ runs:
             fi
 
             echo "::group::s3-sync"
-            aws s3 sync --acl public-read --follow-symlinks --no-progress "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
-            if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ] && [ -f "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/summary.json" ]; then
-                aws s3 cp --acl public-read --follow-symlinks --no-progress \
-                    "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/summary.json" \
-                    "$S3_REPORTS_BUCKET_PATH/${COMPONENT_DIR}${i}/summary.json"
+            aws s3 sync --acl public-read --follow-symlinks --no-progress \
+                --exclude "*.trace-inputs.*.tar.gz.tmp" \
+                --exclude "*trace-inputs.files" \
+                "$ARTIFACTS_DIR/" \
+                "$S3_BUCKET_PATH/"
+            if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ]; then
+                aws s3 sync --acl public-read --follow-symlinks --no-progress \
+                    --exclude "*" \
+                    --include "summary.json" \
+                    --include "trace.html" \
+                    --include "trace.manifest.json" \
+                    --include "trace.otlp.jsonl.gz" \
+                    --include "trace-inputs.tar.gz" \
+                    "$REPORT_DIR/" \
+                    "$S3_REPORTS_BUCKET_PATH/${COMPONENT_DIR}${i}/"
             fi
             touch "$LOG_DIR/${i}_artifacts_synced"
             echo "::endgroup::"
