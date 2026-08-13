@@ -12,6 +12,8 @@
 #include <util/generic/map.h>
 #include <util/string/printf.h>
 
+#include <atomic>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
@@ -60,6 +62,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
     TMessageObserver MessageObserver;
     TForceReconnectObserver ForceReconnectObserver;
     TStopObserver StopObserver;
+    std::atomic_flag StopFlag = ATOMIC_FLAG_INIT;
 
     ui64 NextRequestId = 0;
     THashMap<ui64, NCloud::NStorage::NRdma::TClientRequestPtr> Requests;
@@ -316,11 +319,16 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             len);
     }
 
-    TFuture<void> Stop() override
+    void RequestStop() override
     {
-        if (StopObserver) {
+        if (!StopFlag.test_and_set() && StopObserver) {
             StopObserver();
         }
+    }
+
+    TFuture<void> Stop() override
+    {
+        RequestStop();
         return MakeFuture();
     }
 

@@ -181,6 +181,7 @@ public:
 
     void CancelRequest(ui64 reqId) override;
 
+    void RequestStop() override;
     TFuture<void> Stop() override;
 
     void TryForceReconnect() override;
@@ -255,6 +256,11 @@ TFuture<void> TClientEndpoint::Stop()
     ActorSystem->Send(RdmaActorId, std::move(request));
 
     return future;
+}
+
+void TClientEndpoint::RequestStop()
+{
+    (void)Stop();
 }
 
 void TClientEndpoint::TryForceReconnect() {}
@@ -1080,6 +1086,7 @@ public:
     // IStartable
 
     void Start() override;
+    void RequestStop() override;
     void Stop() override;
 
     // IClient
@@ -1108,6 +1115,11 @@ void TFakeRdmaClient::Start()
 void TFakeRdmaClient::Stop()
 {
     ActorSystem->Send(RdmaActorId, std::make_unique<TEvents::TEvPoisonPill>());
+}
+
+void TFakeRdmaClient::RequestStop()
+{
+    Stop();
 }
 
 auto TFakeRdmaClient::StartEndpoint(TString host, ui32 port)

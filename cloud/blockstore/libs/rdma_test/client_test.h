@@ -37,6 +37,10 @@ struct TRdmaClientTest: NCloud::NStorage::NRdma::IClient
     {
     }
 
+    void RequestStop() override
+    {
+    }
+
     void Stop() override
     {
     }

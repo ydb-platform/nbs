@@ -19,7 +19,10 @@
 #include <util/system/mutex.h>
 
 #include <cstring>
+#include <signal.h>
+#include <sys/wait.h>
 #include <thread>
+#include <unistd.h>
 
 namespace NCloud::NStorage::NRdma {
 
@@ -956,6 +959,227 @@ TEST(TRdmaClientTest, ShouldDispatchResponsesOutsideCompletionPollerInPollMode)
 TEST(TRdmaClientTest, ShouldContinueDispatchingAfterResponseHandlerThrows)
 {
     TestDispatchResponsesOutsideCompletionPoller(EWaitMode::BusyWait, true);
+}
+
+enum class EStopFromResponseScenario
+{
+    ClientRequest,
+    ClientStop,
+    EndpointRequest,
+    EndpointAndWait,
+};
+
+void RunStopFromResponseScenario(
+    EStopFromResponseScenario scenario,
+    EWaitMode waitMode)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    TManualEvent requestSent;
+    testContext->PostSend = [&](auto* qp, auto* wr) {
+        PostSend<TRequestMessage>(testContext, qp, wr);
+        requestSent.Signal();
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->WaitMode = waitMode;
+    clientConfig->SendQueueSize = 1;
+    clientConfig->RecvQueueSize = 1;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+    auto client = CreateTestClient(
+        verbs,
+        logging,
+        monitoring,
+        clientConfig);
+
+    struct TStoppingHandler final: IClientHandler
+    {
+        const EStopFromResponseScenario Scenario;
+
+        IClientPtr Client;
+        IClientEndpointPtr Endpoint;
+        TManualEvent Returned;
+        std::atomic<ui32> ErrorCode = 0;
+
+        explicit TStoppingHandler(EStopFromResponseScenario scenario)
+            : Scenario(scenario)
+        {}
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            Y_UNUSED(req, responseBytes);
+            Y_ABORT_UNLESS(status == static_cast<ui32>(RDMA_PROTO_OK));
+
+            switch (Scenario) {
+                case EStopFromResponseScenario::ClientRequest:
+                    Client->RequestStop();
+                    Client->RequestStop();
+                    break;
+                case EStopFromResponseScenario::ClientStop:
+                    Client->Stop();
+                    Client->Stop();
+                    break;
+                case EStopFromResponseScenario::EndpointRequest:
+                    Endpoint->RequestStop();
+                    Endpoint->RequestStop();
+                    break;
+                case EStopFromResponseScenario::EndpointAndWait:
+                    try {
+                        Endpoint->Stop().GetValueSync();
+                        ErrorCode = S_OK;
+                    } catch (const TServiceError& e) {
+                        ErrorCode = e.GetCode();
+                    }
+                    break;
+            }
+            Returned.Signal();
+        }
+    };
+
+    auto handler = std::make_shared<TStoppingHandler>(scenario);
+
+    client->Start();
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    handler->Client = client;
+    handler->Endpoint = endpoint;
+
+    auto request = endpoint->AllocateRequest(
+        handler,
+        std::make_unique<TNullContext>(),
+        1024,
+        1024);
+    Y_ABORT_UNLESS(!HasError(request.GetError()));
+
+    endpoint->SendRequest(
+        request.ExtractResult(),
+        MakeIntrusive<TCallContextBase>(0u));
+    Y_ABORT_UNLESS(requestSent.WaitT(5s));
+
+    {
+        auto guard = Guard(testContext->CompletionLock);
+        Y_ABORT_UNLESS(testContext->ReqIds.size() == 1);
+        Y_ABORT_UNLESS(testContext->RecvEvents.size() == 1);
+
+        auto* recv = testContext->RecvEvents.front();
+        testContext->RecvEvents.pop_front();
+
+        auto* response = reinterpret_cast<TResponseMessage*>(
+            recv->sg_list[0].addr);
+        Zero(*response);
+        InitMessageHeader(response, RDMA_PROTO_VERSION);
+        response->ReqId = testContext->ReqIds.front();
+        testContext->ReqIds.pop_front();
+
+        testContext->ProcessedRecvEvents.push_back(recv);
+        testContext->CompletionHandle.Set();
+    }
+
+    Y_ABORT_UNLESS(handler->Returned.WaitT(5s));
+
+    if (scenario == EStopFromResponseScenario::ClientRequest ||
+        scenario == EStopFromResponseScenario::ClientStop)
+    {
+        try {
+            client->StartEndpoint("::", 10020).ExtractValueSync();
+            Y_ABORT("endpoint unexpectedly started after client stop request");
+        } catch (const TServiceError& e) {
+            Y_ABORT_UNLESS(e.GetCode() == E_RDMA_UNAVAILABLE);
+        }
+        client->Stop();
+        client->Stop();
+    } else {
+        if (scenario == EStopFromResponseScenario::EndpointAndWait) {
+            Y_ABORT_UNLESS(handler->ErrorCode == E_INVALID_STATE);
+        }
+        NVerbs::Flush(testContext);
+        endpoint->Stop().GetValueSync();
+        endpoint->Stop().GetValueSync();
+        client->Stop();
+    }
+
+    handler->Client.reset();
+    handler->Endpoint.reset();
+    endpoint.reset();
+    client.reset();
+}
+
+void TestStopFromResponseInSubprocess(
+    EStopFromResponseScenario scenario,
+    EWaitMode waitMode)
+{
+    const pid_t pid = fork();
+    ASSERT_GE(pid, 0);
+
+    if (pid == 0) {
+        RunStopFromResponseScenario(scenario, waitMode);
+        _exit(0);
+    }
+
+    int status = 0;
+    const auto deadline = TInstant::Now() + TDuration::Seconds(15);
+    while (TInstant::Now() < deadline) {
+        const pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result < 0) {
+            kill(pid, SIGKILL);
+            waitpid(pid, &status, 0);
+            FAIL() << "waitpid failed";
+            return;
+        }
+        if (result == pid) {
+            ASSERT_TRUE(WIFEXITED(status)) << status;
+            ASSERT_EQ(0, WEXITSTATUS(status));
+            return;
+        }
+        std::this_thread::sleep_for(10ms);
+    }
+
+    ASSERT_EQ(0, kill(pid, SIGKILL));
+    ASSERT_EQ(pid, waitpid(pid, &status, 0));
+    FAIL() << "shutdown scenario timed out";
+}
+
+TEST(TRdmaClientTest, ShouldRequestClientStopFromResponseCallback)
+{
+    for (auto waitMode: {EWaitMode::Poll, EWaitMode::BusyWait}) {
+        TestStopFromResponseInSubprocess(
+            EStopFromResponseScenario::ClientRequest,
+            waitMode);
+    }
+}
+
+TEST(TRdmaClientTest, ShouldRejectClientStopFromResponseCallback)
+{
+    for (auto waitMode: {EWaitMode::Poll, EWaitMode::BusyWait}) {
+        TestStopFromResponseInSubprocess(
+            EStopFromResponseScenario::ClientStop,
+            waitMode);
+    }
+}
+
+TEST(TRdmaClientTest, ShouldRequestEndpointStopFromResponseCallback)
+{
+    for (auto waitMode: {EWaitMode::Poll, EWaitMode::BusyWait}) {
+        TestStopFromResponseInSubprocess(
+            EStopFromResponseScenario::EndpointRequest,
+            waitMode);
+    }
+}
+
+TEST(TRdmaClientTest, ShouldRejectEndpointStopWaitFromResponseCallback)
+{
+    for (auto waitMode: {EWaitMode::Poll, EWaitMode::BusyWait}) {
+        TestStopFromResponseInSubprocess(
+            EStopFromResponseScenario::EndpointAndWait,
+            waitMode);
+    }
 }
 
 void TestDeferredResponsePreventsReconnect(

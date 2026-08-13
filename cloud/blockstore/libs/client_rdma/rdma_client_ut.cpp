@@ -158,6 +158,10 @@ struct TTestClientEndpoint: public NRdma::IClientEndpoint
         Y_UNUSED(reqId);
     }
 
+    void RequestStop() override
+    {
+    }
+
     TFuture<void> Stop() override
     {
         return MakeFuture();
@@ -191,6 +195,9 @@ struct TTestRdmaClient: public NRdma::IClient
     }
 
     void Start() override
+    {}
+
+    void RequestStop() override
     {}
 
     void Stop() override

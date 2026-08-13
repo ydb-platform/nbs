@@ -122,6 +122,12 @@ struct IClientEndpoint
 
     virtual void CancelRequest(ui64 clientRequestId) = 0;
 
+    // Idempotently initiates endpoint shutdown without waiting for it to
+    // complete. This may be called from HandleResponse().
+    virtual void RequestStop() = 0;
+
+    // The returned future must be waited on by an external lifecycle thread,
+    // not from HandleResponse().
     virtual NThreading::TFuture<void> Stop() = 0;
 
     // Attempts to do an instant reconnect. Does nothing if the connection is
@@ -135,6 +141,10 @@ struct IClient
     : public IStartable
 {
     virtual ~IClient() = default;
+
+    // Idempotently initiates client shutdown without waiting for callbacks or
+    // worker threads. This may be called from HandleResponse().
+    virtual void RequestStop() = 0;
 
     virtual NThreading::TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,

@@ -60,6 +60,8 @@ constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
+constexpr TDuration RESPONSE_DISPATCHER_SHUTDOWN_WARNING_INTERVAL =
+    TDuration::Seconds(30);
 constexpr ui32 RESPONSE_HANDLER_THREADS = 1;
 const TBucketBounds RESPONSE_CALLBACK_TIME_BUCKETS_US = {
     1,
@@ -164,6 +166,8 @@ class TResponseDispatcher final
     : public std::enable_shared_from_this<TResponseDispatcher>
 {
 private:
+    static thread_local const TResponseDispatcher* CurrentDispatcher;
+
     const ITaskQueuePtr Queue;
     const TResponseDispatcherCountersPtr Counters;
     const TLog Log;
@@ -191,7 +195,7 @@ public:
         }
     }
 
-    void Stop() noexcept
+    void RequestStop() noexcept
     {
         with_lock (Lock) {
             Accepting = false;
@@ -199,9 +203,31 @@ public:
                 Drained.Signal();
             }
         }
+    }
 
-        Drained.WaitI();
+    void Stop() noexcept
+    {
+        RequestStop();
+
+        while (!Drained.WaitT(
+            RESPONSE_DISPATCHER_SHUTDOWN_WARNING_INTERVAL))
+        {
+            ui64 pending;
+            with_lock (Lock) {
+                pending = Pending;
+            }
+            RDMA_WARN(
+                Log,
+                "waiting for response callbacks during shutdown"
+                    << " [pending=" << pending << "]");
+        }
+
         Queue->Stop();
+    }
+
+    bool IsWorkerThread() const noexcept
+    {
+        return CurrentDispatcher == this;
     }
 
     template <typename TCallback>
@@ -245,6 +271,12 @@ private:
         ui64 queuedCycles,
         bool queued) noexcept
     {
+        const auto* previousDispatcher = CurrentDispatcher;
+        CurrentDispatcher = this;
+        Y_DEFER {
+            CurrentDispatcher = previousDispatcher;
+        };
+
         Counters->ResponseStarted(
             CyclesToDurationSafe(GetCycleCount() - queuedCycles),
             queued);
@@ -278,6 +310,9 @@ private:
         }
     }
 };
+
+thread_local const TResponseDispatcher*
+    TResponseDispatcher::CurrentDispatcher = nullptr;
 
 using TResponseDispatcherPtr = std::shared_ptr<TResponseDispatcher>;
 
@@ -752,6 +787,9 @@ public:
         TCallContextBasePtr callContext) noexcept override;
     void CancelRequest(ui64 reqId) noexcept override;
     void TryForceReconnect() noexcept override;
+
+    // lifecycle methods; RequestStop may be called from a response callback
+    void RequestStop() noexcept override;
     TFuture<void> Stop() noexcept override;
 
     // called from CQ thread
@@ -1551,11 +1589,26 @@ void TClientEndpoint::ResponseReleased() noexcept
     }
 }
 
-TFuture<void> TClientEndpoint::Stop() noexcept
+void TClientEndpoint::RequestStop() noexcept
 {
     if (!StopFlag.test_and_set()) {
         Disconnect();
     }
+}
+
+TFuture<void> TClientEndpoint::Stop() noexcept
+{
+    RequestStop();
+
+    if (ResponseDispatcher->IsWorkerThread()) {
+        constexpr TStringBuf message =
+            "endpoint shutdown was requested from a response callback; "
+            "wait for completion from an external lifecycle thread";
+        RDMA_ERROR(message);
+        return MakeErrorFuture<void>(std::make_exception_ptr(TServiceError(
+            MakeError(E_INVALID_STATE, TString(message)))));
+    }
+
     return StopResult.GetFuture();
 }
 
@@ -1732,10 +1785,14 @@ public:
 
     void Stop() override
     {
+        RequestStop();
+        Join();
+    }
+
+    void RequestStop() noexcept
+    {
         AtomicSet(StopFlag, 1);
         StopEvent.Set();
-
-        Join();
     }
 
     NVerbs::TConnectionPtr CreateConnection(ui8 tos)
@@ -1875,13 +1932,17 @@ public:
 
     void Stop() override
     {
+        RequestStop();
+        Join();
+    }
+
+    void RequestStop() noexcept
+    {
         AtomicSet(StopFlag, 1);
 
         if (Config->WaitMode == EWaitMode::Poll) {
             StopEvent.Set();
         }
-
-        Join();
     }
 
     void Acquire(TClientEndpointPtr endpoint)
@@ -2137,15 +2198,22 @@ private:
     TVector<TCompletionPollerPtr> CompletionPollers;
     TResponseDispatcherPtr ResponseDispatcher;
 
+    TMutex ShutdownLock;
+    TMutex StopLock;
+    bool StopRequested = false;
+
 public:
     TClient(
         NVerbs::IVerbsPtr verbs,
         TObservabilityProvider observabilityProvider,
         TClientConfigPtr config);
 
-    // called from external thread
+    // lifecycle methods; RequestStop may be called from a response callback
     void Start() noexcept override;
+    void RequestStop() noexcept override;
     void Stop() noexcept override;
+
+    // called from external thread
     TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port) noexcept override;
@@ -2153,7 +2221,6 @@ public:
     bool IsAlignedDataEnabled() const override;
 
 private:
-    // called from external thread
     void HandleConnectionEvent(
         NVerbs::TConnectionEventPtr event) noexcept override;
 
@@ -2192,6 +2259,10 @@ TClient::TClient(
 
 void TClient::Start() noexcept
 {
+    with_lock (ShutdownLock) {
+        StopRequested = false;
+    }
+
     Log = ObservabilityProvider.CreateLog();
 
     RDMA_INFO("start client");
@@ -2230,22 +2301,86 @@ void TClient::Start() noexcept
 
 void TClient::Stop() noexcept
 {
-    if (ConnectionPoller) {
-        ConnectionPoller->Stop();
-        ConnectionPoller.reset();
+    RequestStop();
+
+    TResponseDispatcherPtr responseDispatcher;
+    {
+        with_lock (ShutdownLock) {
+            responseDispatcher = ResponseDispatcher;
+        }
     }
 
-    for (auto& poller: CompletionPollers) {
-        poller->Stop();
+    if (responseDispatcher && responseDispatcher->IsWorkerThread()) {
+        RDMA_ERROR(
+            "synchronous client stop from a response callback is forbidden; "
+            "shutdown was requested and must be completed by an external "
+            "lifecycle thread");
+        return;
     }
-    CompletionPollers.clear();
 
-    if (ResponseDispatcher) {
-        ResponseDispatcher->Stop();
-        ResponseDispatcher.reset();
+    with_lock (StopLock) {
+        TConnectionPoller* connectionPoller;
+        {
+            with_lock (ShutdownLock) {
+                connectionPoller = ConnectionPoller.get();
+            }
+        }
+        if (connectionPoller) {
+            connectionPoller->Stop();
+            with_lock (ShutdownLock) {
+                ConnectionPoller.reset();
+            }
+        }
+
+        TVector<TCompletionPoller*> completionPollers;
+        {
+            with_lock (ShutdownLock) {
+                completionPollers.reserve(CompletionPollers.size());
+                for (const auto& poller: CompletionPollers) {
+                    if (poller) {
+                        completionPollers.push_back(poller.get());
+                    }
+                }
+            }
+        }
+        for (auto* poller: completionPollers) {
+            poller->Stop();
+        }
+        {
+            with_lock (ShutdownLock) {
+                CompletionPollers.clear();
+                responseDispatcher = ResponseDispatcher;
+            }
+        }
+
+        if (responseDispatcher) {
+            responseDispatcher->Stop();
+            with_lock (ShutdownLock) {
+                ResponseDispatcher.reset();
+            }
+        }
     }
 
     RDMA_INFO("stop client");
+}
+
+void TClient::RequestStop() noexcept
+{
+    with_lock (ShutdownLock) {
+        if (StopRequested) {
+            return;
+        }
+        StopRequested = true;
+
+        if (ConnectionPoller) {
+            ConnectionPoller->RequestStop();
+        }
+        for (const auto& poller: CompletionPollers) {
+            if (poller) {
+                poller->RequestStop();
+            }
+        }
+    }
 }
 
 // implements IClient
@@ -2259,8 +2394,12 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
                 MakeError(E_RDMA_UNAVAILABLE, std::move(message)))));
     };
 
-    if (ConnectionPoller == nullptr) {
-        return unavailable("rdma client is down");
+    {
+        with_lock (ShutdownLock) {
+            if (StopRequested || ConnectionPoller == nullptr) {
+                return unavailable("rdma client is down");
+            }
+        }
     }
 
     try {
