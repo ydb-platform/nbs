@@ -7,7 +7,7 @@ import datetime
 from grpc import StatusCode
 from github import Github
 from typing import List
-from .helpers import github_client
+from .helpers import get_jobs, github_client
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
 from nebius.api.nebius.compute.v1 import (
@@ -320,7 +320,11 @@ async def run(github: Github, sdk: SDK, args: argparse.Namespace) -> bool:
     queued_workflows_count = 0
     for workflow in queued_workflows:
         # search through workflow jobs to get labels for jobs with status queued
-        jobs = workflow.jobs()
+        jobs = get_jobs(
+            github,
+            f"{args.github_repo_owner}/{args.github_repo}",
+            workflow.id,
+        )
         for job in jobs:
             if job.status != "queued":
                 continue
