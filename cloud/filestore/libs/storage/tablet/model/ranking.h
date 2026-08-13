@@ -58,7 +58,7 @@ public:
         return &*it->second;
     }
 
-    void InsertOrUpdate(TValue value)
+    bool InsertOrUpdate(TValue value)
     {
         const auto key = ExtractKey(value);
         auto it = KeyToRanking.find(key);
@@ -69,11 +69,15 @@ public:
         }
 
         auto [newIt, inserted] = Entries.insert(std::move(value));
-        Y_ABORT_UNLESS(inserted);
+        if (!inserted) {
+            return false;
+        }
 
         KeyToRanking.emplace(key, newIt);
 
         EvictFirst();
+
+        return true;
     }
 
     TVector<TValue> GetNLast(ui32 n) const

@@ -143,6 +143,15 @@ Y_UNIT_TEST_SUITE(TBoundedRankingTest)
         UNIT_ASSERT_VALUES_EQUAL(1, values[1].Key);
     }
 
+    Y_UNIT_TEST(ShouldRejectDuplicateInserts)
+    {
+        TTestRanking ranking(1, TTestComparator{}, TTestKeyExtractor{});
+
+        ranking.InsertOrUpdate({1, 10});
+        UNIT_ASSERT(!ranking.InsertOrUpdate({1, 10}));
+
+    }
+
     Y_UNIT_TEST(ShouldContainNoValuesWhenMaxEntriesIsZero)
     {
         TTestRanking ranking(0, TTestComparator{}, TTestKeyExtractor{});
