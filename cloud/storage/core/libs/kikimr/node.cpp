@@ -185,7 +185,7 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
 TDriverConfig CreateDriverConfig(
     const TRegisterDynamicNodeOptions& options,
     const TString& addr,
-    const std::string& database)
+    const TString& database)
 {
     TDriverConfig config;
 
@@ -201,7 +201,7 @@ TDriverConfig CreateDriverConfig(
         config.UseClientCertificate(certificate.c_str(), privateKey.c_str());
     }
 
-    config.SetDatabase(TString(database));
+    config.SetDatabase(database);
     config.SetAuthToken(options.Settings.NodeRegistrationToken);
     config.SetEndpoint(addr);
 
