@@ -292,6 +292,69 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def set_node_xattr(self, fs, node_id, name, value, *argv):
+        list_args = [str(x) for x in argv]
+        cmd = [
+            self.__binary_path, "setnodexattr",
+            "--filesystem", fs,
+            "--node-id", str(node_id),
+            "--name", name,
+            "--value", value,
+        ] + list_args + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def get_node_xattr(self, fs, node_id, name):
+        cmd = [
+            self.__binary_path, "getnodexattr",
+            "--filesystem", fs,
+            "--node-id", str(node_id),
+            "--name", name,
+            "--json",
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def list_node_xattr(self, fs, node_id):
+        cmd = [
+            self.__binary_path, "listnodexattr",
+            "--filesystem", fs,
+            "--node-id", str(node_id),
+            "--json",
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def remove_node_xattr(self, fs, node_id, name):
+        cmd = [
+            self.__binary_path, "removenodexattr",
+            "--filesystem", fs,
+            "--node-id", str(node_id),
+            "--name", name,
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def __lock_cmd(self, command, fs, path, owner, *argv):
+        list_args = [str(x) for x in argv]
+        cmd = [
+            self.__binary_path, command,
+            "--filesystem", fs,
+            "--path", path,
+            "--owner", str(owner),
+        ] + list_args + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def acquire_lock(self, fs, path, owner, *argv):
+        return self.__lock_cmd("acquirelock", fs, path, owner, *argv)
+
+    def release_lock(self, fs, path, owner, *argv):
+        return self.__lock_cmd("releaselock", fs, path, owner, *argv)
+
+    def test_lock(self, fs, path, owner, *argv):
+        return self.__lock_cmd("testlock", fs, path, owner, "--json", *argv)
+
     def forced_compaction(self, fs):
         cmd = [
             self.__binary_path, "forcedcompaction",

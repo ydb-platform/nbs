@@ -17,11 +17,14 @@ SRCS(
     find.cpp
     find_garbage.cpp
     forced_compaction.cpp
+    get_node_xattr.cpp
     kick_endpoint.cpp
     list_cluster_nodes.cpp
     list_endpoints.cpp
     list_filestores.cpp
+    list_node_xattr.cpp
     ln.cpp
+    locks.cpp
     ls.cpp
     mkdir.cpp
     mount.cpp
@@ -31,10 +34,12 @@ SRCS(
     read.cpp
     readlink.cpp
     remove_cluster_node.cpp
+    remove_node_xattr.cpp
     reset_session.cpp
     resize.cpp
     rm.cpp
     set_node_attr.cpp
+    set_node_xattr.cpp
     start_endpoint.cpp
     stat.cpp
     stop_endpoint.cpp
