@@ -642,3 +642,41 @@ and test identity.
 The actual file uses the standard nesting
 `TracesData.resourceSpans[].scopeSpans[].spans[]`. `scope` and `span` are shown
 side by side only to keep the example readable.
+
+## Resource attributes, statuses, and output
+
+[`build_resource_attributes`](ya_trace_report.py) combines GitHub environment
+metadata with ya invocation attributes:
+
+```text
+service.name, github.repository, github.run.id, github.sha,
+ci.component, ci.build.preset, ci.build.target,
+ci.test.target, ci.test.type, ci.test.size,
+ci.ya.retry, ci.ya.operation,
+ci.artifact.test_log.url_prefix, ci.artifact.test_data.url_prefix
+```
+
+The effective result code sets the root status. Suite/chunk/test statuses come
+from test errors and results; worker/build statuses also use failed-node UIDs
+and exit codes. OTLP status codes are `UNSET=0`, `OK=1`, and `ERROR=2`.
+
+[`write_trace_bundle`](trace_report.py) writes:
+
+| File | Purpose |
+| --- | --- |
+| `trace.otlp.jsonl.gz` | Gzip-compressed standard OTLP proto-JSON |
+| `trace.html` | Self-contained browser report with an embedded compact model |
+| `trace.manifest.json` | Bundle schema, file names, counts, bounds, and metadata |
+
+The JSONL file contains complete `TracesData` objects, normally in batches of
+5,000 spans. JSONL is only framing; each line remains standard OTLP. Readers
+merge resource/scope groups and validate IDs, time ranges, duplicates, and
+parent cycles.
+
+Safe log paths below `$(BUILD_ROOT)` are stored as relative span attributes.
+Sanitized public log/test-data base URLs are stored on each OTLP resource. This
+lets a combined report resolve paths using the resource of the selected span,
+including when components and retries use different locations. Renderer CLI
+prefixes remain a fallback for older OTLP bundles. Only HTTP(S) prefixes without
+credentials, queries, fragments, or NUL bytes are retained; relative artifact
+paths are validated and encoded in the browser before a link is created.
