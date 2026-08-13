@@ -39,6 +39,12 @@ observed test-excluded worker-node cache ratios (including per-tool `CC`, `AR`,
 times, distributed-cache I/O, and the build-only portion of ya's reported
 critical path. Critical-path build nodes are marked on their individual spans.
 
+`render-workflow-trace.yaml` runs after the main test workflows complete. It
+combines GitHub workflow, queue, job, and step timings with any available ya
+bundles and stores `workflow-trace.*` in the same S3 report prefix. The
+`workflow_run` job always checks out the default branch and bounds both S3
+downloads and parsed OTLP data before rendering PR-produced content.
+
 To render a saved OTLP bundle locally:
 
 ```bash
