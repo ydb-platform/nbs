@@ -63,6 +63,7 @@ PEERDIR(
     library/cpp/getopt
     library/cpp/logger
     library/cpp/protobuf/json
+    library/cpp/string_utils/base64
     library/cpp/threading/future
 )
 

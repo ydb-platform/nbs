@@ -4,6 +4,7 @@
 
 #include <library/cpp/json/json_value.h>
 #include <library/cpp/json/json_writer.h>
+#include <library/cpp/string_utils/base64/base64.h>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -46,9 +47,14 @@ public:
         CheckResponse(response);
 
         if (JsonOutput) {
+            //
+            // Xattr values are arbitrary bytes; base64 keeps the JSON
+            // well-formed for non-UTF-8 values.
+            //
+
             NJson::TJsonValue json;
             json.InsertValue("Name", Name);
-            json.InsertValue("Value", response.GetValue());
+            json.InsertValue("ValueBase64", Base64Encode(response.GetValue()));
             json.InsertValue("Version", response.GetVersion());
             Cout << NJson::WriteJson(json) << Endl;
         } else {

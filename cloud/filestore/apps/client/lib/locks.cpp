@@ -91,13 +91,27 @@ public:
     }
 
 protected:
-    struct TFileHandle
+    struct TLockTarget
     {
         ui64 NodeId = 0;
         ui64 Handle = 0;
     };
 
-    TFileHandle OpenHandle(ISession& session)
+    //
+    // Handle access mode follows POSIX: a shared (read) lock needs read
+    // access, an exclusive (write) lock needs write access. Callers pass
+    // the flags matching the lock type they are about to use.
+    //
+
+    static int HandleFlags(NProto::ELockType lockType)
+    {
+        if (lockType == NProto::E_SHARED) {
+            return ProtoFlag(NProto::TCreateHandleRequest::E_READ);
+        }
+        return ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+    }
+
+    TLockTarget OpenHandle(ISession& session, int flags)
     {
         const auto resolved = ResolvePath(session, Path, false);
 
@@ -108,10 +122,6 @@ protected:
         Y_ABORT_UNLESS(resolved.size() >= 2);
 
         const auto& parent = resolved[resolved.size() - 2];
-
-        static const int flags =
-            ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
-            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
 
         auto request = CreateRequest<NProto::TCreateHandleRequest>();
         request->SetNodeId(parent.Node.GetId());
@@ -130,16 +140,18 @@ protected:
     }
 
     template <typename T>
-    std::shared_ptr<T> CreateLockRequest(const TFileHandle& fh)
+    std::shared_ptr<T> CreateLockRequest(
+        const TLockTarget& target,
+        NProto::ELockOrigin origin)
     {
         auto request = CreateRequest<T>();
-        request->SetNodeId(fh.NodeId);
-        request->SetHandle(fh.Handle);
+        request->SetNodeId(target.NodeId);
+        request->SetHandle(target.Handle);
         request->SetOwner(Owner);
         request->SetOffset(Offset);
         request->SetLength(Length);
         request->SetPid(Pid);
-        request->SetLockOrigin(ParseLockOrigin(LockOriginStr));
+        request->SetLockOrigin(origin);
 
         return request;
     }
@@ -165,13 +177,18 @@ public:
 
     bool Execute() override
     {
+        // Validate the arguments before creating a session.
+        const auto lockType = ParseLockType(LockTypeStr);
+        const auto origin = ParseLockOrigin(LockOriginStr);
+
         auto sessionGuard = CreateSession();
         auto& session = sessionGuard.AccessSession();
 
-        auto fh = OpenHandle(session);
+        auto target = OpenHandle(session, HandleFlags(lockType));
 
-        auto request = CreateLockRequest<NProto::TAcquireLockRequest>(fh);
-        request->SetLockType(ParseLockType(LockTypeStr));
+        auto request =
+            CreateLockRequest<NProto::TAcquireLockRequest>(target, origin);
+        request->SetLockType(lockType);
 
         auto response = WaitFor(
             session.AcquireLock(PrepareCallContext(), std::move(request)));
@@ -188,12 +205,23 @@ class TReleaseLockCommand final: public TLockCommandBase
 public:
     bool Execute() override
     {
+        // Validate the arguments before creating a session.
+        const auto origin = ParseLockOrigin(LockOriginStr);
+
         auto sessionGuard = CreateSession();
         auto& session = sessionGuard.AccessSession();
 
-        auto fh = OpenHandle(session);
+        //
+        // Unlocking has no access-mode requirement of its own; open for
+        // read so that read-only files can be unlocked.
+        //
 
-        auto request = CreateLockRequest<NProto::TReleaseLockRequest>(fh);
+        auto target = OpenHandle(
+            session,
+            HandleFlags(NProto::E_SHARED));
+
+        auto request =
+            CreateLockRequest<NProto::TReleaseLockRequest>(target, origin);
 
         auto response = WaitFor(
             session.ReleaseLock(PrepareCallContext(), std::move(request)));
@@ -223,13 +251,18 @@ public:
 
     bool Execute() override
     {
+        // Validate the arguments before creating a session.
+        const auto lockType = ParseLockType(LockTypeStr);
+        const auto origin = ParseLockOrigin(LockOriginStr);
+
         auto sessionGuard = CreateSession();
         auto& session = sessionGuard.AccessSession();
 
-        auto fh = OpenHandle(session);
+        auto target = OpenHandle(session, HandleFlags(lockType));
 
-        auto request = CreateLockRequest<NProto::TTestLockRequest>(fh);
-        request->SetLockType(ParseLockType(LockTypeStr));
+        auto request =
+            CreateLockRequest<NProto::TTestLockRequest>(target, origin);
+        request->SetLockType(lockType);
 
         auto response = WaitFor(
             session.TestLock(PrepareCallContext(), std::move(request)));
@@ -276,8 +309,23 @@ private:
             }
             Cout << NJson::WriteJson(json) << Endl;
         } else {
-            Cout << "incompatible: "
-                << FormatError(response.GetError()) << Endl;
+            Cout << "incompatible:"
+                << " owner=" << response.GetOwner()
+                << " offset=" << response.GetOffset()
+                << " length=" << response.GetLength();
+            if (response.HasLockType()) {
+                Cout << " lock-type="
+                    << NProto::ELockType_Name(response.GetLockType());
+            }
+            if (response.HasPid()) {
+                Cout << " pid=" << response.GetPid();
+            }
+            if (response.HasIncompatibleLockOrigin()) {
+                Cout << " lock-origin="
+                    << NProto::ELockOrigin_Name(
+                        response.GetIncompatibleLockOrigin());
+            }
+            Cout << Endl;
         }
     }
 };

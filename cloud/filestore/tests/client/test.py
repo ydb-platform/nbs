@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -538,22 +539,30 @@ def test_node_xattrs():
     client.touch("fs0", "/file")
     node_id = json.loads(client.stat("fs0", "/file"))["Id"]
 
+    def xattr_value(attr):
+        return base64.b64decode(attr["ValueBase64"]).decode("utf-8")
+
     client.set_node_xattr("fs0", node_id, "user.attr1", "value1")
     attr = json.loads(client.get_node_xattr("fs0", node_id, "user.attr1"))
     assert attr["Name"] == "user.attr1"
-    assert attr["Value"] == "value1"
+    assert xattr_value(attr) == "value1"
 
     client.set_node_xattr("fs0", node_id, "user.attr2", "value2", "--create")
-    names = json.loads(client.list_node_xattr("fs0", node_id))["Names"]
-    assert sorted(names) == ["user.attr1", "user.attr2"]
+    listing = json.loads(client.list_node_xattr("fs0", node_id))
+    assert sorted(listing["Names"]) == ["user.attr1", "user.attr2"]
+    values = [
+        base64.b64decode(v).decode("utf-8")
+        for v in listing["ValuesBase64"]
+    ]
+    assert sorted(values) == ["value1", "value2"]
 
     client.set_node_xattr("fs0", node_id, "user.attr1", "value3", "--replace")
     attr = json.loads(client.get_node_xattr("fs0", node_id, "user.attr1"))
-    assert attr["Value"] == "value3"
+    assert xattr_value(attr) == "value3"
 
     client.remove_node_xattr("fs0", node_id, "user.attr1")
-    names = json.loads(client.list_node_xattr("fs0", node_id))["Names"]
-    assert names == ["user.attr2"]
+    listing = json.loads(client.list_node_xattr("fs0", node_id))
+    assert listing["Names"] == ["user.attr2"]
 
     # creating an existing attribute must fail
     failed = False

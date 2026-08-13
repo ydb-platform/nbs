@@ -4,6 +4,7 @@
 
 #include <library/cpp/json/json_value.h>
 #include <library/cpp/json/json_writer.h>
+#include <library/cpp/string_utils/base64/base64.h>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -38,17 +39,35 @@ public:
 
         CheckResponse(response);
 
+        //
+        // Values, when present, run parallel to Names. Xattr values are
+        // arbitrary bytes; base64 keeps the JSON well-formed for
+        // non-UTF-8 values.
+        //
+
+        const auto& names = response.GetNames();
+        const auto& values = response.GetValues();
+
         if (JsonOutput) {
-            NJson::TJsonValue names(NJson::JSON_ARRAY);
-            for (const auto& name: response.GetNames()) {
-                names.AppendValue(name);
+            NJson::TJsonValue namesJson(NJson::JSON_ARRAY);
+            for (const auto& name: names) {
+                namesJson.AppendValue(name);
+            }
+            NJson::TJsonValue valuesJson(NJson::JSON_ARRAY);
+            for (const auto& value: values) {
+                valuesJson.AppendValue(Base64Encode(value));
             }
             NJson::TJsonValue json;
-            json.InsertValue("Names", std::move(names));
+            json.InsertValue("Names", std::move(namesJson));
+            json.InsertValue("ValuesBase64", std::move(valuesJson));
             Cout << NJson::WriteJson(json) << Endl;
         } else {
-            for (const auto& name: response.GetNames()) {
-                Cout << name << Endl;
+            for (int i = 0; i < names.size(); ++i) {
+                Cout << names[i];
+                if (i < values.size()) {
+                    Cout << "=" << values[i];
+                }
+                Cout << Endl;
             }
         }
         return true;
