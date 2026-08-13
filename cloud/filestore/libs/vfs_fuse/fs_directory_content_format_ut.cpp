@@ -30,12 +30,12 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
         builder.Add(
             req,
             ".",
-            {.attr = {.st_ino = MissingNodeId}},
+            {.attr = {.st_ino = MissingNodeId, .st_mode = S_IFDIR}},
             offset);
         builder.Add(
             req,
             "..",
-            {.attr = {.st_ino = MissingNodeId}},
+            {.attr = {.st_ino = MissingNodeId, .st_mode = S_IFDIR}},
             offset);
 
         {
@@ -104,6 +104,7 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
             TStringBuf name(de->dirent.name, de->dirent.namelen);
             UNIT_ASSERT_VALUES_EQUAL(fileName, name);
             UNIT_ASSERT_VALUES_EQUAL(entryType, de->entry_out.attr.mode);
+            UNIT_ASSERT_VALUES_EQUAL(entryType >> 12, de->dirent.type);
             UNIT_ASSERT_VALUES_EQUAL(size, de->entry_out.attr.size);
             UNIT_ASSERT_VALUES_EQUAL(
                 attrTimeoutOverride,
@@ -122,8 +123,8 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
         auto validate = [&] (ui64 attrTimeoutOverride) {
             auto buf = TStringBuf(buffer->Data(), buffer->Size());
 
-            validateEntry(0, 0, buf, MissingNodeId, ".", 0, 0);
-            validateEntry(0, 0, buf, MissingNodeId, "..", 0, 0);
+            validateEntry(0, 0, buf, MissingNodeId, ".", S_IFDIR, 0);
+            validateEntry(0, 0, buf, MissingNodeId, "..", S_IFDIR, 0);
             validateEntry(
                 attrTimeoutOverride,
                 entryTimeout,
@@ -163,6 +164,49 @@ Y_UNIT_TEST_SUITE(TDirectoryContentFormatTest)
             });
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
         validate(0);
+    }
+
+    Y_UNIT_TEST(ShouldMarkDotEntriesAsDirectories)
+    {
+        const ui64 size = 4_KB;
+        const size_t offset = 0;
+        fuse_req_t req = nullptr;
+
+        TDirectoryBuilder builder(size);
+
+        builder.Add(
+            req,
+            ".",
+            {.attr = {.st_ino = MissingNodeId, .st_mode = S_IFDIR}},
+            offset);
+        builder.Add(
+            req,
+            "..",
+            {.attr = {.st_ino = MissingNodeId, .st_mode = S_IFDIR}},
+            offset);
+
+        auto buffer = builder.Finish();
+
+        auto buf = TStringBuf(buffer->Data(), buffer->Size());
+        for (TStringBuf expectedName: {".", ".."}) {
+            UNIT_ASSERT_GT(buf.Size(), sizeof(fuse_direntplus));
+
+            const auto* de =
+                reinterpret_cast<const fuse_direntplus*>(buf.data());
+
+            UNIT_ASSERT_VALUES_EQUAL(MissingNodeId, de->dirent.ino);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedName,
+                TStringBuf(de->dirent.name, de->dirent.namelen));
+            UNIT_ASSERT_VALUES_EQUAL(S_IFDIR >> 12, de->dirent.type);
+            UNIT_ASSERT_VALUES_EQUAL(S_IFDIR, de->entry_out.attr.mode);
+
+            const ui64 nameLen =
+                AlignUp<ui64>(de->dirent.namelen, sizeof(ui64));
+            buf.Skip(sizeof(*de) + nameLen);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, buf.Size());
     }
 
     Y_UNIT_TEST(ShouldDetectNodeIdMismatch)
