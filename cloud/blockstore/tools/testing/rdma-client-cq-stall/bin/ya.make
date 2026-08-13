@@ -1,4 +1,4 @@
-PROGRAM(nbs-disk-agent-rnr-repro)
+PROGRAM(nbs-rdma-client-cq-stall-test)
 
 BUILD_ONLY_IF(WARNING OS_LINUX)
 

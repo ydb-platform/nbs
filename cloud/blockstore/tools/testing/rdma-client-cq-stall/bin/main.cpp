@@ -364,7 +364,7 @@ void Run(TString host, ui32 port)
     const size_t requestBytes = serializer->MessageByteSize(proto, 0);
     const size_t responseBytes = 4_KB + BlockSize * BlocksPerRequest;
 
-    Cout << "Submitting " << RequestCount << " disk-agent ReadDeviceBlocks "
+    Cout << "Submitting " << RequestCount << " ReadDeviceBlocks "
          << "requests of " << BlockSize * BlocksPerRequest / 1_KB
          << " KiB..." << Endl;
 
@@ -396,10 +396,10 @@ void Run(TString host, ui32 port)
                 return Snapshot(serverCounters).ActiveRequests == RequestCount;
             },
             WaitTimeout),
-        "disk-agent server did not receive all requests");
+        "RDMA server did not receive all requests");
 
     PrintSnapshot(
-        "All requests reached the disk-agent target; releasing storage:",
+        "All requests reached the RDMA target; releasing storage:",
         Snapshot(serverCounters),
         Snapshot(clientCounters));
 
@@ -410,50 +410,57 @@ void Run(TString host, ui32 port)
         env.Handler->WaitUntilPaused(WaitTimeout),
         "client response callback was not reached");
 
+    bool saturated = false;
     Y_ENSURE(
         WaitUntil(
             [&] {
                 const auto s = Snapshot(serverCounters);
-                return s.ActiveSend + s.ActiveWrite == ServerSendQueueSize &&
-                       s.QueuedRequests > 0;
+                saturated =
+                    s.ActiveSend + s.ActiveWrite == ServerSendQueueSize &&
+                    s.QueuedRequests > 0;
+                const bool drained =
+                    s.ActiveRequests == 0 && s.QueuedRequests == 0 &&
+                    s.ActiveSend == 0 && s.ActiveRead == 0 &&
+                    s.ActiveWrite == 0;
+                return saturated || drained;
             },
             WaitTimeout),
-        "server send WR pool did not saturate");
+        "server neither drained nor saturated its send WR pool");
 
-    const auto stalledServer1 = Snapshot(serverCounters);
-    const auto stalledClient1 = Snapshot(clientCounters);
-    PrintSnapshot("Client CQ callback paused:", stalledServer1, stalledClient1);
+    if (saturated) {
+        const auto stalledServer1 = Snapshot(serverCounters);
+        const auto stalledClient1 = Snapshot(clientCounters);
+        PrintSnapshot(
+            "Client CQ callback paused:",
+            stalledServer1,
+            stalledClient1);
 
-    std::this_thread::sleep_for(
-        std::chrono::milliseconds(StallDuration.MilliSeconds()));
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(StallDuration.MilliSeconds()));
 
-    const auto stalledServer2 = Snapshot(serverCounters);
-    const auto stalledClient2 = Snapshot(clientCounters);
-    PrintSnapshot("After one second:", stalledServer2, stalledClient2);
+        const auto stalledServer2 = Snapshot(serverCounters);
+        const auto stalledClient2 = Snapshot(clientCounters);
+        PrintSnapshot("After one second:", stalledServer2, stalledClient2);
 
-    Y_ENSURE(
-        stalledServer2.ActiveSend + stalledServer2.ActiveWrite ==
-            ServerSendQueueSize,
-        "server send WR pool did not remain saturated");
-    Y_ENSURE(
-        stalledServer2.ActiveRead == 0,
-        "server still has active RDMA reads");
-    Y_ENSURE(
-        stalledServer2.QueuedRequests > 0,
-        "server queue did not grow");
-    Y_ENSURE(
-        stalledServer2.Errors == 0 && stalledClient2.Errors == 0,
-        "RDMA error was reported during the stall");
-    Y_ENSURE(
-        stalledClient2.ActiveRequests > 0 && stalledClient2.ActiveSend == 0,
-        "client counters do not match receive starvation");
-    Y_ENSURE(
-        env.Handler->GetCallbacks() == 1,
-        "more than one callback ran while the CQ thread was paused");
+        Y_ENSURE(
+            stalledServer2.Errors == 0 && stalledClient2.Errors == 0,
+            "RDMA error was reported while client CQ callback was paused");
 
-    Cout << "PASS: disk-agent traffic is stalled with all "
-         << ServerSendQueueSize
-         << " server WRs active and no RDMA error." << Endl;
+        const bool issueReproduced =
+            stalledServer2.ActiveSend + stalledServer2.ActiveWrite ==
+                ServerSendQueueSize &&
+            stalledServer2.ActiveRead == 0 &&
+            stalledServer2.QueuedRequests > 0 &&
+            stalledClient2.ActiveRequests > 0 &&
+            stalledClient2.ActiveSend == 0 &&
+            env.Handler->GetCallbacks() == 1;
+
+        Y_ENSURE(
+            !issueReproduced,
+            "regression reproduced: RDMA traffic remained stalled for "
+                << StallDuration << " with all " << ServerSendQueueSize
+                << " server WRs active and no RDMA error");
+    }
 
     env.Handler->Release();
     Y_ENSURE(
@@ -461,7 +468,7 @@ void Run(TString host, ui32 port)
         "requests did not recover after releasing the client CQ callback");
     Y_ENSURE(
         env.Handler->GetErrors() == 0,
-        "one or more disk-agent responses failed");
+        "one or more RDMA responses failed");
     Y_ENSURE(
         WaitUntil(
             [&] {
@@ -479,9 +486,8 @@ void Run(TString host, ui32 port)
         "Recovered after releasing the client CQ callback:",
         Snapshot(serverCounters),
         Snapshot(clientCounters));
-    Cout << "REPRODUCED: the NBS disk-agent RDMA data path reached the same "
-         << "512-WR head-of-line stall and recovered when receive processing "
-         << "resumed." << Endl;
+    Cout << "PASS: RDMA traffic did not remain stalled while a "
+         << "client response callback was paused." << Endl;
 }
 
 }   // namespace

@@ -16,8 +16,11 @@ RECURSE(
     notify-mock
     pd-metadata-bench
     plugintest
-    rdma-disk-agent-repro
     rdma-test
     stable-plugin
     verify-test
+)
+
+RECURSE_FOR_TESTS(
+    rdma-client-cq-stall
 )
