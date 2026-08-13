@@ -84,16 +84,19 @@ def test_blocked_response_handler_does_not_stall_rdma_queues():
 
     try:
         _wait_for_rxe()
-        _run(
-            [
-                "prlimit",
-                "--memlock=unlimited:unlimited",
-                "--",
-                common.binary_path(TEST_BINARY),
-                address,
-            ],
-            timeout=120,
-        )
+        for offset, wait_mode in enumerate(("poll", "busy-wait")):
+            _run(
+                [
+                    "prlimit",
+                    "--memlock=unlimited:unlimited",
+                    "--",
+                    common.binary_path(TEST_BINARY),
+                    address,
+                    wait_mode,
+                    str(18515 + offset),
+                ],
+                timeout=120,
+            )
     finally:
         cleanup = _run(
             ["rdma", "link", "delete", RDMA_DEVICE],

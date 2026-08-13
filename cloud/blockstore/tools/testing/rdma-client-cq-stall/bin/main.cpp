@@ -243,7 +243,7 @@ struct TEnvironment
     }
 };
 
-void Run(TString host, ui32 port)
+void Run(TString host, ui32 port, EWaitMode waitMode)
 {
     TEnvironment env;
     env.Logging = CreateLoggingService("console", TLogSettings{TLOG_WARNING});
@@ -259,7 +259,7 @@ void Run(TString host, ui32 port)
     serverConfig->StrictValidation = false;
     serverConfig->MaxBufferSize = 1_MB;
     serverConfig->PollerThreads = 1;
-    serverConfig->WaitMode = EWaitMode::BusyWait;
+    serverConfig->WaitMode = waitMode;
     serverConfig->QpRnrRetryCount = 7;
     serverConfig->QpMinRnrTimer = 12;
 
@@ -333,7 +333,7 @@ void Run(TString host, ui32 port)
     clientConfig->RecvQueueSize = ClientRecvQueueSize;
     clientConfig->MaxBufferSize = 1_MB;
     clientConfig->PollerThreads = 1;
-    clientConfig->WaitMode = EWaitMode::BusyWait;
+    clientConfig->WaitMode = waitMode;
     clientConfig->MaxResponseDelay = TDuration::Minutes(5);
     clientConfig->QpRnrRetryCount = 7;
     clientConfig->QpMinRnrTimer = 12;
@@ -447,6 +447,8 @@ void Run(TString host, ui32 port)
             "RDMA error was reported while client CQ callback was paused");
 
         const bool issueReproduced =
+            stalledClient2.CompletedRequests ==
+                stalledClient1.CompletedRequests &&
             stalledServer2.ActiveSend + stalledServer2.ActiveWrite ==
                 ServerSendQueueSize &&
             stalledServer2.ActiveRead == 0 &&
@@ -494,14 +496,26 @@ void Run(TString host, ui32 port)
 
 int main(int argc, char** argv)
 {
-    if (argc < 2 || argc > 3) {
-        Cerr << "usage: " << argv[0] << " <rxe-interface-ip> [port]" << Endl;
+    if (argc < 3 || argc > 4) {
+        Cerr << "usage: " << argv[0]
+             << " <rxe-interface-ip> <poll|busy-wait> [port]" << Endl;
         return 2;
     }
 
     try {
-        const ui32 port = argc == 3 ? std::strtoul(argv[2], nullptr, 10) : 18515;
-        Run(argv[1], port);
+        EWaitMode waitMode;
+        if (TStringBuf(argv[2]) == "poll") {
+            waitMode = EWaitMode::Poll;
+        } else if (TStringBuf(argv[2]) == "busy-wait") {
+            waitMode = EWaitMode::BusyWait;
+        } else {
+            ythrow yexception() << "unknown wait mode: " << argv[2];
+        }
+
+        const ui32 port = argc == 4
+            ? std::strtoul(argv[3], nullptr, 10)
+            : 18515;
+        Run(argv[1], port, waitMode);
         return 0;
     } catch (...) {
         Cerr << "ERROR: " << CurrentExceptionMessage() << Endl;
