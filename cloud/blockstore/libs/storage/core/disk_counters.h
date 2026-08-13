@@ -169,6 +169,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
+    TCounter MixedBlocksFilterMemmorySize{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
     TCounter CheckpointBytes{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
@@ -269,6 +273,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::IORequestsQueued>(),
         MakeMeta<&TSimpleDiskCounters::UsedBlocksMapMemSize>(),
         MakeMeta<&TSimpleDiskCounters::MixedIndexCacheMemSize>(),
+        MakeMeta<&TSimpleDiskCounters::MixedBlocksFilterMemmorySize>(),
         MakeMeta<&TSimpleDiskCounters::CheckpointBytes>(),
         MakeMeta<&TSimpleDiskCounters::AlmostFullChannelCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBlocksInFlight>(),
@@ -329,6 +334,14 @@ struct TCumulativeDiskCounters
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter BatchCount{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MixedBlocksFilterFalsePositives{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MixedBlocksFilterTruePositives{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
@@ -407,6 +420,8 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::RealSysBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::RealSysBytesRead>(),
         MakeMeta<&TCumulativeDiskCounters::BatchCount>(),
+        MakeMeta<&TCumulativeDiskCounters::MixedBlocksFilterFalsePositives>(),
+        MakeMeta<&TCumulativeDiskCounters::MixedBlocksFilterTruePositives>(),
         MakeMeta<&TCumulativeDiskCounters::UncompressedBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::CompressedBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByReadStats>(),

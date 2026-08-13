@@ -737,6 +737,7 @@ private:
     const ui32 BlockSize;
     TTabletStorageInfo& TabletInfo;
     TTxPartition::TReadBlocks& Args;
+    bool MixedBlocksVisited = false;
 
 public:
     TReadBlocksVisitor(
@@ -822,7 +823,14 @@ public:
     {
         Y_UNUSED(compactionRangeCount);
 
+        MixedBlocksVisited = true;
+
         return Visit(blockIndex, commitId, blobId, blobOffset);
+    }
+
+    [[nodiscard]] bool HasVisitedMixedBlocks() const
+    {
+        return MixedBlocksVisited;
     }
 };
 
@@ -1088,11 +1096,22 @@ bool TPartitionActor::PrepareReadBlocks(
     const auto* filter = State->GetMixedBlocksFilter();
     if (!filter || filter->MayHaveBlocksInMixedIndex(args.ReadRange, commitId))
     {
-        ready &= db.FindMixedBlocks(
+        const bool mixedBlocksReady = db.FindMixedBlocks(
             visitor,
             args.ReadRange,
             false,   // precharge
             commitId);
+
+        if (mixedBlocksReady && filter) {
+            auto& counters = PartCounters->Cumulative;
+            if (visitor.HasVisitedMixedBlocks()) {
+                counters.MixedBlocksFilterTruePositives.Increment(1);
+            } else {
+                counters.MixedBlocksFilterFalsePositives.Increment(1);
+            }
+        }
+
+        ready &= mixedBlocksReady;
     }
 
     ready &= db.FindMergedBlocks(

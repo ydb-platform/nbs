@@ -15886,6 +15886,73 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoShouldRunCompactionWhenUsedBlocksCountGreaterThanBlockCount(true);
     }
 
+    Y_UNIT_TEST(ShouldReportMixedBlocksFilterMetrics)
+    {
+        auto config = DefaultConfig();
+        config.SetMixedBlocksFilterEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        ui64 falsePositives = 0;
+        ui64 truePositives = 0;
+        ui64 memorySize = 0;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+                {
+                    const auto* msg =
+                        event->Get<TEvStatsService::TEvVolumePartCounters>();
+                    falsePositives = msg->DiskCounters->Cumulative
+                                         .MixedBlocksFilterFalsePositives.Value;
+                    truePositives = msg->DiskCounters->Cumulative
+                                        .MixedBlocksFilterTruePositives.Value;
+                    memorySize = msg->DiskCounters->Simple
+                                     .MixedBlocksFilterMemmorySize.Value;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // Initialize the filter's first compaction range.
+        partition.WriteBlocks(0, 1);
+        partition.Flush();
+        partition.Compaction();
+
+        partition.CreateCheckpoint("checkpoint");
+
+        // This mixed block is newer than the checkpoint. The current read is
+        // a true positive; the checkpoint read is a false positive because
+        // the filter only knows that the range may contain mixed blocks.
+        partition.WriteBlocks(1, 2);
+        partition.Flush();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(1, "checkpoint")));
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, falsePositives);
+        UNIT_ASSERT_VALUES_EQUAL(1, truePositives);
+        UNIT_ASSERT(memorySize > 0);
+    }
+
     Y_UNIT_TEST(ShouldFillStoredBytesCountToDiskSizeRatioCounter)
     {
         auto config = DefaultConfig();
