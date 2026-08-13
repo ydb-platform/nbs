@@ -23,6 +23,15 @@ struct TTestComparator
     }
 };
 
+struct TFaultyTestComparator
+{
+    bool operator()(const TTestValue& lhs, const TTestValue& rhs) const
+    {
+        // Score ASC, no tiebreak on Key
+        return std::tie(lhs.Score) < std::tie(rhs.Score);
+    }
+};
+
 struct TTestKeyExtractor
 {
     ui64 operator()(const TTestValue& value) const
@@ -145,10 +154,10 @@ Y_UNIT_TEST_SUITE(TBoundedRankingTest)
 
     Y_UNIT_TEST(ShouldRejectDuplicateInserts)
     {
-        TTestRanking ranking(1, TTestComparator{}, TTestKeyExtractor{});
+        TTestRanking ranking(1, TFaultyTestComparator{}, TTestKeyExtractor{});
 
         ranking.InsertOrUpdate({1, 10});
-        UNIT_ASSERT(!ranking.InsertOrUpdate({1, 10}));
+        UNIT_ASSERT_VALUES_EQUAL(false, ranking.InsertOrUpdate({2, 10}));
 
     }
 
