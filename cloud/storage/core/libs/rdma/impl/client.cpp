@@ -25,6 +25,7 @@
 #include <cloud/storage/core/libs/rdma/iface/protocol.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/monlib/metrics/histogram_collector.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/datetime/base.h>
@@ -60,6 +61,17 @@ constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
 constexpr ui32 RESPONSE_HANDLER_THREADS = 1;
+const TBucketBounds RESPONSE_CALLBACK_TIME_BUCKETS_US = {
+    1,
+    10,
+    100,
+    1'000,
+    10'000,
+    100'000,
+    1'000'000,
+    10'000'000,
+    60'000'000,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,11 +92,80 @@ using TCompletionPollerPtr = std::unique_ptr<TCompletionPoller>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TResponseDispatcherCounters
+{
+    TDynamicCounters::TCounterPtr Queued;
+    TDynamicCounters::TCounterPtr Active;
+    TDynamicCounters::TCounterPtr Completed;
+    TDynamicCounters::TCounterPtr Errors;
+
+    THistogramPtr QueueWait;
+    THistogramPtr ExecutionTime;
+
+    void Register(TDynamicCounters& counters)
+    {
+        Queued = counters.GetCounter("QueuedResponseCallbacks");
+        Active = counters.GetCounter("ActiveResponseCallbacks");
+        Completed = counters.GetCounter("CompletedResponseCallbacks", true);
+        Errors = counters.GetCounter("ResponseCallbackErrors", true);
+
+        QueueWait = RegisterTimeHistogram(
+            counters,
+            "ResponseCallbackQueueWait");
+        ExecutionTime = RegisterTimeHistogram(
+            counters,
+            "ResponseCallbackExecutionTime");
+    }
+
+    void ResponseQueued()
+    {
+        Queued->Inc();
+    }
+
+    void ResponseStarted(TDuration queueWait, bool queued)
+    {
+        if (queued) {
+            Queued->Dec();
+            QueueWait->Collect(queueWait.MicroSeconds());
+        }
+        Active->Inc();
+    }
+
+    void ResponseCompleted(TDuration executionTime, bool failed)
+    {
+        ExecutionTime->Collect(executionTime.MicroSeconds());
+        Active->Dec();
+        Completed->Inc();
+        if (failed) {
+            Errors->Inc();
+        }
+    }
+
+private:
+    static THistogramPtr RegisterTimeHistogram(
+        TDynamicCounters& counters,
+        const TString& name)
+    {
+        auto group = counters.GetSubgroup("histogram", name);
+        group = group->GetSubgroup("units", "usec");
+        return group->GetHistogram(
+            name,
+            ExplicitHistogram(RESPONSE_CALLBACK_TIME_BUCKETS_US),
+            true);
+    }
+};
+
+using TResponseDispatcherCountersPtr =
+    std::shared_ptr<TResponseDispatcherCounters>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TResponseDispatcher final
     : public std::enable_shared_from_this<TResponseDispatcher>
 {
 private:
     const ITaskQueuePtr Queue;
+    const TResponseDispatcherCountersPtr Counters;
     const TLog Log;
 
     TMutex Lock;
@@ -93,8 +174,11 @@ private:
     bool Accepting = false;
 
 public:
-    explicit TResponseDispatcher(TLog log)
+    TResponseDispatcher(
+            TResponseDispatcherCountersPtr counters,
+            TLog log)
         : Queue(CreateThreadPool("RDMA.RSP", RESPONSE_HANDLER_THREADS))
+        , Counters(std::move(counters))
         , Log(std::move(log))
     {}
 
@@ -123,42 +207,65 @@ public:
     template <typename TCallback>
     void Dispatch(TCallback callback) noexcept
     {
+        const ui64 queuedCycles = GetCycleCount();
         bool executeInline = false;
         {
             with_lock (Lock) {
                 if (!Accepting) {
                     executeInline = true;
-                } else if (Pending++ == 0) {
-                    Drained.Reset();
+                } else {
+                    Counters->ResponseQueued();
+                    if (Pending++ == 0) {
+                        Drained.Reset();
+                    }
                 }
             }
         }
 
         if (executeInline) {
-            Execute(callback);
+            Execute(callback, queuedCycles, false);
             return;
         }
 
         auto self = shared_from_this();
         Queue->ExecuteSimple(
-            [self = std::move(self), callback = std::move(callback)]() mutable {
-                self->Execute(callback);
+            [self = std::move(self),
+             callback = std::move(callback),
+             queuedCycles]() mutable
+            {
+                self->Execute(callback, queuedCycles, true);
                 self->Complete();
             });
     }
 
 private:
     template <typename TCallback>
-    void Execute(TCallback& callback) noexcept
+    void Execute(
+        TCallback& callback,
+        ui64 queuedCycles,
+        bool queued) noexcept
     {
+        Counters->ResponseStarted(
+            CyclesToDurationSafe(GetCycleCount() - queuedCycles),
+            queued);
+
+        const ui64 startedCycles = GetCycleCount();
+        ui64 finishedCycles;
+        bool failed = false;
         try {
             callback();
+            finishedCycles = GetCycleCount();
         } catch (...) {
+            finishedCycles = GetCycleCount();
+            failed = true;
             RDMA_ERROR(
                 Log,
                 "response handler failed with exception: "
                     << CurrentExceptionMessage());
         }
+        Counters->ResponseCompleted(
+            CyclesToDurationSafe(finishedCycles - startedCycles),
+            failed);
     }
 
     void Complete() noexcept
@@ -2092,7 +2199,12 @@ void TClient::Start() noexcept
     auto countersGroup = ObservabilityProvider.CreateCounters();
     Counters->Register(*countersGroup);
 
-    ResponseDispatcher = std::make_shared<TResponseDispatcher>(Log);
+    auto responseDispatcherCounters =
+        std::make_shared<TResponseDispatcherCounters>();
+    responseDispatcherCounters->Register(*countersGroup);
+    ResponseDispatcher = std::make_shared<TResponseDispatcher>(
+        std::move(responseDispatcherCounters),
+        Log);
     ResponseDispatcher->Start();
 
     CompletionPollers.resize(Config->PollerThreads);

@@ -35,6 +35,26 @@ NMonitoring::TDynamicCountersPtr GetClientCounters(
         ->GetSubgroup("component", "client");
 }
 
+ui64 GetHistogramSampleCount(
+    const NMonitoring::TDynamicCountersPtr& counters,
+    const TString& name)
+{
+    auto group = counters->GetSubgroup("histogram", name);
+    group = group->GetSubgroup("units", "usec");
+    auto histogram = group->FindHistogram(name);
+    EXPECT_TRUE(histogram);
+    if (!histogram) {
+        return 0;
+    }
+
+    const auto snapshot = histogram->Snapshot();
+    ui64 count = 0;
+    for (size_t i = 0; i < snapshot->Count(); ++i) {
+        count += snapshot->Value(i);
+    }
+    return count;
+}
+
 IClientPtr CreateTestClient(
     NVerbs::IVerbsPtr verbs,
     const ILoggingServicePtr& logging,
@@ -874,6 +894,20 @@ void TestDispatchResponsesOutsideCompletionPoller(
         AtomicGet(testContext->PostRecvCounter));
     ASSERT_FALSE(handler->SecondDone.WaitT(100ms));
 
+    auto counters = GetClientCounters(monitoring);
+    auto queuedCallbacks =
+        counters->GetCounter("QueuedResponseCallbacks");
+    auto activeCallbacks =
+        counters->GetCounter("ActiveResponseCallbacks");
+    auto completedCallbacks =
+        counters->GetCounter("CompletedResponseCallbacks");
+    auto callbackErrors = counters->GetCounter("ResponseCallbackErrors");
+
+    ASSERT_EQ(1, queuedCallbacks->Val());
+    ASSERT_EQ(1, activeCallbacks->Val());
+    ASSERT_EQ(0, completedCallbacks->Val());
+    ASSERT_EQ(0, callbackErrors->Val());
+
     TManualEvent clientStopped;
     std::thread stopThread([&] {
         client->Stop();
@@ -892,6 +926,21 @@ void TestDispatchResponsesOutsideCompletionPoller(
     ASSERT_TRUE(handler->SecondDone.WaitT(5s));
     ASSERT_TRUE(clientStopped.WaitT(5s));
     stopThread.join();
+
+    ASSERT_EQ(0, queuedCallbacks->Val());
+    ASSERT_EQ(0, activeCallbacks->Val());
+    ASSERT_EQ(2, completedCallbacks->Val());
+    ASSERT_EQ(throwFirst ? 1 : 0, callbackErrors->Val());
+    ASSERT_EQ(
+        ui64{2},
+        GetHistogramSampleCount(
+            counters,
+            "ResponseCallbackQueueWait"));
+    ASSERT_EQ(
+        ui64{2},
+        GetHistogramSampleCount(
+            counters,
+            "ResponseCallbackExecutionTime"));
 }
 
 TEST(TRdmaClientTest, ShouldDispatchResponsesOutsideCompletionPoller)
