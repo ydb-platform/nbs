@@ -216,7 +216,7 @@ NDiscovery::TNodeRegistrationResult TryToRegisterDynamicNodeViaDiscoveryService(
     const NDiscovery::TNodeRegistrationSettings& settings)
 {
     auto connection =
-        TDriver(CreateDriverConfig(options, addr, settings.DomainPath_));
+        TDriver(CreateDriverConfig(options, addr, settings.Path_));
 
     auto client = NDiscovery::TDiscoveryClient(connection);
     NDiscovery::TNodeRegistrationResult result =
