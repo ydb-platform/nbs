@@ -888,7 +888,7 @@ public:
         ui64 node,
         ui64 handle,
         ui32 flags,
-        ui64 requestId = 0)
+        ui64 requestId)
     {
         auto request =
             CreateSessionRequest<TEvService::TEvConfirmCreateHandleRequest>();

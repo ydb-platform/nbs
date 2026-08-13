@@ -826,6 +826,15 @@ NProto::TError TIndexTabletState::RegisterHandle(
     ui64 commitId,
     ui32 flags)
 {
+    const ui32 shardNo = ExtractShardNo(handleId);
+    const ui32 expectedShardNo = GetFileSystem().GetShardNo();
+    if (shardNo != expectedShardNo) {
+        return MakeError(E_INVALID_STATE, TStringBuilder()
+            << "handle shard mismatch: " << handleId
+            << ", shard: " << shardNo
+            << ", expected shard: " << expectedShardNo);
+    }
+
     if (const auto* handle = FindHandle(handleId)) {
         if (handle->Session != session || handle->GetNodeId() != nodeId) {
             return MakeError(E_INVALID_STATE, TStringBuilder()

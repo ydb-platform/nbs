@@ -45,7 +45,9 @@ NProto::TError ValidateCreateHandleRequest(
 NProto::TError ValidateConfirmCreateHandleRequest(
     const NProto::TConfirmCreateHandleRequest& request)
 {
-    if (request.GetNodeId() == InvalidNodeId || !request.GetHandle()) {
+    if (request.GetNodeId() == InvalidNodeId || !request.GetHandle() ||
+        !request.GetOriginalRequestId())
+    {
         return ErrorInvalidArgument();
     }
 
@@ -803,12 +805,11 @@ void TIndexTabletActor::ExecuteTx_ConfirmCreateHandle(
         // registration commits. Otherwise the client could remove its durable
         // confirmation request, and a tablet restart could leave it with a
         // handle that was never persisted.
-        args.HandleRegistered = true;
+        args.CreateHandleCommitStarted = true;
         StartCreateHandleCommit(args.Handle);
     }
 
-    if (args.CreateRequestId && !session->LookupDupEntry(args.CreateRequestId))
-    {
+    if (!session->LookupDupEntry(args.CreateRequestId)) {
         NProto::TCreateHandleResponse response;
         response.SetHandle(args.Handle);
         ConvertNodeFromAttrs(
@@ -831,7 +832,7 @@ void TIndexTabletActor::CompleteTx_ConfirmCreateHandle(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    if (args.HandleRegistered) {
+    if (args.CreateHandleCommitStarted) {
         EndCreateHandleCommit(args.Handle);
     }
 

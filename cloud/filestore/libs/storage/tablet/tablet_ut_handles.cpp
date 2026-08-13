@@ -1,3 +1,4 @@
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -338,6 +339,68 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
 
         tablet.DescribeData(handle, 0, 1_KB);
         tablet.DestroyHandle(handle);
+    }
+
+    Y_UNIT_TEST(ShouldRejectConfirmCreateHandleWithoutOriginalRequestId)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const ui64 handle = 424249;
+
+        auto response = tablet.AssertConfirmCreateHandleFailed(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            0);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_INVAL,
+            response->Record.GetError().GetCode(),
+            response->Record.GetError().GetMessage());
+
+        auto describeResponse =
+            tablet.AssertDescribeDataFailed(handle, 0, 1_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_BADHANDLE,
+            describeResponse->Record.GetError().GetCode(),
+            describeResponse->Record.GetError().GetMessage());
+    }
+
+    Y_UNIT_TEST(ShouldRejectConfirmCreateHandleForAnotherShard)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const ui64 handle = ShardedId(424250, 1);
+
+        auto response = tablet.AssertConfirmCreateHandleFailed(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response->Record.GetError().GetCode(),
+            response->Record.GetError().GetMessage());
+
+        auto describeResponse =
+            tablet.AssertDescribeDataFailed(handle, 0, 1_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_BADHANDLE,
+            describeResponse->Record.GetError().GetCode(),
+            describeResponse->Record.GetError().GetMessage());
     }
 
     Y_UNIT_TEST(ShouldConfirmCreateHandleIdempotently)

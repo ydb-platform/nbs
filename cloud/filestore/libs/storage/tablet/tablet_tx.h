@@ -2001,7 +2001,7 @@ struct TTxIndexTablet
 
         ui64 ReadCommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
-        bool HandleRegistered = false;
+        bool CreateHandleCommitStarted = false;
 
         TConfirmCreateHandle(
                 TRequestInfoPtr requestInfo,
@@ -2021,7 +2021,7 @@ struct TTxIndexTablet
 
             ReadCommitId = InvalidCommitId;
             Node.Clear();
-            HandleRegistered = false;
+            CreateHandleCommitStarted = false;
         }
     };
 
