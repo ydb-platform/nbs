@@ -40,7 +40,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(2, stats[0].RequestCount);
         UNIT_ASSERT_DOUBLES_EQUAL(2.0, stats[0].AccessScore, 1e-9);
 
-        const auto decayed = TNodeAccessStatsTracker::DecayedScore(
+        const auto decayed = CalculateDecayedAccessScore(
             stats[0],
             start + TDuration::Minutes(10),
             TDuration::Minutes(10));

@@ -1,21 +1,10 @@
-#include <cloud/filestore/libs/storage/tablet/model/node_access_stats.h>
-
-#include <util/datetime/base.h>
-#include <util/generic/vector.h>
+#include "node_access_stats.h"
 
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TNodeAccessStatsTracker::TNodeAccessStatsTracker(
-    size_t maxEntries,
-    TDuration decayHalfLife)
-    : MaxEntries(maxEntries)
-    , DecayHalfLife(decayHalfLife)
-    , AccessStats(TNodeAccessComparator{decayHalfLife})
-{}
-
-double TNodeAccessStatsTracker::DecayedScore(
+double CalculateDecayedAccessScore(
     const TNodeAccessStats& stats,
     TInstant now,
     TDuration halfLife)
@@ -23,53 +12,64 @@ double TNodeAccessStatsTracker::DecayedScore(
     const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
                                                    : TDuration::Zero();
 
-    // Access Score has a parametarised half-life
-    return stats.AccessScore *
-           exp(-log(2.0) * elapsed.MilliSeconds() / halfLife.MilliSeconds());
+    return stats.AccessScore * std::exp(
+                                   -std::log(2.0) * elapsed.MicroSeconds() /
+                                   halfLife.MicroSeconds());
 }
+
+bool TNodeAccessComparator::operator()(
+    const TNodeAccessStats& lhs,
+    const TNodeAccessStats& rhs) const
+{
+    const auto comparisonTime = Max(lhs.LastAccessed, rhs.LastAccessed);
+
+    const double lhsScore =
+        CalculateDecayedAccessScore(lhs, comparisonTime, HalfLife);
+
+    const double rhsScore =
+        CalculateDecayedAccessScore(rhs, comparisonTime, HalfLife);
+
+    return std::tie(lhsScore, lhs.NodeId) < std::tie(rhsScore, rhs.NodeId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TNodeAccessStatsTracker::TNodeAccessStatsTracker(
+    size_t maxEntries,
+    TDuration halfLife)
+    : Ranking(
+          maxEntries,
+          TNodeAccessComparator{halfLife},
+          TNodeAccessKeyExtractor{})
+    , HalfLife(halfLife)
+{}
 
 void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
 {
-    auto it = NodeId2Stats.find(nodeId);
     TNodeAccessStats stats;
 
-    if (it != NodeId2Stats.end()) {
-        stats = *it->second;
-        AccessStats.erase(it->second);
-    } else {
-        stats.NodeId = nodeId;
+    if (const auto* oldStats = Ranking.Find(nodeId)) {
+        stats = *oldStats;
     }
 
+    stats.NodeId = nodeId;
+    stats.AccessScore = CalculateDecayedAccessScore(stats, now, HalfLife) + 1;
     ++stats.RequestCount;
-    stats.AccessScore = DecayedScore(stats, now, DecayHalfLife) + 1;
     stats.LastAccessed = now;
 
-    auto [newStatsIt, inserted] = AccessStats.insert(stats);
-    Y_ABORT_UNLESS(inserted);
-    NodeId2Stats[nodeId] = newStatsIt;
-    if (it != NodeId2Stats.end()) {
-        it->second = newStatsIt;
-    } else {
-        NodeId2Stats.emplace(nodeId, newStatsIt);
-    }
-
-    EvictLeastUsedNodes();
+    Ranking.InsertOrUpdate(std::move(stats));
 }
 
 TVector<TNodeAccessStats> TNodeAccessStatsTracker::GetStats(
     TInstant now,
     ui32 n) const
 {
-    TVector<TNodeAccessStats> result;
-    result.reserve(AccessStats.size());
-    for (auto it = AccessStats.rbegin();
-         it != AccessStats.rend() && result.size() < n;
-         ++it)
-    {
-        auto stats = *it;
-        stats.AccessScore = DecayedScore(stats, now, DecayHalfLife);
-        result.push_back(stats);
+    auto result = Ranking.GetNLast(n);
+
+    for (auto& stats: result) {
+        stats.AccessScore = CalculateDecayedAccessScore(stats, now, HalfLife);
     }
+
     return result;
 }
 
