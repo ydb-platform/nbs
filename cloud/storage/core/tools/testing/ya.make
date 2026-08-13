@@ -5,6 +5,7 @@ RECURSE(
     fio
     pssh-mock
     qemu
+    rdma-rnr-repro
     threadpool-test
     unstable-process
     virtiofs_server

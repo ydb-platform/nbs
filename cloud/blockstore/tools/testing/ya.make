@@ -16,6 +16,7 @@ RECURSE(
     notify-mock
     pd-metadata-bench
     plugintest
+    rdma-disk-agent-repro
     rdma-test
     stable-plugin
     verify-test
