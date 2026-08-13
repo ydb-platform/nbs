@@ -120,6 +120,25 @@ public:
      * Transient in-flight compaction state is intentionally excluded.
      */
     [[nodiscard]] ui64 GetMemoryUsage() const;
+
+    /**
+     * Checks if the range is initialized.
+     *
+     * @param compactionRangeIndex - Index of the compaction range to check.
+     *
+     * @return - True if the compaction range is initialized, false otherwise.
+     */
+    [[nodiscard]] bool IsCompactionRangeInitialized(
+        ui64 compactionRangeIndex) const;
+
+    /**
+     * Initializes the compaction range.
+     *
+     * @param compactionRangeIndex - Index of the compaction range to
+     * initialize.
+     * @param commitId - Commit ID at which the compaction range is initialized.
+     */
+    void InitializeCompactionRange(ui64 compactionRangeIndex, ui64 commitId);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

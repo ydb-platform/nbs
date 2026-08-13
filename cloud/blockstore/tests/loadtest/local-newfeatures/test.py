@@ -186,6 +186,9 @@ def storage_config_with_mixed_blocks_filter_enabled():
     storage = ordinary_prod_storage_config()
     storage.MixedBlocksFilterEnabled = True
 
+    storage.MixedBlocksFilterRangesToLoadPerTx = 1
+    storage.MixedBlocksFilterAllowedCpuTimePerSecond = 1000
+
     return storage
 
 
@@ -196,8 +199,12 @@ def storage_config_with_new_features_enabled():
     storage.FreshChannelZeroRequestsEnabled = True
     storage.FreshBlocksWriterEnabled = True
     storage.IgnoringZeroedCompactionEnabled = True
+
     storage.MixedBlocksFilterEnabled = True
     storage.WaitForFreshWritesBeforeFlushEnabled = True
+
+    storage.MixedBlocksFilterRangesToLoadPerTx = 1
+    storage.MixedBlocksFilterAllowedCpuTimePerSecond = 1000
 
     return storage
 

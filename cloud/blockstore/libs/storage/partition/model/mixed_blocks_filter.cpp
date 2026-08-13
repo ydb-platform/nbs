@@ -167,4 +167,34 @@ ui64 TMixedBlocksFilter::GetMemoryUsage() const
            (CompactionRangeCommitIds.capacity() * sizeof(std::optional<ui64>));
 }
 
+bool TMixedBlocksFilter::IsCompactionRangeInitialized(
+    ui64 compactionRangeIndex) const
+{
+    STORAGE_VERIFY(
+        compactionRangeIndex < CompactionRangeCommitIds.size(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    return CompactionRangeCommitIds[compactionRangeIndex].has_value();
+}
+
+void TMixedBlocksFilter::InitializeCompactionRange(
+    ui64 compactionRangeIndex,
+    ui64 commitId)
+{
+    STORAGE_VERIFY(
+        compactionRangeIndex < CompactionRangeCommitIds.size(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    STORAGE_VERIFY_DEBUG(
+        !CompactionRangeCommitIds[compactionRangeIndex],
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    if (!CompactionRangeCommitIds[compactionRangeIndex]) {
+        CompactionRangeCommitIds[compactionRangeIndex] = commitId;
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

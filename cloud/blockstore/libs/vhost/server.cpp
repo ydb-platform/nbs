@@ -199,7 +199,8 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         options.WriteZeroesEnabled,
         options.OptimalIoSize,
         endpoint->GetCookie(),
-        Callbacks);
+        Callbacks,
+        options.ReadOnly);
     endpoint->SetVhostDevice(std::move(vhostDevice));
 
     auto error = SafeExecute<NProto::TError>([&] { return endpoint->Start(); });

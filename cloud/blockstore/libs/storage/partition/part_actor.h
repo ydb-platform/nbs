@@ -778,6 +778,13 @@ private:
         const TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void LoadNextMixedBlocksFilterChunkIfNeeded(
+        const NActors::TActorContext& ctx,
+        TDuration cpuTimeSpentDuringLastTx);
+    void HandleLoadMixedBlocksFilterChunk(
+        const TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleWakeupOnBoot(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);

@@ -58,6 +58,21 @@ public:
         return (update - State.Budget) / (Rate * 1e6);
     }
 
+    [[nodiscard]] double CalculatePostponeTime(TInstant ts, double update) const
+    {
+        double budget = State.Budget;
+        if (Y_LIKELY(State.LastUpdateTs.GetValue())) {
+            double timePassed = (ts - State.LastUpdateTs).MicroSeconds();
+            budget += Rate * timePassed;
+        }
+
+        if (budget + 1e-10 >= update) {
+            return 0;
+        }
+
+        return (update - budget) / (Rate * 1e6);
+    }
+
     void Flush()
     {
         State.Budget = 0;

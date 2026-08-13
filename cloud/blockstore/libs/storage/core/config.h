@@ -874,6 +874,10 @@ public:
     [[nodiscard]] bool GetMixedBlocksFilterEnabled() const;
 
     [[nodiscard]] bool GetWaitForFreshWritesBeforeFlushEnabled() const;
+
+    [[nodiscard]] ui64 GetMixedBlocksFilterRangesToLoadPerTx() const;
+
+    [[nodiscard]] TDuration GetMixedBlocksFilterAllowedCpuTimePerSecond() const;
 };
 
 ui64 GetAllocationUnit(
