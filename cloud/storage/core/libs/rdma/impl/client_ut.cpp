@@ -14,6 +14,7 @@
 #include <library/cpp/testing/gtest/gtest.h>
 
 #include <util/generic/scope.h>
+#include <util/generic/yexception.h>
 #include <util/stream/printf.h>
 
 #include <thread>
@@ -732,6 +733,179 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
         Disconnect(testContext);
         ASSERT_TRUE(handler->Done.Wait());
     }
+
+void TestDispatchResponsesOutsideCompletionPoller(
+    EWaitMode waitMode,
+    bool throwFirst = false)
+{
+    constexpr ui32 QueueSize = 2;
+    constexpr ui32 ExpectedPostedRecvs = 2 * QueueSize;
+
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    std::atomic<ui32> postedSends = 0;
+    TManualEvent requestsSent;
+    testContext->PostSend = [&](auto* qp, auto* wr) {
+        PostSend<TRequestMessage>(testContext, qp, wr);
+        if (postedSends.fetch_add(1) + 1 == QueueSize) {
+            requestsSent.Signal();
+        }
+    };
+
+    std::atomic<ui32> postedRecvs = 0;
+    TManualEvent responsesReposted;
+    testContext->PostRecv = [&](auto* qp, auto* wr) {
+        Y_UNUSED(qp, wr);
+        if (postedRecvs.fetch_add(1) + 1 == ExpectedPostedRecvs) {
+            responsesReposted.Signal();
+        }
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->WaitMode = waitMode;
+    clientConfig->SendQueueSize = QueueSize;
+    clientConfig->RecvQueueSize = QueueSize;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+    auto client = CreateTestClient(
+        verbs,
+        logging,
+        monitoring,
+        clientConfig);
+
+    struct TResponseContext final: TNullContext
+    {
+        bool Block = false;
+    };
+
+    struct TBlockingHandler final: IClientHandler
+    {
+        const bool ThrowFirst;
+
+        TManualEvent FirstStarted;
+        TManualEvent ReleaseFirst;
+        TManualEvent FirstDone;
+        TManualEvent SecondDone;
+
+        explicit TBlockingHandler(bool throwFirst)
+            : ThrowFirst(throwFirst)
+        {}
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            Y_UNUSED(responseBytes);
+            EXPECT_EQ(static_cast<ui32>(RDMA_PROTO_OK), status);
+
+            auto* context = static_cast<TResponseContext*>(req->Context.get());
+            if (context->Block) {
+                FirstStarted.Signal();
+                ReleaseFirst.WaitI();
+                FirstDone.Signal();
+                if (ThrowFirst) {
+                    ythrow yexception() << "expected response handler failure";
+                }
+            } else {
+                SecondDone.Signal();
+            }
+        }
+    };
+
+    auto handler = std::make_shared<TBlockingHandler>(throwFirst);
+    client->Start();
+    Y_DEFER
+    {
+        handler->ReleaseFirst.Signal();
+        client->Stop();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    for (bool block: {true, false}) {
+        auto context = std::make_unique<TResponseContext>();
+        context->Block = block;
+
+        auto request = endpoint->AllocateRequest(
+            handler,
+            std::move(context),
+            1024,
+            1024);
+        ASSERT_FALSE(HasError(request.GetError()));
+
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+    }
+
+    ASSERT_TRUE(requestsSent.WaitT(5s));
+    {
+        auto guard = Guard(testContext->CompletionLock);
+        ASSERT_EQ(QueueSize, testContext->ReqIds.size());
+        ASSERT_EQ(QueueSize, testContext->RecvEvents.size());
+
+        for (ui32 i = 0; i < QueueSize; ++i) {
+            auto* recv = testContext->RecvEvents.front();
+            testContext->RecvEvents.pop_front();
+
+            auto* response = reinterpret_cast<TResponseMessage*>(
+                recv->sg_list[0].addr);
+            Zero(*response);
+            InitMessageHeader(response, RDMA_PROTO_VERSION);
+            response->ReqId = testContext->ReqIds.front();
+            testContext->ReqIds.pop_front();
+
+            testContext->ProcessedRecvEvents.push_back(recv);
+        }
+        testContext->CompletionHandle.Set();
+    }
+
+    ASSERT_TRUE(handler->FirstStarted.WaitT(5s));
+    ASSERT_TRUE(responsesReposted.WaitT(5s));
+    ASSERT_EQ(
+        ExpectedPostedRecvs,
+        AtomicGet(testContext->PostRecvCounter));
+    ASSERT_FALSE(handler->SecondDone.WaitT(100ms));
+
+    TManualEvent clientStopped;
+    std::thread stopThread([&] {
+        client->Stop();
+        clientStopped.Signal();
+    });
+    Y_DEFER {
+        handler->ReleaseFirst.Signal();
+        if (stopThread.joinable()) {
+            stopThread.join();
+        }
+    };
+
+    ASSERT_FALSE(clientStopped.WaitT(100ms));
+    handler->ReleaseFirst.Signal();
+    ASSERT_TRUE(handler->FirstDone.WaitT(5s));
+    ASSERT_TRUE(handler->SecondDone.WaitT(5s));
+    ASSERT_TRUE(clientStopped.WaitT(5s));
+    stopThread.join();
+}
+
+TEST(TRdmaClientTest, ShouldDispatchResponsesOutsideCompletionPoller)
+{
+    TestDispatchResponsesOutsideCompletionPoller(EWaitMode::BusyWait);
+}
+
+TEST(TRdmaClientTest, ShouldDispatchResponsesOutsideCompletionPollerInPollMode)
+{
+    TestDispatchResponsesOutsideCompletionPoller(EWaitMode::Poll);
+}
+
+TEST(TRdmaClientTest, ShouldContinueDispatchingAfterResponseHandlerThrows)
+{
+    TestDispatchResponsesOutsideCompletionPoller(EWaitMode::BusyWait, true);
+}
 
 TEST(TRdmaClientTest, ShouldCancelRequests)
 {

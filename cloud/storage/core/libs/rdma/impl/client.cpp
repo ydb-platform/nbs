@@ -14,7 +14,9 @@
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/history.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/rdma/iface/log.h>
@@ -29,11 +31,13 @@
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/map.h>
+#include <util/generic/scope.h>
 #include <util/generic/vector.h>
 #include <util/network/interface.h>
 #include <util/random/random.h>
 #include <util/stream/format.h>
 #include <util/system/datetime.h>
+#include <util/system/event.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
@@ -55,6 +59,7 @@ constexpr TDuration POLL_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
+constexpr ui32 RESPONSE_HANDLER_THREADS = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -72,6 +77,102 @@ using TConnectionPollerPtr = std::unique_ptr<TConnectionPoller>;
 
 class TCompletionPoller;
 using TCompletionPollerPtr = std::unique_ptr<TCompletionPoller>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TResponseDispatcher final
+    : public std::enable_shared_from_this<TResponseDispatcher>
+{
+private:
+    const ITaskQueuePtr Queue;
+    const TLog Log;
+
+    TMutex Lock;
+    TManualEvent Drained;
+    ui64 Pending = 0;
+    bool Accepting = false;
+
+public:
+    explicit TResponseDispatcher(TLog log)
+        : Queue(CreateThreadPool("RDMA.RSP", RESPONSE_HANDLER_THREADS))
+        , Log(std::move(log))
+    {}
+
+    void Start()
+    {
+        Queue->Start();
+
+        with_lock (Lock) {
+            Accepting = true;
+        }
+    }
+
+    void Stop() noexcept
+    {
+        with_lock (Lock) {
+            Accepting = false;
+            if (Pending == 0) {
+                Drained.Signal();
+            }
+        }
+
+        Drained.WaitI();
+        Queue->Stop();
+    }
+
+    template <typename TCallback>
+    void Dispatch(TCallback callback) noexcept
+    {
+        bool executeInline = false;
+        {
+            with_lock (Lock) {
+                if (!Accepting) {
+                    executeInline = true;
+                } else if (Pending++ == 0) {
+                    Drained.Reset();
+                }
+            }
+        }
+
+        if (executeInline) {
+            Execute(callback);
+            return;
+        }
+
+        auto self = shared_from_this();
+        Queue->ExecuteSimple(
+            [self = std::move(self), callback = std::move(callback)]() mutable {
+                self->Execute(callback);
+                self->Complete();
+            });
+    }
+
+private:
+    template <typename TCallback>
+    void Execute(TCallback& callback) noexcept
+    {
+        try {
+            callback();
+        } catch (...) {
+            RDMA_ERROR(
+                Log,
+                "response handler failed with exception: "
+                    << CurrentExceptionMessage());
+        }
+    }
+
+    void Complete() noexcept
+    {
+        with_lock (Lock) {
+            Y_DEBUG_ABORT_UNLESS(Pending > 0);
+            if (--Pending == 0) {
+                Drained.Signal();
+            }
+        }
+    }
+};
+
+using TResponseDispatcherPtr = std::shared_ptr<TResponseDispatcher>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -437,6 +538,7 @@ private:
     ui32 Port;
     IClientHandlerPtr Handler;
     TEndpointCountersPtr Counters;
+    TResponseDispatcherPtr ResponseDispatcher;
     TLog Log;
     TReconnect Reconnect;
 
@@ -490,6 +592,7 @@ private:
 
     TSimpleList<TRequest> QueuedRequests;
     TActiveRequests ActiveRequests;
+    std::atomic<ui64> PendingResponses = 0;
 
     std::atomic<ui64> ReqIdPool{0};
 
@@ -509,6 +612,7 @@ public:
         ui32 port,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
+        TResponseDispatcherPtr responseDispatcher,
         TLog log);
     ~TClientEndpoint() override;
 
@@ -563,6 +667,11 @@ private:
     void RecvResponse(TRecvWr* recv) noexcept;
     void RecvResponseCompleted(TRecvWr* recv) noexcept;
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
+    void DispatchResponse(
+        TRequestPtr req,
+        ui32 status,
+        size_t responseBytes) noexcept;
+    void ResponseDispatched() noexcept;
     void FreeRequest(TRequest* creq) noexcept;
     int ValidateCompletion(ibv_wc* wc) noexcept;
     ui64 GetNewReqId() noexcept;
@@ -587,12 +696,14 @@ TClientEndpoint::TClientEndpoint(
         ui32 port,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
+        TResponseDispatcherPtr responseDispatcher,
         TLog log)
     : Verbs(std::move(verbs))
     , Connection(std::move(connection))
     , Host(std::move(host))
     , Port(port)
     , Counters(std::move(stats))
+    , ResponseDispatcher(std::move(responseDispatcher))
     , Log(log)
     , Reconnect(config->MaxReconnectDelay)
     , OriginalConfig(std::move(config))
@@ -1047,8 +1158,7 @@ void TClientEndpoint::AbortRequest(
         msg,
         static_cast<TStringBuf>(req->OutBuffer));
 
-    auto* handler = req->Handler.get();
-    handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, len);
+    DispatchResponse(std::move(req), RDMA_PROTO_FAIL, len);
 }
 
 bool TClientEndpoint::HandleCompletionEvents() noexcept
@@ -1289,11 +1399,44 @@ void TClientEndpoint::RecvResponseCompleted(TRecvWr* recv) noexcept
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
 
-    auto* handler = req->Handler.get();
-    handler->HandleResponse(
-        std::move(req),
-        status,
-        responseBytes);
+    DispatchResponse(std::move(req), status, responseBytes);
+}
+
+void TClientEndpoint::DispatchResponse(
+    TRequestPtr req,
+    ui32 status,
+    size_t responseBytes) noexcept
+{
+    ++PendingResponses;
+    ResponseDispatcher->Dispatch(
+        [endpoint = shared_from_this(),
+         req = std::move(req),
+         status,
+         responseBytes]() mutable
+        {
+            Y_DEFER {
+                endpoint->ResponseDispatched();
+            };
+
+            auto* handler = req->Handler.get();
+            handler->HandleResponse(
+                std::move(req),
+                status,
+                responseBytes);
+        });
+}
+
+void TClientEndpoint::ResponseDispatched() noexcept
+{
+    const ui64 pending = PendingResponses.fetch_sub(1);
+    Y_DEBUG_ABORT_UNLESS(pending > 0);
+
+    if (pending == 1 &&
+        WaitMode == EWaitMode::Poll &&
+        CheckState(EEndpointState::Disconnecting))
+    {
+        AbortRequestsEvent.Set();
+    }
 }
 
 TFuture<void> TClientEndpoint::Stop() noexcept
@@ -1372,7 +1515,8 @@ bool TClientEndpoint::ClientRequestsFlushed() const
     return ActiveRequests.Empty()
         && !InputRequests
         && !QueuedRequests
-        && !CancelRequests;
+        && !CancelRequests
+        && PendingResponses.load() == 0;
 }
 
 bool TClientEndpoint::WorkRequestsFlushed() const
@@ -1879,6 +2023,7 @@ private:
 
     TConnectionPollerPtr ConnectionPoller;
     TVector<TCompletionPollerPtr> CompletionPollers;
+    TResponseDispatcherPtr ResponseDispatcher;
 
 public:
     TClient(
@@ -1942,6 +2087,9 @@ void TClient::Start() noexcept
     auto countersGroup = ObservabilityProvider.CreateCounters();
     Counters->Register(*countersGroup);
 
+    ResponseDispatcher = std::make_shared<TResponseDispatcher>(Log);
+    ResponseDispatcher->Start();
+
     CompletionPollers.resize(Config->PollerThreads);
     for (size_t i = 0; i < CompletionPollers.size(); ++i) {
         CompletionPollers[i] = std::make_unique<TCompletionPoller>(
@@ -1975,6 +2123,11 @@ void TClient::Stop() noexcept
     }
     CompletionPollers.clear();
 
+    if (ResponseDispatcher) {
+        ResponseDispatcher->Stop();
+        ResponseDispatcher.reset();
+    }
+
     RDMA_INFO("stop client");
 }
 
@@ -2001,6 +2154,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
             port,
             Config,
             Counters,
+            ResponseDispatcher,
             Log);
 
         auto future = endpoint->StartResult.GetFuture();
