@@ -761,6 +761,13 @@ job queue, job, and step spans, rewrites imported ya span IDs into the workflow
 trace ID, and attaches each imported root to the smallest containing/overlapping
 job. This step consumes OTLP; it does not reparse ya trace files.
 
+The CLI writes two bundles from the same GitHub metadata:
+
+| Prefix | Contents |
+| --- | --- |
+| `workflow-only-trace.*` | Workflow, queue, job, and step spans only |
+| `workflow-trace.*` | The same workflow spans plus imported ya spans |
+
 For the first attempt, the workflow root retains GitHub's creation-to-update
 interval and its queue span. For reruns, `created_at` still refers to the
 original attempt and is ignored. The root instead begins at the earliest usable
@@ -797,5 +804,5 @@ including `stale`, map to `ERROR`; neutral and skipped conclusions remain
 | [`render_ya_trace_bundle.sh`](render_ya_trace_bundle.sh) | Shared nonblocking CI wrapper |
 | [`pack_ya_trace_inputs.sh`](pack_ya_trace_inputs.sh) | Literal-path raw-input tar archive |
 | [`workflow_trace.py`](workflow_trace.py) | Workflow, queue, job, step, and imported-span projection |
-| [`workflow_trace_report.py`](workflow_trace_report.py) | GitHub/S3 input loading and combined workflow bundle CLI |
+| [`workflow_trace_report.py`](workflow_trace_report.py) | GitHub/S3 input loading and standalone/combined workflow bundle CLI |
 | [`render-workflow-trace.yaml`](../../workflows/render-workflow-trace.yaml) | Trusted post-workflow rendering and upload |
