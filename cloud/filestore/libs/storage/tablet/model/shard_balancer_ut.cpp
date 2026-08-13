@@ -550,6 +550,141 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             e.GetCode(),
             FormatError(e));
     }
+
+    Y_UNIT_TEST(ShouldBalanceShardsWeightedDeterministic)
+    {
+        TShardBalancerWeightedDeterministic balancer(
+            BlockSize,
+            PrecisionBytes,
+            MaxFileBlocks,
+            0 /* desiredFreeSpaceReserve */,
+            0 /* minFreeSpaceReserve */,
+            {"s1", "s2", "s3", "s4", "s5"});
+
+        auto checkSelectedShard = [&] (const TVector<TString>& refShardIds) {
+            for (const TString& refShardId: refShardIds) {
+                ASSERT_NO_SB_ERROR(0, refShardId);
+            }
+        };
+
+        TVector<TString> refShardIds = {"s1", "s2", "s3", "s4", "s5"};
+        checkSelectedShard(refShardIds);
+        checkSelectedShard(refShardIds);
+
+        const ui64 total = 5_TB / 4_KB;
+
+        ASSERT_NO_ERROR(balancer.Update({
+            {"s1", total, 1_TB / 4_KB, 0, 0},
+            {"s2", total, 1_TB / 4_KB, 0, 0},
+            {"s3", total, 1_TB / 4_KB, 0, 0},
+            {"s4", total, 1_TB / 4_KB, 0, 0},
+            {"s5", total, 0_TB / 4_KB, 0, 0},
+        }));
+        refShardIds = {"s5", "s5", "s5", "s5", "s5", "s5", "s5"};
+        checkSelectedShard(refShardIds);
+
+        ASSERT_NO_ERROR(balancer.Update({
+            {"s1", total, 1_TB / 4_KB, 0, 0},
+            {"s2", total, 2_TB / 4_KB, 0, 0},
+            {"s3", total, 3_TB / 4_KB, 0, 0},
+            {"s4", total, 2_TB / 4_KB, 0, 0},
+            {"s5", total, 1_TB / 4_KB, 0, 0},
+        }));
+        refShardIds = {
+            "s1", "s2", "s3", "s4", "s5",
+            "s1", "s2", "s4", "s5",
+            "s1", "s2", "s4", "s5",
+            "s1", "s2", "s4", "s5",
+            "s1", "s2", "s4", "s5",
+            "s1", "s5",
+            "s1", "s5",
+            "s1", "s5"
+        };
+        checkSelectedShard(refShardIds);
+        checkSelectedShard(refShardIds);
+
+        ASSERT_NO_ERROR(balancer.Update({
+            {"s1", total, 3_TB / 4_KB, 0, 0},
+            {"s2", total, 2_TB / 4_KB, 0, 0},
+            {"s3", total, 1_TB / 4_KB, 0, 0},
+            {"s4", total, 2_TB / 4_KB, 0, 0},
+            {"s5", total, 3_TB / 4_KB, 0, 0},
+        }));
+        refShardIds = {
+            "s1", "s2", "s3", "s4", "s5",
+            "s2", "s3", "s4",
+            "s2", "s3", "s4",
+            "s2", "s3", "s4",
+            "s2", "s3", "s4",
+            "s3",
+            "s3",
+            "s3"
+        };
+        checkSelectedShard(refShardIds);
+        checkSelectedShard(refShardIds);
+
+        ASSERT_NO_ERROR(balancer.Update({
+            {"s1", total, 5_TB / 4_KB, 0, 0},
+            {"s2", total, 4_TB / 4_KB, 0, 0},
+            {"s3", total, 3_TB / 4_KB, 0, 0},
+            {"s4", total, 2_TB / 4_KB, 0, 0},
+            {"s5", total, 1_TB / 4_KB, 0, 0},
+        }));
+
+        refShardIds = {
+            "s1", "s2", "s3", "s4", "s5",
+            "s2", "s3", "s4", "s5",
+            "s2", "s3", "s4", "s5",
+            "s3", "s4", "s5",
+            "s3", "s4", "s5",
+            "s4", "s5",
+            "s4", "s5",
+            "s5"
+        };
+        checkSelectedShard(refShardIds);
+        checkSelectedShard(refShardIds);
+
+        const TVector<TShardStats> sortedShardStats =
+            balancer.MakeOrderedShardList();
+        UNIT_ASSERT_EQUAL("s5", sortedShardStats[0].ShardId);
+        UNIT_ASSERT_EQUAL("s4", sortedShardStats[1].ShardId);
+        UNIT_ASSERT_EQUAL("s3", sortedShardStats[2].ShardId);
+        UNIT_ASSERT_EQUAL("s2", sortedShardStats[3].ShardId);
+        UNIT_ASSERT_EQUAL("s1", sortedShardStats[4].ShardId);
+
+        ASSERT_NO_ERROR(balancer.Update({
+            {"s1", total, 1_TB / 4_KB, 0, 0},
+            {"s2", total, 2_TB / 4_KB, 0, 0},
+            {"s3", total, 3_TB / 4_KB, 0, 0},
+            {"s4", total, 4_TB / 4_KB, 0, 0},
+            {"s5", total, 5_TB / 4_KB, 0, 0},
+        }));
+
+        refShardIds = {
+            "s1", "s2", "s3", "s4", "s5",
+            "s1", "s2", "s3", "s4",
+            "s1", "s2", "s3", "s4",
+            "s1", "s2", "s3",
+            "s1", "s2", "s3",
+            "s1", "s2",
+            "s1", "s2",
+            "s1"
+        };
+        checkSelectedShard(refShardIds);
+        checkSelectedShard(refShardIds);
+
+        auto e = balancer.Update({
+            {"s1", 5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {"s2", 5_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {"s3", 5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {"s4", 5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            e.GetCode(),
+            FormatError(e));
+    }
 }
 
 #undef ASSERT_NO_SB_ERROR

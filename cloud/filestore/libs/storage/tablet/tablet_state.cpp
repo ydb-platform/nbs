@@ -132,6 +132,13 @@ void TIndexTabletState::InitInMemoryIndexState(const TStorageConfig& config)
 
 void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
 {
+    // When a filesystem is just created, GetBlockSize() is zero.
+    // BlockSize later gets its correct value and InitShardBalancer is called
+    // again.
+    if (GetBlockSize() == 0) {
+        return;
+    }
+
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     TVector<TString> balancerShardIds;
 

@@ -32,10 +32,12 @@ public:
     {
         ui32 ShardIdx;
         TShardStats Stats;
+        ui64 Score;
 
-        TShardMeta(ui32 shardIdx, TShardStats stats)
+        TShardMeta(ui32 shardIdx, TShardStats stats, ui64 score)
             : ShardIdx(shardIdx)
             , Stats(stats)
+            , Score(score)
         {}
     };
 
@@ -77,13 +79,12 @@ public:
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds);
 
-private:
+protected:
     const ui32 BlockSize;
     const ui64 PrecisionBytes;
     ui64 DesiredFreeSpaceReserve = 0;
     ui64 MinFreeSpaceReserve = 0;
 
-protected:
     TVector<TShardMeta> Metas;
 
     /**
@@ -167,7 +168,62 @@ public:
     NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
 };
 
-/////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+class TShardBalancerWeightedDeterministic: public TShardBalancerBase
+{
+    static constexpr ui64 ScoreLevelsCount = 8;
+    static constexpr ui64 MaxScore()
+    {
+        return ScoreLevelsCount - 1;
+    }
+
+    // Iterator state.
+    ui64 ShardSelector;
+    ui64 CurrentScore;
+
+    // Actually, it's a two-dimensional array of size:
+    // ScoreLevelsCount * Metas.size().
+    // It's a mapping from (score, shardIdx) -> nextShardIdx.
+    TVector<ui64> NextShard;
+
+    const ui64& GetNextShard(ui64 shardIdx, ui64 score) const
+    {
+        return NextShard[shardIdx * ScoreLevelsCount + score];
+    }
+
+    ui64& GetNextShard(ui64 shardIdx, ui64 score)
+    {
+        return NextShard[shardIdx * ScoreLevelsCount + score];
+    }
+
+    void CalcScore(const TVector<TShardStats>& stats);
+    void CalcNextShard();
+
+public:
+    TShardBalancerWeightedDeterministic(
+        ui32 blockSize,
+        ui64 precisionBytes,
+        ui32 maxFileBlocks,
+        ui64 desiredFreeSpaceReserve,
+        ui64 minFreeSpaceReserve,
+        TVector<TString> shardIds);
+
+public:
+
+    using IShardBalancer::Update;
+
+    NProto::TError Update(
+        const TVector<TShardStats>& stats,
+        std::optional<ui64> desiredFreeSpaceReserve,
+        std::optional<ui64> minFreeSpaceReserve) final;
+
+    NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
+
+    TVector<TShardStats> MakeOrderedShardList() const final;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 IShardBalancerPtr CreateShardBalancer(
     NProto::EShardBalancerPolicy policy,

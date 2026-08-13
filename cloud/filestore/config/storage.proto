@@ -49,6 +49,10 @@ enum EShardBalancerPolicy
     // selecting a shard is proportional to the amount of free space
     // available on the shard.
     SBP_WEIGHTED_RANDOM = 2;
+
+    // Shard balancer prefers shards with more free space
+    // and operates deterministically.
+    SBP_WEIGHTED_DETERMINISTIC = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

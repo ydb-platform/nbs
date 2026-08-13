@@ -25,28 +25,28 @@ struct TShardMetaComp
         : Unit(Max(1UL, precisionBytes / blockSize))
     {}
 
-    ui64 Score(const TShardBalancerBase::TShardMeta& m) const
+    ui64 Score(const TShardStats& stats) const
     {
-        return Score(FreeSpace(m.Stats));
+        return Score(FreeSpace(stats));
     }
 
-    ui64 Score(ui64 s) const
+    ui64 Score(ui64 freeSpace) const
     {
-        return static_cast<ui64>(round(s / static_cast<double>(Unit)));
+        return static_cast<ui64>(round(freeSpace / static_cast<double>(Unit)));
     }
 
     bool operator()(
         const TShardBalancerBase::TShardMeta& lhs,
         const TShardBalancerBase::TShardMeta& rhs)
     {
-        return Score(lhs) == Score(rhs)
+        return lhs.Score == rhs.Score
             ? lhs.ShardIdx < rhs.ShardIdx
-            : Score(lhs) > Score(rhs);
+            : lhs.Score > rhs.Score;
     }
 
     bool operator()(ui64 lhs, const TShardBalancerBase::TShardMeta& rhs)
     {
-        return Score(lhs) > Score(rhs);
+        return Score(lhs) > rhs.Score;
     }
 };
 
@@ -64,19 +64,25 @@ TShardBalancerBase::TShardBalancerBase(
     , DesiredFreeSpaceReserve(desiredFreeSpaceReserve)
     , MinFreeSpaceReserve(minFreeSpaceReserve)
 {
+    // Before the first update shards are treated like empty with
+    // infinite capacity. maxFileBlocks is used as infinity here.
+    TShardStats emptyShardStats {
+        .ShardId = "",
+        .TotalBlocksCount = maxFileBlocks,
+        .UsedBlocksCount = 0,
+        .UsedNodesCount = 0,
+        .CurrentLoad = 0,
+        .Suffer = 0,
+    };
+
+    TShardMetaComp metaCmp(PrecisionBytes, BlockSize);
+    Metas.reserve(shardIds.size());
     for (ui32 i = 0; i < shardIds.size(); ++i) {
+        emptyShardStats.ShardId = shardIds[i];
         Metas.emplace_back(
             i,
-            // Before the first update shards are treated like empty with
-            // infinite capacity. maxFileBlocks is used as infinity here.
-            TShardStats{
-                .ShardId = shardIds[i],
-                .TotalBlocksCount = maxFileBlocks,
-                .UsedBlocksCount = 0,
-                .UsedNodesCount = 0,
-                .CurrentLoad = 0,
-                .Suffer = 0,
-            });
+            emptyShardStats,
+            metaCmp.Score(emptyShardStats));
     }
 }
 
@@ -97,10 +103,11 @@ NProto::TError TShardBalancerBase::Update(
             << stats.size() << " != Metas.size() " << Metas.size());
     }
 
+    const TShardMetaComp metaCmp(PrecisionBytes, BlockSize);
     for (ui32 i = 0; i < stats.size(); ++i) {
-        Metas[i] = TShardMeta(i, stats[i]);
+        Metas[i] = TShardMeta(i, stats[i], metaCmp.Score(stats[i]));
     }
-    Sort(Metas.begin(), Metas.end(), TShardMetaComp(PrecisionBytes, BlockSize));
+    Sort(Metas.begin(), Metas.end(), metaCmp);
     return {};
 }
 
@@ -246,6 +253,174 @@ NProto::TError TShardBalancerWeightedRandom::SelectShard(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TShardBalancerWeightedDeterministic::TShardBalancerWeightedDeterministic(
+    ui32 blockSize,
+    ui64 precisionBytes,
+    ui32 maxFileBlocks,
+    ui64 desiredFreeSpaceReserve,
+    ui64 minFreeSpaceReserve,
+    TVector<TString> shardIds)
+    : TShardBalancerBase(
+          blockSize,
+          precisionBytes,
+          maxFileBlocks,
+          desiredFreeSpaceReserve,
+          minFreeSpaceReserve,
+          std::move(shardIds))
+{
+    Y_UNUSED(precisionBytes);
+
+    // Update with empty stats.
+    TVector<TShardStats> shardStats(Metas.size());
+    for (ui64 i = 0; i < shardStats.size(); ++i) {
+        shardStats[i] = Metas[i].Stats;
+    }
+    Update(shardStats, {}, {});
+
+    ShardSelector = Metas.size() - 1;
+    CurrentScore = MaxScore();
+}
+
+void TShardBalancerWeightedDeterministic::CalcScore(
+    const TVector<TShardStats>& stats)
+{
+    ui64 minBlocksCount = Max<ui64>();
+    ui64 maxBlocksCount = 0;
+    for (const auto& stat: stats) {
+        minBlocksCount = Min<ui64>(stat.UsedBlocksCount, minBlocksCount);
+        maxBlocksCount = Max<ui64>(stat.UsedBlocksCount, maxBlocksCount);
+    }
+
+    ui64 step = Max<ui64>(
+        (maxBlocksCount - minBlocksCount) / ScoreLevelsCount,
+        PrecisionBytes / BlockSize, 1UL);
+
+    Metas.clear();
+    Metas.reserve(stats.size());
+    for (ui64 i = 0; i < stats.size(); ++i) {
+        const ui64 score = Min<ui64>(
+            MaxScore(),
+            (maxBlocksCount - stats[i].UsedBlocksCount) / step);
+        Metas.emplace_back(i, stats[i], score);
+    }
+}
+
+void TShardBalancerWeightedDeterministic::CalcNextShard()
+{
+    NextShard.assign(ScoreLevelsCount * Metas.size(), Metas.size());
+
+    auto setNextShard = [this](ui64 shard, ui64 nextShard, ui64 fromScore) {
+        for (ui64 score = fromScore; score != Max<ui64>(); --score) {
+            if (GetNextShard(shard, score) == Metas.size()) {
+                GetNextShard(shard, score) = nextShard;
+            } else {
+                break;
+            }
+        }
+    };
+
+    const ui64 lastShardIdx = Metas.size() - 1;
+    for (ui64 score = 0; score <= Metas[0].Score; ++score) {
+        GetNextShard(lastShardIdx, score) = 0;
+    }
+    TVector<const TShardMeta*> stack;
+    stack.push_back(&Metas[0]);
+
+    for (ui64 i = 1; i < Metas.size(); ++i) {
+        const auto& meta = Metas[i];
+        // Update Next for the last shard
+        setNextShard(lastShardIdx, i, meta.Score);
+
+        // Pop stack
+        while (stack && meta.Score >= stack.back()->Score) {
+            const auto& back = *stack.back();
+            setNextShard(back.ShardIdx, meta.ShardIdx, back.Score);
+            stack.pop_back();
+        }
+
+        if (stack) {
+            setNextShard(stack.back()->ShardIdx, meta.ShardIdx, meta.Score);
+        }
+
+        stack.push_back(&meta);
+    }
+}
+
+NProto::TError TShardBalancerWeightedDeterministic::Update(
+    const TVector<TShardStats>& stats,
+    std::optional<ui64> desiredFreeSpaceReserve,
+    std::optional<ui64> minFreeSpaceReserve)
+{
+    Y_UNUSED(desiredFreeSpaceReserve);
+    Y_UNUSED(minFreeSpaceReserve);
+
+    if (stats.size() != Metas.size()) {
+        return MakeError(E_ARGUMENT, TStringBuilder() << "stats.size() "
+            << stats.size() << " != Metas.size() " << Metas.size());
+    }
+
+    if (stats) {
+        CalcScore(stats);
+        CalcNextShard();
+    }
+
+    return {};
+}
+
+NProto::TError TShardBalancerWeightedDeterministic::SelectShard(
+    ui64 fileSize,
+    TString* shardId)
+{
+    Y_UNUSED(fileSize);
+
+    if (!Metas) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Metas.size() is zero");
+    }
+
+    // In the middle but no next shard.
+    if (ShardSelector < Metas.size() - 1 &&
+        GetNextShard(ShardSelector, CurrentScore) == Metas.size())
+    {
+        ShardSelector = Metas.size() - 1;
+    }
+
+    // In the last column the information where to start is stored.
+    if (ShardSelector == Metas.size() - 1) {
+        CurrentScore = (++CurrentScore) % ScoreLevelsCount;
+    }
+
+    ShardSelector = GetNextShard(ShardSelector, CurrentScore);
+    if (ShardSelector == Metas.size()) {
+        CurrentScore = 0;
+        ShardSelector = 0;
+    }
+
+    *shardId = Metas[ShardSelector].Stats.ShardId;
+
+    return {};
+}
+
+TVector<TShardStats>
+TShardBalancerWeightedDeterministic::MakeOrderedShardList() const
+{
+    TVector<TShardMeta> metas(Metas);
+
+    TShardMetaComp metaCmp(PrecisionBytes, BlockSize);
+    Sort(metas.begin(), metas.end(), metaCmp);
+
+    TVector<TShardStats> shardStats;
+    shardStats.reserve(metas.size());
+    for (const auto& meta: metas) {
+        shardStats.emplace_back(meta.Stats);
+    }
+
+    return shardStats;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 IShardBalancerPtr CreateShardBalancer(
     NProto::EShardBalancerPolicy policy,
     ui32 blockSize,
@@ -274,6 +449,14 @@ IShardBalancerPtr CreateShardBalancer(
                 std::move(shardIds));
         case NProto::SBP_WEIGHTED_RANDOM:
             return std::make_shared<TShardBalancerWeightedRandom>(
+                blockSize,
+                precisionBytes,
+                maxFileBlocks,
+                desiredFreeSpaceReserve,
+                minFreeSpaceReserve,
+                std::move(shardIds));
+        case NProto::SBP_WEIGHTED_DETERMINISTIC:
+            return std::make_shared<TShardBalancerWeightedDeterministic>(
                 blockSize,
                 precisionBytes,
                 maxFileBlocks,
