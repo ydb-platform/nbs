@@ -17,6 +17,7 @@ SRCS(
     operation_ut.cpp
     profile_log_events_ut.cpp
     range_locks_ut.cpp
+    ranking_ut.cpp
     read_ahead_ut.cpp
     shard_balancer_ut.cpp
     sparse_segment_ut.cpp
