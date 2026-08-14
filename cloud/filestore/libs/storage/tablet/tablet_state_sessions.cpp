@@ -742,6 +742,21 @@ TSessionHandle* TIndexTabletState::FindHandle(ui64 handle) const
     return nullptr;
 }
 
+bool TIndexTabletState::HasPendingCreateHandleCommit(ui64 handle) const
+{
+    return Impl->PendingCreateHandleCommits.contains(handle);
+}
+
+void TIndexTabletState::StartCreateHandleCommit(ui64 handle)
+{
+    Impl->PendingCreateHandleCommits.insert(handle);
+}
+
+void TIndexTabletState::EndCreateHandleCommit(ui64 handle)
+{
+    Impl->PendingCreateHandleCommits.erase(handle);
+}
+
 void TIndexTabletState::ChangeNodeCounters(
     const TNodeToSessionStat::EKind nodeKind,
     i64 amount)
@@ -769,32 +784,6 @@ void TIndexTabletState::ChangeNodeCounters(
 TSessionHandle* TIndexTabletState::CreateHandle(
     IIndexTabletDatabase& db,
     TSession* session,
-    ui64 nodeId,
-    ui64 commitId,
-    ui32 flags)
-{
-    ui64 handleId = GenerateHandle();
-
-    NProto::TSessionHandle proto;
-    proto.SetSessionId(session->GetSessionId());
-    proto.SetHandle(handleId);
-    proto.SetNodeId(nodeId);
-    proto.SetCommitId(commitId);
-    proto.SetFlags(flags);
-
-    db.WriteSessionHandle(proto);
-    IncrementUsedHandlesCount(db);
-
-    return CreateHandle(session, proto);
-}
-
-// This method is unsafe because it accepts a handleId that may not follow the
-// conventions enforced by TIndexTabletState::GenerateHandle. We need this
-// method for testing purposes, such as verifying the response to handles with
-// an incorrect shard number.
-TSessionHandle* TIndexTabletState::UnsafeCreateHandle(
-    IIndexTabletDatabase& db,
-    TSession* session,
     ui64 handleId,
     ui64 nodeId,
     ui64 commitId,
@@ -811,6 +800,80 @@ TSessionHandle* TIndexTabletState::UnsafeCreateHandle(
     IncrementUsedHandlesCount(db);
 
     return CreateHandle(session, proto);
+}
+
+TSessionHandle* TIndexTabletState::CreateHandle(
+    IIndexTabletDatabase& db,
+    TSession* session,
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 flags)
+{
+    return CreateHandle(
+        db,
+        session,
+        GenerateHandle(),
+        nodeId,
+        commitId,
+        flags);
+}
+
+NProto::TError TIndexTabletState::RegisterHandle(
+    IIndexTabletDatabase& db,
+    TSession* session,
+    ui64 handleId,
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 flags)
+{
+    const ui32 shardNo = ExtractShardNo(handleId);
+    const ui32 expectedShardNo = GetFileSystem().GetShardNo();
+    if (shardNo != expectedShardNo) {
+        return MakeError(E_INVALID_STATE, TStringBuilder()
+            << "handle shard mismatch: " << handleId
+            << ", shard: " << shardNo
+            << ", expected shard: " << expectedShardNo);
+    }
+
+    if (const auto* handle = FindHandle(handleId)) {
+        if (handle->Session != session || handle->GetNodeId() != nodeId) {
+            return MakeError(E_INVALID_STATE, TStringBuilder()
+                << "handle collision: " << handleId
+                << ", session: " << session->GetSessionId()
+                << ", node: " << nodeId
+                << ", existing session: " << handle->GetSessionId()
+                << ", existing node: " << handle->GetNodeId());
+        }
+
+        // The handle is already registered - nothing to do.
+        return {};
+    }
+
+    const auto* handle =
+        CreateHandle(db, session, handleId, nodeId, commitId, flags);
+    if (!handle) {
+        return MakeError(E_INVALID_STATE, ReportFailedToCreateHandle(
+            TStringBuilder() << "RegisterHandle: " << handleId
+                << ", session: " << session->GetSessionId()
+                << ", node: " << nodeId));
+    }
+
+    return {};
+}
+
+// This method is unsafe because it accepts a handleId that may not follow the
+// conventions enforced by TIndexTabletState::GenerateHandle. We need this
+// method for testing purposes, such as verifying the response to handles with
+// an incorrect shard number.
+TSessionHandle* TIndexTabletState::UnsafeCreateHandle(
+    IIndexTabletDatabase& db,
+    TSession* session,
+    ui64 handleId,
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 flags)
+{
+    return CreateHandle(db, session, handleId, nodeId, commitId, flags);
 }
 
 void TIndexTabletState::DestroyHandle(

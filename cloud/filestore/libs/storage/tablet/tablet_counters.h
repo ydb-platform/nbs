@@ -94,6 +94,7 @@ TTabletCountersPtr CreateIndexTabletCounters();
     xxx(GetNodeAttrInShard,                             __VA_ARGS__)           \
     xxx(CreateHandle,                                   __VA_ARGS__)           \
     xxx(CreateHandleInShard,                            __VA_ARGS__)           \
+    xxx(ConfirmCreateHandle,                            __VA_ARGS__)           \
     xxx(DestroyHandle,                                  __VA_ARGS__)           \
     xxx(CreateNode,                                     __VA_ARGS__)           \
     xxx(CreateNodeInShard,                              __VA_ARGS__)           \
