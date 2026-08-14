@@ -770,7 +770,7 @@ func (c *getCheckpointSizeCmd) run() error {
 		c.serverConfig.NbsConfig,
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
-		nil,
+		nil, // tlsProvider
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to create nbs factory: %v", err)

@@ -98,7 +98,7 @@ func newFactory(
 		creds,
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
-		nil,
+		nil, // tlsProvider
 	)
 	require.NoError(t, err)
 

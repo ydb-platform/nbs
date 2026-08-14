@@ -36,10 +36,7 @@ func NewGRPCClientTLSProvider(
 			return nil, fmt.Errorf("failed to read root cert file: %w", err)
 		}
 
-		pool := cfg.RootCAs
-		if pool == nil {
-			pool = x509.NewCertPool()
-		}
+		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(rootCerts) {
 			return nil, errors.New("failed to parse root certificate PEM")
 		}
@@ -71,5 +68,5 @@ func (p *GRPCClientTLSProvider) GetTLSConfig() *tls.Config {
 		return nil
 	}
 
-	return p.tlsConfig.Clone()
+	return p.tlsConfig
 }

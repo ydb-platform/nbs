@@ -121,11 +121,9 @@ func (f *factory) initClients(
 
 	for zoneID, zone := range f.config.GetZones() {
 		clientCreds := &nbs_client.ClientCredentials{
-			TLSProvider: f.tlsProvider,
-			IAMClient:   f.credentials,
-		}
-		if f.tlsProvider == nil {
-			clientCreds.RootCertsFile = f.config.GetRootCertsFile()
+			RootCertsFile: f.config.GetRootCertsFile(),
+			TLSProvider:   f.tlsProvider,
+			IAMClient:     f.credentials,
 		}
 
 		if f.config.GetInsecure() {

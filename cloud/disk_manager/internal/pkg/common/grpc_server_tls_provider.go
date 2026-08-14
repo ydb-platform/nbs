@@ -146,14 +146,13 @@ func (p *GRPCServerTLSProvider) getCertificate(
 	if info != nil {
 		for _, certificate := range p.certificates {
 			if info.SupportsCertificate(&certificate) == nil {
-				result := certificate
-				return &result, nil
+				return &certificate, nil
 			}
 		}
 	}
 
-	result := p.certificates[0]
-	return &result, nil
+	certificate := p.certificates[0]
+	return &certificate, nil
 }
 
 func readServerCertificate(
@@ -187,6 +186,9 @@ func readServerCertificate(
 				cert.CertFile,
 				err,
 			)
+		}
+		if i == 0 {
+			certificate.Leaf = parsed
 		}
 		if expiration.IsZero() || parsed.NotAfter.Before(expiration) {
 			expiration = parsed.NotAfter

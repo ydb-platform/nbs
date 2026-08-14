@@ -409,7 +409,7 @@ func NewNfsTestingClient(
 		newNfsClientConfig(),
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
-		nil,
+		nil, // tlsProvider
 	)
 	client, err := nfsFactory.NewClient(ctx, zoneID)
 	require.NoError(t, err)

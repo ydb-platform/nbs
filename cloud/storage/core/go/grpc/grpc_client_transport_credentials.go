@@ -13,8 +13,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type TLSConfigProvider interface {
-	// GetTLSConfig returns a config snapshot owned by the caller.
-	// The caller may modify it.
+	// GetTLSConfig returns the current TLS config, or nil if it is unavailable.
+	// The returned config must not be modified.
 	GetTLSConfig() *tls.Config
 }
 
@@ -44,6 +44,7 @@ func (c *grpcClientTransportCredentials) ClientHandshake(
 	if config == nil {
 		return nil, nil, errors.New("TLS config provider returned nil config")
 	}
+	config = config.Clone()
 
 	c.mutex.RLock()
 	serverNameOverride := c.serverNameOverride
@@ -66,9 +67,11 @@ func (c *grpcClientTransportCredentials) Info() credentials.ProtocolInfo {
 	serverNameOverride := c.serverNameOverride
 	c.mutex.RUnlock()
 
-	return credentials.NewTLS(&tls.Config{
-		ServerName: serverNameOverride,
-	}).Info()
+	return credentials.ProtocolInfo{
+		SecurityProtocol: "tls",
+		SecurityVersion:  "1.2",
+		ServerName:       serverNameOverride,
+	}
 }
 
 func (c *grpcClientTransportCredentials) Clone() credentials.TransportCredentials {

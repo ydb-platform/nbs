@@ -216,7 +216,7 @@ func createServices(
 		},
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
-		nil,
+		nil, // tlsProvider
 	)
 
 	deletedFilesystemExpirationTimeout := "1s"
