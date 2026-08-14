@@ -1,7 +1,7 @@
 {
     "bottles": {},
     "extensions": {
-        "registry_endpoint": "https://nbs-yatool-resources.storage.eu-north2.nebius.cloud"
+        "registry_endpoint": "https://devtools-registry.s3.yandex.net"
     },
     "resources": {
         "6277415836": "{registry_endpoint}/6277415836",
