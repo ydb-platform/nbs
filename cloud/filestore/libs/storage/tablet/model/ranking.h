@@ -80,7 +80,7 @@ public:
         return true;
     }
 
-    TVector<TValue> GetNLast(ui32 n) const
+    TVector<TValue> GetLastN(ui32 n) const
     {
         TVector<TValue> result;
         result.reserve(Min<size_t>(n, Entries.size()));
