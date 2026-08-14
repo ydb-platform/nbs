@@ -12,7 +12,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
     {
         TNodeAccessStatsTracker tracker(1, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
 
         tracker.RequestStarted(1, start);
 
@@ -29,7 +29,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
     {
         TNodeAccessStatsTracker tracker(1, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
 
         tracker.RequestStarted(1, start);
         tracker.RequestStarted(1, start);
@@ -52,7 +52,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
     {
         TNodeAccessStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
         const auto old = start - TDuration::Minutes(10);
 
         for (ui32 i = 0; i < 10; ++i) {
@@ -74,7 +74,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
     {
         TNodeAccessStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
 
         tracker.RequestStarted(1, start);
         tracker.RequestStarted(2, start);
@@ -91,7 +91,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
     {
         TNodeAccessStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
 
         tracker.RequestStarted(1, start - TDuration::Minutes(10));
         tracker.RequestStarted(2, start);

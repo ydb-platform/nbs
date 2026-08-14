@@ -76,7 +76,7 @@ Y_UNIT_TEST_SUITE(TBoundedRankingTest)
         ranking.InsertOrUpdate({1, 10});
         ranking.InsertOrUpdate({1, 20});
 
-        const auto values = ranking.GetNLast(10);
+        const auto values = ranking.GetLastN(10);
 
         UNIT_ASSERT_VALUES_EQUAL(1, values.size());
         UNIT_ASSERT_VALUES_EQUAL(1, values[0].Key);
@@ -95,7 +95,7 @@ Y_UNIT_TEST_SUITE(TBoundedRankingTest)
         ranking.InsertOrUpdate({2, 30});
         ranking.InsertOrUpdate({3, 20});
 
-        const auto values = ranking.GetNLast(3);
+        const auto values = ranking.GetLastN(3);
 
         UNIT_ASSERT_VALUES_EQUAL(3, values.size());
         UNIT_ASSERT_VALUES_EQUAL(2, values[0].Key);
@@ -111,7 +111,7 @@ Y_UNIT_TEST_SUITE(TBoundedRankingTest)
         ranking.InsertOrUpdate({2, 30});
         ranking.InsertOrUpdate({3, 20});
 
-        const auto values = ranking.GetNLast(2);
+        const auto values = ranking.GetLastN(2);
 
         UNIT_ASSERT_VALUES_EQUAL(2, values.size());
         UNIT_ASSERT_VALUES_EQUAL(2, values[0].Key);
@@ -126,7 +126,7 @@ Y_UNIT_TEST_SUITE(TBoundedRankingTest)
         ranking.InsertOrUpdate({2, 30});
         ranking.InsertOrUpdate({3, 20});
 
-        const auto values = ranking.GetNLast(10);
+        const auto values = ranking.GetLastN(10);
 
         UNIT_ASSERT_VALUES_EQUAL(2, values.size());
         UNIT_ASSERT_VALUES_EQUAL(2, values[0].Key);
@@ -144,7 +144,7 @@ Y_UNIT_TEST_SUITE(TBoundedRankingTest)
         ranking.InsertOrUpdate({1, 10});
         ranking.InsertOrUpdate({2, 10});
 
-        const auto values = ranking.GetNLast(10);
+        const auto values = ranking.GetLastN(10);
 
         UNIT_ASSERT_VALUES_EQUAL(2, values.size());
 
@@ -171,7 +171,7 @@ Y_UNIT_TEST_SUITE(TBoundedRankingTest)
 
         ranking.InsertOrUpdate({1, 10});
 
-        UNIT_ASSERT_VALUES_EQUAL(0, ranking.GetNLast(10).size());
+        UNIT_ASSERT_VALUES_EQUAL(0, ranking.GetLastN(10).size());
         UNIT_ASSERT(!ranking.Find(1));
     }
 
@@ -181,7 +181,7 @@ Y_UNIT_TEST_SUITE(TBoundedRankingTest)
 
         ranking.InsertOrUpdate({1, 10});
 
-        UNIT_ASSERT_VALUES_EQUAL(0, ranking.GetNLast(0).size());
+        UNIT_ASSERT_VALUES_EQUAL(0, ranking.GetLastN(0).size());
     }
 }
 

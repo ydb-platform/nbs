@@ -9,8 +9,7 @@ double CalculateDecayedAccessScore(
     TInstant now,
     TDuration halfLife)
 {
-    const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
-                                                   : TDuration::Zero();
+    const auto elapsed = now - stats.LastAccessed;
 
     return stats.AccessScore * std::exp(
                                    -std::log(2.0) * elapsed.MicroSeconds() /
@@ -64,7 +63,7 @@ TVector<TNodeAccessStats> TNodeAccessStatsTracker::GetStats(
     TInstant now,
     ui32 n) const
 {
-    auto result = Ranking.GetNLast(n);
+    auto result = Ranking.GetLastN(n);
 
     for (auto& stats: result) {
         stats.AccessScore = CalculateDecayedAccessScore(stats, now, HalfLife);
