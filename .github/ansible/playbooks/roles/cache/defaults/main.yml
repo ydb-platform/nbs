@@ -1,0 +1,6 @@
+---
+bastion_compose_dir: /home/ubuntu/bastion
+bastion_github_token: "{{ lookup('ansible.builtin.env', 'GITHUB_TOKEN') }}"
+bastion_github_org: ydb-platform
+bastion_github_team: nbs_nebius
+bastion_sync_interval_seconds: 3600

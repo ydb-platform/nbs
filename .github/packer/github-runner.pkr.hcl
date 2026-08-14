@@ -34,7 +34,7 @@ variable "ORG" {
 
 variable "TEAM" {
   type    = string
-  default = "nbs"
+  default = "nbs_nebius"
 }
 
 variable "TMPFS_SIZE" {
