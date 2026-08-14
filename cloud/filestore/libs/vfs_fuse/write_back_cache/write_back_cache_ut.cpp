@@ -294,11 +294,13 @@ struct TBootstrap
 
             auto from = TStringBuf(request->GetBuffer());
 
+            ui64 flushedDataWritten = 0;
             {
                 std::unique_lock lock2(FlushedDataMutex);
                 auto& flushed = FlushedData[nodeId];
                 Write(flushed, request->GetOffset(), request->GetBuffer());
                 FlushedDataWritten += request->GetBuffer().length();
+                flushedDataWritten = FlushedDataWritten;
             }
 
             if (!DoNotCheckWriteDataRequestBuffer) {
@@ -318,7 +320,7 @@ struct TBootstrap
                 UNIT_ASSERT_VALUES_EQUAL(expectedData, from);
 
                 if (RecreationCount == 1) {
-                    UNIT_ASSERT_LE(FlushedDataWritten, ExpectedDataWritten);
+                    UNIT_ASSERT_LE(flushedDataWritten, ExpectedDataWritten);
                 }
             }
 
