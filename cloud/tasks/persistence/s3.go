@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -44,6 +43,41 @@ func (r *s3ClientRetryer) RetryRules(req *request.Request) time.Duration {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type S3TokenProvider interface {
+	Token(ctx context.Context) (string, error)
+}
+
+type s3TokenAuthTransport struct {
+	inner         http.RoundTripper
+	tokenProvider S3TokenProvider
+}
+
+func newS3TokenAuthHTTPClient(tokenProvider S3TokenProvider) *http.Client {
+	return &http.Client{
+		Transport: &s3TokenAuthTransport{
+			inner:         http.DefaultTransport,
+			tokenProvider: tokenProvider,
+		},
+	}
+}
+
+func (t *s3TokenAuthTransport) RoundTrip(
+	request *http.Request,
+) (*http.Response, error) {
+
+	token, err := t.tokenProvider.Token(request.Context())
+	if err != nil {
+		return nil, err
+	}
+
+	request = request.Clone(request.Context())
+	request.Header.Set("Authorization", "Bearer "+token)
+
+	return t.inner.RoundTrip(request)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type S3Client struct {
 	s3          *aws_s3.S3
 	callTimeout time.Duration
@@ -53,6 +87,7 @@ type S3Client struct {
 const (
 	s3ErrCodeQuotaLimitExceeded = "QuotaLimitExceeded"
 )
+
 type S3TokenProvider interface {
 	Token(ctx context.Context) (string, error)
 }
@@ -157,35 +192,6 @@ func newS3CredentialsFromConfig(
 	}
 
 	return NewS3CredentialsFromFile(config.GetCredentialsFilePath())
-}
-
-type s3TokenAuthTransport struct {
-	inner         http.RoundTripper
-	tokenProvider S3TokenProvider
-}
-
-func newS3TokenAuthHTTPClient(tokenProvider S3TokenProvider) *http.Client {
-	return &http.Client{
-		Transport: &s3TokenAuthTransport{
-			inner:         http.DefaultTransport,
-			tokenProvider: tokenProvider,
-		},
-	}
-}
-
-func (t *s3TokenAuthTransport) RoundTrip(
-	request *http.Request,
-) (*http.Response, error) {
-
-	token, err := t.tokenProvider.Token(request.Context())
-	if err != nil {
-		return nil, fmt.Errorf("get token via token provider: %w", err)
-	}
-
-	request = request.Clone(request.Context())
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-
-	return t.inner.RoundTrip(request)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
