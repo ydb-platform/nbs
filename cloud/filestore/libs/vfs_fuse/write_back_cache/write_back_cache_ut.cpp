@@ -288,20 +288,22 @@ struct TBootstrap
             MoveIovecsToBuffer(*request);
             const auto nodeId = request->GetNodeId();
 
-            std::unique_lock lock1(ExpectedDataMutex);
-            std::unique_lock lock2(FlushedDataMutex);
-
             STORAGE_INFO("Flushing " << request->GetBuffer().Quote()
                 << " to @" << request->GetNodeId()
                 << " at offset " << request->GetOffset());
 
             auto from = TStringBuf(request->GetBuffer());
 
-            auto& flushed = FlushedData[nodeId];
-            Write(flushed, request->GetOffset(), request->GetBuffer());
-            FlushedDataWritten += request->GetBuffer().length();
+            {
+                std::unique_lock lock2(FlushedDataMutex);
+                auto& flushed = FlushedData[nodeId];
+                Write(flushed, request->GetOffset(), request->GetBuffer());
+                FlushedDataWritten += request->GetBuffer().length();
+            }
 
             if (!DoNotCheckWriteDataRequestBuffer) {
+                std::unique_lock lock1(ExpectedDataMutex);
+
                 UNIT_ASSERT(ExpectedData.contains(nodeId));
 
                 const auto expected = ExpectedData[nodeId];
