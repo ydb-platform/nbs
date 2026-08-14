@@ -225,6 +225,8 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
     // * access by parentId/name
     // * access by nodeId
     if (args.Name) {
+        const bool behaveAsShard = BehaveAsShard(args.Request.GetHeaders());
+
         // check that parent exists and is the directory;
         // TODO: what if symlink?
         if (!ReadNode(*db, args.NodeId, args.ReadCommitId, args.ParentNode)) {
@@ -247,7 +249,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             }
         }
 
-        if (!BehaveAsShard(args.Request.GetHeaders())) {
+        if (!behaveAsShard) {
             // args.ParentNode is only a real parent when behaveAsShard is
             // false.
             args.QuotaId = args.ParentNode->Attrs.GetQuotaId();
@@ -265,8 +267,6 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 args.Error = ErrorInvalidTarget(args.NodeId, args.Name);
                 return true;
             }
-
-            const bool behaveAsShard = BehaveAsShard(args.Request.GetHeaders());
 
             // Validate there are enough free inodes. The restriction is not
             // enforced if the request comes from the main FS to the shard.
