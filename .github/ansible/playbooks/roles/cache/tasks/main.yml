@@ -21,7 +21,7 @@
 - name: Start bazel-remote
   community.docker.docker_container:
     name: bazel-remote
-    image: buchgr/bazel-remote-cache:v2.4.3
+    image: buchgr/bazel-remote-cache:v2.6.2
     detach: true
     restart_policy: always
     user: 1000:1000
@@ -34,6 +34,70 @@
       BAZEL_REMOTE_UNAUTHENTICATED_READS: "1"
       BAZEL_REMOTE_ACCESS_LOG_LEVEL: "all"
       BAZEL_REMOTE_DISABLE_HTTP_AC_VALIDATION: "1"
+    log_driver: "json-file"
+    log_options:
+      max-size: "10m"
+      max-file: "3"
     volumes:
       - /home/ubuntu/bazel:/data
       - /etc/bazel-remote-htpasswd:/etc/bazel-remote/htpasswd
+
+- name: Validate bastion configuration
+  ansible.builtin.assert:
+    that:
+      - bastion_github_token | length > 0
+      - bastion_github_org | length > 0
+      - bastion_github_team | length > 0
+      - bastion_sync_interval_seconds | int > 0
+    fail_msg: >-
+      Set bastion_github_token (or GITHUB_TOKEN on the Ansible controller)
+      and valid bastion GitHub settings.
+
+- name: Create bastion Compose directory
+  ansible.builtin.file:
+    path: "{{ bastion_compose_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy bastion Compose files
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/bastion/{{ item }}"
+    dest: "{{ bastion_compose_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - bastion-entrypoint.sh
+    - docker-compose.yml
+
+- name: Copy GitHub keys sync image sources
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/bastion/sync/"
+    dest: "{{ bastion_compose_dir }}/sync/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+
+- name: Write bastion environment
+  ansible.builtin.copy:
+    content: |
+      GITHUB_TOKEN={{ bastion_github_token | ansible.builtin.to_json }}
+      ORG={{ bastion_github_org | ansible.builtin.to_json }}
+      TEAM={{ bastion_github_team | ansible.builtin.to_json }}
+      INTERVAL_SECONDS={{ bastion_sync_interval_seconds | int }}
+    dest: "{{ bastion_compose_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Build and start bastion services
+  community.docker.docker_compose_v2:
+    project_src: "{{ bastion_compose_dir }}"
+    state: present
+    build: always
+    pull: missing
+    remove_orphans: true
