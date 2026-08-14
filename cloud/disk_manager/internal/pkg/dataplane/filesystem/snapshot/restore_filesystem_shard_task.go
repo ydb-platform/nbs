@@ -224,21 +224,6 @@ func (t *restoreFilesystemShardTask) getShardFileSystemIDs(
 		)
 	}
 
-	shardFound := false
-	for _, shardFileSystemID := range shardFileSystemIDs {
-		if shardFileSystemID == t.shardID() {
-			shardFound = true
-			break
-		}
-	}
-	if !shardFound {
-		return nil, task_errors.NewNonRetriableErrorf(
-			"shard %q is missing in topology of main filesystem %q",
-			t.shardID(),
-			mainFileSystemID,
-		)
-	}
-
 	return shardFileSystemIDs, nil
 }
 
