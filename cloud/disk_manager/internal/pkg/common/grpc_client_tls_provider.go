@@ -15,10 +15,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type GRPCClientTLSProviderConfig struct {
-	UseSystemCertPool  bool
-	RootCertsFile      string
-	CertFile           string
-	CertPrivateKeyFile string
+	RootCertsFile string
 }
 
 type GRPCClientTLSProvider struct {
@@ -30,28 +27,6 @@ func NewGRPCClientTLSProvider(
 	registry metrics.Registry,
 ) (*GRPCClientTLSProvider, error) {
 	cfg := &tls.Config{}
-
-	if config.CertFile != "" {
-		certificate, err := tls.LoadX509KeyPair(
-			config.CertFile,
-			config.CertPrivateKeyFile,
-		)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to load client certificate/key: %w",
-				err,
-			)
-		}
-		cfg.Certificates = []tls.Certificate{certificate}
-	}
-
-	if config.UseSystemCertPool {
-		pool, err := x509.SystemCertPool()
-		if err != nil {
-			return nil, fmt.Errorf("failed to load system cert pool: %w", err)
-		}
-		cfg.RootCAs = pool
-	}
 
 	if config.RootCertsFile != "" {
 		rootCerts, err := os.ReadFile(config.RootCertsFile)
@@ -81,5 +56,9 @@ func NewGRPCClientTLSProvider(
 }
 
 func (p *GRPCClientTLSProvider) GetTLSConfig() *tls.Config {
+	if p == nil || p.tlsConfig == nil {
+		return nil
+	}
+
 	return p.tlsConfig.Clone()
 }

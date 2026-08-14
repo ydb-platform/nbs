@@ -13,6 +13,8 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type TLSConfigProvider interface {
+	// GetTLSConfig returns a config snapshot owned by the caller.
+	// The caller may modify it.
 	GetTLSConfig() *tls.Config
 }
 
@@ -42,7 +44,6 @@ func (c *grpcClientTransportCredentials) ClientHandshake(
 	if config == nil {
 		return nil, nil, errors.New("TLS config provider returned nil config")
 	}
-	config = config.Clone()
 
 	c.mutex.RLock()
 	serverNameOverride := c.serverNameOverride

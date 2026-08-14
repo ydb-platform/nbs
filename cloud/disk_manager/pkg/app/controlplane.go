@@ -91,7 +91,18 @@ func newGRPCServer(
 	secure := !config.GetGrpcConfig().GetInsecure()
 	if secure {
 		logging.Info(ctx, "Creating GRPC transport credentials")
-		certs := config.GetGrpcConfig().GetCerts()
+		configuredCerts := config.GetGrpcConfig().GetCerts()
+		certs := make(
+			[]common.GRPCServerCertificateConfig,
+			0,
+			len(configuredCerts),
+		)
+		for _, cert := range configuredCerts {
+			certs = append(certs, common.GRPCServerCertificateConfig{
+				CertFile:       cert.GetCertFile(),
+				PrivateKeyFile: cert.GetPrivateKeyFile(),
+			})
+		}
 		tlsProvider, err := common.NewGRPCServerTLSProvider(
 			ctx,
 			certs,

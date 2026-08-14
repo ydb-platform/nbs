@@ -28,9 +28,11 @@ type ClientCredentials struct {
 	RootCertsFile      string
 	CertFile           string
 	CertPrivateKeyFile string
-	TLSProvider        TLSConfigProvider
-	AuthToken          string
-	IAMClient          TokenProvider
+	// TLSProvider, when set, takes precedence over RootCertsFile,
+	// CertFile, and CertPrivateKeyFile.
+	TLSProvider TLSConfigProvider
+	AuthToken   string
+	IAMClient   TokenProvider
 }
 
 type TLSConfigProvider = storage_grpc.TLSConfigProvider

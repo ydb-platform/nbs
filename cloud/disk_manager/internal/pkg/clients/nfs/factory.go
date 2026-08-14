@@ -123,9 +123,11 @@ func NewFactoryWithCreds(
 		credentials = nil
 	}
 	clientCredentials := &nfs_client.ClientCredentials{
-		RootCertsFile: config.GetRootCertsFile(),
-		TLSProvider:   tlsProvider,
-		IAMClient:     credentials,
+		TLSProvider: tlsProvider,
+		IAMClient:   credentials,
+	}
+	if tlsProvider == nil {
+		clientCredentials.RootCertsFile = config.GetRootCertsFile()
 	}
 	if config.GetInsecure() {
 		clientCredentials = nil

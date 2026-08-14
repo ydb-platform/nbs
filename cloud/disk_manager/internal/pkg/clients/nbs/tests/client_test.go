@@ -98,6 +98,7 @@ func newFactory(
 		creds,
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
+		nil,
 	)
 	require.NoError(t, err)
 

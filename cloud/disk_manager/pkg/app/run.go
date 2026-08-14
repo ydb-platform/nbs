@@ -176,12 +176,30 @@ func run(
 
 	nbsClientMetricsRegistry := mon.NewRegistry("nbs_client")
 	nbsSessionMetricsRegistry := mon.NewRegistry("nbs_session")
+	var nbsTLSProvider nbs.TLSConfigProvider
+	nbsConfig := config.GetNbsConfig()
+	if nbsConfig != nil &&
+		!nbsConfig.GetInsecure() &&
+		nbsConfig.GetRootCertsFile() != "" {
+
+		nbsTLSProvider, err = common.NewGRPCClientTLSProvider(
+			common.GRPCClientTLSProviderConfig{
+				RootCertsFile: nbsConfig.GetRootCertsFile(),
+			},
+			mon.NewRegistry("nbs_tls"),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	nbsFactory, err := nbs.NewFactoryWithCreds(
 		ctx,
-		config.NbsConfig,
+		nbsConfig,
 		creds,
 		nbsClientMetricsRegistry,
 		nbsSessionMetricsRegistry,
+		nbsTLSProvider,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to create nbs factory: %v", err)

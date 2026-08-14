@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	metrics_mocks "github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 )
@@ -83,9 +82,9 @@ func TestGRPCServerTLSProviderReportsEarliestExpiration(t *testing.T) {
 
 	provider, err := NewGRPCServerTLSProvider(
 		ctx,
-		[]*server_config.Cert{{
-			CertFile:       &certPath,
-			PrivateKeyFile: &keyPath,
+		[]GRPCServerCertificateConfig{{
+			CertFile:       certPath,
+			PrivateKeyFile: keyPath,
 		}},
 		registry,
 	)
@@ -108,9 +107,9 @@ func TestGRPCTLSProvidersRejectInvalidInitialCertificates(t *testing.T) {
 
 	_, err = NewGRPCServerTLSProvider(
 		context.Background(),
-		[]*server_config.Cert{{
-			CertFile:       &certPath,
-			PrivateKeyFile: &certPath,
+		[]GRPCServerCertificateConfig{{
+			CertFile:       certPath,
+			PrivateKeyFile: certPath,
 		}},
 		metrics_mocks.NewRegistryMock(),
 	)
