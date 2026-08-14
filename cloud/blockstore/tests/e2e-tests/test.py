@@ -100,7 +100,7 @@ def init(
 
 
 def cleanup_after_test(env: LocalLoadTest):
-    subprocess.call(["rmmod", "nbd"], timeout=20)
+    subprocess.check_call(["rmmod", "nbd"], timeout=20)
     if env is None:
         return
     env.tear_down()
@@ -565,6 +565,7 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
             "--nbd-device",
             nbd_device
         )
+        assert result.returncode == 0
 
         shutil.rmtree(socket_dir)
 
@@ -580,8 +581,14 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
+    finally:
+        run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
 
-    cleanup_after_test(env)
+        cleanup_after_test(env)
 
 
 def test_discard_device():
