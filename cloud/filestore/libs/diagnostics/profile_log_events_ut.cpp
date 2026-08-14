@@ -3,6 +3,7 @@
 #include "profile_log.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/locks.pb.h>
@@ -1101,32 +1102,16 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             profileLogRequest.GetRanges(0).GetActualBytes());
     }
 
-    Y_UNIT_TEST(ShouldGetCorrectFuseRequestName)
-    {
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Unknown",
-            GetFileStoreFuseRequestName(NFuse::EFileStoreFuseRequest::MIN));
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Flush",
-            GetFileStoreFuseRequestName(NFuse::EFileStoreFuseRequest::Flush));
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Fsync",
-            GetFileStoreFuseRequestName(NFuse::EFileStoreFuseRequest::Fsync));
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Unknown",
-            GetFileStoreFuseRequestName(NFuse::EFileStoreFuseRequest::MAX));
-    }
-
     Y_UNIT_TEST(ShouldCorrectlyInitProfileLogRequest)
     {
         const auto timestamp = TInstant::MilliSeconds(12);
-        const auto requestType = NFuse::EFileStoreFuseRequest::Flush;
+        const auto requestType = EFileStoreRequest::FuseFlush;
 
         NProto::TProfileLogRequestInfo profileLogRequest;
-        InitProfileLogRequestInfo(profileLogRequest, requestType, timestamp);
+        NFuse::InitProfileLogRequestInfo(
+            profileLogRequest,
+            requestType,
+            timestamp);
 
         UNIT_ASSERT_VALUES_EQUAL(
             timestamp.MicroSeconds(),

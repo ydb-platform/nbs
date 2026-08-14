@@ -1,5 +1,7 @@
 #include "request_filter.h"
 
+#include "dump.h"
+
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
@@ -229,7 +231,7 @@ public:
             IRequestFilterPtr nextFilter,
             TSet<ui32> requestTypes)
         : NextFilter(std::move(nextFilter))
-        , RequestTypes(std::move(requestTypes))
+        , RequestTypes(NormalizeRequestTypes(std::move(requestTypes)))
     {}
 
     NProto::TProfileLogRecord GetFilteredRecord(
@@ -237,7 +239,9 @@ public:
     {
         NProto::TProfileLogRecord answer;
         for (const auto& profileLogRequest: record.GetRequests()) {
-            if (RequestTypes.count(profileLogRequest.GetRequestType())) {
+            if (RequestTypes.count(
+                    NormalizeRequestTypeLegacy(profileLogRequest.GetRequestType())))
+            {
                 answer.MutableRequests()->Add(
                     NProto::TProfileLogRequestInfo(profileLogRequest));
             }
@@ -249,6 +253,20 @@ public:
         }
 
         return NProto::TProfileLogRecord();
+    }
+
+private:
+    // Filtering is done in the normalized id space, so that both the
+    // supplied request types and the request types stored in the records may
+    // be legacy ones.
+    // TODO(#6799): should be removed.
+    static TSet<ui32> NormalizeRequestTypes(TSet<ui32> requestTypes)
+    {
+        TSet<ui32> normalized;
+        for (const ui32 requestType: requestTypes) {
+            normalized.insert(NormalizeRequestTypeLegacy(requestType));
+        }
+        return normalized;
     }
 };
 

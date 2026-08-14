@@ -1,5 +1,7 @@
 #include "request_printer.h"
 
+#include "dump.h"
+
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -709,8 +711,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRequestPrinterPtr CreateRequestPrinter(ui32 requestType)
+IRequestPrinterPtr CreateRequestPrinter(ui32 rawRequestType)
 {
+    const ui32 requestType = NormalizeRequestTypeLegacy(rawRequestType);
     if (requestType < static_cast<ui32>(EFileStoreRequest::MAX)) {
         switch (static_cast<EFileStoreRequest>(requestType)) {
             case EFileStoreRequest::AccessNode:
@@ -723,17 +726,9 @@ IRequestPrinterPtr CreateRequestPrinter(ui32 requestType)
             case EFileStoreRequest::CreateCheckpoint:
             case EFileStoreRequest::DestroyCheckpoint:
                 return std::make_shared<TCreateDestroyCheckpointRequestPrinter>();
-            default:
-                break;
-        }
-    } else if (
-        requestType > static_cast<ui32>(NFuse::EFileStoreFuseRequest::MIN) &&
-        requestType < static_cast<ui32>(NFuse::EFileStoreFuseRequest::MAX))
-    {
-        switch (static_cast<NFuse::EFileStoreFuseRequest>(requestType)) {
-            case NFuse::EFileStoreFuseRequest::Flush:
-            case NFuse::EFileStoreFuseRequest::Fsync:
-            case NFuse::EFileStoreFuseRequest::FsyncDir:
+            case EFileStoreRequest::FuseFlush:
+            case EFileStoreRequest::FuseFsync:
+            case EFileStoreRequest::FuseFsyncDir:
                 return std::make_shared<TFlushFsyncRequestPrinter>();
             default:
                 break;

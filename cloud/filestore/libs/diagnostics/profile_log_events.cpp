@@ -141,32 +141,9 @@ namespace NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_MATERIALIZE_REQUEST(name, ...) #name,
-
-static const TString FuseRequestNames[] = {
-    FILESTORE_FUSE_REQUESTS(FILESTORE_MATERIALIZE_REQUEST)
-};
-
-#undef FILESTORE_MATERIALIZE_REQUEST
-
-const TString& GetFileStoreFuseRequestName(EFileStoreFuseRequest requestType)
-{
-    const auto index = static_cast<size_t>(requestType);
-    if (index >= FileStoreFuseRequestStart &&
-            index < FileStoreFuseRequestStart + FileStoreFuseRequestCount)
-    {
-        return FuseRequestNames[index - FileStoreFuseRequestStart];
-    }
-
-    static const TString unknown = "Unknown";
-    return unknown;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
-    EFileStoreFuseRequest requestType,
+    EFileStoreRequest requestType,
     TInstant currentTs)
 {
     profileLogRequest.SetRequestType(static_cast<ui32>(requestType));

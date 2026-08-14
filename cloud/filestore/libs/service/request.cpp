@@ -203,6 +203,13 @@ static const TString RequestNames[] = {
     "ConfirmAddData",
     "CancelAddData",
     "ConfirmCreateHandle",
+    "Forget",
+    "ForgetMulti",
+    "OpenDir",
+    "ReleaseDir",
+    "FuseFlush",
+    "FuseFsync",
+    "FuseFsyncDir",
 };
 
 static_assert(
