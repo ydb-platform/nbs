@@ -30,7 +30,7 @@ void ReportCriticalEvent(TString sensorName, TString message)
         TStringBuilder fullMessage;
         fullMessage << "CRITICAL_EVENT:" << sensorName;
         if (message) {
-            fullMessage << ":" << message;
+            fullMessage << ": " << message;
         }
         STORAGE_ERROR(fullMessage);
     }

@@ -65,6 +65,7 @@ private:
     IAsyncLoggerPtr AsyncLogger;
     ILoggingServicePtr Logging;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
+    IStatsUpdaterPtr CriticalEventsStatsUpdater;
     IMonitoringServicePtr Monitoring;
     TVector<ITraceReaderPtr> TraceReaders;
     ITraceProcessorPtr TraceProcessor;

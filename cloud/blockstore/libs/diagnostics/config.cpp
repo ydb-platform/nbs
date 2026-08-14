@@ -66,6 +66,9 @@ namespace {
     xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
     xxx(PassTraceIdToBlobstorage,       bool,                    false                                  )\
     xxx(EnableDurableVolumeInfo,        bool,                    false                                  )\
+    xxx(VolumeCriticalEventsReportingMode,                                                               \
+                                        NProto::EVolumeCriticalEventsReportingMode,                      \
+                                                                 NProto::EVolumeCriticalEventsReportingMode::APP_ONLY)\
 
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 // clang-format on
@@ -286,6 +289,15 @@ void Out<NCloud::NBlockStore::NProto::EHostNameScheme>(
     NCloud::NBlockStore::NProto::EHostNameScheme scheme)
 {
     out << NCloud::NBlockStore::NProto::EHostNameScheme_Name(scheme);
+}
+
+template <>
+void Out<NCloud::NBlockStore::NProto::EVolumeCriticalEventsReportingMode>(
+    IOutputStream& out,
+    NCloud::NBlockStore::NProto::EVolumeCriticalEventsReportingMode mode)
+{
+    out << NCloud::NBlockStore::NProto::EVolumeCriticalEventsReportingMode_Name(
+        mode);
 }
 
 template <>

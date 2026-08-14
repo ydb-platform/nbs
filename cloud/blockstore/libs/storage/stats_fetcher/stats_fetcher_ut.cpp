@@ -1,6 +1,7 @@
 #include "stats_fetcher.h"
 
 #include <cloud/blockstore/config/storage.pb.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
