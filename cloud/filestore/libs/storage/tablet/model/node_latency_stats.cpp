@@ -37,10 +37,8 @@ double TNodeLatencyStatsTracker::CalculateLatencyDecay(
     TInstant now,
     TDuration halfLife)
 {
-    const auto elapsed = now >= stats.LastAccessed ? now - stats.LastAccessed
-                                                   : TDuration::Zero();
+    const auto elapsed = now - stats.LastAccessed;
 
-    // Average Latency has a parameterised half-life
     return stats.AverageLatencyDecayedUs *
            exp(-log(2) * elapsed.MilliSeconds() / halfLife.MilliSeconds());
 }
@@ -59,10 +57,6 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
     }
     stats.NodeId = nodeId;
     stats.RequestType = requestType;
-
-    stats.AverageLatencyDecayedUs =
-        CalculateLatencyDecay(stats, now, DecayHalfLife);
-
     ++stats.RequestCount;
     stats.TotalLatencyUs += latency.MicroSeconds();
     stats.AverageLatencyDecayedUs =
