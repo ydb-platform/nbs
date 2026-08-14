@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/contrib/go/cityhash"
@@ -19,6 +20,7 @@ type GRPCClientTLSProviderConfig struct {
 }
 
 type GRPCClientTLSProvider struct {
+	mutex     sync.RWMutex
 	tlsConfig *tls.Config
 }
 
@@ -43,6 +45,8 @@ func NewGRPCClientTLSProvider(
 		}
 		cfg.RootCAs = pool
 
+		// Metrics gauges use float64. Keep 53 bits so the fingerprint can be
+		// represented without precision loss.
 		fingerprint := cityhash.Hash64(rootCerts) & ((1 << 53) - 1)
 		registry.WithTags(
 			map[string]string{
@@ -56,7 +60,14 @@ func NewGRPCClientTLSProvider(
 }
 
 func (p *GRPCClientTLSProvider) GetTLSConfig() *tls.Config {
-	if p == nil || p.tlsConfig == nil {
+	if p == nil {
+		return nil
+	}
+
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	if p.tlsConfig == nil {
 		return nil
 	}
 
