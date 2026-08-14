@@ -7249,5 +7249,110 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, mismatch->Val());
     }
+
+    Y_UNIT_TEST_F(ShouldNotCheckPartlabelForDetachedDevices, TFixture)
+    {
+        const TFsPath newDevice = DevPath / "nvme_new";
+        {
+            TFile file(newDevice, EOpenModeFlag::CreateNew);
+            file.Resize(DefaultFileSize);
+        }
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto mismatch = counters->GetCounter(
+            "DiskAgentCriticalEvents/DiskAgentDeviceSymlinkMismatch",
+            true);
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.DetachPaths(
+            TVector<TString>{{PartLabels[0]}},
+            1,    // diskRegistryGeneration
+            1);   // requestNumber
+
+        Runtime->SetEventFilter(
+            [](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvReadDeviceBlocksResponse)
+                {
+                    auto* msg =
+                        event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+                    msg->Record.MutableError()->Clear();
+                }
+                return false;
+            });
+
+        // Keep the detached device healthy to verify that either condition is
+        // sufficient for excluding it from the symlink check.
+        PartLabels[0].DeleteIfExists();
+        UNIT_ASSERT(NFs::SymLink(newDevice, PartLabels[0]));
+
+        Runtime->AdvanceCurrentTime(DefaultSymlinkCheckInterval + 1s);
+        Runtime->DispatchEvents(TDispatchOptions(), 1s);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+    }
+
+    Y_UNIT_TEST_F(ShouldNotCheckPartlabelForBrokenDevices, TFixture)
+    {
+        const TFsPath newDevice = DevPath / "nvme_new";
+        {
+            TFile file(newDevice, EOpenModeFlag::CreateNew);
+            file.Resize(DefaultFileSize);
+        }
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto mismatch = counters->GetCounter(
+            "DiskAgentCriticalEvents/DiskAgentDeviceSymlinkMismatch",
+            true);
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->SetEventFilter(
+            [](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvReadDeviceBlocksResponse)
+                {
+                    auto* msg =
+                        event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+                    *msg->Record.MutableError() =
+                        MakeError(E_IO, "device is broken");
+                }
+                return false;
+            });
+
+        Runtime->AdvanceCurrentTime(15s);
+        Runtime->DispatchEvents(
+            {.FinalEvents = {
+                 {TEvDiskAgent::EvReadDeviceBlocksResponse,
+                  static_cast<ui32>(PartLabels.size())}}});
+
+        // All devices remain enabled, so this verifies that broken devices are
+        // independently sufficient for excluding their paths.
+        PartLabels[0].DeleteIfExists();
+        UNIT_ASSERT(NFs::SymLink(newDevice, PartLabels[0]));
+
+        Runtime->AdvanceCurrentTime(DefaultSymlinkCheckInterval + 1s);
+        Runtime->DispatchEvents(TDispatchOptions(), 1s);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+    }
 }
 }   // namespace NCloud::NBlockStore::NStorage

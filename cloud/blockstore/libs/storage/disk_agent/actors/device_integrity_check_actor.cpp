@@ -143,7 +143,26 @@ void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
 
 void TDeviceIntegrityCheckActor::CheckSymlinks()
 {
+    THashMap<TString, bool> shouldCheckPathSymlink;
+    for (size_t i = 0; i < Devices.size(); ++i) {
+        const auto& device = Devices[i];
+        auto [it, _] =
+            shouldCheckPathSymlink.insert({device.GetDeviceName(), false});
+        it->second |= DevicesHealth[i] != EDeviceHealthStatus::Broken;
+    }
+
     for (const auto& [configPath, expected]: SymlinkSnapshot) {
+        const auto* shouldCheck = shouldCheckPathSymlink.FindPtr(configPath);
+
+        Y_DEBUG_ABORT_UNLESS(
+            shouldCheck,
+            "There is no device for path %s",
+            configPath.Quote().c_str());
+
+        if (!shouldCheck || !*shouldCheck) {
+            continue;
+        }
+
         TString current;
         TFsPath path(configPath);
         if (path.IsSymlink()) {
