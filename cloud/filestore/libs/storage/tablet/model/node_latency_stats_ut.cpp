@@ -12,7 +12,7 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
     {
         TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
 
         tracker.UpdateLatencyStats(
             1,
@@ -49,7 +49,7 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
     {
         TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
 
         tracker.UpdateLatencyStats(
             1,
@@ -82,7 +82,7 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
     {
         TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
         const auto old = start - TDuration::Minutes(10);
 
         tracker.UpdateLatencyStats(
@@ -108,7 +108,7 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
     {
         TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
 
         tracker.UpdateLatencyStats(
             1,
@@ -133,7 +133,7 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
     {
         TNodeLatencyStatsTracker tracker(2, TDuration::Minutes(10));
 
-        const auto start = TInstant::MilliSeconds(10'000'000);
+        const auto start = TInstant::Hours(1);
 
         tracker.UpdateLatencyStats(
             1,

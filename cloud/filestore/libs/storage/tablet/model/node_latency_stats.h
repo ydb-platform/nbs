@@ -52,10 +52,6 @@ private:
     {
         TDuration DecayHalfLife;
 
-        explicit TNodeLatencyStatsComparator(TDuration decayHalfLife)
-            : DecayHalfLife(decayHalfLife)
-        {}
-
         bool operator()(
             const TNodeLatencyStats& lhs,
             const TNodeLatencyStats& rhs) const;
