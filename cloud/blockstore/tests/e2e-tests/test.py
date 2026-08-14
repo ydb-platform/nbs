@@ -100,10 +100,11 @@ def init(
 
 
 def cleanup_after_test(env: LocalLoadTest):
-    subprocess.check_call(["rmmod", "nbd"], timeout=20)
-    if env is None:
-        return
-    env.tear_down()
+    try:
+        subprocess.check_call(["rmmod", "nbd"], timeout=20)
+    finally:
+        if env is not None:
+            env.tear_down()
 
 
 def log_called_process_error(exc):
@@ -309,6 +310,7 @@ def test_resize_device(nbd_netlink):
     request_timeout = 2
     runtime = request_timeout * 2
     nbs_downtime = request_timeout + 2
+    mount_dir = None
 
     env, run = init(
         nbd_netlink=nbd_netlink,
@@ -401,8 +403,8 @@ def test_resize_device(nbd_netlink):
                 block_size,
                 iodepth)
 
+            fd = os.open(nbd_device, os.O_RDWR | os.O_SYNC)
             try:
-                fd = os.open(nbd_device, os.O_RDWR | os.O_SYNC)
                 os.lseek(fd, volume_size, os.SEEK_SET)
                 os.write(fd, b"foobar")
             finally:
@@ -461,6 +463,8 @@ def test_do_not_restore_endpoint_with_missing_volume():
     blocks_count = 10000
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
+    volume_created = False
+    endpoint_started = False
     try:
         result = run(
             "createvolume",
@@ -472,6 +476,7 @@ def test_do_not_restore_endpoint_with_missing_volume():
             str(block_size),
         )
         assert result.returncode == 0
+        volume_created = True
 
         result = run(
             "startendpoint",
@@ -485,40 +490,50 @@ def test_do_not_restore_endpoint_with_missing_volume():
             "--nbd-device",
             nbd_device
         )
+        assert result.returncode == 0
+        endpoint_started = True
 
         shutil.copytree(endpoints_dir, backup_endpoints_dir)
-
-        result = run(
-            "stopendpoint",
-            "--socket",
-            socket_path,
-        )
-        assert result.returncode == 0
-
-        result = run(
-            "destroyvolume",
-            "--disk-id",
-            volume_name,
-            input=volume_name,
-        )
-        assert result.returncode == 0
 
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
+    finally:
+        if endpoint_started:
+            run(
+                "stopendpoint",
+                "--socket",
+                socket_path,
+            )
 
-    cleanup_after_test(env)
+        if volume_created:
+            run(
+                "destroyvolume",
+                "--disk-id",
+                volume_name,
+                input=volume_name,
+            )
+
+        cleanup_after_test(env)
 
     shutil.rmtree(endpoints_dir)
     shutil.copytree(backup_endpoints_dir, endpoints_dir)
     env, run = init()
-    result = run(
-        "listendpoints",
-        "--wait-for-restoring",
-    )
-    assert result.returncode == 0
-    assert 0 == len(os.listdir(endpoints_dir))
-    cleanup_after_test(env)
+    try:
+        result = run(
+            "listendpoints",
+            "--wait-for-restoring",
+        )
+        assert result.returncode == 0
+        assert 0 == len(os.listdir(endpoints_dir))
+    finally:
+        run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
+
+        cleanup_after_test(env)
 
 
 def test_restore_endpoint_when_socket_directory_does_not_exist():
@@ -539,9 +554,10 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
     blocks_count = 10000
     nbd_device = Path("/dev/nbd0")
     socket_dir = Path("/tmp") / volume_name
-    socket_dir.mkdir()
     socket_path = socket_dir / "nbd.sock"
     try:
+        socket_dir.mkdir()
+
         result = run(
             "createvolume",
             "--disk-id",
