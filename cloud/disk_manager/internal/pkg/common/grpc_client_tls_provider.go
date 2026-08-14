@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -28,7 +27,7 @@ func NewGRPCClientTLSProvider(
 	config GRPCClientTLSProviderConfig,
 	registry metrics.Registry,
 ) (*GRPCClientTLSProvider, error) {
-	cfg := &tls.Config{}
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 
 	if config.RootCertsFile != "" {
 		rootCerts, err := os.ReadFile(config.RootCertsFile)
@@ -48,7 +47,7 @@ func NewGRPCClientTLSProvider(
 		registry.WithTags(
 			map[string]string{
 				"subsystem": "certificates",
-				"cert":      filepath.Base(config.RootCertsFile),
+				"path":      config.RootCertsFile,
 			},
 		).Gauge("Fingerprint").Set(float64(fingerprint))
 	}
@@ -57,10 +56,6 @@ func NewGRPCClientTLSProvider(
 }
 
 func (p *GRPCClientTLSProvider) GetTLSConfig() *tls.Config {
-	if p == nil {
-		return nil
-	}
-
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 

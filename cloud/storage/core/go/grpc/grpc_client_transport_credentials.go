@@ -5,9 +5,17 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"reflect"
 	"sync"
 
 	"google.golang.org/grpc/credentials"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+var (
+	errTLSConfigProviderIsNil = errors.New("TLS config provider is nil")
+	errTLSConfigIsNil         = errors.New("TLS config provider returned nil config")
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,8 +35,12 @@ type grpcClientTransportCredentials struct {
 
 func NewGRPCClientTransportCredentials(
 	provider TLSConfigProvider,
-) credentials.TransportCredentials {
-	return &grpcClientTransportCredentials{provider: provider}
+) (credentials.TransportCredentials, error) {
+	if isNilTLSConfigProvider(provider) {
+		return nil, errTLSConfigProviderIsNil
+	}
+
+	return &grpcClientTransportCredentials{provider: provider}, nil
 }
 
 func (c *grpcClientTransportCredentials) ClientHandshake(
@@ -36,13 +48,9 @@ func (c *grpcClientTransportCredentials) ClientHandshake(
 	authority string,
 	rawConn net.Conn,
 ) (net.Conn, credentials.AuthInfo, error) {
-	if c.provider == nil {
-		return nil, nil, errors.New("TLS config provider is nil")
-	}
-
 	config := c.provider.GetTLSConfig()
 	if config == nil {
-		return nil, nil, errors.New("TLS config provider returned nil config")
+		return nil, nil, errTLSConfigIsNil
 	}
 	config = config.Clone()
 
@@ -54,6 +62,21 @@ func (c *grpcClientTransportCredentials) ClientHandshake(
 	}
 
 	return credentials.NewTLS(config).ClientHandshake(ctx, authority, rawConn)
+}
+
+func isNilTLSConfigProvider(provider TLSConfigProvider) bool {
+	if provider == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(provider)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
+		reflect.Ptr, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func (c *grpcClientTransportCredentials) ServerHandshake(

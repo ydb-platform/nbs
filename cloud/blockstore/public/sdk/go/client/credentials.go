@@ -43,10 +43,16 @@ type TokenProvider interface {
 
 func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, error) {
 	var transportCredentials credentials.TransportCredentials
+	// A typed-nil TLSProvider is a configuration error. Let the constructor
+	// reject it instead of silently falling back to the certificate files.
 	if creds.TLSProvider != nil {
-		transportCredentials = storage_grpc.NewGRPCClientTransportCredentials(
+		var err error
+		transportCredentials, err = storage_grpc.NewGRPCClientTransportCredentials(
 			creds.TLSProvider,
 		)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		cfg := &tls.Config{}
 		if creds.CertFile != "" {

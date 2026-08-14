@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"math/big"
 	"net"
 	"sync"
@@ -54,11 +55,21 @@ func TestGRPCClientTransportCredentialsUsesLatestTLSConfigForEveryHandshake(
 	secondCertificate, secondConfig := newServerCertificate(t, 2)
 
 	provider := &mutableTLSConfigProvider{tlsConfig: firstConfig}
-	transportCredentials := NewGRPCClientTransportCredentials(provider)
+	transportCredentials := newGRPCClientTransportCredentials(t, provider)
 
-	performTLSHandshake(t, transportCredentials, firstCertificate)
+	performTLSHandshake(
+		t,
+		transportCredentials,
+		firstCertificate,
+		"localhost:443",
+	)
 	provider.setTLSConfig(secondConfig)
-	performTLSHandshake(t, transportCredentials, secondCertificate)
+	performTLSHandshake(
+		t,
+		transportCredentials,
+		secondCertificate,
+		"localhost:443",
+	)
 
 	if provider.getCallCount() != 2 {
 		t.Fatalf(
@@ -68,10 +79,98 @@ func TestGRPCClientTransportCredentialsUsesLatestTLSConfigForEveryHandshake(
 	}
 }
 
+func TestGRPCClientTransportCredentialsUsesServerNameOverride(t *testing.T) {
+	serverCertificate, config := newServerCertificate(t, 1)
+	provider := &mutableTLSConfigProvider{tlsConfig: config}
+	transportCredentials := newGRPCClientTransportCredentials(
+		t,
+		provider,
+	)
+
+	if err := transportCredentials.OverrideServerName("localhost"); err != nil {
+		t.Fatalf("failed to override server name: %v", err)
+	}
+	performTLSHandshake(
+		t,
+		transportCredentials,
+		serverCertificate,
+		"unexpected.example:443",
+	)
+	if config.ServerName != "" {
+		t.Fatalf(
+			"expected provider config to remain unchanged, got %q",
+			config.ServerName,
+		)
+	}
+}
+
+func TestGRPCClientTransportCredentialsClonePreservesServerNameOverride(
+	t *testing.T,
+) {
+	serverCertificate, config := newServerCertificate(t, 1)
+	transportCredentials := newGRPCClientTransportCredentials(
+		t,
+		&mutableTLSConfigProvider{tlsConfig: config},
+	)
+
+	if err := transportCredentials.OverrideServerName("localhost"); err != nil {
+		t.Fatalf("failed to override server name: %v", err)
+	}
+	performTLSHandshake(
+		t,
+		transportCredentials.Clone(),
+		serverCertificate,
+		"unexpected.example:443",
+	)
+}
+
+func TestGRPCClientTransportCredentialsRejectsNilTLSConfig(t *testing.T) {
+	transportCredentials := newGRPCClientTransportCredentials(
+		t,
+		&mutableTLSConfigProvider{},
+	)
+
+	_, _, err := transportCredentials.ClientHandshake(
+		context.Background(),
+		"localhost:443",
+		nil,
+	)
+	if !errors.Is(err, errTLSConfigIsNil) {
+		t.Fatalf("expected nil TLS config error, got %v", err)
+	}
+}
+
+func TestNewGRPCClientTransportCredentialsRejectsNilProvider(t *testing.T) {
+	var typedNilProvider *mutableTLSConfigProvider
+	for _, provider := range []TLSConfigProvider{nil, typedNilProvider} {
+		transportCredentials, err := NewGRPCClientTransportCredentials(provider)
+		if !errors.Is(err, errTLSConfigProviderIsNil) {
+			t.Fatalf("expected nil TLS config provider error, got %v", err)
+		}
+		if transportCredentials != nil {
+			t.Fatal("expected nil transport credentials")
+		}
+	}
+}
+
+func newGRPCClientTransportCredentials(
+	t *testing.T,
+	provider TLSConfigProvider,
+) credentials.TransportCredentials {
+	t.Helper()
+
+	transportCredentials, err := NewGRPCClientTransportCredentials(provider)
+	if err != nil {
+		t.Fatalf("failed to create transport credentials: %v", err)
+	}
+	return transportCredentials
+}
+
 func performTLSHandshake(
 	t *testing.T,
 	transportCredentials credentials.TransportCredentials,
 	serverCertificate tls.Certificate,
+	authority string,
 ) {
 	t.Helper()
 
@@ -80,6 +179,7 @@ func performTLSHandshake(
 	go func() {
 		conn := tls.Server(serverConn, &tls.Config{
 			Certificates: []tls.Certificate{serverCertificate},
+			NextProtos:   []string{"h2"},
 		})
 		serverResult <- conn.Handshake()
 		_ = conn.Close()
@@ -90,11 +190,18 @@ func performTLSHandshake(
 
 	conn, _, err := transportCredentials.ClientHandshake(
 		ctx,
-		"localhost:443",
+		authority,
 		clientConn,
 	)
 	if err != nil {
 		t.Fatalf("client TLS handshake failed: %v", err)
+	}
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		t.Fatalf("expected a TLS connection, got %T", conn)
+	}
+	if protocol := tlsConn.ConnectionState().NegotiatedProtocol; protocol != "h2" {
+		t.Fatalf("expected h2 to be negotiated, got %q", protocol)
 	}
 	_ = conn.Close()
 

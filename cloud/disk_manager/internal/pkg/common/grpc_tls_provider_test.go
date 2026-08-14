@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -32,7 +33,7 @@ func TestGRPCClientTLSProviderLoadsConfigAndReportsFingerprint(t *testing.T) {
 		"Fingerprint",
 		map[string]string{
 			"subsystem": "certificates",
-			"cert":      filepath.Base(certPath),
+			"path":      certPath,
 		},
 	).On("Set", float64(fingerprint)).Once()
 
@@ -41,7 +42,9 @@ func TestGRPCClientTLSProviderLoadsConfigAndReportsFingerprint(t *testing.T) {
 		registry,
 	)
 	require.NoError(t, err)
-	require.NotNil(t, provider.GetTLSConfig().RootCAs)
+	tlsConfig := provider.GetTLSConfig()
+	require.NotNil(t, tlsConfig.RootCAs)
+	require.Equal(t, uint16(tls.VersionTLS12), tlsConfig.MinVersion)
 	require.True(t, registry.AssertAllExpectations(t))
 }
 
@@ -91,8 +94,29 @@ func TestGRPCServerTLSProviderReportsEarliestExpiration(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, provider.certificates, 1)
 	require.Len(t, provider.certificates[0].Certificate, 2)
-	require.NotNil(t, provider.NewTransportCredentials())
 	require.True(t, registry.AssertAllExpectations(t))
+}
+
+func TestGRPCServerTLSProviderSelectsCertificate(t *testing.T) {
+	firstCertificate := loadServerCertificate(t, "first.example")
+	secondCertificate := loadServerCertificate(t, "second.example")
+	provider := &GRPCServerTLSProvider{
+		certificates: []tls.Certificate{firstCertificate, secondCertificate},
+	}
+
+	selected, err := provider.getCertificate(&tls.ClientHelloInfo{
+		ServerName:        "second.example",
+		SupportedVersions: []uint16{tls.VersionTLS13},
+	})
+	require.NoError(t, err)
+	require.Equal(t, secondCertificate.Leaf.Raw, selected.Leaf.Raw)
+
+	selected, err = provider.getCertificate(&tls.ClientHelloInfo{
+		ServerName:        "unknown.example",
+		SupportedVersions: []uint16{tls.VersionTLS13},
+	})
+	require.NoError(t, err)
+	require.Equal(t, firstCertificate.Leaf.Raw, selected.Leaf.Raw)
 }
 
 func TestGRPCTLSProvidersRejectInvalidInitialCertificates(t *testing.T) {
@@ -130,6 +154,7 @@ func generateCertificate(
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(time.Now().UnixNano()),
 		Subject:               pkix.Name{CommonName: commonName},
+		DNSNames:              []string{commonName},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -149,4 +174,26 @@ func generateCertificate(
 	require.NoError(t, err)
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
 		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+}
+
+func loadServerCertificate(t *testing.T, serverName string) tls.Certificate {
+	t.Helper()
+
+	certPEM, keyPEM := generateCertificate(
+		t,
+		serverName,
+		time.Now().Add(24*time.Hour),
+	)
+	dir := t.TempDir()
+	certPath := filepath.Join(dir, "server.pem")
+	keyPath := filepath.Join(dir, "server.key")
+	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, keyPEM, 0o600))
+
+	certificate, _, err := readServerCertificate(GRPCServerCertificateConfig{
+		CertFile:       certPath,
+		PrivateKeyFile: keyPath,
+	})
+	require.NoError(t, err)
+	return certificate
 }
