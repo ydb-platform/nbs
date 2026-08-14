@@ -8,13 +8,17 @@
 #include <cloud/storage/core/protos/device.pb.h>
 
 #include <silk/fibers/fiber.h>
+#include <silk/fibers/future.h>
 
 #include <library/cpp/testing/common/network.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/string/cast.h>
 
 #include <gtest/gtest.h>
+
+#include <atomic>
 
 using namespace NCloud::NFileStore::NStorage::NFastShard;
 using silk::FiberScheduler;
@@ -35,13 +39,15 @@ struct TFixture
     std::shared_ptr<TFakeStorageNode> Storage;
     NTesting::TPortHolder Port;
     IServerPtr Server;
+    TStorageNodeClientMetricsPtr Metrics;
     IStorageNodePtr Client;
 
     TFixture()
         : Storage(std::make_shared<TFakeStorageNode>())
         , Port(NTesting::GetFreePort())
         , Server(CreateServer(Port, Storage))
-        , Client(CreateStorageNodeClient("localhost", Port))
+        , Metrics(std::make_shared<TStorageNodeClientMetrics>())
+        , Client(CreateStorageNodeClient("localhost", Port, Metrics))
     {
         Server->Start();
     }
@@ -73,6 +79,81 @@ struct TUnreachableFixture
         //
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+// IStorageNode wrapper that delays every call, then delegates. Used to
+// prove that concurrent client calls overlap on the wire.
+
+struct TSlowStorageNode: public IStorageNode
+{
+    IStorageNodePtr Inner;
+    ui64 DelayNs = 0;
+
+    TSlowStorageNode(IStorageNodePtr inner, ui64 delayNs)
+        : Inner(std::move(inner))
+        , DelayNs(delayNs)
+    {}
+
+#define SLOW_SN_METHOD(name, ...)                                              \
+    NCloud::NProto::T##name##Response name(                                    \
+        NCloud::NProto::T##name##Request request) override                     \
+    {                                                                          \
+        FiberScheduler::SleepFuture sf;                                        \
+        FiberScheduler::sleep(DelayNs, &sf);                                   \
+        sf.wait();                                                             \
+        return Inner->name(std::move(request));                                \
+    }                                                                          \
+    // SLOW_SN_METHOD
+
+    SN_METHODS(SLOW_SN_METHOD)
+
+#undef SLOW_SN_METHOD
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Fires Count concurrent AcquireDevices calls on `client` from separate
+// fibers and returns the number of failed responses.
+
+struct TBurstParams
+{
+    IStorageNode* Client;
+    std::atomic<ui32>* ErrorCount;
+};
+
+static_assert(sizeof(TBurstParams) <= silk::FIBER_PARAMETERS_SIZE);
+
+int BurstCallFiber(TBurstParams* params) noexcept
+{
+    NCloud::NProto::TAcquireDevicesRequest req;
+    req.AddDeviceUUIDs("dev-burst");
+    auto resp = params->Client->AcquireDevices(std::move(req));
+    if (resp.GetError().GetCode()) {
+        params->ErrorCount->fetch_add(1);
+    }
+    return 0;
+}
+
+ui32 RunBurst(IStorageNode& client, ui32 count)
+{
+    std::atomic<ui32> errorCount{0};
+
+    constexpr ui32 MaxBurst = 64U;
+    Y_ABORT_UNLESS(count <= MaxBurst);
+    silk::FiberFuture futures[MaxBurst];
+
+    for (ui32 i = 0; i < count; ++i) {
+        const int r = FiberScheduler::run(
+            BurstCallFiber,
+            TBurstParams{.Client = &client, .ErrorCount = &errorCount},
+            &futures[i]);
+        Y_ABORT_UNLESS(r == 0);
+    }
+    for (ui32 i = 0; i < count; ++i) {
+        futures[i].wait();
+    }
+
+    return errorCount.load();
+}
 
 }   // namespace
 
@@ -251,6 +332,151 @@ TEST(ClientTest, ConnectFailureReturnsRejected)
     EXPECT_EQ(0, r);
 }
 
+TEST(ClientTest, ConcurrentCallsUseMultipleConnections)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            //
+            // Storage delays every call, so all concurrent calls are in
+            // flight at the same time and each needs its own connection.
+            // A client that serializes calls on one connection would
+            // create and use exactly one.
+            //
+
+            constexpr ui64 DelayNs = 100'000'000ULL;
+            constexpr ui32 Concurrency = 10U;
+
+            auto storage = std::make_shared<TFakeStorageNode>();
+            auto slow = std::make_shared<TSlowStorageNode>(storage, DelayNs);
+            NTesting::TPortHolder port = NTesting::GetFreePort();
+            auto server = CreateServer(port, slow);
+            server->Start();
+
+            auto metrics = std::make_shared<TStorageNodeClientMetrics>();
+            auto client =
+                CreateStorageNodeClient("localhost", port, metrics);
+
+            const ui32 errorCount = RunBurst(*client, Concurrency);
+
+            EXPECT_EQ(0u, errorCount);
+            EXPECT_EQ(Concurrency, storage->AcquireCalls.size());
+            EXPECT_GT(metrics->ConnectionsCreated.load(), 1u);
+            EXPECT_GT(metrics->ConnectionsUsed.load(), 1u);
+            EXPECT_EQ(Concurrency, metrics->RequestsCompleted.load());
+
+            server->Stop();
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(ClientTest, ConcurrentBurstAllSucceed)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TFixture fx;
+
+            //
+            // Several waves through the same client: the first wave
+            // grows the pool, the following waves must reuse the pooled
+            // connections without errors.
+            //
+
+            constexpr ui32 Concurrency = 16U;
+            constexpr ui32 Waves = 4U;
+
+            for (ui32 wave = 0; wave < Waves; ++wave) {
+                EXPECT_EQ(0u, RunBurst(*fx.Client, Concurrency));
+            }
+
+            EXPECT_EQ(
+                Concurrency * Waves,
+                fx.Storage->AcquireCalls.size());
+
+            //
+            // A connection is only opened when a request finds the pool
+            // empty, and at most Concurrency requests are in flight at
+            // any moment - so the total across all waves stays bounded
+            // by one wave's parallelism no matter how the waves
+            // interleave.
+            //
+
+            EXPECT_LE(fx.Metrics->ConnectionsCreated.load(), Concurrency);
+            EXPECT_EQ(
+                Concurrency * Waves,
+                fx.Metrics->RequestsCompleted.load());
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(ClientTest, ReconnectsAfterServerRestart)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto storage = std::make_shared<TFakeStorageNode>();
+            NTesting::TPortHolder port = NTesting::GetFreePort();
+            auto server = CreateServer(port, storage);
+            server->Start();
+
+            auto client = CreateStorageNodeClient("localhost", port);
+
+            {
+                NCloud::NProto::TAcquireDevicesRequest req;
+                req.AddDeviceUUIDs("dev-before");
+                auto resp = client->AcquireDevices(std::move(req));
+                EXPECT_EQ(0u, resp.GetError().GetCode());
+            }
+
+            server->Stop();
+
+            //
+            // The pooled connection is dead now: the call must fail with
+            // E_REJECTED and the client must drop the connection.
+            //
+
+            {
+                NCloud::NProto::TAcquireDevicesRequest req;
+                req.AddDeviceUUIDs("dev-down");
+                auto resp = client->AcquireDevices(std::move(req));
+                EXPECT_EQ(
+                    static_cast<ui32>(NCloud::E_REJECTED),
+                    resp.GetError().GetCode());
+            }
+
+            //
+            // A new server on the same port: the client must reconnect
+            // transparently. The first server must be destroyed first -
+            // Stop() ends the accept loop but the listening socket is
+            // closed by the destructor, and a lingering listener would
+            // both fail the new bind and swallow the reconnect into a
+            // dead backlog.
+            //
+
+            server = nullptr;
+
+            auto server2 = CreateServer(port, storage);
+            server2->Start();
+
+            {
+                NCloud::NProto::TAcquireDevicesRequest req;
+                req.AddDeviceUUIDs("dev-after");
+                auto resp = client->AcquireDevices(std::move(req));
+                EXPECT_EQ(0u, resp.GetError().GetCode());
+            }
+
+            server2->Stop();
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
 TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
 {
     const int r = FiberScheduler::run(
@@ -259,11 +485,9 @@ TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
             TFixture fx;
 
             //
-            // Three sequential AcquireDevices calls on the same client
-            // must all succeed. If the client tore the fd down between
-            // calls (e.g. on a spurious error path) the second or third
-            // call would still work — but the fake will show us the
-            // full sequence.
+            // Sequential calls never overlap, so the pool must serve
+            // all of them with the single connection opened by the
+            // first call.
             //
 
             for (ui32 i = 1; i <= 3; ++i) {
@@ -277,6 +501,10 @@ TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
             EXPECT_EQ("dev-1", fx.Storage->AcquireCalls[0].GetDeviceUUIDs(0));
             EXPECT_EQ("dev-2", fx.Storage->AcquireCalls[1].GetDeviceUUIDs(0));
             EXPECT_EQ("dev-3", fx.Storage->AcquireCalls[2].GetDeviceUUIDs(0));
+
+            EXPECT_EQ(1u, fx.Metrics->ConnectionsCreated.load());
+            EXPECT_EQ(1u, fx.Metrics->ConnectionsUsed.load());
+            EXPECT_EQ(3u, fx.Metrics->RequestsCompleted.load());
             return 0;
         },
         0);
