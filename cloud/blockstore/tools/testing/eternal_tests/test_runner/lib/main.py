@@ -25,6 +25,7 @@ def get_restore_load_command(load_config: LoadConfig) -> str:
         file=load_config.test_file,
         config_path=load_config.config_path,
         log_path=load_config.log_path,
+        engine=load_config.engine,
     )
 
 
@@ -39,6 +40,7 @@ def get_generate_load_command(load_config: LoadConfig) -> str:
         write_rate=load_config.write_rate,
         write_parts=load_config.write_parts,
         zero_rate=load_config.zero_rate,
+        engine=load_config.engine,
     )
 
 
@@ -82,12 +84,14 @@ class EternalTestHelper:
                        '--write-rate {write_rate} '
                        '--write-parts {write_parts} '
                        '--zero-rate {zero_rate} '
+                       '--engine {engine} '
                        '>> {log_path} 2>&1')
 
     _START_LOAD_WITH_CONFIG_CMD = ('/usr/bin/eternal-load --config-type file '
                                    '--restore-config-path {config_path} '
                                    '--file {file} '
                                    '--dump-config-path {config_path}  '
+                                   '--engine {engine} '
                                    '>> {log_path} 2>&1')
 
     _FIO_CMD_TO_FILL_DISK = ('fio --name fill-secondary-disk --filename {filename} --rw write --bs 4M --iodepth 128'

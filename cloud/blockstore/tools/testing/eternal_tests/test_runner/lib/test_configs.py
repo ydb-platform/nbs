@@ -93,6 +93,7 @@ class LoadConfig(ITestCreateConfig):
     zero_rate: int
     write_parts: int
     run_in_systemd: bool
+    engine: str
     test_file: str
     config_dir: str
     config_name: str
@@ -108,7 +109,8 @@ class LoadConfig(ITestCreateConfig):
             bs,
             write_parts=1,
             run_in_systemd=False,
-            zero_rate=0):
+            zero_rate=0,
+            engine='asyncio'):
         self.use_requests_with_different_sizes = use_requests_with_different_sizes
         self.need_filling = need_filling
         self.io_depth = io_depth
@@ -118,6 +120,7 @@ class LoadConfig(ITestCreateConfig):
         self.bs = bs
         self.write_parts = write_parts
         self.run_in_systemd = run_in_systemd
+        self.engine = engine
         self.test_file = None
         self.config_dir = self.DEFAULT_CONFIG_DIR
         self.config_name = self.DEFAULT_CONFIG_NAME
@@ -331,12 +334,14 @@ _FS_CONFIGS = {
 _LOAD_CONFIGS = {
     'eternal-640gb-verify-checkpoint': LoadConfig(False, True, 32, 50, 640, 4096),
     'eternal-320gb': LoadConfig(False, True, 32, 50, 320, 4096),
-    'eternal-320gb-with-zero': LoadConfig(False, True, 32, 50, 320, 4096, zero_rate=10),
+    'eternal-320gb-with-zero': LoadConfig(
+        False, True, 32, 50, 320, 4096, zero_rate=10, engine='sync'),
     'eternal-4tb': LoadConfig(False, True, 32, 50, 4096, 4096),
     'eternal-4tb-one-partition': LoadConfig(False, True, 32, 50, 4096, 4096),
     'eternal-320gb-mirror-3of4-no-throttling': LoadConfig(False, True, 32, 50, 320, 4096),
     'eternal-1024gb-hdd-no-throttling': LoadConfig(False, True, 8, 50, 1024, 4096),
-    'eternal-1024gb-hdd-no-throttling-with-zero': LoadConfig(False, True, 8, 50, 1024, 4096, zero_rate=10),
+    'eternal-1024gb-hdd-no-throttling-with-zero': LoadConfig(
+        False, True, 8, 50, 1024, 4096, zero_rate=10, engine='sync'),
     'eternal-1024gb-mirror-3of4-hdd-no-throttling': LoadConfig(False, True, 8, 50, 1024, 4096),
     'eternal-1023gb-nonrepl': LoadConfig(False, False, 32, 50, 1023, 4096),
     'eternal-1023gb-nonrepl-vhost': LoadConfig(False, False, 32, 50, 1023, 4096),
@@ -353,9 +358,10 @@ _LOAD_CONFIGS = {
 
     'eternal-512gb-different-size-requests': LoadConfig(True, True, 32, 50, 512, 4096),
     'eternal-512gb-different-size-requests-with-zero': LoadConfig(
-        True, True, 32, 50, 512, 4096, zero_rate=10),
+        True, True, 32, 50, 512, 4096, zero_rate=10, engine='sync'),
     'eternal-1tb-different-size-requests': LoadConfig(True, True, 32, 50, 1024, 4096),
-    'eternal-1tb-different-size-requests-with-zero': LoadConfig(True, True, 32, 50, 1024, 4096, zero_rate=10),
+    'eternal-1tb-different-size-requests-with-zero': LoadConfig(
+        True, True, 32, 50, 1024, 4096, zero_rate=10, engine='sync'),
 
     'eternal-320gb-overlay': LoadConfig(True, False, 32, 25, 320, 4096),
 
