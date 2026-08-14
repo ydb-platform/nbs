@@ -2664,6 +2664,187 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             getNodeRefResponse->GetError().GetCode(),
             getNodeRefResponse->GetErrorReason());
     }
+
+    TABLET_TEST_4K_ONLY(ShouldRejectCreateNodeWhileDirectoryIsBeingCreatedInShard)
+    {
+        // Sharded directory creation is two-phase: the directory tablet
+        // commits the NodeRef (parent, name) -> (shardId, shardNodeName) and
+        // only then creates the node in the shard. Until the shard node is
+        // created the ref stays locked and a concurrent CreateNode with the
+        // same name must get E_REJECTED, not E_FS_EXIST - otherwise the
+        // caller's follow-up GetNodeAttr, which follows the ref into the
+        // shard, gets E_FS_NOENT (the mkdir=EEXIST + stat=ENOENT pair
+        // observed by concurrent mkdir -p clients). E_FS_EXIST may only be
+        // returned once the ref is unlocked and the entry is fully visible.
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env(testEnvConfig, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        const TString shardId = "test_shard";
+
+        TAutoPtr<IEventHandle> shardCreateEvent;
+        bool shouldIntercept = true;
+        auto interceptor =
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                if (shouldIntercept
+                    && event->GetTypeRewrite() == TEvService::EvCreateNodeRequest)
+                {
+                    auto* msg = event->template Get<TEvService::TEvCreateNodeRequest>();
+                    if (msg->Record.GetFileSystemId() == shardId) {
+                        shardCreateEvent = std::move(event);
+                        return true;
+                    }
+                }
+                return false;
+            };
+        OverrideDescribeFileStore(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            interceptor);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+
+        tablet.ConfigureShards(
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>{shardId});
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            shardId,
+            "test_main_fs",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>{shardId});
+
+        tablet.InitSession("client", "session");
+
+        const TString name = "dir";
+
+        //
+        // Client A: mkdir. The tx commits NodeRef + OpLog, then the
+        // CreateNode addressed to the shard is intercepted, freezing the
+        // window between the ref commit and the shard node creation.
+        //
+
+        {
+            auto request = tablet.CreateCreateNodeRequest(
+                TCreateNodeArgs::Directory(RootNodeId, name),
+                100 /* requestId */);
+            request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(true);
+            tablet.SendRequest(std::move(request));
+        }
+
+        env.GetRuntime().DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&] ()
+            { return shardCreateEvent != nullptr; }});
+
+        //
+        // Client B: mkdir of the same name - the ref is locked, so the
+        // request should be rejected for a retry instead of EEXIST.
+        //
+
+        auto mkdirStatus = [&] (ui64 requestId) {
+            auto request = tablet.CreateCreateNodeRequest(
+                TCreateNodeArgs::Directory(RootNodeId, name),
+                requestId);
+            request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(true);
+            tablet.SendRequest(std::move(request));
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_C(response, "no CreateNode response");
+            return response->GetError();
+        };
+
+        {
+            const auto error = mkdirStatus(101);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        //
+        // Client B: lookup. The directory tablet resolves the name to the
+        // shard ref...
+        //
+
+        TString shardNodeName;
+        {
+            tablet.SendGetNodeAttrRequest(RootNodeId, name);
+            auto response = tablet.RecvGetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            const auto& node = response->Record.GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(shardId, node.GetShardFileSystemId());
+            shardNodeName = node.GetShardNodeName();
+            UNIT_ASSERT(!shardNodeName.empty());
+            UNIT_ASSERT(response->Record.GetIsNodeRefLocked());
+        }
+
+        //
+        // ...and the shard hop (emulated here the same way the service actor
+        // does it) finds nothing - the ENOENT that reaches the client right
+        // after its mkdir got EEXIST.
+        //
+
+        {
+            tablet.SendGetNodeAttrRequest(RootNodeId, shardNodeName);
+            auto response = tablet.RecvGetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // Releasing the shard CreateNode closes the window: client A's mkdir
+        // completes, the ref gets unlocked and only then mkdir starts
+        // returning EEXIST.
+        //
+
+        shouldIntercept = false;
+        env.GetRuntime().Send(shardCreateEvent.Release(), nodeIdx);
+
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            const auto error = mkdirStatus(102);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_EXIST,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            tablet.SendGetNodeAttrRequest(RootNodeId, shardNodeName);
+            auto response = tablet.RecvGetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(NProto::E_DIRECTORY_NODE),
+                static_cast<ui32>(response->Record.GetNode().GetType()));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -667,6 +667,15 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         }
 
         if (childRef) {
+            if (IsNodeRefLocked({args.ParentNodeId, args.Name})) {
+                args.Error = MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "node ref " << args.ParentNodeId << " " << args.Name
+                        << " is locked, CreateNode should be retried");
+                return true;
+            }
+
             // mknod, mkdir, link nor symlink does not overwrite existing files
             args.Error = ErrorAlreadyExists(args.Name);
             return true;
