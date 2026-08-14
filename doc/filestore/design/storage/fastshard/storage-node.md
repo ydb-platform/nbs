@@ -29,7 +29,8 @@ tests.
   atomically, via the journal. A crash either preserves the whole record or
   none of it.
 * **LSN ordering** - writes are applied in `LogSequenceNumber` order. A
-  write whose LSN is not properly ordered is rejected.
+  write whose LSN is not properly ordered is queued and applied after all
+  previous LSNs are applied.
   *Missing in the prototype.*
 * **Writer fencing** - a writer whose lease has been invalidated by another
   writer with a newer `Generation` is rejected.
@@ -57,6 +58,10 @@ group stay consistent.
 
 The prototype does not physically have a journal: `WriteLogRecord` writes
 the page groups in place.
+
+In the production implementation we might decide to implement a shared journal
+instead of a per-device journal. It doesn't change the overall design - this
+choice affects only the data structures backing the journal.
 
 ## Diagram
 

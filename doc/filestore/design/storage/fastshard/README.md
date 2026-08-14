@@ -129,7 +129,7 @@ potentially improving read/write latency.
          |
      page store           page cache, dirty pages, request forwarding
          |
-  [storage groups]        quorum, recovery, LSN ordering
+  [storage groups]        quorum, recovery, LSN advancement
          |
    storage nodes          journalled devices in blockstore-disk-agent
 ```
