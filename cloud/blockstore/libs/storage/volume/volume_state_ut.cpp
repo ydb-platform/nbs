@@ -1406,6 +1406,16 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         res = volumeState.RemoveClient(clientId, serverActor1);
         UNIT_ASSERT_C(!FAILED(res.Error.GetCode()), res.Error);
 
+        // The logical client and its write ownership must survive while the
+        // remote blue-green pipe is still alive.
+        UNIT_ASSERT_VALUES_EQUAL(
+            clientId,
+            volumeState.GetReadWriteAccessClientId());
+        UNIT_ASSERT_VALUES_EQUAL("", volumeState.GetLocalMountClientId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::VOLUME_MOUNT_REMOTE,
+            volumeState.GetClient(clientId)->GetVolumeMountMode());
+
         // Remote data path activated
         result = client.CheckPipeRequest(serverActor2, true, "", "");
         UNIT_ASSERT_C(!FAILED(result.GetCode()), result);
@@ -1617,6 +1627,15 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
             auto& client = clients[clientId];
             UNIT_ASSERT_VALUES_EQUAL(1, client.GetPipes().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                clientId,
+                volumeState.GetReadWriteAccessClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                clientId,
+                volumeState.GetLocalMountClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                NProto::VOLUME_MOUNT_LOCAL,
+                volumeState.GetClient(clientId)->GetVolumeMountMode());
         }
     }
 

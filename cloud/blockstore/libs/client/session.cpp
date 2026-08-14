@@ -555,6 +555,7 @@ std::shared_ptr<NProto::TMountVolumeRequest> TSession::PrepareMountRequest(
     request->SetDiskId(SessionConfig.DiskId);
     request->SetVolumeAccessMode(SessionConfig.AccessMode);
     request->SetVolumeMountMode(SessionConfig.MountMode);
+    request->SetForceRemoteBinding(SessionConfig.ForceRemoteBinding);
     request->SetMountFlags(SessionConfig.MountFlags);
     request->SetIpcType(SessionConfig.IpcType);
     request->SetInstanceId(SessionConfig.InstanceId);

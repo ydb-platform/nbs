@@ -7418,6 +7418,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volumeClient1.RemoveClient(clientInfo.GetClientId());
 
+        // Removing one pipe must persist the remaining logical client rather
+        // than deleting its DB row. Verify that it can reconnect after the
+        // tablet has loaded the client list from local DB.
+        volume.RebootTablet();
+        volumeClient1.ReconnectPipe();
+        volumeClient2.ReconnectPipe();
+        volumeClient2.AddClient(clientInfo);
+        volume.WaitReady();
+
         volumeClient2.WriteBlocks(
             TBlockRange64::MakeOneBlock(0),
             clientInfo.GetClientId(),

@@ -620,7 +620,9 @@ void TVolumeActor::ExecuteAddClient(
                 State->LogRemoveClient(ctx.Now(), clientId, "Stale", {}));
         }
 
-        db.WriteClient(args.Info);
+        const auto* clientInfo = State->GetClient(args.Info.GetClientId());
+        Y_ABORT_UNLESS(clientInfo);
+        db.WriteClient(*clientInfo);
 
         if (IsReadWriteMode(args.Info.GetVolumeAccessMode()) &&
             (args.Info.GetFillGeneration() > 0 ||

@@ -371,6 +371,8 @@ void TVolumeClientActor::HandleResponse(
     }
 
     auto* msg = ev->Get();
+    const bool invalidSession =
+        msg->GetError().GetCode() == E_BS_INVALID_SESSION;
 
     if (it->second.CallContext->LWOrbit.HasShuttles()) {
         TraceSerializer->HandleTraceInfo(
@@ -433,8 +435,24 @@ void TVolumeClientActor::HandleResponse(
             it->second.Request->Cookie);
     }
 
-    ctx.Send(event.release());
     ActiveRequests.erase(it);
+
+    if (invalidSession) {
+        // The tablet no longer recognizes this pipe. Notify the volume
+        // session before returning the error to the client and create a fresh
+        // tablet pipe; otherwise the remount may be answered from stale
+        // service state with S_ALREADY and never execute AddClient.
+        auto reset =
+            std::make_unique<TEvServicePrivate::TEvVolumePipeReset>(
+                GetCycleCount());
+        NCloud::Send(ctx, SessionActorId, std::move(reset));
+
+        CancelActiveRequests();
+        NTabletPipe::CloseClient(ctx, PipeClient);
+        PipeClient = {};
+    }
+
+    ctx.Send(event.release());
 }
 
 void TVolumeClientActor::HandlePoisonPill(

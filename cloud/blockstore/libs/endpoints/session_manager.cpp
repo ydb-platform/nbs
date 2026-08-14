@@ -552,7 +552,8 @@ private:
 
     static TSessionConfig CreateSessionConfig(
         const NProto::TStartEndpointRequest& request,
-        bool forceRemoteMount);
+        bool forceRemoteMount,
+        bool forceRemoteBinding);
 
     void SwitchSessionForEndpoint(
         const TString& socketPath,
@@ -1004,7 +1005,10 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         VolumeStats,
         client,
         std::move(clientConfig),
-        CreateSessionConfig(request, !cellId.empty() && Options.TemporaryServer));
+        CreateSessionConfig(
+            request,
+            !cellId.empty() && Options.TemporaryServer,
+            !cellId.empty()));
 
     auto switchableSession = CreateSwitchableSession(
         Logging,
@@ -1059,16 +1063,17 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
 // static
 TSessionConfig TSessionManager::CreateSessionConfig(
     const NProto::TStartEndpointRequest& request,
-    bool forceRemouteMount)
+    bool forceRemoteMount,
+    bool forceRemoteBinding)
 {
     TSessionConfig config;
     config.DiskId = request.GetDiskId();
     config.InstanceId = request.GetInstanceId();
     config.AccessMode = request.GetVolumeAccessMode();
-    config.MountMode = request.GetVolumeMountMode();
-    if (forceRemouteMount) {
-        config.MountMode = NProto::VOLUME_MOUNT_REMOTE;
-    }
+    config.MountMode = forceRemoteMount
+        ? NProto::VOLUME_MOUNT_REMOTE
+        : request.GetVolumeMountMode();
+    config.ForceRemoteBinding = forceRemoteBinding;
     config.MountFlags = request.GetMountFlags();
     config.IpcType = request.GetIpcType();
     config.ClientVersionInfo = request.GetClientVersionInfo();

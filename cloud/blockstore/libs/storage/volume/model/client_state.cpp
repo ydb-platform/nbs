@@ -23,6 +23,13 @@ void TVolumeClientState::SetDisconnectTimestamp(TInstant ts)
     VolumeClientInfo.SetDisconnectTimestamp(ts.MicroSeconds());
 }
 
+void TVolumeClientState::UpdateClientInfo(
+    const NProto::TVolumeClientInfo& info)
+{
+    VolumeClientInfo = info;
+    UpdateState();
+}
+
 bool TVolumeClientState::IsPreempted(ui64 hostNodeId) const
 {
     return AnyOf(
@@ -127,7 +134,8 @@ std::optional<TVolumeClientState::TPipeInfo> TVolumeClientState::GetPipeInfo(
 
 bool TVolumeClientState::IsLocalPipeActive() const
 {
-    return ActivePipe && ActivePipe->IsLocal;
+    return ActivePipe &&
+           ActivePipe->MountMode == NProto::VOLUME_MOUNT_LOCAL;
 }
 
 void TVolumeClientState::UpdateState()
@@ -153,7 +161,7 @@ void TVolumeClientState::UpdateState()
                           : NProto::VOLUME_MOUNT_REMOTE);
 }
 
-void TVolumeClientState::ActivatePipe(TPipeInfo* pipe, bool isLocal)
+void TVolumeClientState::ActivatePipe(TPipeInfo* pipe)
 {
     Y_DEBUG_ABORT_UNLESS(pipe->State == EPipeState::WAIT_START);
 
@@ -162,7 +170,6 @@ void TVolumeClientState::ActivatePipe(TPipeInfo* pipe, bool isLocal)
     }
 
     pipe->State = EPipeState::ACTIVE;
-    pipe->IsLocal = isLocal;
 
     UpdateState();
 }
@@ -218,7 +225,9 @@ NProto::TError TVolumeClientState::CheckPipeRequest(
                 TStringBuilder() << "No mounter found "
                                  << (pipe ? "(deactivated)" : "(nullptr)"));
         }
-        if (IsLocalPipeActive()) {
+        if (IsLocalPipeActive() &&
+            pipe->MountMode == NProto::VOLUME_MOUNT_REMOTE)
+        {
             // When the local pipe is ACTIVE response with retriable error
             // E_REJECTED because the local pipe may disconnect and then the
             // request from remote pipe can be executed later.
@@ -227,7 +236,7 @@ NProto::TError TVolumeClientState::CheckPipeRequest(
                 TStringBuilder() << "Local mounter is active");
         }
         if (ActivePipe != pipe) {
-            ActivatePipe(pipe, false);
+            ActivatePipe(pipe);
         }
     }
 
@@ -240,15 +249,15 @@ NProto::TError TVolumeClientState::CheckLocalRequest(
     const TString& methodName,
     const TString& diskId)
 {
-    // Don't check if there is not a single pipe or if the local pipe is already
-    // active.
-    if (!Pipes.empty() && !IsLocalPipeActive()) {
+    // Don't check if there is not a single pipe.
+    if (!Pipes.empty()) {
         // Find alive local pipe to activate.
         const auto it = FindIf(
             Pipes,
             [&](const auto& p)
             {
                 return p.second.SenderNodeId == nodeId &&
+                       p.second.MountMode == NProto::VOLUME_MOUNT_LOCAL &&
                        p.second.State != EPipeState::DEACTIVATED;
             });
 
@@ -258,7 +267,9 @@ NProto::TError TVolumeClientState::CheckLocalRequest(
                 TStringBuilder() << "No local mounter found");
         }
 
-        ActivatePipe(&it->second, true);
+        if (ActivePipe != &it->second) {
+            ActivatePipe(&it->second);
+        }
     }
 
     return CheckWritePermission(isWrite, methodName, diskId);
