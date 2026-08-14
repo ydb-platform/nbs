@@ -20,6 +20,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+const (
+	s3ErrCodeQuotaLimitExceeded = "QuotaLimitExceeded"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,16 +50,12 @@ func (r *s3ClientRetryer) RetryRules(req *request.Request) time.Duration {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type S3TokenProvider interface {
-	Token(ctx context.Context) (string, error)
-}
-
 type s3TokenAuthTransport struct {
 	inner         http.RoundTripper
-	tokenProvider S3TokenProvider
+	tokenProvider credentials.Credentials
 }
 
-func newS3TokenAuthHTTPClient(tokenProvider S3TokenProvider) *http.Client {
+func newS3TokenAuthHTTPClient(tokenProvider credentials.Credentials) *http.Client {
 	return &http.Client{
 		Transport: &s3TokenAuthTransport{
 			inner:         http.DefaultTransport,
@@ -84,14 +87,6 @@ type S3Client struct {
 	metrics     *s3Metrics
 }
 
-const (
-	s3ErrCodeQuotaLimitExceeded = "QuotaLimitExceeded"
-)
-
-type S3TokenProvider interface {
-	Token(ctx context.Context) (string, error)
-}
-
 func NewS3Client(
 	endpoint string,
 	region string,
@@ -100,7 +95,7 @@ func NewS3Client(
 	registry metrics.Registry,
 	maxRetriableErrorCount uint64,
 	availabilityMonitoring *AvailabilityMonitoring,
-	tokenProvider S3TokenProvider,
+	tokenProvider credentials.Credentials,
 ) (*S3Client, error) {
 
 	s3Metrics := newS3Metrics(
@@ -145,7 +140,7 @@ func NewS3ClientFromConfig(
 	config *persistence_config.S3Config,
 	registry metrics.Registry,
 	availabilityMonitoring *AvailabilityMonitoring,
-	tokenProvider S3TokenProvider,
+	tokenProvider credentials.Credentials,
 ) (*S3Client, error) {
 
 	credentials, err := newS3CredentialsFromConfig(config)
