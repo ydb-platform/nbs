@@ -268,6 +268,7 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-two-partitions-and-checkpoints.txt",
         [
             storage_config_with_checkpoint_aware_cleanup_enabled(2),
+            default_storage_config(),
             storage_config_with_checkpoint_aware_cleanup_enabled(1),
         ],
         None,

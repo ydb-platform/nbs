@@ -328,7 +328,8 @@ public:
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
-        const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig);
+        const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
+        bool checkpointAwareCleanupEnabled);
 
 private:
     bool LoadStateFinished = false;
@@ -961,6 +962,7 @@ private:
     TOperationState CleanupState;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
+    const bool CheckpointAwareCleanupEnabled;
 
     mutable TBlobCountToCleanupEstimate BlobCountToCleanupEstimate;
 
@@ -990,23 +992,27 @@ public:
         return CleanupQueue;
     }
 
+    bool IsCheckpointAwareCleanupEnabled() const
+    {
+        return CheckpointAwareCleanupEnabled;
+    }
+
     bool HasBlobCountToCleanupReachedThreshold(
         ui64 cleanupCommitId,
-        ui32 threshold,
-        bool checkpointAware) const;
+        ui32 threshold) const;
 
-    ui64 GetCleanupMilestoneCommitId(bool checkpointAware) const
+    ui64 GetCleanupMilestoneCommitId() const
     {
-        if (!checkpointAware) {
+        if (!CheckpointAwareCleanupEnabled) {
             return 0;
         }
 
         return Meta.GetCleanupMilestone().GetCommitId();
     }
 
-    TPartialBlobId GetCleanupMilestoneBlobId(bool checkpointAware) const
+    TPartialBlobId GetCleanupMilestoneBlobId() const
     {
-        if (!checkpointAware) {
+        if (!CheckpointAwareCleanupEnabled) {
             return {};
         }
 
@@ -1018,9 +1024,13 @@ public:
 
     void ResetCleanupMilestoneIfNeeded()
     {
+        if (!CheckpointAwareCleanupEnabled) {
+            return;
+        }
+
         UpdateOrResetCleanupMilestone(
-            GetCleanupMilestoneCommitId(true /* checkpointAware */),
-            GetCleanupMilestoneBlobId(true /* checkpointAware */),
+            GetCleanupMilestoneCommitId(),
+            GetCleanupMilestoneBlobId(),
             GetMinCheckpointCommitId(),
             GetMaxCheckpointCommitId());
     }
@@ -1090,7 +1100,7 @@ public:
 
     ui64 GetMinCheckpointCommitId() const;
 
-    ui64 GetCleanupCommitId(bool checkpointAware) const;
+    ui64 GetCleanupCommitId() const;
 
     ui64 CalculateCheckpointBytes() const;
 

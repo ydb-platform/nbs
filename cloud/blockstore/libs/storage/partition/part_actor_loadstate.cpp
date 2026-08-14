@@ -267,7 +267,8 @@ void TPartitionActor::CompleteLoadState(
         Config->GetCompactionRangeCountPerRun(),
         SharedState,
         TabletID(),
-        mixedBlocksFilterConfig);
+        mixedBlocksFilterConfig,
+        IsCheckpointAwareCleanupEnabled());
 
     CreateFreshBlocksCompanionClient();
 

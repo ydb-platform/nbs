@@ -47,17 +47,13 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
         });
     }
 
-    ui64 cleanupCommitId =
-        State->GetCleanupCommitId(IsCheckpointAwareCleanupEnabled());
+    const ui64 cleanupCommitId = State->GetCleanupCommitId();
 
-    if (IsCheckpointAwareCleanupEnabled()) {
-        State->ResetCleanupMilestoneIfNeeded();
-    }
+    State->ResetCleanupMilestoneIfNeeded();
 
     if (!State->HasBlobCountToCleanupReachedThreshold(
             cleanupCommitId,
-            Config->GetCleanupThreshold(),
-            IsCheckpointAwareCleanupEnabled()))
+            Config->GetCleanupThreshold()))
     {
         // Not ready
         return;
@@ -155,17 +151,13 @@ void TPartitionActor::HandleCleanup(
         return;
     }
 
-    const bool checkpointAware = IsCheckpointAwareCleanupEnabled();
-    const ui64 cleanupCommitId =
-        State->GetCleanupCommitId(checkpointAware);
+    const ui64 cleanupCommitId = State->GetCleanupCommitId();
 
-    if (checkpointAware) {
-        State->ResetCleanupMilestoneIfNeeded();
-    }
+    State->ResetCleanupMilestoneIfNeeded();
 
     auto cleanupQueue = State->GetCleanupQueue().GetItems(
-        State->GetCleanupMilestoneCommitId(checkpointAware),
-        State->GetCleanupMilestoneBlobId(checkpointAware),
+        State->GetCleanupMilestoneCommitId(),
+        State->GetCleanupMilestoneBlobId(),
         cleanupCommitId,
         Config->GetMaxBlobsToCleanup());
 
@@ -188,6 +180,7 @@ void TPartitionActor::HandleCleanup(
 
     AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
 
+    const bool checkpointAware = State->IsCheckpointAwareCleanupEnabled();
     auto tx = CreateTx<TCleanup>(
         requestInfo,
         cleanupCommitId,

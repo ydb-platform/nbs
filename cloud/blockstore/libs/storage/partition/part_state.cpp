@@ -66,7 +66,8 @@ TPartitionState::TPartitionState(
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
         const std::optional<TMixedBlocksFilterConfig>
-            mixedBlocksFilterConfig)
+            mixedBlocksFilterConfig,
+        bool checkpointAwareCleanupEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -99,6 +100,7 @@ TPartitionState::TPartitionState(
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
+    , CheckpointAwareCleanupEnabled(checkpointAwareCleanupEnabled)
 {
     if (mixedBlocksFilterConfig) {
         MixedBlocksFilter.emplace(
@@ -164,14 +166,14 @@ ui64 TPartitionState::GetMinCheckpointCommitId() const
         GetCheckpointsInFlight()->GetMinCommitId());
 }
 
-ui64 TPartitionState::GetCleanupCommitId(bool checkpointAware) const
+ui64 TPartitionState::GetCleanupCommitId() const
 {
     ui64 commitId = GetLastCommitId();
 
     // Should not cleanup after any barrier.
     commitId = Min(commitId, CleanupQueue.GetMinCommitId() - 1);
 
-    if (!checkpointAware) {
+    if (!CheckpointAwareCleanupEnabled) {
         // Should not cleanup after any checkpoint.
         commitId = Min(commitId, GetMinCheckpointCommitId() - 1);
     }
@@ -181,12 +183,10 @@ ui64 TPartitionState::GetCleanupCommitId(bool checkpointAware) const
 
 bool TPartitionState::HasBlobCountToCleanupReachedThreshold(
     ui64 cleanupCommitId,
-    ui32 threshold,
-    bool checkpointAware) const
+    ui32 threshold) const
 {
-    const ui64 milestoneCommitId = GetCleanupMilestoneCommitId(checkpointAware);
-    const TPartialBlobId milestoneBlobId =
-        GetCleanupMilestoneBlobId(checkpointAware);
+    const ui64 milestoneCommitId = GetCleanupMilestoneCommitId();
+    const TPartialBlobId milestoneBlobId = GetCleanupMilestoneBlobId();
     auto& estimate = BlobCountToCleanupEstimate;
 
     const bool milestoneNotAdvanced =
