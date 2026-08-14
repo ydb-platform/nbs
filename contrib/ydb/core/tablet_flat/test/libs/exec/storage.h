@@ -1,5 +1,7 @@
 #pragma once
 
+#include "events.h"
+
 #include <contrib/ydb/core/tablet_flat/flat_sausage_solid.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/mock/model.h>
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -61,6 +63,9 @@ namespace NFake {
 
                 Reply(eh, new NStore::TEvStatusResult(NKikimrProto::OK, flg));
 
+            } else if (auto *ev = eh->CastAsLocal<NFake::TEvBlobStorageContainsRequest>()) {
+                auto contains = ContainsInBlobs(ev->Value);
+                Reply(eh, new NFake::TEvBlobStorageContainsResponse(std::move(contains)));
             } else if (eh->CastAsLocal<TEvents::TEvPoison>()) {
                 ReportUsage();
 
@@ -91,6 +96,16 @@ namespace NFake {
                     << ", left {" << bytes << "b, " << blobs.size() << "}"
                     << ", put {" << PutBytes << "b, " << PutItems << "}";
             }
+        }
+
+        TVector<TEvBlobStorageContainsResponse::TBlobInfo> ContainsInBlobs(const TString& substring) const {
+            TVector<TEvBlobStorageContainsResponse::TBlobInfo> result;
+            for (const auto& [id, blob] : Model->AllMyBlobs()) {
+                if (blob.Buffer.ConvertToString().Contains(substring)) {
+                    result.emplace_back(id, blob.Keep, blob.DoNotKeep);
+                }
+            }
+            return result;
         }
 
     private:

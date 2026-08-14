@@ -1,6 +1,7 @@
 #include "blobstorage_syncer_committer.h"
 #include "blobstorage_syncer_data.h"
 #include <contrib/ydb/core/blobstorage/vdisk/common/blobstorage_dblogcutter.h>
+#include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 
 namespace NKikimr {
 
@@ -146,7 +147,8 @@ namespace NKikimr {
             TLsnSeg seg = SyncerCtx->LsnMngr->AllocLsnForLocalUse();
             auto msg = std::make_unique<NPDisk::TEvLog>(SyncerCtx->PDiskCtx->Dsk->Owner,
                 SyncerCtx->PDiskCtx->Dsk->OwnerRound, TLogSignature::SignatureSyncerState,
-                commitRec, data, seg, nullptr);
+                commitRec, data, seg, nullptr, TWriteSource::SyncerCommit,
+                NPDisk::TEvLog::TCallback());
             SyncerCtx->MonGroup.SyncerLoggedBytes() += dataSize;
             ++SyncerCtx->MonGroup.SyncerLoggerRecords();
             ctx.Send(SyncerCtx->LoggerId, msg.release());

@@ -55,7 +55,7 @@ namespace NKikimr {
     class TSyncLogKeeperTest {
     public:
         void CreateState(TEntryPointPair ep);
-        void Run(bool oldFormatForEntryPoint);
+        void Run();
 
         void PrintStatus(const TString &str = {}) {
             ::NKikimr::PrintStatus(State.get(), str);
@@ -130,14 +130,12 @@ namespace NKikimr {
 
     class TCommitWithNoSwapAndDelChunks {
     public:
-        TCommitWithNoSwapAndDelChunks(bool oldFormatForEntryPoint)
-            : OldFormatForEntryPoint(oldFormatForEntryPoint)
+        TCommitWithNoSwapAndDelChunks()
         {}
 
         void Start(TSyncLogKeeperState *state, ui64 recoveryLogConfirmedLsn) {
             CommitData = std::make_unique<TSyncLogKeeperCommitData>(state->PrepareCommitData(recoveryLogConfirmedLsn));
             Y_ABORT_UNLESS((!CommitData->SwapSnap || CommitData->SwapSnap->Empty()) &&
-                    CommitData->ChunksToDeleteDelayed.empty() &&
                     CommitData->ChunksToDelete.empty());
             STR << "Commit started\n";
             PrintStatus(state);
@@ -147,12 +145,12 @@ namespace NKikimr {
             TStringStream s;
             TDeltaToDiskRecLog delta(10);
             TEntryPointSerializer entryPointSerializer(CommitData->SyncLogSnap,
-                std::move(CommitData->ChunksToDeleteDelayed), CommitData->RecoveryLogConfirmedLsn);
-            entryPointSerializer.Serialize(delta, OldFormatForEntryPoint);
+                {}, CommitData->RecoveryLogConfirmedLsn);
+            entryPointSerializer.Serialize(delta);
 
             TCommitHistory commitHistory(TInstant(), commitLsn, CommitData->RecoveryLogConfirmedLsn);
             TEvSyncLogCommitDone commitDone(commitHistory, entryPointSerializer.GetEntryPointDbgInfo(),
-                std::move(delta));
+                std::move(delta), {});
 
             // apply commit result
             state->ApplyCommitResult(&commitDone);
@@ -162,11 +160,10 @@ namespace NKikimr {
             return {entryPointSerializer.GetSerializedData(), commitLsn};
         }
     private:
-        const bool OldFormatForEntryPoint;
         std::unique_ptr<TSyncLogKeeperCommitData> CommitData;
     };
 
-    void TSyncLogKeeperTest::Run(bool oldFormatForEntryPoint) {
+    void TSyncLogKeeperTest::Run() {
         TEntryPointPair entryPointPair;
         CreateState(TEntryPointPair{TString(), 0});
         // start with empty log
@@ -187,7 +184,7 @@ namespace NKikimr {
         Y_ABORT_UNLESS(commit);
 
         // start parallel commit
-        TCommitWithNoSwapAndDelChunks parallelCommit(oldFormatForEntryPoint);
+        TCommitWithNoSwapAndDelChunks parallelCommit;
         parallelCommit.Start(State.get(), 10);
 
         // write more messages during parallel commit
@@ -208,7 +205,7 @@ namespace NKikimr {
         Y_ABORT_UNLESS(commit);
 
         // start parallel commit
-        TCommitWithNoSwapAndDelChunks parallelCommit2(oldFormatForEntryPoint);
+        TCommitWithNoSwapAndDelChunks parallelCommit2;
         parallelCommit2.Start(State.get(), 31);
 
         // commit finished with lsn=33
@@ -239,14 +236,35 @@ namespace NKikimr {
     ////////////////////////////////////////////////////////////////////////////
     Y_UNIT_TEST_SUITE(TBlobStorageSyncLogKeeper) {
 
-        Y_UNIT_TEST(CutLog_EntryPointOldFormat) {
-            TSyncLogKeeperTest test;
-            test.Run(true);
-        }
-
         Y_UNIT_TEST(CutLog_EntryPointNewFormat) {
             TSyncLogKeeperTest test;
-            test.Run(false);
+            test.Run();
+        }
+
+        Y_UNIT_TEST(WhatsNextReadsMemoryWhenCacheStartsBeforeDisk) {
+            const ui64 logStartLsn = 61651193845;
+            const ui64 firstMemLsn = 61651094865;
+            const ui64 lastMemLsn = 61659572661;
+            const ui64 firstDiskLsn = 61651193845;
+            const ui64 lastDiskLsn = 61657894935;
+            const ui64 dbBirthLsn = 361818;
+            const ui64 syncedLsn = lastDiskLsn;
+
+            TLogEssence e(
+                logStartLsn,
+                false,
+                false,
+                firstMemLsn,
+                lastMemLsn,
+                firstDiskLsn,
+                lastDiskLsn);
+
+            TWhatsNextOutcome outcome = WhatsNext(syncedLsn, dbBirthLsn, &e, [] {
+                return TString("stale memory cache prefix before disk start");
+            });
+            UNIT_ASSERT_C(outcome.WhatsNext == EWnMemRead,
+                "unexpected outcome# " << Name2Str(outcome.WhatsNext)
+                << " explanation# " << outcome.Explanation);
         }
 
     }

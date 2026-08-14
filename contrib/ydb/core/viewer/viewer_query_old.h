@@ -6,7 +6,7 @@
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/kqp/executer_actor/kqp_executer.h>
 #include <contrib/ydb/public/lib/json_value/ydb_json_value.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <ydb-cpp-sdk/client/result/result.h>
 
 namespace NKikimr::NViewer {
 
@@ -144,7 +144,6 @@ public:
             hFunc(NKqp::TEvKqp::TEvQueryResponse, HandleReply);
             hFunc(NKqp::TEvKqp::TEvAbortExecution, HandleReply);
             hFunc(NKqp::TEvKqpExecuter::TEvStreamData, HandleReply);
-            hFunc(NKqp::TEvKqpExecuter::TEvStreamProfile, HandleReply);
 
             cFunc(TEvents::TSystem::Wakeup, HandleTimeout);
         }
@@ -231,7 +230,7 @@ public:
             RequestStateStorageEndpointsLookup(Database); // to find some dynamic node and redirect query there
         }
 
-        if (Requests == 0) {
+        if (!WaitingForResponse()) {
             SendKpqProxyRequest();
         }
         Become(&TThis::StateWork, TDuration::MilliSeconds(Timeout), new TEvents::TEvWakeup());
@@ -414,7 +413,7 @@ private:
     }
 
     void HandleReply(NKqp::TEvKqp::TEvQueryResponse::TPtr& ev) {
-        Handle(ev->Get()->Record.GetRef());
+        Handle(ev->Get()->Record);
     }
 
     void HandleReply(TEvViewer::TEvViewerResponse::TPtr& ev) {
@@ -427,10 +426,6 @@ private:
     }
 
     void HandleReply(NKqp::TEvKqp::TEvAbortExecution::TPtr& ev) {
-        Y_UNUSED(ev);
-    }
-
-    void HandleReply(NKqp::TEvKqpExecuter::TEvStreamProfile::TPtr& ev) {
         Y_UNUSED(ev);
     }
 

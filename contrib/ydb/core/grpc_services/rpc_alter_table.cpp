@@ -228,7 +228,7 @@ private:
         Send(schemeCache, ev);
     }
 
-    void Navigate(const TTableId& pathId) {
+    void Navigate(const TTableId& pathId, const TActorContext& /*ctx*/) {
         DatabaseName = Request_->GetDatabaseName()
             .GetOrElse(DatabaseFromDomain(AppData()));
 
@@ -315,7 +315,7 @@ private:
                 const auto& child = list->Children.at(0);
                 AlterTable(ctx, CanonizePath(ChildPath(NKikimr::SplitPath(GetProtoRequest()->path()), child.Name)));
             } else {
-                Navigate(entry.TableId);
+                Navigate(entry.TableId, ctx);
             }
             break;
         default:
@@ -342,6 +342,9 @@ private:
     void SendAddIndexOpToSS(const TActorContext& ctx, ui64 schemeShardId) {
         SetSchemeShardId(schemeShardId);
         auto ev = std::make_unique<NSchemeShard::TEvIndexBuilder::TEvCreateRequest>(TxId, DatabaseName, std::move(IndexBuildSettings));
+        if (UserToken) {
+            ev->Record.SetUserSID(UserToken->GetUserSID());
+        }
         ForwardToSchemeShard(ctx, std::move(ev));
     }
 

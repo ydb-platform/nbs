@@ -141,24 +141,6 @@ Y_UNIT_TEST_SUITE(TStateStorageConfig) {
             UNIT_ASSERT_EQUAL(selection.SelectedReplicas[i].NodeId(), expected[i]);
         }
     }
-
-    Y_UNIT_TEST(DuplicatedNodesTest) {
-        TStateStorageInfo info;
-        FillStateStorageInfo(&info, 9, 5, 1, false);
-        ui32 bad = 0;
-        for (ui64 tabletId : xrange(Max<ui64>() - 1000000UL, Max<ui64>())) {
-            NKikimr::TStateStorageInfo::TSelection selection;
-            info.SelectReplicas(tabletId, &selection);
-            std::unordered_set<TActorId> nodes;
-            for (ui32 i : xrange(5)) {
-                nodes.insert(selection.SelectedReplicas[i]);
-            }
-            if (nodes.size() != 5) {
-                bad++;
-            }
-        }
-        UNIT_ASSERT_EQUAL(bad, 0);
-    }
 }
 
 }

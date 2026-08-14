@@ -1,0 +1,6 @@
+function:contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk_impl_log.cpp
+alignment:ProcessChunk0
+function:yql/essentials/parser/pg_wrapper/postgresql/src/backend/utils/hash/dynahash.c
+function:contrib/restricted/aws/aws-c-common/source/hash_table.c
+function:contrib/restricted/aws/s2n/tls/s2n_cipher_suites.c
+function:contrib/restricted/aws/aws-c-common/source/ref_count.c

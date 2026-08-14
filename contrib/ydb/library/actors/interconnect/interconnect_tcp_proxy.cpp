@@ -8,11 +8,17 @@
 
 namespace NActors {
     static constexpr TDuration GetNodeRequestTimeout = TDuration::Seconds(5);
+    static constexpr TDuration BaseRdmaRetryDelay = TDuration::Seconds(5);
+    static constexpr ui32 MaxSafeRdmaRetryBackoffLevel = 30;
+    static constexpr TDuration RdmaRetryStateCheckDelay = TDuration::Seconds(15);
 
-    static TString PeerNameForHuman(ui32 nodeNum, const TString& longName, ui16 port) {
+    static TString PeerNameForHuman(const TString& longName, ui16 port) {
         TStringBuf token;
         TStringBuf(longName).NextTok('.', token);
-        return ToString<ui32>(nodeNum) + ":" + (token.size() > 0 ? TString(token) : longName) + ":" + ToString<ui16>(port);
+        return TStringBuilder()
+            << (token.size() > 0 ? TString(token) : longName)
+            << ':'
+            << port;
     }
 
     TInterconnectProxyTCP::TInterconnectProxyTCP(const ui32 node, TInterconnectProxyCommon::TPtr common,
@@ -21,8 +27,7 @@ namespace NActors {
         , PeerNodeId(node)
         , DynamicPtr(dynamicPtr)
         , Common(std::move(common))
-        , SecureContext(new NInterconnect::TSecureSocketContext(Common->Settings.Certificate, Common->Settings.PrivateKey,
-                Common->Settings.CaFilePath, Common->Settings.CipherList))
+        , SecureContext(new NInterconnect::TSecureSocketContext(Common))
     {
         Y_ABORT_UNLESS(Common);
         Y_ABORT_UNLESS(Common->NameserviceId);
@@ -30,6 +35,7 @@ namespace NActors {
             Y_ABORT_UNLESS(!*DynamicPtr);
             *DynamicPtr = this;
         }
+        NumDisconnects.fill(0);
     }
 
     void TInterconnectProxyTCP::Bootstrap() {
@@ -106,12 +112,15 @@ namespace NActors {
             TransitToErrorState("cannot get node info");
         } else {
             auto& info = *ev->Get()->Node;
-            TString name = PeerNameForHuman(PeerNodeId, info.Host, info.Port);
+            TString name = PeerNameForHuman(info.Host, info.Port);
             TechnicalPeerHostName = info.Host;
             if (!Metrics) {
                 Metrics = Common->Metrics ? CreateInterconnectMetrics(Common) : CreateInterconnectCounters(Common);
             }
-            Metrics->SetPeerInfo(name, info.Location.GetDataCenterId());
+            const TString peerLabel = Common->Settings.MergePerHostCounters ? info.Host
+                : Common->Settings.MergePerScopeClassCounters ? TString("unknown")
+                : name;
+            Metrics->SetPeerInfo(name, info.Location.GetDataCenterId(), peerLabel);
 
             LOG_DEBUG_IC("ICP02", "configured for host %s", name.data());
 
@@ -240,6 +249,10 @@ namespace NActors {
                    " SessionVirtualId: %s RemoteSessionVirtualId: %s)", ev->Sender.ToString().data(),
                   ev->Get()->Peer.ToString().data(), ev->Get()->Self.ToString().data(), SessionVirtualId.ToString().data(),
                   RemoteSessionVirtualId.ToString().data());
+        } else if (Session->HasRdmaState()) {
+            LOG_NOTICE_IC("ICRDMA", "(actor %s) rejecting graceful reconnect for RDMA session Self# %s Peer# %s",
+                ev->Sender.ToString().data(), msg->Self.ToString().data(), msg->Peer.ToString().data());
+            IActor::InvokeOtherActor(*Session, &TInterconnectSessionTCP::Terminate, TDisconnectReason::NewSession());
         } else {
             // if we already have incoming handshake, then terminate existing one
             DropIncomingHandshake();
@@ -326,6 +339,9 @@ namespace NActors {
 
         TEvHandshakeDone *msg = ev->Get();
 
+        bool runDelayedRdmaHandshakeTimer = false;
+        const bool rdmaHandshakeSucceeded = msg->RdmaHanshakeResult.IsOk();
+
         const auto handshakeSuccessLogPriority = HoldByErrorWakeupDuration != TDuration::Zero()
             ? NLog::PRI_NOTICE
             : NLog::PRI_INFO;
@@ -337,6 +353,9 @@ namespace NActors {
             DropOutgoingHandshake();
         } else if (ev->Sender == OutgoingHandshakeActor) {
             LOG_LOG_IC(NActorsServices::INTERCONNECT, "ICP20", handshakeSuccessLogPriority, "outgoing handshake succeeded");
+            if (auto rdmaDisabled = ev->Get()->RdmaHanshakeResult.GetDisabled()) {
+                runDelayedRdmaHandshakeTimer = rdmaDisabled->RunDelayedHandshake;
+            }
             DropIncomingHandshake();
             DropOutgoingHandshake(false);
         } else {
@@ -371,6 +390,7 @@ namespace NActors {
             }
 
             // Create new session actor.
+            ++RdmaRetryWatchdogCookie;
             SessionID = RegisterWithSameMailbox(Session = new TInterconnectSessionTCP(this, msg->Params));
             IActor::InvokeOtherActor(*Session, &TInterconnectSessionTCP::Init);
             SessionVirtualId = msg->Self;
@@ -389,6 +409,14 @@ namespace NActors {
 
         /* Forward all held events */
         ProcessPendingSessionEvents();
+
+        if (rdmaHandshakeSucceeded) {
+            RegisterRdmaSuccess();
+        }
+
+        if (runDelayedRdmaHandshakeTimer) {
+            RegisterRdmaFailure();
+        }
     }
 
     void TInterconnectProxyTCP::HandleHandshakeStatus(TEvHandshakeFail::TPtr& ev) {
@@ -431,6 +459,11 @@ namespace NActors {
 
         if (Metrics) {
             Metrics->IncHandshakeFails();
+        }
+        if (Common->Settings.MergePerHostCounters) {
+            LOG_NOTICE_IC("ICP36", "peer-level handshake fail PeerNodeId# %" PRIu32 " Peer# %s Host# %s Temporary# %u"
+                " Explanation# %s", PeerNodeId, Metrics ? Metrics->GetHumanFriendlyPeerHostName().data() : "",
+                TechnicalPeerHostName.data(), ui32(ev->Get()->Temporary), ev->Get()->Explanation.data());
         }
 
         if (IncomingHandshakeActor || OutgoingHandshakeActor) {
@@ -550,6 +583,8 @@ namespace NActors {
 
         Session = nullptr;
         SessionID = TActorId();
+        DelayedRdmaHandshakeTimeout = TDuration::Zero();
+        SetRdmaRetryWatchdogPending(false);
 
         // drop all pending events as we are closed
         ProcessPendingSessionEvents();
@@ -620,6 +655,103 @@ namespace NActors {
         Y_ABORT_UNLESS(Session && SessionID);
         ValidateEvent(ev, "ForwardSessionEventToSession");
         InvokeOtherActor(*Session, &TInterconnectSessionTCP::Receive, ev);
+    }
+
+    void TInterconnectProxyTCP::SetRdmaRetryWatchdogPending(bool pending) {
+        if (RdmaRetryWatchdogPending == pending) {
+            return;
+        }
+
+        RdmaRetryWatchdogPending = pending;
+        if (Metrics) {
+            Metrics->SetRdmaRetryWatchdogPending(pending ? 1 : 0);
+        }
+    }
+
+    TDuration TInterconnectProxyTCP::GetNextRdmaRetryDelay() const {
+        const ui32 failureIndex = ConsecutiveRdmaFailures ? ConsecutiveRdmaFailures - 1 : 0;
+        const ui32 maxBackoffLevel = Min(Common->Settings.MaxRdmaRetryBackoffLevel, MaxSafeRdmaRetryBackoffLevel);
+        const ui32 backoffLevel = Min(failureIndex, maxBackoffLevel);
+        return BaseRdmaRetryDelay * (1u << backoffLevel);
+    }
+
+    TDuration TInterconnectProxyTCP::GetMaxRdmaRetryDelay() const {
+        const ui32 maxBackoffLevel = Min(Common->Settings.MaxRdmaRetryBackoffLevel, MaxSafeRdmaRetryBackoffLevel);
+        return BaseRdmaRetryDelay * (1u << maxBackoffLevel);
+    }
+
+    void TInterconnectProxyTCP::RegisterRdmaSuccess() {
+        LastRdmaSuccessAt = TActivationContext::Now();
+    }
+
+    void TInterconnectProxyTCP::RegisterRdmaFailure() {
+        const TInstant now = TActivationContext::Now();
+        if (LastRdmaSuccessAt != TInstant::Zero() && LastRdmaSuccessAt > LastRdmaFailureAt) {
+            const TDuration stableRdmaPeriod = now - LastRdmaSuccessAt;
+            const TDuration resetDelay = GetMaxRdmaRetryDelay();
+            if (stableRdmaPeriod >= resetDelay) {
+                LOG_NOTICE_IC("ICP40", "reset rdma retry failures after stable rdma period for session: %s"
+                    " failures: %" PRIu32 " stable: %s threshold: %s", SessionID.ToString().data(),
+                    ConsecutiveRdmaFailures, stableRdmaPeriod.ToString().data(), resetDelay.ToString().data());
+                ConsecutiveRdmaFailures = 0;
+            }
+        }
+        LastRdmaFailureAt = now;
+
+        if (ConsecutiveRdmaFailures != Max<ui32>()) {
+            ++ConsecutiveRdmaFailures;
+        }
+        ScheduleDelayedRdmaHandshake();
+    }
+
+    void TInterconnectProxyTCP::ScheduleDelayedRdmaHandshake() {
+        if (DelayedRdmaHandshakeTimeout) {
+            LOG_DEBUG_IC("ICP37", "rdma delayed handshake already scheduled for session: %s failures: %" PRIu32
+                " timeout: %s", SessionID.ToString().data(), ConsecutiveRdmaFailures,
+                DelayedRdmaHandshakeTimeout.ToString().data());
+            return;
+        }
+
+        DelayedRdmaHandshakeTimeout = GetNextRdmaRetryDelay();
+        SetRdmaRetryWatchdogPending(true);
+        LOG_NOTICE_IC("ICP38", "schedule delayed rdma handshake for session: %s failures: %" PRIu32 " timeout: %s",
+            SessionID.ToString().data(), ConsecutiveRdmaFailures, DelayedRdmaHandshakeTimeout.ToString().data());
+        TActivationContext::Schedule(DelayedRdmaHandshakeTimeout, new IEventHandle(EvRdmaPendingHandshake, 0, SelfId(),
+            {}, nullptr, RdmaRetryWatchdogCookie));
+    }
+
+    void TInterconnectProxyTCP::HandleRdmaDelayedHandshake(STATEFN_SIG) {
+        if (ev->Cookie != RdmaRetryWatchdogCookie) {
+            LOG_DEBUG_IC("ICP41", "ignore stale rdma retry watchdog event for session: %s"
+                " event_cookie: %" PRIu64 " current_cookie: %" PRIu64, SessionID.ToString().data(),
+                ev->Cookie, RdmaRetryWatchdogCookie);
+            return;
+        }
+
+        if (!DelayedRdmaHandshakeTimeout) {
+            return;
+        }
+
+        DelayedRdmaHandshakeTimeout = TDuration::Zero();
+
+        if (Terminated || !Session) {
+            SetRdmaRetryWatchdogPending(false);
+            return;
+        }
+
+        if (CurrentStateFunc() == &TThis::StateWork) {
+            SetRdmaRetryWatchdogPending(false);
+            // There is a chance that session was promouted to use RDMA without us.
+            if (!InvokeOtherActor(*Session, &TInterconnectSessionTCP::IsRdmaInUse)) {
+                InvokeOtherActor(*Session, &TInterconnectSessionTCP::Terminate, TDisconnectReason::NewSession());
+            }
+        } else {
+            LOG_WARN_IC("ICP39", "restart delayed rdma handshake for session: %s", SessionID.ToString().data());
+            DelayedRdmaHandshakeTimeout = RdmaRetryStateCheckDelay;
+            SetRdmaRetryWatchdogPending(true);
+            TActivationContext::Schedule(DelayedRdmaHandshakeTimeout, new IEventHandle(EvRdmaPendingHandshake, 0, SelfId(),
+                {}, nullptr, RdmaRetryWatchdogCookie));
+        }
     }
 
     void TInterconnectProxyTCP::GenerateHttpInfo(NMon::TEvHttpInfo::TPtr& ev) {
@@ -865,10 +997,14 @@ namespace NActors {
     }
 
     void TInterconnectProxyTCP::HandleClosePeerSocket() {
+        HandleClosePeerSocket("closed connection by debug command");
+    }
+
+    void TInterconnectProxyTCP::HandleClosePeerSocket(std::span<const char> logEntry) {
         ICPROXY_PROFILED;
 
         if (Session && Session->Socket) {
-            LOG_INFO_IC("ICP34", "closed connection by debug command");
+            LOG_INFO_IC("ICP34", logEntry.data());
             Session->Socket->Shutdown(SHUT_RDWR);
         }
     }
@@ -947,6 +1083,9 @@ namespace NActors {
     void TInterconnectProxyTCP::HandleTerminate() {
         ICPROXY_PROFILED;
 
+        DelayedRdmaHandshakeTimeout = TDuration::Zero();
+        SetRdmaRetryWatchdogPending(false);
+
         if (Session) {
             IActor::InvokeOtherActor(*Session, &TInterconnectSessionTCP::Terminate, TDisconnectReason());
         }
@@ -955,6 +1094,9 @@ namespace NActors {
     }
 
     void TInterconnectProxyTCP::PassAway() {
+        DelayedRdmaHandshakeTimeout = TDuration::Zero();
+        SetRdmaRetryWatchdogPending(false);
+
         if (Session) {
             IActor::InvokeOtherActor(*Session, &TInterconnectSessionTCP::Terminate, TDisconnectReason());
         }
@@ -965,4 +1107,40 @@ namespace NActors {
         // TODO: unregister actor mon page
         TActor::PassAway();
     }
+
+    void TInterconnectProxyTCP::RegisterDisconnect() {
+        const TMonotonic now = TActivationContext::Monotonic();
+        ShiftDisconnectWindow(now);
+        ++NumDisconnectsInLastHour;
+        ++NumDisconnects[NumDisconnectsIndex];
+    }
+
+    ui32 TInterconnectProxyTCP::GetDisconnectCountInLastHour() {
+        ShiftDisconnectWindow(TMonotonic::Now());
+        return NumDisconnectsInLastHour;
+    }
+
+    void TInterconnectProxyTCP::ShiftDisconnectWindow(TMonotonic now) {
+        const ui64 currentMinutes = now.Minutes();
+        if (FirstDisconnectWindowMinutes) {
+            const ui32 steps = currentMinutes - FirstDisconnectWindowMinutes;
+            if (steps < NumDisconnectsSize) { // advance window by "steps" items, clearing them
+                for (ui32 i = 0; i < steps; ++i) {
+                    NumDisconnectsInLastHour -= std::exchange(NumDisconnects[++NumDisconnectsIndex %= NumDisconnectsSize], 0);
+                }
+            } else { // window has been fully flushed
+                NumDisconnects.fill(0);
+                NumDisconnectsInLastHour = 0;
+            }
+        }
+        FirstDisconnectWindowMinutes = currentMinutes;
+    }
+
+    TActorId TInterconnectProxyTCP::GenerateSessionVirtualId() {
+        ICPROXY_PROFILED;
+
+        const ui64 localId = TActivationContext::ActorSystem()->AllocateIDSpace(1);
+        return NActors::TActorId(SelfId().NodeId(), 0, localId, 0);
+    }
+
 }

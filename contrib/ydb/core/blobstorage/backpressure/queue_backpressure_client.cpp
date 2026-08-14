@@ -3,6 +3,7 @@
 #include "queue_backpressure_server.h"
 #include "unisched.h"
 #include "common.h"
+#include "load_based_timeout.h"
 
 //#define BSQUEUE_EVENT_COUNTERS 1
 
@@ -48,6 +49,10 @@ class TVDiskBackpressureClientActor : public TActorBootstrapped<TVDiskBackpressu
     TBlobStorageGroupType GType;
     TInstant ConnectionFailureTime;
 
+    constexpr static TDuration MinimumReconnectTimeout = TDuration::Seconds(1);
+    constexpr static TDuration ReconnectTimeoutPerRequest = TDuration::Seconds(1) / 100'000;
+    TLoadBasedTimeoutManager ReconnectTimeoutManager;
+
     enum class EState {
         INITIAL,
         CHECK_READINESS_SENT,
@@ -91,6 +96,7 @@ public:
         , InterconnectChannel(interconnectChannel)
         , Info(info)
         , GType(info->Type)
+        , ReconnectTimeoutManager(MinimumReconnectTimeout, ReconnectTimeoutPerRequest)
     {
         Y_ABORT_UNLESS(Info);
     }
@@ -99,7 +105,7 @@ public:
         ApplyGroupInfo(*std::exchange(Info, nullptr));
         QLOG_INFO_S("BSQ01", "starting parent# " << parent);
         InitCounters();
-        RegisteredInUniversalScheduler = RegisterActorInUniversalScheduler(SelfId(), FlowRecord, ctx.ExecutorThread.ActorSystem);
+        RegisteredInUniversalScheduler = RegisterActorInUniversalScheduler(SelfId(), FlowRecord, ctx.ActorSystem());
         Y_ABORT_UNLESS(!BlobStorageProxy);
         BlobStorageProxy = parent;
         RequestReadiness(nullptr, ctx);
@@ -503,7 +509,7 @@ private:
                     << " ConnectionFailureTime# " << ConnectionFailureTime);
             }
 
-            ResetConnection(ctx, NKikimrProto::ERROR, "node disconnected", TDuration::Seconds(1));
+            ResetConnection(ctx, NKikimrProto::ERROR, "node disconnected", ReconnectTimeoutManager.GetTimeoutForNewRequest());
             Y_ABORT_UNLESS(!SessionId || SessionId == ev->Sender);
             SessionId = {};
         }
@@ -551,6 +557,11 @@ private:
         // 3. TEvUndelivered when message couldn't be delivered
     }
 
+    void ConnectionResetReqeuested(const TActorContext& ctx) {
+        ResetConnection(ctx, NKikimrProto::ERROR, "connection reset requested",
+                ReconnectTimeoutManager.GetTimeoutForNewRequest());
+    }
+
     void HandleCheckReadiness(TEvBlobStorage::TEvVCheckReadinessResult::TPtr& ev, const TActorContext& ctx) {
         QLOG_INFO_S("BSQ17", "TEvVCheckReadinessResult"
             << " Cookie# " << ev->Cookie
@@ -561,6 +572,8 @@ private:
         if (State != EState::CHECK_READINESS_SENT || ev->Cookie != CheckReadinessCookie) {
             return; // we don't expect this message right now, or this is some race reply
         }
+
+        ReconnectTimeoutManager.RequestCompleted();
 
         const auto& record = ev->Get()->Record;
         if (record.GetStatus() != NKikimrProto::NOTREADY) {
@@ -608,7 +621,7 @@ private:
             << " ConnectionFailureTime# " << ConnectionFailureTime);
 
         if (ev->Sender == RemoteVDisk) {
-            ResetConnection(ctx, NKikimrProto::ERROR, "event undelivered", TDuration::Seconds(1));
+            ResetConnection(ctx, NKikimrProto::ERROR, "event undelivered", ReconnectTimeoutManager.GetTimeoutForNewRequest());
         }
     }
 
@@ -782,6 +795,8 @@ private:
             ctx.Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup);
             UpdateRequestTrackingStatsScheduled = true;
         }
+
+        LWPROBE(BackPressureRequestTrackingStats, RecentGroup->GetGroupID(), EPDiskType_Name(RecentGroup->GetDeviceType()), VDiskId.ToStringWOGeneration(), WorstDuration.MicroSeconds() / 1000.0);
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -790,7 +805,7 @@ private:
     void Die(const TActorContext& ctx) override {
         QLOG_DEBUG_S("BSQ99", "terminating queue actor");
         if (RegisteredInUniversalScheduler) {
-            RegisterActorInUniversalScheduler(SelfId(), nullptr, ctx.ExecutorThread.ActorSystem);
+            RegisterActorInUniversalScheduler(SelfId(), nullptr, ctx.ActorSystem());
         }
         Unsubscribe(RemoteVDisk.NodeId(), ctx);
         Drain(ctx, NKikimrProto::ERROR, "BS_QUEUE terminated");
@@ -798,7 +813,7 @@ private:
     }
 
     void Unsubscribe(const ui32 nodeId, const TActorContext& ctx) {
-        ctx.Send(ctx.ExecutorThread.ActorSystem->InterconnectProxy(nodeId), new TEvents::TEvUnsubscribe);
+        ctx.Send(ctx.ActorSystem()->InterconnectProxy(nodeId), new TEvents::TEvUnsubscribe);
         SessionId = {};
     }
 
@@ -941,6 +956,7 @@ private:
             HFunc(TEvBlobStorage::TEvVGetBarrierResult, HandleResponse)
 
             HFunc(TEvRequestReadiness, RequestReadiness)
+            CFunc(TEvBlobStorage::EvBSQueueResetConnection, ConnectionResetReqeuested)
             HFunc(TEvBlobStorage::TEvVCheckReadinessResult, HandleCheckReadiness)
             CFunc(TEvBlobStorage::EvVReadyNotify, HandleReadyNotify)
 

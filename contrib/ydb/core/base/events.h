@@ -178,9 +178,20 @@ struct TKikimrEvents : TEvents {
         ES_BACKUP_SERVICE = 4255, 
         ES_TX_BACKGROUND = 4256, 
         ES_SS_BG_TASKS = 4257, 
-        ES_LIMITER = 4258, 
-        //ES_MEMORY = 4259, NB. exists in main
+        ES_LIMITER = 4258,
+        ES_MEMORY = 4259,
         ES_GROUPED_ALLOCATIONS_MANAGER = 4260,
+        ES_INCREMENTAL_RESTORE_SCAN = 4261,
+        ES_FEATURE_FLAGS = 4262,
+        ES_PRIORITY_QUEUE = 4263,
+        ES_SOLOMON_PROVIDER = 4264,
+        ES_CONVEYOR_COMPOSITE = 4265,
+        ES_GENERAL_CACHE_PUBLIC = 4266,
+        ES_GENERAL_CACHE_SOURCE = 4267,
+        ES_TRANSFER = 4268, 
+        ES_TOKEN_MANAGER = 4269,
+        ES_TOKEN_AGENT = 4270,
+        ES_OVERLOAD_MANAGER = 4271
     };
 };
 

@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/library/yql/providers/dq/actors)
 
-TAG(ya:manual)
-
 PEERDIR(
     library/cpp/testing/unittest
     library/cpp/time_provider
@@ -9,8 +7,8 @@ PEERDIR(
     contrib/ydb/library/yql/dq/actors
     contrib/ydb/library/yql/dq/actors/compute
     contrib/ydb/library/yql/providers/dq/actors
-    contrib/ydb/library/yql/public/udf/service/stub
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/public/udf/service/stub
+    yql/essentials/sql/pg_dummy
 )
 
 SRCS(

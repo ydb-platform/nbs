@@ -9,7 +9,7 @@ namespace NKikimr {
 // STATUS request
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class TBlobStorageGroupStatusRequest : public TBlobStorageGroupRequestActor<TBlobStorageGroupStatusRequest> {
+class TBlobStorageGroupStatusRequest : public TBlobStorageGroupRequestActor {
     const TInstant Deadline;
 
     TStorageStatusFlags StatusFlags;
@@ -19,14 +19,14 @@ class TBlobStorageGroupStatusRequest : public TBlobStorageGroupRequestActor<TBlo
     std::optional<float> ApproximateFreeSpaceShare;
 
     void Handle(TEvBlobStorage::TEvVStatusResult::TPtr &ev) {
-        ProcessReplyFromQueue(ev);
+        ProcessReplyFromQueue(ev->Get());
         const NKikimrBlobStorage::TEvVStatusResult& record = ev->Get()->Record;
         Y_ABORT_UNLESS(record.HasStatus());
         const NKikimrProto::EReplyStatus status = record.GetStatus();
         Y_ABORT_UNLESS(record.HasVDiskID());
         const TVDiskID vdisk = VDiskIDFromVDiskID(record.GetVDiskID());
 
-        A_LOG_LOG_S(false, PriorityForStatusInbound(status), "DSPS01", "Handle TEvVStatusResult"
+        DSP_LOG_LOG_S(PriorityForStatusInbound(status), "DSPS01", "Handle TEvVStatusResult"
             << " status# " << NKikimrProto::EReplyStatus_Name(status).data()
             << " From# " << vdisk.ToString()
             << " StatusFlags# " << (record.HasStatusFlags() ? Sprintf("%" PRIx32, record.GetStatusFlags()).data() : "NA")
@@ -57,18 +57,17 @@ class TBlobStorageGroupStatusRequest : public TBlobStorageGroupRequestActor<TBlo
         }
     }
 
-    friend class TBlobStorageGroupRequestActor<TBlobStorageGroupStatusRequest>;
-    void ReplyAndDie(NKikimrProto::EReplyStatus status) {
+    void ReplyAndDie(NKikimrProto::EReplyStatus status) override {
         auto result = std::make_unique<TEvBlobStorage::TEvStatusResult>(status, StatusFlags.Raw);
         if (ApproximateFreeSpaceShare) {
             result->ApproximateFreeSpaceShare = *ApproximateFreeSpaceShare;
         }
         result->ErrorReason = ErrorReason;
-        A_LOG_DEBUG_S("DSPS03", "ReplyAndDie Result# " << result->Print(false));
+        DSP_LOG_DEBUG_S("DSPS03", "ReplyAndDie Result# " << result->Print(false));
         SendResponseAndDie(std::move(result));
     }
 
-    std::unique_ptr<IEventBase> RestartQuery(ui32 counter) {
+    std::unique_ptr<IEventBase> RestartQuery(ui32 counter) override {
         ++*Mon->NodeMon->RestartStatus;
         auto ev = std::make_unique<TEvBlobStorage::TEvStatus>(Deadline);
         ev->RestartCounter = counter;
@@ -76,12 +75,12 @@ class TBlobStorageGroupStatusRequest : public TBlobStorageGroupRequestActor<TBlo
     }
 
 public:
-    static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
-        return NKikimrServices::TActivity::BS_PROXY_STATUS_ACTOR;;
+    ::NMonitoring::TDynamicCounters::TCounterPtr& GetActiveCounter() const override {
+        return Mon->ActiveStatus;
     }
 
-    static const auto& ActiveCounter(const TIntrusivePtr<TBlobStorageGroupProxyMon>& mon) {
-        return mon->ActiveStatus;
+    ERequestType GetRequestType() const override {
+        return ERequestType::Status;
     }
 
     TBlobStorageGroupStatusRequest(TBlobStorageGroupStatusParameters& params)
@@ -92,8 +91,8 @@ public:
         , QuorumTracker(Info.Get())
     {}
 
-    void Bootstrap() {
-        A_LOG_INFO_S("DSPS05", "bootstrap"
+    void Bootstrap() override {
+        DSP_LOG_INFO_S("DSPS05", "bootstrap"
             << " ActorId# " << SelfId()
             << " Group# " << Info->GroupID
             << " Deadline# " << Deadline
@@ -103,7 +102,7 @@ public:
             const ui64 cookie = TVDiskIdShort(Info->GetVDiskId(vdisk.OrderNumber)).GetRaw();
 
             auto vd = Info->GetVDiskId(vdisk.OrderNumber);
-            A_LOG_DEBUG_S("DSPS04", "Sending TEvVStatus"
+            DSP_LOG_DEBUG_S("DSPS04", "Sending TEvVStatus"
                 << " vDiskId# " << vd
                 << " node# " << Info->GetActorId(vd).NodeId());
 
@@ -112,7 +111,7 @@ public:
             ++Requests;
         }
 
-        Become(&TThis::StateWait);
+        Become(&TBlobStorageGroupStatusRequest::StateWait);
 
         if (Requests == 0) {
             ReplyAndDie(NKikimrProto::OK);
@@ -129,8 +128,7 @@ public:
     }
 };
 
-IActor* CreateBlobStorageGroupStatusRequest(TBlobStorageGroupStatusParameters params, NWilson::TTraceId traceId) {
-    params.Common.Span = NWilson::TSpan(TWilson::BlobStorage, std::move(traceId), "DSProxy.Status");
+IActor* CreateBlobStorageGroupStatusRequest(TBlobStorageGroupStatusParameters params) {
     return new TBlobStorageGroupStatusRequest(params);
 }
 

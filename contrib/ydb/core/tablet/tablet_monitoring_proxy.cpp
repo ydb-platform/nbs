@@ -12,6 +12,7 @@
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tx/tx.h>
 #include <library/cpp/monlib/service/pages/templates.h>
+#include <util/string/ascii.h>
 #include <util/string/builder.h>
 
 ////////////////////////////////////////////
@@ -28,6 +29,9 @@ bool IsFormUrlencoded(const NMonitoring::IMonHttpRequest& request) {
     const TStringBuf contentType = value.NextTok(';');
     return contentType == "application/x-www-form-urlencoded";
 }
+
+static constexpr TDuration RequestTimeout = TDuration::Seconds(60);
+static constexpr TStringBuf RequestDeadlineHeader = "x-ydb-monitoring-deadline-us";
 
 class TForwardingActor : public TActorBootstrapped<TForwardingActor> {
 public:
@@ -63,6 +67,9 @@ public:
             pb.SetPostContent(content.data(), content.size());
         }
         for (const auto& header : request.GetHeaders()) {
+            if (AsciiEqualsIgnoreCase(header.Name(), RequestDeadlineHeader)) {
+                continue;
+            }
             auto *p = pb.AddHeaders();
             p->SetName(header.Name());
             p->SetValue(header.Value());
@@ -75,16 +82,21 @@ public:
     }
 
     void Bootstrap(const TActorContext& ctx) {
+        const TInstant deadline = TAppData::TimeProvider->Now() + RequestTimeout;
+        auto* deadlineHeader = Request.AddHeaders();
+        deadlineHeader->SetName(TString(RequestDeadlineHeader));
+        deadlineHeader->SetValue(TStringBuilder() << deadline.MicroSeconds());
+
         NTabletPipe::TClientConfig config;
         config.AllowFollower = ForceFollower;
         config.ForceFollower = ForceFollower;
         config.PreferLocal = Config.PreferLocal;
         config.RetryPolicy = Config.RetryPolicy;
 
-        PipeClient = ctx.ExecutorThread.RegisterActor(NTabletPipe::CreateClient(ctx.SelfID, TargetTablet, config));
+        PipeClient = ctx.Register(NTabletPipe::CreateClient(ctx.SelfID, TargetTablet, config));
         NTabletPipe::SendData(ctx, PipeClient, new NMon::TEvRemoteHttpInfo(std::move(Request)));
 
-        ctx.Schedule(TDuration::Seconds(60), new TEvents::TEvWakeup());
+        ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
         Become(&TThis::StateWork);
     }
 
@@ -226,7 +238,7 @@ TTabletMonitoringProxyActor::Bootstrap(const TActorContext &ctx) {
     NActors::TMon* mon = AppData(ctx)->Mon;
 
     if (mon) {
-        mon->RegisterActorPage(nullptr, "tablets", "Tablets", false, ctx.ExecutorThread.ActorSystem, ctx.SelfID);
+        mon->RegisterActorPage(nullptr, "tablets", "Tablets", false, ctx.ActorSystem(), ctx.SelfID);
     }
 }
 
@@ -280,7 +292,7 @@ TTabletMonitoringProxyActor::Handle(NMon::TEvHttpInfo::TPtr &ev, const TActorCon
         const TString &tabletIdParam = cgi->Get("FollowerID");
         const ui64 tabletId = TryParseTabletId(tabletIdParam);
         if (tabletId) {
-            ctx.ExecutorThread.RegisterActor(new TForwardingActor(Config, tabletId, true, ev->Sender, msg->Request, msg->UserToken));
+            ctx.Register(new TForwardingActor(Config, tabletId, true, ev->Sender, msg->Request, msg->UserToken));
             return;
         }
     }
@@ -290,7 +302,7 @@ TTabletMonitoringProxyActor::Handle(NMon::TEvHttpInfo::TPtr &ev, const TActorCon
         const TString &tabletIdParam = cgi->Get("TabletID");
         const ui64 tabletId = TryParseTabletId(tabletIdParam);
         if (tabletId) {
-            ctx.ExecutorThread.RegisterActor(new TForwardingActor(Config, tabletId, false, ev->Sender, msg->Request, msg->UserToken));
+            ctx.Register(new TForwardingActor(Config, tabletId, false, ev->Sender, msg->Request, msg->UserToken));
             return;
         }
     }
@@ -300,7 +312,7 @@ TTabletMonitoringProxyActor::Handle(NMon::TEvHttpInfo::TPtr &ev, const TActorCon
         const ui64 tabletId = TryParseTabletId(ssIdParam);
         if (tabletId) {
             TString url = TStringBuilder() << msg->Request.GetPathInfo() << "?" << cgi->Print();
-            ctx.ExecutorThread.RegisterActor(CreateStateStorageMonitoringActor(tabletId, ev->Sender, std::move(url)));
+            ctx.Register(CreateStateStorageMonitoringActor(tabletId, ev->Sender, std::move(url)));
             return;
         }
     }

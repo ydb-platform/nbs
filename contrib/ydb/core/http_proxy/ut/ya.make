@@ -7,6 +7,7 @@ FORK_SUBTESTS()
 PEERDIR(
     contrib/restricted/nlohmann_json
     library/cpp/resource
+    library/cpp/http/misc
     contrib/ydb/core/base
     contrib/ydb/core/http_proxy
     contrib/ydb/core/testlib/default
@@ -17,10 +18,10 @@ PEERDIR(
     contrib/ydb/library/grpc/server/actors
     contrib/ydb/library/persqueue/tests
     contrib/ydb/library/testlib/service_mocks
-    contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/sql/pg_dummy
-    contrib/ydb/public/sdk/cpp/client/ydb_discovery
-    contrib/ydb/public/sdk/cpp/client/ydb_types
+    yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/pg_dummy
+    contrib/ydb/public/sdk/cpp/src/client/discovery
+    contrib/ydb/public/sdk/cpp/src/client/types
     contrib/ydb/services/datastreams
     contrib/ydb/services/kesus
     contrib/ydb/services/persqueue_cluster_discovery
@@ -31,6 +32,7 @@ PEERDIR(
 SRCS(
     json_proto_conversion_ut.cpp
     datastreams_fixture.h
+    http_ut.cpp
 )
 
 RESOURCE(

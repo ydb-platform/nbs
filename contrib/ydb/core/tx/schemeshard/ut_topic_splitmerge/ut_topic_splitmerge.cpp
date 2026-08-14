@@ -1,7 +1,5 @@
 #include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
-#include <contrib/ydb/core/tx/schemeshard/schemeshard_utils.h>
 
-#include <contrib/ydb/core/base/compile_time_flags.h>
 #include <contrib/ydb/services/lib/sharding/sharding.h>
 
 #include <util/generic/size_literals.h>

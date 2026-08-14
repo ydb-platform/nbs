@@ -1,7 +1,7 @@
 # Various tests which we can't run in every pull request (because of instability/specific environment/execution time/etc)
 
 PY3TEST()
-ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/ydbd_dep.inc)
 ENV(YDB_CLUSTER_YAML="contrib/ydb/tests/acceptance/cluster.yaml")
 
 TEST_SRCS(
@@ -13,7 +13,6 @@ SIZE(LARGE)
 
 DEPENDS(
     contrib/ydb/tests/tools/ydb_serializable
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(

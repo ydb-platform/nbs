@@ -7,12 +7,13 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/core/scheme
-    contrib/ydb/library/yql/minikql/computation
+    yql/essentials/minikql/computation
     contrib/ydb/library/yql/providers/common/token_accessor/client
-    contrib/ydb/library/yql/public/types
-    contrib/ydb/library/yql/utils/log
+    yql/essentials/public/types
+    yql/essentials/utils/log
     contrib/ydb/public/lib/experimental
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
+    contrib/ydb/public/sdk/cpp/adapters/issue
+    contrib/ydb/public/sdk/cpp/src/client/driver
     contrib/ydb/library/yql/dq/actors/compute
     contrib/ydb/library/yql/providers/ydb/proto
 )

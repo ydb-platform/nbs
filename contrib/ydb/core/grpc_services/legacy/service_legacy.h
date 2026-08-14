@@ -3,8 +3,8 @@
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/core/protos/cms.pb.h>
 #include <contrib/ydb/core/protos/console_base.pb.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 
 #include <memory>
@@ -124,10 +124,6 @@ void DoCmsRequest(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f
 void DoConsoleRequest(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f);
 void DoInterconnectDebug(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f);
 void DoTabletStateRequest(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f);
-void DoLocalSchemeTx(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f);
-void DoLocalEnumerateTablets(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f);
-void DoTabletKillRequest(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f);
-void DoLocalMKQL(std::unique_ptr<IRequestNoOpCtx> p, const IFacilityProvider& f);
 
 } // namespace NLegacyGrpcService
 } // namespace NKikimr::NGRpcService

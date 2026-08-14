@@ -1,11 +1,14 @@
 #include "result.h"
 
+#include <contrib/ydb/core/tx/columnshard/engines/reader/abstract/read_context.h>
+
 namespace NKikimr::NOlap::NReader {
 
 class TCurrentBatch {
 private:
     std::vector<std::shared_ptr<TPartialReadResult>> Results;
     ui64 RecordsCount = 0;
+
 public:
     ui64 GetRecordsCount() const {
         return RecordsCount;
@@ -49,4 +52,18 @@ std::vector<std::shared_ptr<TPartialReadResult>> TPartialReadResult::SplitResult
     return result;
 }
 
+TPartialReadResult::TPartialReadResult(const std::vector<std::shared_ptr<NGroupedMemoryManager::TAllocationGuard>>& resourceGuards,
+    const std::shared_ptr<NGroupedMemoryManager::TGroupGuard>& gGuard, NArrow::TShardedRecordBatch&& batch,
+    std::shared_ptr<IScanCursor>&& scanCursor, const std::shared_ptr<TReadContext>& context,
+    const std::optional<TPartialSourceAddress> notFinishedInterval)
+    : ResourceGuards(resourceGuards)
+    , GroupGuard(gGuard)
+    , ResultBatch(std::move(batch))
+    , ScanCursor(std::move(scanCursor))
+    , NotFinishedInterval(notFinishedInterval)
+    , Guard(TValidator::CheckNotNull(context)->GetCounters().GetResultsForReplyGuard()) {
+    Y_ABORT_UNLESS(ResultBatch.GetRecordsCount());
+    Y_ABORT_UNLESS(ScanCursor);
 }
+
+}   // namespace NKikimr::NOlap::NReader

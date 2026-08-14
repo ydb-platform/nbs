@@ -9,14 +9,14 @@ namespace NKikimr {
 
 struct TActorSystemStub {
     THolder<NActors::TActorSystem> System;
-    THolder<NActors::TMailboxHeader> Mailbox;
+    THolder<NActors::TMailbox> Mailbox;
     THolder<NActors::TExecutorThread> ExecutorThread;
     NActors::TActorId SelfID;
     THolder<NActors::TActorContext> Ctx;
     NActors::TActivationContext* PrevCtx;
     TAppData AppData;
 
-    TActorSystemStub();
+    TActorSystemStub(std::shared_ptr<IRcBufAllocator> alloc = {});
     ~TActorSystemStub();
 };
 

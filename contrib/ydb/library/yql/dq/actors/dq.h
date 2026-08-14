@@ -2,16 +2,23 @@
 
 #include <contrib/ydb/library/yql/dq/actors/protos/dq_events.pb.h>
 #include <contrib/ydb/library/yql/dq/actors/dq_events_ids.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
+#include <yql/essentials/utils/chunked_buffer.h>
 
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 #include <contrib/ydb/library/yql/dq/actors/protos/dq_status_codes.pb.h>
 
 namespace NYql::NDq {
 
+enum class EStatusCompatibilityLevel {
+    Basic,
+    WithUnauthorized
+};
+
 Ydb::StatusIds::StatusCode DqStatusToYdbStatus(NYql::NDqProto::StatusIds::StatusCode statusCode);
-NYql::NDqProto::StatusIds::StatusCode YdbStatusToDqStatus(Ydb::StatusIds::StatusCode statusCode);
+NYql::NDqProto::StatusIds::StatusCode YdbStatusToDqStatus(Ydb::StatusIds::StatusCode statusCode, EStatusCompatibilityLevel compatibility = EStatusCompatibilityLevel::Basic);
+TMaybe<NYql::NDqProto::StatusIds::StatusCode> GetDqStatus(const TIssue& issue);
 
 struct TEvDq {
 
@@ -81,14 +88,14 @@ struct TEvDq {
 
 struct TChannelDataOOB {
     NDqProto::TChannelData Proto;
-    TRope Payload;
+    TChunkedBuffer Payload;
 
     size_t PayloadSize() const {
-        return Proto.GetData().GetRaw().size() + Payload.size();
+        return Proto.GetData().GetRaw().size() + Payload.Size();
     }
 
-    ui32 RowCount() const {
-        return Proto.GetData().GetRows();
+    ui32 ChunkCount() const {
+        return Proto.GetData().GetChunks();
     }
 };
 

@@ -12,7 +12,7 @@
 #include <contrib/ydb/core/blobstorage/vdisk/hulldb/base/hullbase_logoblob.h>
 #include "blobstorage_syncer_localwriter.h"
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 
 namespace NKikimr {
 

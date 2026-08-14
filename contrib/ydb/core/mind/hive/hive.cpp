@@ -107,6 +107,53 @@ bool TNodeFilter::IsAllowedDataCenter(TDataCenterId dc) const {
     return std::find(AllowedDataCenters.begin(), AllowedDataCenters.end(), dc) != AllowedDataCenters.end();
 }
 
+TMetrics& TMetrics::operator+=(const TMetrics& other) {
+    CPU += other.CPU;
+    Memory += other.Memory;
+    Network += other.Network;
+    Counter += other.Counter;
+    Storage += other.Storage;
+    ReadThroughput += other.ReadThroughput;
+    WriteThroughput += other.WriteThroughput;
+    ReadIops += other.ReadIops;
+    WriteIops += other.WriteIops;
+    return *this;
+}
+
+void TMetrics::ToProto(NKikimrTabletBase::TMetrics* proto) const {
+    if (CPU) {
+        proto->SetCPU(CPU);
+    }
+    if (Memory) {
+        proto->SetMemory(Memory);
+    }
+    if (Network) {
+        proto->SetNetwork(Network);
+    }
+    if (Counter) {
+        proto->SetCounter(Counter);
+    }
+    if (Storage) {
+        proto->SetStorage(Storage);
+    }
+    if (ReadThroughput) {
+        proto->SetReadThroughput(ReadThroughput);
+    }
+    if (WriteThroughput) {
+        proto->SetWriteThroughput(WriteThroughput);
+    }
+    if (ReadIops) {
+        proto->SetReadIops(ReadIops);
+    }
+    if (WriteIops) {
+        proto->SetWriteIops(WriteIops);
+    }
+    proto->MutableGroupReadThroughput()->Assign(GroupReadThroughput.begin(), GroupReadThroughput.end());
+    proto->MutableGroupWriteThroughput()->Assign(GroupWriteThroughput.begin(), GroupWriteThroughput.end());
+    proto->MutableGroupReadIops()->Assign(GroupReadIops.begin(), GroupReadIops.end());
+    proto->MutableGroupWriteIops()->Assign(GroupWriteIops.begin(), GroupWriteIops.end());
+}
+
 template <typename K, typename V>
 std::unordered_map<V, K> MakeReverseMap(const std::unordered_map<K, V>& map) {
     std::unordered_map<V, K> result;
@@ -127,7 +174,8 @@ const std::unordered_map<TTabletTypes::EType, TString> TABLET_TYPE_SHORT_NAMES =
                                                                                   {TTabletTypes::Coordinator, "C"},
                                                                                   {TTabletTypes::Mediator, "M"},
                                                                                   {TTabletTypes::BlockStoreVolume, "BV"},
-                                                                                  {TTabletTypes::BlockStorePartition2, "BP"},
+                                                                                  {TTabletTypes::BlockStorePartition, "BP"},
+                                                                                  {TTabletTypes::BlockStorePartition2, "BP2"},
                                                                                   {TTabletTypes::Kesus, "K"},
                                                                                   {TTabletTypes::SysViewProcessor, "SV"},
                                                                                   {TTabletTypes::FileStore, "FS"},

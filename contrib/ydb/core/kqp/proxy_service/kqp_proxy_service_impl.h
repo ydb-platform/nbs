@@ -7,7 +7,9 @@
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>
 #include <contrib/ydb/core/kqp/gateway/behaviour/resource_pool_classifier/fetcher.h>
 #include <contrib/ydb/core/kqp/rm_service/kqp_rm_service.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
 #include <contrib/ydb/core/protos/kqp.pb.h>
+#include <contrib/ydb/core/protos/workload_manager_config.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -97,7 +99,6 @@ struct TKqpSessionInfo {
     TActorId AttachedRpcId;
     bool PgWire;
     TString QueryText;
-    bool Ready = true;
     TString ClientApplicationName;
     TString ClientSID;
     TString ClientHost;
@@ -110,6 +111,7 @@ struct TKqpSessionInfo {
     TInstant QueryStartAt;
 
     ESessionState State = ESessionState::IDLE;
+    bool Closing = false;
 
     struct TFieldsMap {
         ui64 bitmap = 0;
@@ -243,6 +245,11 @@ public:
         }
 
         return candidate;
+    }
+
+    void SetSessionClosing(const TKqpSessionInfo* sessionInfo) {
+        TKqpSessionInfo* info = const_cast<TKqpSessionInfo*>(sessionInfo);
+        info->Closing = true;
     }
 
     void StartIdleCheck(const TKqpSessionInfo* sessionInfo, const TDuration idleDuration) {
@@ -420,7 +427,7 @@ private:
 
 class TResourcePoolsCache {
     struct TClassifierInfo {
-        const TString MemberName;
+        const std::optional<TString> MemberName;
         const TString PoolId;
         const i64 Rank;
 
@@ -485,9 +492,9 @@ public:
         return it->second;
     }
 
-    void UpdateFeatureFlags(const NKikimrConfig::TFeatureFlags& featureFlags, TActorContext actorContext) {
-        EnableResourcePools = featureFlags.GetEnableResourcePools();
-        EnableResourcePoolsOnServerless = featureFlags.GetEnableResourcePoolsOnServerless();
+    void UpdateConfig(const NKikimrConfig::TFeatureFlags& featureFlags, const NKikimrConfig::TWorkloadManagerConfig& workloadManagerConfig, TActorContext actorContext) {
+        EnableResourcePools = featureFlags.GetEnableResourcePools() || workloadManagerConfig.GetEnabled();
+        EnableResourcePoolsOnServerless = featureFlags.GetEnableResourcePoolsOnServerless() || workloadManagerConfig.GetEnabled();
         UpdateResourcePoolClassifiersSubscription(actorContext);
     }
 
@@ -593,7 +600,7 @@ private:
         TString poolId = "";
         i64 rank = -1;
         for (const auto& [_, classifier] : databaseInfo.RankToClassifierInfo) {
-            if (classifier.MemberName != userSID) {
+            if (classifier.MemberName.value_or(userSID) != userSID) {
                 continue;
             }
 

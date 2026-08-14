@@ -32,7 +32,7 @@ struct TContext {
 
     const NKikimrConfig::TKafkaProxyConfig& Config;
 
-    TActorId ConnectionId;
+    NActors::TActorId ConnectionId;
     TString KafkaClient;
 
 
@@ -44,6 +44,7 @@ struct TContext {
     TString FolderId;
     TString CloudId;
     TString DatabaseId;
+    TString ResourceDatabasePath;
     TIntrusiveConstPtr<NACLib::TUserToken> UserToken;
     TString ClientDC;
     bool IsServerless = false;
@@ -52,10 +53,10 @@ struct TContext {
     NKikimr::NPQ::TRlContext RlContext;
 
     bool Authenticated() {
-        return !RequireAuthentication || AuthenticationStep == SUCCESS;
-    }
 
-    TActorId DiscoveryCacheActor;
+        return !RequireAuthentication || AuthenticationStep == SUCCESS;
+
+    }
 };
 
 template<std::derived_from<TApiMessage> T>
@@ -147,7 +148,7 @@ inline EKafkaErrors ConvertErrorCode(Ydb::PersQueue::ErrorCode::ErrorCode code) 
 }
 
 inline TString NormalizePath(const TString& database, const TString& topic) {
-    if (topic.Size() > database.Size() && topic.at(database.Size()) == '/' && topic.StartsWith(database)) {
+    if (topic.size() > database.size() && topic.at(database.size()) == '/' && topic.StartsWith(database)) {
         return topic;
     }
     return NKikimr::CanonizePath(database + "/" + topic);
@@ -155,7 +156,7 @@ inline TString NormalizePath(const TString& database, const TString& topic) {
 
 inline TString GetTopicNameWithoutDb(const TString& database, TString topic) {
     auto topicWithDb = NormalizePath(database, topic);
-    topic = topicWithDb.substr(database.Size()+1);
+    topic = topicWithDb.substr(database.size()+1);
     return topic;
 }
 
@@ -171,18 +172,22 @@ NActors::IActor* CreateKafkaApiVersionsActor(const TContext::TPtr context, const
 NActors::IActor* CreateKafkaInitProducerIdActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TInitProducerIdRequestData>& message);
 NActors::IActor* CreateKafkaMetadataActor(const TContext::TPtr context, const ui64 correlationId,
                                           const TMessagePtr<TMetadataRequestData>& message,
-                                          const TActorId& discoveryCacheActor);
+                                          const NActors::TActorId& discoveryCacheActor);
 NActors::IActor* CreateKafkaProduceActor(const TContext::TPtr context);
 NActors::IActor* CreateKafkaReadSessionActor(const TContext::TPtr context, ui64 cookie);
+NActors::IActor* CreateKafkaBalancerActor(const TContext::TPtr context, ui64 cookie);
 NActors::IActor* CreateKafkaSaslHandshakeActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TSaslHandshakeRequestData>& message);
 NActors::IActor* CreateKafkaSaslAuthActor(const TContext::TPtr context, const ui64 correlationId, const NKikimr::NRawSocket::TSocketDescriptor::TSocketAddressType address, const TMessagePtr<TSaslAuthenticateRequestData>& message);
 NActors::IActor* CreateKafkaListOffsetsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TListOffsetsRequestData>& message);
+NActors::IActor* CreateKafkaListGroupsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TListGroupsRequestData>& message);
+NActors::IActor* CreateKafkaDescribeGroupsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TDescribeGroupsRequestData>& message);
 NActors::IActor* CreateKafkaFetchActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TFetchRequestData>& message);
 NActors::IActor* CreateKafkaFindCoordinatorActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TFindCoordinatorRequestData>& message);
 NActors::IActor* CreateKafkaOffsetCommitActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TOffsetCommitRequestData>& message);
 NActors::IActor* CreateKafkaOffsetFetchActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TOffsetFetchRequestData>& message);
 NActors::IActor* CreateKafkaCreateTopicsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TCreateTopicsRequestData>& message);
 NActors::IActor* CreateKafkaCreatePartitionsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TCreatePartitionsRequestData>& message);
+NActors::IActor* CreateKafkaDescribeConfigsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TDescribeConfigsRequestData>& message);
 NActors::IActor* CreateKafkaAlterConfigsActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TAlterConfigsRequestData>& message);
 
 } // namespace NKafka

@@ -42,6 +42,7 @@ PEERDIR(
     contrib/ydb/public/api/client/yc_private/ydb/v1
     contrib/ydb/public/api/client/yc_private/resourcemanager
     contrib/ydb/public/api/client/yc_private/iam
+    contrib/ydb/public/api/client/nc_private/iam/v1
     contrib/libs/googleapis-common-protos
     contrib/libs/jwt-cpp
     contrib/libs/yaml-cpp
@@ -52,19 +53,20 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/http
     contrib/ydb/library/actors/protos
+    contrib/ydb/library/security
     library/cpp/lwtrace/protos
     library/cpp/lfalloc/alloc_profiler
     contrib/ydb/core/viewer/json
     contrib/ydb/core/protos
-    contrib/ydb/public/sdk/cpp/client/draft
-    contrib/ydb/public/sdk/cpp/client/ydb_datastreams
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_table
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core
+    contrib/ydb/public/sdk/cpp/src/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/datastreams
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
     contrib/ydb/public/api/protos
     contrib/ydb/public/api/grpc
-    contrib/ydb/public/lib/operation_id
 )
 
 END()

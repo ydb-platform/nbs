@@ -30,6 +30,15 @@ public:
         (!NoExcept || IsNoThrowInvocable_);
 };
 
+template <class T>
+struct TIsEmpty
+    : public T
+{
+    int Dummy;
+
+    static constexpr bool Value = (sizeof(TIsEmpty) == sizeof(int));
+};
+
 } // namespace NDetail
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,6 +68,33 @@ concept CAnyMap = requires {
     typename M::mapped_type;
     typename M::key_type;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <class T>
+concept CConst = std::is_const_v<T>;
+
+template <class T>
+concept CNonConst = !CConst<T>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <class T>
+concept CRawPtr = std::is_pointer_v<T>;
+
+template <class T>
+concept CConstRawPtr = CRawPtr<T> && CConst<decltype(*std::declval<T>())>;
+
+template <class T>
+concept CMutableRawPtr = CRawPtr<T> && !CConstRawPtr<T>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <class T>
+constexpr bool IsEmptyClass()
+{
+    return NDetail::TIsEmpty<T>::Value;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

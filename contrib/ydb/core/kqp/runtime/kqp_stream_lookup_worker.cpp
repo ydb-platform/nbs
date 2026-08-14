@@ -8,10 +8,13 @@
 #include <contrib/ydb/core/scheme/protos/type_info.pb.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 
-#include <contrib/ydb/library/yql/minikql/mkql_node_serialization.h>
+#include <yql/essentials/minikql/mkql_node_serialization.h>
+#include <contrib/ydb/library/yql/dq/runtime/dq_transport.h>
 
 namespace NKikimr {
 namespace NKqp {
+
+constexpr ui64 MAX_IN_FLIGHT_LIMIT = 500;
 
 namespace {
 std::vector<std::pair<ui64, TOwnedTableRange>> GetRangePartitioning(const TKqpStreamLookupWorker::TPartitionInfo& partitionInfo,
@@ -19,10 +22,26 @@ std::vector<std::pair<ui64, TOwnedTableRange>> GetRangePartitioning(const TKqpSt
 
     YQL_ENSURE(partitionInfo);
 
+    // Binary search of the index to start with.
+    size_t idxStart = 0;
+    size_t idxFinish = partitionInfo->size();
+    while ((idxFinish - idxStart) > 1) {
+        size_t idxCur = (idxFinish + idxStart) / 2;
+        const auto& partCur = (*partitionInfo)[idxCur].Range->EndKeyPrefix.GetCells();
+        YQL_ENSURE(partCur.size() <= keyColumnTypes.size());
+        int cmp = CompareTypedCellVectors(partCur.data(), range.From.data(), keyColumnTypes.data(),
+                                          std::min(partCur.size(), range.From.size()));
+        if (cmp < 0) {
+            idxStart = idxCur;
+        } else {
+            idxFinish = idxCur;
+        }
+    }
+
     std::vector<TCell> minusInf(keyColumnTypes.size());
 
     std::vector<std::pair<ui64, TOwnedTableRange>> rangePartition;
-    for (size_t idx = 0; idx < partitionInfo->size(); ++idx) {
+    for (size_t idx = idxStart; idx < partitionInfo->size(); ++idx) {
         TTableRange partitionRange{
             idx == 0 ? minusInf : (*partitionInfo)[idx - 1].Range->EndKeyPrefix.GetCells(),
             idx == 0 ? true : !(*partitionInfo)[idx - 1].Range->IsInclusive,
@@ -57,75 +76,7 @@ std::vector<std::pair<ui64, TOwnedTableRange>> GetRangePartitioning(const TKqpSt
     return rangePartition;
 }
 
-NScheme::TTypeInfo UnpackTypeInfo(NKikimr::NMiniKQL::TType* type) {
-    YQL_ENSURE(type);
-    return NScheme::TypeInfoFromMiniKQLType(type);
-}
 
-struct THashableKey {
-    TConstArrayRef<TCell> Cells;
-
-    template <typename H>
-    friend H AbslHashValue(H h, const THashableKey& key) {
-        h = H::combine(std::move(h), key.Cells.size());
-        for (const TCell& cell : key.Cells) {
-            h = H::combine(std::move(h), cell.IsNull());
-            if (!cell.IsNull()) {
-                h = H::combine(std::move(h), cell.Size());
-                h = H::combine_contiguous(std::move(h), cell.Data(), cell.Size());
-            }
-        }
-        return h;
-    }
-};
-
-struct TKeyHash {
-    using is_transparent = void;
-
-    size_t operator()(TConstArrayRef<TCell> key) const {
-        return absl::Hash<THashableKey>()(THashableKey{ key });
-    }
-};
-
-struct TKeyEq {
-    using is_transparent = void;
-
-    bool operator()(TConstArrayRef<TCell> a, TConstArrayRef<TCell> b) const {
-        if (a.size() != b.size()) {
-            return false;
-        }
-
-        const TCell* pa = a.data();
-        const TCell* pb = b.data();
-        if (pa == pb) {
-            return true;
-        }
-
-        size_t left = a.size();
-        while (left > 0) {
-            if (pa->IsNull()) {
-                if (!pb->IsNull()) {
-                    return false;
-                }
-            } else {
-                if (pb->IsNull()) {
-                    return false;
-                }
-                if (pa->Size() != pb->Size()) {
-                    return false;
-                }
-                if (pa->Size() > 0 && ::memcmp(pa->Data(), pb->Data(), pa->Size()) != 0) {
-                    return false;
-                }
-            }
-            ++pa;
-            ++pb;
-            --left;
-        }
-
-        return true;
-    }
-};
 }  // !namespace
 
 TKqpStreamLookupWorker::TKqpStreamLookupWorker(NKikimrKqp::TKqpStreamLookupSettings&& settings,
@@ -173,6 +124,12 @@ TKqpStreamLookupWorker::TKqpStreamLookupWorker(NKikimrKqp::TKqpStreamLookupSetti
             column.GetTypeInfo().GetPgTypeMod()
         });
     }
+
+    KeyColumnTypes.resize(KeyColumns.size());
+    for (const auto& [_, columnInfo] : KeyColumns) {
+        YQL_ENSURE(columnInfo.KeyOrder < static_cast<i64>(KeyColumnTypes.size()));
+        KeyColumnTypes[columnInfo.KeyOrder] = columnInfo.PType;
+    }
 }
 
 TKqpStreamLookupWorker::~TKqpStreamLookupWorker() {
@@ -186,16 +143,6 @@ TTableId TKqpStreamLookupWorker::GetTableId() const {
     return TableId;
 }
 
-std::vector<NScheme::TTypeInfo> TKqpStreamLookupWorker::GetKeyColumnTypes() const {
-    std::vector<NScheme::TTypeInfo> keyColumnTypes(KeyColumns.size());
-    for (const auto& [_, columnInfo] : KeyColumns) {
-        YQL_ENSURE(columnInfo.KeyOrder < static_cast<i64>(keyColumnTypes.size()));
-        keyColumnTypes[columnInfo.KeyOrder] = columnInfo.PType;
-    }
-
-    return keyColumnTypes;
-}
-
 class TKqpLookupRows : public TKqpStreamLookupWorker {
 public:
     TKqpLookupRows(NKikimrKqp::TKqpStreamLookupSettings&& settings, const NMiniKQL::TTypeEnvironment& typeEnv,
@@ -206,12 +153,15 @@ public:
     virtual ~TKqpLookupRows() {}
 
     void AddInputRow(NUdf::TUnboxedValue inputRow) final {
+        NMiniKQL::TStringProviderBackend backend;
         std::vector<TCell> keyCells(LookupKeyColumns.size());
         for (size_t colId = 0; colId < LookupKeyColumns.size(); ++colId) {
             const auto* lookupKeyColumn = LookupKeyColumns[colId];
             YQL_ENSURE(lookupKeyColumn->KeyOrder < static_cast<i64>(keyCells.size()));
+            // when making a cell we don't really need to make a copy of data, because
+            // TOwnedCellVec will make its' own copy.
             keyCells[lookupKeyColumn->KeyOrder] = MakeCell(lookupKeyColumn->PType,
-                inputRow.GetElement(colId), TypeEnv, /* copy */ true);
+                inputRow.GetElement(colId), backend, /* copy */ false);
         }
 
         if (keyCells.size() < KeyColumns.size()) {
@@ -334,12 +284,15 @@ public:
         ReadResults.emplace_back(std::move(result));
     }
 
+    bool IsOverloaded() final {
+        return false;
+    }
+
     TReadResultStats ReplyResult(NKikimr::NMiniKQL::TUnboxedValueBatch& batch, i64 freeSpace) final {
         TReadResultStats resultStats;
-        bool sizeLimitExceeded = false;
         batch.clear();
 
-        while (!ReadResults.empty() && !sizeLimitExceeded) {
+        while (!ReadResults.empty() && !resultStats.SizeLimitExceeded) {
             auto& result = ReadResults.front();
             for (; result.UnprocessedResultRow < result.ReadResult->Get()->GetRowsCount(); ++result.UnprocessedResultRow) {
                 const auto& resultRow = result.ReadResult->Get()->GetCells(result.UnprocessedResultRow);
@@ -365,10 +318,10 @@ public:
                 }
 
                 if (rowSize + (i64)resultStats.ResultBytesCount > freeSpace) {
-                    sizeLimitExceeded = true;
+                    resultStats.SizeLimitExceeded = true;
                 }
 
-                if (resultStats.ResultRowsCount && sizeLimitExceeded) {
+                if (resultStats.ResultRowsCount && resultStats.SizeLimitExceeded) {
                     row.DeleteUnreferenced();
                     break;
                 }
@@ -488,17 +441,24 @@ public:
     void AddInputRow(NUdf::TUnboxedValue inputRow) final {
         auto joinKey = inputRow.GetElement(0);
         std::vector<TCell> joinKeyCells(LookupKeyColumns.size());
+        NMiniKQL::TStringProviderBackend backend;
 
         if (joinKey.HasValue()) {
             for (size_t colId = 0; colId < LookupKeyColumns.size(); ++colId) {
                 const auto* joinKeyColumn = LookupKeyColumns[colId];
                 YQL_ENSURE(joinKeyColumn->KeyOrder < static_cast<i64>(joinKeyCells.size()));
+                // when making a cell we don't really need to make a copy of data, because
+                // TOwnedCellVec will make its' own copy.
                 joinKeyCells[joinKeyColumn->KeyOrder] = MakeCell(joinKeyColumn->PType,
-                    joinKey.GetElement(colId), TypeEnv, true);
+                    joinKey.GetElement(colId), backend,  /* copy */ false);
             }
         }
 
         UnprocessedRows.emplace_back(std::make_pair(TOwnedCellVec(joinKeyCells), std::move(inputRow.GetElement(1))));
+    }
+
+    bool IsOverloaded() final {
+        return UnprocessedRows.size() >= MAX_IN_FLIGHT_LIMIT || PendingLeftRowsByKey.size() >= MAX_IN_FLIGHT_LIMIT || ResultRowsBySeqNo.size() >= MAX_IN_FLIGHT_LIMIT;
     }
 
     std::vector<THolder<TEvDataShard::TEvRead>> RebuildRequest(const ui64& prevReadId, ui32 firstUnprocessedQuery,
@@ -519,8 +479,14 @@ public:
             auto unprocessedRange = ranges[firstUnprocessedQuery];
             YQL_ENSURE(!unprocessedRange.Point);
 
-            unprocessedRanges.emplace_back(*lastProcessedKey, false,
+            TOwnedTableRange range(*lastProcessedKey, false,
                 unprocessedRange.GetOwnedTo(), unprocessedRange.InclusiveTo);
+
+            auto leftRowIt = PendingLeftRowsByKey.find(ExtractKeyPrefix(range));
+            YQL_ENSURE(leftRowIt != PendingLeftRowsByKey.end());
+            leftRowIt->second.PendingReads.erase(prevReadId);
+
+            unprocessedRanges.emplace_back(std::move(range));
             ++firstUnprocessedQuery;
         }
 
@@ -583,6 +549,8 @@ public:
 
             auto partitions = GetRangePartitioning(partitioning, GetKeyColumnTypes(), range);
             for (auto [shardId, range] : partitions) {
+                YQL_ENSURE(PendingLeftRowsByKey.contains(ExtractKeyPrefix(range)));
+
                 if (range.Point) {
                     pointsPerShard[shardId].push_back(std::move(range));
                 } else {
@@ -599,22 +567,29 @@ public:
                 break;
             }
 
-            auto hasNulls = [](const TOwnedCellVec& cellVec) {
-                for (const auto& cell : cellVec) {
-                    if (cell.IsNull()) {
-                        return true;
+            auto isKeyAllowed = [&](const TOwnedCellVec& cellVec) {
+                auto allowNullKeysPrefixSize = Settings.HasAllowNullKeysPrefixSize() ? Settings.GetAllowNullKeysPrefixSize() : 0;
+                if (allowNullKeysPrefixSize >= cellVec.size()) {
+                    // all lookup key components can contain null
+                    return true;
+                }
+
+                // otherwise we can use nulls only for first allowNullKeysPrefixSize key components
+                for (size_t i = 0; i < cellVec.size(); ++i) {
+                    if (cellVec[i].IsNull() && i >= allowNullKeysPrefixSize) {
+                        return false;
                     }
                 }
 
-                return false;
+                return true;
             };
 
             UnprocessedRows.pop_front();
-            if (!hasNulls(joinKey)) {  // don't use nulls as lookup keys, because null != null
+            if (isKeyAllowed(joinKey)) {
                 std::vector <std::pair<ui64, TOwnedTableRange>> partitions;
                 if (joinKey.size() < KeyColumns.size()) {
                     // build prefix range [[key_prefix, NULL, ..., NULL], [key_prefix, +inf, ..., +inf])
-                    std::vector <TCell> fromCells(KeyColumns.size());
+                    std::vector<TCell> fromCells(KeyColumns.size() - joinKey.size());
                     fromCells.insert(fromCells.begin(), joinKey.begin(), joinKey.end());
                     bool fromInclusive = true;
                     bool toInclusive = false;
@@ -749,8 +724,14 @@ public:
             auto unprocessedRange = ranges[firstUnprocessedQuery];
             YQL_ENSURE(!unprocessedRange.Point);
 
-            UnprocessedKeys.emplace_back(*lastProcessedKey, false,
+            TOwnedTableRange range(*lastProcessedKey, false,
                 unprocessedRange.GetOwnedTo(), unprocessedRange.InclusiveTo);
+
+            auto leftRowIt = PendingLeftRowsByKey.find(ExtractKeyPrefix(range));
+            YQL_ENSURE(leftRowIt != PendingLeftRowsByKey.end());
+            leftRowIt->second.PendingReads.erase(readId);
+
+            UnprocessedKeys.emplace_back(std::move(range));
             ++firstUnprocessedQuery;
         }
 
@@ -768,7 +749,6 @@ public:
 
     TReadResultStats ReplyResult(NKikimr::NMiniKQL::TUnboxedValueBatch& batch, i64 freeSpace) final {
         TReadResultStats resultStats;
-        bool sizeLimitExceeded = false;
         batch.clear();
 
         // we should process left rows that haven't matches on the right
@@ -797,7 +777,7 @@ public:
             return ResultRowsBySeqNo.find(CurrentResultSeqNo);
         };
 
-        while (!sizeLimitExceeded) {
+        while (!resultStats.SizeLimitExceeded) {
             auto resultIt = getNextResult();
             if (resultIt == ResultRowsBySeqNo.end()) {
                 break;
@@ -808,7 +788,7 @@ public:
                 auto& row = result.Rows[result.FirstUnprocessedRow];
 
                 if (resultStats.ResultRowsCount && resultStats.ResultBytesCount + row.Stats.ResultBytesCount > (ui64)freeSpace) {
-                    sizeLimitExceeded = true;
+                    resultStats.SizeLimitExceeded = true;
                     break;
                 }
 
@@ -951,10 +931,7 @@ private:
 
         i64 storageReadBytes = 0;
 
-        for (size_t i = 0; i < leftRowType->GetMembersCount(); ++i) {
-            auto columnTypeInfo = UnpackTypeInfo(leftRowType->GetMemberType(i));
-            leftRowSize += NMiniKQL::GetUnboxedValueSize(leftRowInfo.Row.GetElement(i), columnTypeInfo).AllocatedBytes;
-        }
+        leftRowSize = NYql::NDq::TDqDataSerializer::EstimateSize(leftRowInfo.Row, leftRowType);
 
         if (!rightRow.empty()) {
             leftRowInfo.RightRowExist = true;
@@ -996,7 +973,7 @@ private:
     std::deque<std::pair<TOwnedCellVec, NUdf::TUnboxedValue>> UnprocessedRows;
     std::deque<TOwnedTableRange> UnprocessedKeys;
     std::unordered_map<ui64, std::vector<TOwnedTableRange>> PendingKeysByReadId;
-    absl::flat_hash_map<TOwnedCellVec, TLeftRowInfo, TKeyHash, TKeyEq> PendingLeftRowsByKey;
+    absl::flat_hash_map<TOwnedCellVec, TLeftRowInfo, NKikimr::TCellVectorsHash, NKikimr::TCellVectorsEquals> PendingLeftRowsByKey;
     std::unordered_map<ui64, TResultBatch> ResultRowsBySeqNo;
     ui64 InputRowSeqNo = 0;
     ui64 CurrentResultSeqNo = 0;

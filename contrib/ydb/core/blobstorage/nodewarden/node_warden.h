@@ -8,6 +8,7 @@
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/library/pdisk_io/sector_map.h>
 
+#include <functional>
 #include <util/folder/path.h>
 
 namespace NKikimr {
@@ -21,6 +22,11 @@ namespace NKikimr {
         NKikimrConfig::TBlobStorageConfig BlobStorageConfig;
         NKikimrConfig::TStaticNameserviceConfig NameserviceConfig;
         std::optional<NKikimrConfig::TDomainsConfig> DomainsConfig;
+        std::optional<NKikimrConfig::TSelfManagementConfig> SelfManagementConfig;
+        TString ConfigDirPath;
+        std::optional<NKikimrBlobStorage::TYamlConfig> YamlConfig;
+        TString StartupConfigYaml;
+        std::optional<TString> StartupStorageYaml;
         TIntrusivePtr<IPDiskServiceFactory> PDiskServiceFactory;
         TIntrusivePtr<TAllVDiskKinds> AllVDiskKinds;
         TIntrusivePtr<NPDisk::TDriveModelDb> AllDriveModels;
@@ -41,6 +47,8 @@ namespace NKikimr {
         // debugging options
         bool VDiskReplPausedAtStart = false;
         bool UseActorSystemTimeInBSQueue = false;
+
+        std::function<void(TVDiskConfig&)> VDiskConfigPreprocessor;
 
         TNodeWardenConfig(const TIntrusivePtr<IPDiskServiceFactory> &pDiskServiceFactory)
             : PDiskServiceFactory(pDiskServiceFactory)

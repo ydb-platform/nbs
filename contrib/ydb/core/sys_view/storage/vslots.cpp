@@ -36,7 +36,11 @@ public:
             {T::AllocatedSize::ColumnId, {E::kInfoFieldNumber, V::kAllocatedSizeFieldNumber}},
             {T::AvailableSize::ColumnId, {E::kInfoFieldNumber, V::kAvailableSizeFieldNumber}},
             {T::Status::ColumnId, {E::kInfoFieldNumber, V::kStatusV2FieldNumber}},
+            {T::State::ColumnId, {E::kInfoFieldNumber, V::kStateFieldNumber}},
             {T::Kind::ColumnId, {E::kInfoFieldNumber, V::kKindFieldNumber}},
+            {T::Replicated::ColumnId, {E::kInfoFieldNumber, V::kReplicatedFieldNumber}},
+            {T::DiskSpace::ColumnId, {E::kInfoFieldNumber, V::kDiskSpaceFieldNumber}},
+            {T::PhantomOnly::ColumnId, {E::kInfoFieldNumber, V::kPhantomOnlyFieldNumber}},
         };
         return fieldMap;
     }

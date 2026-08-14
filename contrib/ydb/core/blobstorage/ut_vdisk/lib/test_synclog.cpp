@@ -166,7 +166,7 @@ class TSyncLogTestWriteActor : public TActorBootstrapped<TSyncLogTestWriteActor>
         auto &vDiskInstance = Conf->VDisks->Get(0);
         auto &groupInfo = Conf->GroupInfo;
         VCtx = MakeIntrusive<TVDiskContext>(ctx.SelfID, groupInfo->PickTopology(), counters, vDiskInstance.VDiskID,
-            ctx.ExecutorThread.ActorSystem, NPDisk::DEVICE_TYPE_UNKNOWN);
+            ctx.ActorSystem(), NPDisk::DEVICE_TYPE_UNKNOWN);
         VDiskConfig = vDiskInstance.Cfg;
         TestCtx->SelfVDiskId = groupInfo->GetVDiskId(VCtx->ShortSelfVDisk);
 
@@ -190,7 +190,7 @@ class TSyncLogTestWriteActor : public TActorBootstrapped<TSyncLogTestWriteActor>
         TestCtx->LsnMngr = Db->LsnMngr;
 
         // RecoveryLogWriter
-        TestCtx->LoggerId = ctx.ExecutorThread.RegisterActor(CreateRecoveryLogWriter(
+        TestCtx->LoggerId = ctx.Register(CreateRecoveryLogWriter(
                     VDiskConfig->BaseInfo.PDiskActorID,
                     ctx.SelfID,
                     TestCtx->PDiskCtx->Dsk->Owner,
@@ -199,8 +199,8 @@ class TSyncLogTestWriteActor : public TActorBootstrapped<TSyncLogTestWriteActor>
                     Db->VCtx->VDiskCounters));
 
         // RecoveryLogCutter
-        TLogCutterCtx logCutterCtx = {VCtx, TestCtx->PDiskCtx, TestCtx->LsnMngr, VDiskConfig, TestCtx->LoggerId};
-        LogCutterId = ctx.ExecutorThread.RegisterActor(CreateRecoveryLogCutter(std::move(logCutterCtx)));
+        TLogCutterCtx logCutterCtx = {VCtx, TestCtx->PDiskCtx, TestCtx->LsnMngr, VDiskConfig, TestCtx->LoggerId, {}};
+        LogCutterId = ctx.Register(CreateRecoveryLogCutter(std::move(logCutterCtx)));
 
         // Repaired SyncLog State
         NSyncLog::TSyncLogParams params = {

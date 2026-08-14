@@ -19,7 +19,7 @@ public:
 
         size_t removed = 0;
         for (const auto& pr : Self->TableInfos) {
-            if (pr.second->IsReplicated()) {
+            if (pr.second->IsReplicated() || pr.second->IsIncrementalRestore()) {
                 // Replicated tables use uncommitted changes for replication
                 // Since we don't track them we cannot know whether they leaked or not
                 continue;

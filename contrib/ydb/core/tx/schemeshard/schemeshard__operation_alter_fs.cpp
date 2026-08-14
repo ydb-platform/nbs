@@ -4,6 +4,7 @@
 
 #include <contrib/ydb/core/base/subdomain.h>
 #include <contrib/ydb/core/mind/hive/hive.h>
+#include <contrib/ydb/core/filestore/core/filestore.h>
 
 namespace {
 
@@ -19,7 +20,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
             << "TAlterFileStore::TConfigureParts"
-            << " operationId#" << OperationId;
+            << " operationId# " << OperationId;
     }
 
 public:
@@ -127,7 +128,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
             << "TAlterFileStore::TPropose"
-            << " operationId#" << OperationId;
+            << " operationId# " << OperationId;
     }
 
 public:
@@ -135,7 +136,8 @@ public:
         : OperationId(id)
     {
         IgnoreMessages(DebugHint(), {
-            TEvHive::TEvCreateTabletReply::EventType
+            TEvHive::TEvCreateTabletReply::EventType,
+            TEvFileStore::TEvUpdateConfigResponse::EventType,
         });
     }
 
@@ -363,6 +365,15 @@ THolder<TProposeResponse> TAlterFileStore::Propose(
         result->SetError(
             NKikimrScheme::StatusPreconditionFailed,
             "Wrong version in config");
+        return result;
+    }
+
+    if (!TFileStoreInfo::ValidateFileStoreConfigSpaceOverflow(
+            fs->Config.GetBlockSize(),
+            alterConfig->GetBlocksCount(),
+            errStr))
+    {
+        result->SetError(NKikimrScheme::StatusInvalidParameter, errStr);
         return result;
     }
 

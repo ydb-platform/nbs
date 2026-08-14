@@ -1,12 +1,12 @@
 #include "ydb_clickhouse_internal.h"
 
 #define INCLUDE_YDB_INTERNAL_H
-#include <contrib/ydb/public/sdk/cpp/client/impl/ydb_internal/make_request/make.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/impl/ydb_internal/make_request/make.h>
 #undef INCLUDE_YDB_INTERNAL_H
 
 #include <contrib/ydb/public/api/grpc/draft/ydb_clickhouse_internal_v1.grpc.pb.h>
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_common_client/impl/client.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/client/common_client/impl/client.h>
 
 // TODO: Bad dependency???
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
