@@ -343,8 +343,7 @@ void ResetVolumeCriticalEventsCounter()
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
 
-    // clang-format off
-#define BLOCKSTORE_DEFINE_VOLUME_CRITICAL_EVENT_ROUTINE(name)                  \
+#define BLOCKSTORE_DEFINE_VOLUME_CRITICAL_EVENT_ROUTINE(name)              \
         TString Report##name(                                                  \
             const TString& diskId,                                             \
             const TString& cloudId,                                            \
@@ -366,7 +365,7 @@ void ResetVolumeCriticalEventsCounter()
                                                                                \
             /* Keep legacy AppCriticalEvents/ metrics alive */                 \
             if (VolumeCriticalEventsReportingMode !=                           \
-                    NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY)   \
+                NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY)       \
             {                                                                  \
                 retMessage = ReportCriticalEvent(                              \
                     GetAppCriticalEventFor##name(),                            \
@@ -375,9 +374,8 @@ void ResetVolumeCriticalEventsCounter()
             }                                                                  \
                                                                                \
             if (VolumeCriticalEventsReportingMode ==                           \
-                    NProto::EVolumeCriticalEventsReportingMode::APP_ONLY)      \
+                NProto::EVolumeCriticalEventsReportingMode::APP_ONLY)          \
             {                                                                  \
-                                                                               \
                 return retMessage;                                             \
             }                                                                  \
                                                                                \
@@ -392,28 +390,27 @@ void ResetVolumeCriticalEventsCounter()
                     : PrintParams(prefix);                                     \
                                                                                \
             /* Log immediately */                                              \
-            retMessage =                                                       \
-                LogCriticalEvent(                                              \
-                    GetVolumeCriticalEventFor##name(),                         \
-                    logMessage);                                               \
+            retMessage = LogCriticalEvent(                                     \
+                GetVolumeCriticalEventFor##name(),                             \
+                logMessage);                                                   \
                                                                                \
             auto key = TVolumeCriticalEventKey{                                \
-                .Event        = GetVolumeCriticalEventFor##name(),             \
+                .Event = GetVolumeCriticalEventFor##name(),                    \
                 .VolumeLabels = {                                              \
-                    .DiskId   = diskId,                                        \
-                    .CloudId  = cloudId,                                       \
-                    .FolderId = folderId}                                      \
-            };                                                                 \
+                    .DiskId = diskId,                                          \
+                    .CloudId = cloudId,                                        \
+                    .FolderId = folderId}};                                    \
                                                                                \
             with_lock (VolumeCriticalEvents.Lock) {                            \
                 /*                                                             \
                 1. The Published GAUGE counter is materialized lazily          \
-                   by PublishVolumeCriticalEventCounters() on the publish tick.\
-                   Here we only create and bump the Unpublished accumulator.   \
-                2. The footprint of the unbounded-lifetime VolumeCriticalEvents\
-                   metric is not deemed a measurable concern due to rare tablet\
-                   migrations, rare critical events, and periodic              \
-                   (release-based) process restarts.                           \
+                   by PublishVolumeCriticalEventCounters() on the publish      \
+                   tick. Here we only create and bump the Unpublished          \
+                   accumulator.                                                \
+                2. The footprint of the unbounded-lifetime                     \
+                   VolumeCriticalEvents metric is not deemed a measurable      \
+                   concern due to rare tablet migrations, rare critical        \
+                   events, and periodic (release-based) process restarts.      \
                 */                                                             \
                 VolumeCriticalEvents.Counters[key].Unpublished++;              \
             }                                                                  \
@@ -441,6 +438,5 @@ void ResetVolumeCriticalEventsCounter()
     BLOCKSTORE_VOLUME_CRITICAL_EVENTS(\
         BLOCKSTORE_DEFINE_VOLUME_CRITICAL_EVENT_ROUTINE)
 #undef BLOCKSTORE_DEFINE_VOLUME_CRITICAL_EVENT_ROUTINE
-    // clang-format on
 
 }   // namespace NCloud::NBlockStore
