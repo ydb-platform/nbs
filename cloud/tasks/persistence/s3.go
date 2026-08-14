@@ -185,13 +185,26 @@ func newS3CredentialsFromConfig(
 	config *persistence_config.S3Config,
 ) (S3Credentials, error) {
 
-	if config.GetUseIamToken() && len(config.GetCredentialsFilePath()) == 0 {
+	credentialsFilePath := config.GetCredentialsFilePath()
+	if config.GetUseIamToken() {
+		if len(credentialsFilePath) != 0 {
+			return S3Credentials{}, errors.NewNonRetriableErrorf(
+				"S3 IAM token authorization and credentials file path are mutually exclusive",
+			)
+		}
+
 		// AWS SDK v1 still expects credentials for signing; the transport
 		// replaces the Authorization header with the IAM bearer token.
 		return NewS3Credentials("iam-token", "iam-token"), nil
 	}
 
-	return NewS3CredentialsFromFile(config.GetCredentialsFilePath())
+	if len(credentialsFilePath) == 0 {
+		return S3Credentials{}, errors.NewNonRetriableErrorf(
+			"either S3 IAM token authorization or credentials file path must be configured",
+		)
+	}
+
+	return NewS3CredentialsFromFile(credentialsFilePath)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

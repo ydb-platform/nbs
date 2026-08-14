@@ -3,12 +3,16 @@ package persistence
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
+	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -58,6 +62,70 @@ func newS3Client(
 		nil, // availabilityMonitoring
 		nil, // tokenProvider
 	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestNewS3CredentialsFromConfig(t *testing.T) {
+	credentialsFilePath := filepath.Join(t.TempDir(), "credentials.json")
+	err := os.WriteFile(
+		credentialsFilePath,
+		[]byte(`{"id":"file-id","secret":"file-secret"}`),
+		0600,
+	)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name                    string
+		config                  *persistence_config.S3Config
+		expectedCredentials     S3Credentials
+		expectNonRetriableError bool
+	}{
+		{
+			name: "IAM token",
+			config: &persistence_config.S3Config{
+				UseIamToken: proto.Bool(true),
+			},
+			expectedCredentials: NewS3Credentials("iam-token", "iam-token"),
+		},
+		{
+			name: "credentials file",
+			config: &persistence_config.S3Config{
+				CredentialsFilePath: proto.String(credentialsFilePath),
+			},
+			expectedCredentials: NewS3Credentials("file-id", "file-secret"),
+		},
+		{
+			name: "IAM token and credentials file",
+			config: &persistence_config.S3Config{
+				UseIamToken:         proto.Bool(true),
+				CredentialsFilePath: proto.String(credentialsFilePath),
+			},
+			expectNonRetriableError: true,
+		},
+		{
+			name:                    "neither IAM token nor credentials file",
+			config:                  &persistence_config.S3Config{},
+			expectNonRetriableError: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			credentials, err := newS3CredentialsFromConfig(test.config)
+			if test.expectNonRetriableError {
+				require.Error(t, err)
+				require.True(
+					t,
+					errors.Is(err, errors.NewEmptyNonRetriableError()),
+				)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, test.expectedCredentials, credentials)
+		})
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
