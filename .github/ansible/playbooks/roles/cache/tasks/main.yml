@@ -57,16 +57,16 @@
   ansible.builtin.file:
     path: "{{ bastion_compose_dir }}"
     state: directory
-    owner: root
-    group: root
+    owner: 1000
+    group: 1000
     mode: "0755"
 
 - name: Copy bastion Compose files
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../scripts/bastion/{{ item }}"
     dest: "{{ bastion_compose_dir }}/{{ item }}"
-    owner: root
-    group: root
+    owner: 1000
+    group: 1000
     mode: "0644"
   loop:
     - bastion-entrypoint.sh
@@ -76,8 +76,8 @@
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../scripts/bastion/sync/"
     dest: "{{ bastion_compose_dir }}/sync/"
-    owner: root
-    group: root
+    owner: 1000
+    group: 1000
     mode: "0644"
     directory_mode: "0755"
 
@@ -89,8 +89,8 @@
       TEAM={{ bastion_github_team | ansible.builtin.to_json }}
       INTERVAL_SECONDS={{ bastion_sync_interval_seconds | int }}
     dest: "{{ bastion_compose_dir }}/.env"
-    owner: root
-    group: root
+    owner: 1000
+    group: 1000
     mode: "0600"
   no_log: true
 
