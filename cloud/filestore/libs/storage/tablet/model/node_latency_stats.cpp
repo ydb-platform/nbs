@@ -1,4 +1,4 @@
-#include <cloud/filestore/libs/storage/tablet/model/node_latency_stats.h>
+#include "node_latency_stats.h"
 
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
@@ -10,9 +10,11 @@ namespace NCloud::NFileStore::NStorage {
 TNodeLatencyStatsTracker::TNodeLatencyStatsTracker(
     size_t maxEntries,
     TDuration decayHalfLife)
-    : MaxEntries(maxEntries)
-    , DecayHalfLife(decayHalfLife)
-    , LatencyStats(TNodeLatencyStatsComparator{decayHalfLife})
+    : DecayHalfLife(decayHalfLife)
+    , Ranking(
+          maxEntries,
+          TNodeLatencyStatsComparator{decayHalfLife},
+          TLatencyKeyExtractor{})
 {}
 
 bool TNodeLatencyStatsTracker::TNodeLatencyStatsComparator::operator()(
@@ -28,16 +30,6 @@ bool TNodeLatencyStatsTracker::TNodeLatencyStatsComparator::operator()(
     // AverageLatencyDecayedMs ASC, NodeId ASC, RequestType ASC
     return std::tie(lhsScore, lhs.NodeId, lhs.RequestType) <
            std::tie(rhsScore, rhs.NodeId, rhs.RequestType);
-}
-
-void TNodeLatencyStatsTracker::EvictSmallestLatencyEntries()
-{
-    while (LatencyStats.size() > MaxEntries) {
-        auto it = LatencyStats.begin();
-        TLatencyKey key = {it->NodeId, it->RequestType};
-        Key2Stats.erase(key);
-        LatencyStats.erase(it);
-    }
 }
 
 double TNodeLatencyStatsTracker::CalculateLatencyDecay(
@@ -60,15 +52,13 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
     TDuration latency)
 {
     TLatencyKey key = {nodeId, requestType};
-    auto it = Key2Stats.find(key);
     TNodeLatencyStats stats;
-    if (it != Key2Stats.end()) {
-        stats = *it->second;
-        LatencyStats.erase(it->second);
-    } else {
-        stats.NodeId = nodeId;
-        stats.RequestType = requestType;
+
+    if (const auto* oldStats = Ranking.Find(key)) {
+        stats = *oldStats;
     }
+    stats.NodeId = nodeId;
+    stats.RequestType = requestType;
 
     stats.AverageLatencyDecayedUs =
         CalculateLatencyDecay(stats, now, DecayHalfLife);
@@ -79,32 +69,20 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
         static_cast<double>(stats.TotalLatencyUs) / stats.RequestCount;
     stats.LastAccessed = now;
 
-    auto [newLatencyIterator, inserted] = LatencyStats.insert(stats);
-    Y_ABORT_UNLESS(inserted);
-    if (it != Key2Stats.end()) {
-        it->second = newLatencyIterator;
-    } else {
-        Key2Stats.emplace(key, newLatencyIterator);
-    }
-
-    EvictSmallestLatencyEntries();
+    Ranking.InsertOrUpdate(std::move(stats));
 }
 
 TVector<TNodeLatencyStats> TNodeLatencyStatsTracker::GetLatencyStats(
     TInstant now,
     ui32 n) const
 {
-    TVector<TNodeLatencyStats> result;
-    result.reserve(Min<size_t>(n, LatencyStats.size()));
-    for (auto it = LatencyStats.rbegin();
-         it != LatencyStats.rend() && result.size() < n;
-         ++it)
-    {
-        auto stats = *it;
+    auto result = Ranking.GetLastN(n);
+
+    for (auto& stats: result) {
         stats.AverageLatencyDecayedUs =
             CalculateLatencyDecay(stats, now, DecayHalfLife);
-        result.push_back(stats);
-    };
+    }
+
     return result;
 }
 

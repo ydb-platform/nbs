@@ -1,11 +1,11 @@
 #pragma once
 
+#include "ranking.h"
+
 #include <cloud/filestore/libs/service/request.h>
 
 #include <util/datetime/base.h>
-#include <util/generic/hash.h>
 #include <util/digest/multi.h>
-#include <util/generic/set.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -33,9 +33,15 @@ struct TLatencyKeyHash
 {
     size_t operator()(const TLatencyKey& key) const noexcept
     {
-        return MultiHash(
-            key.NodeId,
-            static_cast<ui32>(key.RequestType));
+        return MultiHash(key.NodeId, static_cast<ui32>(key.RequestType));
+    }
+};
+
+struct TLatencyKeyExtractor
+{
+    TLatencyKey operator()(const TNodeLatencyStats& stats) const
+    {
+        return {stats.NodeId, stats.RequestType};
     }
 };
 
@@ -49,18 +55,21 @@ private:
         explicit TNodeLatencyStatsComparator(TDuration decayHalfLife)
             : DecayHalfLife(decayHalfLife)
         {}
+
         bool operator()(
             const TNodeLatencyStats& lhs,
             const TNodeLatencyStats& rhs) const;
     };
 
-    size_t MaxEntries = 0;
     TDuration DecayHalfLife;
-    using TLatencyRanking = TSet<TNodeLatencyStats, TNodeLatencyStatsComparator>;
-    THashMap<TLatencyKey, TLatencyRanking::iterator, TLatencyKeyHash> Key2Stats;
-    TLatencyRanking LatencyStats;
+    using TRanking = TBoundedRanking<
+        TLatencyKey,
+        TNodeLatencyStats,
+        TNodeLatencyStatsComparator,
+        TLatencyKeyExtractor,
+        TLatencyKeyHash>;
 
-    void EvictSmallestLatencyEntries();
+    TRanking Ranking;
 
 public:
     TNodeLatencyStatsTracker(size_t maxEntries, TDuration decayHalfLife);
