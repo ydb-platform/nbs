@@ -40,7 +40,7 @@ double TNodeLatencyStatsTracker::CalculateLatencyDecay(
     const auto elapsed = now - stats.LastAccessed;
 
     return stats.AverageLatencyDecayedUs *
-           exp(-log(2) * elapsed.MilliSeconds() / halfLife.MilliSeconds());
+           exp(-log(2) * elapsed.MicroSeconds() / halfLife.MicroSeconds());
 }
 
 void TNodeLatencyStatsTracker::UpdateLatencyStats(
