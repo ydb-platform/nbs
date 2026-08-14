@@ -190,6 +190,107 @@ func (t *restoreFilesystemShardTask) restore(
 	}
 }
 
+func (t *restoreFilesystemShardTask) getShardFileSystemIDs(
+	ctx context.Context,
+	client nfs.Client,
+) ([]string, error) {
+
+	shardTopology, err := client.GetFileSystemTopology(ctx, t.shardID())
+	if err != nil {
+		return nil, err
+	}
+
+	mainFileSystemID := shardTopology.MainFileSystemID
+	if len(mainFileSystemID) == 0 {
+		return nil, task_errors.NewNonRetriableErrorf(
+			"main filesystem id is missing for shard %q",
+			t.shardID(),
+		)
+	}
+
+	mainFileSystemTopology, err := client.GetFileSystemTopology(
+		ctx,
+		mainFileSystemID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	shardFileSystemIDs := mainFileSystemTopology.ShardFileSystemIDs
+	if len(shardFileSystemIDs) == 0 {
+		return nil, task_errors.NewNonRetriableErrorf(
+			"shards are missing for main filesystem %q",
+			mainFileSystemID,
+		)
+	}
+
+	shardFound := false
+	for _, shardFileSystemID := range shardFileSystemIDs {
+		if shardFileSystemID == t.shardID() {
+			shardFound = true
+			break
+		}
+	}
+	if !shardFound {
+		return nil, task_errors.NewNonRetriableErrorf(
+			"shard %q is missing in topology of main filesystem %q",
+			t.shardID(),
+			mainFileSystemID,
+		)
+	}
+
+	return shardFileSystemIDs, nil
+}
+
+func (t *restoreFilesystemShardTask) freezeShards(
+	ctx context.Context,
+	client nfs.Client,
+) error {
+
+	shardFileSystemIDs, err := t.getShardFileSystemIDs(ctx, client)
+	if err != nil {
+		return err
+	}
+
+	for _, shardFileSystemID := range shardFileSystemIDs {
+		err = client.FreezeTablet(ctx, shardFileSystemID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (t *restoreFilesystemShardTask) unfreezeShards(
+	ctx context.Context,
+	client nfs.Client,
+) error {
+
+	err := client.UnfreezeTablet(ctx, t.shardID())
+	if err != nil {
+		return err
+	}
+
+	shardFileSystemIDs, err := t.getShardFileSystemIDs(ctx, client)
+	if err != nil {
+		return err
+	}
+
+	for _, shardFileSystemID := range shardFileSystemIDs {
+		if shardFileSystemID == t.shardID() {
+			continue
+		}
+
+		err = client.UnfreezeTablet(ctx, shardFileSystemID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (t *restoreFilesystemShardTask) Save() ([]byte, error) {
@@ -228,7 +329,7 @@ func (t *restoreFilesystemShardTask) Run(
 	}
 	defer client.Close()
 
-	err = client.FreezeTablet(ctx, t.shardID())
+	err = t.freezeShards(ctx, client)
 	if err != nil {
 		return err
 	}
@@ -238,7 +339,7 @@ func (t *restoreFilesystemShardTask) Run(
 		return err
 	}
 
-	err = client.UnfreezeTablet(ctx, t.shardID())
+	err = t.unfreezeShards(ctx, client)
 	if err != nil {
 		return err
 	}
@@ -261,7 +362,7 @@ func (t *restoreFilesystemShardTask) Cancel(
 	}
 	defer client.Close()
 
-	err = client.UnfreezeTablet(ctx, t.shardID())
+	err = t.unfreezeShards(ctx, client)
 	if err != nil {
 		return err
 	}

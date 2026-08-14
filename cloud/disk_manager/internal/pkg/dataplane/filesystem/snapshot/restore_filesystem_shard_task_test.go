@@ -240,6 +240,15 @@ func testRestoreFilesystemShards(
 
 	restoredNodes := model.ListAllNodesRecursively(true)
 	require.Equal(t, sourceNodes, restoredNodes)
+
+	files := make([]nfs_testing.Node, 0, 2*shardCount)
+	for i := 0; i < 2*shardCount; i++ {
+		files = append(files, nfs_testing.File(fmt.Sprintf("file-%d", i)))
+	}
+	model.CreateNodesRecursively(
+		nfs.RootNodeID,
+		nfs_testing.Dir("write-after-restore", files...),
+	)
 }
 
 func TestRestoreFilesystemShards(t *testing.T) {
