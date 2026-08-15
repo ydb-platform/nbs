@@ -29,24 +29,24 @@ type certificateExpiration struct {
 	validityGauge metrics.Gauge
 }
 
-type GrpcServerCertificateConfig struct {
+type GRPCServerCertificateConfig struct {
 	CertFile       string
 	PrivateKeyFile string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type GrpcServerTlsProvider struct {
+type GRPCServerTLSProvider struct {
 	mutex        sync.RWMutex
 	certificates []tls.Certificate
 	expirations  []certificateExpiration
 }
 
-func NewGrpcServerTlsProvider(
+func NewGRPCServerTLSProvider(
 	ctx context.Context,
-	certs []GrpcServerCertificateConfig,
+	certs []GRPCServerCertificateConfig,
 	registry metrics.Registry,
-) (*GrpcServerTlsProvider, error) {
+) (*GRPCServerTLSProvider, error) {
 
 	certificates := make([]tls.Certificate, 0, len(certs))
 	expirations := make([]certificateExpiration, 0, len(certs))
@@ -68,11 +68,11 @@ func NewGrpcServerTlsProvider(
 		certRegistry := registry.WithTags(
 			map[string]string{"path": expiration.path},
 		)
-		expiration.expireTsGauge = certRegistry.Gauge("expireTs")
+		expiration.expireTsGauge = certRegistry.Gauge("ExpireTs")
 		expiration.validityGauge = certRegistry.Gauge("certificateValidity")
 	}
 
-	provider := &GrpcServerTlsProvider{
+	provider := &GRPCServerTLSProvider{
 		certificates: certificates,
 		expirations:  expirations,
 	}
@@ -84,7 +84,7 @@ func NewGrpcServerTlsProvider(
 	return provider, nil
 }
 
-func (p *GrpcServerTlsProvider) monitorCertificateValidity(
+func (p *GRPCServerTLSProvider) monitorCertificateValidity(
 	ctx context.Context,
 ) {
 
@@ -101,14 +101,14 @@ func (p *GrpcServerTlsProvider) monitorCertificateValidity(
 	}
 }
 
-func (p *GrpcServerTlsProvider) reportCertificateExpirations() {
+func (p *GRPCServerTLSProvider) reportCertificateExpirations() {
 	expirations := p.getExpirations()
 	for _, expiration := range expirations {
 		expiration.expireTsGauge.Set(float64(expiration.after.Unix()))
 	}
 }
 
-func (p *GrpcServerTlsProvider) reportCertificateValidity(
+func (p *GRPCServerTLSProvider) reportCertificateValidity(
 	now time.Time,
 ) {
 
@@ -123,7 +123,7 @@ func (p *GrpcServerTlsProvider) reportCertificateValidity(
 	}
 }
 
-func (p *GrpcServerTlsProvider) getExpirations() []certificateExpiration {
+func (p *GRPCServerTLSProvider) getExpirations() []certificateExpiration {
 
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
@@ -131,9 +131,8 @@ func (p *GrpcServerTlsProvider) getExpirations() []certificateExpiration {
 	return append([]certificateExpiration(nil), p.expirations...)
 }
 
-func (
-	p *GrpcServerTlsProvider,
-) NewTransportCredentials() grpc_credentials.TransportCredentials {
+func (p *GrpcServerTlsProvider) NewTransportCredentials(
+) grpc_credentials.TransportCredentials {
 
 	cfg := &tls.Config{
 		GetCertificate: p.getCertificate,
@@ -143,7 +142,7 @@ func (
 	return grpc_credentials.NewTLS(cfg)
 }
 
-func (p *GrpcServerTlsProvider) getCertificate(
+func (p *GRPCServerTLSProvider) getCertificate(
 	info *tls.ClientHelloInfo,
 ) (*tls.Certificate, error) {
 
@@ -167,7 +166,7 @@ func (p *GrpcServerTlsProvider) getCertificate(
 }
 
 func readServerCertificate(
-	cert GrpcServerCertificateConfig,
+	cert GRPCServerCertificateConfig,
 ) (tls.Certificate, time.Time, error) {
 
 	certificate, err := tls.LoadX509KeyPair(

@@ -30,7 +30,7 @@ func TestGrpcClientTlsProviderLoadsConfigAndReportsFingerprint(t *testing.T) {
 	registry := metrics_mocks.NewRegistryMock()
 	fingerprint := cityhash.Hash64(certPEM) & ((1 << 53) - 1)
 	registry.GetGauge(
-		"Fingerprint",
+		"fingerprint",
 		map[string]string{
 			"subsystem": "certificates",
 			"path":      certPath,
@@ -160,6 +160,28 @@ func TestGrpcTlsProvidersRejectInvalidInitialCertificates(t *testing.T) {
 		metrics_mocks.NewRegistryMock(),
 	)
 	require.Error(t, err)
+}
+
+func TestGrpcTlsProvidersPreserveFileErrors(t *testing.T) {
+	missingPath := filepath.Join(t.TempDir(), "missing.pem")
+
+	_, err := NewGrpcClientTlsProvider(
+		GrpcClientTlsProviderConfig{RootCertsFile: missingPath},
+		metrics_mocks.NewRegistryMock(),
+	)
+
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	_, err = NewGrpcServerTlsProvider(
+		context.Background(),
+		[]GrpcServerCertificateConfig{{
+			CertFile:       missingPath,
+			PrivateKeyFile: missingPath,
+		}},
+		metrics_mocks.NewRegistryMock(),
+	)
+
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

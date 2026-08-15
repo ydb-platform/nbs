@@ -202,12 +202,13 @@ func run(
 	}
 
 	nfsConfig := config.GetNfsConfig()
+	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
 	nfsTlsProvider, err := common.NewGrpcClientTlsProvider(
 		common.GrpcClientTlsProviderConfig{
 			Insecure:      nfsConfig.GetInsecure(),
 			RootCertsFile: nfsConfig.GetRootCertsFile(),
 		},
-		mon.NewRegistry("nfs_client"),
+		nfsClientMetricsRegistry,
 	)
 	if err != nil {
 		return err
@@ -346,13 +347,15 @@ func run(
 				return err
 			}
 			logging.Info(ctx, "Initializing filesystem dataplane")
-			nfsClientMetricsRegistry := mon.NewRegistry("nfs_client_dataplane")
+			nfsDataplaneClientMetricsRegistry := mon.NewRegistry(
+				"nfs_client_dataplane",
+			)
 			nfsSessionMetricsRegistry := mon.NewRegistry("nfs_session_dataplane")
 			nfsFactory := nfs.NewFactoryWithCreds(
 				ctx,
 				config.GetNfsConfig(),
 				creds,
-				nfsClientMetricsRegistry,
+				nfsDataplaneClientMetricsRegistry,
 				nfsSessionMetricsRegistry,
 				nfsTlsProvider,
 			)
@@ -399,6 +402,7 @@ func run(
 			taskRegistry,
 			taskScheduler,
 			nbsFactory,
+			nfsClientMetricsRegistry,
 			nfsTlsProvider,
 		)
 		if err != nil {

@@ -20,7 +20,7 @@ type GrpcClientTlsProviderConfig struct {
 	RootCertsFile string
 }
 
-type GrpcClientTlsProvider struct {
+type grpcClientTlsProvider struct {
 	mutex     sync.RWMutex
 	tlsConfig *tls.Config
 }
@@ -39,7 +39,7 @@ func NewGrpcClientTlsProvider(
 
 	rootCerts, err := os.ReadFile(config.RootCertsFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read root cert file: %v", err)
+		return nil, fmt.Errorf("failed to read root cert file: %w", err)
 	}
 
 	pool := x509.NewCertPool()
@@ -57,12 +57,12 @@ func NewGrpcClientTlsProvider(
 			"subsystem": "certificates",
 			"path":      config.RootCertsFile,
 		},
-	).Gauge("Fingerprint").Set(float64(fingerprint))
+	).Gauge("fingerprint").Set(float64(fingerprint))
 
-	return &GrpcClientTlsProvider{tlsConfig: cfg}, nil
+	return &grpcClientTlsProvider{tlsConfig: cfg}, nil
 }
 
-func (p *GrpcClientTlsProvider) GetTlsConfig() *tls.Config {
+func (p *grpcClientTlsProvider) GetTlsConfig() *tls.Config {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 

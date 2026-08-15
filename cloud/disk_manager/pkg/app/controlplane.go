@@ -28,6 +28,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"google.golang.org/grpc"
@@ -296,6 +297,7 @@ func initControlplane(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
+	nfsClientMetricsRegistry metrics.Registry,
 	nfsTlsProvider nfs.TlsConfigProvider,
 ) (serve func() error, err error) {
 
@@ -307,7 +309,6 @@ func initControlplane(
 		return nil, err
 	}
 
-	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
 	nfsSessionMetricsRegistry := mon.NewRegistry("nfs_session")
 	nfsFactory := nfs.NewFactoryWithCreds(
 		ctx,
