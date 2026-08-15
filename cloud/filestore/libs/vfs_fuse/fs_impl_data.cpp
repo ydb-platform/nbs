@@ -661,6 +661,12 @@ void TFileSystem::Read(
         }
     }
 
+    // *fi is dead once this call returns. Read only ever looks at fh and
+    // flags (the latter via GetWriteBackCacheRequestStrategy), so the retry
+    // path below carries those two instead of the whole struct.
+    const auto fh = fi->fh;
+    const auto flags = fi->flags;
+
     auto callback = [=, ptr = weak_from_this()](const auto& future)
     {
         auto self = ptr.lock();
@@ -669,6 +675,24 @@ void TFileSystem::Read(
         }
 
         const auto& response = future.GetValue();
+        if (HasError(response.GetError()) &&
+            self->TryRetryUnconfirmedHandle(
+                callContext,
+                req,
+                response.GetError(),
+                fh,
+                [=]
+                {
+                    if (auto fs = ptr.lock()) {
+                        fuse_file_info retryFi = {};
+                        retryFi.fh = fh;
+                        retryFi.flags = flags;
+                        fs->Read(callContext, req, ino, size, offset, &retryFi);
+                    }
+                }))
+        {
+            return;
+        }
         if (CheckResponse(self, *callContext, req, response)) {
             // Depending on the configuration of the filestore, data may still
             // be returned as a Buffer even when I/O vectors are provided in the

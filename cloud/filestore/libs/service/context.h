@@ -22,6 +22,11 @@ public:
     ui64 RequestSize = 0;
     bool Unaligned = false;
 
+    // Set when a request that failed on an unconfirmed async-created handle
+    // has been retried. At most one such retry per request: after the create
+    // is confirmed the handle is either alive or permanently gone.
+    bool UnconfirmedHandleRetried = false;
+
     ui64 LoopThreadId = 0;
 
     int CancellationCode = 0;

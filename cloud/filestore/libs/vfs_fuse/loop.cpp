@@ -819,7 +819,15 @@ public:
             p->StopAsyncOnCompletionQueueStopped(std::move(s));
         };
 
-        CompletionQueue->StopAsync(FUSE_ERROR)
+        auto stopped = CompletionQueue->StopAsync(FUSE_ERROR);
+
+        // requests parked inside the filesystem are released by queued
+        // operations that may never complete - they must not block the drain
+        if (FileSystem) {
+            FileSystem->CancelParkedRequests();
+        }
+
+        stopped
             .Subscribe(
                 [onStop = std::move(onStop),
                  scheduler = Scheduler](TFuture<void> f) mutable
@@ -869,7 +877,13 @@ public:
             s.SetValue();
         };
 
-        CompletionQueue->StopAsync(FUSE_SUSPEND)
+        auto stopped = CompletionQueue->StopAsync(FUSE_SUSPEND);
+
+        if (FileSystem) {
+            FileSystem->CancelParkedRequests();
+        }
+
+        stopped
             .Subscribe(
                 [onStop = std::move(onStop),
                  scheduler = Scheduler](TFuture<void> f) mutable

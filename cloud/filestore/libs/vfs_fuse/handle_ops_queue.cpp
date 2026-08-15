@@ -10,6 +10,19 @@ THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
     : RequestsToProcess(filePath, size, 0, EFileRingBufferVersion::V5)
     , Stats(CreateHandleOpsQueueStats(size))
 {
+    // the queue outlives the process, restore the index from the file
+    RequestsToProcess.Visit(
+        [this](ui32 /*checksum*/, ui32 /*tag*/, TStringBuf data)
+        {
+            NProto::TQueueEntry entry;
+            if (entry.ParseFromArray(data.data(), data.size()) &&
+                entry.HasQueuedCreateHandleRequest())
+            {
+                UnconfirmedCreates.insert(
+                    entry.GetQueuedCreateHandleRequest().GetHandle());
+            }
+        });
+
     Stats->SetEntryCount(RequestsToProcess.Size());
 }
 
@@ -42,6 +55,7 @@ THandleOpsQueue::EResult THandleOpsQueue::AddCreateRequest(
         return THandleOpsQueue::EResult::QueueOverflow;
     }
 
+    UnconfirmedCreates.insert(handle);
     Stats->SetEntryCount(RequestsToProcess.Size());
     return THandleOpsQueue::EResult::Ok;
 }
@@ -87,10 +101,28 @@ bool THandleOpsQueue::Empty() const
     return RequestsToProcess.Empty();
 }
 
-void THandleOpsQueue::PopFront()
+std::optional<ui64> THandleOpsQueue::PopFront()
 {
+    std::optional<ui64> confirmedHandle;
+
+    const auto data = RequestsToProcess.Front();
+    NProto::TQueueEntry entry;
+    if (entry.ParseFromArray(data.data(), data.size()) &&
+        entry.HasQueuedCreateHandleRequest())
+    {
+        confirmedHandle = entry.GetQueuedCreateHandleRequest().GetHandle();
+        UnconfirmedCreates.erase(*confirmedHandle);
+    }
+
     RequestsToProcess.PopFront();
     Stats->SetEntryCount(RequestsToProcess.Size());
+
+    return confirmedHandle;
+}
+
+bool THandleOpsQueue::HasUnconfirmedCreate(ui64 handle) const
+{
+    return UnconfirmedCreates.contains(handle);
 }
 
 ui64 THandleOpsQueue::Size() const

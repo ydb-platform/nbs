@@ -206,6 +206,23 @@ void TFileSystem::AcquireLock(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
+            if (HasError(error) &&
+                self->TryRetryUnconfirmedHandle(
+                    callContext,
+                    req,
+                    error,
+                    range.Handle,
+                    [=]
+                    {
+                        if (auto fs = ptr.lock()) {
+                            fs->AcquireLock(
+                                callContext, req, ino, range, sleep, origin);
+                        }
+                    }))
+            {
+                return;
+            }
+
             if (SUCCEEDED(error.GetCode())) {
                 self->ReplyError(*callContext, error, req, 0);
             } else if (error.GetCode() == E_FS_WOULDBLOCK && sleep) {
@@ -280,9 +297,29 @@ void TFileSystem::ReleaseLock(
     Session->ReleaseLock(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
-            if (auto self = ptr.lock();
-                CheckResponse(self, *callContext, req, response))
+            auto self = ptr.lock();
+            if (!self) {
+                return;
+            }
+
+            if (HasError(response.GetError()) &&
+                self->TryRetryUnconfirmedHandle(
+                    callContext,
+                    req,
+                    response.GetError(),
+                    range.Handle,
+                    [=]
+                    {
+                        if (auto fs = ptr.lock()) {
+                            fs->ReleaseLock(
+                                callContext, req, ino, range, origin);
+                        }
+                    }))
             {
+                return;
+            }
+
+            if (CheckResponse(self, *callContext, req, response)) {
                 self->ReplyError(*callContext, response.GetError(), req, 0);
             }
         });
@@ -309,6 +346,22 @@ void TFileSystem::TestLock(
 
             const auto& response = future.GetValue();
             const auto& error = response.GetError();
+            if (HasError(error) &&
+                self->TryRetryUnconfirmedHandle(
+                    callContext,
+                    req,
+                    error,
+                    range.Handle,
+                    [=]
+                    {
+                        if (auto fs = ptr.lock()) {
+                            fs->TestLock(callContext, req, ino, range);
+                        }
+                    }))
+            {
+                return;
+            }
+
             if (!HasError(error)) {
                 struct flock lock = {
                     .l_type = F_UNLCK,

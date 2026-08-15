@@ -159,6 +159,12 @@ struct IFileSystem
 
     virtual void Reset() = 0;
 
+    // Completes the requests parked inside the filesystem. They are released
+    // by queued operations that may never complete, so on stop/suspend they
+    // have to be completed explicitly - otherwise they block the completion
+    // queue drain.
+    virtual void CancelParkedRequests() = 0;
+
     virtual void Init() = 0;
 
     //

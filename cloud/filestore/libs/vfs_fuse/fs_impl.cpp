@@ -99,9 +99,14 @@ void TFileSystem::Reset()
 
 void TFileSystem::ScheduleProcessHandleOpsQueue()
 {
+    ScheduleProcessHandleOpsQueue(Config->GetAsyncHandleOperationPeriod());
+}
+
+void TFileSystem::ScheduleProcessHandleOpsQueue(TDuration delay)
+{
     if (HandleOpsQueue) {
         Scheduler->Schedule(
-            Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
+            Timer->Now() + delay,
             [=, ptr = weak_from_this()]()
             {
                 if (auto self = ptr.lock()) {
@@ -411,11 +416,141 @@ void TFileSystem::CompleteAsyncCreateHandle(
 
 void TFileSystem::CompleteHandleOpsQueueEntry()
 {
+    TVector<TParkedRequest> released;
+    bool hasParkedRequests = false;
+
     with_lock (HandleOpsQueueLock) {
-        HandleOpsQueue->PopFront();
+        // popping the completed entry releases the requests parked on its
+        // create confirmation
+        if (const auto handle = HandleOpsQueue->PopFront()) {
+            released = ExtractParkedRequests(*handle);
+        }
+        hasParkedRequests = !ParkedRequests.empty();
     }
+
+    CompleteParkedRequests(std::move(released));
     ProcessDelayedRelease();
-    ScheduleProcessHandleOpsQueue();
+
+    // A parked request is released only when its own confirmation reaches the
+    // head of the queue, i.e. after one period per preceding entry. Drain the
+    // queue back-to-back while somebody is waiting for it.
+    ScheduleProcessHandleOpsQueue(
+        hasParkedRequests ? TDuration::Zero()
+                          : Config->GetAsyncHandleOperationPeriod());
+}
+
+bool TFileSystem::TryRetryUnconfirmedHandle(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    const NProto::TError& error,
+    ui64 handle,
+    std::function<void()> retry)
+{
+    if (error.GetCode() != E_FS_BADHANDLE ||
+        callContext->UnconfirmedHandleRetried ||
+        !HandleOpsQueue ||
+        !IsAsyncCreateEnabled(*Config))
+    {
+        return false;
+    }
+
+    callContext->UnconfirmedHandleRetried = true;
+
+    bool parked = false;
+    with_lock (HandleOpsQueueLock) {
+        if (callContext->Cancelled) {
+            // stop/suspend is in progress and the cancellation sweep may have
+            // already run - parking now would block the completion queue drain
+            return false;
+        }
+
+        // The handle may have been created asynchronously and lost by a tablet
+        // restart before its queued ConfirmCreateHandle ran. If that
+        // confirmation is still queued, park a retry until it completes - it
+        // recreates the handle if it was lost. No out-of-band confirm is sent
+        // here: the queue is what orders the confirm before a possible
+        // DestroyHandle for the same handle.
+        parked = HandleOpsQueue->HasUnconfirmedCreate(handle);
+        if (parked) {
+            ParkedRequests[handle].push_back(
+                TParkedRequest{callContext, req, std::move(retry)});
+        }
+    }
+
+    if (parked) {
+        STORAGE_INFO(
+            "parking retry of " << callContext->LogString()
+            << " until handle confirmation @" << handle);
+        return true;
+    }
+
+    // Nothing left to wait for: either the handle is genuinely bad, or its
+    // confirmation completed between the failure and this check - the two are
+    // indistinguishable here. Retry once: it succeeds in the second case and
+    // returns the real error in the first.
+    STORAGE_INFO(
+        "retrying " << callContext->LogString()
+        << " once on a bad handle @" << handle);
+    retry();
+    return true;
+}
+
+void TFileSystem::CancelParkedRequests()
+{
+    // Called on stop/suspend, after the completion queue has cancelled every
+    // inflight call context. Such requests will never be released by a
+    // confirmation - complete them so that the drain is not blocked.
+    TVector<TParkedRequest> cancelled;
+    with_lock (HandleOpsQueueLock) {
+        cancelled = ExtractAllParkedRequests();
+    }
+
+    for (auto& request: cancelled) {
+        STORAGE_DEBUG(
+            "cancelling parked retry of "
+            << request.CallContext->LogString());
+        CancelRequest(std::move(request.CallContext), request.Req);
+    }
+}
+
+TVector<TFileSystem::TParkedRequest> TFileSystem::ExtractParkedRequests(
+    ui64 handle)
+{
+    TVector<TParkedRequest> requests;
+
+    auto it = ParkedRequests.find(handle);
+    if (it != ParkedRequests.end()) {
+        requests = std::move(it->second);
+        ParkedRequests.erase(it);
+    }
+
+    return requests;
+}
+
+TVector<TFileSystem::TParkedRequest> TFileSystem::ExtractAllParkedRequests()
+{
+    TVector<TParkedRequest> requests;
+
+    for (auto& [_, parked]: ParkedRequests) {
+        requests.insert(
+            requests.end(),
+            std::make_move_iterator(parked.begin()),
+            std::make_move_iterator(parked.end()));
+    }
+    ParkedRequests.clear();
+
+    return requests;
+}
+
+void TFileSystem::CompleteParkedRequests(TVector<TParkedRequest> requests)
+{
+    for (auto& request: requests) {
+        if (request.CallContext->Cancelled) {
+            CancelRequest(std::move(request.CallContext), request.Req);
+        } else {
+            request.Retry();
+        }
+    }
 }
 
 void TFileSystem::ProcessDelayedRelease()
@@ -440,6 +575,13 @@ void TFileSystem::ProcessHandleOpsQueue()
 {
     TGuard g{HandleOpsQueueLock};
     if (HandleOpsQueue->Empty()) {
+        // there are no confirmations left to release the parked requests -
+        // normally there are none, but an entry dropped from a damaged queue
+        // may have left some behind
+        auto released = ExtractAllParkedRequests();
+        g.Release();
+
+        CompleteParkedRequests(std::move(released));
         ScheduleProcessHandleOpsQueue();
         return;
     }
@@ -456,6 +598,11 @@ void TFileSystem::ProcessHandleOpsQueue()
     }
 
     const auto& entry = optionalEntry.value();
+    // Nothing below touches the queue, and the session future may complete
+    // inline - release the lock so that the completion (parked retries,
+    // ProcessDelayedRelease) never runs under it.
+    g.Release();
+
     if (entry.HasDestroyHandleRequest()) {
         const auto& requestInfo = entry.GetDestroyHandleRequest();
         auto request = std::make_shared<NProto::TDestroyHandleRequest>(
@@ -512,7 +659,11 @@ void TFileSystem::ProcessHandleOpsQueue()
         ReportHandleOpsQueueProcessError(
             TStringBuilder() << "Unexpected TQueueEntry in queue, filesystem: "
                              << Config->GetFileSystemId());
-        HandleOpsQueue->PopFront();
+        with_lock (HandleOpsQueueLock) {
+            // an entry that is neither a create nor a destroy confirms
+            // nothing, so nothing can be released by this pop
+            HandleOpsQueue->PopFront();
+        }
         ScheduleProcessHandleOpsQueue();
         return;
     }

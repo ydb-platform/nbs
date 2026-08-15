@@ -1,6 +1,7 @@
 #include "fs.h"
 
 #include "directory_handle_storage.h"
+#include "handle_ops_queue.h"
 #include "log.h"
 #include "loop.h"
 #include "node_cache.h"
@@ -4475,6 +4476,514 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // The retry queued DestroyHandle. it is processed on the next pass.
         scheduler->RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(1U, destroyCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldRetryReadOnUnconfirmedHandleAfterConfirmation)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        const ui64 size = 100;
+        std::atomic_uint confirmCalled = 0;
+        std::atomic_uint readCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto, auto request)
+            {
+                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        // The handle was lost by a tablet restart: reads fail with
+        // E_FS_BADHANDLE until the confirmation recreates it.
+        bootstrap.Service->SetHandlerReadData(
+            [&](auto, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                if (++readCalled < 2) {
+                    NProto::TReadDataResponse response =
+                        TErrorResponse(E_FS_BADHANDLE, "lost by restart");
+                    return MakeFuture(response);
+                }
+
+                NProto::TReadDataResponse response;
+                response.MutableBuffer()->assign(
+                    TString(request->GetLength(), 'a'));
+                return MakeFuture(response);
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            handle,
+            bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                .GetValue(WaitTimeout));
+
+        // The read fails with E_FS_BADHANDLE and is parked until the queued
+        // confirmation completes; FUSE gets no reply yet.
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handle, 0, size);
+        UNIT_ASSERT_EXCEPTION(read.GetValue(ExceptionWaitTimeout), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, readCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
+
+        // Queue processing confirms the handle and releases the parked retry.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(2U, readCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(size, read.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldRetryReadUsingRestoredUnconfirmedHandleQueue)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        const ui64 requestId = 3;
+        const ui64 size = 100;
+        const auto queuePath =
+            TFsPath(TempDir.Path()) / "HandleOpsQueue" / FileSystemId /
+            SessionId / "handle_ops_queue";
+
+        UNIT_ASSERT(NFs::MakeDirectoryRecursive(queuePath.Dirname()));
+        queuePath.Touch();
+        {
+            auto queue = CreateHandleOpsQueue(queuePath, 1000);
+            NProto::TCreateHandleRequest request;
+            request.MutableHeaders()->SetRequestId(requestId);
+            request.SetFileSystemId(FileSystemId);
+            request.SetNodeId(nodeId);
+            request.SetFlags(
+                ProtoFlag(NProto::TCreateHandleRequest::E_READ));
+
+            UNIT_ASSERT(
+                queue->AddCreateRequest(request, nodeId, handle, requestId) ==
+                THandleOpsQueue::EResult::Ok);
+            UNIT_ASSERT(queue->HasUnconfirmedCreate(handle));
+        }
+
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+        std::atomic_uint confirmCalled = 0;
+        std::atomic_uint readCalled = 0;
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    requestId,
+                    request->GetOriginalRequestId());
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Service->SetHandlerReadData(
+            [&](auto, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                if (++readCalled < 2) {
+                    NProto::TReadDataResponse response =
+                        TErrorResponse(E_FS_BADHANDLE, "lost by restart");
+                    return MakeFuture(response);
+                }
+
+                NProto::TReadDataResponse response;
+                response.MutableBuffer()->assign(
+                    TString(request->GetLength(), 'a'));
+                return MakeFuture(response);
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handle, 0, size);
+        UNIT_ASSERT_EXCEPTION(read.GetValue(ExceptionWaitTimeout), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, readCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(2U, readCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(size, read.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldRetryAcquireLockOnUnconfirmedHandleAfterConfirmation)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+        std::atomic_uint acquireCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto, auto)
+            {
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        // Locking a read-only handle is legitimate, and the handle may have
+        // been lost by a tablet restart just like for reads.
+        bootstrap.Service->SetHandlerAcquireLock(
+            [&](auto, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                if (++acquireCalled < 2) {
+                    NProto::TAcquireLockResponse response =
+                        TErrorResponse(E_FS_BADHANDLE, "lost by restart");
+                    return MakeFuture(response);
+                }
+
+                return MakeFuture(NProto::TAcquireLockResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            handle,
+            bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                .GetValue(WaitTimeout));
+
+        auto lock = bootstrap.Fuse->SendRequest<TAcquireLockRequest>(
+            0, F_RDLCK, false, handle);
+        UNIT_ASSERT_EXCEPTION(lock.GetValue(ExceptionWaitTimeout), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, acquireCalled.load());
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(2U, acquireCalled.load());
+        UNIT_ASSERT_NO_EXCEPTION(lock.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldRetryReadWhenConfirmationCompletesBeforeErrorIsHandled)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        const ui64 size = 100;
+        std::atomic_uint confirmCalled = 0;
+        std::atomic_uint readCalled = 0;
+        auto firstRead = NewPromise<NProto::TReadDataResponse>();
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto, auto)
+            {
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Service->SetHandlerReadData(
+            [&](auto, auto request)
+            {
+                if (++readCalled < 2) {
+                    // Held until after the confirmation has been processed.
+                    return firstRead.GetFuture();
+                }
+
+                NProto::TReadDataResponse response;
+                response.MutableBuffer()->assign(
+                    TString(request->GetLength(), 'a'));
+                return MakeFuture(response);
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            handle,
+            bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                .GetValue(WaitTimeout));
+
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handle, 0, size);
+        UNIT_ASSERT_EXCEPTION(read.GetValue(ExceptionWaitTimeout), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, readCalled.load());
+
+        // The confirmation completes and drops the queue entry while the read
+        // error is still in flight.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+
+        // Only now does the read fail. There is nothing left to park on, but a
+        // confirmation completed while it was in flight, so it is retried.
+        firstRead.SetValue(TErrorResponse(E_FS_BADHANDLE, "lost by restart"));
+        UNIT_ASSERT_VALUES_EQUAL(2U, readCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(size, read.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldRetryReadOnBadHandleNotInQueueOnlyOnce)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+        std::atomic_uint readCalled = 0;
+
+        // Synchronous create: nothing is queued for this handle.
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto, auto)
+            {
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Service->SetHandlerReadData(
+            [&](auto, auto)
+            {
+                ++readCalled;
+                NProto::TReadDataResponse response =
+                    TErrorResponse(E_FS_BADHANDLE, "");
+                return MakeFuture(response);
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            handle,
+            bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                .GetValue(WaitTimeout));
+
+        // Nothing to park on, so the read is retried once in case a
+        // confirmation had just completed. It fails again and the error
+        // surfaces - no parking, no hang, no confirmation.
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handle, 0, 100);
+        UNIT_ASSERT_EXCEPTION(read.GetValue(WaitTimeout), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(2U, readCalled.load());
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2U, readCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotLeakHandleWhenClosedWhileRetryIsParked)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+        std::atomic_uint destroyCalled = 0;
+        std::atomic_uint readCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto, auto)
+            {
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                // The queue orders the confirmation before the destroy.
+                UNIT_ASSERT_VALUES_EQUAL(0U, destroyCalled.load());
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto, auto)
+            {
+                ++destroyCalled;
+                return MakeFuture(NProto::TDestroyHandleResponse{});
+            });
+
+        bootstrap.Service->SetHandlerReadData(
+            [&](auto, auto request)
+            {
+                if (++readCalled < 2) {
+                    NProto::TReadDataResponse response =
+                        TErrorResponse(E_FS_BADHANDLE, "lost by restart");
+                    return MakeFuture(response);
+                }
+
+                NProto::TReadDataResponse response;
+                response.MutableBuffer()->assign(
+                    TString(request->GetLength(), 'a'));
+                return MakeFuture(response);
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            handle,
+            bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                .GetValue(WaitTimeout));
+
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handle, 0, 100);
+        UNIT_ASSERT_EXCEPTION(read.GetValue(ExceptionWaitTimeout), yexception);
+
+        // Close while the retry is parked: the destroy is queued behind the
+        // create confirmation.
+        auto release = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId, handle, O_RDONLY);
+        UNIT_ASSERT_NO_EXCEPTION(release.GetValue(WaitTimeout));
+
+        // First pass confirms the handle and releases the parked read.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(2U, readCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(100U, read.GetValue(WaitTimeout));
+
+        // Second pass destroys the handle exactly once - no leak.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, destroyCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotBlockStopByParkedRetry)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint readCalled = 0;
+        // The tablet is down - the confirmation never completes, so nothing
+        // will ever release the parked retry.
+        auto confirm = NewPromise<NProto::TConfirmCreateHandleResponse>();
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto, auto)
+            {
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto) { return confirm.GetFuture(); });
+
+        bootstrap.Service->SetHandlerReadData(
+            [&](auto, auto)
+            {
+                ++readCalled;
+                NProto::TReadDataResponse response =
+                    TErrorResponse(E_FS_BADHANDLE, "lost by restart");
+                return MakeFuture(response);
+            });
+
+        bootstrap.Start();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            handle,
+            bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                .GetValue(WaitTimeout));
+
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handle, 0, 100);
+        UNIT_ASSERT_EXCEPTION(read.GetValue(ExceptionWaitTimeout), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, readCalled.load());
+
+        // Stop() runs scheduled tasks until stopping completes and asserts
+        // that it happens within WaitTimeout: the parked retry must be
+        // cancelled instead of blocking the completion queue drain.
+        bootstrap.Stop();
+        UNIT_ASSERT_VALUES_EQUAL(1U, readCalled.load());
     }
 
     // We want to ensure that the same file cannot be reused for FileRingBuffers

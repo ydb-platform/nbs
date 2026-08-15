@@ -11,6 +11,7 @@ SRCS(
     fs_directory_handle_ut.cpp
     fs_impl_data_ut.cpp
     fs_ut.cpp
+    handle_ops_queue_ut.cpp
 )
 
 PEERDIR(

@@ -27,8 +27,11 @@
 #include <util/generic/hash.h>
 #include <util/generic/queue.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 #include <util/system/align.h>
 #include <util/system/mutex.h>
+
+#include <functional>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -97,8 +100,22 @@ private:
     TXAttrCache XAttrCache;
     TMutex XAttrCacheLock;
 
+    // A request retry parked until the queued ConfirmCreateHandle of the
+    // handle it uses is processed.
+    struct TParkedRequest
+    {
+        TCallContextPtr CallContext;
+        fuse_req_t Req;
+        std::function<void()> Retry;
+    };
+
     THandleOpsQueuePtr HandleOpsQueue;
+    // Guards both the queue and the requests parked on the create
+    // confirmations it holds - they are released together.
     TMutex HandleOpsQueueLock;
+    // Retries of the requests that failed with E_FS_BADHANDLE on an
+    // unconfirmed async-created handle, keyed by that handle.
+    THashMap<ui64, TVector<TParkedRequest>> ParkedRequests;
 
     TQueue<TReleaseRequest> DelayedReleaseQueue;
     TMutex DelayedReleaseQueueLock;
@@ -129,6 +146,8 @@ public:
     void Init() override;
 
     void Reset() override;
+
+    void CancelParkedRequests() override;
 
     // filesystem information
     void StatFs(
@@ -511,10 +530,23 @@ private:
         const NProto::TConfirmCreateHandleResponse& response);
     void CompleteHandleOpsQueueEntry();
     void ProcessDelayedRelease();
+    bool TryRetryUnconfirmedHandle(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        const NProto::TError& error,
+        ui64 handle,
+        std::function<void()> retry);
+    // Both are called under HandleOpsQueueLock.
+    TVector<TParkedRequest> ExtractParkedRequests(ui64 handle);
+    TVector<TParkedRequest> ExtractAllParkedRequests();
+    // Retries or cancels the extracted requests. Must be called without
+    // HandleOpsQueueLock - a retry re-enters the filesystem.
+    void CompleteParkedRequests(TVector<TParkedRequest> requests);
 
     void ClearDirectoryCache();
 
     void ScheduleProcessHandleOpsQueue();
+    void ScheduleProcessHandleOpsQueue(TDuration delay);
     void ProcessHandleOpsQueue();
 
     void DoWrite(

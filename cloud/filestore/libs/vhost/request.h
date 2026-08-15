@@ -473,12 +473,13 @@ struct TBrokenInterruptRequest
 struct TAcquireLockRequest
     : public TRequestBase<fuse_lk_in, void, void>
 {
-    TAcquireLockRequest(ui64 flags, ui64 type, bool setlkw = true)
+    TAcquireLockRequest(ui64 flags, ui64 type, bool setlkw = true, ui64 fh = 0)
     {
         In->Header.opcode = setlkw ? FUSE_SETLKW : FUSE_SETLK;
         // possible flags FUSE_LK_FLOCK
         In->Body.lk_flags = flags;
         In->Body.lk.type = type;
+        In->Body.fh = fh;
     }
 };
 
