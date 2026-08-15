@@ -4,6 +4,7 @@ import time
 
 
 FILE_CONTENT = b"x"
+DROP_PAGE_CACHE_AND_SLABS = 3
 
 
 def prepare_files(count):
@@ -23,7 +24,7 @@ def hold_files(
         unlinked_path=None):
     os.sync()
     with open("/proc/sys/vm/drop_caches", "w") as f:
-        f.write("3\n")
+        f.write(f"{DROP_PAGE_CACHE_AND_SLABS}\n")
 
     fds = []
     for i in range(count):
