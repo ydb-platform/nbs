@@ -182,7 +182,7 @@ func run(
 			Insecure:      nbsConfig.GetInsecure(),
 			RootCertsFile: nbsConfig.GetRootCertsFile(),
 		},
-		mon.NewRegistry("nbs_tls"),
+		nbsClientMetricsRegistry,
 	)
 	if err != nil {
 		return err
@@ -207,7 +207,7 @@ func run(
 			Insecure:      nfsConfig.GetInsecure(),
 			RootCertsFile: nfsConfig.GetRootCertsFile(),
 		},
-		mon.NewRegistry("nfs_tls"),
+		mon.NewRegistry("nfs_client"),
 	)
 	if err != nil {
 		return err
