@@ -30,6 +30,14 @@ struct TFileSystemShardStub: IFileSystemShard
     FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
 
 #undef FAST_SHARD_DEFINE_METHOD
+
+    [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> CollectStats(
+        TFileSystemShardStats* stats) const override
+    {
+        Y_UNUSED(stats);
+
+        return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

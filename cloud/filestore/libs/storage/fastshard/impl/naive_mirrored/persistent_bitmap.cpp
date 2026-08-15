@@ -25,6 +25,31 @@ bool IsFull(const TString& bitmapPage)
     return true;
 }
 
+static ui16 PopCount(ui64 x)
+{
+    // 64-bit SWAR
+    // https://www.playingwithpointers.com/blog/swar.html
+    ui64 byteSums = x - ((x & 0xAAAAAAAAAAAAAAAAULL) >> 1);
+    byteSums = (byteSums & 0x3333333333333333ULL)
+        + ((byteSums >> 2) & 0x3333333333333333ULL);
+    byteSums = (byteSums + (byteSums >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
+
+    return byteSums * 0x0101010101010101ULL >> 56;
+}
+
+ui64 PopCount(const TString& bitmapPage)
+{
+    Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
+    ui64 c = 0;
+
+    for (ui64 i = 0; i < bitmapPage.size(); i += sizeof(ui64)) {
+        const ui64* word = reinterpret_cast<const ui64*>(bitmapPage.data() + i);
+        c += PopCount(*word);
+    }
+
+    return c;
+}
+
 bool GetBit(TString& bitmapPage, ui64 bit)
 {
     Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
@@ -179,6 +204,21 @@ NProto::TError TPersistentBitmap::Allocate(
     }
 
     return MakeError(E_FS_OUT_OF_SPACE, "bitmap full");
+}
+
+[[nodiscard]] NProto::TError TPersistentBitmap::CountBits(ui64* bits) const
+{
+    auto e = InitIfNeeded();
+    if (HasError(e)) {
+        return e;
+    }
+
+    *bits = 0;
+    for (const auto& page: BitmapPages) {
+        *bits += PopCount(page);
+    }
+
+    return {};
 }
 
 NProto::TError TPersistentBitmap::InitIfNeeded() const
