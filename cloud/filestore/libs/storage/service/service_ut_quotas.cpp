@@ -20,12 +20,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TStorageConfig MakeStorageConfig()
-{
-    NProto::TStorageConfig config;
-    return config;
-}
-
 NProto::TStorageConfig MakeStorageConfigWithDirectoryCreationInShards()
 {
     NProto::TStorageConfig config;
@@ -58,8 +52,7 @@ protected:
         Service = MakeHolder<TServiceClient>(Env->GetRuntime(), nodeIdx);
 
         if (sharded) {
-            auto fsInfo = CreateFileSystem(*Service, fsConfig);
-            Y_UNUSED(fsInfo);
+            CreateFileSystem(*Service, fsConfig);
             FsId = fsConfig.FsId;
         } else {
             FsId = "test";
@@ -73,7 +66,7 @@ class TUnshardedFixture: public TShardingModeFixtureBase
 public:
     void SetUp(NUnitTest::TTestContext&) override
     {
-        Init(MakeStorageConfig(), false);
+        Init(NProto::TStorageConfig{}, false);
     }
 };
 
@@ -82,7 +75,7 @@ class TShardedFixture: public TShardingModeFixtureBase
 public:
     void SetUp(NUnitTest::TTestContext&) override
     {
-        Init(MakeStorageConfig(), true);
+        Init(NProto::TStorageConfig{}, true);
     }
 };
 

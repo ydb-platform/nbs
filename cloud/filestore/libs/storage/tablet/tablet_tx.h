@@ -1975,6 +1975,7 @@ struct TTxIndexTablet
             TargetNode.Clear();
             ParentNode.Clear();
             UpdatedNodes.clear();
+            QuotaId = 0;
 
             OpLogEntry.Clear();
 
