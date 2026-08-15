@@ -16,7 +16,6 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type GrpcClientTlsProviderConfig struct {
-	Insecure      bool
 	RootCertsFile string
 }
 
@@ -27,11 +26,12 @@ type grpcClientTlsProvider struct {
 
 // A provider is not created for insecure clients or when system roots are used.
 func NewGrpcClientTlsProvider(
+	insecure bool,
 	config GrpcClientTlsProviderConfig,
 	registry metrics.Registry,
 ) (storage_grpc.TlsConfigProvider, error) {
 
-	if config.Insecure || config.RootCertsFile == "" {
+	if insecure || config.RootCertsFile == "" {
 		return nil, nil
 	}
 

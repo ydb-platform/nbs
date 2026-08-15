@@ -38,6 +38,7 @@ func TestGrpcClientTlsProviderLoadsConfigAndReportsFingerprint(t *testing.T) {
 	).On("Set", float64(fingerprint)).Once()
 
 	provider, err := NewGrpcClientTlsProvider(
+		false,
 		GrpcClientTlsProviderConfig{RootCertsFile: certPath},
 		registry,
 	)
@@ -49,17 +50,23 @@ func TestGrpcClientTlsProviderLoadsConfigAndReportsFingerprint(t *testing.T) {
 }
 
 func TestGrpcClientTlsProviderIsOptional(t *testing.T) {
-	configs := []GrpcClientTlsProviderConfig{
+	configs := []struct {
+		insecure bool
+		config   GrpcClientTlsProviderConfig
+	}{
 		{},
 		{
-			Insecure:      true,
-			RootCertsFile: "unused.pem",
+			insecure: true,
+			config: GrpcClientTlsProviderConfig{
+				RootCertsFile: "unused.pem",
+			},
 		},
 	}
 
 	for _, config := range configs {
 		provider, err := NewGrpcClientTlsProvider(
-			config,
+			config.insecure,
+			config.config,
 			metrics_mocks.NewRegistryMock(),
 		)
 
@@ -146,6 +153,7 @@ func TestGrpcTlsProvidersRejectInvalidInitialCertificates(t *testing.T) {
 	require.NoError(t, os.WriteFile(certPath, []byte("invalid"), 0o600))
 
 	_, err := NewGrpcClientTlsProvider(
+		false,
 		GrpcClientTlsProviderConfig{RootCertsFile: certPath},
 		metrics_mocks.NewRegistryMock(),
 	)
@@ -166,6 +174,7 @@ func TestGrpcTlsProvidersPreserveFileErrors(t *testing.T) {
 	missingPath := filepath.Join(t.TempDir(), "missing.pem")
 
 	_, err := NewGrpcClientTlsProvider(
+		false,
 		GrpcClientTlsProviderConfig{RootCertsFile: missingPath},
 		metrics_mocks.NewRegistryMock(),
 	)

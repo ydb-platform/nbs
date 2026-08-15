@@ -178,8 +178,8 @@ func run(
 	nbsSessionMetricsRegistry := mon.NewRegistry("nbs_session")
 	nbsConfig := config.GetNbsConfig()
 	nbsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		nbsConfig.GetInsecure(),
 		common.GrpcClientTlsProviderConfig{
-			Insecure:      nbsConfig.GetInsecure(),
 			RootCertsFile: nbsConfig.GetRootCertsFile(),
 		},
 		nbsClientMetricsRegistry,
@@ -204,8 +204,8 @@ func run(
 	nfsConfig := config.GetNfsConfig()
 	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
 	nfsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		nfsConfig.GetInsecure(),
 		common.GrpcClientTlsProviderConfig{
-			Insecure:      nfsConfig.GetInsecure(),
 			RootCertsFile: nfsConfig.GetRootCertsFile(),
 		},
 		nfsClientMetricsRegistry,
