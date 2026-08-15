@@ -15,21 +15,21 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type GRPCClientTLSProviderConfig struct {
+type GrpcClientTlsProviderConfig struct {
 	Insecure      bool
 	RootCertsFile string
 }
 
-type GRPCClientTLSProvider struct {
+type GrpcClientTlsProvider struct {
 	mutex     sync.RWMutex
 	tlsConfig *tls.Config
 }
 
 // A provider is not created for insecure clients or when system roots are used.
-func NewGRPCClientTLSProvider(
-	config GRPCClientTLSProviderConfig,
+func NewGrpcClientTlsProvider(
+	config GrpcClientTlsProviderConfig,
 	registry metrics.Registry,
-) (storage_grpc.TLSConfigProvider, error) {
+) (storage_grpc.TlsConfigProvider, error) {
 
 	if config.Insecure || config.RootCertsFile == "" {
 		return nil, nil
@@ -59,10 +59,10 @@ func NewGRPCClientTLSProvider(
 		},
 	).Gauge("Fingerprint").Set(float64(fingerprint))
 
-	return &GRPCClientTLSProvider{tlsConfig: cfg}, nil
+	return &GrpcClientTlsProvider{tlsConfig: cfg}, nil
 }
 
-func (p *GRPCClientTLSProvider) GetTLSConfig() *tls.Config {
+func (p *GrpcClientTlsProvider) GetTlsConfig() *tls.Config {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 

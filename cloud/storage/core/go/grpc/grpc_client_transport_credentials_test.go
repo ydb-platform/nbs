@@ -20,13 +20,13 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type mutableTLSConfigProvider struct {
+type mutableTlsConfigProvider struct {
 	mutex     sync.Mutex
 	tlsConfig *tls.Config
 	callCount int
 }
 
-func (p *mutableTLSConfigProvider) GetTLSConfig() *tls.Config {
+func (p *mutableTlsConfigProvider) GetTlsConfig() *tls.Config {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -34,38 +34,38 @@ func (p *mutableTLSConfigProvider) GetTLSConfig() *tls.Config {
 	return p.tlsConfig
 }
 
-func (p *mutableTLSConfigProvider) setTLSConfig(config *tls.Config) {
+func (p *mutableTlsConfigProvider) setTlsConfig(config *tls.Config) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
 	p.tlsConfig = config
 }
 
-func (p *mutableTLSConfigProvider) getCallCount() int {
+func (p *mutableTlsConfigProvider) getCallCount() int {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
 	return p.callCount
 }
 
-func TestGRPCClientTransportCredentialsUsesLatestTLSConfigForEveryHandshake(
+func TestGrpcClientTransportCredentialsUsesLatestTlsConfigForEveryHandshake(
 	t *testing.T,
 ) {
 
 	firstCertificate, firstConfig := newServerCertificate(t, 1)
 	secondCertificate, secondConfig := newServerCertificate(t, 2)
 
-	provider := &mutableTLSConfigProvider{tlsConfig: firstConfig}
-	transportCredentials := newGRPCClientTransportCredentials(t, provider)
+	provider := &mutableTlsConfigProvider{tlsConfig: firstConfig}
+	transportCredentials := newGrpcClientTransportCredentials(t, provider)
 
-	performTLSHandshake(
+	performTlsHandshake(
 		t,
 		transportCredentials,
 		firstCertificate,
 		"localhost:443",
 	)
-	provider.setTLSConfig(secondConfig)
-	performTLSHandshake(
+	provider.setTlsConfig(secondConfig)
+	performTlsHandshake(
 		t,
 		transportCredentials,
 		secondCertificate,
@@ -80,10 +80,10 @@ func TestGRPCClientTransportCredentialsUsesLatestTLSConfigForEveryHandshake(
 	}
 }
 
-func TestGRPCClientTransportCredentialsUsesServerNameOverride(t *testing.T) {
+func TestGrpcClientTransportCredentialsUsesServerNameOverride(t *testing.T) {
 	serverCertificate, config := newServerCertificate(t, 1)
-	provider := &mutableTLSConfigProvider{tlsConfig: config}
-	transportCredentials := newGRPCClientTransportCredentials(
+	provider := &mutableTlsConfigProvider{tlsConfig: config}
+	transportCredentials := newGrpcClientTransportCredentials(
 		t,
 		provider,
 	)
@@ -92,7 +92,7 @@ func TestGRPCClientTransportCredentialsUsesServerNameOverride(t *testing.T) {
 		t.Fatalf("failed to override server name: %v", err)
 	}
 
-	performTLSHandshake(
+	performTlsHandshake(
 		t,
 		transportCredentials,
 		serverCertificate,
@@ -107,21 +107,21 @@ func TestGRPCClientTransportCredentialsUsesServerNameOverride(t *testing.T) {
 	}
 }
 
-func TestGRPCClientTransportCredentialsClonePreservesServerNameOverride(
+func TestGrpcClientTransportCredentialsClonePreservesServerNameOverride(
 	t *testing.T,
 ) {
 
 	serverCertificate, config := newServerCertificate(t, 1)
-	transportCredentials := newGRPCClientTransportCredentials(
+	transportCredentials := newGrpcClientTransportCredentials(
 		t,
-		&mutableTLSConfigProvider{tlsConfig: config},
+		&mutableTlsConfigProvider{tlsConfig: config},
 	)
 
 	if err := transportCredentials.OverrideServerName("localhost"); err != nil {
 		t.Fatalf("failed to override server name: %v", err)
 	}
 
-	performTLSHandshake(
+	performTlsHandshake(
 		t,
 		transportCredentials.Clone(),
 		serverCertificate,
@@ -129,10 +129,10 @@ func TestGRPCClientTransportCredentialsClonePreservesServerNameOverride(
 	)
 }
 
-func TestGRPCClientTransportCredentialsRejectsNilTLSConfig(t *testing.T) {
-	transportCredentials := newGRPCClientTransportCredentials(
+func TestGrpcClientTransportCredentialsRejectsNilTlsConfig(t *testing.T) {
+	transportCredentials := newGrpcClientTransportCredentials(
 		t,
-		&mutableTLSConfigProvider{},
+		&mutableTlsConfigProvider{},
 	)
 
 	_, _, err := transportCredentials.ClientHandshake(
@@ -140,16 +140,16 @@ func TestGRPCClientTransportCredentialsRejectsNilTLSConfig(t *testing.T) {
 		"localhost:443",
 		nil,
 	)
-	if !errors.Is(err, errTLSConfigIsNil) {
+	if !errors.Is(err, errTlsConfigIsNil) {
 		t.Fatalf("expected nil TLS config error, got %v", err)
 	}
 }
 
-func TestNewGRPCClientTransportCredentialsRejectsNilProvider(t *testing.T) {
-	var typedNilProvider *mutableTLSConfigProvider
-	for _, provider := range []TLSConfigProvider{nil, typedNilProvider} {
-		transportCredentials, err := NewGRPCClientTransportCredentials(provider)
-		if !errors.Is(err, errTLSConfigProviderIsNil) {
+func TestNewGrpcClientTransportCredentialsRejectsNilProvider(t *testing.T) {
+	var typedNilProvider *mutableTlsConfigProvider
+	for _, provider := range []TlsConfigProvider{nil, typedNilProvider} {
+		transportCredentials, err := NewGrpcClientTransportCredentials(provider)
+		if !errors.Is(err, errTlsConfigProviderIsNil) {
 			t.Fatalf("expected nil TLS config provider error, got %v", err)
 		}
 
@@ -159,14 +159,14 @@ func TestNewGRPCClientTransportCredentialsRejectsNilProvider(t *testing.T) {
 	}
 }
 
-func newGRPCClientTransportCredentials(
+func newGrpcClientTransportCredentials(
 	t *testing.T,
-	provider TLSConfigProvider,
+	provider TlsConfigProvider,
 ) credentials.TransportCredentials {
 
 	t.Helper()
 
-	transportCredentials, err := NewGRPCClientTransportCredentials(provider)
+	transportCredentials, err := NewGrpcClientTransportCredentials(provider)
 	if err != nil {
 		t.Fatalf("failed to create transport credentials: %v", err)
 	}
@@ -174,7 +174,7 @@ func newGRPCClientTransportCredentials(
 	return transportCredentials
 }
 
-func performTLSHandshake(
+func performTlsHandshake(
 	t *testing.T,
 	transportCredentials credentials.TransportCredentials,
 	serverCertificate tls.Certificate,

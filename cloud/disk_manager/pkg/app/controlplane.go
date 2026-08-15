@@ -36,7 +36,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newGRPCServer(
+func newGrpcServer(
 	ctx context.Context,
 	config *server_config.ServerConfig,
 	mon *monitoring.Monitoring,
@@ -93,17 +93,17 @@ func newGRPCServer(
 		logging.Info(ctx, "Creating GRPC transport credentials")
 		configuredCerts := config.GetGrpcConfig().GetCerts()
 		certs := make(
-			[]common.GRPCServerCertificateConfig,
+			[]common.GrpcServerCertificateConfig,
 			0,
 			len(configuredCerts),
 		)
 		for _, cert := range configuredCerts {
-			certs = append(certs, common.GRPCServerCertificateConfig{
+			certs = append(certs, common.GrpcServerCertificateConfig{
 				CertFile:       cert.GetCertFile(),
 				PrivateKeyFile: cert.GetPrivateKeyFile(),
 			})
 		}
-		tlsProvider, err := common.NewGRPCServerTLSProvider(
+		tlsProvider, err := common.NewGrpcServerTlsProvider(
 			ctx,
 			certs,
 			facadeMetricsRegistry,
@@ -296,7 +296,7 @@ func initControlplane(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
-	nfsTLSProvider nfs.TLSConfigProvider,
+	nfsTlsProvider nfs.TlsConfigProvider,
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
@@ -315,7 +315,7 @@ func initControlplane(
 		creds,
 		nfsClientMetricsRegistry,
 		nfsSessionMetricsRegistry,
-		nfsTLSProvider,
+		nfsTlsProvider,
 	)
 
 	poolService := pools.NewService(taskScheduler, poolStorage)
@@ -409,7 +409,7 @@ func initControlplane(
 	}
 
 	logging.Info(ctx, "Initializing GRPC server")
-	server, err := newGRPCServer(ctx, config, mon, creds, newAuthorizer)
+	server, err := newGrpcServer(ctx, config, mon, creds, newAuthorizer)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize GRPC server: %v", err)
 		return nil, err

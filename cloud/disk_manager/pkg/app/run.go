@@ -177,8 +177,8 @@ func run(
 	nbsClientMetricsRegistry := mon.NewRegistry("nbs_client")
 	nbsSessionMetricsRegistry := mon.NewRegistry("nbs_session")
 	nbsConfig := config.GetNbsConfig()
-	nbsTLSProvider, err := common.NewGRPCClientTLSProvider(
-		common.GRPCClientTLSProviderConfig{
+	nbsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		common.GrpcClientTlsProviderConfig{
 			Insecure:      nbsConfig.GetInsecure(),
 			RootCertsFile: nbsConfig.GetRootCertsFile(),
 		},
@@ -194,7 +194,7 @@ func run(
 		creds,
 		nbsClientMetricsRegistry,
 		nbsSessionMetricsRegistry,
-		nbsTLSProvider,
+		nbsTlsProvider,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to create nbs factory: %v", err)
@@ -202,8 +202,8 @@ func run(
 	}
 
 	nfsConfig := config.GetNfsConfig()
-	nfsTLSProvider, err := common.NewGRPCClientTLSProvider(
-		common.GRPCClientTLSProviderConfig{
+	nfsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		common.GrpcClientTlsProviderConfig{
 			Insecure:      nfsConfig.GetInsecure(),
 			RootCertsFile: nfsConfig.GetRootCertsFile(),
 		},
@@ -354,7 +354,7 @@ func run(
 				creds,
 				nfsClientMetricsRegistry,
 				nfsSessionMetricsRegistry,
-				nfsTLSProvider,
+				nfsTlsProvider,
 			)
 
 			filesystemDB, err := persistence.NewYDBClient(
@@ -399,7 +399,7 @@ func run(
 			taskRegistry,
 			taskScheduler,
 			nbsFactory,
-			nfsTLSProvider,
+			nfsTlsProvider,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize GRPC services: %v", err)

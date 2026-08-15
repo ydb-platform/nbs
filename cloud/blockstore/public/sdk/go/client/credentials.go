@@ -28,14 +28,14 @@ type ClientCredentials struct {
 	RootCertsFile      string
 	CertFile           string
 	CertPrivateKeyFile string
-	// TLSProvider, when set, takes precedence over RootCertsFile,
+	// TlsProvider, when set, takes precedence over RootCertsFile,
 	// CertFile, and CertPrivateKeyFile.
-	TLSProvider TLSConfigProvider
+	TlsProvider TlsConfigProvider
 	AuthToken   string
 	IAMClient   TokenProvider
 }
 
-type TLSConfigProvider = storage_grpc.TLSConfigProvider
+type TlsConfigProvider = storage_grpc.TlsConfigProvider
 
 type TokenProvider interface {
 	Token(ctx context.Context) (string, error)
@@ -43,12 +43,12 @@ type TokenProvider interface {
 
 func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, error) {
 	var transportCredentials credentials.TransportCredentials
-	// A typed-nil TLSProvider is a configuration error. Let the constructor
+	// A typed-nil TlsProvider is a configuration error. Let the constructor
 	// reject it instead of silently falling back to the certificate files.
-	if creds.TLSProvider != nil {
+	if creds.TlsProvider != nil {
 		var err error
-		transportCredentials, err = storage_grpc.NewGRPCClientTransportCredentials(
-			creds.TLSProvider,
+		transportCredentials, err = storage_grpc.NewGrpcClientTransportCredentials(
+			creds.TlsProvider,
 		)
 		if err != nil {
 			return nil, err

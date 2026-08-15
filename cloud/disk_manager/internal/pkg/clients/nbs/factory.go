@@ -23,14 +23,14 @@ import (
 type factory struct {
 	config                 *nbs_config.ClientConfig
 	credentials            auth.Credentials
-	tlsProvider            TLSConfigProvider
+	tlsProvider            TlsConfigProvider
 	sessionMetricsRegistry metrics.Registry
 	metrics                client_metrics.Metrics
 	clients                map[string]client
 	multiZoneClients       map[[2]string]multiZoneClient
 }
 
-type TLSConfigProvider = nbs_client.TLSConfigProvider
+type TlsConfigProvider = nbs_client.TlsConfigProvider
 
 func (f *factory) initClients(
 	ctx context.Context,
@@ -122,7 +122,7 @@ func (f *factory) initClients(
 	for zoneID, zone := range f.config.GetZones() {
 		clientCreds := &nbs_client.ClientCredentials{
 			RootCertsFile: f.config.GetRootCertsFile(),
-			TLSProvider:   f.tlsProvider,
+			TlsProvider:   f.tlsProvider,
 			IAMClient:     f.credentials,
 		}
 
@@ -298,7 +298,7 @@ func newFactoryWithCreds(
 	creds auth.Credentials,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
-	tlsProvider TLSConfigProvider,
+	tlsProvider TlsConfigProvider,
 ) (*factory, error) {
 
 	if config.GetDisableAuthentication() {
@@ -326,7 +326,7 @@ func NewFactoryWithCreds(
 	creds auth.Credentials,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
-	tlsProvider TLSConfigProvider,
+	tlsProvider TlsConfigProvider,
 ) (Factory, error) {
 
 	return newFactoryWithCreds(
@@ -344,7 +344,7 @@ func NewFactory(
 	config *nbs_config.ClientConfig,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
-	tlsProvider TLSConfigProvider,
+	tlsProvider TlsConfigProvider,
 ) (Factory, error) {
 
 	return NewFactoryWithCreds(

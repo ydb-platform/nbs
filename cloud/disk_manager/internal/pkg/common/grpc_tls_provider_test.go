@@ -22,7 +22,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestGRPCClientTLSProviderLoadsConfigAndReportsFingerprint(t *testing.T) {
+func TestGrpcClientTlsProviderLoadsConfigAndReportsFingerprint(t *testing.T) {
 	certPEM, _ := generateCertificate(t, "root", time.Now().Add(24*time.Hour))
 	certPath := filepath.Join(t.TempDir(), "root.pem")
 	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
@@ -37,19 +37,19 @@ func TestGRPCClientTLSProviderLoadsConfigAndReportsFingerprint(t *testing.T) {
 		},
 	).On("Set", float64(fingerprint)).Once()
 
-	provider, err := NewGRPCClientTLSProvider(
-		GRPCClientTLSProviderConfig{RootCertsFile: certPath},
+	provider, err := NewGrpcClientTlsProvider(
+		GrpcClientTlsProviderConfig{RootCertsFile: certPath},
 		registry,
 	)
 	require.NoError(t, err)
-	tlsConfig := provider.GetTLSConfig()
+	tlsConfig := provider.GetTlsConfig()
 	require.NotNil(t, tlsConfig.RootCAs)
 	require.Equal(t, uint16(tls.VersionTLS12), tlsConfig.MinVersion)
 	require.True(t, registry.AssertAllExpectations(t))
 }
 
-func TestGRPCClientTLSProviderIsOptional(t *testing.T) {
-	configs := []GRPCClientTLSProviderConfig{
+func TestGrpcClientTlsProviderIsOptional(t *testing.T) {
+	configs := []GrpcClientTlsProviderConfig{
 		{},
 		{
 			Insecure:      true,
@@ -58,7 +58,7 @@ func TestGRPCClientTLSProviderIsOptional(t *testing.T) {
 	}
 
 	for _, config := range configs {
-		provider, err := NewGRPCClientTLSProvider(
+		provider, err := NewGrpcClientTlsProvider(
 			config,
 			metrics_mocks.NewRegistryMock(),
 		)
@@ -68,7 +68,7 @@ func TestGRPCClientTLSProviderIsOptional(t *testing.T) {
 	}
 }
 
-func TestGRPCServerTLSProviderReportsEarliestExpiration(t *testing.T) {
+func TestGrpcServerTlsProviderReportsEarliestExpiration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -103,9 +103,9 @@ func TestGRPCServerTLSProviderReportsEarliestExpiration(t *testing.T) {
 		map[string]string{"path": certPath},
 	).On("Set", float64(0)).Once()
 
-	provider, err := NewGRPCServerTLSProvider(
+	provider, err := NewGrpcServerTlsProvider(
 		ctx,
-		[]GRPCServerCertificateConfig{{
+		[]GrpcServerCertificateConfig{{
 			CertFile:       certPath,
 			PrivateKeyFile: keyPath,
 		}},
@@ -117,10 +117,10 @@ func TestGRPCServerTLSProviderReportsEarliestExpiration(t *testing.T) {
 	require.True(t, registry.AssertAllExpectations(t))
 }
 
-func TestGRPCServerTLSProviderSelectsCertificate(t *testing.T) {
+func TestGrpcServerTlsProviderSelectsCertificate(t *testing.T) {
 	firstCertificate := loadServerCertificate(t, "first.example")
 	secondCertificate := loadServerCertificate(t, "second.example")
-	provider := &GRPCServerTLSProvider{
+	provider := &GrpcServerTlsProvider{
 		certificates: []tls.Certificate{firstCertificate, secondCertificate},
 	}
 
@@ -141,19 +141,19 @@ func TestGRPCServerTLSProviderSelectsCertificate(t *testing.T) {
 	require.Equal(t, firstCertificate.Leaf.Raw, selected.Leaf.Raw)
 }
 
-func TestGRPCTLSProvidersRejectInvalidInitialCertificates(t *testing.T) {
+func TestGrpcTlsProvidersRejectInvalidInitialCertificates(t *testing.T) {
 	certPath := filepath.Join(t.TempDir(), "invalid.pem")
 	require.NoError(t, os.WriteFile(certPath, []byte("invalid"), 0o600))
 
-	_, err := NewGRPCClientTLSProvider(
-		GRPCClientTLSProviderConfig{RootCertsFile: certPath},
+	_, err := NewGrpcClientTlsProvider(
+		GrpcClientTlsProviderConfig{RootCertsFile: certPath},
 		metrics_mocks.NewRegistryMock(),
 	)
 	require.Error(t, err)
 
-	_, err = NewGRPCServerTLSProvider(
+	_, err = NewGrpcServerTlsProvider(
 		context.Background(),
-		[]GRPCServerCertificateConfig{{
+		[]GrpcServerCertificateConfig{{
 			CertFile:       certPath,
 			PrivateKeyFile: certPath,
 		}},
@@ -214,7 +214,7 @@ func loadServerCertificate(t *testing.T, serverName string) tls.Certificate {
 	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
 	require.NoError(t, os.WriteFile(keyPath, keyPEM, 0o600))
 
-	certificate, _, err := readServerCertificate(GRPCServerCertificateConfig{
+	certificate, _, err := readServerCertificate(GrpcServerCertificateConfig{
 		CertFile:       certPath,
 		PrivateKeyFile: keyPath,
 	})

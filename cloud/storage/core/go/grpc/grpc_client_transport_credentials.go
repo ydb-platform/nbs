@@ -13,33 +13,33 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-var errTLSConfigProviderIsNil = errors.New("TLS config provider is nil")
+var errTlsConfigProviderIsNil = errors.New("TLS config provider is nil")
 
-var errTLSConfigIsNil = errors.New(
+var errTlsConfigIsNil = errors.New(
 	"TLS config provider returned nil config",
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type TLSConfigProvider interface {
-	// GetTLSConfig returns the current TLS config, or nil if it is unavailable.
+type TlsConfigProvider interface {
+	// GetTlsConfig returns the current TLS config, or nil if it is unavailable.
 	// The returned config must not be modified.
-	GetTLSConfig() *tls.Config
+	GetTlsConfig() *tls.Config
 }
 
 type grpcClientTransportCredentials struct {
-	provider TLSConfigProvider
+	provider TlsConfigProvider
 
 	mutex              sync.RWMutex
 	serverNameOverride string
 }
 
-func NewGRPCClientTransportCredentials(
-	provider TLSConfigProvider,
+func NewGrpcClientTransportCredentials(
+	provider TlsConfigProvider,
 ) (creds.TransportCredentials, error) {
 
-	if isNilTLSConfigProvider(provider) {
-		return nil, errTLSConfigProviderIsNil
+	if isNilTlsConfigProvider(provider) {
+		return nil, errTlsConfigProviderIsNil
 	}
 
 	return &grpcClientTransportCredentials{provider: provider}, nil
@@ -51,9 +51,9 @@ func (c *grpcClientTransportCredentials) ClientHandshake(
 	rawConn net.Conn,
 ) (net.Conn, creds.AuthInfo, error) {
 
-	config := c.provider.GetTLSConfig()
+	config := c.provider.GetTlsConfig()
 	if config == nil {
-		return nil, nil, errTLSConfigIsNil
+		return nil, nil, errTlsConfigIsNil
 	}
 
 	config = config.Clone()
@@ -68,7 +68,7 @@ func (c *grpcClientTransportCredentials) ClientHandshake(
 	return creds.NewTLS(config).ClientHandshake(ctx, authority, rawConn)
 }
 
-func isNilTLSConfigProvider(provider TLSConfigProvider) bool {
+func isNilTlsConfigProvider(provider TlsConfigProvider) bool {
 	if provider == nil {
 		return true
 	}
