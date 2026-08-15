@@ -13,13 +13,18 @@
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/simple_template.h>
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/mutex.h>
 
+#include <library/cpp/json/writer/json.h>
+#include <library/cpp/resource/resource.h>
+
 #include <util/digest/city.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
+#include <util/string/cast.h>
 
 #include <sys/stat.h>
 
@@ -881,6 +886,74 @@ auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
 // TODO(#5895) - implement layout dump
 //
 
+struct TComponentLayout
+{
+    // Component tag; the upcoming per-component statistics method will
+    // accept these tags, so they must stay stable.
+    TString Name;
+
+    ui64 OffsetBytes = 0;
+    ui64 SizeBytes = 0;
+
+    // Slot size and count in the component's own units: hash table
+    // slots for the tables, page clusters for the data region. Zero
+    // when not applicable (the allocator bitmap counts bits).
+    ui64 SlotSize = 0;
+    ui64 SlotCount = 0;
+};
+
+void DumpLayoutComponentsJson(
+    IOutputStream& out,
+    const TVector<TComponentLayout>& components)
+{
+    NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
+
+    writer.BeginObject();
+    writer.WriteKey("components");
+    writer.BeginList();
+    for (const auto& c: components) {
+        writer.BeginObject();
+        writer.WriteKey("name");
+        writer.WriteString(c.Name);
+        writer.WriteKey("offsetBytes");
+        writer.WriteULongLong(c.OffsetBytes);
+        writer.WriteKey("sizeBytes");
+        writer.WriteULongLong(c.SizeBytes);
+        writer.WriteKey("slotSize");
+        writer.WriteULongLong(c.SlotSize);
+        writer.WriteKey("slotCount");
+        writer.WriteULongLong(c.SlotCount);
+        writer.EndObject();
+    }
+    writer.EndList();
+    writer.EndObject();
+}
+
+void DumpLayoutComponentsHtml(
+    IOutputStream& out,
+    const TVector<TComponentLayout>& components)
+{
+    TVector<TTemplateVars> rows;
+    rows.reserve(components.size());
+    for (const auto& c: components) {
+        rows.push_back({
+            {"NAME", c.Name},
+            {"OFFSET_BYTES", ToString(c.OffsetBytes)},
+            {"SIZE_BYTES", ToString(c.SizeBytes)},
+            {"SLOT_SIZE", ToString(c.SlotSize)},
+            {"SLOT_COUNT", ToString(c.SlotCount)},
+        });
+    }
+
+    OutputTemplate(
+        NResource::Find("fastshard/html/layout.html"),
+        {{"STYLE", NResource::Find("fastshard/css/layout.css")}},
+        {{"COMPONENTS", std::move(rows)}},
+        out);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TFiberShardImpl
 {
 private:
@@ -896,6 +969,11 @@ private:
     THandleTable Handles;
     TPageIndex PageIndex;
     TPageAllocator PageAllocator;
+
+    // Filled once in the ctor, immutable afterwards - safe to read
+    // without Mutex from any thread.
+    TVector<TComponentLayout> Layout;
+
     mutable silk::FiberMutex Mutex;
 
 public:
@@ -947,6 +1025,82 @@ public:
         SILK_INFO("handle table slots=%lu", Handles.GetSlotCount());
         SILK_INFO("page index table slots=%lu", PageIndex.GetSlotCount());
         SILK_INFO("page allocator bits=%lu", PageAllocator.GetBitCount());
+
+        //
+        // PageAllocator.Init returns the bitmap pages together with the
+        // data page clusters the bitmap tracks - split them back apart
+        // for the layout description.
+        //
+
+        const ui64 bitmapPageCount = PageAllocator.GetBitCount() /
+            TPersistentBitmap::CalcBitsPerPage(PageSize);
+        const ui64 dataPageCount = pageAllocatorPageCount - bitmapPageCount;
+        const ui64 nodeTableOffset = 0;
+        const ui64 nameTableOffset =
+            nodeTableOffset + nodeTablePageCount * PageSize;
+        const ui64 handleTableOffset =
+            nameTableOffset + nameTablePageCount * PageSize;
+        const ui64 pageIndexOffset =
+            handleTableOffset + handleTablePageCount * PageSize;
+        const ui64 bitmapOffset =
+            pageIndexOffset + pageIndexPageCount * PageSize;
+        const ui64 dataPagesOffset = bitmapOffset + bitmapPageCount * PageSize;
+
+        Layout = {
+            {
+                .Name = "NodeTable",
+                .OffsetBytes = nodeTableOffset,
+                .SizeBytes = nodeTablePageCount * PageSize,
+                .SlotSize = NodeSlotSize,
+                .SlotCount = Nodes.GetSlotCount(),
+            },
+            {
+                .Name = "NameTable",
+                .OffsetBytes = nameTableOffset,
+                .SizeBytes = nameTablePageCount * PageSize,
+                .SlotSize = NameSlotSize,
+                .SlotCount = Names.GetSlotCount(),
+            },
+            {
+                .Name = "HandleTable",
+                .OffsetBytes = handleTableOffset,
+                .SizeBytes = handleTablePageCount * PageSize,
+                .SlotSize = HandleSlotSize,
+                .SlotCount = Handles.GetSlotCount(),
+            },
+            {
+                .Name = "PageIndex",
+                .OffsetBytes = pageIndexOffset,
+                .SizeBytes = pageIndexPageCount * PageSize,
+                .SlotSize = NodePageClusterSlotSize,
+                .SlotCount = PageIndex.GetSlotCount(),
+            },
+            {
+                .Name = "PageAllocatorBitmap",
+                .OffsetBytes = bitmapOffset,
+                .SizeBytes = bitmapPageCount * PageSize,
+                .SlotSize = 0,
+                .SlotCount = PageAllocator.GetBitCount(),
+            },
+            {
+                .Name = "DataPages",
+                .OffsetBytes = dataPagesOffset,
+                .SizeBytes = dataPageCount * PageSize,
+                .SlotSize = PageClusterSize,
+                .SlotCount = dataPageCount / PageClusterPageCount,
+            },
+        };
+    }
+
+public:
+    void DumpLayoutHtml(IOutputStream& out) const
+    {
+        DumpLayoutComponentsHtml(out, Layout);
+    }
+
+    void DumpLayoutJson(IOutputStream& out) const
+    {
+        DumpLayoutComponentsJson(out, Layout);
     }
 
 public:
@@ -2093,6 +2247,21 @@ public:
         }
 
         return future;
+    }
+
+    //
+    // The layout is immutable after construction and its dump does no
+    // page IO, so no fiber is needed here.
+    //
+
+    void DumpLayoutHtml(IOutputStream& out) const override
+    {
+        FiberShard->DumpLayoutHtml(out);
+    }
+
+    void DumpLayoutJson(IOutputStream& out) const override
+    {
+        FiberShard->DumpLayoutJson(out);
     }
 };
 

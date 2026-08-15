@@ -8,6 +8,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <util/stream/output.h>
 #include <util/string/builder.h>
 #include <util/system/spinlock.h>
 
@@ -611,6 +612,22 @@ private:
         }
 
         return false;
+    }
+
+public:
+    //
+    // Monitoring. The mem shard has no persistent layout, so the dumps
+    // are empty.
+    //
+
+    void DumpLayoutHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+
+    void DumpLayoutJson(IOutputStream& out) const override
+    {
+        out << "{}";
     }
 };
 

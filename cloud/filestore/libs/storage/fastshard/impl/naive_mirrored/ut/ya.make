@@ -5,6 +5,7 @@ SRCS(
     ../persistent_hash_table_ut.cpp
     ../shard_ut.cpp
     ../shard_ut_error.cpp
+    ../shard_ut_layout.cpp
 )
 
 PEERDIR(
@@ -20,6 +21,8 @@ PEERDIR(
     contrib/libs/silk/src/fibers
 
     contrib/restricted/googletest/googletest
+
+    library/cpp/json
 )
 
 END()
