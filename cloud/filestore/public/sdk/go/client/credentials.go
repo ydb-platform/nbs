@@ -71,7 +71,10 @@ func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, e
 		if creds.CertFile != "" {
 			cert, err := tls.LoadX509KeyPair(creds.CertFile, creds.CertPrivateKeyFile)
 			if err != nil {
-				return nil, fmt.Errorf("failed to load client certificate/key: %s", err.Error())
+				return nil, fmt.Errorf(
+					"failed to load client certificate/key: %s",
+					err.Error(),
+				)
 			}
 
 			cfg.Certificates = []tls.Certificate{cert}

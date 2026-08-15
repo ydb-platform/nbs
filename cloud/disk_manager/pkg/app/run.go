@@ -176,21 +176,16 @@ func run(
 
 	nbsClientMetricsRegistry := mon.NewRegistry("nbs_client")
 	nbsSessionMetricsRegistry := mon.NewRegistry("nbs_session")
-	var nbsTLSProvider nbs.TLSConfigProvider
 	nbsConfig := config.GetNbsConfig()
-	if nbsConfig != nil &&
-		!nbsConfig.GetInsecure() &&
-		nbsConfig.GetRootCertsFile() != "" {
-
-		nbsTLSProvider, err = common.NewGRPCClientTLSProvider(
-			common.GRPCClientTLSProviderConfig{
-				RootCertsFile: nbsConfig.GetRootCertsFile(),
-			},
-			mon.NewRegistry("nbs_tls"),
-		)
-		if err != nil {
-			return err
-		}
+	nbsTLSProvider, err := common.NewGRPCClientTLSProvider(
+		common.GRPCClientTLSProviderConfig{
+			Insecure:      nbsConfig.GetInsecure(),
+			RootCertsFile: nbsConfig.GetRootCertsFile(),
+		},
+		mon.NewRegistry("nbs_tls"),
+	)
+	if err != nil {
+		return err
 	}
 
 	nbsFactory, err := nbs.NewFactoryWithCreds(
@@ -206,21 +201,16 @@ func run(
 		return err
 	}
 
-	var nfsTLSProvider nfs.TLSConfigProvider
 	nfsConfig := config.GetNfsConfig()
-	if nfsConfig != nil &&
-		!nfsConfig.GetInsecure() &&
-		nfsConfig.GetRootCertsFile() != "" {
-
-		nfsTLSProvider, err = common.NewGRPCClientTLSProvider(
-			common.GRPCClientTLSProviderConfig{
-				RootCertsFile: nfsConfig.GetRootCertsFile(),
-			},
-			mon.NewRegistry("nfs_tls"),
-		)
-		if err != nil {
-			return err
-		}
+	nfsTLSProvider, err := common.NewGRPCClientTLSProvider(
+		common.GRPCClientTLSProviderConfig{
+			Insecure:      nfsConfig.GetInsecure(),
+			RootCertsFile: nfsConfig.GetRootCertsFile(),
+		},
+		mon.NewRegistry("nfs_tls"),
+	)
+	if err != nil {
+		return err
 	}
 
 	var s3 *persistence.S3Client

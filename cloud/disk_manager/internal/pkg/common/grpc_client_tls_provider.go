@@ -8,13 +8,15 @@ import (
 	"os"
 	"sync"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	storage_grpc "github.com/ydb-platform/nbs/cloud/storage/core/go/grpc"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type GRPCClientTLSProviderConfig struct {
+	Insecure      bool
 	RootCertsFile string
 }
 
@@ -23,34 +25,39 @@ type GRPCClientTLSProvider struct {
 	tlsConfig *tls.Config
 }
 
+// A provider is not created for insecure clients or when system roots are used.
 func NewGRPCClientTLSProvider(
 	config GRPCClientTLSProviderConfig,
 	registry metrics.Registry,
-) (*GRPCClientTLSProvider, error) {
+) (storage_grpc.TLSConfigProvider, error) {
+
+	if config.Insecure || config.RootCertsFile == "" {
+		return nil, nil
+	}
+
 	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 
-	if config.RootCertsFile != "" {
-		rootCerts, err := os.ReadFile(config.RootCertsFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read root cert file: %w", err)
-		}
-
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(rootCerts) {
-			return nil, errors.New("failed to parse root certificate PEM")
-		}
-		cfg.RootCAs = pool
-
-		// Metrics gauges use float64. Keep 53 bits so the fingerprint can be
-		// represented without precision loss.
-		fingerprint := cityhash.Hash64(rootCerts) & ((1 << 53) - 1)
-		registry.WithTags(
-			map[string]string{
-				"subsystem": "certificates",
-				"path":      config.RootCertsFile,
-			},
-		).Gauge("Fingerprint").Set(float64(fingerprint))
+	rootCerts, err := os.ReadFile(config.RootCertsFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read root cert file: %v", err)
 	}
+
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(rootCerts) {
+		return nil, errors.New("failed to parse root certificate PEM")
+	}
+
+	cfg.RootCAs = pool
+
+	// Metrics gauges use float64. Keep 53 bits so the fingerprint can be
+	// represented without precision loss.
+	fingerprint := cityhash.Hash64(rootCerts) & ((1 << 53) - 1)
+	registry.WithTags(
+		map[string]string{
+			"subsystem": "certificates",
+			"path":      config.RootCertsFile,
+		},
+	).Gauge("Fingerprint").Set(float64(fingerprint))
 
 	return &GRPCClientTLSProvider{tlsConfig: cfg}, nil
 }

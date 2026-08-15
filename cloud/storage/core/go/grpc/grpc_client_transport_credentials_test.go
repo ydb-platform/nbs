@@ -51,6 +51,7 @@ func (p *mutableTLSConfigProvider) getCallCount() int {
 func TestGRPCClientTransportCredentialsUsesLatestTLSConfigForEveryHandshake(
 	t *testing.T,
 ) {
+
 	firstCertificate, firstConfig := newServerCertificate(t, 1)
 	secondCertificate, secondConfig := newServerCertificate(t, 2)
 
@@ -90,12 +91,14 @@ func TestGRPCClientTransportCredentialsUsesServerNameOverride(t *testing.T) {
 	if err := transportCredentials.OverrideServerName("localhost"); err != nil {
 		t.Fatalf("failed to override server name: %v", err)
 	}
+
 	performTLSHandshake(
 		t,
 		transportCredentials,
 		serverCertificate,
 		"unexpected.example:443",
 	)
+
 	if config.ServerName != "" {
 		t.Fatalf(
 			"expected provider config to remain unchanged, got %q",
@@ -107,6 +110,7 @@ func TestGRPCClientTransportCredentialsUsesServerNameOverride(t *testing.T) {
 func TestGRPCClientTransportCredentialsClonePreservesServerNameOverride(
 	t *testing.T,
 ) {
+
 	serverCertificate, config := newServerCertificate(t, 1)
 	transportCredentials := newGRPCClientTransportCredentials(
 		t,
@@ -116,6 +120,7 @@ func TestGRPCClientTransportCredentialsClonePreservesServerNameOverride(
 	if err := transportCredentials.OverrideServerName("localhost"); err != nil {
 		t.Fatalf("failed to override server name: %v", err)
 	}
+
 	performTLSHandshake(
 		t,
 		transportCredentials.Clone(),
@@ -147,6 +152,7 @@ func TestNewGRPCClientTransportCredentialsRejectsNilProvider(t *testing.T) {
 		if !errors.Is(err, errTLSConfigProviderIsNil) {
 			t.Fatalf("expected nil TLS config provider error, got %v", err)
 		}
+
 		if transportCredentials != nil {
 			t.Fatal("expected nil transport credentials")
 		}
@@ -157,12 +163,14 @@ func newGRPCClientTransportCredentials(
 	t *testing.T,
 	provider TLSConfigProvider,
 ) credentials.TransportCredentials {
+
 	t.Helper()
 
 	transportCredentials, err := NewGRPCClientTransportCredentials(provider)
 	if err != nil {
 		t.Fatalf("failed to create transport credentials: %v", err)
 	}
+
 	return transportCredentials
 }
 
@@ -172,6 +180,7 @@ func performTLSHandshake(
 	serverCertificate tls.Certificate,
 	authority string,
 ) {
+
 	t.Helper()
 
 	clientConn, serverConn := net.Pipe()
@@ -181,6 +190,7 @@ func performTLSHandshake(
 			Certificates: []tls.Certificate{serverCertificate},
 			NextProtos:   []string{"h2"},
 		})
+
 		serverResult <- conn.Handshake()
 		_ = conn.Close()
 	}()
@@ -196,13 +206,17 @@ func performTLSHandshake(
 	if err != nil {
 		t.Fatalf("client TLS handshake failed: %v", err)
 	}
+
 	tlsConn, ok := conn.(*tls.Conn)
 	if !ok {
 		t.Fatalf("expected a TLS connection, got %T", conn)
 	}
-	if protocol := tlsConn.ConnectionState().NegotiatedProtocol; protocol != "h2" {
+
+	protocol := tlsConn.ConnectionState().NegotiatedProtocol
+	if protocol != "h2" {
 		t.Fatalf("expected h2 to be negotiated, got %q", protocol)
 	}
+
 	_ = conn.Close()
 
 	if err := <-serverResult; err != nil {
@@ -214,6 +228,7 @@ func newServerCertificate(
 	t *testing.T,
 	serialNumber int64,
 ) (tls.Certificate, *tls.Config) {
+
 	t.Helper()
 
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -235,6 +250,7 @@ func newServerCertificate(
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}
+
 	certificateDER, err := x509.CreateCertificate(
 		rand.Reader,
 		template,
@@ -250,6 +266,7 @@ func newServerCertificate(
 	if err != nil {
 		t.Fatalf("failed to parse certificate: %v", err)
 	}
+
 	serverCertificate := tls.Certificate{
 		Certificate: [][]byte{certificateDER},
 		PrivateKey:  privateKey,

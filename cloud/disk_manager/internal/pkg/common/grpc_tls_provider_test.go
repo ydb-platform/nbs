@@ -48,6 +48,26 @@ func TestGRPCClientTLSProviderLoadsConfigAndReportsFingerprint(t *testing.T) {
 	require.True(t, registry.AssertAllExpectations(t))
 }
 
+func TestGRPCClientTLSProviderIsOptional(t *testing.T) {
+	configs := []GRPCClientTLSProviderConfig{
+		{},
+		{
+			Insecure:      true,
+			RootCertsFile: "unused.pem",
+		},
+	}
+
+	for _, config := range configs {
+		provider, err := NewGRPCClientTLSProvider(
+			config,
+			metrics_mocks.NewRegistryMock(),
+		)
+
+		require.NoError(t, err)
+		require.Nil(t, provider)
+	}
+}
+
 func TestGRPCServerTLSProviderReportsEarliestExpiration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -75,7 +95,7 @@ func TestGRPCServerTLSProviderReportsEarliestExpiration(t *testing.T) {
 
 	registry := metrics_mocks.NewRegistryMock()
 	registry.GetGauge(
-		"ExpireTs",
+		"expireTs",
 		map[string]string{"path": certPath},
 	).On("Set", float64(now.Add(24*time.Hour).Unix())).Once()
 	registry.GetGauge(
@@ -108,6 +128,7 @@ func TestGRPCServerTLSProviderSelectsCertificate(t *testing.T) {
 		ServerName:        "second.example",
 		SupportedVersions: []uint16{tls.VersionTLS13},
 	})
+
 	require.NoError(t, err)
 	require.Equal(t, secondCertificate.Leaf.Raw, selected.Leaf.Raw)
 
@@ -115,6 +136,7 @@ func TestGRPCServerTLSProviderSelectsCertificate(t *testing.T) {
 		ServerName:        "unknown.example",
 		SupportedVersions: []uint16{tls.VersionTLS13},
 	})
+
 	require.NoError(t, err)
 	require.Equal(t, firstCertificate.Leaf.Raw, selected.Leaf.Raw)
 }
@@ -147,6 +169,7 @@ func generateCertificate(
 	commonName string,
 	notAfter time.Time,
 ) ([]byte, []byte) {
+
 	t.Helper()
 
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -161,6 +184,7 @@ func generateCertificate(
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}
+
 	der, err := x509.CreateCertificate(
 		rand.Reader,
 		template,
@@ -194,6 +218,7 @@ func loadServerCertificate(t *testing.T, serverName string) tls.Certificate {
 		CertFile:       certPath,
 		PrivateKeyFile: keyPath,
 	})
+
 	require.NoError(t, err)
 	return certificate
 }

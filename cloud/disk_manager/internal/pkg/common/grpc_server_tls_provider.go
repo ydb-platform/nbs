@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	grpc_credentials "google.golang.org/grpc/credentials"
 )
 
@@ -47,6 +47,7 @@ func NewGRPCServerTLSProvider(
 	certs []GRPCServerCertificateConfig,
 	registry metrics.Registry,
 ) (*GRPCServerTLSProvider, error) {
+
 	certificates := make([]tls.Certificate, 0, len(certs))
 	expirations := make([]certificateExpiration, 0, len(certs))
 	for _, cert := range certs {
@@ -67,7 +68,7 @@ func NewGRPCServerTLSProvider(
 		certRegistry := registry.WithTags(
 			map[string]string{"path": expiration.path},
 		)
-		expiration.expireTsGauge = certRegistry.Gauge("ExpireTs")
+		expiration.expireTsGauge = certRegistry.Gauge("expireTs")
 		expiration.validityGauge = certRegistry.Gauge("certificateValidity")
 	}
 
@@ -75,6 +76,7 @@ func NewGRPCServerTLSProvider(
 		certificates: certificates,
 		expirations:  expirations,
 	}
+
 	provider.reportCertificateExpirations()
 	provider.reportCertificateValidity(time.Now())
 	go provider.monitorCertificateValidity(ctx)
@@ -85,6 +87,7 @@ func NewGRPCServerTLSProvider(
 func (p *GRPCServerTLSProvider) monitorCertificateValidity(
 	ctx context.Context,
 ) {
+
 	ticker := time.NewTicker(certificateValidationPeriod)
 	defer ticker.Stop()
 
@@ -99,7 +102,7 @@ func (p *GRPCServerTLSProvider) monitorCertificateValidity(
 }
 
 func (p *GRPCServerTLSProvider) reportCertificateExpirations() {
-	expirations := p.getCertificateExpirations()
+	expirations := p.getExpirations()
 	for _, expiration := range expirations {
 		expiration.expireTsGauge.Set(float64(expiration.after.Unix()))
 	}
@@ -108,34 +111,42 @@ func (p *GRPCServerTLSProvider) reportCertificateExpirations() {
 func (p *GRPCServerTLSProvider) reportCertificateValidity(
 	now time.Time,
 ) {
-	expirations := p.getCertificateExpirations()
+
+	expirations := p.getExpirations()
 	for _, expiration := range expirations {
 		validity := float64(1)
 		if expiration.after.Sub(now) <= certificateValidationThreshold {
 			validity = 0
 		}
+
 		expiration.validityGauge.Set(validity)
 	}
 }
 
-func (p *GRPCServerTLSProvider) getCertificateExpirations() []certificateExpiration {
+func (p *GRPCServerTLSProvider) getExpirations() []certificateExpiration {
+
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
 	return append([]certificateExpiration(nil), p.expirations...)
 }
 
-func (p *GRPCServerTLSProvider) NewTransportCredentials() grpc_credentials.TransportCredentials {
+func (
+	p *GRPCServerTLSProvider,
+) NewTransportCredentials() grpc_credentials.TransportCredentials {
+
 	cfg := &tls.Config{
 		GetCertificate: p.getCertificate,
 		MinVersion:     tls.VersionTLS12,
 	}
+
 	return grpc_credentials.NewTLS(cfg)
 }
 
 func (p *GRPCServerTLSProvider) getCertificate(
 	info *tls.ClientHelloInfo,
 ) (*tls.Certificate, error) {
+
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
@@ -158,17 +169,19 @@ func (p *GRPCServerTLSProvider) getCertificate(
 func readServerCertificate(
 	cert GRPCServerCertificateConfig,
 ) (tls.Certificate, time.Time, error) {
+
 	certificate, err := tls.LoadX509KeyPair(
 		cert.CertFile,
 		cert.PrivateKeyFile,
 	)
 	if err != nil {
 		return tls.Certificate{}, time.Time{}, task_errors.NewNonRetriableErrorf(
-			"failed to load cert file %v: %w",
+			"failed to load cert file %v: %v",
 			cert.CertFile,
 			err,
 		)
 	}
+
 	if len(certificate.Certificate) == 0 {
 		return tls.Certificate{}, time.Time{}, fmt.Errorf(
 			"certificate chain is empty for cert file %v",
@@ -181,15 +194,17 @@ func readServerCertificate(
 		parsed, err := x509.ParseCertificate(certificateBytes)
 		if err != nil {
 			return tls.Certificate{}, time.Time{}, fmt.Errorf(
-				"failed to parse certificate #%v from cert file %v: %w",
+				"failed to parse certificate #%v from cert file %v: %v",
 				i,
 				cert.CertFile,
 				err,
 			)
 		}
+
 		if i == 0 {
 			certificate.Leaf = parsed
 		}
+
 		if expiration.IsZero() || parsed.NotAfter.Before(expiration) {
 			expiration = parsed.NotAfter
 		}

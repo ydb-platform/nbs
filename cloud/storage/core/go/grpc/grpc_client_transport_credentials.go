@@ -8,14 +8,15 @@ import (
 	"reflect"
 	"sync"
 
-	"google.golang.org/grpc/credentials"
+	creds "google.golang.org/grpc/credentials"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-var (
-	errTLSConfigProviderIsNil = errors.New("TLS config provider is nil")
-	errTLSConfigIsNil         = errors.New("TLS config provider returned nil config")
+var errTLSConfigProviderIsNil = errors.New("TLS config provider is nil")
+
+var errTLSConfigIsNil = errors.New(
+	"TLS config provider returned nil config",
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,7 +36,8 @@ type grpcClientTransportCredentials struct {
 
 func NewGRPCClientTransportCredentials(
 	provider TLSConfigProvider,
-) (credentials.TransportCredentials, error) {
+) (creds.TransportCredentials, error) {
+
 	if isNilTLSConfigProvider(provider) {
 		return nil, errTLSConfigProviderIsNil
 	}
@@ -47,11 +49,13 @@ func (c *grpcClientTransportCredentials) ClientHandshake(
 	ctx context.Context,
 	authority string,
 	rawConn net.Conn,
-) (net.Conn, credentials.AuthInfo, error) {
+) (net.Conn, creds.AuthInfo, error) {
+
 	config := c.provider.GetTLSConfig()
 	if config == nil {
 		return nil, nil, errTLSConfigIsNil
 	}
+
 	config = config.Clone()
 
 	c.mutex.RLock()
@@ -61,7 +65,7 @@ func (c *grpcClientTransportCredentials) ClientHandshake(
 		config.ServerName = serverNameOverride
 	}
 
-	return credentials.NewTLS(config).ClientHandshake(ctx, authority, rawConn)
+	return creds.NewTLS(config).ClientHandshake(ctx, authority, rawConn)
 }
 
 func isNilTLSConfigProvider(provider TLSConfigProvider) bool {
@@ -81,23 +85,25 @@ func isNilTLSConfigProvider(provider TLSConfigProvider) bool {
 
 func (c *grpcClientTransportCredentials) ServerHandshake(
 	net.Conn,
-) (net.Conn, credentials.AuthInfo, error) {
+) (net.Conn, creds.AuthInfo, error) {
+
 	return nil, nil, errors.New("server handshake is not supported")
 }
 
-func (c *grpcClientTransportCredentials) Info() credentials.ProtocolInfo {
+func (c *grpcClientTransportCredentials) Info() creds.ProtocolInfo {
 	c.mutex.RLock()
 	serverNameOverride := c.serverNameOverride
 	c.mutex.RUnlock()
 
-	return credentials.ProtocolInfo{
+	return creds.ProtocolInfo{
 		SecurityProtocol: "tls",
 		SecurityVersion:  "1.2",
 		ServerName:       serverNameOverride,
 	}
 }
 
-func (c *grpcClientTransportCredentials) Clone() credentials.TransportCredentials {
+func (c *grpcClientTransportCredentials) Clone() creds.TransportCredentials {
+
 	c.mutex.RLock()
 	serverNameOverride := c.serverNameOverride
 	c.mutex.RUnlock()
@@ -111,6 +117,7 @@ func (c *grpcClientTransportCredentials) Clone() credentials.TransportCredential
 func (c *grpcClientTransportCredentials) OverrideServerName(
 	serverNameOverride string,
 ) error {
+
 	c.mutex.Lock()
 	c.serverNameOverride = serverNameOverride
 	c.mutex.Unlock()
