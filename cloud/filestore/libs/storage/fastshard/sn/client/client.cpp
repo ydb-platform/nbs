@@ -11,6 +11,7 @@
 
 #include <util/generic/scope.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 #include <util/string/builder.h>
 
 #include <arpa/inet.h>
@@ -98,22 +99,95 @@ int OpenTcp(const TString& host, ui16 port)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// IStorageNode over a single TCP connection to an sn server.
+// Pool of idle TCP connections to one host:port. Acquire pops an idle
+// connection or opens a new one; a request uses the connection
+// exclusively until it releases it back. On an I/O error the caller
+// closes the connection instead of releasing it, so the pool never
+// stores a connection in an unknown protocol state. The pool is not
+// capped: it grows to the maximum number of concurrent requests
+// observed.
+
+struct TPooledConnection
+{
+    int Fd = -1;
+
+    // Whether this connection has completed at least one request;
+    // drives the ConnectionsUsed metric.
+    bool Used = false;
+};
+
+class TConnectionPool
+{
+public:
+    TConnectionPool(
+            TString host,
+            ui16 port,
+            TStorageNodeClientMetricsPtr metrics)
+        : Host(std::move(host))
+        , Port(port)
+        , Metrics(std::move(metrics))
+    {}
+
+    ~TConnectionPool()
+    {
+        for (const auto& conn: Idle) {
+            ::close(conn.Fd);
+        }
+    }
+
+    TPooledConnection Acquire()
+    {
+        {
+            std::lock_guard g(Lock);
+            if (!Idle.empty()) {
+                TPooledConnection conn = Idle.back();
+                Idle.pop_back();
+                return conn;
+            }
+        }
+
+        //
+        // Connect outside the lock: OpenTcp suspends the fiber, and
+        // holding a FiberMutex across it would serialize all concurrent
+        // connection attempts.
+        //
+
+        int fd = OpenTcp(Host, Port);
+        if (fd >= 0 && Metrics) {
+            Metrics->ConnectionsCreated.fetch_add(1);
+        }
+        return {.Fd = fd, .Used = false};
+    }
+
+    void Release(TPooledConnection conn)
+    {
+        std::lock_guard g(Lock);
+        Idle.push_back(conn);
+    }
+
+private:
+    const TString Host;
+    const ui16 Port;
+    const TStorageNodeClientMetricsPtr Metrics;
+    FiberMutex Lock;
+    TVector<TPooledConnection> Idle;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// IStorageNode over a pool of TCP connections to an sn server.
 
 class TStorageNodeClient: public IStorageNode
 {
 public:
-    TStorageNodeClient(TString host, ui16 port)
+    TStorageNodeClient(
+            TString host,
+            ui16 port,
+            TStorageNodeClientMetricsPtr metrics)
         : Host(std::move(host))
         , Port(port)
+        , Metrics(std::move(metrics))
+        , Pool(Host, Port, Metrics)
     {}
-
-    ~TStorageNodeClient() override
-    {
-        if (Fd >= 0) {
-            ::close(Fd);
-        }
-    }
 
 #define SN_CLIENT_METHOD(name, ...)                                            \
     NCloud::NProto::T##name##Response name(                                    \
@@ -146,61 +220,72 @@ public:
 private:
     TDeviceProtocolResponse Exchange(const TDeviceProtocolRequest& req)
     {
-        std::lock_guard g(ConnMutex);
-
         //
-        // Open the socket lazily and reopen it after any I/O error.
-        // Every failure path below closes Fd and sets it to -1 so the
-        // next call retries the connect.
+        // The connection is used by this request exclusively, so the
+        // request/response exchange needs no locking. On success the
+        // connection returns to the pool; on any error it is closed and
+        // dropped — the next request opens a fresh one.
         //
 
-        if (Fd < 0) {
-            Fd = OpenTcp(Host, Port);
-            if (Fd < 0) {
-                return MakeErrorResponse(
-                    req.GetRequestId(),
-                    E_REJECTED,
-                    TStringBuilder() << "sn client: connect to " << Host << ":"
-                                     << Port << " failed");
-            }
+        TPooledConnection conn = Pool.Acquire();
+        if (conn.Fd < 0) {
+            return MakeErrorResponse(
+                req.GetRequestId(),
+                E_REJECTED,
+                TStringBuilder() << "sn client: connect to " << Host << ":"
+                                 << Port << " failed");
         }
+        const int fd = conn.Fd;
 
         TString buf;
         Y_PROTOBUF_SUPPRESS_NODISCARD req.SerializeToString(&buf);
 
         ui32 lenBe = htonl(static_cast<ui32>(buf.size()));
-        if (int r = SendAll(Fd, &lenBe, sizeof(lenBe)); r) {
-            return CloseAndError(req.GetRequestId(), r, "send length");
+        if (int r = SendAll(fd, &lenBe, sizeof(lenBe)); r) {
+            return CloseAndError(fd, req.GetRequestId(), r, "send length");
         }
-        if (int r = SendAll(Fd, buf.data(), buf.size()); r) {
-            return CloseAndError(req.GetRequestId(), r, "send body");
+        if (int r = SendAll(fd, buf.data(), buf.size()); r) {
+            return CloseAndError(fd, req.GetRequestId(), r, "send body");
         }
 
         ui32 respLenBe = 0;
-        if (int r = RecvAll(Fd, &respLenBe, sizeof(respLenBe)); r) {
-            return CloseAndError(req.GetRequestId(), r, "recv length");
+        if (int r = RecvAll(fd, &respLenBe, sizeof(respLenBe)); r) {
+            return CloseAndError(fd, req.GetRequestId(), r, "recv length");
         }
         ui32 respLen = ntohl(respLenBe);
 
         TString respBuf;
         respBuf.ReserveAndResize(respLen);
-        if (int r = RecvAll(Fd, respBuf.begin(), respLen); r) {
-            return CloseAndError(req.GetRequestId(), r, "recv body");
+        if (int r = RecvAll(fd, respBuf.begin(), respLen); r) {
+            return CloseAndError(fd, req.GetRequestId(), r, "recv body");
         }
 
         TDeviceProtocolResponse resp;
         if (!resp.ParseFromString(respBuf)) {
-            return CloseAndError(req.GetRequestId(), EBADMSG, "parse response");
+            return CloseAndError(
+                fd,
+                req.GetRequestId(),
+                EBADMSG,
+                "parse response");
         }
+
+        if (Metrics) {
+            Metrics->RequestsCompleted.fetch_add(1);
+            if (!conn.Used) {
+                Metrics->ConnectionsUsed.fetch_add(1);
+            }
+        }
+        conn.Used = true;
+
+        Pool.Release(conn);
         return resp;
     }
 
     TDeviceProtocolResponse
-    CloseAndError(ui64 requestId, int err, const char* op)
+    CloseAndError(int fd, ui64 requestId, int err, const char* op)
     {
-        SILK_WARN("sn client fd=%d: %s: %s", Fd, op, ::strerror(err));
-        ::close(Fd);
-        Fd = -1;
+        SILK_WARN("sn client fd=%d: %s: %s", fd, op, ::strerror(err));
+        ::close(fd);
         return MakeErrorResponse(
             requestId,
             E_REJECTED,
@@ -221,8 +306,8 @@ private:
 private:
     const TString Host;
     const ui16 Port;
-    FiberMutex ConnMutex;
-    int Fd = -1;
+    const TStorageNodeClientMetricsPtr Metrics;
+    TConnectionPool Pool;
     std::atomic<ui64> NextRequestId{1};
 };
 
@@ -232,7 +317,18 @@ private:
 
 IStorageNodePtr CreateStorageNodeClient(TString host, ui16 port)
 {
-    return std::make_shared<TStorageNodeClient>(std::move(host), port);
+    return CreateStorageNodeClient(std::move(host), port, nullptr /* metrics */);
+}
+
+IStorageNodePtr CreateStorageNodeClient(
+    TString host,
+    ui16 port,
+    TStorageNodeClientMetricsPtr metrics)
+{
+    return std::make_shared<TStorageNodeClient>(
+        std::move(host),
+        port,
+        std::move(metrics));
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
