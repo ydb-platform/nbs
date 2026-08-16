@@ -4,8 +4,6 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 
-#include <library/cpp/protobuf/util/pb_io.h>
-
 namespace NCloud::NStorage {
 
 using namespace NActors;
@@ -124,15 +122,20 @@ void THiveProxyFallbackActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    if (Config.TabletBootInfoBackupFilePath) {
+    if (Config.TabletBootInfoBackupFilePath ||
+        Config.GoldenTabletBootInfoBackupFilePath)
+    {
         auto cache = std::make_unique<TTabletBootInfoBackup>(
             Config.LogComponent,
-            Config.TabletBootInfoBackupFilePath,
+            TVector<TString>{
+                Config.GoldenTabletBootInfoBackupFilePath,
+                Config.TabletBootInfoBackupFilePath},
             Config.UseBinaryFormatForTabletBootInfoBackup,
-            true /* readOnlyMode */
-        );
+            true /* readOnlyMode */);
         TabletBootInfoBackup = ctx.Register(
-            cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
+            cache.release(),
+            TMailboxType::HTSwap,
+            AppData()->IOPoolId);
     }
 }
 

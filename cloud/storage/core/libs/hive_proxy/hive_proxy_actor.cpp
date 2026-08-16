@@ -1,5 +1,6 @@
 #include "hive_proxy_actor.h"
 
+#include "hive_proxy_fallback_actor.h"
 #include "tablet_boot_info_backup.h"
 
 #include <cloud/storage/core/libs/common/verify.h>
@@ -40,10 +41,9 @@ THiveProxyActor::THiveProxyActor(
     : ClientCache(CreateTabletPipeClientCache(config))
     , LockExpireTimeout(config.HiveLockExpireTimeout)
     , LogComponent(config.LogComponent)
-    , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
-    , UseBinaryFormatForTabletBootInfoBackup(config.UseBinaryFormatForTabletBootInfoBackup)
     , HiveTabletId(config.TenantHiveTabletId)
     , Counters(std::move(counters))
+    , Config(std::move(config))
 {}
 
 THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
@@ -54,22 +54,37 @@ void THiveProxyActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
 
-    if (TabletBootInfoBackupFilePath) {
+    if (Config.FallbackModeProvider && Config.FallbackModeProvider()) {
+        // Nothing has been started yet, so there is nothing to drain: go
+        // straight to fallback mode.
+        LOG_INFO(ctx, LogComponent, "HiveProxy: starting in fallback mode");
+        StartFallbackActor(ctx);
+        return;
+    }
+
+    if (Config.TabletBootInfoBackupFilePath) {
         auto cache = std::make_unique<TTabletBootInfoBackup>(
             LogComponent,
-            TabletBootInfoBackupFilePath,
-            UseBinaryFormatForTabletBootInfoBackup,
+            TVector<TString>{Config.TabletBootInfoBackupFilePath},
+            Config.UseBinaryFormatForTabletBootInfoBackup,
             false /* readOnlyMode */
         );
         TabletBootInfoBackup = ctx.Register(
-            cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
+            cache.release(),
+            TMailboxType::HTSwap,
+            AppData()->IOPoolId);
     }
     if (Counters) {
-        HiveReconnectTimeCounter = Counters->GetCounter("HiveReconnectTime", true);
+        HiveReconnectTimeCounter =
+            Counters->GetCounter("HiveReconnectTime", true);
     }
 
     if (!HiveTabletId) {
         HiveTabletId = AppData(ctx)->DomainsInfo->GetHive();
+    }
+
+    if (Config.FallbackModeProvider) {
+        ScheduleFallbackModeCheck(ctx);
     }
 }
 
@@ -378,6 +393,110 @@ void THiveProxyActor::HandleRequestFinished(
     HiveState.Actors.erase(ev->Sender);
 }
 
+void THiveProxyActor::RejectPendingRequests(const TActorContext& ctx)
+{
+    const auto error =
+        MakeError(E_REJECTED, "HiveProxy is switching to fallback mode");
+
+    for (auto& [_, state]: HiveState.LockStates) {
+        if (state.LockRequest) {
+            SendLockReply(ctx, &state, error);
+        } else {
+            SendLockLostNotification(ctx, &state, error);
+        }
+
+        if (state.UnlockRequest) {
+            SendUnlockReply(ctx, &state, error);
+        }
+    }
+    HiveState.LockStates.clear();
+
+    for (auto& [_, requests]: HiveState.GetInfoRequests) {
+        while (!requests.empty()) {
+            auto response =
+                std::make_unique<TEvHiveProxy::TEvGetStorageInfoResponse>(
+                    error,
+                    nullptr);
+            NCloud::Reply(ctx, requests.front(), std::move(response));
+            requests.pop_front();
+        }
+    }
+    HiveState.GetInfoRequests.clear();
+
+    for (auto& [_, requests]: HiveState.CreateRequests) {
+        while (!requests.empty()) {
+            auto request = std::move(requests.front());
+            requests.pop_front();
+
+            std::unique_ptr<IEventBase> response;
+            if (request.IsLookup) {
+                response =
+                    std::make_unique<TEvHiveProxy::TEvLookupTabletResponse>(
+                        error);
+            } else {
+                response =
+                    std::make_unique<TEvHiveProxy::TEvCreateTabletResponse>(
+                        error);
+            }
+            NCloud::Reply(ctx, request, std::move(response));
+        }
+    }
+    HiveState.CreateRequests.clear();
+}
+
+void THiveProxyActor::ScheduleFallbackModeCheck(const TActorContext& ctx)
+{
+    ctx.Schedule(
+        FallbackModeCheckInterval,
+        new TEvHiveProxyPrivate::TEvCheckFallbackMode());
+}
+
+void THiveProxyActor::SwitchToFallback(const TActorContext& ctx)
+{
+    RejectPendingRequests(ctx);
+
+    // Detach asynchronously sends poison pills to cached pipe actors. We do
+    // not wait for them to close, so fallback mode may start while the old Hive
+    // pipes are still open for a short time.
+    ClientCache->Detach(ctx);
+
+    // In-flight request and backup actors are not stopped explicitly. They
+    // may remain active after fallback starts, so old request responses can
+    // overlap with fallback responses and fallback can observe an older
+    // version of the backup file.
+    StartFallbackActor(ctx);
+}
+
+void THiveProxyActor::HandleFallbackModeCheck(
+    const TEvHiveProxyPrivate::TEvCheckFallbackMode::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    if (!Config.FallbackModeProvider) {
+        return;
+    }
+
+    if (Config.FallbackModeProvider()) {
+        LOG_INFO(
+            ctx,
+            LogComponent,
+            "HiveProxy: switching from normal to fallback mode");
+        SwitchToFallback(ctx);
+        return;
+    }
+
+    ScheduleFallbackModeCheck(ctx);
+}
+
+void THiveProxyActor::StartFallbackActor(const TActorContext& ctx)
+{
+    auto fallbackActor =
+        std::make_unique<THiveProxyFallbackActor>(std::move(Config));
+    FallbackActor = ctx.Register(fallbackActor.release());
+    TThis::Become(&TThis::StateFallback);
+}
+
 void THiveProxyActor::HandleTabletMetrics(
     const TEvLocal::TEvTabletMetrics::TPtr& ev,
     const TActorContext& ctx)
@@ -509,11 +628,40 @@ STFUNC(THiveProxyActor::StateWork)
         HFunc(TEvHiveProxyPrivate::TEvSendTabletMetrics, HandleSendTabletMetrics);
 
         HFunc(TEvHiveProxyPrivate::TEvRequestFinished, HandleRequestFinished);
+        HFunc(
+            TEvHiveProxyPrivate::TEvCheckFallbackMode,
+            HandleFallbackModeCheck);
 
         default:
             if (!HandleRequests(ev)) {
                 HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
             }
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(THiveProxyActor::StateFallback)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvHiveProxyPrivate::TEvRequestFinished, HandleRequestFinished);
+
+        IgnoreFunc(TEvLocal::TEvTabletMetrics);
+        IgnoreFunc(TEvLocal::TEvTabletMetricsAck);
+        IgnoreFunc(TEvLocal::TEvReconnect);
+        IgnoreFunc(TEvHiveProxyPrivate::TEvSendTabletMetrics);
+
+#define STORAGE_FORWARD_REQUEST(name, ns)                                     \
+        case ns::TEv##name##Request::EventType:                               \
+            Send(ev->Forward(FallbackActor));                                 \
+            break;
+
+        STORAGE_HIVE_PROXY_REQUESTS(STORAGE_FORWARD_REQUEST, TEvHiveProxy)
+
+#undef STORAGE_FORWARD_REQUEST
+
+        default:
             break;
     }
 }

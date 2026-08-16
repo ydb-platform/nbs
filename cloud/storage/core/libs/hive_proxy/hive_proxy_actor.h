@@ -165,6 +165,8 @@ private:
 
 private:
     static constexpr TDuration BatchTimeout = TDuration::Seconds(2);
+    static constexpr TDuration FallbackModeCheckInterval =
+        TDuration::Seconds(60);
 
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
     THiveState HiveState;
@@ -172,8 +174,6 @@ private:
     const TDuration LockExpireTimeout;
     const int LogComponent;
 
-    TString TabletBootInfoBackupFilePath;
-    bool UseBinaryFormatForTabletBootInfoBackup;
     NActors::TActorId TabletBootInfoBackup;
 
     ui64 HiveTabletId;
@@ -182,6 +182,9 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr HiveReconnectTimeCounter;
     ui64 HiveReconnectStartCycles = 0;
     bool HiveDisconnected = true;
+
+    THiveProxyConfig Config;
+    NActors::TActorId FallbackActor;
 
 public:
     explicit THiveProxyActor(THiveProxyConfig config);
@@ -194,6 +197,19 @@ public:
 
 private:
     STFUNC(StateWork);
+    STFUNC(StateFallback);
+
+    void RejectPendingRequests(const NActors::TActorContext& ctx);
+
+    void ScheduleFallbackModeCheck(const NActors::TActorContext& ctx);
+
+    void SwitchToFallback(const NActors::TActorContext& ctx);
+
+    void StartFallbackActor(const NActors::TActorContext& ctx);
+
+    void HandleFallbackModeCheck(
+        const TEvHiveProxyPrivate::TEvCheckFallbackMode::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void SendRequest(
         const NActors::TActorContext& ctx,

@@ -10,6 +10,25 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    Y_UNIT_TEST(ShouldUpdateHiveProxyFallbackModeViaImmediateControlBoard)
+    {
+        auto config = std::make_shared<TStorageConfig>(
+            NProto::TStorageServiceConfig{},
+            std::make_shared<NFeatures::TFeaturesConfig>());
+        NKikimr::TControlBoard controlBoard;
+        config->Register(controlBoard);
+
+        UNIT_ASSERT(!config->GetHiveProxyFallbackMode());
+
+        TAtomic previousValue = {};
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_HiveProxyFallbackMode",
+            1,
+            previousValue));
+        UNIT_ASSERT_VALUES_EQUAL(0, AtomicGet(previousValue));
+        UNIT_ASSERT(config->GetHiveProxyFallbackMode());
+    }
+
     Y_UNIT_TEST(ShouldOverrideConfigFields)
     {
         NProto::TStorageServiceConfig globalConfigProto;

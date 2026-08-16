@@ -149,6 +149,8 @@ public:
                 .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
                 .TenantHiveTabletId =
                     Args.StorageConfig->GetTenantHiveTabletId(),
+                .GoldenTabletBootInfoBackupFilePath = {},
+                .FallbackModeProvider = {},
             },
             appData->Counters->GetSubgroup("counters", "filestore")
                 ->GetSubgroup("component", "service"));
