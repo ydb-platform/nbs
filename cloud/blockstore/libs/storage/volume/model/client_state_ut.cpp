@@ -525,6 +525,38 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             client.GetPipeInfo(localPipe2)->State);
     }
 
+    Y_UNIT_TEST(ShouldAllowRemoteMountPipeOnLocalDataPath)
+    {
+        auto info = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0);
+
+        TVolumeClientState client{info};
+        const auto pipe = CreateActor(1, 1);
+
+        auto addResult = client.AddPipe(
+            pipe,
+            pipe.NodeId(),
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0);
+        UNIT_ASSERT_C(
+            !HasError(addResult.Error),
+            FormatError(addResult.Error));
+
+        // MountMode describes blue-green priority. A REMOTE mount can still
+        // use the local data path when the volume is physically bound to the
+        // same service node.
+        auto error = client.CheckLocalRequest(pipe.NodeId(), false, "", "");
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        const auto pipeInfo = client.GetPipeInfo(pipe);
+        UNIT_ASSERT(pipeInfo);
+        UNIT_ASSERT(pipeInfo->IsLocal);
+        UNIT_ASSERT_VALUES_EQUAL(NProto::VOLUME_MOUNT_REMOTE, pipeInfo->MountMode);
+    }
+
     Y_UNIT_TEST(ShouldSelectNewActiveLocalPipeOnReconnect)
     {
         auto initialMountMode = NProto::VOLUME_MOUNT_LOCAL;

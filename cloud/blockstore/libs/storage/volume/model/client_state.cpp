@@ -142,6 +142,11 @@ std::optional<TVolumeClientState::TPipeInfo> TVolumeClientState::GetPipeInfo(
 
 bool TVolumeClientState::IsLocalPipeActive() const
 {
+    return ActivePipe && ActivePipe->IsLocal;
+}
+
+bool TVolumeClientState::IsLocalMountPipeActive() const
+{
     return ActivePipe &&
            ActivePipe->MountMode == NProto::VOLUME_MOUNT_LOCAL;
 }
@@ -169,7 +174,7 @@ void TVolumeClientState::UpdateState()
                           : NProto::VOLUME_MOUNT_REMOTE);
 }
 
-void TVolumeClientState::ActivatePipe(TPipeInfo* pipe)
+void TVolumeClientState::ActivatePipe(TPipeInfo* pipe, bool isLocal)
 {
     Y_DEBUG_ABORT_UNLESS(pipe->State == EPipeState::WAIT_START);
 
@@ -178,6 +183,7 @@ void TVolumeClientState::ActivatePipe(TPipeInfo* pipe)
     }
 
     pipe->State = EPipeState::ACTIVE;
+    pipe->IsLocal = isLocal;
 
     UpdateState();
 }
@@ -233,7 +239,7 @@ NProto::TError TVolumeClientState::CheckPipeRequest(
                 TStringBuilder() << "No mounter found "
                                  << (pipe ? "(deactivated)" : "(nullptr)"));
         }
-        if (IsLocalPipeActive() &&
+        if (IsLocalMountPipeActive() &&
             pipe->MountMode == NProto::VOLUME_MOUNT_REMOTE)
         {
             // When the local pipe is ACTIVE response with retriable error
@@ -244,7 +250,7 @@ NProto::TError TVolumeClientState::CheckPipeRequest(
                 TStringBuilder() << "Local mounter is active");
         }
         if (ActivePipe != pipe) {
-            ActivatePipe(pipe);
+            ActivatePipe(pipe, false);
         }
     }
 
@@ -269,7 +275,6 @@ NProto::TError TVolumeClientState::CheckLocalRequest(
             [&](const auto& p)
             {
                 return p.second.SenderNodeId == nodeId &&
-                       p.second.MountMode == NProto::VOLUME_MOUNT_LOCAL &&
                        p.second.State != EPipeState::DEACTIVATED;
             });
 
@@ -280,7 +285,7 @@ NProto::TError TVolumeClientState::CheckLocalRequest(
         }
 
         if (ActivePipe != &it->second) {
-            ActivatePipe(&it->second);
+            ActivatePipe(&it->second, true);
         }
     }
 

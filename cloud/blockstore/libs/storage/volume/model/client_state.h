@@ -61,6 +61,7 @@ public:
         NProto::EVolumeMountMode MountMode = NProto::VOLUME_MOUNT_REMOTE;
         EPipeState State = EPipeState::WAIT_START;
         ui32 SenderNodeId = 0;
+        bool IsLocal = false;
     };
 
     using TPipes = THashMap<NActors::TActorId, TPipeInfo>;
@@ -116,10 +117,11 @@ public:
 
 private:
     bool IsLocalPipeActive() const;
+    bool IsLocalMountPipeActive() const;
 
     void UpdateState();
 
-    void ActivatePipe(TPipeInfo* pipe);
+    void ActivatePipe(TPipeInfo* pipe, bool isLocal);
 
     bool CanWrite() const;
 
