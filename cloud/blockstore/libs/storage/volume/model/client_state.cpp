@@ -26,7 +26,15 @@ void TVolumeClientState::SetDisconnectTimestamp(TInstant ts)
 void TVolumeClientState::UpdateClientInfo(
     const NProto::TVolumeClientInfo& info)
 {
+    const auto disconnectTimestamp =
+        VolumeClientInfo.GetDisconnectTimestamp();
+    const auto lastActivityTimestamp =
+        VolumeClientInfo.GetLastActivityTimestamp();
+
     VolumeClientInfo = info;
+    VolumeClientInfo.SetDisconnectTimestamp(disconnectTimestamp);
+    VolumeClientInfo.SetLastActivityTimestamp(lastActivityTimestamp);
+
     UpdateState();
 }
 
@@ -249,6 +257,10 @@ NProto::TError TVolumeClientState::CheckLocalRequest(
     const TString& methodName,
     const TString& diskId)
 {
+    if (IsLocalPipeActive() && ActivePipe->SenderNodeId == nodeId) {
+        return CheckWritePermission(isWrite, methodName, diskId);
+    }
+
     // Don't check if there is not a single pipe.
     if (!Pipes.empty()) {
         // Find alive local pipe to activate.

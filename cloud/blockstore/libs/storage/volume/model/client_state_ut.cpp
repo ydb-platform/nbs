@@ -207,6 +207,60 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             client.GetVolumeClientInfo().GetMountFlags());
     }
 
+    Y_UNIT_TEST(ShouldPreserveStateOwnedTimestampsOnClientInfoUpdate)
+    {
+        constexpr ui64 disconnectTimestamp = 123;
+        constexpr ui64 lastActivityTimestamp = 456;
+
+        auto info = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        info.SetDisconnectTimestamp(disconnectTimestamp);
+        info.SetLastActivityTimestamp(lastActivityTimestamp);
+
+        TVolumeClientState client{info};
+
+        auto updatedInfo = info;
+        updatedInfo.SetHost("new-host");
+        updatedInfo.SetMountSeqNumber(42);
+        updatedInfo.SetDisconnectTimestamp(0);
+        updatedInfo.SetLastActivityTimestamp(0);
+
+        client.UpdateClientInfo(updatedInfo);
+
+        const auto& result = client.GetVolumeClientInfo();
+        UNIT_ASSERT_VALUES_EQUAL("new-host", result.GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(42, result.GetMountSeqNumber());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disconnectTimestamp,
+            result.GetDisconnectTimestamp());
+        UNIT_ASSERT_VALUES_EQUAL(
+            lastActivityTimestamp,
+            result.GetLastActivityTimestamp());
+
+        auto addResult = client.AddPipe(
+            CreateActor(1, 1),
+            CreateActor(1, 1).NodeId(),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        UNIT_ASSERT_C(
+            !HasError(addResult.Error),
+            FormatError(addResult.Error));
+
+        client.UpdateClientInfo(updatedInfo);
+
+        // AddPipe owns the transition back to the connected state. Preserve
+        // its zero value instead of restoring the stale disconnect timestamp.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            client.GetVolumeClientInfo().GetDisconnectTimestamp());
+        UNIT_ASSERT_VALUES_EQUAL(
+            lastActivityTimestamp,
+            client.GetVolumeClientInfo().GetLastActivityTimestamp());
+    }
+
     Y_UNIT_TEST(ShouldHandlePipeActivationDeactivation)
     {
         auto initialMountMode = NProto::VOLUME_MOUNT_REMOTE;
