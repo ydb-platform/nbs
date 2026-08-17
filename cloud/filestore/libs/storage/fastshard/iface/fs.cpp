@@ -39,6 +39,7 @@ struct TFileSystemShardStub: IFileSystemShard
         Y_UNUSED(stats);
 
         return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    }
 
     void DumpLayoutHtml(IOutputStream& out) const override
     {
