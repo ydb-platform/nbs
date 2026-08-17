@@ -118,51 +118,6 @@ message TShardStats
     uint64 UsedNodesCount = 6;
 }
 
-message TNodeStats
-{
-    string ShardId = 1;
-    uint64 NodeId = 2;
-    uint64 RequestCount = 3;
-    double AccessScore = 4;
-    uint64 LastAccessedTimestampUs = 5;
-}
-
-message TNodeLatencyStats
-{
-    string ShardId = 1;
-    string RequestType = 2;
-    uint64 NodeId = 3;
-    uint64 RequestCount = 4;
-    uint64 TotalLatencyMs = 5;
-    double AverageLatencyDecayedMs = 6;
-    uint64 LastAccessedTimestampUs = 7;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// GetDiagnosticStats request/response.
-
-message TGetDiagnosticStatsRequest
-{
-    // Optional request headers.
-    NProto.THeaders Headers = 1;
-
-    // FileSystem identifier.
-    string FileSystemId = 2;
-
-    uint32 Limit = 3;
-}
-
-message TGetDiagnosticStatsResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    repeated TNodeLatencyStats LatencyStats = 2;
-
-    repeated TNodeStats NodeStats = 3;
-}
-
-
 message TStorageStats
 {
     // index stats
@@ -276,6 +231,51 @@ message TGetStorageStatsResponse
     // Time since tablet start.
     uint64 TabletUptimeMs = 4;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// GetDiagnosticStats request/response.
+
+message TNodeStats
+{
+    string ShardId = 1;
+    uint64 NodeId = 2;
+    uint64 RequestCount = 3;
+    double AccessScore = 4;
+    uint64 LastAccessedTimestampUs = 5;
+}
+
+message TNodeLatencyStats
+{
+    string ShardId = 1;
+    string RequestType = 2;
+    uint64 NodeId = 3;
+    uint64 RequestCount = 4;
+    uint64 TotalLatencyMs = 5;
+    double AverageLatencyDecayedMs = 6;
+    uint64 LastAccessedTimestampUs = 7;
+}
+
+message TGetDiagnosticStatsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    uint32 Limit = 3;
+}
+
+message TGetDiagnosticStatsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    repeated TNodeLatencyStats LatencyStats = 2;
+
+    repeated TNodeStats NodeStats = 3;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // GetFileSystemConfig request/response.
