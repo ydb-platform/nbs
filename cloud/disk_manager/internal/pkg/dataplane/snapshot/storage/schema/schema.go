@@ -74,11 +74,12 @@ func Create(
 	}
 	logging.Info(ctx, "Created incremental table")
 
+	chunkBlobsDesc := chunkBlobsTableDescription(config)
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
 		config.GetChunkBlobsTableName(),
-		chunkBlobsTableDescription(config, withExternalBlobs),
+		chunkBlobsDesc,
 		dropUnusedColumns,
 	)
 	if err != nil {
@@ -88,13 +89,11 @@ func Create(
 
 	shadowTableName := config.GetChunkBlobsShadowTableName()
 	if len(shadowTableName) != 0 {
-		// The shadow copy exists to get rid of external blobs, so it is
-		// created without them.
 		err = db.CreateOrAlterTable(
 			ctx,
 			config.GetStorageFolder(),
 			shadowTableName,
-			chunkBlobsTableDescription(config, withoutExternalBlobs),
+			chunkBlobsDesc,
 			dropUnusedColumns,
 		)
 		if err != nil {
@@ -200,21 +199,14 @@ func Drop(
 	return nil
 }
 
-type externalBlobsUsage int
-
-const (
-	withExternalBlobs externalBlobsUsage = iota
-	withoutExternalBlobs
-)
-
-// Describes chunk_blobs and its shadow copy: the layout is the same, the
-// copy differs only in that it does not use external blobs.
+// chunk_blobs and its shadow copy share this layout and are created without
+// external blobs, so CopyTable / ydb export s3 work. CreateOrAlterTable does
+// not change storage settings of a table that already exists.
 func chunkBlobsTableDescription(
 	config *snapshot_config.SnapshotConfig,
-	externalBlobs externalBlobsUsage,
 ) persistence.CreateTableDescription {
 
-	options := []persistence.CreateTableOption{
+	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("referer", persistence.Optional(persistence.TypeUTF8)),
@@ -224,15 +216,7 @@ func chunkBlobsTableDescription(
 		persistence.WithColumn("compression", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
 		persistence.WithUniformPartitions(config.GetChunkBlobsTableShardCount()),
-	}
-	if externalBlobs == withExternalBlobs {
-		options = append(
-			options,
-			persistence.WithExternalBlobs(config.GetExternalBlobsMediaKind()),
-		)
-	}
-
-	return persistence.NewCreateTableDescription(options...)
+	)
 }
 
 func snapshotStateTableDescription() persistence.CreateTableDescription {
