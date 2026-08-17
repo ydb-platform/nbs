@@ -12,10 +12,7 @@ DEPENDS(
 )
 
 PEERDIR(
-    cloud/filestore/public/sdk/python/client
-    cloud/filestore/tests/python/lib
-
-    cloud/storage/core/tools/testing/qemu/lib
+    cloud/filestore/tests/async_open_test/lib
 )
 
 SET(
