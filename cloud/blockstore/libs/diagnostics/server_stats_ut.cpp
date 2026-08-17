@@ -37,12 +37,12 @@ struct TTestDumpable
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 auto UpdateStatsWithRequestResultedInRetriableError(
     IServerStatsPtr serverStats,
     IMonitoringServicePtr monitoring,
     bool silenceRetriableErrors,
-    bool isHwProblem)
+    bool isHwProblem,
+    const TString& type)
 {
     TLog log;
 
@@ -76,7 +76,8 @@ auto UpdateStatsWithRequestResultedInRetriableError(
         ->GetSubgroup("volume", "volume")
         ->GetSubgroup("instance", "instance")
         ->GetSubgroup("cloud", "cloud")
-        ->GetSubgroup("folder", "folder");
+        ->GetSubgroup("folder", "folder")
+        ->GetSubgroup("type", type);
 }
 
 void CheckRetriableError(
@@ -90,7 +91,8 @@ void CheckRetriableError(
             serverStats,
             monitoring,
             silenceRetriableErrors,
-            false /*not a hw problem*/);
+            false /*not a hw problem*/,
+            "network-hdd");
 
     UNIT_ASSERT_VALUES_EQUAL(
         expected,
@@ -104,6 +106,7 @@ void CheckHwProblems(
     IMonitoringServicePtr monitoring,
     bool silenceRetriableErrors,
     bool isHwProblem,
+    const TString& type,
     ui64 expected)
 {
     auto instanceCounters =
@@ -111,7 +114,8 @@ void CheckHwProblems(
             serverStats,
             monitoring,
             silenceRetriableErrors,
-            isHwProblem);
+            isHwProblem,
+            type);
 
     UNIT_ASSERT_VALUES_EQUAL(
         expected,
@@ -194,6 +198,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "cloud")
             ->GetSubgroup("folder", "folder")
+            ->GetSubgroup("type", "network-hdd")
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("MaxTime")->Val());
     }
@@ -319,12 +324,14 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "cloud")
             ->GetSubgroup("folder", "folder")
+            ->GetSubgroup("type", "network-hdd")
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("MaxTime")->Val());
     }
 
     void DoTestShouldCountHwProblems(
-        const NCloud::NProto::EStorageMediaKind mediaKind)
+        const NCloud::NProto::EStorageMediaKind mediaKind,
+        const TString& type)
     {
         auto timer = std::make_shared<TTestTimer>();
         auto monitoring = CreateMonitoringServiceStub();
@@ -359,22 +366,24 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         volume.SetStorageMediaKind(mediaKind);
         serverStats->MountVolume(volume, "client", "instance");
 
-        CheckHwProblems(serverStats, monitoring, false, false, 0);
-        CheckHwProblems(serverStats, monitoring, true, false, 0);
-        CheckHwProblems(serverStats, monitoring, false, true, 1);
-        CheckHwProblems(serverStats, monitoring, true, true, 2);
+        CheckHwProblems(serverStats, monitoring, false, false, type, 0);
+        CheckHwProblems(serverStats, monitoring, true, false, type, 0);
+        CheckHwProblems(serverStats, monitoring, false, true, type, 1);
+        CheckHwProblems(serverStats, monitoring, true, true, type, 2);
     }
 
     Y_UNIT_TEST(ShouldCountHwProblemsSSD)
     {
         DoTestShouldCountHwProblems(
-            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED);
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED,
+            "network-ssd-nonreplicated");
     }
 
     Y_UNIT_TEST(ShouldCountHwProblemsHDD)
     {
         DoTestShouldCountHwProblems(
-            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED);
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED,
+            "network-hdd-nonreplicated");
     }
 
     Y_UNIT_TEST(ShouldNotReportErrorsForCellRequests)

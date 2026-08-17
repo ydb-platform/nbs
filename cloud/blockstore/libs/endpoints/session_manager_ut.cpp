@@ -508,7 +508,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
                                 ->GetSubgroup("volume", diskId)
                                 ->GetSubgroup("instance", clientId)
                                 ->GetSubgroup("cloud", cloudId)
-                                ->GetSubgroup("folder", folderId);
+                                ->GetSubgroup("folder", folderId)
+                                ->GetSubgroup("type", "network-hdd");
 
         auto postponedCount = diskCounters->GetSubgroup("request", "ReadBlocks")
                                  ->FindCounter("PostponedCount")

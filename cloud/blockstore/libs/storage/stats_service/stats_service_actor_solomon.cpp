@@ -35,7 +35,8 @@ std::vector<std::pair<TString, TString>> BuildVolumeChain(
     return {
         {"volume", volumeInfo.GetDiskId()},
         {"cloud", volumeInfo.GetCloudId()},
-        {"folder", volumeInfo.GetFolderId()}};
+        {"folder", volumeInfo.GetFolderId()},
+        {"type", MediaKindToComputeType(volumeInfo.GetStorageMediaKind())}};
 }
 
 TIntrusivePtr<TDynamicCounters> RegisterChain(

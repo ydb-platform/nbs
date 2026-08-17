@@ -1145,7 +1145,10 @@ private:
             volumeGroup
                 ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
                 ->GetSubgroup("cloud", volumeConfig.GetCloudId())
-                ->GetSubgroup("folder", volumeConfig.GetFolderId());
+                ->GetSubgroup("folder", volumeConfig.GetFolderId())
+                ->GetSubgroup(
+                    "type",
+                    MediaKindToComputeType(volumeConfig.GetStorageMediaKind()));
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 

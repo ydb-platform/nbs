@@ -156,13 +156,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto getCounters = [&] (auto volume, auto instance) {
-            return counters
-                ->GetSubgroup("host", "cluster")
+        auto getCounters = [&](auto volume, auto instance, auto type)
+        {
+            return counters->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
                 ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId);
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", type);
         };
 
         auto writeData = [](auto volume, auto type){
@@ -224,7 +225,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto volume2 = volumeStats->GetVolumeInfo("test2", "client2");
         auto volume3 = volumeStats->GetVolumeInfo("test2", "client3");
 
-        auto volume1Counters = getCounters("test1", "instance1");
+        auto volume1Counters =
+            getCounters("test1", "instance1", "network-ssd");
         auto volume1WriteCount = volume1Counters
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("Count");
@@ -232,12 +234,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("request", "ReadBlocks")
             ->GetCounter("Count");
 
-        auto volume2Counters = getCounters("test2", "instance1");
+        auto volume2Counters =
+            getCounters("test2", "instance1", "network-hdd");
         auto volume2WriteCount = volume2Counters
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("Count");
 
-        auto volume3Counters = getCounters("test2", "instance2");
+        auto volume3Counters =
+            getCounters("test2", "instance2", "network-hdd");
         auto volume3WriteCount = volume3Counters
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("Count");
@@ -451,13 +455,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto getCounters = [&] (auto volume, auto instance) {
+        auto getCounters = [&] (auto volume, auto instance, auto type) {
             auto volumeCounters = counters
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", type)
                 ->GetSubgroup("request", "WriteBlocks");
 
             return std::make_pair(
@@ -500,8 +505,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto volume1 = volumeStats->GetVolumeInfo("test1", "client1");
         auto volume2 = volumeStats->GetVolumeInfo("test2", "client2");
 
-        auto [volume1Errors, volume1Silent] = getCounters("test1", "instance1");
-        auto [volume2Errors, volume2Silent] = getCounters("test2", "instance2");
+        auto [volume1Errors, volume1Silent] =
+            getCounters("test1", "instance1", "network-ssd");
+        auto [volume2Errors, volume2Silent] =
+            getCounters("test2", "instance2", "network-hdd");
 
         UNIT_ASSERT_VALUES_EQUAL(0, volume1Errors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, volume1Silent->Val());
@@ -551,13 +558,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto getCounters = [&] (auto volume, auto instance) {
+        auto getCounters = [&] (auto volume, auto instance, auto type) {
             auto volumeCounters = counters
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
                 ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId);
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", type);
 
             return std::make_tuple(
                 volumeCounters
@@ -587,7 +595,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         auto mount = [&volumeStats, &getCounters] (
             const TString& name,
-            NCloud::NProto::EStorageMediaKind mediaKind)
+            NCloud::NProto::EStorageMediaKind mediaKind,
+            const TString& type)
         {
             const auto client = name + "Client";
             const auto instance = name + "Instance";
@@ -600,7 +609,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 mediaKind);
 
             auto stats = volumeStats->GetVolumeInfo(name, client);
-            auto [errors, hwProblems] = getCounters(name, instance);
+            auto [errors, hwProblems] = getCounters(name, instance, type);
 
             return std::make_tuple(
                 std::move(stats),
@@ -609,13 +618,25 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         };
 
         auto [localStats, localErrors, localHwProblems] =
-            mount("local", NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
+            mount(
+                "local",
+                NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL,
+                "unknown");
         auto [nonreplStats, nonreplErrors, nonreplHwProblems] =
-            mount("nonrepl", NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            mount(
+                "nonrepl",
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                "network-ssd-nonreplicated");
         auto [hddNonreplStats, hddNonreplErrors, hddNonreplHwProblems] =
-            mount("hdd_nonrepl", NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
+            mount(
+                "hdd_nonrepl",
+                NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+                "network-hdd-nonreplicated");
         auto [ssdStats, ssdErrors, ssdHwProblems] =
-            mount("ssd", NCloud::NProto::STORAGE_MEDIA_SSD);
+            mount(
+                "ssd",
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                "network-ssd");
 
         UNIT_ASSERT_VALUES_EQUAL(0, localErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, localHwProblems->Val());
@@ -740,9 +761,15 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         // Check if mirror disks are forgotten.
         auto [mirror2Stats, mirror2Errors, mirror2HwProblems] =
-            mount("mirror2", NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+            mount(
+                "mirror2",
+                NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+                "network-ssd-mirror2");
         auto [mirror3Stats, mirror3Errors, mirror3HwProblems] =
-            mount("mirror3", NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+            mount(
+                "mirror3",
+                NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+                "network-ssd-mirror3");
 
         shoot(
             mirror2Stats,
@@ -1115,6 +1142,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("instance", "instance")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", "network-ssd")
                 ->GetCounter("HasDowntime")
                 ->Val());
 
@@ -1134,6 +1162,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("instance", "instance")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", "network-ssd")
                 ->GetCounter("HasDowntime")
                 ->Val());
     }

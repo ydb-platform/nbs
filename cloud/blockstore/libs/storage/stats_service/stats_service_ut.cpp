@@ -96,7 +96,8 @@ NMonitoring::TDynamicCounters::TCounterPtr GetCounterToCheck(
         ->GetSubgroup("host", "cluster")
         ->GetSubgroup("volume", DefaultDiskId)
         ->GetSubgroup("cloud", DefaultCloudId)
-        ->GetSubgroup("folder", DefaultFolderId);
+        ->GetSubgroup("folder", DefaultFolderId)
+        ->GetSubgroup("type", "network-ssd");
     return volumeCounters->GetCounter("MixedBytesCount");
 }
 
@@ -515,6 +516,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", "network-ssd")
                 ->FindCounter("IsLocalMount");
         UNIT_ASSERT(isLocalMountCounter);
         UNIT_ASSERT_VALUES_EQUAL(0, isLocalMountCounter->Val());
@@ -766,6 +768,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", "network-ssd")
                 ->GetCounter("IsLocalMount");
             UNIT_ASSERT_VALUES_EQUAL(0, actual);
         }
@@ -804,6 +807,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", "network-ssd")
                 ->GetCounter("IsLocalMount");
             UNIT_ASSERT_VALUES_EQUAL(1, actual);
         }
@@ -1589,7 +1593,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
     void DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
         NProto::EStorageMediaKind mediaKind,
-        EPublishingPolicy publishingPolicy)
+        EPublishingPolicy publishingPolicy,
+        const TString& type)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
@@ -1633,6 +1638,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", type)
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(42, actual);
@@ -1646,6 +1652,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", type)
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(100500, actual);
@@ -1656,28 +1663,32 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            EPublishingPolicy::DiskRegistryBased);
+            EPublishingPolicy::DiskRegistryBased,
+            "network-ssd-nonreplicated");
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForHddNonreplDisks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
-            EPublishingPolicy::DiskRegistryBased);
+            EPublishingPolicy::DiskRegistryBased,
+            "network-hdd-nonreplicated");
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForMirror2Disks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
-            EPublishingPolicy::DiskRegistryBased);
+            EPublishingPolicy::DiskRegistryBased,
+            "network-ssd-mirror2");
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForMirror3Disks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            EPublishingPolicy::DiskRegistryBased);
+            EPublishingPolicy::DiskRegistryBased,
+            "network-ssd-mirror3");
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersPullScheme)
@@ -1795,6 +1806,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("volume", "vol0")
                                ->GetSubgroup("cloud", DefaultCloudId)
                                ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup(
+                                   "type",
+                                   "network-ssd-nonreplicated")
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(84, actual);
@@ -1808,6 +1822,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("volume", "vol0")
                                ->GetSubgroup("cloud", DefaultCloudId)
                                ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup(
+                                   "type",
+                                   "network-ssd-nonreplicated")
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(201000, actual);
@@ -1904,6 +1921,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("volume", "vol0")
                                ->GetSubgroup("cloud", DefaultCloudId)
                                ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup(
+                                   "type",
+                                   "network-ssd-nonreplicated")
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(0, actual);
@@ -1917,6 +1937,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("volume", "vol0")
                                ->GetSubgroup("cloud", DefaultCloudId)
                                ->GetSubgroup("folder", DefaultFolderId)
+                               ->GetSubgroup(
+                                   "type",
+                                   "network-ssd-nonreplicated")
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(0, actual);
