@@ -121,6 +121,10 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateGetStorageStatsActionActor
         },
         {
+            "getdiagnosticstats",
+            &TStorageServiceActor::CreateGetDiagnosticStatsActionActor
+        },
+        {
             "listlocalfilestores",
             &TStorageServiceActor::CreateListLocalFileStoresActionActor,
         },
