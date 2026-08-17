@@ -124,7 +124,6 @@ func (p *GrpcServerTlsProvider) reportCertificateValidity(
 }
 
 func (p *GrpcServerTlsProvider) getExpirations() []certificateExpiration {
-
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 

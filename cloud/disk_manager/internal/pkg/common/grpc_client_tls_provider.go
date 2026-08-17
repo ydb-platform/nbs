@@ -66,9 +66,5 @@ func (p *grpcClientTlsProvider) GetTlsConfig() *tls.Config {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
-	if p.tlsConfig == nil {
-		return nil
-	}
-
 	return p.tlsConfig
 }
