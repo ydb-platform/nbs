@@ -7,6 +7,12 @@ FILE_CONTENT = b"x"
 DROP_PAGE_CACHE_AND_SLABS = 3
 
 
+def drop_caches():
+    os.sync()
+    with open("/proc/sys/vm/drop_caches", "w") as f:
+        f.write(f"{DROP_PAGE_CACHE_AND_SLABS}\n")
+
+
 def prepare_files(count):
     for i in range(count):
         with open(f"async_open_test_{i}", "wb") as f:
@@ -22,9 +28,7 @@ def hold_files(
         verified_path=None,
         unlink_path=None,
         unlinked_path=None):
-    os.sync()
-    with open("/proc/sys/vm/drop_caches", "w") as f:
-        f.write(f"{DROP_PAGE_CACHE_AND_SLABS}\n")
+    drop_caches()
 
     fds = []
     for i in range(count):
@@ -48,6 +52,10 @@ def hold_files(
     if verify_path:
         while not os.path.exists(verify_path):
             time.sleep(0.1)
+
+        # otherwise the reads below can be served by the guest page cache
+        # without ever using the restored handles
+        drop_caches()
 
         for fd in fds:
             os.lseek(fd, 0, os.SEEK_SET)

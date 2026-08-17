@@ -191,6 +191,10 @@ def async_test():
             file_system_handles,
             lambda counts: all(count > 0 for count in counts.values()))
 
+        # The queue is processed one entry per AsyncHandleOperationPeriod
+        # (50ms by default), so draining all OPEN_HANDLE_COUNT confirmations
+        # takes tens of seconds. Waiting for half of them leaves the rest
+        # pending in the queue while the restarts below happen.
         wait_for(
             "half of create handle confirmations",
             get_confirm_create_handle_count,
@@ -208,6 +212,8 @@ def async_test():
         restart_tablets(filestore_client, file_system_ids)
         restart_vhost(ssh, vhost_port)
 
+        # 90% and not 100%: the profile log tail is lost when vhost is killed,
+        # so some confirmations never make it into the dump
         wait_for(
             "90% of create handle confirmations after vhost restart",
             get_confirm_create_handle_count,
@@ -226,4 +232,6 @@ def async_test():
 
         ssh(f"sudo touch {RELEASE_PATH}")
         workload.wait(timeout=MAX_WAIT_SECONDS)
+        assert workload.returncode == 0, (
+            f"Guest workload failed with code {workload.returncode}")
         wait_for("handles to drain", handles, lambda count: count == 0)
