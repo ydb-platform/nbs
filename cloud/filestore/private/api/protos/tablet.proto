@@ -138,14 +138,28 @@ message TNodeLatencyStats
     uint64 LastAccessedTimestampUs = 7;
 }
 
-message TNodeStats
+////////////////////////////////////////////////////////////////////////////////
+// GetDiagnosticStats request/response.
+
+message TGetDiagnosticStatsRequest
 {
-    string ShardId = 1;
-    uint64 NodeId = 2;
-    uint64 RequestCount = 3;
-    double AccessScore = 4;
-    uint64 LastAccessedTimestampUs = 5;
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
 }
+
+message TGetDiagnosticStatsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    repeated TNodeLatencyStats LatencyStats = 2;
+
+    repeated TNodeStats NodeStats = 3;
+}
+
 
 message TStorageStats
 {
@@ -200,11 +214,6 @@ message TStorageStats
 
     // shard stats
     repeated TShardStats ShardStats = 6001;
-
-    // recent node request stats
-    repeated TNodeStats NodeStats = 7001;
-
-    repeated TNodeLatencyStats LatencyStats = 8001;
 }
 
 enum EStatsRequestMode

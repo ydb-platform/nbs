@@ -33,6 +33,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateSession,              __VA_ARGS__)                               \
     xxx(DestroySession,             __VA_ARGS__)                               \
     xxx(GetStorageStats,            __VA_ARGS__)                               \
+    xxx(GetDiagnosticStats,         __VA_ARGS__)                               \
     xxx(GetFileSystemConfig,        __VA_ARGS__)                               \
     xxx(GetStorageConfigFields,     __VA_ARGS__)                               \
     xxx(ChangeStorageConfig,        __VA_ARGS__)                               \
@@ -77,6 +78,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateSession,              __VA_ARGS__)                               \
     xxx(DestroySession,             __VA_ARGS__)                               \
     xxx(GetStorageStats,            __VA_ARGS__)                               \
+    xxx(GetDiagnosticStats,         __VA_ARGS__)                               \
     xxx(GetFileSystemConfig,        __VA_ARGS__)                               \
     xxx(GetStorageConfigFields,     __VA_ARGS__)                               \
     xxx(ChangeStorageConfig,        __VA_ARGS__)                               \
@@ -238,6 +240,9 @@ struct TEvIndexTablet
 
         EvListQuotasRequest = EvBegin + 89,
         EvListQuotasResponse,
+
+        EvGetDiagnosticStatsRequest = EvBegin + 91,
+        EvGetDiagnosticStatsResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
         // sub-namespaces which don't have any non-local events so if we run out
