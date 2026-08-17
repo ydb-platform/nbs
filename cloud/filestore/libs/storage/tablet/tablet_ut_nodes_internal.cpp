@@ -2665,16 +2665,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             getNodeRefResponse->GetErrorReason());
     }
 
-    TABLET_TEST_4K_ONLY(ShouldRejectCreateNodeWhileDirectoryIsBeingCreatedInShard)
+    TABLET_TEST_4K_ONLY(
+        ShouldRejectCreateNodeWhileDirectoryIsBeingCreatedInShard)
     {
         // Sharded directory creation is two-phase: the directory tablet
         // commits the NodeRef (parent, name) -> (shardId, shardNodeName) and
         // only then creates the node in the shard. Until the shard node is
         // created the ref stays locked and a concurrent CreateNode with the
-        // same name must get E_REJECTED, not E_FS_EXIST - otherwise the
-        // caller's follow-up GetNodeAttr, which follows the ref into the
-        // shard, gets E_FS_NOENT (the mkdir=EEXIST + stat=ENOENT pair
-        // observed by concurrent mkdir -p clients). E_FS_EXIST may only be
+        // same name should get E_REJECTED. E_FS_EXIST should only be
         // returned once the ref is unlocked and the entry is fully visible.
 
         NProto::TStorageConfig storageConfig;
@@ -2688,20 +2686,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         TAutoPtr<IEventHandle> shardCreateEvent;
         bool shouldIntercept = true;
-        auto interceptor =
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                if (shouldIntercept
-                    && event->GetTypeRewrite() == TEvService::EvCreateNodeRequest)
-                {
-                    auto* msg = event->template Get<TEvService::TEvCreateNodeRequest>();
-                    if (msg->Record.GetFileSystemId() == shardId) {
-                        shardCreateEvent = std::move(event);
-                        return true;
-                    }
+        auto interceptor = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+            if (shouldIntercept &&
+                event->GetTypeRewrite() == TEvService::EvCreateNodeRequest)
+            {
+                auto* msg =
+                    event->template Get<TEvService::TEvCreateNodeRequest>();
+                if (msg->Record.GetFileSystemId() == shardId) {
+                    shardCreateEvent = std::move(event);
+                    return true;
                 }
-                return false;
-            };
+            }
+            return false;
+        };
         OverrideDescribeFileStore(
             env.GetRuntime(),
             nodeIdx,
@@ -2732,8 +2731,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name = "dir";
 
         //
-        // Client A: mkdir. The tx commits NodeRef + OpLog, then the
-        // CreateNode addressed to the shard is intercepted, freezing the
+        // Client A creates a directory. The tx commits NodeRef + OpLog, then
+        // the CreateNode addressed to the shard is intercepted, freezing the
         // window between the ref commit and the shard node creation.
         //
 
@@ -2745,16 +2744,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             tablet.SendRequest(std::move(request));
         }
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions{
-            .CustomFinalCondition = [&] ()
-            { return shardCreateEvent != nullptr; }});
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return shardCreateEvent != nullptr; }});
 
         //
-        // Client B: mkdir of the same name - the ref is locked, so the
-        // request should be rejected for a retry instead of EEXIST.
+        // Client B: CreateNode with the same name - the ref is locked, so
+        // the request should be rejected for a retry.
         //
 
-        auto mkdirStatus = [&] (ui64 requestId) {
+        auto createNode = [&](ui64 requestId)
+        {
             auto request = tablet.CreateCreateNodeRequest(
                 TCreateNodeArgs::Directory(RootNodeId, name),
                 requestId);
@@ -2762,20 +2763,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             tablet.SendRequest(std::move(request));
             auto response = tablet.RecvCreateNodeResponse();
             UNIT_ASSERT_C(response, "no CreateNode response");
-            return response->GetError();
+            return response;
         };
 
         {
-            const auto error = mkdirStatus(101);
+            const auto response = createNode(101);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
-                error.GetCode(),
-                FormatError(error));
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
 
         //
-        // Client B: lookup. The directory tablet resolves the name to the
-        // shard ref...
+        // Client B: GetNodeAttr. The directory tablet resolves the name to
+        // the shard ref...
         //
 
         TString shardNodeName;
@@ -2795,8 +2796,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         //
         // ...and the shard hop (emulated here the same way the service actor
-        // does it) finds nothing - the ENOENT that reaches the client right
-        // after its mkdir got EEXIST.
+        // does it) shows that the shard node does not exist yet.
         //
 
         {
@@ -2809,9 +2809,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         }
 
         //
-        // Releasing the shard CreateNode closes the window: client A's mkdir
-        // completes, the ref gets unlocked and only then mkdir starts
-        // returning EEXIST.
+        // Releasing the shard CreateNode completes the directory creation:
+        // client A's request succeeds, the ref gets unlocked and CreateNode
+        // starts returning E_FS_EXIST.
         //
 
         shouldIntercept = false;
@@ -2825,12 +2825,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 FormatError(response->GetError()));
         }
 
-        {
-            const auto error = mkdirStatus(102);
+        // both the TDurableClient-style retry, which keeps the
+        // guest-generated request id, and a new request observe the created
+        // directory
+        for (const ui64 requestId: {101, 102}) {
+            const auto response = createNode(requestId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_EXIST,
-                error.GetCode(),
-                FormatError(error));
+                response->GetStatus(),
+                FormatError(response->GetError()));
         }
 
         {
