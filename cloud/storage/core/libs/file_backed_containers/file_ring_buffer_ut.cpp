@@ -1,4 +1,5 @@
 #include "file_ring_buffer.h"
+#include "file_ring_buffer_accessor.h"
 
 #include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -1239,6 +1240,42 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         // Version downgrade
         check(EVersion::V6, EVersion::V5);
+    }
+
+    Y_UNIT_TEST(ShouldValidateEmptyBufferWithUnalignedPos)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 36;
+
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, EVersion::V5);
+            rb.PushBack("a");
+            rb.PopFront();
+        }
+
+        {
+            TFileMapFileRingBufferAccessor accessor(
+                f.GetName(),
+                EFileRingBufferAccessorValidationMode::Debug,
+                TMemoryMapCommon::EOpenModeFlag::oRdWr);
+
+            UNIT_ASSERT(!HasError(accessor.Map()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                EFileRingBufferAccessorValidationStatus::Success,
+                accessor.ValidateAndInitialize());
+
+            auto* header = accessor.GetHeader();
+
+            UNIT_ASSERT_VALUES_EQUAL(header->ReadPos, header->WritePos);
+            UNIT_ASSERT_VALUES_UNEQUAL(0, header->ReadPos % 8);
+
+            header->Version = EVersion::V6;
+        }
+
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, EVersion::V6);
+            UNIT_ASSERT(rb.PushBack("b"));
+        }
     }
 }
 
