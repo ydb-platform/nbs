@@ -145,23 +145,30 @@ ui32 GetVhostEndpointThreadCount(
     const TVhostEndpointThreadCounts& threadCounts,
     NCloud::NProto::EStorageMediaKind mediaKind)
 {
+    ui32 threadCount = 0;
     switch (mediaKind) {
         case NCloud::NProto::STORAGE_MEDIA_SSD:
-            return threadCounts.SSD;
+            threadCount = threadCounts.SSD;
+            break;
         case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
         case NCloud::NProto::STORAGE_MEDIA_HYBRID:
         case NCloud::NProto::STORAGE_MEDIA_HDD:
-            return threadCounts.HDD;
+            threadCount = threadCounts.HDD;
+            break;
         case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
         case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
-            return threadCounts.NonReplicated;
+            threadCount = threadCounts.NonReplicated;
+            break;
         case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
-            return threadCounts.Mirror2;
+            threadCount = threadCounts.Mirror2;
+            break;
         case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
-            return threadCounts.Mirror3;
+            threadCount = threadCounts.Mirror3;
+            break;
         default:
-            return 0;
+            break;
     }
+    return Max<ui32>(1, threadCount);
 }
 
 IEndpointListenerPtr CreateVhostEndpointListener(

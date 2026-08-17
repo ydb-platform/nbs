@@ -151,12 +151,11 @@ Y_UNIT_TEST_SUITE(TVhostEndpointTest)
             6,
             threadCount(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3));
 
-        // Local disks are served by a single thread.
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            1,
             threadCount(NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL));
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            1,
             threadCount(NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL));
     }
 }
