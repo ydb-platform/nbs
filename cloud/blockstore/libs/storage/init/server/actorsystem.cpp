@@ -621,6 +621,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
         storageConfig->GetConfigsDispatcherServiceEnabled();
     servicesMask.EnableViewerService =
         storageConfig->GetYdbViewerServiceEnabled();
+    servicesMask.EnableLoadService = storageConfig->GetEnableLoadActor();
 
     auto nodeId = sArgs.NodeId;
     auto onStart = [=] (IActorSystem& actorSystem) {

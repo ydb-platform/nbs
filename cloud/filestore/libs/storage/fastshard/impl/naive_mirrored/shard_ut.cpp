@@ -383,6 +383,21 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
                                    ProtoFlag(TCreateHandleRequest::E_READ) |
                                    ProtoFlag(TCreateHandleRequest::E_WRITE);
 
+    {
+        TFileSystemShardStats stats;
+        auto f = shard->CollectStats(&stats);
+        auto e = f.GetValueSync();
+        EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
+        EXPECT_EQ(0ULL, stats.UsedNodeCount);
+        EXPECT_EQ(84ULL, stats.TotalNodeCount);
+        EXPECT_EQ(0ULL, stats.UsedNameCount);
+        EXPECT_EQ(85ULL, stats.TotalNameCount);
+        EXPECT_EQ(0ULL, stats.UsedHandleCount);
+        EXPECT_EQ(768ULL, stats.TotalHandleCount);
+        EXPECT_EQ(0ULL, stats.UsedPageCount);
+        EXPECT_EQ(17680ULL, stats.TotalPageCount);
+    }
+
     ui64 nodeId = 0;
     {
         TCreateNodeRequest request;
@@ -434,12 +449,42 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
     }
 
     {
+        TFileSystemShardStats stats;
+        auto f = shard->CollectStats(&stats);
+        auto e = f.GetValueSync();
+        EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
+        EXPECT_EQ(1ULL, stats.UsedNodeCount);
+        EXPECT_EQ(84ULL, stats.TotalNodeCount);
+        EXPECT_EQ(1ULL, stats.UsedNameCount);
+        EXPECT_EQ(85ULL, stats.TotalNameCount);
+        EXPECT_EQ(1ULL, stats.UsedHandleCount);
+        EXPECT_EQ(768ULL, stats.TotalHandleCount);
+        EXPECT_EQ(8ULL, stats.UsedPageCount);
+        EXPECT_EQ(17680ULL, stats.TotalPageCount);
+    }
+
+    {
         TDestroyHandleRequest request;
         request.SetHandle(handle);
         auto f = shard->DestroyHandle(request);
         auto response = f.GetValueSync();
         EXPECT_EQ(S_OK, response.GetError().GetCode())
             << FormatError(response.GetError());
+    }
+
+    {
+        TFileSystemShardStats stats;
+        auto f = shard->CollectStats(&stats);
+        auto e = f.GetValueSync();
+        EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
+        EXPECT_EQ(1ULL, stats.UsedNodeCount);
+        EXPECT_EQ(84ULL, stats.TotalNodeCount);
+        EXPECT_EQ(1ULL, stats.UsedNameCount);
+        EXPECT_EQ(85ULL, stats.TotalNameCount);
+        EXPECT_EQ(0ULL, stats.UsedHandleCount);
+        EXPECT_EQ(768ULL, stats.TotalHandleCount);
+        EXPECT_EQ(8ULL, stats.UsedPageCount);
+        EXPECT_EQ(17680ULL, stats.TotalPageCount);
     }
 }
 
@@ -601,7 +646,7 @@ TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
         {
             TWriteDataRequest request;
             request.SetHandle(handle);
-            request.SetOffset(page1.Size());
+            request.SetOffset(page1.size());
             *request.MutableBuffer() = page2;
             auto f = shard->WriteData(request);
             auto response = f.GetValueSync();

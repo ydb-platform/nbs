@@ -1,17 +1,16 @@
 UNITTEST()
 
 IF (SANITIZER_TYPE == "thread")
-    TIMEOUT(1200)
     SIZE(LARGE)
     TAG(ya:fat)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
 SRCS(
     channel_scheduler_ut.cpp
     event_holder_pool_ut.cpp
+    event_output_channel_ut.cpp
     interconnect_ut.cpp
     large.cpp
     outgoing_stream_ut.cpp
@@ -24,9 +23,12 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     contrib/ydb/library/actors/interconnect/ut/lib
+    contrib/ydb/library/actors/interconnect/ut/lib/port_manager
+    contrib/ydb/library/actors/interconnect/rdma/ut/utils
     contrib/ydb/library/actors/interconnect/ut/protos
     contrib/ydb/library/actors/testlib
     library/cpp/digest/md5
+    library/cpp/logger
     library/cpp/testing/unittest
 )
 

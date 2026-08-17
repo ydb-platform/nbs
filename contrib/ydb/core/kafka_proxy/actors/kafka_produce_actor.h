@@ -3,6 +3,7 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/kafka_proxy/kafka_events.h>
+#include <contrib/ydb/core/kafka_proxy/kafka_topic_partition.h>
 #include <contrib/ydb/core/persqueue/writer/writer.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 
@@ -19,7 +20,7 @@ using namespace NKikimrClient;
 // Each request can contain data for writing to several topics, and in each topic to several partitions.
 // When a request to write to an unknown topic arrives, the actor changes the state to Init until it receives
 // information about all the topics needed to process the request.
-//
+// 
 // Requests are processed in parallel, but it is guaranteed that the recording order will be preserved.
 // The order of responses to requests is also guaranteed.
 //
@@ -33,7 +34,8 @@ class TKafkaProduceActor: public NActors::TActorBootstrapped<TKafkaProduceActor>
     enum ETopicStatus {
         OK,
         NOT_FOUND,
-        UNAUTHORIZED
+        UNAUTHORIZED,
+        PRODUCER_FENCED
     };
 
 public:
@@ -126,8 +128,7 @@ private:
     void ProcessInitializationRequests(const TActorContext& ctx);
     void CleanTopics(const TActorContext& ctx);
     void CleanWriters(const TActorContext& ctx);
-
-    std::pair<ETopicStatus, TActorId> PartitionWriter(const TString& topicPath, ui32 partitionId, const TActorContext& ctx);
+    std::pair<ETopicStatus, TActorId> PartitionWriter(const TTopicPartition& topicPartition, const TProducerInstanceId& producerInstanceId, const TMaybe<TString>& transactionalId, const TActorContext& ctx);
 
     TString LogPrefix();
     void LogEvent(IEventHandle& ev);
@@ -169,6 +170,7 @@ private:
         TString TopicPath;
         ui32 PartitionId;
         size_t Position;
+        bool RuPerRequest;
 
         TPendingRequest::TPtr Request;
     };
@@ -188,9 +190,25 @@ private:
     struct TWriterInfo {
         TActorId ActorId;
         TInstant LastAccessed;
+        // identifies the transactional producer (if transactional)
+        TProducerInstanceId ProducerInstanceId;
     };
     // TopicPath -> PartitionId -> TPartitionWriter
-    std::unordered_map<TString, std::unordered_map<ui32, TWriterInfo>> Writers;
+    std::unordered_map<TString, std::unordered_map<ui32, TWriterInfo>> NonTransactionalWriters;
+    std::unordered_map<TTopicPartition, TWriterInfo, TTopicPartitionHashFn> TransactionalWriters;
+
+    void RecreatePartitionWriterAndRetry(ui64 cookie, const TActorContext& ctx);
+    void SendWriteRequest(const TProduceRequestData::TTopicProduceData::TPartitionProduceData& partitionData,
+                            const TString& topicName,
+                            TPendingRequest::TPtr pendingRequest,
+                            size_t position,
+                            bool& ruPerRequest,
+                            const TActorContext& ctx
+                        );
+    void CleanWriter(const TTopicPartition& topicPartition, const TActorId& writerId);
+    std::pair<TKafkaProduceActor::ETopicStatus, TActorId> GetOrCreateNonTransactionalWriter(const TTopicPartition& topicPartition, const TTopicInfo& topicInfo, const TProducerInstanceId& producerInstanceId, const TActorContext& ctx);
+    std::pair<TKafkaProduceActor::ETopicStatus, TActorId> GetOrCreateTransactionalWriter(const TTopicPartition& topicPartition, const TTopicInfo& topicInfo, const TProducerInstanceId& producerInstanceId, const TString& transactionalId, const TActorContext& ctx);
+    std::pair<TKafkaProduceActor::ETopicStatus, TActorId> CreateTransactionalWriter(const TTopicPartition& topicPartition, const TTopicInfo& topicInfo, const TProducerInstanceId& producerInstanceId, const TString& transactionalId, const TActorContext& ctx);
 };
 
 }

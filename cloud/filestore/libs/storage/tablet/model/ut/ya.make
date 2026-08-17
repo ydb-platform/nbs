@@ -13,10 +13,12 @@ SRCS(
     garbage_queue_ut.cpp
     large_blocks_ut.cpp
     mixed_blocks_ut.cpp
+    node_access_stats_ut.cpp
     node_session_stat_ut.cpp
     operation_ut.cpp
     profile_log_events_ut.cpp
     range_locks_ut.cpp
+    ranking_ut.cpp
     read_ahead_ut.cpp
     shard_balancer_ut.cpp
     sparse_segment_ut.cpp

@@ -487,6 +487,7 @@ message TClusterBalancingSettings {
     optional uint32 MaxReplicatingVDisks = 4;
     optional bool PreferLessOccupiedRack = 5;
     optional bool WithAttentionToReplication = 6;
+    optional uint32 MaxReassignAttemptsPerBucketPerIteration = 7;
 }
 
 message TSelfHealSettings {
@@ -572,6 +573,27 @@ message TSetVDiskReadOnly {
     bool Value = 3;
 }
 
+message TGetInterfaceVersion
+{}
+
+message TInferPDiskSlotCountForDriveTypeSettings {
+    // NodeWarden infers PDiskConfig ExpectedSlotCount by the formula
+    // ExpectedSlotCount = TotalSize / (UnitSize * 2^N)
+    // where 2^N is chosen to meet ExpectedSlotCount <= MaxSlots
+    optional uint64 UnitSize = 1; // in bytes
+    optional uint32 MaxSlots = 2;
+    // Unless true, explicit PDisk slot settings override inferred settings.
+    optional bool PreferInferredSettingsOverExplicit = 3;
+    // SlotSize is used as PDiskConfig ExpectedSlotSize for this drive type.
+    // It is mutually exclusive with UnitSize and requires MaxSlots as slot-count cap.
+    optional uint64 SlotSize = 4; // in bytes
+}
+
+message TInferPDiskSlotCountSettings {
+    optional TInferPDiskSlotCountForDriveTypeSettings Rot = 1;
+    optional TInferPDiskSlotCountForDriveTypeSettings Ssd = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // INTERFACE PART
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -618,6 +640,7 @@ message TConfigRequest {
             TRestartPDisk RestartPDisk = 48;
             TSetPDiskReadOnly SetPDiskReadOnly = 49;
             TStopPDisk StopPDisk = 50;
+            TGetInterfaceVersion GetInterfaceVersion = 51;
             TMovePDisk MovePDisk = 53;
 
             // commands intended for internal use
@@ -700,7 +723,8 @@ message TBaseConfig {
         string ExpectedSerial = 17;
         string LastSeenSerial = 18;
         bool ReadOnly = 19;
-        TMaintenanceStatus.E MaintenanceStatus = 20; 
+        TMaintenanceStatus.E MaintenanceStatus = 20;
+        uint64 ExpectedSlotSize = 24;
     }
     message TVSlot {
         message TDonorDisk {
@@ -769,6 +793,7 @@ message TBaseConfig {
     repeated TNode Node = 4;
     repeated TDevice Device = 5;
     TUpdateSettings Settings = 6;
+    TInferPDiskSlotCountSettings InferPDiskSlotCountSettings = 7;
 }
 
 message TMoveCommand {
@@ -797,6 +822,25 @@ message TReassignedItem {
     string FromPath = 5;
     string ToFqdn = 6;
     string ToPath = 7;
+}
+
+message TGroupMapperError {
+    message TStats {
+        string Domain = 1;
+        uint32 AllSlotsAreOccupied = 2;
+        uint32 NotEnoughSpace = 3;
+        uint32 NotAcceptingNewSlots = 4;
+        uint32 NotOperational = 5;
+        uint32 Decommission = 6;
+    }
+    TStats TotalStats = 1;
+    repeated TStats MatchingDomainsStats = 2;
+    uint32 MissingFailRealmsCount = 3;
+    uint32 FailRealmsWithMissingDomainsCount = 4;
+    uint32 DomainsWithMissingDisksCount = 5;
+    uint32 OkDisksCount = 6;
+    string RealmLocationKey = 7;
+    string DomainLocationKey = 8;
 }
 
 message TConfigResponse {
@@ -834,6 +878,7 @@ message TConfigResponse {
                 NKikimrBlobStorage.TVSlotId VSlotId = 13;
                 string StoragePoolName = 14;
                 string DiskSerialNumber = 15;
+                TGroupMapperError GroupMapperError = 18;
             }
         }
 
@@ -855,6 +900,7 @@ message TConfigResponse {
         TDeclareIntent Intent = 15;
         bool Already = 16;
         TUpdateSettings Settings = 18;
+        uint32 InterfaceVersion = 19;
     }
 
     repeated TStatus Status = 1;

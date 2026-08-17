@@ -12,7 +12,7 @@ PEERDIR(
     contrib/ydb/core/external_sources/hive_metastore/hive_metastore_native
     contrib/ydb/library/actors/core
     contrib/ydb/library/yql/providers/generic/connector/api/service/protos
-    contrib/ydb/library/yql/public/issue/protos
+    yql/essentials/public/issue/protos
 )
 
 END()

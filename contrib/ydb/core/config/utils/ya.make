@@ -5,7 +5,6 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/core/protos
     library/cpp/protobuf/json
 )
 

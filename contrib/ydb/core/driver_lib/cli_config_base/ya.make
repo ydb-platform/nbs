@@ -9,7 +9,7 @@ PEERDIR(
     library/cpp/deprecated/enum_codegen
     contrib/ydb/core/util
     contrib/ydb/public/lib/deprecated/client
-    contrib/ydb/library/yql/minikql
+    yql/essentials/minikql
 )
 
 YQL_LAST_ABI_VERSION()

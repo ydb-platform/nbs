@@ -5,6 +5,7 @@
 
 #include <contrib/ydb/core/base/ticket_parser.h>
 #include <contrib/ydb/core/fq/libs/control_plane_proxy/utils/utils.h>
+#include <contrib/ydb/core/tx/scheme_board/events.h>
 
 namespace NKikimr {
 namespace NGRpcService {

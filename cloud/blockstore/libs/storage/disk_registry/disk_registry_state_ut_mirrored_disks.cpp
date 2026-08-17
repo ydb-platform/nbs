@@ -3,18 +3,21 @@
 #include "disk_registry_database.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <google/protobuf/util/message_differencer.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/guid.h>
 #include <util/generic/size_literals.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

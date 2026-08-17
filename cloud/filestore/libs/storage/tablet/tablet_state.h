@@ -840,6 +840,17 @@ public:
         ui64 commitId,
         ui32 flags);
 
+    // Registers a handle with an explicitly specified id. Registration is
+    // idempotent if the handle already belongs to the given session and node.
+    // Returns an error on a collision or if the handle cannot be created.
+    [[nodiscard]] NProto::TError RegisterHandle(
+        IIndexTabletDatabase& db,
+        TSession* session,
+        ui64 handleId,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 flags);
+
     TSessionHandle* UnsafeCreateHandle(
         IIndexTabletDatabase& db,
         TSession* session,
@@ -854,10 +865,24 @@ public:
 
     TSessionHandle* FindHandle(ui64 handle) const;
 
+    bool HasPendingCreateHandleCommit(ui64 handle) const;
+
+    void StartCreateHandleCommit(ui64 handle);
+
+    void EndCreateHandleCommit(ui64 handle);
+
     bool HasOpenHandles(ui64 nodeId) const;
 
 private:
     ui64 GenerateHandle() const;
+
+    TSessionHandle* CreateHandle(
+        IIndexTabletDatabase& db,
+        TSession* session,
+        ui64 handleId,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 flags);
 
     TSessionHandle* CreateHandle(
         TSession* session,

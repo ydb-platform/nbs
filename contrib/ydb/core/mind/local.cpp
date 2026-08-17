@@ -42,7 +42,6 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
 
         static_assert(EvEnd < EventSpaceEnd(TEvents::ES_PRIVATE), "expect EvEnd < EventSpaceEnd(TEvents::ES_PRIVATE)");
 
-        typedef TEventSchedulerEv<EvRegisterTimeout> TEvRegisterTimeout;
         struct TEvSendTabletMetrics : TEventLocal<TEvSendTabletMetrics, EvSendTabletMetrics> {};
         struct TEvUpdateSystemUsage : TEventLocal<TEvUpdateSystemUsage, EvUpdateSystemUsage> {};
         struct TEvLocalDrainTimeout : TEventLocal<TEvLocalDrainTimeout, EvLocalDrainTimeout> {};
@@ -205,7 +204,7 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
             }
             tabletAvailability->SetPriority(tabletInfo.Priority);
         }
-        if (const TString& nodeName = AppData(ctx)->NodeName; !nodeName.Empty()) {
+        if (const TString& nodeName = AppData(ctx)->NodeName; !nodeName.empty()) {
             request->Record.SetName(nodeName);
         }
 
@@ -258,7 +257,7 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
         LOG_DEBUG_S(ctx, NKikimrServices::LOCAL, "TEvTabletPipe::TEvClientConnected {"
                     << "TabletId=" << msg->TabletId
                     << " Status=" << msg->Status
-                    << " ClientId=" << msg->ClientId);
+                    << " ClientId=" << msg->ClientId << "}");
         if (msg->ClientId != HivePipeClient)
             return;
         if (msg->Status == NKikimrProto::OK) {
@@ -272,7 +271,7 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
         TEvTabletPipe::TEvClientDestroyed *msg = ev->Get();
         LOG_DEBUG_S(ctx, NKikimrServices::LOCAL, "TEvTabletPipe::TEvClientDestroyed {"
                     << "TabletId=" << msg->TabletId
-                    << " ClientId=" << msg->ClientId);
+                    << " ClientId=" << msg->ClientId << "}");
         if (msg->ClientId != HivePipeClient)
             return;
         HandlePipeDestroyed(ctx);
@@ -656,7 +655,15 @@ class TLocalNodeRegistrar : public TActorBootstrapped<TLocalNodeRegistrar> {
     }
 
     void Handle(TEvPrivate::TEvUpdateSystemUsage::TPtr&, const TActorContext&) {
-        Send(NNodeWhiteboard::MakeNodeWhiteboardServiceId(SelfId().NodeId()), new NNodeWhiteboard::TEvWhiteboard::TEvSystemStateRequest());
+        static constexpr auto REQUIRED_FIELDS = std::to_array<i32>({
+            NKikimrWhiteboard::TSystemStateInfo::kNumberOfCpusFieldNumber,
+            NKikimrWhiteboard::TSystemStateInfo::kPoolStatsFieldNumber,
+            NKikimrWhiteboard::TSystemStateInfo::kMemoryUsedInAllocFieldNumber,
+            NKikimrWhiteboard::TSystemStateInfo::kMemoryLimitFieldNumber,
+        });
+        auto req = std::make_unique<NNodeWhiteboard::TEvWhiteboard::TEvSystemStateRequest>();
+        req->Record.MutableFieldsRequired()->Assign(REQUIRED_FIELDS.begin(), REQUIRED_FIELDS.end());
+        Send(NNodeWhiteboard::MakeNodeWhiteboardServiceId(SelfId().NodeId()), req.release());
         Schedule(UPDATE_SYSTEM_USAGE_INTERVAL, new TEvPrivate::TEvUpdateSystemUsage());
     }
 
@@ -1023,7 +1030,7 @@ class TDomainLocal : public TActorBootstrapped<TDomainLocal> {
         TRegistrationInfo Info;
         TVector<TActorId> Locals;
         TActorId Subscriber;
-        TVector<TTabletId> HiveIds;
+        std::set<TTabletId> HiveIds;
         THashMap<TString, TString> Attributes;
         TSubDomainKey DomainKey;
     };
@@ -1124,7 +1131,7 @@ class TDomainLocal : public TActorBootstrapped<TDomainLocal> {
         RunningTenants.at(tenant).Locals.push_back(actorId);
 
         TActorId localRegistrarServiceId = MakeLocalRegistrarID(ctx.SelfID.NodeId(), hiveId);
-        ctx.ExecutorThread.ActorSystem->RegisterLocalService(localRegistrarServiceId, actorId);
+        ctx.ActorSystem()->RegisterLocalService(localRegistrarServiceId, actorId);
     }
 
     void RegisterAsDomain(const TRegistrationInfo &info,
@@ -1145,7 +1152,7 @@ class TDomainLocal : public TActorBootstrapped<TDomainLocal> {
 
     void RegisterAsSubDomain(const NKikimrScheme::TEvDescribeSchemeResult &rec,
                              const TResolveTask &task,
-                             const TVector<TTabletId> hiveIds,
+                             const std::set<TTabletId> hiveIds,
                              const TActorContext &ctx)
     {
         const auto &domainDesc = rec.GetPathDescription().GetDomainDescription();
@@ -1266,14 +1273,14 @@ class TDomainLocal : public TActorBootstrapped<TDomainLocal> {
         const auto &domainDesc = rec.GetPathDescription().GetDomainDescription();
         Y_ABORT_UNLESS(domainDesc.GetDomainKey().GetSchemeShard() == SchemeRoot);
 
-        TVector<TTabletId> hiveIds(HiveIds);
+        std::set<TTabletId> hiveIds(HiveIds.begin(), HiveIds.end());
         TTabletId hiveId = domainDesc.GetProcessingParams().GetHive();
         if (hiveId) {
-            hiveIds.emplace_back(hiveId);
+            hiveIds.emplace(hiveId);
         }
         TTabletId sharedHiveId = domainDesc.GetSharedHive();
         if (sharedHiveId) {
-            hiveIds.emplace_back(sharedHiveId);
+            hiveIds.emplace(sharedHiveId);
         }
         RegisterAsSubDomain(rec, task, hiveIds, ctx);
 
@@ -1304,7 +1311,7 @@ class TDomainLocal : public TActorBootstrapped<TDomainLocal> {
             TTenantInfo& tenant = itTenant->second;
             TTabletId hiveId = ev->Get()->DescribeSchemeResult.GetPathDescription().GetDomainDescription().GetProcessingParams().GetHive();
             if (hiveId) {
-                auto itHiveId = Find(tenant.HiveIds, hiveId);
+                auto itHiveId = tenant.HiveIds.find(hiveId);
                 if (itHiveId == tenant.HiveIds.end()) {
                     const auto &domainDesc = ev->Get()->DescribeSchemeResult.GetPathDescription().GetDomainDescription();
                     TVector<TSubDomainKey> servicedDomains = {TSubDomainKey(domainDesc.GetDomainKey())};
@@ -1314,7 +1321,7 @@ class TDomainLocal : public TActorBootstrapped<TDomainLocal> {
                                 << " to hive " << hiveId
                                 << " (allocated resources: " << tenant.Info.ResourceLimit.ShortDebugString() << ")");
                     RegisterLocalNode(tenant.Info.TenantName, tenant.Info.ResourceLimit, hiveId, servicedDomains, ctx);
-                    tenant.HiveIds.emplace_back(hiveId);
+                    tenant.HiveIds.emplace(hiveId);
                 }
             }
         }

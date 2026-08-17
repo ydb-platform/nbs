@@ -737,6 +737,7 @@ private:
     const ui32 BlockSize;
     TTabletStorageInfo& TabletInfo;
     TTxPartition::TReadBlocks& Args;
+    bool MixedBlocksVisited = false;
 
 public:
     TReadBlocksVisitor(
@@ -822,7 +823,18 @@ public:
     {
         Y_UNUSED(compactionRangeCount);
 
+        if (Args.Interrupted) {
+            return false;
+        }
+
+        MixedBlocksVisited = true;
+
         return Visit(blockIndex, commitId, blobId, blobOffset);
+    }
+
+    [[nodiscard]] bool HasVisitedMixedBlocks() const
+    {
+        return MixedBlocksVisited;
     }
 };
 
@@ -1086,13 +1098,24 @@ bool TPartitionActor::PrepareReadBlocks(
     bool ready = true;
 
     const auto* filter = State->GetMixedBlocksFilter();
-    if (!filter || filter->MayHaveBlocksInMixedIndex(args.ReadRange, commitId))
-    {
-        ready &= db.FindMixedBlocks(
+    using EFilterResult = TTxPartition::TReadBlocks::EMixedBlocksFilterResult;
+    const bool mayHaveMixedBlocks =
+        !filter || filter->MayHaveBlocksInMixedIndex(args.ReadRange, commitId);
+
+    if (mayHaveMixedBlocks) {
+        const bool mixedBlocksReady = db.FindMixedBlocks(
             visitor,
             args.ReadRange,
             false,   // precharge
             commitId);
+
+        if (mixedBlocksReady && filter) {
+            args.MixedBlocksFilterResult = visitor.HasVisitedMixedBlocks()
+                                               ? EFilterResult::TruePositive
+                                               : EFilterResult::FalsePositive;
+        }
+
+        ready &= mixedBlocksReady;
     }
 
     ready &= db.FindMergedBlocks(
@@ -1151,6 +1174,19 @@ void TPartitionActor::CompleteReadBlocks(
     TTxPartition::TReadBlocks& args)
 {
     TRequestScope timer(*args.RequestInfo);
+
+    auto& counters = PartCounters->Cumulative;
+    using EResult = TTxPartition::TReadBlocks::EMixedBlocksFilterResult;
+    if (args.MixedBlocksFilterResult) {
+        switch (*args.MixedBlocksFilterResult) {
+            case EResult::FalsePositive:
+                counters.MixedBlocksFilterFalsePositives.Increment(1);
+                break;
+            case EResult::TruePositive:
+                counters.MixedBlocksFilterTruePositives.Increment(1);
+                break;
+        }
+    }
 
     RemoveTransaction(*args.RequestInfo);
 

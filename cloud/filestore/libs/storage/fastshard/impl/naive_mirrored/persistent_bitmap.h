@@ -41,6 +41,7 @@ public:
     NProto::TError Reset(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups);
     NProto::TError
     Allocate(ui64 lsn, ui64* bit, TVector<TPageGroup>& pageGroups);
+    [[nodiscard]] NProto::TError CountBits(ui64* bits) const;
 
     [[nodiscard]] static ui64 CalcBitsPerPage(ui64 pageSize)
     {

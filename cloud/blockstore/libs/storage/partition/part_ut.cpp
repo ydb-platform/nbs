@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
@@ -15884,6 +15885,80 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ShouldRunIgnoringZeroedCompactionWhenUsedBlocksCountGreaterThanBlockCount)
     {
         DoShouldRunCompactionWhenUsedBlocksCountGreaterThanBlockCount(true);
+    }
+
+    Y_UNIT_TEST(ShouldReportMixedBlocksFilterMetrics)
+    {
+        auto config = DefaultConfig();
+        config.SetMixedBlocksFilterEnabled(true);
+        config.SetMixedBlocksFilterRangesToLoadPerTx(1);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        ui64 falsePositives = 0;
+        ui64 truePositives = 0;
+        ui64 memorySize = 0;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+                {
+                    const auto* msg =
+                        event->Get<TEvStatsService::TEvVolumePartCounters>();
+                    falsePositives +=
+                        msg->DiskCounters->Cumulative
+                            .MixedBlocksFilterFalsePositives.Value;
+                    truePositives += msg->DiskCounters->Cumulative
+                                         .MixedBlocksFilterTruePositives.Value;
+                    memorySize = msg->DiskCounters->Simple
+                                     .MixedBlocksFilterMemSize.Value;
+                }
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // Initialize the filter's first compaction range.
+        partition.WriteBlocks(0, 1);
+        partition.Flush();
+        partition.Compaction();
+
+        partition.CreateCheckpoint("checkpoint");
+
+        // This mixed block is newer than the checkpoint. The current read is
+        // a true positive; the checkpoint read is a false positive because
+        // the filter only knows that the range may contain mixed blocks.
+        partition.WriteBlocks(1, 2);
+        partition.Flush();
+
+        // Reload the filter from the mixed index.
+        partition.RebootTablet();
+        partition.WaitReady();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(1) + GetBlockContent(2),
+            GetBlocksContent(
+                partition.ReadBlocks(TBlockRange32::WithLength(0, 2))));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(1, "checkpoint")));
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, falsePositives);
+        UNIT_ASSERT_VALUES_EQUAL(1, truePositives);
+        UNIT_ASSERT(memorySize > 0);
     }
 
     Y_UNIT_TEST(ShouldFillStoredBytesCountToDiskSizeRatioCounter)

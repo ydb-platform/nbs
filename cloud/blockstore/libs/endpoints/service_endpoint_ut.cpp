@@ -6,6 +6,7 @@
 #include "session_manager.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -14,23 +15,24 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
+#include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
-
-#include <google/protobuf/util/message_differencer.h>
 
 #include <util/folder/path.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NBlockStore::NServer {
 

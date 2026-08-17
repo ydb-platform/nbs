@@ -38,6 +38,18 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 // FAST_SHARD_PUBLIC_METHODS
 
+struct TFileSystemShardStats
+{
+    ui64 UsedNodeCount = 0;
+    ui64 TotalNodeCount = 0;
+    ui64 UsedNameCount = 0;
+    ui64 TotalNameCount = 0;
+    ui64 UsedHandleCount = 0;
+    ui64 TotalHandleCount = 0;
+    ui64 UsedPageCount = 0;
+    ui64 TotalPageCount = 0;
+};
+
 struct IFileSystemShard
 {
     virtual ~IFileSystemShard() = default;
@@ -51,6 +63,9 @@ struct IFileSystemShard
     FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DECLARE_METHOD, NProto)
 
 #undef FAST_SHARD_DECLARE_METHOD
+
+    [[nodiscard]] virtual NThreading::TFuture<NCloud::NProto::TError>
+    CollectStats(TFileSystemShardStats* stats) const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

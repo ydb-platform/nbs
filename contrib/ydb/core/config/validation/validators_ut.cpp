@@ -1,7 +1,11 @@
 #include "validators.h"
 
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_config.pb.h>
 #include <contrib/ydb/core/protos/blobstorage_disk.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_pdisk_config.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
+#include <contrib/ydb/core/protos/table_service_config.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -404,5 +408,103 @@ Y_UNIT_TEST_SUITE(ConfigValidation) {
         UNIT_ASSERT_VALUES_EQUAL(err.size(), 1);
         UNIT_ASSERT_VALUES_EQUAL(err[0], "Too many VDiskLocation changes");
         UNIT_ASSERT_EQUAL(res, EValidationResult::Error);
+    }
+}
+
+Y_UNIT_TEST_SUITE(DatabaseConfigValidation) {
+    Y_UNIT_TEST(AllowedFields) {
+        NKikimrConfig::TAppConfig config;
+        config.MutableFeatureFlags()->SetEnablePgSyntax(true);
+        config.MutableTableServiceConfig()->SetEnableStreamWrite(true);
+
+        std::vector<TString> err;
+        auto res = ValidateDatabaseConfig(config, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 0);
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Ok);
+    }
+
+    Y_UNIT_TEST(NotAllowedFields) {
+        auto [config, _] = PrepareStaticStorageTest();
+
+        std::vector<TString> err;
+        auto res = ValidateDatabaseConfig(config, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(err[0], "'blob_storage_config' is not allowed to be used in the database configuration");
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Error);
+    }
+}
+
+Y_UNIT_TEST_SUITE(PDiskConfigValidation) {
+    Y_UNIT_TEST(ValidateConfigInferPDiskSlotSizeSettings) {
+        NKikimrConfig::TAppConfig proposed;
+        auto* inferSettings = proposed.MutableBlobStorageConfig()->MutableInferPDiskSlotCountSettings();
+        inferSettings->MutableRot()->SetSlotSize(600ull << 30);
+        std::vector<TString> err;
+        auto res = ValidateConfig(proposed, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 1);
+        UNIT_ASSERT_C(err[0].Contains("MaxSlots is mandatory with SlotSize or UnitSize"), err[0]);
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Error);
+
+        inferSettings->MutableRot()->SetMaxSlots(16);
+        err.clear();
+        res = ValidateConfig(proposed, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 0);
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Ok);
+
+        inferSettings->MutableRot()->SetUnitSize(100ull << 30);
+        err.clear();
+        res = ValidateConfig(proposed, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 1);
+        UNIT_ASSERT_C(err[0].Contains("SlotSize is mutually exclusive with UnitSize"), err[0]);
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Error);
+    }
+
+    Y_UNIT_TEST(ValidateConfigExpectedSlotSizeRequiresMaxSlots) {
+        NKikimrConfig::TAppConfig proposed;
+        auto* pdiskConfig = proposed.MutableBlobStorageConfig()
+            ->AddDefineHostConfig()
+            ->AddDrive()
+            ->MutablePDiskConfig();
+        pdiskConfig->SetExpectedSlotSize(600ull << 30);
+
+        std::vector<TString> err;
+        auto res = ValidateConfig(proposed, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 1);
+        UNIT_ASSERT_C(err[0].Contains("ExpectedSlotSize requires MaxSlots"), err[0]);
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Error);
+
+        pdiskConfig->SetMaxSlots(16);
+        err.clear();
+        res = ValidateConfig(proposed, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 0);
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Ok);
+
+        pdiskConfig->SetExpectedSlotCount(4);
+        err.clear();
+        res = ValidateConfig(proposed, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 1);
+        UNIT_ASSERT_C(err[0].Contains("ExpectedSlotSize is mutually exclusive with ExpectedSlotCount"), err[0]);
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Error);
+    }
+
+    Y_UNIT_TEST(ValidateConfigMaxSlotsRequiresExpectedSlotSize) {
+        NKikimrConfig::TAppConfig proposed;
+        auto* pdiskConfig = proposed.MutableBlobStorageConfig()
+            ->AddDefineHostConfig()
+            ->AddDrive()
+            ->MutablePDiskConfig();
+        pdiskConfig->SetMaxSlots(16);
+
+        std::vector<TString> err;
+        auto res = ValidateConfig(proposed, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 1);
+        UNIT_ASSERT_C(err[0].Contains("MaxSlots requires ExpectedSlotSize"), err[0]);
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Error);
+
+        pdiskConfig->SetExpectedSlotSize(600ull << 30);
+        err.clear();
+        res = ValidateConfig(proposed, err);
+        UNIT_ASSERT_VALUES_EQUAL(err.size(), 0);
+        UNIT_ASSERT_EQUAL(res, EValidationResult::Ok);
     }
 }

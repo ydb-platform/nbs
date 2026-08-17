@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     ydb_clickhouse_internal.cpp
+    ydb_debug.cpp
     ydb_dummy.cpp
     ydb_export.cpp
     ydb_import.cpp
@@ -30,7 +31,7 @@ PEERDIR(
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/protos
-    contrib/ydb/library/yql/public/types
+    yql/essentials/public/types
     contrib/libs/openssl
 )
 

@@ -7,7 +7,7 @@
 #include <contrib/ydb/public/sdk/cpp/client/ydb_types/credentials/oauth2_token_exchange/from_file.h>
 #include <util/stream/file.h>
 
-namespace NYdb {
+namespace NYdb::inline V2 {
 
 TDriverConfig CreateFromEnvironment(const TStringType& connectionString) {
     TDriverConfig driverConfig;
@@ -56,7 +56,7 @@ TDriverConfig CreateFromEnvironment(const TStringType& connectionString) {
     }
 
     TStringType oauth2KeyFile = GetStrFromEnv("YDB_OAUTH2_KEY_FILE", "");
-    if (!saKeyFile.empty()) {
+    if (!oauth2KeyFile.empty()) {
         driverConfig.SetCredentialsProviderFactory(
             CreateOauth2TokenExchangeFileCredentialsProviderFactory(oauth2KeyFile));
         return driverConfig;

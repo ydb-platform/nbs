@@ -1,13 +1,14 @@
 LIBRARY()
 
 SRCS(
+    sanitize_label.cpp
     status_code_counters.cpp
 )
 
 PEERDIR(
     library/cpp/monlib/dynamic_counters
+    yql/essentials/public/issue
     contrib/ydb/library/yql/dq/actors/protos
-    contrib/ydb/library/yql/public/issue
 )
 
 YQL_LAST_ABI_VERSION()

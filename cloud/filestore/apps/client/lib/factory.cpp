@@ -43,6 +43,13 @@ TCommandPtr NewFindCommand();
 TCommandPtr NewDiffCommand();
 TCommandPtr NewPingCommand();
 TCommandPtr NewDiagnoseFilesystemCommand();
+TCommandPtr NewSetNodeXAttrCommand();
+TCommandPtr NewGetNodeXAttrCommand();
+TCommandPtr NewListNodeXAttrCommand();
+TCommandPtr NewRemoveNodeXAttrCommand();
+TCommandPtr NewAcquireLockCommand();
+TCommandPtr NewReleaseLockCommand();
+TCommandPtr NewTestLockCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,6 +57,7 @@ using TFactoryFunc = std::function<TCommandPtr()>;
 using TFactoryMap = TMap<TString, TFactoryFunc>;
 
 static const TMap<TString, TFactoryFunc> Commands = {
+    { "acquirelock", NewAcquireLockCommand },
     { "addclusternode", NewAddClusterNodeCommand },
     { "create", NewCreateCommand },
     { "createsession", NewCreateSessionCommand },
@@ -61,10 +69,12 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "find", NewFindCommand },
     { "findgarbage", NewFindGarbageCommand },
     { "forcedcompaction", NewForcedCompactionCommand },
+    { "getnodexattr", NewGetNodeXAttrCommand },
     { "kickendpoint", NewKickEndpointCommand },
     { "listclusternodes", NewListClusterNodesCommand },
     { "listendpoints", NewListEndpointsCommand },
     { "listfilestores", NewListFileStoresCommand },
+    { "listnodexattr", NewListNodeXAttrCommand },
     { "ln", NewLnCommand },
     { "ls", NewLsCommand },
     { "mkdir", NewMkDirCommand },
@@ -72,14 +82,18 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "mv", NewMvCommand },
     { "read", NewReadCommand },
     { "readlink", NewReadLinkCommand },
+    { "releaselock", NewReleaseLockCommand },
     { "removeclusternode", NewRemoveClusterNodeCommand },
+    { "removenodexattr", NewRemoveNodeXAttrCommand },
     { "resetsession", NewResetSessionCommand },
     { "resize", NewResizeCommand },
     { "rm", NewRmCommand },
     { "setnodeattr", NewSetNodeAttrCommand },
+    { "setnodexattr", NewSetNodeXAttrCommand },
     { "startendpoint", NewStartEndpointCommand },
     { "stat", NewStatCommand },
     { "stopendpoint", NewStopEndpointCommand },
+    { "testlock", NewTestLockCommand },
     { "touch", NewTouchCommand },
     { "write", NewWriteCommand },
     { "ping", NewPingCommand },

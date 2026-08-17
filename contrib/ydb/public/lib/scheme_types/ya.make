@@ -6,7 +6,7 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/public/types
+    yql/essentials/public/types
 )
 
 END()

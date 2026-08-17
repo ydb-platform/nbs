@@ -3,7 +3,6 @@
 #include "blobstorage_synclog_public_events.h"
 
 #include <contrib/ydb/core/base/blobstorage_grouptype.h>
-#include <contrib/ydb/core/base/compile_time_flags.h>
 
 using namespace NKikimrServices;
 
@@ -35,15 +34,16 @@ namespace NKikimr {
 
             void GenerateCommit(const TActorContext &ctx) {
                 // serialize
-                const bool oldFormat = !KIKIMR_VDISK_SYNCLOG_ENTRY_POINT_PROTO_FORMAT;
-                EntryPointSerializer.Serialize(Delta, oldFormat);
+                EntryPointSerializer.Serialize(Delta);
 
                 // lsn
                 TLsnSeg seg = SlCtx->LsnMngr->AllocLsnForLocalUse();
                 // commit msg
                 auto commitMsg = std::make_unique<NPDisk::TEvLog>(SlCtx->PDiskCtx->Dsk->Owner,
                         SlCtx->PDiskCtx->Dsk->OwnerRound, TLogSignature::SignatureSyncLogIdx,
-                        CommitRecord, TRcBuf(EntryPointSerializer.GetSerializedData()), seg, nullptr);
+                        CommitRecord, TRcBuf(EntryPointSerializer.GetSerializedData()), seg, nullptr,
+                        TWriteSource::SyncLogCommitterCommit,
+                        NPDisk::TEvLog::TCallback());
 
                 if (CommitRecord.CommitChunks || CommitRecord.DeleteChunks) {
                     LOG_INFO(ctx, NKikimrServices::BS_SKELETON,
@@ -82,22 +82,26 @@ namespace NKikimr {
                 if (!SwapSnap || SwapSnap->Empty()) {
                     GenerateCommit(ctx);
                 } else {
-                    // append to
-                    ui32 lastChunkFreePages = SyncLogSnap->DiskSnapPtr->LastChunkFreePagesNum();
+                    // append to the chunk, but only if the chunk has free pages and is not being deleted
+                    const ui32 lastChunkFreePages = SyncLogSnap->DiskSnapPtr->LastChunkFreePagesNum();
                     ui32 chunkIdx = 0;
                     ui32 offset = 0;
+                    ui32 pages = PagesInChunk;
+
                     if (lastChunkFreePages > 0) {
-                        // append to the chunk
-                        Y_DEBUG_ABORT_UNLESS(SwapSnapPos == 0);
-                        chunkIdx = SyncLogSnap->DiskSnapPtr->LastChunkIdx();
-                        offset = (PagesInChunk - lastChunkFreePages) * PageSize;
-                        FillInPortion(lastChunkFreePages);
-                    } else {
-                        // fill in the new chunk
-                        chunkIdx = 0;
-                        offset = 0;
-                        FillInPortion(PagesInChunk);
+                        ui32 lastChunkIdx = SyncLogSnap->DiskSnapPtr->LastChunkIdx();
+                        const auto& delChunks = CommitRecord.DeleteChunks;
+                        bool lastChunkDeletedByThisCommit = Find(delChunks.begin(), delChunks.end(), lastChunkIdx) != delChunks.end();
+
+                        if (!lastChunkDeletedByThisCommit) {
+                            Y_DEBUG_ABORT_UNLESS(SwapSnapPos == 0);
+                            chunkIdx = lastChunkIdx;
+                            offset = (PagesInChunk - lastChunkFreePages) * PageSize;
+                            pages = lastChunkFreePages;
+                        }
                     }
+
+                    FillInPortion(pages);
 
                     // generate write
                     Parts->GenRefs();
@@ -106,7 +110,8 @@ namespace NKikimr {
                     ctx.Send(SlCtx->PDiskCtx->PDiskId,
                              new NPDisk::TEvChunkWrite(SlCtx->PDiskCtx->Dsk->Owner, SlCtx->PDiskCtx->Dsk->OwnerRound,
                                                        chunkIdx, offset, p, SyncLogCookie,
-                                                       true, NPriWrite::SyncLog));
+                                                       true, NPriWrite::SyncLog, TWriteSource::SyncLogCommitterWrite,
+                                                       true));
                     LOG_DEBUG(ctx, BS_SYNCLOG,
                               VDISKP(SlCtx->VCtx->VDiskLogPrefix,
                                     "COMMITTER: initial write: chunkIdx# %" PRIu32, chunkIdx));
@@ -139,7 +144,8 @@ namespace NKikimr {
                     ctx.Send(SlCtx->PDiskCtx->PDiskId,
                              new NPDisk::TEvChunkWrite(SlCtx->PDiskCtx->Dsk->Owner, SlCtx->PDiskCtx->Dsk->OwnerRound,
                                                        chunkIdx, offset, p, SyncLogCookie,
-                                                       true, NPriWrite::SyncLog));
+                                                       true, NPriWrite::SyncLog, TWriteSource::SyncLogCommitterWrite,
+                                                       true));
                     LOG_DEBUG(ctx, BS_SYNCLOG,
                               VDISKP(SlCtx->VCtx->VDiskLogPrefix,
                                     "COMMITTER: next write: chunkIdx# %" PRIu32, chunkIdx));
@@ -147,12 +153,18 @@ namespace NKikimr {
             }
 
             void Handle(NPDisk::TEvLogResult::TPtr &ev, const TActorContext &ctx) {
+                const auto *msg = ev->Get();
+                if (msg->Status != NKikimrProto::OK) {
+                    LOG_ERROR(ctx, BS_SYNCLOG,
+                        VDISKP(SlCtx->VCtx->VDiskLogPrefix,
+                            "COMMITTER: commit failed with error: %s", msg->ErrorReason.data()));
+                }
                 CHECK_PDISK_RESPONSE(SlCtx->VCtx, ev, ctx);
                 Y_ABORT_UNLESS(ev->Get()->Results.size() == 1);
                 const ui64 entryPointLsn = ev->Get()->Results[0].Lsn;
                 TCommitHistory commitHistory(TAppData::TimeProvider->Now(), entryPointLsn, EntryPointSerializer.RecoveryLogConfirmedLsn);
-                ctx.Send(NotifyID, new TEvSyncLogCommitDone(commitHistory,
-                    EntryPointSerializer.GetEntryPointDbgInfo(), std::move(Delta)));
+                ctx.Send(NotifyID, new TEvSyncLogCommitDone(commitHistory, EntryPointSerializer.GetEntryPointDbgInfo(),
+                    std::move(Delta), std::move(CommitRecord.DeleteChunks)));
                 Die(ctx);
             }
 
@@ -186,10 +198,9 @@ namespace NKikimr {
                 , SlCtx(std::move(slCtx))
                 , SyncLogSnap(std::move(commitData.SyncLogSnap))
                 , NotifyID(notifyID)
-                , CommitRecord()
                 , EntryPointSerializer(
                     SyncLogSnap,
-                    std::move(commitData.ChunksToDeleteDelayed),
+                    {}, // we don't generate delayed deletion anymore
                     commitData.RecoveryLogConfirmedLsn)
                 , SwapSnap(std::move(commitData.SwapSnap))
                 , Parts(new TWriteParts(SyncLogSnap->DiskSnapPtr->AppendBlockSize))
@@ -199,6 +210,7 @@ namespace NKikimr {
             {
                 CommitRecord.DeleteChunks = std::move(commitData.ChunksToDelete);
                 CommitRecord.IsStartingPoint = true;
+                CommitRecord.DeleteToDecommitted = true;
                 Parts->Reserve(PagesInChunk);
             }
         };

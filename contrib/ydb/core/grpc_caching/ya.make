@@ -7,6 +7,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/library/actors/protos
     contrib/ydb/core/base
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
 )
 
 END()

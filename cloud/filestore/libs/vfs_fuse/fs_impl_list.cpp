@@ -189,12 +189,12 @@ void TFileSystem::ReadDir(
                     builder.Add(
                         req,
                         ".",
-                        {.attr = {.st_ino = MissingNodeId}},
+                        {.attr = {.st_ino = MissingNodeId, .st_mode = S_IFDIR}},
                         offset);
                     builder.Add(
                         req,
                         "..",
-                        {.attr = {.st_ino = MissingNodeId}},
+                        {.attr = {.st_ino = MissingNodeId, .st_mode = S_IFDIR}},
                         offset);
                 }
 

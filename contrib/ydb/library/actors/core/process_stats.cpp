@@ -48,20 +48,19 @@ namespace NActors {
 
     bool TProcStat::Fill(pid_t pid) {
         TString strPid(ToString(pid));
-        TString str;
+        TString line;
 
         try {
             TFileInput proc("/proc/" + strPid + "/status");
-            while (proc.ReadLine(str)) {
-                if (ExtractVal(str, "VmRSS:", Rss))
+            while (proc.ReadLine(line)) {
+                if (ExtractVal(line, "VmRSS:", Rss))
                     continue;
-                if (ExtractVal(str, "voluntary_ctxt_switches:", VolCtxSwtch))
+                if (ExtractVal(line, "voluntary_ctxt_switches:", VolCtxSwtch))
                     continue;
-                if (ExtractVal(str, "nonvoluntary_ctxt_switches:", NonvolCtxSwtch))
+                if (ExtractVal(line, "nonvoluntary_ctxt_switches:", NonvolCtxSwtch))
                     continue;
             }
-            // Convert from kB to bytes
-            Rss *= 1024;
+            ConvertFromKb(Rss);
 
         } catch (...) {
         }
@@ -79,9 +78,8 @@ namespace NActors {
 
         try {
             TFileInput procStat("/proc/" + strPid + "/stat");
-            procStat.ReadLine(str);
-            if (!str.empty()) {
-                sscanf(str.data(),
+            if (procStat.ReadLine(line)) {
+                sscanf(line.data(),
                        "%d %*s %c %d %d %d %d %d %u %lu %lu "
                        "%lu %lu %lu %lu %ld %ld %ld %ld %ld "
                        "%ld %llu %lu %ld %lu",
@@ -103,17 +101,18 @@ namespace NActors {
 
         try {
             TFileInput statm("/proc/" + strPid + "/statm");
-            statm.ReadLine(str);
-            TVector<TString> fields;
-            StringSplitter(str).Split(' ').SkipEmpty().Collect(&fields);
-            if (fields.size() >= 7) {
-                ui64 resident = FromString<ui64>(fields[1]);
-                ui64 shared = FromString<ui64>(fields[2]);
-                if (PageSize == 0) {
-                    PageSize = ObtainPageSize();
+            if (statm.ReadLine(line)) {
+                TVector<TString> fields;
+                StringSplitter(line).Split(' ').SkipEmpty().Collect(&fields);
+                if (fields.size() >= 7) {
+                    ui64 resident = FromString<ui64>(fields[1]);
+                    ui64 shared = FromString<ui64>(fields[2]);
+                    if (PageSize == 0) {
+                        PageSize = ObtainPageSize();
+                    }
+                    FileRss = shared * PageSize;
+                    AnonRss = (resident - shared) * PageSize;
                 }
-                FileRss = shared * PageSize;
-                AnonRss = (resident - shared) * PageSize;
             }
         } catch (...) {
         }
@@ -124,7 +123,6 @@ namespace NActors {
             bool isV2 = NFs::Exists("/sys/fs/cgroup/cgroup.controllers");
 
             TFileInput cgroup("/proc/" + strPid + "/cgroup");
-            TString line;
             TString memoryCGroup;
             while (cgroup.ReadLine(line)) {
                 TVector<TString> fields;
@@ -145,12 +143,24 @@ namespace NActors {
                 }
             }
 
-            if (!memoryCGroup.empty() && memoryCGroup != "/") {
+            if (!memoryCGroup.empty()) {
                 TString cgroupFileName;
                 if (isV2) {
-                    cgroupFileName = "/sys/fs/cgroup" + memoryCGroup + "/memory.max";
+                    if (memoryCGroup == "/") {
+                        cgroupFileName = "/sys/fs/cgroup/memory.max";
+                    } else {
+                        cgroupFileName = "/sys/fs/cgroup" + memoryCGroup + "/memory.max";
+                        // fallback for cgroup namespaces / incomplete controller delegation
+                        if (!NFs::Exists(cgroupFileName)) {
+                            cgroupFileName = "/sys/fs/cgroup/memory.max";
+                        }
+                    }
                 } else {
-                    cgroupFileName = "/sys/fs/cgroup/memory" + memoryCGroup + "/memory.limit_in_bytes";
+                    if (memoryCGroup == "/") {
+                        cgroupFileName = "/sys/fs/cgroup/memory/memory.limit_in_bytes";
+                    } else {
+                        cgroupFileName = "/sys/fs/cgroup/memory" + memoryCGroup + "/memory.limit_in_bytes";
+                    }
                     // fallback for mk8s
                     if (!NFs::Exists(cgroupFileName)) {
                         cgroupFileName = "/sys/fs/cgroup/memory/memory.limit_in_bytes";
@@ -169,10 +179,10 @@ namespace NActors {
 
         try {
             TFileInput memInfo("/proc/meminfo");
-            while (memInfo.ReadLine(str)) {
-                if (ExtractVal(str, "MemTotal:", MemTotal))
+            while (memInfo.ReadLine(line)) {
+                if (ExtractVal(line, "MemTotal:", MemTotal))
                     continue;
-                if (ExtractVal(str, "MemAvailable:", MemAvailable))
+                if (ExtractVal(line, "MemAvailable:", MemAvailable))
                     continue;
             }
             ConvertFromKb(MemTotal);
@@ -329,7 +339,7 @@ namespace {
             SystemUptimeSeconds->Set(procStat.SystemUptime.Seconds());
 
             // it is ok here to reset and add metric value, because mutation
-            // is performed in siglethreaded context
+            // is performed in single threaded context
 
             UserTime->Reset();
             UserTime->Add(procStat.Utime);
@@ -379,7 +389,7 @@ namespace {
                 registry->IntGauge({{"sensor", "system.UptimeSeconds"}})->Set(procStat.SystemUptime.Seconds());
 
                 // it is ok here to reset and add metric value, because mutation
-                // is performed in siglethreaded context
+                // is performed in single threaded context
 
                 NMonitoring::TRate* userTime = registry->Rate({{"sensor", "process.UserTime"}});
                 NMonitoring::TRate* sysTime = registry->Rate({{"sensor", "process.SystemTime"}});

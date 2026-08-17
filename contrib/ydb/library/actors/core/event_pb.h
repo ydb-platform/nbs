@@ -19,6 +19,7 @@ namespace NActorsProto {
 } // NActorsProto
 
 namespace NActors {
+    TString EventPBBaseToString(const TString& header, const TString& dbgStr);
 
     class TRopeStream : public NProtoBuf::io::ZeroCopyInputStream {
         TRope::TConstIterator Iter;
@@ -81,6 +82,7 @@ namespace NActors {
         ~TCoroutineChunkSerializer();
 
         void SetSerializingEvent(const IEventBase *event);
+        void DiscardEvent() { Event = nullptr; };
         void Abort();
         std::span<TChunk> FeedBuf(void* data, size_t size);
         bool IsComplete() const {
@@ -142,16 +144,18 @@ namespace NActors {
         }
     };
 
-    static const size_t EventMaxByteSize = 140 << 20; // (140MB)
+    static constexpr size_t EventLargeByteSize = 50 << 20; // (50MB)
+    static constexpr size_t EventMaxByteSize = (140 << 20) * 2; // (280MB)
     static constexpr char ExtendedPayloadMarker = 0x06;
     static constexpr char PayloadMarker = 0x07;
     static constexpr size_t MaxNumberBytes = (sizeof(size_t) * CHAR_BIT + 6) / 7;
 
     void ParseExtendedFormatPayload(TRope::TConstIterator &iter, size_t &size, TVector<TRope> &payload, size_t &totalPayloadSize);
-    size_t SerializeNumber(size_t num, char *buffer);
     bool SerializeToArcadiaStreamImpl(TChunkSerializer* chunker, const TVector<TRope> &payload);
-    ui32 CalculateSerializedSizeImpl(const TVector<TRope> &payload, size_t totalPayloadSize, ssize_t recordSize);
-    TEventSerializationInfo CreateSerializationInfoImpl(size_t preserializedSize, bool allowExternalDataChannel, const TVector<TRope> &payload, size_t totalPayloadSize, ssize_t recordSize);
+    ui32 CalculateSerializedHeaderSizeImpl(const TVector<TRope> &payload);
+    std::optional<TRope> SerializeToRopeImpl(const google::protobuf::MessageLite& msg, const TVector<TRope>& payload, IRcBufAllocator* allocator);
+    ui32 CalculateSerializedSizeImpl(const TVector<TRope> &payload, ssize_t recordSize);
+    TEventSerializationInfo CreateSerializationInfoImpl(size_t preserializedSize, bool allowExternalDataChannel, const TVector<TRope> &payload, ssize_t recordSize);
 
     template <typename TEv, typename TRecord /*protobuf record*/, ui32 TEventType, typename TRecHolder>
     class TEventPBBase: public TEventBase<TEv, TEventType> , public TRecHolder {
@@ -184,9 +188,7 @@ namespace NActors {
         }
 
         TString ToString() const override {
-            TStringStream ss;
-            ss << ToStringHeader() << " " << Record.ShortDebugString();
-            return ss.Str();
+            return EventPBBaseToString(ToStringHeader(), Record.ShortDebugString());
         }
 
         bool IsSerializable() const override {
@@ -201,11 +203,16 @@ namespace NActors {
         }
 
         ui32 CalculateSerializedSize() const override {
-            return CalculateSerializedSizeImpl(Payload, GetTotalPayloadSize(), Record.ByteSize());
+            return CalculateSerializedSizeImpl(Payload, Record.ByteSize());
         }
 
-        static IEventBase* Load(TEventSerializedData *input) {
-            THolder<TEventPBBase> ev(new TEv());
+        std::optional<TRope> SerializeToRope(IRcBufAllocator* allocator) const override {
+            return NActors::SerializeToRopeImpl(Record, Payload, allocator);
+        }
+
+        static TEv* Load(const TEventSerializedData *input) {
+            THolder<TEv> holder(new TEv());
+            TEventPBBase* ev = holder.Get();
             if (!input->GetSize()) {
                 Y_PROTOBUF_SUPPRESS_NODISCARD ev->Record.ParseFromString(TString());
             } else {
@@ -223,7 +230,7 @@ namespace NActors {
                 }
             }
             ev->CachedByteSize = input->GetSize();
-            return ev.Release();
+            return holder.Release();
         }
 
         size_t GetCachedByteSize() const {
@@ -242,7 +249,7 @@ namespace NActors {
         }
 
         TEventSerializationInfo CreateSerializationInfo() const override {
-            return CreateSerializationInfoImpl(0, static_cast<const TEv&>(*this).AllowExternalDataChannel(), GetPayload(), GetTotalPayloadSize(), Record.ByteSize());
+            return CreateSerializationInfoImpl(0, static_cast<const TEv&>(*this).AllowExternalDataChannel(), GetPayload(), Record.ByteSize());
         }
 
         bool AllowExternalDataChannel() const {
@@ -250,10 +257,6 @@ namespace NActors {
         }
 
     public:
-        void ReservePayload(size_t size) {
-            Payload.reserve(size);
-        }
-
         ui32 AddPayload(TRope&& rope) {
             const ui32 id = Payload.size();
             TotalPayloadSize += rope.size();
@@ -278,10 +281,6 @@ namespace NActors {
         void StripPayload() {
             Payload.clear();
             TotalPayloadSize = 0;
-        } 
-
-        size_t GetTotalPayloadSize() const {
-            return TotalPayloadSize;
         }
 
     protected:
@@ -342,12 +341,7 @@ namespace NActors {
     };
 
     template <typename TEv, typename TRecord, ui32 TEventType>
-    class TEventPB : public TEventPBBase<TEv, TRecord, TEventType, TRecordHolder<TRecord> > {
-        typedef TEventPBBase<TEv, TRecord, TEventType, TRecordHolder<TRecord> > TPbBase;
-        // NOTE: No extra fields allowed: TEventPB must be a "template typedef"
-    public:
-        using TPbBase::TPbBase;
-    };
+    using TEventPB = TEventPBBase<TEv, TRecord, TEventType, TRecordHolder<TRecord> >;
 
     template <typename TEv, typename TRecord, ui32 TEventType, size_t InitialBlockSize = 512, size_t MaxBlockSize = 16*1024>
     using TEventPBWithArena = TEventPBBase<TEv, TRecord, TEventType, TArenaRecordHolder<TRecord, InitialBlockSize, MaxBlockSize> >;
@@ -415,7 +409,7 @@ namespace NActors {
         }
 
         TString ToString() const override {
-            return GetRecord().ShortDebugString();
+            return EventPBBaseToString(TBase::ToStringHeader(),  GetRecord().ShortDebugString());
         }
 
         bool SerializeToArcadiaStream(TChunkSerializer* chunker) const override {
@@ -444,7 +438,7 @@ namespace NActors {
         }
 
         TEventSerializationInfo CreateSerializationInfo() const override {
-            return CreateSerializationInfoImpl(PreSerializedData.size(), static_cast<const TEv&>(*this).AllowExternalDataChannel(), TBase::GetPayload(), TBase::GetTotalPayloadSize(), Record.ByteSize());
+            return CreateSerializationInfoImpl(PreSerializedData.size(), static_cast<const TEv&>(*this).AllowExternalDataChannel(), TBase::GetPayload(), Record.ByteSize());
         }
     };
 

@@ -79,6 +79,7 @@ private:
     const TLog Log;
     const TString LogTag;
     const TString FileSystemId;
+    const TString FilePath;
 
     IPersistentStoragePtr PersistentStorage;
     TWriteBackCacheState State;
@@ -107,6 +108,7 @@ public:
               args.FileSystemId.c_str(),
               args.ClientId.c_str()))
         , FileSystemId(args.FileSystemId)
+        , FilePath(args.FilePath)
         , State(
               *this,
               Timer,
@@ -142,15 +144,26 @@ public:
         Y_ABORT_UNLESS(
             PersistentStorage->GetMaxSupportedAllocationByteCount() >=
             1024 * 1024 + 1016);
+    }
+
+    // This method should be called outside TImpl constructor because
+    // it captures weak_from_this()
+    void Init()
+    {
+        if (!PersistentStorage) {
+            return;
+        }
 
         if (!State.Init(PersistentStorage)) {
             ReportWriteBackCacheCorruptionError(
                 TStringBuilder()
                 << LogTag
                 << " WriteBackCache failed to deserialize requests from the "
-                   "persistent storage due to corruption, FilePath: "
-                << args.FilePath.Quote());
+                   "persistent storage due to corruption"
+                << ", FilePath: " << FilePath.Quote());
         }
+
+        ScheduleAutomaticFlushIfNeeded();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -647,7 +660,7 @@ TWriteBackCache::TWriteBackCache() = default;
 TWriteBackCache::TWriteBackCache(TWriteBackCacheArgs args)
     : Impl(std::make_shared<TImpl>(std::move(args)))
 {
-    Impl->ScheduleAutomaticFlushIfNeeded();
+    Impl->Init();
 }
 
 TWriteBackCache::~TWriteBackCache() = default;

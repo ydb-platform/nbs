@@ -1,10 +1,57 @@
 #include "schemeshard_path_element.h"
 
+#include <contrib/ydb/core/base/appdata.h>
+
 #include <library/cpp/json/json_reader.h>
 
 namespace NKikimr::NSchemeShard {
 
 namespace {
+
+// When set, the SSD-system component of FileStore space is not accumulated into the
+// owning domain's allocated counter. Each FileStore (filesystem) shard is resized to the
+// final filesystem size, which can reach petabytes, summing thousands of such shards into
+// a single ui64 counter can overflow.
+// The accounting only feeds the describe-time `__filestore_space_allocated_ssd_system`
+// attribute and the (effectively unlimited) ssd_system space limit, so skipping it is safe.
+//
+// The flag is (RequireRestart) = true, so its value is fixed for the lifetime of the
+// process.
+bool IsFileStoreSSDSystemSpaceAccountingDisabled() {
+    return AppData()->FeatureFlags.GetDisableFileStoreSSDSystemSpaceAccounting();
+}
+
+// Both helpers are no-ops during normal operation. `CheckSpaceChanged()` already rejects any
+// proposal that would overflow, and a correctly derived counter cannot underflow when a
+// `FileStore` is deleted. These helpers only take effect in scenarios that are not protected
+// by those checks, such as the initial rebuild after the counter has already drifted, for example,
+// when SSD system space accounting was disabled and later re-enabled. In such cases, clamping the
+// value is much preferable to wrapping the counter or aborting the tablet into a crash loop from
+// which it cannot recover.
+void UpdateSpaceBeginSaturating(TSpaceLimits& limits, ui64 newValue, ui64 oldValue) {
+    if (newValue <= oldValue) {
+        return;
+    }
+
+    const ui64 diff = newValue - oldValue;
+    if (limits.Allocated > Max<ui64>() - diff) {
+        // Saturate rather than wrap around
+        limits.Allocated = Max<ui64>();
+        return;
+    }
+
+    limits.Allocated += diff;
+}
+
+void UpdateSpaceCommitSaturating(TSpaceLimits& limits, ui64 newValue, ui64 oldValue) {
+    if (newValue >= oldValue) {
+        return;
+    }
+
+    const ui64 diff = oldValue - newValue;
+    // Clamp at zero
+    limits.Allocated -= Min(limits.Allocated, diff);
+}
 
 void UpdateSpaceBegin(TSpaceLimits& limits, ui64 newValue, ui64 oldValue) {
     if (newValue <= oldValue) {
@@ -33,6 +80,13 @@ bool CheckSpaceChanged(const TSpaceLimits& limits, ui64 newValue, ui64 oldValue,
     }
 
     const ui64 diff = newValue - oldValue;
+    if (limits.Allocated > Max<ui64>() - diff) {
+        errStr = TStringBuilder()
+            << "New " << tabletType << " space overflows allocated counter" << suffix
+            << ": " << limits.Allocated << " + " << diff << " > " << Max<ui64>();
+        return false;
+    }
+
     const ui64 newAllocated = limits.Allocated + diff;
     if (newAllocated <= limits.Limit) {
         return true;
@@ -59,31 +113,27 @@ ui64 TPathElement::GetAliveChildren() const {
     return AliveChildrenCount;
 }
 
-void TPathElement::SetAliveChildren(ui64 val) {
-    AliveChildrenCount = val;
-}
-
 ui64 TPathElement::GetBackupChildren() const {
     return BackupChildrenCount;
 }
 
-void TPathElement::IncAliveChildren(ui64 delta, bool isBackup) {
-    Y_ABORT_UNLESS(Max<ui64>() - AliveChildrenCount >= delta);
-    AliveChildrenCount += delta;
+void TPathElement::IncAliveChildrenPrivate(bool isBackup) {
+    Y_ABORT_UNLESS(Max<ui64>() - AliveChildrenCount >= 1);
+    AliveChildrenCount += 1;
 
     if (isBackup) {
-        Y_ABORT_UNLESS(Max<ui64>() - BackupChildrenCount >= delta);
-        BackupChildrenCount += delta;
+        Y_ABORT_UNLESS(Max<ui64>() - BackupChildrenCount >= 1);
+        BackupChildrenCount += 1;
     }
 }
 
-void TPathElement::DecAliveChildren(ui64 delta, bool isBackup) {
-    Y_ABORT_UNLESS(AliveChildrenCount >= delta);
-    AliveChildrenCount -= delta;
+void TPathElement::DecAliveChildrenPrivate(bool isBackup) {
+    Y_ABORT_UNLESS(AliveChildrenCount >= 1);
+    AliveChildrenCount -= 1;
 
     if (isBackup) {
-        Y_ABORT_UNLESS(BackupChildrenCount >= delta);
-        BackupChildrenCount -= delta;
+        Y_ABORT_UNLESS(BackupChildrenCount >= 1);
+        BackupChildrenCount -= 1;
     }
 }
 
@@ -177,6 +227,10 @@ bool TPathElement::IsReplication() const {
     return PathType == EPathType::EPathTypeReplication;
 }
 
+bool TPathElement::IsTransfer() const {
+    return PathType == EPathType::EPathTypeTransfer;
+}
+
 bool TPathElement::IsBlobDepot() const {
     return PathType == EPathType::EPathTypeBlobDepot;
 }
@@ -187,7 +241,7 @@ bool TPathElement::IsContainer() const {
 }
 
 bool TPathElement::IsLikeDirectory() const {
-    return IsDirectory() || IsDomainRoot() || IsOlapStore() || IsTableIndex();
+    return IsDirectory() || IsDomainRoot() || IsOlapStore() || IsTableIndex() || IsBackupCollection();
 }
 
 bool TPathElement::HasActiveChanges() const {
@@ -215,6 +269,14 @@ bool TPathElement::IsExternalDataSource() const {
     return PathType == EPathType::EPathTypeExternalDataSource;
 }
 
+bool TPathElement::IsIncrementalBackupTable() const {
+    auto it = UserAttrs->Attrs.find(ATTR_INCREMENTAL_BACKUP);
+    if (it == UserAttrs->Attrs.end()) {
+        return false;
+    }
+    return TString(it->second) != "null";
+}
+
 bool TPathElement::IsView() const {
     return PathType == EPathType::EPathTypeView;
 }
@@ -225,6 +287,10 @@ bool TPathElement::IsTemporary() const {
 
 bool TPathElement::IsResourcePool() const {
     return PathType == EPathType::EPathTypeResourcePool;
+}
+
+bool TPathElement::IsBackupCollection() const {
+    return PathType == EPathType::EPathTypeBackupCollection;
 }
 
 void TPathElement::SetDropped(TStepId step, TTxId txId) {
@@ -403,23 +469,32 @@ bool TPathElement::CheckVolumeSpaceChange(TVolumeSpace newSpace, TVolumeSpace ol
 void TPathElement::ChangeFileStoreSpaceBegin(TFileStoreSpace newSpace, TFileStoreSpace oldSpace) {
     UpdateSpaceBegin(FileStoreSpaceSSD, newSpace.SSD, oldSpace.SSD);
     UpdateSpaceBegin(FileStoreSpaceHDD, newSpace.HDD, oldSpace.HDD);
-    UpdateSpaceBegin(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem);
+    if (!IsFileStoreSSDSystemSpaceAccountingDisabled()) {
+        UpdateSpaceBeginSaturating(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem);
+    }
 }
 
 void TPathElement::ChangeFileStoreSpaceCommit(TFileStoreSpace newSpace, TFileStoreSpace oldSpace) {
     UpdateSpaceCommit(FileStoreSpaceSSD, newSpace.SSD, oldSpace.SSD);
     UpdateSpaceCommit(FileStoreSpaceHDD, newSpace.HDD, oldSpace.HDD);
-    UpdateSpaceCommit(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem);
+    if (!IsFileStoreSSDSystemSpaceAccountingDisabled()) {
+        UpdateSpaceCommitSaturating(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem);
+    }
 }
 
 bool TPathElement::CheckFileStoreSpaceChange(TFileStoreSpace newSpace, TFileStoreSpace oldSpace, TString& errStr) {
     return (CheckSpaceChanged(FileStoreSpaceSSD, newSpace.SSD, oldSpace.SSD, errStr, "filestore", " (ssd)") &&
             CheckSpaceChanged(FileStoreSpaceHDD, newSpace.HDD, oldSpace.HDD, errStr, "filestore", " (hdd)") &&
-            CheckSpaceChanged(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem, errStr, "filestore", " (ssd_system)"));
+            (IsFileStoreSSDSystemSpaceAccountingDisabled() ||
+             CheckSpaceChanged(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem, errStr, "filestore", " (ssd_system)")));
 }
 
 void TPathElement::SetAsyncReplica(bool value) {
     IsAsyncReplica = value;
+}
+
+void TPathElement::SetIncrementalRestoreTable() {
+    IsIncrementalRestoreTable = true;
 }
 
 bool TPathElement::HasRuntimeAttrs() const {

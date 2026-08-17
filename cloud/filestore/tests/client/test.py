@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -530,6 +531,97 @@ def test_partial_set_node_attr():
     assert stat["Uid"] == new_stat["Uid"]
     assert stat["Size"] == new_stat["Size"]
     assert stat["Mode"] == new_stat["Mode"]
+
+
+def test_node_xattrs():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+    client.touch("fs0", "/file")
+    node_id = json.loads(client.stat("fs0", "/file"))["Id"]
+
+    def xattr_value(attr):
+        return base64.b64decode(attr["ValueBase64"]).decode("utf-8")
+
+    client.set_node_xattr("fs0", node_id, "user.attr1", "value1")
+    attr = json.loads(client.get_node_xattr("fs0", node_id, "user.attr1"))
+    assert attr["Name"] == "user.attr1"
+    assert xattr_value(attr) == "value1"
+
+    client.set_node_xattr("fs0", node_id, "user.attr2", "value2", "--create")
+    listing = json.loads(client.list_node_xattr("fs0", node_id))
+    assert sorted(listing["Names"]) == ["user.attr1", "user.attr2"]
+    values = [
+        base64.b64decode(v).decode("utf-8")
+        for v in listing["ValuesBase64"]
+    ]
+    assert sorted(values) == ["value1", "value2"]
+
+    client.set_node_xattr("fs0", node_id, "user.attr1", "value3", "--replace")
+    attr = json.loads(client.get_node_xattr("fs0", node_id, "user.attr1"))
+    assert xattr_value(attr) == "value3"
+
+    client.remove_node_xattr("fs0", node_id, "user.attr1")
+    listing = json.loads(client.list_node_xattr("fs0", node_id))
+    assert listing["Names"] == ["user.attr2"]
+
+    # creating an existing attribute must fail
+    failed = False
+    try:
+        client.set_node_xattr("fs0", node_id, "user.attr2", "x", "--create")
+    except Exception:
+        failed = True
+    assert failed
+
+    # reading a removed attribute must fail
+    failed = False
+    try:
+        client.get_node_xattr("fs0", node_id, "user.attr1")
+    except Exception:
+        failed = True
+    assert failed
+
+    client.destroy("fs0")
+
+
+def test_locks():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+    client.touch("fs0", "/locked")
+
+    # every command runs its own session, so a lock it acquires dies with
+    # that session - each call below checks one API round trip
+
+    client.acquire_lock("fs0", "/locked", 1)
+    client.acquire_lock("fs0", "/locked", 1, "--lock-type", "shared")
+    client.acquire_lock(
+        "fs0", "/locked", 1,
+        "--lock-origin", "flock",
+        "--pid", 100)
+    client.acquire_lock(
+        "fs0", "/locked", 1,
+        "--offset", 4096,
+        "--length", 4096)
+
+    res = json.loads(client.test_lock("fs0", "/locked", 2))
+    assert res["Compatible"] is True
+
+    res = json.loads(
+        client.test_lock("fs0", "/locked", 2, "--lock-type", "shared"))
+    assert res["Compatible"] is True
+
+    client.release_lock("fs0", "/locked", 1)
+    client.release_lock("fs0", "/locked", 1, "--offset", 4096)
+
+    # locking a directory must fail
+    client.mkdir("fs0", "/dir")
+    failed = False
+    try:
+        client.acquire_lock("fs0", "/dir", 1)
+    except Exception:
+        failed = True
+    assert failed
+
+    client.destroy("fs0")
 
 
 def test_resize():

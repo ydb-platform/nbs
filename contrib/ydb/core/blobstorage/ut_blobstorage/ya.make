@@ -2,20 +2,25 @@ UNITTEST()
 
 FORK_SUBTESTS()
 
+IF (SANITIZER_TYPE)
+    REQUIREMENTS(ram:32)
+ENDIF()
+
 IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    TIMEOUT(3600)
     SIZE(LARGE)
-    TAG(ya:fat)
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tests/large.inc)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
 SRCS(
     acceleration.cpp
     assimilation.cpp
+    backpressure.cpp
     block_race.cpp
     counting_events.cpp
+    corrupted_reads.cpp
+    deadlines.cpp
     decommit_3dc.cpp
     defrag.cpp
     discover.cpp
@@ -25,6 +30,7 @@ SRCS(
     gc.cpp
     gc_quorum_3dc.cpp
     get.cpp
+    get_block.cpp
     group_reconfiguration.cpp
     incorrect_queries.cpp
     index_restore_get.cpp
@@ -38,10 +44,12 @@ SRCS(
     sanitize_groups.cpp
     scrub_fast.cpp
     self_heal.cpp
+    shred.cpp
     snapshots.cpp
     space_check.cpp
     sync.cpp
-    ut_helpers.cpp
+    validation.cpp
+    vdisk_malfunction.cpp
 )
 
 PEERDIR(
@@ -51,9 +59,8 @@ PEERDIR(
     contrib/ydb/core/blobstorage/ut_blobstorage/lib
     contrib/ydb/core/blobstorage/vdisk/common
     contrib/ydb/core/blobstorage/vdisk/scrub
+    contrib/ydb/core/blobstorage/vdisk/synclog
 )
-
-REQUIREMENTS(ram:32)
 
 END()
 
@@ -61,10 +68,12 @@ RECURSE_FOR_TESTS(
     ut_balancing
     ut_blob_depot
     ut_blob_depot_fat
+    ut_check_integrity
     ut_comp_defrag
     ut_donor
-    ut_huge
     ut_group_reconfiguration
+    ut_huge
+    ut_startup_brokers
     ut_read_only_vdisk
     ut_osiris
     ut_replication

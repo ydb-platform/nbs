@@ -8,6 +8,7 @@
 #include <util/generic/scope.h>
 #include <util/string/builder.h>
 
+#include <mutex>
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 namespace {

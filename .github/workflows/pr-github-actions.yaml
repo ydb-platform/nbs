@@ -52,6 +52,10 @@ concurrency:
 
 jobs:
   check-running-allowed:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.stack == null ||
+      github.event.pull_request.stack.base.ref == github.event.pull_request.base.ref
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.allow-local.outputs.result || steps.check-ownership-membership.outputs.result }}
@@ -269,7 +273,7 @@ jobs:
           install: false
 
       - name: set up python environment
-        uses: actions/setup-python@v6.3.0
+        uses: actions/setup-python@v7.0.0
         with:
           # used in ubuntu 22.04
           python-version: "3.10"

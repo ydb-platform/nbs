@@ -5,12 +5,8 @@
 #include "abstract.h"
 
 #include <contrib/ydb/core/base/events.h>
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
-
+#include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/library/actors/core/log.h>
-
-#include <util/string/builder.h>
-#include <util/string/printf.h>
 
 namespace NKikimr::NWrappers::NExternalStorage {
 class TFakeBucketStorage {
@@ -75,6 +71,11 @@ private:
     }
 public:
     TFakeExternalStorage() = default;
+
+    void Clear() {
+        TGuard<TMutex> g(Mutex);
+        BucketStorages.clear();
+    }
 
     static i64 GetWritesCount() {
         return TFakeBucketStorage::GetWritesCount();
@@ -142,7 +143,7 @@ private:
     template <class TEvent>
     void ExecuteImpl(TEvent& ev) const {
         ev->Get()->MutableRequest().WithBucket(Bucket);
-        Y_ABORT_UNLESS(SecretKey == Singleton<TFakeExternalStorage>()->GetSecretKey());
+        Y_ABORT_UNLESS(SecretKey == Singleton<TFakeExternalStorage>()->GetSecretKey(), "%s != %s", SecretKey.data(), Singleton<TFakeExternalStorage>()->GetSecretKey().data());
         if (OwnedStorage) {
             OwnedStorage->Execute(ev, ReplyAdapter);
         } else {

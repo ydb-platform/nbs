@@ -15,6 +15,7 @@ SRCS(
     safe_debug_print.cpp
     split_request_helpers.cpp
     typeinfo.cpp
+    volume_labels.cpp
 )
 
 PEERDIR(

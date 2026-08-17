@@ -1,8 +1,8 @@
 UNITTEST_FOR(contrib/ydb/core/cms)
 
-SIZE(MEDIUM)
+FORK_SUBTESTS()
 
-TIMEOUT(600)
+SIZE(MEDIUM)
 
 PEERDIR(
     library/cpp/getopt

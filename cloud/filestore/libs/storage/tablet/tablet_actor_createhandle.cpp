@@ -18,7 +18,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateRequest(const NProto::TCreateHandleRequest& request)
+NProto::TError ValidateCreateHandleRequest(
+    const NProto::TCreateHandleRequest& request)
 {
     if (request.GetNodeId() == InvalidNodeId) {
         return ErrorInvalidArgument();
@@ -41,6 +42,18 @@ NProto::TError ValidateRequest(const NProto::TCreateHandleRequest& request)
     return {};
 }
 
+NProto::TError ValidateConfirmCreateHandleRequest(
+    const NProto::TConfirmCreateHandleRequest& request)
+{
+    if (request.GetNodeId() == InvalidNodeId || !request.GetHandle() ||
+        !request.GetOriginalRequestId())
+    {
+        return ErrorInvalidArgument();
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,8 +64,10 @@ void TIndexTabletActor::HandleCreateHandle(
 {
     using TResponse = TEvService::TEvCreateHandleResponse;
 
-    auto* session =
-        AcceptRequest<TEvService::TCreateHandleMethod>(ev, ctx, ValidateRequest);
+    auto* session = AcceptRequest<TEvService::TCreateHandleMethod>(
+        ev,
+        ctx,
+        ValidateCreateHandleRequest);
     if (!session) {
         return;
     }
@@ -513,6 +528,29 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         WriteOpLogEntry(*db, args.OpLogEntry);
     }
 
+    constexpr ui32 wflags = (ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
+         | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE)
+         | ProtoFlag(NProto::TCreateHandleRequest::E_APPEND)
+         | ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE));
+
+    const bool isReadOnly = (args.Flags & wflags) == 0;
+
+    const bool hasLocalHandle = args.Response.GetHandle() != 0;
+
+    const bool safeAsync = hasLocalHandle &&
+                           isReadOnly &&
+                           Config->GetAsyncCreateHandleEnabled() &&
+                           args.Request.GetAllowAsyncCreateHandle();
+
+    const bool unsafeAsync =
+        hasLocalHandle &&
+        isReadOnly &&
+        Config->GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled();
+
+    if (safeAsync) {
+        args.Response.SetHandleCreatedAsync(true);
+    }
+
     AddDupCacheEntry(
         *db,
         session,
@@ -522,15 +560,10 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
     EnqueueTruncateIfNeeded(ctx);
 
-    constexpr ui32 wflags = (ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
-         | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE)
-         | ProtoFlag(NProto::TCreateHandleRequest::E_APPEND)
-         | ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE));
+    if (safeAsync || unsafeAsync) {
+        args.AsyncHandle = args.Response.GetHandle();
+        StartCreateHandleCommit(args.AsyncHandle);
 
-    const bool isReadOnly = (args.Flags & wflags) == 0;
-
-    if (Config->GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() && isReadOnly)
-    {
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET,
@@ -623,6 +656,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     TTxIndexTablet::TCreateHandle& args)
 {
     if (args.Completed) {
+        EndCreateHandleCommit(args.AsyncHandle);
         return;
     }
 
@@ -635,13 +669,192 @@ void TIndexTabletActor::HandleConfirmCreateHandle(
     const TEvService::TEvConfirmCreateHandleRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto* session = AcceptRequest<TEvService::TConfirmCreateHandleMethod>(
+        ev,
+        ctx,
+        ValidateConfirmCreateHandleRequest);
+    if (!session) {
+        return;
+    }
+
+    auto* msg = ev->Get();
+    const auto& request = msg->Record;
+
+    // Reply immediately if the handle registration is already durable.
+    const auto* handle = FindHandle(request.GetHandle());
+    if (handle
+            && handle->Session == session
+            && handle->GetNodeId() == request.GetNodeId()
+            && !HasPendingCreateHandleCommit(request.GetHandle()))
+    {
+        auto response =
+            std::make_unique<TEvService::TEvConfirmCreateHandleResponse>();
+
+        Metrics->ConfirmCreateHandle.Update(1, 0, TDuration::Zero());
+
+        CompleteResponse<TEvService::TConfirmCreateHandleMethod>(
+            response->Record,
+            msg->CallContext,
+            ctx);
+
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    AddInFlightRequest<TEvService::TConfirmCreateHandleMethod>(*requestInfo);
+
+    ExecuteTx<TConfirmCreateHandle>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+bool TIndexTabletActor::PrepareTx_ConfirmCreateHandle(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TConfirmCreateHandle& args)
+{
+    Y_UNUSED(ctx);
+
+    FILESTORE_VALIDATE_TX_SESSION(ConfirmCreateHandle, args);
+
+    auto* session = FindSession(
+        args.ClientId,
+        args.SessionId,
+        args.SessionSeqNo);
+    if (!session) {
+        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+            << "ConfirmCreateHandle: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return true;
+    }
+
+    args.ReadCommitId = GetReadCommitId(session->GetCheckpointId());
+    if (args.ReadCommitId == InvalidCommitId) {
+        args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
+        return true;
+    }
+
+    TIndexTabletDatabase db(tx.DB);
+    if (!ReadNode(db, args.NodeId, args.ReadCommitId, args.Node)) {
+        return false;
+    }
+
+    if (!args.Node) {
+        args.Error = ErrorInvalidTarget(args.NodeId);
+        return true;
+    }
+
+    if (args.Node->Attrs.GetType() != NProto::E_REGULAR_NODE) {
+        args.Error = ErrorInvalidNodeType(args.NodeId);
+        return true;
+    }
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_ConfirmCreateHandle(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TConfirmCreateHandle& args)
+{
+    FILESTORE_VALIDATE_TX_ERROR(ConfirmCreateHandle, args);
+
+    auto* session = FindSession(args.SessionId);
+    if (!session) {
+        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+            << "ConfirmCreateHandle: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return;
+    }
+
+    TIndexTabletDatabase db(tx.DB);
+
+    const bool handleExists = FindHandle(args.Handle) != nullptr;
+
+    args.Error = RegisterHandle(
+        db,
+        session,
+        args.Handle,
+        args.NodeId,
+        session->GetCheckpointId() ? args.ReadCommitId : InvalidCommitId,
+        args.Flags);
+
+    if (HasError(args.Error)) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s ConfirmCreateHandle failed: %s, %s",
+            LogTag.c_str(),
+            args.Request.ShortDebugString().c_str(),
+            FormatError(args.Error).Quote().c_str());
+        return;
+    }
+
+    if (!handleExists) {
+        // RegisterHandle makes the new handle visible in memory before this
+        // transaction is durably committed. Mark the commit as pending so a
+        // concurrent confirmation skips the fast path and runs as a tablet
+        // transaction. Its response will then be ordered after this handle
+        // registration commits. Otherwise the client could remove its durable
+        // confirmation request, and a tablet restart could leave it with a
+        // handle that was never persisted.
+        args.CreateHandleCommitStarted = true;
+        StartCreateHandleCommit(args.Handle);
+    }
+
+    if (!session->LookupDupEntry(args.CreateRequestId)) {
+        NProto::TCreateHandleResponse response;
+        response.SetHandle(args.Handle);
+        ConvertNodeFromAttrs(
+            *response.MutableNodeAttr(),
+            args.NodeId,
+            args.Node->Attrs);
+
+        AddDupCacheEntry(
+            db,
+            session,
+            args.CreateRequestId,
+            response,
+            Config->GetDupCacheEntryCount());
+    }
+}
+
+void TIndexTabletActor::CompleteTx_ConfirmCreateHandle(
+    const TActorContext& ctx,
+    TTxIndexTablet::TConfirmCreateHandle& args)
+{
+    RemoveInFlightRequest(*args.RequestInfo);
+
+    if (args.CreateHandleCommitStarted) {
+        EndCreateHandleCommit(args.Handle);
+    }
+
     auto response =
         std::make_unique<TEvService::TEvConfirmCreateHandleResponse>(
-            MakeError(
-                E_NOT_IMPLEMENTED,
-                "ConfirmCreateHandle is not implemented by the tablet"));
+            args.Error);
 
-    NCloud::Reply(ctx, *ev, std::move(response));
+    if (!HasError(args.Error)) {
+        CommitDupCacheEntry(args.SessionId, args.CreateRequestId);
+    }
+
+    Metrics->ConfirmCreateHandle.Update(
+        1,
+        0,
+        ctx.Now() - args.RequestInfo->StartedTs);
+
+    CompleteResponse<TEvService::TConfirmCreateHandleMethod>(
+        response->Record,
+        args.RequestInfo->CallContext,
+        ctx);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -5,20 +5,20 @@
 #include "session_manager.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints_grpc/socket_endpoint_listener.h>
-#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/error_handler.h>
 #include <cloud/blockstore/libs/server/client_storage_factory.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/service_test.h>
@@ -37,12 +37,12 @@
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
-#include <util/generic/guid.h>
 #include <util/folder/path.h>
 #include <util/folder/tempdir.h>
+#include <util/generic/guid.h>
 #include <util/generic/scope.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NBlockStore::NServer {
 

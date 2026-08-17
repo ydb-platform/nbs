@@ -7,6 +7,7 @@
 #include <contrib/ydb/library/actors/core/executor_pool_basic.h>
 #include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_actor.h>
 #include <contrib/ydb/library/actors/protos/services_common.pb.h>
 #include <google/protobuf/text_format.h>
 #include <contrib/ydb/mvp/core/protos/mvp.pb.h>
@@ -65,7 +66,7 @@ int TMVP::Init() {
     ActorSystem.Register(AppData.Tokenator = TMvpTokenator::CreateTokenator(TokensConfig, HttpProxyId));
 
     if (Http) {
-        auto ev = new NHttp::TEvHttpProxy::TEvAddListeningPort(HttpPort, FQDNHostName());
+        auto ev = new NHttp::TEvHttpProxy::TEvAddListeningPort(HttpPort, TStringBuilder() << FQDNHostName() << ':' << HttpPort);
         ev->CompressContentTypes = {
             "text/plain",
             "text/html",
@@ -76,7 +77,7 @@ int TMVP::Init() {
         ActorSystem.Send(HttpProxyId, ev);
     }
     if (Https) {
-        auto ev = new NHttp::TEvHttpProxy::TEvAddListeningPort(HttpsPort, FQDNHostName());
+        auto ev = new NHttp::TEvHttpProxy::TEvAddListeningPort(HttpsPort, TStringBuilder() << FQDNHostName() << ':' << HttpsPort);
         ev->Secure = true;
         ev->SslCertificatePem = TYdbLocation::SslCertificate;
         ev->CompressContentTypes = {
@@ -133,6 +134,7 @@ TString TMVP::GetAppropriateEndpoint(const NHttp::THttpIncomingRequestPtr& req) 
 }
 
 NMvp::TTokensConfig TMVP::TokensConfig;
+TString TMVP::MetaDatabaseTokenName;
 
 TMVP::TMVP(int argc, char** argv)
     : ActorSystemStoppingLock()
@@ -174,6 +176,7 @@ void TMVP::TryGetMetaOptionsFromConfig(const YAML::Node& config) {
     MetaApiEndpoint = meta["meta_api_endpoint"].as<std::string>("");
     MetaDatabase = meta["meta_database"].as<std::string>("");
     MetaCache = meta["meta_cache"].as<bool>(false);
+    MetaDatabaseTokenName = meta["meta_database_token_name"].as<std::string>("");
 }
 
 void TMVP::TryGetGenericOptionsFromConfig(
@@ -204,9 +207,6 @@ void TMVP::TryGetGenericOptionsFromConfig(
 
     if (generic["auth"]) {
         auto auth = generic["auth"];
-        if (TYdbLocation::UserToken.empty()) {
-            TYdbLocation::UserToken = auth["token"].as<std::string>("");
-        }
         ydbTokenFile = auth["token_file"].as<std::string>("");
     }
 

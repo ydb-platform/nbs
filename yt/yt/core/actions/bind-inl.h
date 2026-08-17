@@ -537,9 +537,9 @@ public:
     {
         return NConcurrency::TPropagatingStorageGuard(Storage_
 #ifdef YT_ENABLE_BIND_LOCATION_TRACKING
-        , Location_
+            , Location_
 #endif
-    );
+        );
     }
 
 private:
@@ -684,6 +684,8 @@ auto Bind(
         THelper::template GetInvokeFunction<TState>()};
 }
 
+// NB: This specialization doesn't act proper to `Propagate` flag,
+// it just copies propagating policy from given callback.
 template <
     bool Propagate,
 #ifdef YT_ENABLE_BIND_LOCATION_TRACKING

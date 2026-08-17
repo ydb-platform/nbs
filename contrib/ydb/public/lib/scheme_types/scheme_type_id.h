@@ -3,7 +3,7 @@
 #include <util/system/types.h>
 #include <util/generic/array_size.h>
 #include <util/generic/strbuf.h>
-#include <contrib/ydb/library/yql/public/types/yql_types.pb.h>
+#include <yql/essentials/public/types/yql_types.pb.h>
 
 namespace NKikimr {
 namespace NScheme {
@@ -11,6 +11,7 @@ namespace NScheme {
 constexpr ui32 DECIMAL_MAX_PRECISION = 35;
 constexpr ui32 DECIMAL_PRECISION = 22;
 constexpr ui32 DECIMAL_SCALE = 9;
+constexpr ui32 FSB_SIZE = 16; // fixed_size_binary size
 
 using TTypeId = ui16;
 
@@ -144,6 +145,8 @@ const char *TypeName(TTypeId typeId) {
         case NTypeIds::Utf8:            return "Utf8";
         case NTypeIds::Yson:            return "Yson";
         case NTypeIds::Json:            return "Json";
+        case NTypeIds::Decimal:         return "Decimal";
+        case NTypeIds::Pg:              return "Pg";
         case NTypeIds::JsonDocument:    return "JsonDocument";
         case NTypeIds::DyNumber:        return "DyNumber";
         case NTypeIds::Uuid:            return "Uuid";

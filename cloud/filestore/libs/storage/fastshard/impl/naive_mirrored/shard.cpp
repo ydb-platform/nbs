@@ -372,6 +372,20 @@ public:
         *attr = Convert(slot);
         return {};
     }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        TPersistentHashTableStats slotStats;
+        auto e = Slots->CollectStats(&slotStats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        stats->TotalNodeCount = slotStats.SlotCount;
+        stats->UsedNodeCount = slotStats.ValueCount;
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -450,6 +464,20 @@ public:
         }
 
         *nodeId = slot.NodeId;
+        return {};
+    }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        TPersistentHashTableStats slotStats;
+        auto e = Slots->CollectStats(&slotStats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        stats->TotalNameCount = slotStats.SlotCount;
+        stats->UsedNameCount = slotStats.ValueCount;
         return {};
     }
 };
@@ -559,6 +587,20 @@ public:
         *nodeId = slot.NodeId;
         return {};
     }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        TPersistentHashTableStats slotStats;
+        auto e = Slots->CollectStats(&slotStats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        stats->TotalHandleCount = slotStats.SlotCount;
+        stats->UsedHandleCount = slotStats.ValueCount;
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -642,6 +684,26 @@ public:
         }
 
         *storagePageClusterId = slot.StoragePageClusterId;
+        return {};
+    }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        TPersistentHashTableStats slotStats;
+        auto e = Slots->CollectStats(&slotStats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        const ui64 totalPages = slotStats.SlotCount * PageClusterPageCount;
+        const ui64 usedPages = slotStats.ValueCount * PageClusterPageCount;
+        if (stats->TotalPageCount) {
+            stats->TotalPageCount = Min(stats->TotalPageCount, totalPages);
+        } else {
+            stats->TotalPageCount = totalPages;
+        }
+        stats->UsedPageCount = Max(stats->UsedPageCount, usedPages);
         return {};
     }
 };
@@ -770,6 +832,26 @@ public:
 
             Y_ABORT_UNLESS(!HasError(error));
         }
+    }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        ui64 bits = 0;
+        auto e = Bitmap->CountBits(&bits);
+        if (HasError(e)) {
+            return e;
+        }
+
+        const ui64 totalPages = BitCount * PageClusterPageCount;
+        const ui64 usedPages = bits * PageClusterPageCount;
+        if (stats->TotalPageCount) {
+            stats->TotalPageCount = Min(stats->TotalPageCount, totalPages);
+        } else {
+            stats->TotalPageCount = totalPages;
+        }
+        stats->UsedPageCount = Max(stats->UsedPageCount, usedPages);
+        return {};
     }
 };
 
@@ -1798,6 +1880,39 @@ public:
         return NotImplemented<NProto::TListNodeXAttrResponse>(request);
     }
 
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        *stats = {};
+
+        auto e = Nodes.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = Names.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = Handles.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = PageIndex.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = PageAllocator.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        return {};
+    }
+
 private:
     template <typename TResponse, typename TRequest>
     TResponse NotImplemented(TRequest request)
@@ -1837,12 +1952,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using namespace NThreading;
+
 #define FAST_SHARD_DEFINE_METHOD(name, ns, ...)                                \
     struct TFiberShard##name##Params                                           \
     {                                                                          \
         std::shared_ptr<TFiberShardImpl> FiberShard;                           \
         std::shared_ptr<ns::T##name##Request> Request;                         \
-        NThreading::TPromise<ns::T##name##Response> Promise;                   \
+        TPromise<ns::T##name##Response> Promise;                               \
     };                                                                         \
                                                                                \
     int name##FiberMain(TFiberShard##name##Params* params) noexcept            \
@@ -1857,6 +1974,20 @@ FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_DEFINE_METHOD, NProtoPrivate)
 FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
 
 #undef FAST_SHARD_DEFINE_METHOD
+
+struct TFiberShardCollectStatsParams
+{
+    std::shared_ptr<TFiberShardImpl> FiberShard;
+    TFileSystemShardStats* Stats;
+    TPromise<NProto::TError> Promise;
+};
+
+int CollectStatsFiberMain(TFiberShardCollectStatsParams* params) noexcept
+{
+    auto e = params->FiberShard->CollectStats(params->Stats);
+    params->Promise.SetValue(std::move(e));
+    return 0;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1889,8 +2020,6 @@ IStorageGroupFactoryPtr CreateNaiveMirroredStorageGroupFactory()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using namespace NThreading;
-
 class TNaiveMirroredFileSystemShard: public IFileSystemShard
 {
 private:
@@ -1910,10 +2039,9 @@ public:
 
 public:
 #define FAST_SHARD_DEFINE_METHOD(name, ns, ...)                                \
-    NThreading::TFuture<ns::T##name##Response> name(                           \
-        ns::T##name##Request request) override                                 \
+    TFuture<ns::T##name##Response> name(ns::T##name##Request request) override \
     {                                                                          \
-        auto promise = NThreading::NewPromise<ns::T##name##Response>();        \
+        auto promise = NewPromise<ns::T##name##Response>();                    \
         auto future = promise.GetFuture();                                     \
                                                                                \
         int r = silk::FiberScheduler::run(                                     \
@@ -1942,6 +2070,30 @@ public:
     FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
 
 #undef FAST_SHARD_DEFINE_METHOD
+
+    [[nodiscard]] TFuture<NProto::TError> CollectStats(
+        TFileSystemShardStats* stats) const override
+    {
+        auto promise = NewPromise<NProto::TError>();
+        auto future = promise.GetFuture();
+
+        int r = silk::FiberScheduler::run(
+            CollectStatsFiberMain,
+            TFiberShardCollectStatsParams{
+                .FiberShard = FiberShard,
+                .Stats = stats,
+                .Promise = promise,
+            },
+            nullptr /* future */);
+        if (r) {
+            promise.SetValue(MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "failed to spawn fiber: " << ::strerror(r)));
+        }
+
+        return future;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

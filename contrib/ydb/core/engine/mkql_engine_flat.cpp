@@ -4,13 +4,13 @@
 #include "mkql_proto.h"
 
 #include <contrib/ydb/library/actors/core/log.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_pack.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_printer.h>
-#include <contrib/ydb/library/yql/minikql/mkql_node_serialization.h>
-#include <contrib/ydb/library/yql/minikql/mkql_opt_literal.h>
-#include <contrib/ydb/library/yql/minikql/mkql_program_builder.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node_pack.h>
+#include <yql/essentials/minikql/mkql_node_cast.h>
+#include <yql/essentials/minikql/mkql_node_printer.h>
+#include <yql/essentials/minikql/mkql_node_serialization.h>
+#include <yql/essentials/minikql/mkql_opt_literal.h>
+#include <yql/essentials/minikql/mkql_program_builder.h>
 
 #include <contrib/ydb/core/tablet/tablet_exception.h>
 

@@ -3,7 +3,7 @@
 #include <contrib/ydb/core/fq/libs/control_plane_storage/control_plane_storage.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/message_builders.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/schema.h>
-#include <contrib/ydb/library/yql/providers/common/proto/gateways_config.pb.h>
+#include <yql/essentials/providers/common/proto/gateways_config.pb.h>
 
 #include <contrib/ydb/core/fq/libs/actors/logging/log.h>
 #include <contrib/ydb/core/fq/libs/ydb/util.h>
@@ -13,7 +13,7 @@
 #include <contrib/ydb/core/fq/libs/config/protos/issue_id.pb.h>
 #include <contrib/ydb/core/fq/libs/init/init.h>
 #include <contrib/ydb/library/security/ydb_credentials_provider_factory.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <ydb-cpp-sdk/client/result/result.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>

@@ -1,0 +1,53 @@
+From 94995685ff2fc03d19a19029d73cae7fd29a206b Mon Sep 17 00:00:00 2001
+From: Maxim Deb Natkh <debnatkh@nebius.com>
+Date: Tue, 20 Jan 2026 10:50:54 +0100
+Subject: [PATCH 1/2] Make string field in DB monpage in
+ flat_executor_db_mon.cpp configurable via a cgi param
+
+---
+ contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp b/contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp
+index 80f55012792..778825cd979 100644
+--- a/contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp
++++ b/contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp
+@@ -137,6 +137,7 @@ class TExecutor::TTxExecutorDbMon : public TTransactionBase<TExecutor> {
+                     rowOffset = Max<ssize_t>(rowOffset, 0);
+                     ssize_t rowLimit = FromStringWithDefault<ssize_t>(cgi.Get("MaxRows"), 1000);
+                     rowLimit = Max<ssize_t>(rowLimit, 1);
++                    ssize_t stringlimit = FromStringWithDefault<ssize_t>(cgi.Get("MaxString"), 1024);
+                     ssize_t rowCount = 0;
+                     while (result->Next(NTable::ENext::Data) == NTable::EReady::Data && rowCount < rowOffset + rowLimit) {
+                             ++rowCount;
+@@ -202,7 +203,7 @@ class TExecutor::TTxExecutorDbMon : public TTransactionBase<TExecutor> {
+                                         case NScheme::NTypeIds::String:
+                                         case NScheme::NTypeIds::String4k:
+                                         case NScheme::NTypeIds::String2m:
+-                                            str << EncodeHtmlPcdata(EscapeC(TStringBuf(static_cast<const char*>(data), Min(size, (ui32)1024))));
++                                            str << EncodeHtmlPcdata(EscapeC(TStringBuf(static_cast<const char*>(data), Min(size, (ui32)stringlimit))));
+                                             break;
+                                         case NScheme::NTypeIds::ActorId:
+                                             str << *(TActorId*)data;
+
+From 582e4cba8a1687e7b811857d15b1267fde5d3f31 Mon Sep 17 00:00:00 2001
+From: Maxim Deb Natkh <debnatkh@nebius.com>
+Date: Tue, 20 Jan 2026 11:36:24 +0100
+Subject: [PATCH 2/2] Add minimum limit for string limit parameter
+
+---
+ contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp b/contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp
+index 778825cd979..f3349bb3d24 100644
+--- a/contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp
++++ b/contrib/ydb/core/tablet_flat/flat_executor_db_mon.cpp
+@@ -138,6 +138,7 @@ class TExecutor::TTxExecutorDbMon : public TTransactionBase<TExecutor> {
+                     ssize_t rowLimit = FromStringWithDefault<ssize_t>(cgi.Get("MaxRows"), 1000);
+                     rowLimit = Max<ssize_t>(rowLimit, 1);
+                     ssize_t stringlimit = FromStringWithDefault<ssize_t>(cgi.Get("MaxString"), 1024);
++                    stringlimit = Max<ssize_t>(stringlimit, 1);
+                     ssize_t rowCount = 0;
+                     while (result->Next(NTable::ENext::Data) == NTable::EReady::Data && rowCount < rowOffset + rowLimit) {
+                             ++rowCount;

@@ -53,12 +53,20 @@ namespace NTable {
                 Y_ABORT_UNLESS(part == Part, "Unsupported part");
                 Y_ABORT_UNLESS(groupId.IsMain(), "Unsupported column group");
 
-                if (auto* savedPage = SavedPages.FindPtr(pageId)) {
-                    return savedPage;
-                } else if (auto* cached = Cache->Lookup(pageId)) {
-                    // Save page in case it's evicted on the next iteration
-                    SavedPages[pageId] = *cached;
-                    return cached;
+                auto savedPage = SavedPages.find(pageId);
+                
+                if (savedPage == SavedPages.end()) {
+                    if (auto cachedPage = Cache->GetPage(pageId); cachedPage) {
+                        if (auto sharedPageRef = cachedPage->SharedBody; sharedPageRef && sharedPageRef.Use()) {
+                            // Save page in case it's evicted on the next iteration
+                            AddSavedPage(pageId, std::move(sharedPageRef));
+                            savedPage = SavedPages.find(pageId);
+                        }
+                    }
+                }
+
+                if (savedPage != SavedPages.end()) {
+                    return &savedPage->second;
                 } else {
                     NeedPages.insert(pageId);
                     return nullptr;
@@ -84,21 +92,35 @@ namespace NTable {
             void Save(ui32 cookie, NSharedCache::TEvResult::TLoaded&& loaded) noexcept
             {
                 if (cookie == 0 && NeedPages.erase(loaded.PageId)) {
-                    auto type = Cache->GetPageType(loaded.PageId);
-                    SavedPages[loaded.PageId] = TPinnedPageRef(loaded.Page).GetData();
-                    if (type != EPage::FlatIndex) {
-                        // hack: saving flat index to private cache will break sticky logic
-                        // keep it in shared cache only for now
-                        Cache->Fill(std::move(loaded), NeedIn(type));
-                    }
+                    auto pageType = Cache->GetPageType(loaded.PageId);
+                    bool sticky = NeedIn(pageType) || pageType == EPage::FlatIndex;
+                    AddSavedPage(loaded.PageId, loaded.Page);
+                    Cache->Fill(loaded.PageId, std::move(loaded.Page), sticky);
                 }
             }
 
         private:
+            void AddSavedPage(TPageId pageId, NSharedCache::TSharedPageRef page) noexcept
+            {
+                SavedPages[pageId] = NSharedCache::TPinnedPageRef(page).GetData();
+                SavedPagesRefs.emplace_back(std::move(page));
+            }
+
             const TPart* Part = nullptr;
             TIntrusivePtr<TCache> Cache;
             THashMap<TPageId, TSharedData> SavedPages;
+            TVector<NSharedCache::TSharedPageRef> SavedPagesRefs;
             THashSet<TPageId> NeedPages;
+        };
+
+        struct TRunOptions {
+            // Marks that optional index pages should be loaded
+            //
+            // Effects only b-tree index as flat index is kept as sticky
+            bool PreloadIndex = true;
+
+            // Marks that all data pages from the main group should be loaded
+            bool PreloadData = false;
         };
 
         TLoader(TPartComponents ou)
@@ -116,7 +138,7 @@ namespace NTable {
                 TEpoch epoch = NTable::TEpoch::Max());
         ~TLoader();
 
-        TVector<TAutoPtr<NPageCollection::TFetch>> Run(bool preloadData)
+        TVector<TAutoPtr<NPageCollection::TFetch>> Run(TRunOptions options)
         {
             while (Stage < EStage::Result) {
                 TAutoPtr<NPageCollection::TFetch> fetch;
@@ -126,7 +148,7 @@ namespace NTable {
                         StageParseMeta();
                         break;
                     case EStage::PartView:
-                        fetch = StageCreatePartView();
+                        fetch = StageCreatePartView(options.PreloadIndex);
                         break;
                     case EStage::Slice:
                         fetch = StageSliceBounds();
@@ -135,7 +157,7 @@ namespace NTable {
                         StageDeltas();
                         break;
                     case EStage::PreloadData:
-                        if (preloadData) {
+                        if (options.PreloadData) {
                             fetch = StagePreloadData();
                         }
                         break;
@@ -173,6 +195,7 @@ namespace NTable {
             Y_ABORT_UNLESS(Stage == EStage::Result);
             Y_ABORT_UNLESS(PartView, "Result may only be grabbed once");
             Y_ABORT_UNLESS(PartView.Slices, "Missing slices in Result stage");
+            
             return std::move(PartView);
         }
 
@@ -228,7 +251,7 @@ namespace NTable {
         }
 
         void StageParseMeta() noexcept;
-        TAutoPtr<NPageCollection::TFetch> StageCreatePartView() noexcept;
+        TAutoPtr<NPageCollection::TFetch> StageCreatePartView(bool preloadIndex) noexcept;
         TAutoPtr<NPageCollection::TFetch> StageSliceBounds() noexcept;
         void StageDeltas() noexcept;
         TAutoPtr<NPageCollection::TFetch> StagePreloadData() noexcept;

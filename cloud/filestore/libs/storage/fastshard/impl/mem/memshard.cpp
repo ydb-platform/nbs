@@ -529,6 +529,26 @@ public:
         return NotImplemented<NProto::TListNodeXAttrResponse>(request);
     }
 
+    [[nodiscard]] TFuture<NCloud::NProto::TError> CollectStats(
+        TFileSystemShardStats* stats) const override
+    {
+        auto g = Guard(Lock);
+
+        *stats = {};
+
+        stats->UsedNodeCount = Attrs.size();
+        stats->UsedNameCount = Root.Name2Id.size();
+        stats->UsedHandleCount = Handles.size();
+
+        const ui64 pageSize = 4_KB;
+        for (const auto& [_, node]: Files) {
+            stats->UsedPageCount +=
+                AlignUp(node.Data.size(), pageSize) / pageSize;
+        }
+
+        return MakeFuture(MakeError(S_OK));
+    }
+
 private:
     template <typename TResponse, typename TRequest>
     TFuture<TResponse> NotImplemented(const TRequest& request)

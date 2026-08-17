@@ -1,6 +1,6 @@
 #include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
 
-#include <contrib/ydb/library/yql/minikql/mkql_node.h>
+#include <yql/essentials/minikql/mkql_node.h>
 
 using namespace NKikimr;
 using namespace NKikimr::NMiniKQL;

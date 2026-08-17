@@ -23,6 +23,9 @@ permissions:
 
 jobs:
   check-running-allowed:
+    if: >-
+      github.event.pull_request.stack == null ||
+      github.event.pull_request.stack.base.ref == github.event.pull_request.base.ref
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
       result: ${{ steps.check-ownership-membership.outputs.result }}
@@ -60,7 +63,7 @@ jobs:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 0
         clean: true
-    - uses: actions/setup-python@v6.3.0
+    - uses: actions/setup-python@v7.0.0
       with:
         python-version: "3.10"
     - uses: ./.github/actions/pre_commit

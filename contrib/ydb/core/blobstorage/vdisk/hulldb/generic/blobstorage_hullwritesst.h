@@ -123,7 +123,8 @@ namespace NKikimr {
                 Y_ABORT_UNLESS(offsetInChunk % AppendBlockSize == 0);
                 Y_ABORT_UNLESS(ChunkIdx);
                 NPDisk::TEvChunkWrite::TPartsPtr parts(new NPDisk::TEvChunkWrite::TBufBackedUpParts(std::move(Buffer)));
-                auto ev = std::make_unique<NPDisk::TEvChunkWrite>(Owner, OwnerRound, ChunkIdx, offsetInChunk, parts, nullptr, true, Priority);
+                auto ev = std::make_unique<NPDisk::TEvChunkWrite>(Owner, OwnerRound, ChunkIdx, offsetInChunk, parts,
+                    nullptr, true, Priority, TWriteSource::HullWriteSst, true);
                 MsgQueue.push(std::move(ev));
                 HasBuffer = false;
             }
@@ -507,49 +508,40 @@ namespace NKikimr {
             // check that keys are coming in strictly ascending order
             Y_ABORT_UNLESS(Recs.empty() || Recs.back().Key < key);
 
-            switch (memRec.GetType()) {
-                case TBlobType::DiskBlob: {
+            TMemRec newMemRec(memRec);
+
+            switch (const TBlobType::EType type = memRec.GetType()) {
+                case TBlobType::DiskBlob:
                     InplaceDataTotalSize += memRec.DataSize();
                     ItemsWithInplacedData += !!memRec.DataSize();
-                    Recs.push_back(TRec(key, memRec));
                     break;
-                }
-                case TBlobType::HugeBlob: {
-                    const TVector<TDiskPart> &saved = dataMerger->GetHugeBlobMerger().SavedData();
-                    Y_ABORT_UNLESS(saved.size() == 1);
 
-                    TMemRec memRecTmp(memRec);
-                    memRecTmp.SetHugeBlob(saved.at(0));
-                    HugeDataTotalSize += memRecTmp.DataSize();
-                    ItemsWithHugeData++;
-                    Recs.push_back(TRec(key, memRecTmp));
-                    break;
-                }
+                case TBlobType::HugeBlob:
                 case TBlobType::ManyHugeBlobs: {
-                    auto beg = dataMerger->GetHugeBlobMerger().SavedData().begin();
-                    auto end = dataMerger->GetHugeBlobMerger().SavedData().end();
+                    Y_DEBUG_ABORT_UNLESS(dataMerger);
+                    const std::vector<TDiskPart>& saved = dataMerger->GetSavedHugeBlobs();
 
-                    Y_DEBUG_ABORT_UNLESS(beg + 1 < end);
-                    TMemRec newMemRec(memRec);
-                    ui32 idx = ui32(Outbound.size());
-                    ui32 num = ui32(end - beg);
-                    ui32 size = 0;
-                    for (auto it = beg; it != end; ++it) {
-                        size += it->Size;
+                    if (saved.size() == 1) {
+                        newMemRec.SetHugeBlob(saved.front());
+                    } else {
+                        ui32 size = 0;
+                        for (const TDiskPart& part : saved) {
+                            size += part.Size;
+                        }
+                        newMemRec.SetManyHugeBlobs(Outbound.size(), saved.size(), size);
+                        Outbound.insert(Outbound.end(), saved.begin(), saved.end());
                     }
-                    newMemRec.SetManyHugeBlobs(idx, num, size);
-                    for (auto it = beg; it != end; ++it) {
-                        Outbound.push_back(*it);
-                    }
-                    HugeDataTotalSize += size + sizeof(TDiskPart) * num;
 
-                    Recs.push_back(TRec(key, newMemRec));
                     ItemsWithHugeData++;
+                    HugeDataTotalSize += newMemRec.DataSize() + (saved.size() > 1 ? saved.size() * sizeof(TDiskPart) : 0);
                     break;
                 }
-                default: Y_ABORT("Impossible case");
+
+                default:
+                    Y_ABORT("Impossible case");
             }
 
+            Recs.emplace_back(key, newMemRec);
             ++Items;
         }
 
@@ -681,7 +673,7 @@ namespace NKikimr {
             ratio->IndexBytesTotal = ratio->IndexBytesKeep = info.IdxTotalSize;
             ratio->InplacedDataTotal = ratio->InplacedDataKeep = info.InplaceDataTotalSize;
             ratio->HugeDataTotal = ratio->HugeDataKeep = info.HugeDataTotalSize;
-            LevelSegment->StorageRatio.Set(ratio);
+            LevelSegment->StorageRatio.Set(ratio, TInstant::Zero());
 
             // write out place holder
             TIdxDiskPlaceHolder placeHolder(SstId);
@@ -831,6 +823,7 @@ namespace NKikimr {
             , ChunkSize(chunkSize)
             , Arena(arena)
             , AddHeader(addHeader)
+            , GType(vctx->Top->GType)
         {}
 
         bool Empty() const {
@@ -844,10 +837,12 @@ namespace NKikimr {
             return IndexBuilder.GetUsageAfterPush(chunks, intermSize, numAddedOuts) <= ChunksToUse;
         }
 
-        bool PushIndexOnly(const TKey& key, const TMemRec& memRec, const TDataMerger *dataMerger, ui32 inplacedDataSize,
-                TDiskPart *location) {
+        bool PushIndexOnly(const TKey& key, const TMemRec& memRec, const TDataMerger *dataMerger, TDiskPart *location) {
+            Y_ABORT_UNLESS((std::is_same_v<TKey, TKeyLogoBlob>) == !!dataMerger);
+
             // inplacedDataSize must be nonzero for DiskBlob with data and zero in all other cases
-            ui32 numAddedOuts = dataMerger->GetHugeBlobMerger().SavedData().size();
+            const ui32 inplacedDataSize = memRec.GetType() == TBlobType::DiskBlob ? memRec.DataSize() : 0;
+            const ui32 numAddedOuts = dataMerger ? dataMerger->GetSavedHugeBlobs().size() : 0;
             if (!CheckSpace(inplacedDataSize, numAddedOuts)) {
                 return false;
             }
@@ -867,9 +862,18 @@ namespace NKikimr {
 
                 case TBlobType::DiskBlob:
                     Y_DEBUG_ABORT_UNLESS(numAddedOuts == 0);
+                    if constexpr (std::is_same_v<TKey, TKeyLogoBlob>) {
+                        const NMatrix::TVectorType localParts = memRec.GetLocalParts(GType);
+                        Y_ABORT_UNLESS(inplacedDataSize == (localParts.Empty() ? 0 : TDiskBlob::CalculateBlobSize(GType,
+                            key.LogoBlobID(), memRec.GetLocalParts(GType), AddHeader)));
+                    } else {
+                        Y_ABORT_UNLESS(inplacedDataSize == 0);
+                    }
                     if (inplacedDataSize) {
                         *location = DataWriter.Preallocate(inplacedDataSize);
                         memRecToAdd.SetDiskBlob(*location);
+                    } else {
+                        memRecToAdd.SetNoBlob();
                     }
                     break;
 
@@ -883,32 +887,6 @@ namespace NKikimr {
 
         TDiskPart PushDataOnly(TRope&& buffer) {
             return DataWriter.Push(std::move(buffer));
-        }
-
-        // return false on no-more-space
-        bool Push(const TKey &key, const TMemRec &memRec, const TDataMerger *dataMerger, ui32 inplacedDataSize = 0) {
-            // if this is filled disk blob, then we extract data and calculate inplacedDataSize
-            TRope data;
-            const auto& diskBlobMerger = dataMerger->GetDiskBlobMerger();
-            if (memRec.GetType() == TBlobType::DiskBlob && !diskBlobMerger.Empty()) {
-                data = diskBlobMerger.CreateDiskBlob(Arena, AddHeader);
-                Y_DEBUG_ABORT_UNLESS(!inplacedDataSize);
-                inplacedDataSize = data.GetSize();
-            }
-
-            TDiskPart preallocatedLocation;
-            if (!PushIndexOnly(key, memRec, dataMerger, inplacedDataSize, &preallocatedLocation)) {
-                return false;
-            }
-
-            // write inplace data if we have some
-            if (data) {
-                Y_DEBUG_ABORT_UNLESS(data.GetSize() == inplacedDataSize);
-                TDiskPart writtenLocation = DataWriter.Push(data);
-                Y_DEBUG_ABORT_UNLESS(writtenLocation == preallocatedLocation);
-            }
-
-            return true;
         }
 
         // returns true when done, false means 'continue calling me, I'have more chunks to write'
@@ -943,6 +921,7 @@ namespace NKikimr {
         const ui32 ChunkSize;
         TRopeArena& Arena;
         const bool AddHeader;
+        const TBlobStorageGroupType GType;
 
         // pending messages
         TQueue<std::unique_ptr<NPDisk::TEvChunkWrite>> MsgQueue;

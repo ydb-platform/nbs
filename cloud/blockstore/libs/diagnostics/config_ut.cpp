@@ -134,6 +134,23 @@ CloudIdsWithStrictSLA: "cloud3"
         UNIT_ASSERT(!HasField(protoConfig, "CloudIdsWithStrictSLA"));
         UNIT_ASSERT_VALUES_EQUAL(config.GetCloudIdsWithStrictSLA().size(), 0);
     }
+
+    Y_UNIT_TEST(TestVolumeCriticalEventsReportingMode)
+    {
+        TDiagnosticsConfig defaultConfig;
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EVolumeCriticalEventsReportingMode::APP_ONLY,
+            defaultConfig.GetVolumeCriticalEventsReportingMode());
+
+        NProto::TDiagnosticsConfig protoConfig = CreateConfig(R"(
+VolumeCriticalEventsReportingMode: ALL
+)");
+        TDiagnosticsConfig config(protoConfig);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            NProto::EVolumeCriticalEventsReportingMode::ALL,
+            config.GetVolumeCriticalEventsReportingMode());
+    }
 }
 
 }   // namespace NCloud::NBlockStore

@@ -81,7 +81,7 @@ namespace NKikimr {
             TPrinter printer(*GInfo, ev);
             SyncerData->Neighbors->OutputHtmlTable(str, printer);
             ctx.Send(Ev->Sender, new NMon::TEvHttpInfoRes(str.Str(), TDbMon::SyncerInfoId));
-            ctx.Send(NotifyId, new TEvents::TEvActorDied());
+            ctx.Send(NotifyId, new TEvents::TEvGone());
             Die(ctx);
         }
 
@@ -177,7 +177,6 @@ namespace NKikimr {
         {}
     };
 
-
     ////////////////////////////////////////////////////////////////////////////
     // TSyncerScheduler
     ////////////////////////////////////////////////////////////////////////////
@@ -205,11 +204,20 @@ namespace NKikimr {
         TActiveActors ActiveActors;
         const TDuration SyncTimeInterval;
         TActorId CommitterId;
+        TActorId NotifyId;
         bool Scheduled;
+        THashSet<ui32> StartupDataSyncPeers;
+        bool StartupDataSyncDoneReported = false;
         std::shared_ptr<TSjCtx> JobCtx;
 
         friend class TActorBootstrapped<TSyncerScheduler>;
 
+        void ReportStartupDataSyncDone(const TActorContext& ctx) {
+            if (!StartupDataSyncDoneReported) {
+                StartupDataSyncDoneReported = true;
+                ctx.Send(NotifyId, new TEvStartupDataSyncDone);
+            }
+        }
 
         void ActualizeUnsyncedDisksNum() {
             unsigned unsyncedDisks = 0;
@@ -230,8 +238,11 @@ namespace NKikimr {
                 if (!x.Myself) {
                     Y_DEBUG_ABORT_UNLESS(x.Get().PeerSyncState.LastSyncStatus != TSyncStatusVal::Running);
                     SchedulerQueue.push(&x);
+                    StartupDataSyncPeers.insert(x.OrderNumber);
                 }
             }
+
+            ActualizeUnsyncedDisksNum();
 
             // if we haven't found any neighbors to sync with, notify skeleton
             if (SchedulerQueue.empty()) {
@@ -239,6 +250,10 @@ namespace NKikimr {
             } else {
                 // start sync immediately
                 Schedule(ctx);
+            }
+
+            if (StartupDataSyncPeers.empty()) {
+                ReportStartupDataSyncDone(ctx);
             }
         }
 
@@ -250,6 +265,10 @@ namespace NKikimr {
         void ApplyChanges(const TActorContext &ctx, TSyncerJobTask& task) {
             SyncerData->Neighbors->ApplyChanges(ctx, &task, SyncerContext->Config->SyncTimeInterval);
             ActualizeUnsyncedDisksNum();
+            const ui32 orderNumber = GInfo->GetOrderNumber(TVDiskIdShort(task.VDiskId));
+            if (StartupDataSyncPeers.erase(orderNumber) && StartupDataSyncPeers.empty()) {
+                ReportStartupDataSyncDone(ctx);
+            }
             SchedulerQueue.push(&(*SyncerData->Neighbors)[task.VDiskId]);
             Schedule(ctx);
         }
@@ -335,7 +354,7 @@ namespace NKikimr {
             JobCtx = TSjCtx::Create(SyncerContext, GInfo);
         }
 
-        void Handle(TEvents::TEvActorDied::TPtr &ev, const TActorContext &ctx) {
+        void Handle(TEvents::TEvGone::TPtr &ev, const TActorContext &ctx) {
             Y_UNUSED(ctx);
             ActiveActors.Erase(ev->Sender);
         }
@@ -348,7 +367,7 @@ namespace NKikimr {
             HFunc(TEvents::TEvPoisonPill, HandlePoison)
             HFunc(NPDisk::TEvCutLog, Handle)
             HFunc(TEvVGenerationChange, Handle)
-            HFunc(TEvents::TEvActorDied, Handle)
+            HFunc(TEvents::TEvGone, Handle)
             CFunc(TEvents::TSystem::Wakeup, HandleWakeup)
         )
 
@@ -358,7 +377,7 @@ namespace NKikimr {
             HFunc(TEvents::TEvPoisonPill, HandlePoison)
             HFunc(NPDisk::TEvCutLog, Handle)
             HFunc(TEvVGenerationChange, Handle)
-            HFunc(TEvents::TEvActorDied, Handle)
+            HFunc(TEvents::TEvGone, Handle)
         )
 
     public:
@@ -369,7 +388,8 @@ namespace NKikimr {
         TSyncerScheduler(const TIntrusivePtr<TSyncerContext> &sc,
                          const TIntrusivePtr<TBlobStorageGroupInfo> &info,
                          const TIntrusivePtr<TSyncerData> &syncerData,
-                         const TActorId &committerId)
+                         const TActorId &committerId,
+                         const TActorId &notifyId)
             : TActorBootstrapped<TSyncerScheduler>()
             , SyncerContext(sc)
             , GInfo(info)
@@ -378,6 +398,7 @@ namespace NKikimr {
             , ActiveActors()
             , SyncTimeInterval(SyncerContext->Config->SyncTimeInterval)
             , CommitterId(committerId)
+            , NotifyId(notifyId)
             , Scheduled(false)
             , JobCtx(TSjCtx::Create(SyncerContext, GInfo))
         {}
@@ -390,8 +411,9 @@ namespace NKikimr {
     IActor* CreateSyncerSchedulerActor(const TIntrusivePtr<TSyncerContext> &sc,
                                        const TIntrusivePtr<TBlobStorageGroupInfo> &info,
                                        const TIntrusivePtr<TSyncerData> &syncerData,
-                                       const TActorId &committerId) {
-        return new TSyncerScheduler(sc, info, syncerData, committerId);
+                                       const TActorId &committerId,
+                                       const TActorId &notifyId) {
+        return new TSyncerScheduler(sc, info, syncerData, committerId, notifyId);
     }
 
 } // NKikimr

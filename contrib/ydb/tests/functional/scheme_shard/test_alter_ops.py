@@ -8,7 +8,7 @@ from contrib.ydb.tests.library.common.msgbus_types import MessageBusStatus
 from contrib.ydb.tests.library.common.protobuf_ss import CreatePath, AlterTableRequest, CreateTableRequest
 from contrib.ydb.tests.library.common.protobuf_ss import TPartitionConfig, SchemeDescribeRequest
 from contrib.ydb.tests.library.common.types import PType
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_runner import KiKiMR
 from contrib.ydb.tests.library.matchers.response_matchers import ProtobufWithStatusMatcher
 from contrib.ydb.tests.oss.ydb_sdk_import import ydb
 
@@ -16,7 +16,7 @@ from contrib.ydb.tests.oss.ydb_sdk_import import ydb
 class TestSchemeShardAlterTest(object):
     @classmethod
     def setup_class(cls):
-        cls.cluster = kikimr_cluster_factory()
+        cls.cluster = KiKiMR()
         cls.cluster.start()
 
         host = cls.cluster.nodes[1].host
