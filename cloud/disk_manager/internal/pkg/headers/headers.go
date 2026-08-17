@@ -75,11 +75,15 @@ func GetAccessToken(ctx context.Context) (string, error) {
 }
 
 func SetOutgoingAccessToken(ctx context.Context, token string) context.Context {
+	if !strings.HasPrefix(token, tokenPrefix) {
+		token = tokenPrefix + token
+	}
+
 	return appendToOutgoingContext(
 		ctx,
 		grpc_metadata.Pairs(
 			"authorization",
-			fmt.Sprintf("Bearer %v", token),
+			token,
 		),
 	)
 }
