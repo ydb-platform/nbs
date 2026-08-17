@@ -328,21 +328,41 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
 
     for (ui64 i = 1; i < Metas.size(); ++i) {
         const auto& meta = Metas[i];
-        // Update Next for the last shard
+        // Update Next for the last shard.
         setNextShard(lastShardIdx, i, meta.Score);
 
-        // Pop stack
+        // Pop the stack.
         while (stack && meta.Score >= stack.back()->Score) {
-            const auto& back = *stack.back();
-            setNextShard(back.ShardIdx, meta.ShardIdx, back.Score);
+            for (ui64 shardIdx = stack.back()->ShardIdx;
+                 shardIdx < meta.ShardIdx;
+                 ++shardIdx)
+            {
+                setNextShard(shardIdx, meta.ShardIdx, meta.Score);
+            }
             stack.pop_back();
         }
 
-        if (stack) {
-            setNextShard(stack.back()->ShardIdx, meta.ShardIdx, meta.Score);
+        const ui64 leftBorder = stack ? stack.back()->ShardIdx : 0;
+        for (ui64 shardIdx = leftBorder; shardIdx < meta.ShardIdx; ++shardIdx) {
+            setNextShard(shardIdx, meta.ShardIdx, meta.Score);
         }
 
         stack.push_back(&meta);
+    }
+
+    // Fill the gap on the right side of the matrix.
+    for (ui64 score = 0; score < ScoreLevelsCount &&
+                         GetNextShard(lastShardIdx, score) < Metas.size();
+         ++score)
+    {
+        const ui64 nextShard = GetNextShard(lastShardIdx, score);
+        for (ui64 shardIdx = lastShardIdx - 1;
+             shardIdx != Max<ui64>() &&
+             GetNextShard(shardIdx, score) == Metas.size();
+             --shardIdx)
+        {
+            GetNextShard(shardIdx, score) = nextShard;
+        }
     }
 }
 
@@ -379,24 +399,22 @@ NProto::TError TShardBalancerWeightedDeterministic::SelectShard(
             TStringBuilder() << "Metas.size() is zero");
     }
 
-    // In the middle but no next shard.
-    if (ShardSelector < Metas.size() - 1 &&
-        GetNextShard(ShardSelector, CurrentScore) == Metas.size())
-    {
+    // If jumping to the next shard crosses the right boundary,
+    // increment CurrentScore.
+    const ui64 nextShardIdx = GetNextShard(ShardSelector, CurrentScore);
+    if (nextShardIdx < Metas.size() && nextShardIdx <= ShardSelector) {
+        CurrentScore = (++CurrentScore) % ScoreLevelsCount;
         ShardSelector = Metas.size() - 1;
     }
 
-    // In the last column the information where to start is stored.
-    if (ShardSelector == Metas.size() - 1) {
-        CurrentScore = (++CurrentScore) % ScoreLevelsCount;
+    // We are in an undefined part of the NextShard matrix.
+    // That means that we should start from the initial state.
+    if (GetNextShard(ShardSelector, CurrentScore) == Metas.size()) {
+        CurrentScore = 0;
+        ShardSelector = Metas.size() - 1;
     }
 
     ShardSelector = GetNextShard(ShardSelector, CurrentScore);
-    if (ShardSelector == Metas.size()) {
-        CurrentScore = 0;
-        ShardSelector = 0;
-    }
-
     *shardId = Metas[ShardSelector].Stats.ShardId;
 
     return {};

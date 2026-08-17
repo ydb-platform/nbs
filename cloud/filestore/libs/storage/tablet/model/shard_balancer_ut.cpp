@@ -631,6 +631,9 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             {"s5", total, 1_TB / 4_KB, 0, 0},
         }));
 
+        refShardIds = {"s5"};
+        checkSelectedShard(refShardIds);
+
         refShardIds = {
             "s1", "s2", "s3", "s4", "s5",
             "s2", "s3", "s4", "s5",
