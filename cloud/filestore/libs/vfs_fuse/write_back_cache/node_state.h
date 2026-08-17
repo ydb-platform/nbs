@@ -188,6 +188,15 @@ struct TNodeState
             return ENodeFlushStatus::FlushRequested;
         }
 
+        if (Cache.GetExpectedFlushBatchCount() > 1) {
+            // The reason to postpone flush when there are unflushed requests
+            // is to accumulate more requests into the batch.
+            // Having more than one batch means that the front batch is
+            // completed, no new requests can be added to it, we may flush it
+            // immediately.
+            return ENodeFlushStatus::FlushRequested;
+        }
+
         if (!FlushRequests.empty() ||
             minUnflushedSequenceId <= flushAllSequenceId)
         {
