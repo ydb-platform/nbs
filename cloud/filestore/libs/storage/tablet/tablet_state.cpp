@@ -17,6 +17,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr size_t MaxNodeDiagnosticEntries = 10'000;
+constexpr TDuration AccessStatsHalfLife = TDuration::Minutes(10);
 
 IBlockLocation2RangeIndexPtr CreateHasher(const NProto::TFileSystem& fs)
 {
@@ -72,6 +73,7 @@ ui64 CalculateInMemoryIndexCacheCapacity(
 
 TIndexTabletState::TIndexTabletState()
     : Impl(new TImpl(AllocatorRegistry))
+    , NodeAccessStatsTracker(MaxNodeDiagnosticEntries, AccessStatsHalfLife)
 {}
 
 TIndexTabletState::~TIndexTabletState() = default;
@@ -182,7 +184,6 @@ void TIndexTabletState::LoadState(
     const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
-    NodeAccessStatsTracker.Initialize(MaxNodeDiagnosticEntries);
     Generation = generation;
     // https://github.com/ydb-platform/nbs/issues/1714
     // because of possible race in vdisks we should not start with 0
@@ -258,15 +259,15 @@ void TIndexTabletState::LoadState(
     InitShardBalancer(config);
 }
 
-void TIndexTabletState::NodeRequestStarted(ui64 nodeId, TInstant now)
+void TIndexTabletState::UpdateAccessStats(ui64 nodeId, TInstant now)
 {
-    NodeAccessStatsTracker.RequestStarted(nodeId, now);
+    NodeAccessStatsTracker.UpdateAccessStats(nodeId, now);
 }
 
 TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
-    TInstant now) const
+    TInstant now, ui32 n) const
 {
-    return NodeAccessStatsTracker.GetStats(now);
+    return NodeAccessStatsTracker.GetStats(now, n);
 }
 
 void TIndexTabletState::UpdateConfig(

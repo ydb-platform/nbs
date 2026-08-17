@@ -170,7 +170,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
     }
 
     if (!args.RequestInfo->NodeDiagnosticStatsStarted) {
-        NodeRequestStarted(args.TargetNodeId, ctx.Now());
+        UpdateAccessStats(args.TargetNodeId, ctx.Now());
         args.RequestInfo->NodeDiagnosticStatsStarted = true;
     }
 

@@ -308,9 +308,9 @@ public:
         StateLoaded = true;
     }
 
-    void NodeRequestStarted(ui64 nodeId, TInstant now);
+    void UpdateAccessStats(ui64 nodeId, TInstant now);
 
-    TVector<TNodeAccessStats> GetNodeAccessStats(TInstant now) const;
+    TVector<TNodeAccessStats> GetNodeAccessStats(TInstant now, ui32 n) const;
 
     void UpdateConfig(
         IIndexTabletDatabase& db,

@@ -287,7 +287,7 @@ bool TIndexTabletActor::PrepareTx_WriteData(
     if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
         !args.RequestInfo->NodeDiagnosticStatsStarted)
     {
-        NodeRequestStarted(args.NodeId, ctx.Now());
+        UpdateAccessStats(args.NodeId, ctx.Now());
         args.RequestInfo->NodeDiagnosticStatsStarted = true;
     }
     //

@@ -148,6 +148,8 @@ message TGetDiagnosticStatsRequest
 
     // FileSystem identifier.
     string FileSystemId = 2;
+
+    uint32 Limit = 3;
 }
 
 message TGetDiagnosticStatsResponse

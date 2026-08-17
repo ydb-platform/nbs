@@ -800,7 +800,7 @@ void TIndexTabletActor::HandleDescribeData(
             ctx);
 
         if (!requestInfo->NodeDiagnosticStatsStarted) {
-            NodeRequestStarted(nodeId, ctx.Now());
+            UpdateAccessStats(nodeId, ctx.Now());
             requestInfo->NodeDiagnosticStatsStarted = true;
         }
 
@@ -968,7 +968,7 @@ bool TIndexTabletActor::PrepareTx_ReadData(
     if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
         !args.RequestInfo->NodeDiagnosticStatsStarted)
     {
-        NodeRequestStarted(args.NodeId, ctx.Now());
+        UpdateAccessStats(args.NodeId, ctx.Now());
         args.RequestInfo->NodeDiagnosticStatsStarted = true;
     }
     //
