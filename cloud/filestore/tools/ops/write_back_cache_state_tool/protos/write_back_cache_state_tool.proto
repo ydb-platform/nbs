@@ -9,6 +9,7 @@ enum EStateFileType
     Unknown = 0;
     WriteBackCache = 1;
     DirectoryHandles = 2;
+    HandleOpsQueue = 3;
 }
 
 message TStateFileInfo

@@ -77,15 +77,26 @@ private:
         }
     }
 
-    int ExecuteAction(
-        int (TApp::*func)(TFileRingBufferAccessor& accessor),
-        bool readOnly)
+    TResultOrError<TString> LocateStateFile()
     {
+        if (!Options.StateFile.empty()) {
+            return Options.StateFile;
+        }
+
         auto locator = CreateStateFileLocator(Options.StateDir);
         auto stateFileOrError = locator->LocateStateFile(
             Options.FsId,
             Options.SessionId,
             NProto::EStateFileType::WriteBackCache);
+
+        return stateFileOrError;
+    }
+
+    int ExecuteAction(
+        int (TApp::*func)(TFileRingBufferAccessor& accessor),
+        bool readOnly)
+    {
+        auto stateFileOrError = LocateStateFile();
 
         if (HasError(stateFileOrError)) {
             Cerr << "Failed to locate state file: "

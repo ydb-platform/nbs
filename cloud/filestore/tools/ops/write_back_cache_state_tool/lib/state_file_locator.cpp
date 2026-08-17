@@ -12,16 +12,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
-constexpr TStringBuf DirectoryHandlesFileName = "directory_handles_storage";
+struct TStorageFileNames
+{
+    static constexpr TStringBuf WriteBackCache = "write_back_cache";
+    static constexpr TStringBuf DirectoryHandles = "directory_handles_storage";
+    static constexpr TStringBuf HandleOpsQueue = "handle_ops_queue";
+};
 
 NProto::EStateFileType GetFileType(const TString& fileName)
 {
-    if (fileName == WriteBackCacheFileName) {
+    if (fileName == TStorageFileNames::WriteBackCache) {
         return NProto::EStateFileType::WriteBackCache;
     }
-    if (fileName == DirectoryHandlesFileName) {
+    if (fileName == TStorageFileNames::DirectoryHandles) {
         return NProto::EStateFileType::DirectoryHandles;
+    }
+    if (fileName == TStorageFileNames::HandleOpsQueue) {
+        return NProto::EStateFileType::HandleOpsQueue;
     }
     return NProto::EStateFileType::Unknown;
 }
@@ -151,7 +158,7 @@ public:
         const TString& sessionId,
         NProto::EStateFileType fileType) override
     {
-        Y_ENSURE(!fsId.empty(), "File system ID must not be empty");
+        Y_ENSURE(!fsId.empty(), "Filesystem ID must not be empty");
 
         auto stateFileListOrError = ListStateFiles();
         if (HasError(stateFileListOrError)) {

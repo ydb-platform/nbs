@@ -96,6 +96,13 @@ void TOptions::Parse(int argc, char** argv)
         ythrow yexception() << "Unknown command: " << commandName;
     }
     Command = *command;
+
+    if (!StateFile.empty()) {
+        if (!StateDir.empty() || !FsId.empty() || !SessionId.empty()) {
+            ythrow yexception() << "Cannot specify --state-file with "
+                                   "--state-dir, --fs-id or --session-id";
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NWriteBackCacheStateTool
