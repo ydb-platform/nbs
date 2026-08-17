@@ -1267,7 +1267,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             auto* header = accessor.GetHeader();
 
             UNIT_ASSERT_VALUES_EQUAL(header->ReadPos, header->WritePos);
-            UNIT_ASSERT_VALUES_UNEQUAL(0, header->ReadPos % 8);
+            UNIT_ASSERT_VALUES_UNEQUAL(0, header->ReadPos % sizeof(ui64));
 
             header->Version = EVersion::V6;
         }
