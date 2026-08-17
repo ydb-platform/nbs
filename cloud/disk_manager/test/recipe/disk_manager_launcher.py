@@ -390,7 +390,6 @@ PersistenceConfig: <
 >
 DataplaneConfig: <
     SnapshotConfig: <
-        LegacyStorageFolder: "legacy_snapshot"
         PersistenceConfig: <
             Endpoint: "localhost:{dataplane_ydb_port}"
             Database: "/Root"

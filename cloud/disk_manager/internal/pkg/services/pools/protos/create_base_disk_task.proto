@@ -15,7 +15,7 @@ message CreateBaseDiskRequest {
     types.Disk BaseDisk = 2;
     string BaseDiskCheckpointId = 3;
     uint64 BaseDiskSize = 4;
-    bool UseDataplaneTasksForLegacySnapshots = 7;
+    reserved 7;
 }
 
 message CreateBaseDiskTaskState {

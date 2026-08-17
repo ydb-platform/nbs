@@ -158,41 +158,22 @@ func (t *createDiskFromSnapshotTask) Run(
 		return err
 	}
 
-	var taskID string
-
-	// Old snapshots without metadata we consider as not dataplane
-	if snapshotMeta != nil && snapshotMeta.UseDataplaneTasks {
-		taskID, err = t.scheduler.ScheduleZonalTask(
-			headers.SetIncomingIdempotencyKey(ctx, selfTaskID),
-			"dataplane.TransferFromSnapshotToDisk",
-			"",
-			disk.ZoneId,
-			&dataplane_protos.TransferFromSnapshotToDiskRequest{
-				SrcSnapshotId: t.request.SrcSnapshotId,
-				DstDisk:       disk,
-				DstEncryption: encryption,
-			},
-		)
-
-		t.state.DataplaneTaskId = taskID
-	} else {
-		taskID, err = t.scheduler.ScheduleZonalTask(
-			headers.SetIncomingIdempotencyKey(ctx, selfTaskID),
-			"dataplane.TransferFromLegacySnapshotToDisk",
-			"",
-			disk.ZoneId,
-			&dataplane_protos.TransferFromSnapshotToDiskRequest{
-				SrcSnapshotId: t.request.SrcSnapshotId,
-				DstDisk:       disk,
-				DstEncryption: encryption,
-			},
-		)
-
-		t.state.DataplaneTaskId = taskID
-	}
+	taskID, err := t.scheduler.ScheduleZonalTask(
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID),
+		"dataplane.TransferFromSnapshotToDisk",
+		"",
+		disk.ZoneId,
+		&dataplane_protos.TransferFromSnapshotToDiskRequest{
+			SrcSnapshotId: t.request.SrcSnapshotId,
+			DstDisk:       disk,
+			DstEncryption: encryption,
+		},
+	)
 	if err != nil {
 		return err
 	}
+
+	t.state.DataplaneTaskId = taskID
 
 	err = execCtx.SaveState(ctx)
 	if err != nil {

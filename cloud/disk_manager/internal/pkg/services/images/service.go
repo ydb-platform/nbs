@@ -58,7 +58,6 @@ func (s *service) CreateImage(
 				DstImageId:    req.DstImageId,
 				FolderId:      req.FolderId,
 				DiskPools:     pools,
-				UseS3:         useS3,
 			},
 		)
 	case *disk_manager.CreateImageRequest_SrcImageId:
@@ -78,7 +77,6 @@ func (s *service) CreateImage(
 				DstImageId: req.DstImageId,
 				FolderId:   req.FolderId,
 				DiskPools:  pools,
-				UseS3:      useS3,
 			},
 		)
 	case *disk_manager.CreateImageRequest_SrcUrl:

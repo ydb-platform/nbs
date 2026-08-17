@@ -8,7 +8,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -22,12 +21,11 @@ type createBaseDiskTask struct {
 	cloudID  string
 	folderID string
 
-	scheduler       tasks.Scheduler
-	storage         storage.Storage
-	nbsFactory      nbs.Factory
-	resourceStorage resources.Storage
-	request         *protos.CreateBaseDiskRequest
-	state           *protos.CreateBaseDiskTaskState
+	scheduler  tasks.Scheduler
+	storage    storage.Storage
+	nbsFactory nbs.Factory
+	request    *protos.CreateBaseDiskRequest
+	state      *protos.CreateBaseDiskTaskState
 }
 
 func (t *createBaseDiskTask) Save() ([]byte, error) {
@@ -105,51 +103,23 @@ func (t *createBaseDiskTask) Run(
 						DstDisk:                 t.request.BaseDisk,
 					},
 				)
-				if err != nil {
-					return err
-				}
 			} else {
-				image, err := t.resourceStorage.GetImageMeta(
-					ctx,
-					t.request.SrcImageId,
+				taskID, err = t.scheduler.ScheduleZonalTask(
+					headers.SetIncomingIdempotencyKey(
+						ctx,
+						execCtx.GetTaskID(),
+					),
+					"dataplane.TransferFromSnapshotToDisk",
+					"",
+					zoneID,
+					&dataplane_protos.TransferFromSnapshotToDiskRequest{
+						SrcSnapshotId: t.request.SrcImageId,
+						DstDisk:       t.request.BaseDisk,
+					},
 				)
-				if err != nil {
-					return err
-				}
-
-				// Old images without metadata we consider as not dataplane.
-				if image != nil && image.UseDataplaneTasks {
-					taskID, err = t.scheduler.ScheduleZonalTask(
-						headers.SetIncomingIdempotencyKey(
-							ctx,
-							execCtx.GetTaskID(),
-						),
-						"dataplane.TransferFromSnapshotToDisk",
-						"",
-						zoneID,
-						&dataplane_protos.TransferFromSnapshotToDiskRequest{
-							SrcSnapshotId: t.request.SrcImageId,
-							DstDisk:       t.request.BaseDisk,
-						},
-					)
-				} else {
-					taskID, err = t.scheduler.ScheduleZonalTask(
-						headers.SetIncomingIdempotencyKey(
-							ctx,
-							execCtx.GetTaskID(),
-						),
-						"dataplane.TransferFromLegacySnapshotToDisk",
-						"",
-						zoneID,
-						&dataplane_protos.TransferFromSnapshotToDiskRequest{
-							SrcSnapshotId: t.request.SrcImageId,
-							DstDisk:       t.request.BaseDisk,
-						},
-					)
-				}
-				if err != nil {
-					return err
-				}
+			}
+			if err != nil {
+				return err
 			}
 
 			_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)

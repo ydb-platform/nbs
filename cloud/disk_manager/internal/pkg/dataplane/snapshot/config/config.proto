@@ -11,7 +11,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 message SnapshotConfig {
     required persistence.PersistenceConfig PersistenceConfig = 1;
     optional string StorageFolder = 2 [default = "snapshot"];
-    optional string LegacyStorageFolder = 3 [default = "hardware/default/snapshot"];
+    reserved 3;
     optional uint64 ChunkBlobsTableShardCount = 4 [default = 10000];
     optional uint64 ChunkMapTableShardCount = 5 [default = 1000];
     optional string ExternalBlobsMediaKind = 6 [default = "rotencrypted"];
