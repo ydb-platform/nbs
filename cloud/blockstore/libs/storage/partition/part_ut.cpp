@@ -15898,8 +15898,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui64 truePositives = 0;
         ui64 memorySize = 0;
 
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
                     TEvStatsService::EvVolumePartCounters)
@@ -15914,8 +15914,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     memorySize = msg->DiskCounters->Simple
                                      .MixedBlocksFilterMemSize.Value;
                 }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         TPartitionClient partition(*runtime);
