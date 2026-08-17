@@ -514,6 +514,11 @@ private:
 
     void ClearDirectoryCache();
 
+    // A non-empty queue is drained back to back: AsyncHandleOperationPeriod is
+    // an idle poll interval, not a rate limit. Draining fast matters because a
+    // queued ConfirmCreateHandle is what recovers a handle lost by a tablet
+    // restart, and the tablet keeps such a handle recoverable only for
+    // UnconfirmedCreateHandleGraceTimeout.
     void ScheduleProcessHandleOpsQueue();
     void ProcessHandleOpsQueue();
 

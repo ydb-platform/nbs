@@ -40,7 +40,9 @@ message TFileSystemConfig
     // Async processing of destroy handle requests.
     optional bool AsyncDestroyHandleEnabled = 11;
 
-    // Period of processing create/destroy handle requests.
+    // Idle poll period of the create/destroy handle request queue. A
+    // non-empty queue is drained back to back, so this is not a rate
+    // limit.
     optional uint32 AsyncHandleOperationPeriod = 12;
 
     // Enable O_DIRECT when working with files

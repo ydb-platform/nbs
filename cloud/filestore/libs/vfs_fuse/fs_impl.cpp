@@ -100,8 +100,18 @@ void TFileSystem::Reset()
 void TFileSystem::ScheduleProcessHandleOpsQueue()
 {
     if (HandleOpsQueue) {
+        // HandleOpsQueueLock is recursive, so this works both for callers that
+        // already hold it and for those that do not.
+        bool queueIsEmpty = false;
+        with_lock (HandleOpsQueueLock) {
+            queueIsEmpty = HandleOpsQueue->Empty();
+        }
+
+        const auto delay = queueIsEmpty
+            ? Config->GetAsyncHandleOperationPeriod()
+            : TDuration::Zero();
         Scheduler->Schedule(
-            Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
+            Timer->Now() + delay,
             [=, ptr = weak_from_this()]()
             {
                 if (auto self = ptr.lock()) {
