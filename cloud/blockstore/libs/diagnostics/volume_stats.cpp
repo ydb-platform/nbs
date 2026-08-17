@@ -1148,7 +1148,7 @@ private:
                 ->GetSubgroup("folder", volumeConfig.GetFolderId())
                 ->GetSubgroup(
                     "type",
-                    MediaKindToComputeType(volumeConfig.GetStorageMediaKind()));
+                    MediaKindToString(volumeConfig.GetStorageMediaKind()));
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 
