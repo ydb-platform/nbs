@@ -31,6 +31,8 @@ A checkpoint can be created either with or without data. One can delete data for
 
 If the checkpoint has data, it forbids to delete the blobs needed for reading from this checkpoint. Namely, some blob commit id corresponds to each checkpoint with data, and a garbage collection barrier for this commit id is set up. If we don't read from the checkpoint anymore, we should delete its data -- otherwise garbage collection will be stuck.
 
+See [Checkpoint-aware cleanup](checkpoint-aware-cleanup.md) for how cleanup can still delete overwritten blobs that no live checkpoint needs.
+
 Some usecases of checkpoints with/without data:
 - Incremental snapshots: When we create a snapshot, we transfer the diff between two checkpoints. For this purpose we need the data of the high checkpoint but we don't need the data of the low checkpoint. When we create the next snapshot, the high checkpoint becomes the lower one, so we don't need its data anymore. So checkpoints for incremental snapshots are created with data, but then their data is deleted.
 - Relocation: We don't need checkpoint data for relocation, so checkpoints for relocation are created without data.
