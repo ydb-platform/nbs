@@ -125,6 +125,20 @@ struct TReferenceImplementation
         return top;
     }
 
+    TCompactionCounter GetTopByUsedBlocks() const
+    {
+        TCompactionCounter top(0, {});
+        ui16 maxUsedBlocks = 0;
+
+        for (const auto& [rangeStart, stat] : Stats) {
+            if (stat.UsedBlockCount > maxUsedBlocks) {
+                maxUsedBlocks = stat.UsedBlockCount;
+                top = {rangeStart, stat};
+            }
+        }
+        return top;
+    }
+
     TVector<TCompactionCounter> GetTop(size_t count) const
     {
         TVector<TCompactionCounter> result(Reserve(Stats.size()));
@@ -457,6 +471,76 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldTrackTopByUsedBlocks)
+    {
+        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));
+        const auto blobCount = 3;
+        for (size_t i = 1; i <= 100; ++i) {
+            map.Update(GetGroupIndex(i), blobCount, i * 10, i * 5, 0, false);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(100),
+            map.GetTopByUsedBlocks().BlockIndex
+        );
+
+        map.Update(GetGroupIndex(50), blobCount, 1010, 505, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(50),
+            map.GetTopByUsedBlocks().BlockIndex
+        );
+
+        map.Update(GetGroupIndex(0), blobCount, 600, 600, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(0),
+            map.GetTopByUsedBlocks().BlockIndex
+        );
+
+        map.Update(GetGroupIndex(0), 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(50),
+            map.GetTopByUsedBlocks().BlockIndex
+        );
+
+        map.Update(GetGroupIndex(50), 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(100),
+            map.GetTopByUsedBlocks().BlockIndex
+        );
+
+        map.Update(GetGroupIndex(100), 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(99),
+            map.GetTopByUsedBlocks().BlockIndex
+        );
+
+        map.Update(
+            GetGroupIndex(10) + RangeSize,
+            blobCount,
+            515,
+            515,
+            0,
+            false
+        );
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(10) + RangeSize,
+            map.GetTopByUsedBlocks().BlockIndex
+        );
+
+        map.Update(
+            GetGroupIndex(10) + RangeSize,
+            blobCount,
+            1,
+            1,
+            0,
+            false
+        );
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetGroupIndex(99),
+            map.GetTopByUsedBlocks().BlockIndex
+        );
+    }
+
     Y_UNIT_TEST(ShouldBeEmptyAfterClear)
     {
         TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));
@@ -607,6 +691,9 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 map.GetTopByGarbageIgnoringZeroed().Stat.GarbageIgnoringZeroed(),
                 ref.GetTopByGarbageIgnoringZeroed().Stat.GarbageIgnoringZeroed());
+            UNIT_ASSERT_VALUES_EQUAL(
+                map.GetTopByUsedBlocks().Stat.UsedBlockCount,
+                ref.GetTopByUsedBlocks().Stat.UsedBlockCount);
 
             {
                 const auto mapTops = map.GetTop(3);

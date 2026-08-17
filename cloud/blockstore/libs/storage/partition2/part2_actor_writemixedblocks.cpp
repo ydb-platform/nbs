@@ -295,9 +295,9 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
         std::move(blobs),
         TVector<TAddMergedBlob>(),
         TVector<TAddFreshBlob>(),
-        TVector<TAddL0Blob>(),
-        ADD_WRITE_RESULT
-    );
+        TVector<TAddLevelIndexBlob>(),
+        TVector<TAddLevelIndexBlob>(),
+        ADD_WRITE_RESULT);
 
     NCloud::Send(
         ctx,

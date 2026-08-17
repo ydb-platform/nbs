@@ -88,19 +88,17 @@ void TPartitionThreadSafeState::WaitCommitForCompaction(
     std::unique_ptr<ITransactionBase> tx,
     ui64 commitId)
 {
-    with_lock (StateLock) {
-        ui64 minCommitId = CommitQueue.GetMinCommitId();
-        Y_ABORT_UNLESS(minCommitId <= commitId);
+    TVector<std::unique_ptr<ITransactionBase>> txs;
 
-        if (minCommitId != commitId) {
-            // delay execution until all previous commits completed
-            CommitQueue.Enqueue(std::move(tx), commitId);
-            return;
+    with_lock (StateLock) {
+        auto item = ::NCloud::NBlockStore::NStorage::WaitForCommitsCompleted(
+            CommitQueue,
+            commitId,
+            std::move(tx));
+        if (item) {
+            txs.push_back(std::move(*item));
         }
     }
-
-    TVector<std::unique_ptr<ITransactionBase>> txs;
-    txs.push_back(std::move(tx));
 
     ExecuteTxs(ctx, std::move(txs));
 }
@@ -109,17 +107,17 @@ void TPartitionThreadSafeState::WaitFreshWritesToComplete(
     TCommitQueueCallback callback,
     ui64 commitId)
 {
+    std::optional<TCommitQueueCallback> maybeCallback;
     with_lock (StateLock) {
-        ui64 minCommitId = FreshWritesCommitQueue.GetMinCommitId();
-
-        if (minCommitId <= commitId) {
-            // delay execution until all previous commits completed
-            FreshWritesCommitQueue.Enqueue(std::move(callback), commitId);
-            return;
-        }
+        maybeCallback =
+            ::NCloud::NBlockStore::NStorage::WaitForCommitsCompleted(
+                FreshWritesCommitQueue,
+                commitId,
+                std::move(callback));
     }
-
-    callback(TActorContext::ActorSystem());
+    if (maybeCallback) {
+        (*maybeCallback)(TActorContext::ActorSystem());
+    }
 }
 
 void TPartitionThreadSafeState::WaitCommitForCheckpoint(
@@ -238,33 +236,11 @@ void TPartitionThreadSafeState::ProcessCommitQueueImpl(
     TVector<std::unique_ptr<ITransactionBase>>& txs,
     TVector<TCommitQueueCallback>& callbacks)
 {
-    ui64 minCommitId = CommitQueue.GetMinCommitId();
+    ::NCloud::NBlockStore::NStorage::ProcessCommitQueue(CommitQueue, txs);
 
-    while (!CommitQueue.Empty()) {
-        ui64 commitId = CommitQueue.Peek();
-        Y_ABORT_UNLESS(minCommitId <= commitId);
-
-        if (minCommitId == commitId) {
-            // start execution
-            txs.push_back(CommitQueue.Dequeue());
-        } else {
-            // delay execution until all previous commits completed
-            break;
-        }
-    }
-
-    ui64 minFreshWritesCommitId = FreshWritesCommitQueue.GetMinCommitId();
-    while (!FreshWritesCommitQueue.Empty()) {
-        ui64 commitId = FreshWritesCommitQueue.Peek();
-
-        if (minFreshWritesCommitId > commitId) {
-            // start execution
-            callbacks.push_back(FreshWritesCommitQueue.Dequeue());
-        } else {
-            // delay execution until all previous commits completed
-            break;
-        }
-    }
+    ::NCloud::NBlockStore::NStorage::ProcessCommitQueue(
+        FreshWritesCommitQueue,
+        callbacks);
 
     // Since create checkpoint operation waits for the last commit to
     // complete here we force checkpoints queue to try to proceed to the

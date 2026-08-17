@@ -249,6 +249,7 @@ private:
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
+    void EnqueueLevelCompactionIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
     void UpdateActorStats(const NActors::TActorContext& ctx);
@@ -812,6 +813,10 @@ private:
 
     void HandleResumeFlush(
         const TEvPartitionPrivate::TEvResumeFlush::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePromoteCompactionCompleted(
+        const TEvPartitionPrivate::TEvPromoteCompactionCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

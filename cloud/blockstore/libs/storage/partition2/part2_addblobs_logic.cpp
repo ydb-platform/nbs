@@ -157,16 +157,16 @@ public:
         }
 
         for (const auto& blob: Args.L0Blobs) {
-            ProcessNewBlob(actorSystem, db, blob);
+            ProcessNewBlob</*TLevel=*/0>(actorSystem, db, blob);
 
-            auto& cm = [&]() -> TLevelIndexCompactionMap&
-            {
-                if (Args.FromLevel == 0) {
-                    return State.GetCompactionMapL0();
-                }
-                return State.GetCompactionMapL1();
-            }();
+            auto& cm = State.GetCompactionMapL0();
+            cm.BlobAdded(blob.Blocks, Args.CommitId);
+        }
 
+        for (const auto& blob: Args.L1Blobs) {
+            ProcessNewBlob</*TLevel=*/1>(actorSystem, db, blob);
+
+            auto& cm = State.GetCompactionMapL1();
             cm.BlobAdded(blob.Blocks, Args.CommitId);
         }
 
@@ -176,7 +176,15 @@ public:
         }
 
         UpdateCompactionMap(db);
-        State.UpdateTrimFreshLogToCommitIdInMeta();
+
+        if (Args.Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
+            auto trimFreshLogToCommitId =
+                State.AccessMeta().GetTrimFreshLogToCommitId();
+            State.AccessMeta().SetTrimFreshLogToCommitId(
+                Max(trimFreshLogToCommitId, Args.CommitId));
+        } else {
+            State.UpdateTrimFreshLogToCommitIdInMeta();
+        }
 
         db.WriteMeta(State.GetMeta());
     }
@@ -423,26 +431,35 @@ private:
         }
     }
 
+    template <int TLevel>
     void ProcessNewBlob(
         const TActorSystem* actorSystem,
         TPartitionDatabase& db,
-        const TAddL0Blob& blob)
+        const TAddLevelIndexBlob& blob)
     {
+        static_assert(TLevel == 0 || TLevel == 1, "Invalid level");
+
         NProto::TBlobMeta blobMeta;
 
-        auto* mixedBlocks = blobMeta.MutableMixedBlocks();
-        mixedBlocks->MutableBlocks()->Reserve(blob.Blocks.size());
-        mixedBlocks->MutableCommitIds()->Reserve(blob.Blocks.size());
+        NProto::TBlobMeta::TMixedBlocks* levelBlocks;
+        if constexpr (TLevel == 0) {
+            levelBlocks = blobMeta.MutableL0Blocks();
+        } else {
+            levelBlocks = blobMeta.MutableL1Blocks();
+        }
+
+        levelBlocks->MutableBlocks()->Reserve(blob.Blocks.size());
+        levelBlocks->MutableCommitIds()->Reserve(blob.Blocks.size());
 
         for (const auto& block: blob.Blocks) {
             STORAGE_VERIFY(
-                mixedBlocks->BlocksSize() == 0 ||
-                    mixedBlocks->GetBlocks(mixedBlocks->BlocksSize() - 1) <
+                levelBlocks->BlocksSize() == 0 ||
+                    levelBlocks->GetBlocks(levelBlocks->BlocksSize() - 1) <
                         block.BlockIndex,
                 TWellKnownEntityTypes::TABLET,
                 TabletId)
-            mixedBlocks->AddBlocks(block.BlockIndex);
-            mixedBlocks->AddCommitIds(block.CommitId);
+            levelBlocks->AddBlocks(block.BlockIndex);
+            levelBlocks->AddCommitIds(block.CommitId);
         }
 
         for (ui32 checksum: blob.Checksums) {
@@ -463,15 +480,23 @@ private:
                 DescribeRange(blockRange).c_str());
         }
 
-        db.WriteL0Blob(blob.BlobId, blockRange, blobMeta);
+        if constexpr (TLevel == 0) {
+            db.WriteL0Blob(blob.BlobId, blockRange, blobMeta);
+        } else {
+            db.WriteL1Blob(blob.BlobId, blockRange, blobMeta);
+        }
+
+        db.WriteBlobMeta(blob.BlobId, blobMeta);
 
         if (!IsDeletionMarker(blob.BlobId)) {
             bool added = State.GetGarbageQueue().AddNewBlob(blob.BlobId);
             Y_ABORT_UNLESS(added);
         }
 
-        for (const auto& block: blob.Blocks) {
-            State.DeleteFreshBlock(block.BlockIndex, block.CommitId);
+        if constexpr (TLevel == 0) {
+            for (const auto& block: blob.Blocks) {
+                State.DeleteFreshBlock(block.BlockIndex, block.CommitId);
+            }
         }
     }
 

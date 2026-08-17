@@ -163,13 +163,10 @@ struct TMergedBlobVisitor final
     TPartialBlobId BlobId;
     bool Found = false;
 
-    bool Visit(
-        TBlockRange32 blockRange,
-        const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) override
+    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
     {
         Y_UNUSED(blockRange);
-        Y_UNUSED(skippedBlocksCount);
+        Y_UNUSED(blobId);
 
         if (blobId == BlobId) {
             Found = true;
@@ -177,6 +174,16 @@ struct TMergedBlobVisitor final
         }
 
         return true;
+    }
+
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        ui32 skippedBlocksCount) override
+    {
+        Y_UNUSED(skippedBlocksCount);
+
+        return Visit(blockRange, blobId);
     }
 
     bool Visit(

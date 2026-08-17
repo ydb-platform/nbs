@@ -599,6 +599,15 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
             Y_UNUSED(skippedBlocksCount);
             return true;
         }
+
+        bool Visit(
+            TBlockRange32 blockRange,
+            const TPartialBlobId& blobId) override
+        {
+            Y_UNUSED(blockRange);
+            Y_UNUSED(blobId);
+            return true;
+        }
     };
 
     TNoOpBlobsVisitor noOpBlobsVisitor;

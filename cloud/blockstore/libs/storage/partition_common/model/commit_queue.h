@@ -41,6 +41,17 @@ public:
     ui64 Peek() const;
 };
 
+template <typename TItem>
+std::optional<TItem> WaitForCommitsCompleted(
+    TCommitQueueImpl<TItem>& commitQueue,
+    ui64 commitId,
+    TItem item);
+
+template <typename TItem>
+void ProcessCommitQueue(
+    TCommitQueueImpl<TItem>& commitQueue,
+    TVector<TItem>& items);
+
 using TCommitQueueCallback =
     std::function<void(const NActors::TActorSystem* actorSystem)>;
 using TCommitQueue = TCommitQueueImpl<std::unique_ptr<ITransactionBase>>;

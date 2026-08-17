@@ -38,6 +38,7 @@ bool TPromoteCompactionVisitor::Visit(
     const TPartialBlobId& blobId,
     ui16 blobOffset)
 {
+    Y_ABORT_UNLESS(!IsDeletionMarker(blobId));
     auto mark = TBlockMark{
         .CommitId = commitId,
         .IndexSpecificMark =
@@ -48,8 +49,17 @@ bool TPromoteCompactionVisitor::Visit(
     return true;
 }
 
-auto TPromoteCompactionVisitor::Finish() -> TVector<TBlob>
+bool TPromoteCompactionVisitor::Visit(
+    TBlockRange32 blockRange,
+    const TPartialBlobId& blobId)
 {
+    AffectedBlobs[blobId] = blockRange;
+    return true;
+}
+
+auto TPromoteCompactionVisitor::Finish() -> TScanResult
+{
+
     TVector<TBlob> blobs;
     for (auto& [targetRangeIndex, blocksForRange]: BlocksPerRange) {
         Y_UNUSED(targetRangeIndex);
@@ -96,7 +106,7 @@ auto TPromoteCompactionVisitor::Finish() -> TVector<TBlob>
         }
     }
 
-    return blobs;
+    return {.ResultedBlobs = std::move(blobs), .AffectedBlobs = std::move(AffectedBlobs)};
 }
 
 auto TPromoteCompactionVisitor::CollectReadBlobRequests(TVector<TBlob>& blobs)
@@ -135,7 +145,7 @@ auto TPromoteCompactionVisitor::CollectReadBlobRequests(TVector<TBlob>& blobs)
         requests.push_back(
             {.BlobId = blobId,
              .BlobOffsets = std::move(request.BlobOffsets),
-             .Sglist = TGuardedSgList(std::move(request.Sglist))});
+             .Sglist = std::move(request.Sglist)});
     }
 
     return requests;

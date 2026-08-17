@@ -75,11 +75,11 @@ void FillRequest(
     TPromoteCompactionVisitor::TReadBlobRequest& request,
     TStringBuf content)
 {
-    auto guard = request.Sglist.Acquire();
-    UNIT_ASSERT(guard);
     UNIT_ASSERT_VALUES_EQUAL(
         content.size(),
-        SgListCopy(TBlockDataRef(content.data(), content.size()), guard.Get()));
+        SgListCopy(
+            TBlockDataRef(content.data(), content.size()),
+            request.Sglist));
 }
 
 }   // namespace
@@ -96,7 +96,7 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
             /*maxBlocksInBlob*/ 2,
             /*allowBlockDuplicates*/ false);
 
-        auto blobs = visitor.Finish();
+        auto blobs = visitor.Finish().ResultedBlobs;
         UNIT_ASSERT(blobs.empty());
         UNIT_ASSERT(
             TPromoteCompactionVisitor::CollectReadBlobRequests(blobs).empty());
@@ -104,9 +104,9 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
 
     Y_UNIT_TEST(ShouldOrderBlocksAndSplitBlobsAtRangeAndSizeBoundaries)
     {
-        const TPartialBlobId firstSourceBlobId(10, 1);
-        const TPartialBlobId secondSourceBlobId(20, 1);
-        const TPartialBlobId freshBlobId(30, 1);
+        const TPartialBlobId firstSourceBlobId(10, Max<ui64>());
+        const TPartialBlobId secondSourceBlobId(20, Max<ui64>());
+        const TPartialBlobId freshBlobId(30, Max<ui64>());
 
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ 4,
@@ -120,7 +120,7 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         UNIT_ASSERT(VisitFreshBlock(visitor, 1, 11, {}));
         UNIT_ASSERT(visitor.Visit(4, 40, secondSourceBlobId, 8));
 
-        auto blobs = visitor.Finish();
+        auto blobs = visitor.Finish().ResultedBlobs;
         UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
 
         UNIT_ASSERT_VALUES_EQUAL(2, blobs[0].BlockIndexToMark.size());
@@ -147,11 +147,11 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
 
     Y_UNIT_TEST(ShouldKeepMarkWithNewestCommitId)
     {
-        const TPartialBlobId blobId1(1, 1);
-        const TPartialBlobId blobId2(2, 2);
-        const TPartialBlobId blobId3(3, 3);
-        const TPartialBlobId blobId4(4, 4);
-        const TPartialBlobId blobId5(5, 5);
+        const TPartialBlobId blobId1(1, Max<ui64>());
+        const TPartialBlobId blobId2(2, Max<ui64>());
+        const TPartialBlobId blobId3(3, Max<ui64>());
+        const TPartialBlobId blobId4(4, Max<ui64>());
+        const TPartialBlobId blobId5(5, Max<ui64>());
 
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ 100,
@@ -177,7 +177,7 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         UNIT_ASSERT(VisitFreshBlock(visitor, 5, 10, "ffff"));
         UNIT_ASSERT(visitor.Visit(5, 10, blobId5, 6));
 
-        auto blobs = visitor.Finish();
+        auto blobs = visitor.Finish().ResultedBlobs;
         UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
         UNIT_ASSERT_VALUES_EQUAL(6, blobs[0].BlockIndexToMark.size());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -195,8 +195,8 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
 
     Y_UNIT_TEST(ShouldKeepAllMarksWhenBlockDuplicatesAreAllowed)
     {
-        const TPartialBlobId blobId1(1, 1);
-        const TPartialBlobId blobId2(2, 2);
+        const TPartialBlobId blobId1(1, Max<ui64>());
+        const TPartialBlobId blobId2(2, Max<ui64>());
 
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ 100,
@@ -208,7 +208,7 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         UNIT_ASSERT(VisitFreshBlock(visitor, 0, 10, "aaaa"));
         UNIT_ASSERT(visitor.Visit(0, 11, blobId1, 1));
 
-        auto blobs = visitor.Finish();
+        auto blobs = visitor.Finish().ResultedBlobs;
         UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
         UNIT_ASSERT_VALUES_EQUAL(3, blobs[0].BlockIndexToMark.size());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -222,8 +222,8 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
 
     Y_UNIT_TEST(ShouldCollectReadRequestsBySourceBlob)
     {
-        const TPartialBlobId firstSourceBlobId(10, 1);
-        const TPartialBlobId secondSourceBlobId(20, 1);
+        const TPartialBlobId firstSourceBlobId(10, Max<ui64>());
+        const TPartialBlobId secondSourceBlobId(20, Max<ui64>());
 
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ 3,
@@ -236,7 +236,7 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         UNIT_ASSERT(visitor.Visit(0, 10, firstSourceBlobId, 3));
         UNIT_ASSERT(VisitFreshBlock(visitor, 2, 12, "F222"));
 
-        auto blobs = visitor.Finish();
+        auto blobs = visitor.Finish().ResultedBlobs;
         UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
 
         auto requests =

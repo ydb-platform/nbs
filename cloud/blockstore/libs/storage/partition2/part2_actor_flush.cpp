@@ -226,7 +226,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
 
 void TFlushActor::AddBlobs(const TActorContext& ctx)
 {
-    TVector<TAddL0Blob> l0Blobs(Reserve(Requests.size()));
+    TVector<TAddLevelIndexBlob> l0Blobs(Reserve(Requests.size()));
 
     for (auto& req: Requests) {
         BlocksCount += req.Blocks.size();
@@ -244,6 +244,7 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
         TVector<TAddMergedBlob>(),
         TVector<TAddFreshBlob>(),
         std::move(l0Blobs),
+        TVector<TAddLevelIndexBlob>(),   // l1Blobs
         ADD_FLUSH_RESULT);
 
     NCloud::Send(
@@ -562,6 +563,7 @@ void TPartitionActor::HandleFlush(
     if (!Config->GetFlushToDevNull()) {
         State->AccessCommitQueue()->AcquireBarrier(commitId);
         State->GetGarbageQueue().AcquireBarrier(commitId);
+        State->AccessL0CommitQueue().AcquireBarrier(commitId);
     }
 
     SharedState->WaitFreshWritesToComplete(
@@ -596,14 +598,14 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
     TVector<TPromoteCompactionVisitor::TBlob> blobs;
     {
         TPromoteCompactionVisitor visitor(
-            State->GetMeta().GetL0RangeSize() / State->GetBlockSize(),
+            State->GetMeta().GetL0RangeSize(),
             State->GetBlockSize(),
             State->GetMaxBlocksInBlob(),
             /*allowBlockDuplicates*/ true);
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
-        blobs = visitor.Finish();
+        blobs = visitor.Finish().ResultedBlobs;
     }
 
     STORAGE_VERIFY(
@@ -630,6 +632,7 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
         if (!Config->GetFlushToDevNull()) {
             State->AccessCommitQueue()->ReleaseBarrier(commitId);
             State->GetGarbageQueue().ReleaseBarrier(commitId);
+            State->AccessL0CommitQueue().ReleaseBarrier(commitId);
             ProcessCommitQueue(ctx);
         }
 
@@ -769,6 +772,7 @@ void TPartitionActor::HandleFlushCompleted(
 
     State->AccessCommitQueue()->ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
+    State->AccessL0CommitQueue().ReleaseBarrier(commitId);
 
     if (!HasError(msg->Error)) {
         for (const auto& i: msg->FlushedCommitIdsFromChannel) {
@@ -837,6 +841,7 @@ void TPartitionActor::HandleFlushCompleted(
     EnqueueFlushIfNeeded(ctx);
     EnqueueCleanupIfNeeded(ctx);
     ProcessCommitQueue(ctx);
+    EnqueueLevelCompactionIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

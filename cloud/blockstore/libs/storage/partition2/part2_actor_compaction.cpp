@@ -915,7 +915,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         std::move(mixedBlobs),
         std::move(mergedBlobs),
         TVector<TAddFreshBlob>(),
-        TVector<TAddL0Blob>(),
+        TVector<TAddLevelIndexBlob>(),
+        TVector<TAddLevelIndexBlob>(),
         ADD_COMPACTION_RESULT,
         std::move(affectedBlobs),
         std::move(affectedBlocks),
@@ -2013,6 +2014,13 @@ void TPartitionActor::HandleCompaction(
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
 {
     SharedState->ProcessCommitQueue(ctx);
+    TVector<std::unique_ptr<ITransactionBase>> txs;
+    ::NCloud::NBlockStore::NStorage::ProcessCommitQueue(
+        State->AccessL0CommitQueue(),
+        txs);
+    for (auto& tx: txs) {
+        ExecuteTx(ctx, std::move(tx));
+    }
 }
 
 void TPartitionActor::HandleCompactionCompleted(

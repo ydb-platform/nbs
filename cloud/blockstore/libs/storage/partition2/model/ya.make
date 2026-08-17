@@ -10,11 +10,11 @@ SRCS(
     blob_to_confirm.cpp
     block_mask.cpp
     cleanup_queue.cpp
-    commit_queue.cpp
     compaction_map_load_state.cpp
     flush_blocks_visitor.cpp
     fresh_blob.cpp
     garbage_queue.cpp
+    level_index_compaction_map.cpp
     mixed_index_cache.cpp
     promote_compaction_visitor.cpp
 )

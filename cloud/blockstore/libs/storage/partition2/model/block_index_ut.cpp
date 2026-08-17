@@ -1,4 +1,4 @@
-#include "block_index.h"
+#include <cloud/blockstore/libs/storage/partition_common/model/block_index.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
