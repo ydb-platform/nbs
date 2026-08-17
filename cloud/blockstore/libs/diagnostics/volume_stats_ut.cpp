@@ -226,7 +226,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto volume3 = volumeStats->GetVolumeInfo("test2", "client3");
 
         auto volume1Counters =
-            getCounters("test1", "instance1", "network-ssd");
+            getCounters("test1", "instance1", "ssd");
         auto volume1WriteCount = volume1Counters
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("Count");
@@ -235,13 +235,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetCounter("Count");
 
         auto volume2Counters =
-            getCounters("test2", "instance1", "network-hdd");
+            getCounters("test2", "instance1", "hdd");
         auto volume2WriteCount = volume2Counters
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("Count");
 
         auto volume3Counters =
-            getCounters("test2", "instance2", "network-hdd");
+            getCounters("test2", "instance2", "hdd");
         auto volume3WriteCount = volume3Counters
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("Count");
@@ -506,9 +506,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto volume2 = volumeStats->GetVolumeInfo("test2", "client2");
 
         auto [volume1Errors, volume1Silent] =
-            getCounters("test1", "instance1", "network-ssd");
+            getCounters("test1", "instance1", "ssd");
         auto [volume2Errors, volume2Silent] =
-            getCounters("test2", "instance2", "network-hdd");
+            getCounters("test2", "instance2", "hdd");
 
         UNIT_ASSERT_VALUES_EQUAL(0, volume1Errors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, volume1Silent->Val());
@@ -621,22 +621,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             mount(
                 "local",
                 NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL,
-                "unknown");
+                "ssd_local");
         auto [nonreplStats, nonreplErrors, nonreplHwProblems] =
             mount(
                 "nonrepl",
                 NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                "network-ssd-nonreplicated");
+                "ssd_nonrepl");
         auto [hddNonreplStats, hddNonreplErrors, hddNonreplHwProblems] =
             mount(
                 "hdd_nonrepl",
                 NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
-                "network-hdd-nonreplicated");
+                "hdd_nonrepl");
         auto [ssdStats, ssdErrors, ssdHwProblems] =
             mount(
                 "ssd",
                 NCloud::NProto::STORAGE_MEDIA_SSD,
-                "network-ssd");
+                "ssd");
 
         UNIT_ASSERT_VALUES_EQUAL(0, localErrors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, localHwProblems->Val());
@@ -764,12 +764,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             mount(
                 "mirror2",
                 NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
-                "network-ssd-mirror2");
+                "ssd_mirror2");
         auto [mirror3Stats, mirror3Errors, mirror3HwProblems] =
             mount(
                 "mirror3",
                 NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
-                "network-ssd-mirror3");
+                "ssd_mirror3");
 
         shoot(
             mirror2Stats,
@@ -1142,7 +1142,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("instance", "instance")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("type", "network-ssd")
+                ->GetSubgroup("type", "ssd")
                 ->GetCounter("HasDowntime")
                 ->Val());
 
@@ -1162,7 +1162,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("instance", "instance")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("type", "network-ssd")
+                ->GetSubgroup("type", "ssd")
                 ->GetCounter("HasDowntime")
                 ->Val());
     }

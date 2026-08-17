@@ -92,7 +92,7 @@ void CheckRetriableError(
             monitoring,
             silenceRetriableErrors,
             false /*not a hw problem*/,
-            "network-hdd");
+            "hdd");
 
     UNIT_ASSERT_VALUES_EQUAL(
         expected,
@@ -198,7 +198,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "cloud")
             ->GetSubgroup("folder", "folder")
-            ->GetSubgroup("type", "network-hdd")
+            ->GetSubgroup("type", "hdd")
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("MaxTime")->Val());
     }
@@ -324,7 +324,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "cloud")
             ->GetSubgroup("folder", "folder")
-            ->GetSubgroup("type", "network-hdd")
+            ->GetSubgroup("type", "hdd")
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("MaxTime")->Val());
     }
@@ -376,14 +376,14 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
     {
         DoTestShouldCountHwProblems(
             NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED,
-            "network-ssd-nonreplicated");
+            "ssd_nonrepl");
     }
 
     Y_UNIT_TEST(ShouldCountHwProblemsHDD)
     {
         DoTestShouldCountHwProblems(
             NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED,
-            "network-hdd-nonreplicated");
+            "hdd_nonrepl");
     }
 
     Y_UNIT_TEST(ShouldNotReportErrorsForCellRequests)
