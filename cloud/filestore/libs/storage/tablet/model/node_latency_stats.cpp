@@ -1,4 +1,5 @@
 #include "node_latency_stats.h"
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
@@ -63,7 +64,10 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
         static_cast<double>(stats.TotalLatencyUs) / stats.RequestCount;
     stats.LastAccessed = now;
 
-    Ranking.InsertOrUpdate(std::move(stats));
+    if (!Ranking.InsertOrUpdate(std::move(stats))) {
+        ReportDiagnosticStatsInsertFailed(
+            "Failed to insert latency statistics into ranking");
+    };
 }
 
 TVector<TNodeLatencyStats> TNodeLatencyStatsTracker::GetLatencyStats(

@@ -1,4 +1,5 @@
 #include "node_access_stats.h"
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -56,8 +57,9 @@ void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
     ++stats.RequestCount;
     stats.LastAccessed = now;
 
-    Ranking.InsertOrUpdate(std::move(stats));
-}
+    if(!Ranking.InsertOrUpdate(std::move(stats))) {
+        ReportDiagnosticStatsInsertFailed("Failed to insert access statistics into ranking");
+    };}
 
 TVector<TNodeAccessStats> TNodeAccessStatsTracker::GetStats(
     TInstant now,

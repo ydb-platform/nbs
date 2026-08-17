@@ -102,7 +102,8 @@ namespace NCloud::NFileStore{
     xxx(ListNodesInternalFailedToAddNodeRef)                                   \
     xxx(InMemoryIndexStateNotInitialized)                                      \
     xxx(WriteDataRequestWithBufferAndPayload)                                  \
-// FILESTORE_IMPOSSIBLE_EVENTS
+    xxx(DiagnosticStatsInsertFailed)                                           \
+    // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
