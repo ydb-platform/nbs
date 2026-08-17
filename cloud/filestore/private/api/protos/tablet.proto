@@ -214,6 +214,11 @@ message TStorageStats
 
     // shard stats
     repeated TShardStats ShardStats = 6001;
+
+    // recent node request stats
+    repeated TNodeStats NodeStats = 7001;
+
+    repeated TNodeLatencyStats LatencyStats = 8001;
 }
 
 enum EStatsRequestMode
