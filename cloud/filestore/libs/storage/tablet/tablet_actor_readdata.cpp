@@ -872,7 +872,11 @@ bool TIndexTabletActor::ValidateTx_ReadData(
         args.CommitId = GetCurrentCommitId();
     } else {
         auto* handle = FindHandle(args.Handle);
-        if (!handle || handle->Session != session) {
+        if (!handle) {
+            args.Error = ErrorHandleNotFound(ctx, args.Handle);
+            return false;
+        }
+        if (handle->Session != session) {
             args.Error = ErrorInvalidHandle(args.Handle);
             return false;
         }
