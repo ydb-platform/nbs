@@ -52,6 +52,10 @@ concurrency:
 
 jobs:
   check-running-allowed:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.stack == null ||
+      github.event.pull_request.stack.base.ref == github.event.pull_request.base.ref
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.allow-local.outputs.result || steps.check-ownership-membership.outputs.result }}
