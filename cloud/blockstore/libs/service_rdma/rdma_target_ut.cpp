@@ -247,6 +247,56 @@ Y_UNIT_TEST_SUITE(TRequestHandlerTest)
 
         env.Target->Stop();
     }
+
+    Y_UNIT_TEST(ShouldForceRemoteBindingForMountVolume)
+    {
+        auto service = std::make_shared<TTestService>();
+
+        bool handlerCalled = false;
+        service->MountVolumeHandler =
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            handlerCalled = true;
+            UNIT_ASSERT(request->GetForceRemoteBinding());
+            UNIT_ASSERT(
+                request->GetVolumeMountMode() ==
+                NProto::VOLUME_MOUNT_LOCAL);
+            return NThreading::MakeFuture(NProto::TMountVolumeResponse{});
+        };
+
+        auto env = CreateTestEnv(service);
+        auto handler = env.GetHandler();
+        auto endpoint = env.GetEndpoint();
+
+        NProto::TMountVolumeRequest request;
+        request.SetVolumeMountMode(NProto::VOLUME_MOUNT_LOCAL);
+
+        const size_t inSize =
+            NCloud::NStorage::NRdma::TProtoMessageSerializer::MessageByteSize(
+                request,
+                0);
+        TString inBuf(inSize, 0);
+        NCloud::NStorage::NRdma::TProtoMessageSerializer::Serialize(
+            inBuf,
+            TBlockStoreServerProtocol::EvMountVolumeRequest,
+            0,
+            request);
+
+        TString outBuf(4_KB, 0);
+
+        auto doneFuture = endpoint->WaitDone();
+        handler->HandleRequest(
+            nullptr,
+            handler->CreateCallContext(),
+            inBuf,
+            outBuf);
+
+        doneFuture.Wait();
+
+        UNIT_ASSERT_C(handlerCalled, "MountVolume handler was not called");
+
+        env.Target->Stop();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
