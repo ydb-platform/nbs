@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"net"
 	"time"
@@ -12,11 +10,11 @@ import (
 	cells_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
@@ -29,118 +27,12 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-
-func readCertificates(
-	certs []*server_config.Cert,
-) ([]tls.Certificate, error) {
-
-	certificates := make([]tls.Certificate, 0, len(certs))
-	for _, cert := range certs {
-		certificate, err := tls.LoadX509KeyPair(
-			cert.GetCertFile(),
-			cert.GetPrivateKeyFile(),
-		)
-		if err != nil {
-			return nil, errors.NewNonRetriableErrorf(
-				"failed to load cert file %v: %w",
-				cert.CertFile,
-				err,
-			)
-		}
-
-		certificates = append(certificates, certificate)
-	}
-
-	return certificates, nil
-}
-
-func newTransportCredentials(
-	certificates []tls.Certificate,
-) credentials.TransportCredentials {
-
-	cfg := &tls.Config{
-		Certificates: certificates,
-		MinVersion:   tls.VersionTLS12,
-	}
-	// TODO: https://golang.org/doc/go1.14#crypto/tls
-	// nolint:SA1019
-	cfg.BuildNameToCertificate()
-
-	return credentials.NewTLS(cfg)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-// How often certificate check should be performed.
-const certificateValidationPeriod = 24 * time.Hour
-
-// Trigger alarm if certificate will expire one week after now.
-const certificateValidationThreshold = 7 * 24 * time.Hour
-
-func checkCertificates(
-	ctx context.Context,
-	certs []*server_config.Cert,
-	certificates []tls.Certificate,
-	registry metrics.Registry,
-) error {
-
-	type expiration struct {
-		path  string
-		after time.Time
-	}
-
-	expirations := make([]expiration, len(certificates))
-
-	for i, c := range certificates {
-		certificate, err := x509.ParseCertificate(c.Certificate[0])
-		if err != nil {
-			return err
-		}
-
-		expirations[i] = expiration{
-			path: certs[i].GetCertFile(), after: certificate.NotAfter,
-		}
-	}
-
-	go func() {
-		timer := time.NewTicker(certificateValidationPeriod)
-		defer timer.Stop()
-
-		for {
-			for _, expiration := range expirations {
-				gauge := registry.WithTags(
-					map[string]string{"path": expiration.path},
-				).Gauge(
-					"certificateValidity",
-				)
-				if time.Until(expiration.after) <= certificateValidationThreshold {
-					gauge.Set(0)
-				} else {
-					gauge.Set(1)
-				}
-			}
-
-			select {
-			case <-timer.C:
-				continue
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	return nil
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -200,7 +92,9 @@ func newGRPCServer(
 	if secure {
 		logging.Info(ctx, "Creating GRPC transport credentials")
 		certs := config.GetGrpcConfig().GetCerts()
-		certificates, err := readCertificates(certs)
+		refreshCertsPeriod, err := time.ParseDuration(
+			config.GetGrpcConfig().GetRefreshCertsPeriod(),
+		)
 		if err != nil {
 			logging.Error(
 				ctx,
@@ -210,18 +104,23 @@ func newGRPCServer(
 			return nil, err
 		}
 
-		transportCreds := newTransportCredentials(certificates)
-		serverOptions = append(serverOptions, grpc.Creds(transportCreds))
-
-		err = checkCertificates(ctx, certs, certificates, facadeMetricsRegistry)
+		tlsProvider, err := common.NewGRPCServerTLSProvider(
+			ctx,
+			certs,
+			refreshCertsPeriod,
+			facadeMetricsRegistry,
+		)
 		if err != nil {
 			logging.Error(
 				ctx,
-				"Failed to parse certificates: %v",
+				"Failed to create GRPC TLS provider: %v",
 				err,
 			)
 			return nil, err
 		}
+
+		transportCreds := tlsProvider.NewTransportCredentials()
+		serverOptions = append(serverOptions, grpc.Creds(transportCreds))
 	}
 
 	return grpc.NewServer(serverOptions...), nil
@@ -399,6 +298,7 @@ func initControlplane(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
+	nfsFactoryOptions nfs.FactoryOptions,
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
@@ -417,6 +317,7 @@ func initControlplane(
 		creds,
 		nfsClientMetricsRegistry,
 		nfsSessionMetricsRegistry,
+		nfsFactoryOptions,
 	)
 
 	poolService := pools.NewService(taskScheduler, poolStorage)

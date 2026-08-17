@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	storage_grpc "github.com/ydb-platform/nbs/cloud/storage/core/go/grpc"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	grpc_codes "google.golang.org/grpc/codes"
@@ -26,6 +27,7 @@ type ClientCredentials struct {
 	RootCertsFile      string
 	CertFile           string
 	CertPrivateKeyFile string
+	TLSProvider        TLSConfigProvider
 	AuthToken          string
 	IAMClient          TokenProvider
 }
@@ -34,7 +36,12 @@ type TokenProvider interface {
 	Token(ctx context.Context) (string, error)
 }
 
-func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, error) {
+type TLSConfigProvider = storage_grpc.TLSConfigProvider
+
+func (creds *ClientCredentials) buildTLSConfigFromFiles() (
+	*tls.Config,
+	error,
+) {
 	cfg := tls.Config{}
 
 	if creds.CertFile != "" {
@@ -61,8 +68,27 @@ func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, e
 		cfg.RootCAs = pool
 	}
 
+	return &cfg, nil
+}
+
+func (creds *ClientCredentials) GetSslChannelCredentials() ([]grpc.DialOption, error) {
+	var transportCredentials credentials.TransportCredentials
+
+	if creds.TLSProvider != nil {
+		transportCredentials = storage_grpc.NewGRPCClientTransportCredentials(
+			creds.TLSProvider,
+		)
+	} else {
+		cfg, err := creds.buildTLSConfigFromFiles()
+		if err != nil {
+			return nil, err
+		}
+
+		transportCredentials = credentials.NewTLS(cfg)
+	}
+
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(credentials.NewTLS(&cfg)),
+		grpc.WithTransportCredentials(transportCredentials),
 	}
 
 	if creds.AuthToken != "" {
