@@ -22,4 +22,13 @@ message SnapshotConfig {
     optional string ChunkBlobsS3KeyPrefix = 11 [default = "snapshot/chunks"];
     map<string, uint32> ProbeCompressionPercentage = 12;  // by codec
     optional string S3BucketId = 13;  // bucket id for controlplane operations (e.g. fetching metrics)
+    // Name of the table that stores chunk data and reference counts. Allows
+    // to switch the storage to another table, e.g. to a copy of chunk_blobs
+    // created without external blobs.
+    optional string ChunkBlobsTableName = 14 [default = "chunk_blobs"];
+    // If set, every chunk write is applied to this table as well, in the same
+    // transaction. Used during migration to a table without external blobs:
+    // the copy stays in sync with the main table while the historical data is
+    // being backfilled, so no downtime is needed to switch over.
+    optional string ChunkBlobsShadowTableName = 15;
 }

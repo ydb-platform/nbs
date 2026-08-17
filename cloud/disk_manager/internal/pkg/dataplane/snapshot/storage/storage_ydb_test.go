@@ -91,13 +91,13 @@ func readChunkBlobsFromYDB(
 		func(ctx context.Context, session *persistence.Session) error {
 			res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 				--!syntax_v1
-				pragma TablePathPrefix = "%v";
+				pragma TablePathPrefix = "%[1]v";
 				declare $chunk_ids as List<Utf8>;
 
 				select *
-				from chunk_blobs
+				from %[2]v
 				where chunk_id in $chunk_ids and referer = "";
-			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
+			`, f.db.AbsolutePath(f.config.GetStorageFolder()), f.config.GetChunkBlobsTableName()),
 				persistence.ValueParam("$chunk_ids", persistence.ListValue(values...)),
 			)
 			if err != nil {
@@ -263,14 +263,14 @@ func updateYDBBlobChecksum(f *fixture, chunkID string, checksum uint32) {
 		func(ctx context.Context, session *persistence.Session) error {
 			_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
 					--!syntax_v1
-					pragma TablePathPrefix = "%v";
+					pragma TablePathPrefix = "%[1]v";
 					declare $shard_id as Uint64;
 					declare $chunk_id as Utf8;
 					declare $checksum as Uint32;
-					update chunk_blobs
+					update %[2]v
 					set checksum = $checksum
 					where shard_id = $shard_id and chunk_id = $chunk_id
-			`, f.db.AbsolutePath(f.config.GetStorageFolder())),
+			`, f.db.AbsolutePath(f.config.GetStorageFolder()), f.config.GetChunkBlobsTableName()),
 				persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunkID))),
 				persistence.ValueParam("$checksum", persistence.Uint32Value(checksum)),
 				persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),

@@ -74,28 +74,33 @@ func Create(
 	}
 	logging.Info(ctx, "Created incremental table")
 
+	chunkBlobsDesc := chunkBlobsTableDescription(config)
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
-		"chunk_blobs",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("referer", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("data", persistence.Optional(persistence.TypeString)),
-			persistence.WithColumn("refcnt", persistence.Optional(persistence.TypeUint32)),
-			persistence.WithColumn("checksum", persistence.Optional(persistence.TypeUint32)),
-			persistence.WithColumn("compression", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
-			persistence.WithUniformPartitions(config.GetChunkBlobsTableShardCount()),
-			persistence.WithExternalBlobs(config.GetExternalBlobsMediaKind()),
-		),
+		config.GetChunkBlobsTableName(),
+		chunkBlobsDesc,
 		dropUnusedColumns,
 	)
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Created chunk_blobs table")
+	logging.Info(ctx, "Created %v table", config.GetChunkBlobsTableName())
+
+	shadowTableName := config.GetChunkBlobsShadowTableName()
+	if len(shadowTableName) != 0 {
+		err = db.CreateOrAlterTable(
+			ctx,
+			config.GetStorageFolder(),
+			shadowTableName,
+			chunkBlobsDesc,
+			dropUnusedColumns,
+		)
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Created %v table", shadowTableName)
+	}
 
 	err = db.CreateOrAlterTable(
 		ctx,
@@ -168,11 +173,20 @@ func Drop(
 	}
 	logging.Info(ctx, "Dropped incremental table")
 
-	err = db.DropTable(ctx, config.GetStorageFolder(), "chunk_blobs")
+	err = db.DropTable(ctx, config.GetStorageFolder(), config.GetChunkBlobsTableName())
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Dropped chunk_blobs table")
+	logging.Info(ctx, "Dropped %v table", config.GetChunkBlobsTableName())
+
+	shadowTableName := config.GetChunkBlobsShadowTableName()
+	if len(shadowTableName) != 0 {
+		err = db.DropTable(ctx, config.GetStorageFolder(), shadowTableName)
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Dropped %v table", shadowTableName)
+	}
 
 	err = db.DropTable(ctx, config.GetStorageFolder(), "chunk_map")
 	if err != nil {
@@ -183,6 +197,26 @@ func Drop(
 	logging.Info(ctx, "Dropped schema for dataplane snapshot storage")
 
 	return nil
+}
+
+// chunk_blobs and its shadow copy share this layout and are created without
+// external blobs. CreateOrAlterTable does not change storage settings of a
+// table that already exists.
+func chunkBlobsTableDescription(
+	config *snapshot_config.SnapshotConfig,
+) persistence.CreateTableDescription {
+
+	return persistence.NewCreateTableDescription(
+		persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("referer", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("data", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn("refcnt", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("checksum", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("compression", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
+		persistence.WithUniformPartitions(config.GetChunkBlobsTableShardCount()),
+	)
 }
 
 func snapshotStateTableDescription() persistence.CreateTableDescription {
