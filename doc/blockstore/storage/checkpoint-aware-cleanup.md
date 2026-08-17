@@ -15,7 +15,7 @@ A blob is deleted if either of the following conditions is true:
 1. It was added to the cleanup queue before every live checkpoint (`deletionCommitId < minCheckpointCommitId`). This is safe because the blob is fully covered by blobs visible to all checkpoints.
 2. The blob's data cannot be observed by any checkpoint:
    - The blob is a mixed blob, and every block in the blob was written after every live checkpoint (`min(BlockCommitId) > maxCheckpointCommitId`).
-   - The blob is a mixed blob, and it was written after every live checkpoint (`blobCommitId > maxCheckpointCommitId`). This is safe even if the merged blob overwrites blocks with smaller commit IDs.
+   - The blob is a merged blob, and it was written after every live checkpoint (`blobCommitId > maxCheckpointCommitId`). This is safe even if the merged blob overwrites blocks with smaller commit IDs.
 
 Otherwise, the blob is skipped.
 
