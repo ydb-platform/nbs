@@ -101,6 +101,7 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
                 response.GetResponses(0).GetNode().GetId());
         }
 
+        ui64 handle = 0;
         {
             //
             // Create upon access
@@ -137,6 +138,8 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
             request.ClearName();
             response = s->CreateHandle(request).GetValue();
             UNIT_ASSERT_VALUES_EQUAL(nodeId, response.GetNodeAttr().GetId());
+
+            handle = response.GetHandle();
         }
 
         {
@@ -201,6 +204,25 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
                 response.GetError().GetCode(),
                 response.GetError().GetMessage());
         }
+
+        {
+            NProto::TWriteDataRequest request;
+            request.SetHandle(handle);
+            request.SetBuffer(TString(5_KB, 'x'));
+            auto response = s->WriteData(request).GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        TFileSystemShardStats stats;
+        auto e = s->CollectStats(&stats).GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, e.GetCode(), e.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.UsedNodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.UsedNameCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.UsedHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.UsedPageCount);
     }
 }
 
