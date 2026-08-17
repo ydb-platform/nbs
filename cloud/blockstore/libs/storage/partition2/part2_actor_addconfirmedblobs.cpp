@@ -304,7 +304,8 @@ void TPartitionActor::HandleAddConfirmedBlobs(
             TVector<TAddMixedBlob>(),
             std::move(mergedBlobs),
             TVector<TAddFreshBlob>(),
-            TVector<TAddL0Blob>(),
+            TVector<TAddLevelIndexBlob>(),
+            TVector<TAddLevelIndexBlob>(),
             ADD_WRITE_RESULT
         );
 

@@ -180,6 +180,8 @@ message TBlobMeta
     {
         TMixedBlocks MixedBlocks = 1;
         TMergedBlocks MergedBlocks = 2;
+        TMixedBlocks L0Blocks = 5;
+        TMixedBlocks L1Blocks = 6;
     }
 
     // May be empty. Checksums are calculated and stored only if the

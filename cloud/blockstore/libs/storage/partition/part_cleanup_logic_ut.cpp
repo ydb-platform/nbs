@@ -168,8 +168,14 @@ struct TMergedBlobVisitor final
         const TPartialBlobId& blobId,
         ui32 skippedBlocksCount) override
     {
-        Y_UNUSED(blockRange);
         Y_UNUSED(skippedBlocksCount);
+
+        return Visit(blockRange, blobId);
+    }
+
+    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    {
+        Y_UNUSED(blockRange);
 
         if (blobId == BlobId) {
             Found = true;

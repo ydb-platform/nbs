@@ -43,6 +43,7 @@ enum EAddBlobMode
     ADD_WRITE_RESULT,
     ADD_FLUSH_RESULT,
     ADD_COMPACTION_RESULT,
+    ADD_PROMOTE_COMPACTION_RESULT,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -123,13 +124,13 @@ struct TWriteFreshBlocksRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAddL0Blob
+struct TAddLevelIndexBlob
 {
     const TPartialBlobId BlobId;
     const TVector<TBlock> Blocks;
     const TVector<ui32> Checksums;
 
-    TAddL0Blob(
+    TAddLevelIndexBlob(
         const TPartialBlobId& blobId,
         TVector<TBlock> blocks,
         TVector<ui32> checksums)
@@ -222,6 +223,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(AddConfirmedBlobs,         __VA_ARGS__)                                \
     xxx(AddUnconfirmedBlobs,       __VA_ARGS__)                                \
     xxx(DeleteUnconfirmedBlobs,    __VA_ARGS__)                                \
+    xxx(PromoteCompaction,         __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -280,7 +282,8 @@ struct TEvPartitionPrivate
         TVector<TAddMixedBlob> MixedBlobs;
         TVector<TAddMergedBlob> MergedBlobs;
         TVector<TAddFreshBlob> FreshBlobs;
-        TVector<TAddL0Blob> L0Blobs;
+        TVector<TAddLevelIndexBlob> L0Blobs;
+        TVector<TAddLevelIndexBlob> L1Blobs;
         EAddBlobMode Mode = ADD_WRITE_RESULT;
 
         // compaction
@@ -296,7 +299,8 @@ struct TEvPartitionPrivate
                 TVector<TAddMixedBlob> mixedBlobs,
                 TVector<TAddMergedBlob> mergedBlobs,
                 TVector<TAddFreshBlob> freshBlobs,
-                TVector<TAddL0Blob> l0Blobs,
+                TVector<TAddLevelIndexBlob> l0Blobs,
+                TVector<TAddLevelIndexBlob> l1Blobs,
                 EAddBlobMode mode,
                 TAffectedBlobs affectedBlobs = {},
                 TAffectedBlocks affectedBlocks = {},
@@ -307,6 +311,7 @@ struct TEvPartitionPrivate
             , MergedBlobs(std::move(mergedBlobs))
             , FreshBlobs(std::move(freshBlobs))
             , L0Blobs(std::move(l0Blobs))
+            , L1Blobs(std::move(l1Blobs))
             , Mode(mode)
             , AffectedBlobs(std::move(affectedBlobs))
             , AffectedBlocks(std::move(affectedBlocks))
@@ -854,6 +859,18 @@ struct TEvPartitionPrivate
     };
 
     //
+    // PromoteCompaction
+    //
+
+    struct TPromoteCompactionRequest
+    {
+    };
+
+    struct TPromoteCompactionResponse
+    {
+    };
+
+    //
     // Events declaration
     //
 
@@ -884,6 +901,7 @@ struct TEvPartitionPrivate
         EvLoadCompactionMapChunkRequest,
         EvUpdateResourceMetrics,
         EvResumeFlush,
+        EvPromoteCompactionCompleted,
 
         EvEnd
     };
@@ -916,6 +934,8 @@ struct TEvPartitionPrivate
         TResponseEvent<TUpdateResourceMetrics, EvUpdateResourceMetrics>;
 
     using TEvResumeFlush = TResponseEvent<TResumeFlush, EvResumeFlush>;
+    using TEvPromoteCompactionCompleted =
+        TResponseEvent<TOperationCompleted, EvPromoteCompactionCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

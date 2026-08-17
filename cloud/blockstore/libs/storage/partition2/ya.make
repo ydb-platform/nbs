@@ -24,6 +24,7 @@ SRCS(
     part2_actor_flush.cpp
     part2_actor_getusedblocks.cpp
     part2_actor_initschema.cpp
+    part2_actor_level_compaction.cpp
     part2_actor_loadstate.cpp
     part2_actor_metadata_rebuild_blockcount.cpp
     part2_actor_metadata_rebuild_usedblocks.cpp

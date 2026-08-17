@@ -11,12 +11,13 @@
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob_to_confirm.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
 #include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition2/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition2/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition2/model/promote_compaction_visitor.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/block_buffer.h>
@@ -65,6 +66,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
     xxx(ConfirmBlobs,               __VA_ARGS__)                               \
     xxx(DeleteUnconfirmedBlobs,     __VA_ARGS__)                               \
     xxx(LoadCompactionMapChunk,     __VA_ARGS__)                               \
+    xxx(PromoteCompaction,          __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION2_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -310,7 +312,8 @@ struct TTxPartition
         const TVector<TAddMixedBlob> MixedBlobs;
         const TVector<TAddMergedBlob> MergedBlobs;
         const TVector<TAddFreshBlob> FreshBlobs;
-        const TVector<TAddL0Blob> L0Blobs;
+        const TVector<TAddLevelIndexBlob> L0Blobs;
+        const TVector<TAddLevelIndexBlob> L1Blobs;
         const EAddBlobMode Mode;
 
         // compaction
@@ -327,7 +330,8 @@ struct TTxPartition
                 TVector<TAddMixedBlob> mixedBlobs,
                 TVector<TAddMergedBlob> mergedBlobs,
                 TVector<TAddFreshBlob> freshBlobs,
-                TVector<TAddL0Blob> l0Blobs,
+                TVector<TAddLevelIndexBlob> l0Blobs,
+                TVector<TAddLevelIndexBlob> l1Blobs,
                 EAddBlobMode mode,
                 TAffectedBlobs affectedBlobs,
                 TAffectedBlocks affectedBlocks,
@@ -339,6 +343,7 @@ struct TTxPartition
             , MergedBlobs(std::move(mergedBlobs))
             , FreshBlobs(std::move(freshBlobs))
             , L0Blobs(std::move(l0Blobs))
+            , L1Blobs(std::move(l1Blobs))
             , Mode(mode)
             , AffectedBlobs(std::move(affectedBlobs))
             , AffectedBlocks(std::move(affectedBlocks))
@@ -1271,6 +1276,34 @@ struct TTxPartition
         void Clear()
         {
             Counters.clear();
+        }
+    };
+
+    //
+    // PromoteCompaction
+    //
+
+    struct TPromoteCompaction
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui32 RangeIndex;
+        const ui64 CommitId;
+
+        TPromoteCompactionVisitor::TScanResult ScanResult;
+
+        TPromoteCompaction(
+            TRequestInfoPtr requestInfo,
+            ui32 rangeIndex,
+            ui64 commitId)
+            : RequestInfo(std::move(requestInfo))
+            , RangeIndex(rangeIndex)
+            , CommitId(commitId)
+        {}
+
+        void Clear()
+        {
+            ScanResult.ResultedBlobs.clear();
+            ScanResult.AffectedBlobs.clear();
         }
     };
 };

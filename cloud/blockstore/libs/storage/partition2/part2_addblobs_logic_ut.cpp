@@ -85,20 +85,26 @@ TTxPartition::TAddBlobs MakeArgs(
     TVector<TAddMixedBlob> mixedBlobs = {},
     TVector<TAddMergedBlob> mergedBlobs = {},
     TVector<TAddFreshBlob> freshBlobs = {},
-    TVector<TAddL0Blob> l0Blobs = {}, EAddBlobMode mode = ADD_WRITE_RESULT,
-    TAffectedBlobs affectedBlobs = {}, TAffectedBlocks affectedBlocks = {},
+    TVector<TAddLevelIndexBlob> l0Blobs = {},
+    EAddBlobMode mode = ADD_WRITE_RESULT,
+    TAffectedBlobs affectedBlobs = {},
+    TAffectedBlocks affectedBlocks = {},
     TVector<TBlobCompactionInfo> mixedBlobCompactionInfos = {},
-    TVector<TBlobCompactionInfo> mergedBlobCompactionInfos = {},
-    ui64 fromLevel = 0,
-    ui64 toLevel = 0,
-    ui64 rangeIndex = 0)
+    TVector<TBlobCompactionInfo> mergedBlobCompactionInfos = {})
 {
     return TTxPartition::TAddBlobs(
-        MakeIntrusive<TRequestInfo>(), commitId, std::move(mixedBlobs),
-        std::move(mergedBlobs), std::move(freshBlobs), std::move(l0Blobs), mode,
-        std::move(affectedBlobs), std::move(affectedBlocks),
+        MakeIntrusive<TRequestInfo>(),
+        commitId,
+        std::move(mixedBlobs),
+        std::move(mergedBlobs),
+        std::move(freshBlobs),
+        std::move(l0Blobs),
+        TVector<TAddLevelIndexBlob>(),
+        mode,
+        std::move(affectedBlobs),
+        std::move(affectedBlocks),
         std::move(mixedBlobCompactionInfos),
-        std::move(mergedBlobCompactionInfos), fromLevel, toLevel, rangeIndex);
+        std::move(mergedBlobCompactionInfos));
 }
 
 void RunExecute(TTestExecutor& executor, TPartitionState& state,

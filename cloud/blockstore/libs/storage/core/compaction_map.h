@@ -77,6 +77,7 @@ public:
     TVector<TCompactionCounter> GetTopsFromGroups(size_t groupCount) const;
     TCompactionCounter GetTopByGarbageBlockCount() const;
     TCompactionCounter GetTopByGarbageIgnoringZeroed() const;
+    TCompactionCounter GetTopByUsedBlocks() const;
 
     TVector<TCompactionCounter> GetTop(size_t count) const;
     TVector<TCompactionCounter> GetTopByGarbageBlockCount(size_t count) const;

@@ -85,6 +85,24 @@ std::pair<ui16, ui8> SplitBlobOffsetAndCompactionRangeCount(ui32 value)
 
 #define COUNT_METHOD_CALL Counters(__PRETTY_FUNCTION__);
 
+struct TNoOpBlobsVisitor final: public IBlobsVisitor
+{
+    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    {
+        Y_UNUSED(blockRange, blobId);
+        return true;
+    }
+
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        ui32 skippedBlocksCount) override
+    {
+        Y_UNUSED(blockRange, blobId, skippedBlocksCount);
+        return true;
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -597,20 +615,6 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
     ui32 maxBlocksInBlob,
     ui64 maxCommitId)
 {
-    struct TNoOpBlobsVisitor final: public IBlobsVisitor
-    {
-        bool Visit(
-            TBlockRange32 blockRange,
-            const TPartialBlobId& blobId,
-            ui32 skippedBlocksCount) override
-        {
-            Y_UNUSED(blockRange);
-            Y_UNUSED(blobId);
-            Y_UNUSED(skippedBlocksCount);
-            return true;
-        }
-    };
-
     TNoOpBlobsVisitor noOpBlobsVisitor;
 
     return FindMergedBlocks(
@@ -1186,6 +1190,7 @@ template <typename TTable, typename TCounters>
 static bool FindBlocksInLevelIndex(
     TPartitionDatabaseImpl<TCounters>& db,
     IBlocksIndexVisitor& visitor,
+    IBlobsVisitor& blobsVisitor,
     const TBlockRange32& blockRange,
     ui64 maxCommitId,
     ui64 rangeSize)
@@ -1220,6 +1225,10 @@ static bool FindBlocksInLevelIndex(
                 it.template GetValue<typename TTable::BlobCommitId>(),
                 it.template GetValue<typename TTable::BlobId>());
 
+            if (!blobsVisitor.Visit(blobRange, blobId)) {
+                return true;   // interrupted
+            }
+
             for (size_t i = 0; i < mixedBlocks.BlocksSize(); ++i) {
                 const ui32 blockIndex = mixedBlocks.GetBlocks(i);
                 const ui64 commitId = mixedBlocks.CommitIdsSize()
@@ -1253,11 +1262,27 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL0Index(
     const TBlockRange32& blockRange,
     ui64 maxCommitId)
 {
+    TNoOpBlobsVisitor noOpBlobsVisitor;
+    return FindBlocksInL0Index(
+        noOpBlobsVisitor,
+        visitor,
+        blockRange,
+        maxCommitId);
+}
+
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL0Index(
+    IBlobsVisitor& blobsVisitor,
+    IBlocksIndexVisitor& blocksIndexVisitor,
+    const TBlockRange32& blockRange,
+    ui64 maxCommitId)
+{
     Y_ABORT_UNLESS(L0RangeSize);
 
     return FindBlocksInLevelIndex<TPartitionSchema::L0Index>(
         *this,
-        visitor,
+        blocksIndexVisitor,
+        blobsVisitor,
         blockRange,
         maxCommitId,
         L0RangeSize);
@@ -1276,13 +1301,14 @@ void TPartitionDatabaseImpl<TCounters>::WriteL1Blob(
     Y_ABORT_UNLESS(!blobMeta.HasMergedBlocks());
     Y_ABORT_UNLESS(blobMeta.HasMixedBlocks());
 
-    Table<TTable>()
-        .Key(
-            blockRange.Start,
-            blockRange.End,
-            blobId.CommitId(),
-            blobId.UniqueId())
-        .template Update<TTable::BlobMeta>(blobMeta);
+    auto value = Table<TTable>().Key(
+        blockRange.End,
+        blobId.CommitId(),
+        blobId.UniqueId());
+
+    value.Update(
+        NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start),
+        NIceDb::TUpdate<TTable::BlobMeta>(std::move(blobMeta)));
 }
 
 template <typename TCounters>
@@ -1291,11 +1317,27 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL1Index(
     const TBlockRange32& blockRange,
     ui64 maxCommitId)
 {
+    TNoOpBlobsVisitor noOpBlobsVisitor;
+    return FindBlocksInL1Index(
+        noOpBlobsVisitor,
+        visitor,
+        blockRange,
+        maxCommitId);
+}
+
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL1Index(
+    IBlobsVisitor& blobsVisitor,
+    IBlocksIndexVisitor& blocksIndexVisitor,
+    const TBlockRange32& blockRange,
+    ui64 maxCommitId)
+{
     Y_ABORT_UNLESS(L1RangeSize);
 
     return FindBlocksInLevelIndex<TPartitionSchema::L1Index>(
         *this,
-        visitor,
+        blocksIndexVisitor,
+        blobsVisitor,
         blockRange,
         maxCommitId,
         L1RangeSize);

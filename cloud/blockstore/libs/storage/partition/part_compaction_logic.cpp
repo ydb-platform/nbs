@@ -215,6 +215,15 @@ public:
         return true;
     }
 
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId) override
+    {
+        Y_UNUSED(blockRange, blobId);
+        Y_ABORT("not implemented");
+        return true;
+    }
+
     void Finish()
     {
         TVector<TPartialBlobId> blobIdsToDelete;

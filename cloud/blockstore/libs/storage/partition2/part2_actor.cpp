@@ -1245,6 +1245,10 @@ STFUNC(TPartitionActor::StateWork)
 
         HFunc(TEvPartitionPrivate::TEvResumeFlush, HandleResumeFlush);
 
+        HFunc(
+            TEvPartitionPrivate::TEvPromoteCompactionCompleted,
+            HandlePromoteCompactionCompleted);
+
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionResponse);
@@ -1255,6 +1259,7 @@ STFUNC(TPartitionActor::StateWork)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsResponse);
+        IgnoreFunc(TEvPartitionPrivate::TEvPromoteCompactionResponse);
 
         // Wakeup function should handle wakeup event taking into account that
         // there is wakeup event scheduled during boot stage with
@@ -1336,6 +1341,9 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvExecuteTransactions);
 
         IgnoreFunc(TEvPartitionPrivate::TEvResumeFlush);
+
+        IgnoreFunc(TEvPartitionPrivate::TEvPromoteCompactionCompleted);
+        IgnoreFunc(TEvPartitionPrivate::TEvPromoteCompactionResponse);
 
         // Wakeup function should handle wakeup event taking into account that
         // there is wakeup event scheduled during boot stage with

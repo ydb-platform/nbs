@@ -20,7 +20,6 @@
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition2/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition2/model/cleanup_queue.h>
-#include <cloud/blockstore/libs/storage/partition2/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition2/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition2/model/level_index_compaction_map.h>
 #include <cloud/blockstore/libs/storage/partition2/model/mixed_index_cache.h>
@@ -28,6 +27,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blocks_filter.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/part_counters_wrapper.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
@@ -343,6 +343,11 @@ private:
 
 public:
     const NProto::TPartitionMeta& GetMeta() const
+    {
+        return Meta;
+    }
+
+    NProto::TPartitionMeta& AccessMeta()
     {
         return Meta;
     }
@@ -1073,10 +1078,11 @@ public:
     //
 
 public:
-
     void UpdateTrimFreshLogToCommitIdInMeta()
     {
-        Meta.SetTrimFreshLogToCommitId(GetTrimFreshLogToCommitId());
+        ui64 trimFreshLogToCommitId = AccessMeta().GetTrimFreshLogToCommitId();
+        Meta.SetTrimFreshLogToCommitId(
+            Max(trimFreshLogToCommitId, GetTrimFreshLogToCommitId()));
     }
 
     //
@@ -1191,6 +1197,8 @@ private:
     TLevelIndexCompactionMap CompactionMapL0;
     TLevelIndexCompactionMap CompactionMapL1;
 
+    TCommitQueue L0CommitQueue;
+
 public:
     TLevelIndexCompactionMap& GetCompactionMapL0()
     {
@@ -1210,6 +1218,11 @@ public:
     TBlocksFilter& GetBlocksFilterL1()
     {
         return BlocksFilterL1;
+    }
+
+    TCommitQueue& AccessL0CommitQueue()
+    {
+        return L0CommitQueue;
     }
 
     //

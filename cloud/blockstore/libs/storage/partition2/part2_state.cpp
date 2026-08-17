@@ -46,24 +46,24 @@ double BPFeature(const TBackpressureFeatureConfig& c, double x)
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionState::TPartitionState(
-        NProto::TPartitionMeta meta,
-        ICompactionPolicyPtr compactionPolicy,
-        ui32 compactionScoreHistorySize,
-        ui32 cleanupScoreHistorySize,
-        const TBackpressureFeaturesConfig& bpConfig,
-        const TFreeSpaceConfig& freeSpaceConfig,
-        ui32 maxIORequestsInFlight,
-        ui32 reassignChannelsPercentageThreshold,
-        ui32 reassignFreshChannelsPercentageThreshold,
-        ui32 reassignMixedChannelsPercentageThreshold,
-        bool reassignSystemChannelsImmediately,
-        ui32 channelCount,
-        ui32 mixedIndexCacheSize,
-        ui64 allocationUnit,
-        ui32 maxBlobsPerUnit,
-        ui32 maxBlobsPerRange,
-        ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState)
+    NProto::TPartitionMeta meta,
+    ICompactionPolicyPtr compactionPolicy,
+    ui32 compactionScoreHistorySize,
+    ui32 cleanupScoreHistorySize,
+    const TBackpressureFeaturesConfig& bpConfig,
+    const TFreeSpaceConfig& freeSpaceConfig,
+    ui32 maxIORequestsInFlight,
+    ui32 reassignChannelsPercentageThreshold,
+    ui32 reassignFreshChannelsPercentageThreshold,
+    ui32 reassignMixedChannelsPercentageThreshold,
+    bool reassignSystemChannelsImmediately,
+    ui32 channelCount,
+    ui32 mixedIndexCacheSize,
+    ui64 allocationUnit,
+    ui32 maxBlobsPerUnit,
+    ui32 maxBlobsPerRange,
+    ui32 compactionRangeCountPerRun,
+    TPartitionThreadSafeStatePtr threadSafeState)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -98,20 +98,20 @@ TPartitionState::TPartitionState(
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , BlocksFilterL0(
           ThreadSafeState->GetTabletId(),
-          Meta.GetL0RangeSize() / Meta.GetConfig().GetBlockSize(),
+          Meta.GetL0RangeSize(),
           Meta.GetConfig().GetBlocksCount())
     , BlocksFilterL1(
           ThreadSafeState->GetTabletId(),
-          Meta.GetL1RangeSize() / Meta.GetConfig().GetBlockSize(),
+          Meta.GetL1RangeSize(),
           Meta.GetConfig().GetBlocksCount())
     , CompactionMapL0(
           ThreadSafeState->GetTabletId(),
-          Meta.GetL0RangeSize() / Meta.GetConfig().GetBlockSize(),
+          Meta.GetL0RangeSize(),
           BlocksFilterL0,
           compactionPolicy)
     , CompactionMapL1(
           ThreadSafeState->GetTabletId(),
-          Meta.GetL1RangeSize() / Meta.GetConfig().GetBlockSize(),
+          Meta.GetL1RangeSize(),
           BlocksFilterL1,
           std::move(compactionPolicy))
 {

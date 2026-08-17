@@ -75,6 +75,11 @@ public:
         return CompactionMap;
     }
 
+    std::deque<TCompaction>& GetCompactions()
+    {
+        return Compactions;
+    }
+
 private:
     void UpdateRange(ui32 rangeIndex, ui32 blobCount, ui32 blockCount,
                      bool compacted);
