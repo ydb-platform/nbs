@@ -186,6 +186,10 @@ private:
 
     TInstant ReassignRequestSentTs;
 
+    // Set upon tablet start. Used to detect the window in which a handle
+    // created by an async CreateHandle may have been lost by a restart.
+    TInstant TabletStartTs;
+
     TThrottlerLogger ThrottlerLogger;
     ITabletThrottlerPtr Throttler;
 
@@ -604,6 +608,9 @@ private:
         bool validateHandle);
 
     NProto::TError IsDataOperationAllowed() const;
+    NProto::TError ErrorHandleNotFound(
+        const NActors::TActorContext& ctx,
+        ui64 handle) const;
     bool CanUseUnconfirmedData() const;
     bool IsTabletConsideredOverloaded() const;
 

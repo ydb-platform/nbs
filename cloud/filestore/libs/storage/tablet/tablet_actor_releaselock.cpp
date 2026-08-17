@@ -53,8 +53,6 @@ void TIndexTabletActor::ExecuteTx_ReleaseLock(
     TTransactionContext& tx,
     TTxIndexTablet::TReleaseLock& args)
 {
-    Y_UNUSED(ctx);
-
     FILESTORE_VALIDATE_TX_ERROR(ReleaseLock, args);
 
     auto* session = FindSession(
@@ -64,8 +62,12 @@ void TIndexTabletActor::ExecuteTx_ReleaseLock(
     TABLET_VERIFY(session);
 
     auto* handle = FindHandle(args.Request.GetHandle());
-    if (!handle || handle->GetSessionId() != session->GetSessionId()) {
-        args.Error = MakeError(E_FS_BADHANDLE, "invalid handle");
+    if (!handle) {
+        args.Error = ErrorHandleNotFound(ctx, args.Request.GetHandle());
+        return;
+    }
+    if (handle->GetSessionId() != session->GetSessionId()) {
+        args.Error = ErrorInvalidHandle(args.Request.GetHandle());
         return;
     }
 

@@ -278,6 +278,7 @@ public:
     bool GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() const;
     bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationPeriod() const;
+    TDuration GetUnconfirmedCreateHandleGraceTimeout() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

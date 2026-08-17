@@ -79,7 +79,7 @@ bool TIndexTabletActor::PrepareTx_AcquireLock(
 }
 
 void TIndexTabletActor::ExecuteTx_AcquireLock(
-    const TActorContext&  /*ctx*/,
+    const TActorContext& ctx,
     TTransactionContext& tx,
     TTxIndexTablet::TAcquireLock& args)
 {
@@ -92,8 +92,12 @@ void TIndexTabletActor::ExecuteTx_AcquireLock(
     TABLET_VERIFY(session);
 
     auto* handle = FindHandle(args.Request.GetHandle());
-    if (!handle || handle->GetSessionId() != session->GetSessionId()) {
-        args.Error = ErrorInvalidHandle();
+    if (!handle) {
+        args.Error = ErrorHandleNotFound(ctx, args.Request.GetHandle());
+        return;
+    }
+    if (handle->GetSessionId() != session->GetSessionId()) {
+        args.Error = ErrorInvalidHandle(args.Request.GetHandle());
         return;
     }
 

@@ -1,6 +1,7 @@
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -8,6 +9,67 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+
+////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+// Performs an async CreateHandle whose transaction never commits, because the
+// tablet is rebooted while its blob write is held back. The returned handle is
+// then known to nobody but the caller - exactly the state a real client ends up
+// in when the tablet restarts before the client's queued ConfirmCreateHandle
+// runs.
+ui64 CreateAndLoseAsyncHandle(
+    TTestEnv& env,
+    TIndexTabletClient& tablet,
+    ui64 nodeId,
+    ui64 requestId)
+{
+    TAutoPtr<IEventHandle> putEvent;
+    env.GetRuntime().SetEventFilter(
+        [&](auto& runtime, auto& ev)
+        {
+            Y_UNUSED(runtime);
+            if (!putEvent && ev->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                putEvent = std::move(ev);
+                return true;
+            }
+
+            return false;
+        });
+
+    auto request =
+        tablet.CreateCreateHandleRequest(nodeId, TCreateHandleArgs::RDNLY);
+    request->Record.SetAllowAsyncCreateHandle(true);
+    request->Record.MutableHeaders()->SetRequestId(requestId);
+    tablet.SendRequest(std::move(request));
+
+    env.GetRuntime().DispatchEvents(TDispatchOptions{
+        .CustomFinalCondition = [&]()
+        {
+            return putEvent != nullptr;
+        }});
+
+    auto response = tablet.RecvCreateHandleResponse();
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        S_OK,
+        response->Record.GetError().GetCode(),
+        response->Record.GetError().GetMessage());
+    UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
+
+    const ui64 handle = response->Record.GetHandle();
+    UNIT_ASSERT(handle);
+
+    // Drop the uncommitted tx by rebooting the tablet before releasing the
+    // captured TEvPut.
+    env.GetRuntime().SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+    tablet.RebootTablet();
+    tablet.RecoverSession();
+
+    return handle;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -466,63 +528,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-
-        // Hold the create tx commit so the async response is acknowledged
-        // before the SessionHandles row becomes durable.
-        TAutoPtr<IEventHandle> putEvent;
-        env.GetRuntime().SetEventFilter(
-            [&](auto& runtime, auto& ev)
-            {
-                Y_UNUSED(runtime);
-                if (!putEvent &&
-                    ev->GetTypeRewrite() == TEvBlobStorage::EvPut)
-                {
-                    putEvent = std::move(ev);
-                    return true;
-                }
-
-                return false;
-            });
-
-        auto request =
-            tablet.CreateCreateHandleRequest(id, TCreateHandleArgs::RDNLY);
-        request->Record.SetAllowAsyncCreateHandle(true);
-        request->Record.MutableHeaders()->SetRequestId(100500);
-        tablet.SendRequest(std::move(request));
-
-        env.GetRuntime().DispatchEvents(TDispatchOptions{
-            .CustomFinalCondition = [&]()
-            {
-                return putEvent != nullptr;
-            }});
-
-        auto response = tablet.RecvCreateHandleResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response->Record.GetError().GetCode(),
-            response->Record.GetError().GetMessage());
-        UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
-
-        const ui64 handle = response->Record.GetHandle();
-        UNIT_ASSERT(handle);
-
-        // Drop the uncommitted tx by rebooting the tablet before releasing the
-        // captured TEvPut.
-        env.GetRuntime().SetEventFilter(
-            TTestActorRuntimeBase::DefaultFilterFunc);
-        tablet.RebootTablet();
-        tablet.RecoverSession();
+        const ui64 handle = CreateAndLoseAsyncHandle(env, tablet, id, 100500);
 
         // The early-returned handle is not persisted yet, so recovery must
-        // explicitly confirm that exact handle id.
+        // explicitly confirm that exact handle id. Until the grace window
+        // expires the tablet asks the client to retry instead of failing the
+        // op with E_FS_BADHANDLE, because the client's queued
+        // ConfirmCreateHandle is what recreates the handle.
         auto describeResponse = tablet.AssertDescribeDataFailed(
             handle,
             0,
             1_KB);
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_FS_BADHANDLE,
+            E_REJECTED,
             describeResponse->Record.GetError().GetCode(),
             describeResponse->Record.GetError().GetMessage());
+        UNIT_ASSERT(HasProtoFlag(
+            describeResponse->Record.GetError().GetFlags(),
+            NCloud::NProto::EF_INSTANT_RETRIABLE));
 
         tablet.ConfirmCreateHandle(
             id,
@@ -531,6 +554,127 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             100500);
 
         // ConfirmCreateHandle recreates and persists the exact returned handle.
+        tablet.DescribeData(handle, 0, 1_KB);
+        tablet.DestroyHandle(handle);
+    }
+
+    Y_UNIT_TEST(ShouldGraceLockOpsOnUnconfirmedHandleAfterTabletRestart)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAsyncCreateHandleEnabled(true);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const ui64 handle = CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        // Locking a read-only handle is legitimate (shared locks only), so lock
+        // ops race the queued confirmation the same way reads do.
+        auto acquireResponse = tablet.AssertAcquireLockFailed(
+            handle,
+            1,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            acquireResponse->Record.GetError().GetCode(),
+            acquireResponse->Record.GetError().GetMessage());
+
+        auto testResponse = tablet.AssertTestLockFailed(
+            handle,
+            1,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            testResponse->Record.GetError().GetCode(),
+            testResponse->Record.GetError().GetMessage());
+
+        auto releaseResponse =
+            tablet.AssertReleaseLockFailed(handle, 1, 0, 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            releaseResponse->Record.GetError().GetCode(),
+            releaseResponse->Record.GetError().GetMessage());
+
+        tablet.ConfirmCreateHandle(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500);
+
+        tablet.AcquireLock(handle, 1, 0, 4_KB, DefaultPid, NProto::E_SHARED);
+        tablet.ReleaseLock(handle, 1, 0, 4_KB);
+        tablet.DestroyHandle(handle);
+    }
+
+    Y_UNIT_TEST(ShouldExpireUnconfirmedCreateHandleGrace)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAsyncCreateHandleEnabled(true);
+        storageConfig.SetUnconfirmedCreateHandleGraceTimeout(
+            TDuration::Seconds(5).MilliSeconds());
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const ui64 handle = CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        tablet.AdvanceTime(TDuration::Seconds(6));
+
+        // The grace window is over: an unknown handle is a permanently bad
+        // handle again.
+        auto describeResponse =
+            tablet.AssertDescribeDataFailed(handle, 0, 1_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_BADHANDLE,
+            describeResponse->Record.GetError().GetCode(),
+            describeResponse->Record.GetError().GetMessage());
+    }
+
+    Y_UNIT_TEST(ShouldNotGraceUnconfirmedCreateHandleIfTimeoutIsZero)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAsyncCreateHandleEnabled(true);
+        storageConfig.SetUnconfirmedCreateHandleGraceTimeout(0);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const ui64 handle = CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        auto describeResponse =
+            tablet.AssertDescribeDataFailed(handle, 0, 1_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_BADHANDLE,
+            describeResponse->Record.GetError().GetCode(),
+            describeResponse->Record.GetError().GetMessage());
+
+        // The handle is still recoverable - only the error code changes.
+        tablet.ConfirmCreateHandle(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500);
         tablet.DescribeData(handle, 0, 1_KB);
         tablet.DestroyHandle(handle);
     }
@@ -838,9 +982,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         tablet.DestroyHandle(handle);
     }
 
-    Y_UNIT_TEST(ShouldRejectConfirmCreateHandleForAnotherSessionHandle)
+    Y_UNIT_TEST(ShouldRejectAnotherSessionHandle)
     {
-        TTestEnv env;
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAsyncCreateHandleEnabled(true);
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -865,6 +1011,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             E_INVALID_STATE,
             response->Record.GetError().GetCode(),
             response->Record.GetError().GetMessage());
+
+        auto readResponse = tablet2.AssertDescribeDataFailed(handle, 0, 1_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_BADHANDLE,
+            readResponse->Record.GetError().GetCode(),
+            readResponse->Record.GetError().GetMessage());
+
+        auto lockResponse = tablet2.AssertAcquireLockFailed(
+            handle,
+            1,
+            0,
+            4_KB,
+            DefaultPid,
+            NProto::E_SHARED);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_BADHANDLE,
+            lockResponse->Record.GetError().GetCode(),
+            lockResponse->Record.GetError().GetMessage());
 
         tablet1.DestroyHandle(handle);
     }

@@ -870,4 +870,14 @@ message TStorageConfig
 
     // Async processing of read-only create handle requests.
     optional bool AsyncCreateHandleEnabled = 532;
+
+    // Time after a tablet start during which an operation on an unknown handle
+    // returns a retriable error instead of E_FS_BADHANDLE, so that a client can
+    // recover a handle lost by a tablet restart via its queued
+    // ConfirmCreateHandle. Applies only if AsyncCreateHandleEnabled is set,
+    // since that is the only mode in which a client confirms its handles. The
+    // trade-off is that a genuinely stale handle used inside this window gets
+    // its E_FS_BADHANDLE delayed until the window expires. 0 disables the
+    // grace window. In ms.
+    optional uint32 UnconfirmedCreateHandleGraceTimeout = 533;
 }
