@@ -57,6 +57,11 @@ int ReplyError(
             << " fuse_reply_err failed with code " << res);
     }
 
+    // Record the errno actually sent to the guest for the availability
+    // metric: the internal |error| does not always match the guest-visible
+    // outcome.
+    callContext.GuestReplyErrno = errorCode;
+
     requestStats.RequestCompleted(Log, callContext, error);
 
     const ui64 now = GetCycleCount();

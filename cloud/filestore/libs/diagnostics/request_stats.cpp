@@ -1,5 +1,6 @@
 #include "request_stats.h"
 
+#include "availability_counters.h"
 #include "config.h"
 #include "critical_events.h"
 #include "filesystem_counters.h"
@@ -427,9 +428,13 @@ private:
     const TString CloudId;
     const TString FolderId;
 
+    const ITimerPtr Timer;
+
     TRequestCountersPtr Counters;
     IPostponeTimePredictorPtr Predictor;
     TPostponeTimePredictorStats PredictorStats;
+
+    TAvailabilityCounters AvailabilityCounters;
 
     TMutex Lock;
     TVector<IIncompleteRequestProviderPtr> IncompleteRequestProviders;
@@ -454,6 +459,7 @@ public:
         , ClientId{std::move(clientId)}
         , CloudId{std::move(cloudId)}
         , FolderId{std::move(folderId)}
+        , Timer{timer}
         , Counters{MakeRequestCounters(
             timer,
             *counters,
@@ -461,7 +467,9 @@ public:
             histogramCounterOptions)}
         , Predictor{std::move(predictor)}
         , PredictorStats{counters, std::move(timer)}
-    {}
+    {
+        AvailabilityCounters.Register(*counters);
+    }
 
     void SetUserMetadata(TUserMetadata userMetadata)
     {
@@ -484,6 +492,8 @@ public:
             GetRequestType(callContext),
             callContext.RequestSize));
 
+        AvailabilityCounters.RequestStarted(callContext);
+
         PredictionStarted(callContext);
     }
 
@@ -494,6 +504,8 @@ public:
         RequestCompleted(
             callContext,
             GetDiagnosticsErrorKind(error));
+
+        AvailabilityCounters.RequestCompleted(callContext);
 
         PredictionCompleted(callContext);
     }
@@ -516,6 +528,8 @@ public:
         const auto requestTime = RequestCompleted(callContext, errorKind);
         LogCompleted(log, callContext, requestTime, errorKind, error);
 
+        AvailabilityCounters.RequestCompleted(callContext);
+
         PredictionCompleted(callContext);
     }
 
@@ -534,6 +548,7 @@ public:
 
         Counters->UpdateStats(updatePercentiles);
         PredictorStats.UpdateStats();
+        AvailabilityCounters.UpdateStats(Timer->Now());
     }
 
     void RegisterIncompleteRequestProvider(

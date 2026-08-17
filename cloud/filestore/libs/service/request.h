@@ -223,6 +223,53 @@ enum class EFileStoreRequest
 
 constexpr size_t FileStoreRequestCount = static_cast<size_t>(EFileStoreRequest::MAX);
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Guest (FUSE) request types for which the per-client filesystem availability
+// SLA is defined: readdir, readdirplus, opendir, releasedir, lookup, getattr,
+// setattr, write, write_buf, read, open, create, release, mkdir, rmdir,
+// unlink, rename, link, symlink, readlink, flush, fsync.
+//
+// A dedicated enum is required because EFileStoreRequest maps several
+// distinct FUSE request types onto one backend request type (e.g. lookup and
+// getattr both map to GetNodeAttr, and mkdir, symlink, link and even mknod
+// all map to CreateNode), while the SLA accounts each FUSE request type
+// independently - and some of the aliases (e.g. mknod) are not subject to
+// the SLA at all. Assigned at the FUSE dispatch (see TFileSystemLoop).
+enum class EFileStoreAvailabilityRequestType
+{
+    // the request is not subject to the availability SLA
+    None = 0,
+
+    Lookup = 1,
+    GetAttr = 2,
+    SetAttr = 3,
+    ReadLink = 4,
+    MkDir = 5,
+    RmDir = 6,
+    Unlink = 7,
+    SymLink = 8,
+    Link = 9,
+    Rename = 10,
+    Open = 11,
+    Create = 12,
+    Read = 13,
+    Write = 14,
+    WriteBuf = 15,
+    Flush = 16,
+    Fsync = 17,
+    Release = 18,
+    OpenDir = 19,
+    ReadDir = 20,
+    ReadDirPlus = 21,
+    ReleaseDir = 22,
+
+    MAX = 23,
+};
+
+constexpr size_t FileStoreAvailabilityRequestTypeCount =
+    static_cast<size_t>(EFileStoreAvailabilityRequestType::MAX);
+
 const TString& GetFileStoreRequestName(EFileStoreRequest requestType);
 
 ////////////////////////////////////////////////////////////////////////////////
