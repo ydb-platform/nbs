@@ -15890,6 +15890,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetMixedBlocksFilterEnabled(true);
+        config.SetMixedBlocksFilterRangesToLoadPerTx(1);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -15905,12 +15906,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 {
                     const auto* msg =
                         event->Get<TEvStatsService::TEvVolumePartCounters>();
-                    falsePositives = msg->DiskCounters->Cumulative
-                                         .MixedBlocksFilterFalsePositives.Value;
-                    truePositives = msg->DiskCounters->Cumulative
-                                        .MixedBlocksFilterTruePositives.Value;
+                    falsePositives +=
+                        msg->DiskCounters->Cumulative
+                            .MixedBlocksFilterFalsePositives.Value;
+                    truePositives += msg->DiskCounters->Cumulative
+                                         .MixedBlocksFilterTruePositives.Value;
                     memorySize = msg->DiskCounters->Simple
-                                     .MixedBlocksFilterMemmorySize.Value;
+                                     .MixedBlocksFilterMemSize.Value;
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -15932,9 +15934,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(1, 2);
         partition.Flush();
 
+        // Reload the filter from the mixed index.
+        partition.RebootTablet();
+        partition.WaitReady();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
         UNIT_ASSERT_VALUES_EQUAL(
-            GetBlockContent(2),
-            GetBlockContent(partition.ReadBlocks(1)));
+            GetBlockContent(1) + GetBlockContent(2),
+            GetBlocksContent(
+                partition.ReadBlocks(TBlockRange32::WithLength(0, 2))));
         UNIT_ASSERT_VALUES_EQUAL(
             TString(),
             GetBlockContent(partition.ReadBlocks(1, "checkpoint")));

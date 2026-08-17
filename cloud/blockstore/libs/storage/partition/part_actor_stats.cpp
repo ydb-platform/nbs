@@ -108,7 +108,7 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
         State->GetMixedIndexCacheMemSize());
 
     if (const auto* filter = State->GetMixedBlocksFilter()) {
-        PartCounters->Simple.MixedBlocksFilterMemmorySize.Set(
+        PartCounters->Simple.MixedBlocksFilterMemSize.Set(
             filter->GetMemoryUsage());
     }
 

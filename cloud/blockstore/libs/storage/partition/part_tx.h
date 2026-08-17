@@ -230,6 +230,12 @@ struct TTxPartition
 
     struct TReadBlocks
     {
+        enum class EMixedBlocksFilterResult
+        {
+            FalsePositive,
+            TruePositive,
+        };
+
         const TRequestInfoPtr RequestInfo;
 
         const ui64 CommitId;
@@ -239,6 +245,11 @@ struct TTxPartition
         const bool ShouldReportBlobIdsOnFailure;
         bool ChecksumsEnabled = false;
         bool Interrupted = false;
+
+        // One positive filter result per read request. A request spanning
+        // multiple compaction ranges is a true positive if any mixed-index
+        // entry is visited; deletion markers are mixed-index entries too.
+        std::optional<EMixedBlocksFilterResult> MixedBlocksFilterResult;
 
         TBlockMarks BlockMarks;
         TVector<ui64> BlockMarkCommitIds;
@@ -267,6 +278,7 @@ struct TTxPartition
         {
             ReadHandler->Clear();
             ChecksumsEnabled = false;
+            MixedBlocksFilterResult.reset();
             std::fill(BlockMarks.begin(), BlockMarks.end(), NBlobMarkers::TEmptyMark());
             std::fill(BlockMarkCommitIds.begin(), BlockMarkCommitIds.end(), 0);
             BlobId2Meta.clear();

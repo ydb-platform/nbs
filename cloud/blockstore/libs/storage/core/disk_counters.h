@@ -169,7 +169,7 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
-    TCounter MixedBlocksFilterMemmorySize{
+    TCounter MixedBlocksFilterMemSize{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
@@ -273,7 +273,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::IORequestsQueued>(),
         MakeMeta<&TSimpleDiskCounters::UsedBlocksMapMemSize>(),
         MakeMeta<&TSimpleDiskCounters::MixedIndexCacheMemSize>(),
-        MakeMeta<&TSimpleDiskCounters::MixedBlocksFilterMemmorySize>(),
+        MakeMeta<&TSimpleDiskCounters::MixedBlocksFilterMemSize>(),
         MakeMeta<&TSimpleDiskCounters::CheckpointBytes>(),
         MakeMeta<&TSimpleDiskCounters::AlmostFullChannelCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBlocksInFlight>(),
