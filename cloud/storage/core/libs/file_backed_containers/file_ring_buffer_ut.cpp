@@ -14,6 +14,21 @@ namespace NCloud {
 
 using EVersion = EFileRingBufferVersion;
 
+static bool operator==(bool lhs, const TResultOrError<bool>& rhs)
+{
+    return !HasError(rhs) && lhs == rhs.GetResult();
+}
+
+static bool operator==(ui32 lhs, const TResultOrError<ui32>& rhs)
+{
+    return !HasError(rhs) && lhs == rhs.GetResult();
+}
+
+static bool operator==(TString lhs, const TResultOrError<TStringBuf>& rhs)
+{
+    return !HasError(rhs) && lhs == TString(rhs.GetResult());
+}
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,10 +122,10 @@ struct TReferenceImplementation
         , Version(version)
     {}
 
-    bool PushBack(TStringBuf data)
+    TResultOrError<bool> PushBack(TStringBuf data)
     {
         if (data.empty() || data.size() > MaxWeight) {
-            return false;
+            return MakeError(E_ARGUMENT);
         }
 
         ui32 sz = EntryOverhead + data.size();
@@ -148,19 +163,19 @@ struct TReferenceImplementation
         return true;
     }
 
-    TStringBuf Front() const
+    TResultOrError<TStringBuf> Front() const
     {
         if (!Q) {
-            return {};
+            return TStringBuf{};
         }
 
-        return Q.front();
+        return TStringBuf(Q.front());
     }
 
-    void PopFront()
+    TResultOrError<bool> PopFront()
     {
         if (!Q) {
-            return;
+            return false;
         }
 
         ui32 sz = Q.front().size() + EntryOverhead;
@@ -184,6 +199,8 @@ struct TReferenceImplementation
             ReadPos = 0;
             WritePos = 0;
         }
+
+        return true;
     }
 
     bool Empty() const
@@ -235,45 +252,50 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
         UNIT_ASSERT(rb.Empty());
 
-        UNIT_ASSERT(!rb.PushBack(GenerateData(rb.Size())));   // too long
-        UNIT_ASSERT(!rb.PushBack(""));              // empty
+        auto tooBigError = rb.PushBack(GenerateData(rb.Size()));
+        UNIT_ASSERT(HasError(tooBigError));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, tooBigError.GetError().GetCode());
 
-        UNIT_ASSERT(rb.PushBack("vasya"));
-        UNIT_ASSERT(rb.PushBack("petya"));
-        UNIT_ASSERT(rb.PushBack("vasya2"));
-        UNIT_ASSERT(rb.PushBack("petya2"));
-        UNIT_ASSERT(!rb.PushBack("vasya3"));        // out of space
+        auto emptyError = rb.PushBack("");
+        UNIT_ASSERT(HasError(emptyError));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, emptyError.GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("vasya"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("petya"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("vasya2"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("petya2"));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb.PushBack("vasya3")); // out of space
 
         UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(4, rb.Size());
         UNIT_ASSERT_VALUES_EQUAL("vasya", rb.Front());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
 
         UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(3, rb.Size());
-        UNIT_ASSERT(!rb.PushBack("vasya3"));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb.PushBack("vasya3"));
 
         UNIT_ASSERT_VALUES_EQUAL("petya", rb.Front());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
 
         UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(2, rb.Size());
-        UNIT_ASSERT(rb.PushBack("vasya3"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("vasya3"));
 
         UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(3, rb.Size());
         UNIT_ASSERT_VALUES_EQUAL("vasya2", rb.Front());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
 
         UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(2, rb.Size());
         UNIT_ASSERT_VALUES_EQUAL("petya2", rb.Front());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
 
         UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
         UNIT_ASSERT_VALUES_EQUAL("vasya3", rb.Front());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
 
         UNIT_ASSERT(rb.Validate());
         UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
@@ -303,14 +325,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = ver >= EVersion::V6 ? 80 : 64;
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 0, ver);
 
-        UNIT_ASSERT(rb->PushBack("vasya"));
-        UNIT_ASSERT(rb->PushBack("petya"));
-        UNIT_ASSERT(rb->PushBack("vasya2"));
-        UNIT_ASSERT(rb->PushBack("petya2"));
-        rb->PopFront();
-        rb->PopFront();
-        UNIT_ASSERT(rb->PushBack("vasya3"));
-        UNIT_ASSERT(rb->PushBack("xxx"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("vasya"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("petya"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("vasya2"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("petya2"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PopFront());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PopFront());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("vasya3"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("xxx"));
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 0, ver);
 
@@ -326,10 +348,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 128;
         TFileRingBuffer rb(f.GetName(), len, 0, ver);
 
-        UNIT_ASSERT(rb.PushBack("vasya"));
-        UNIT_ASSERT(rb.PushBack("petya"));
-        UNIT_ASSERT(rb.PushBack("vasya2"));
-        UNIT_ASSERT(rb.PushBack("petya2"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("vasya"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("petya"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("vasya2"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("petya2"));
 
         UNIT_ASSERT(rb.Validate());
         TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
@@ -355,11 +377,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const TString data2(entryDataLen, 'b');
         const TString data3(entryDataLen, 'c');
 
-        UNIT_ASSERT(rb.PushBack(data));
-        UNIT_ASSERT(rb.PushBack(data2));
-        UNIT_ASSERT(!rb.PushBack(data3));
-        rb.PopFront();
-        UNIT_ASSERT(rb.PushBack(data3));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack(data));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack(data2));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb.PushBack(data3));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack(data3));
 
         /*
          * Buffer data:
@@ -397,10 +419,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             const bool shouldPush = remainingBytes && RandomNumber<bool>();
             if (shouldPush) {
                 const ui32 entrySize =
-                    RandomNumber(Min(remainingBytes + 1, testUpToEntrySize));
+                    RandomNumber(Min(remainingBytes, testUpToEntrySize)) + 1;
                 const auto data = GenerateData(entrySize);
                 const auto maxAllocationSize = rb->GetAvailableByteCount();
-                const bool pushed = ri.PushBack(data);
+                const bool pushed = ri.PushBack(data).GetResult();
                 UNIT_ASSERT_VALUES_EQUAL(pushed, rb->PushBack(data));
                 if (pushed) {
                     UNIT_ASSERT_LE_C(
@@ -451,17 +473,17 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         TString data(36, 'a');
 
-        UNIT_ASSERT(rb.PushBack(data));
-        UNIT_ASSERT(ri.PushBack(data));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack(data));
+        UNIT_ASSERT_VALUES_EQUAL(true, ri.PushBack(data));
 
         rb.PopFront();
         ri.PopFront();
 
-        UNIT_ASSERT(rb.PushBack(data));
-        UNIT_ASSERT(ri.PushBack(data));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack(data));
+        UNIT_ASSERT_VALUES_EQUAL(true, ri.PushBack(data));
 
-        UNIT_ASSERT(!rb.PushBack(data));
-        UNIT_ASSERT(!ri.PushBack(data));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb.PushBack(data));
+        UNIT_ASSERT_VALUES_EQUAL(false, ri.PushBack(data));
     }
 
     FILE_RING_BUFFER_TEST(RandomizedPushPopRestore)
@@ -498,14 +520,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const TString data3(entryDataLen, 'c');
         const TString data4(entryDataLen, 'd');
 
-        UNIT_ASSERT(rb.PushBack(data));
-        UNIT_ASSERT(rb.PushBack(data2));
-        UNIT_ASSERT(!rb.PushBack(data3));
-        rb.PopFront();
-        UNIT_ASSERT(!rb.PushBack(data3));
-        rb.PopFront();
-        UNIT_ASSERT(rb.PushBack(data3));
-        UNIT_ASSERT(rb.PushBack(data4));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack(data));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack(data2));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb.PushBack(data3));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
+        UNIT_ASSERT_VALUES_EQUAL(false, rb.PushBack(data3));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack(data3));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack(data4));
     }
 
     Y_UNIT_TEST(ShouldNotAccessMemoryOutsideMappedBuffer)
@@ -519,11 +541,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         char* data = static_cast<char*>(m.Ptr());
         data[len + 40] = 'A';
 
-        UNIT_ASSERT(rb.PushBack("01234567"));
-        UNIT_ASSERT(rb.PushBack("89abcde"));
-        rb.PopFront();
-        UNIT_ASSERT(rb.PushBack("01"));
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("01234567"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("89abcde"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("01"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
         UNIT_ASSERT_VALUES_EQUAL("01", rb.Front());
     }
 
@@ -536,14 +558,23 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         explicit TStateWithCorruptedEntryLength(int newLength)
             : RingBuffer(FileHandle.GetName(), Len, 0, EVersion::V5)
         {
-            UNIT_ASSERT(RingBuffer.PushBack("aaa"));
-            UNIT_ASSERT(RingBuffer.PushBack("bb"));
+            UNIT_ASSERT_VALUES_EQUAL(true, RingBuffer.PushBack("aaa"));
+            UNIT_ASSERT_VALUES_EQUAL(true, RingBuffer.PushBack("bb"));
 
             TFileMap m(FileHandle.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, 256 + Len);
             char* data = static_cast<char*>(m.Ptr());
             UNIT_ASSERT_VALUES_EQUAL(2, data[267]);
             data[267] = newLength;
+        }
+
+        TString Dump()
+        {
+            TFileMap m(FileHandle.GetName(), TMemoryMapCommon::oRdWr);
+            m.Map(0, m.Length());
+            TString res(m.Length(), 0);
+            MemCopy(res.begin(), static_cast<const char*>(m.Ptr()), m.Length());
+            return res;
         }
     };
 
@@ -580,11 +611,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         TStateWithCorruptedEntryLength good(2);
         TFileRingBuffer rb(good.FileHandle.GetName(), good.Len, 0, EVersion::V5);
-        UNIT_ASSERT(rb.PushBack("c"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("c"));
 
         TStateWithCorruptedEntryLength bad(1);
         TFileRingBuffer rb2(bad.FileHandle.GetName(), bad.Len, 0, EVersion::V5);
-        UNIT_ASSERT(!rb2.PushBack("c"));
+        UNIT_ASSERT(HasError(rb2.PushBack("c")));
     }
 
     FILE_RING_BUFFER_TEST(ShouldNotFailOnCapacityChange)
@@ -596,24 +627,38 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileRingBuffer rb2(f.GetName(), len - 1, 0, ver);
 
         UNIT_ASSERT_EQUAL(f.GetLength(), len + 256);
-        UNIT_ASSERT(rb.PushBack("12345678"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("12345678"));
     }
 
     FILE_RING_BUFFER_TEST(ForbidModificationOfCorruptedBuffer)
     {
         TStateWithCorruptedEntryLength s(13);
         TFileRingBuffer rb(s.FileHandle.GetName(), s.Len, 0, ver);
-        auto state = Dump(rb);
 
-        const char* ptr = rb.Front().data();
-        UNIT_ASSERT(!rb.Free(ptr));
-        UNIT_ASSERT_VALUES_EQUAL(state, Dump(rb));
+        auto dump = s.Dump();
 
-        rb.PopFront();
-        UNIT_ASSERT_VALUES_EQUAL(state, Dump(rb));
+        UNIT_ASSERT(HasError(rb.Front()));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
 
-        UNIT_ASSERT(!rb.PushBack("1"));
-        UNIT_ASSERT_VALUES_EQUAL(state, Dump(rb));
+        int visitCount = 0;
+        auto visitor = [&visitCount](ui32, ui32, TStringBuf) {
+            visitCount++;
+        };
+        UNIT_ASSERT(HasError(rb.Visit(visitor)));
+        UNIT_ASSERT_VALUES_EQUAL(0, visitCount);
+        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+
+        UNIT_ASSERT(HasError(rb.PopFront()));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+
+        UNIT_ASSERT(HasError(rb.PushBack("1")));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+
+        UNIT_ASSERT(HasError(rb.Alloc(1)));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+
+        UNIT_ASSERT(HasError(rb.Commit()));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
     }
 
     FILE_RING_BUFFER_TEST(ShouldGetRawCapacity)
@@ -633,17 +678,17 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileRingBuffer rb(f.GetName(), len, 0, ver);
 
         UNIT_ASSERT_VALUES_EQUAL(0, rb.GetRawUsedBytesCount());
-        UNIT_ASSERT(rb.PushBack("abcd"));   // q bytes
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("abcd"));   // q bytes
         UNIT_ASSERT_VALUES_EQUAL(q, rb.GetRawUsedBytesCount());
-        UNIT_ASSERT(rb.PushBack("efgh"));   // q bytes
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("efgh"));   // q bytes
         UNIT_ASSERT_VALUES_EQUAL(q * 2, rb.GetRawUsedBytesCount());
-        UNIT_ASSERT(rb.PushBack("ijkl"));   // q bytes
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ijkl"));   // q bytes
         UNIT_ASSERT_VALUES_EQUAL(q * 3, rb.GetRawUsedBytesCount());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
         UNIT_ASSERT_VALUES_EQUAL(q * 2, rb.GetRawUsedBytesCount());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
         UNIT_ASSERT_VALUES_EQUAL(q, rb.GetRawUsedBytesCount());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
         UNIT_ASSERT_VALUES_EQUAL(0, rb.GetRawUsedBytesCount());
     }
 
@@ -658,17 +703,17 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         // 56 - header size (8)
         UNIT_ASSERT_VALUES_EQUAL(48, rb.GetAvailableByteCount());
-        UNIT_ASSERT(rb.PushBack("0123456789abcdef"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("0123456789abcdef"));
         UNIT_ASSERT_VALUES_EQUAL(24, rb.GetAvailableByteCount());
-        UNIT_ASSERT(rb.PushBack("ABCDEFGH"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ABCDEFGH"));
         UNIT_ASSERT_VALUES_EQUAL(8, rb.GetAvailableByteCount());
-        UNIT_ASSERT(rb.PushBack("IJKLMNOP"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("IJKLMNOP"));
         UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
         UNIT_ASSERT_VALUES_EQUAL(8 + adj, rb.GetAvailableByteCount());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
         UNIT_ASSERT_VALUES_EQUAL(24 + adj, rb.GetAvailableByteCount());
-        rb.PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
         UNIT_ASSERT_VALUES_EQUAL(48, rb.GetAvailableByteCount());
     }
 
@@ -687,18 +732,18 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 48;
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 0, ver);
 
-        UNIT_ASSERT_EQUAL(0, rb->GetMaxObservedEntryByteCount());
-        UNIT_ASSERT(rb->PushBack("abcd"));
-        UNIT_ASSERT_EQUAL(4, rb->GetMaxObservedEntryByteCount());
-        UNIT_ASSERT(rb->PushBack("ef"));
-        UNIT_ASSERT_EQUAL(4, rb->GetMaxObservedEntryByteCount());
-        UNIT_ASSERT(rb->PushBack("ghijk"));
-        UNIT_ASSERT_EQUAL(5, rb->GetMaxObservedEntryByteCount());
-        UNIT_ASSERT(!rb->PushBack("1234567890"));
-        UNIT_ASSERT_EQUAL(5, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("abcd"));
+        UNIT_ASSERT_VALUES_EQUAL(4, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("ef"));
+        UNIT_ASSERT_VALUES_EQUAL(4, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("ghijk"));
+        UNIT_ASSERT_VALUES_EQUAL(5, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(false, rb->PushBack("1234567890"));
+        UNIT_ASSERT_VALUES_EQUAL(5, rb->GetMaxObservedEntryByteCount());
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 0, ver);
-        UNIT_ASSERT_EQUAL(5, rb->GetMaxObservedEntryByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(5, rb->GetMaxObservedEntryByteCount());
     }
 
     FILE_RING_BUFFER_TEST(ShouldGetAndSetMetadata_ZeroMetadataCapacity)
@@ -707,13 +752,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 36;
 
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 0, ver);
-        UNIT_ASSERT(rb->PushBack("AAA"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("AAA"));
         UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
-        UNIT_ASSERT(!rb->SetMetadata("1"));
-        UNIT_ASSERT(rb->SetMetadata(""));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb->SetMetadata("1"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata(""));
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 0, ver);
-        UNIT_ASSERT(!rb->SetMetadata("1"));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb->SetMetadata("1"));
         UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
         UNIT_ASSERT_VALUES_EQUAL("AAA", rb->Front());
     }
@@ -724,18 +769,18 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 36;
 
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
-        UNIT_ASSERT(rb->PushBack("AAA"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("AAA"));
         UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
-        UNIT_ASSERT(rb->SetMetadata("1234"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata("1234"));
         UNIT_ASSERT_VALUES_EQUAL("1234", rb->GetMetadata());
-        UNIT_ASSERT(!rb->SetMetadata("abcdefghij"));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb->SetMetadata("abcdefghij"));
         UNIT_ASSERT_VALUES_EQUAL("1234", rb->GetMetadata());
-        UNIT_ASSERT(rb->SetMetadata("abc"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata("abc"));
         UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
         UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
-        UNIT_ASSERT(rb->SetMetadata(""));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata(""));
         UNIT_ASSERT_VALUES_EQUAL("", rb->GetMetadata());
         UNIT_ASSERT_VALUES_EQUAL("AAA", rb->Front());
     }
@@ -746,12 +791,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 36;
 
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
-        UNIT_ASSERT(rb->SetMetadata("1234"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata("1234"));
 
         {
             // Corrupt metadata contents
-            // Header validation will pass - it will be possible to change
-            // metadata
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
             m.Map(0, 256);
             char* data = static_cast<char*>(m.Ptr());
@@ -762,7 +805,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
         UNIT_ASSERT(rb->IsCorrupted());
-        UNIT_ASSERT(!rb->SetMetadata("1234"));
+        UNIT_ASSERT(HasError(rb->GetMetadata()));
+        UNIT_ASSERT(HasError(rb->SetMetadata("1234")));
     }
 
     FILE_RING_BUFFER_TEST(ShouldValidateMetadataWithCorruptedSize)
@@ -771,7 +815,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 36;
 
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
-        UNIT_ASSERT(rb->SetMetadata("1234"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata("1234"));
 
         {
             // Corrupt metadata length (set length > capacity)
@@ -787,7 +831,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
         UNIT_ASSERT(rb->IsCorrupted());
-        UNIT_ASSERT(!rb->SetMetadata("1234"));
+        UNIT_ASSERT(HasError(rb->GetMetadata()));
+        UNIT_ASSERT(HasError(rb->SetMetadata("1234")));
     }
 
     FILE_RING_BUFFER_TEST(ShouldResizeMetadata)
@@ -796,42 +841,42 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 19;
 
         auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 1, ver);
-        UNIT_ASSERT(rb->PushBack("ABCD"));
-        UNIT_ASSERT(rb->SetMetadata("1"));
-        UNIT_ASSERT(!rb->SetMetadata("12"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("ABCD"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata("1"));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb->SetMetadata("12"));
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 4, ver);
-        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
-        UNIT_ASSERT_STRINGS_EQUAL("1", rb->GetMetadata());
-        UNIT_ASSERT(rb->SetMetadata("123"));
-        UNIT_ASSERT(!rb->SetMetadata("12345"));
+        UNIT_ASSERT_VALUES_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_VALUES_EQUAL("1", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata("123"));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb->SetMetadata("12345"));
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 16, ver);
-        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
-        UNIT_ASSERT_STRINGS_EQUAL("123", rb->GetMetadata());
-        UNIT_ASSERT(rb->SetMetadata("123456789"));
-        UNIT_ASSERT(!rb->SetMetadata("1234567890abcdef!"));
+        UNIT_ASSERT_VALUES_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_VALUES_EQUAL("123", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata("123456789"));
+        UNIT_ASSERT_VALUES_EQUAL(false, rb->SetMetadata("1234567890abcdef!"));
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 17, ver);
-        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
-        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
-        UNIT_ASSERT(!rb->SetMetadata("1234567890abcdefg!"));
+        UNIT_ASSERT_VALUES_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_VALUES_EQUAL("123456789", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL(false, rb->SetMetadata("1234567890abcdefg!"));
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 100, ver);
-        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
-        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_VALUES_EQUAL("123456789", rb->GetMetadata());
 
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 10, ver);
-        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
-        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
-        UNIT_ASSERT(!rb->SetMetadata("1234567890!"));
+        UNIT_ASSERT_VALUES_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_VALUES_EQUAL("123456789", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL(false, rb->SetMetadata("1234567890!"));
 
         // Cannot shrink metadata below current size
         // New metadata capacity = 9
         rb = std::make_unique<TFileRingBuffer>(f.GetName(), len, 8, ver);
-        UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front());
-        UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata());
-        UNIT_ASSERT(rb->SetMetadata("abcdefghi"));
+        UNIT_ASSERT_VALUES_EQUAL("ABCD", rb->Front());
+        UNIT_ASSERT_VALUES_EQUAL("123456789", rb->GetMetadata());
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata("abcdefghi"));
     }
 
     FILE_RING_BUFFER_TEST(ShouldResumeAbortedMetadataResize)
@@ -846,8 +891,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         // Collect expected file contents
         {
             TFileRingBuffer rb(f.GetName(), len, 1, ver);
-            UNIT_ASSERT(rb.PushBack("ABCD"));
-            UNIT_ASSERT(rb.SetMetadata("1"));
+            UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ABCD"));
+            UNIT_ASSERT_VALUES_EQUAL(true, rb.SetMetadata("1"));
         }
         {
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
@@ -991,10 +1036,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(!HasError(alloc3));
         auto alloc4 = rb.Alloc(1);
         UNIT_ASSERT(HasError(alloc4));
-        UNIT_ASSERT(rb.Commit());
+        UNIT_ASSERT(!HasError(rb.Commit()));
 
         // Commit without alloc
-        UNIT_ASSERT(!rb.Commit());
+        UNIT_ASSERT(HasError(rb.Commit()));
 
         rb.SetCorrupted();
 
@@ -1018,7 +1063,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             auto res = rb->Alloc(data.size());
             UNIT_ASSERT(!HasError(res));
             data.copy(res.GetResult(), data.size());
-            UNIT_ASSERT(rb->Commit());
+            UNIT_ASSERT(!HasError(rb->Commit()));
             return res.GetResult();
         };
 
@@ -1027,9 +1072,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const char* alloc3 = alloc(data3);
         const char* alloc4 = alloc(data4);
 
-        UNIT_ASSERT(rb->Free(alloc2));
-        UNIT_ASSERT(!rb->Free(alloc2));
-        UNIT_ASSERT(!rb->Free(nullptr));
+        UNIT_ASSERT(!HasError(rb->Free(alloc2)));
+        UNIT_ASSERT(HasError(rb->Free(alloc2)));
+        UNIT_ASSERT(HasError(rb->Free(nullptr)));
 
         UNIT_ASSERT_VALUES_EQUAL("hello, meow, ok", Dump(*rb));
         UNIT_ASSERT_VALUES_EQUAL(3, rb->Size());
@@ -1040,7 +1085,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_VALUES_EQUAL("hello, meow, ok", Dump(*rb));
 
         alloc3 = Find(*rb, "meow").data();
-        UNIT_ASSERT(rb->Free(alloc3));
+        UNIT_ASSERT(!HasError(rb->Free(alloc3)));
 
         UNIT_ASSERT_VALUES_EQUAL("hello, ok", Dump(*rb));
         UNIT_ASSERT_VALUES_EQUAL(2, rb->Size());
@@ -1050,12 +1095,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         alloc1 = Find(*rb, "hello").data();
         alloc4 = Find(*rb, "ok").data();
 
-        UNIT_ASSERT(rb->Free(alloc1));
+        UNIT_ASSERT(!HasError(rb->Free(alloc1)));
 
         UNIT_ASSERT_VALUES_EQUAL("ok", Dump(*rb));
         UNIT_ASSERT_VALUES_EQUAL(1, rb->Size());
 
-        UNIT_ASSERT(rb->Free(alloc4));
+        UNIT_ASSERT(!HasError(rb->Free(alloc4)));
 
         UNIT_ASSERT_VALUES_EQUAL("", Dump(*rb));
         UNIT_ASSERT_VALUES_EQUAL(0, rb->Size());
@@ -1074,7 +1119,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         const TString data = "efgh";
 
-        UNIT_ASSERT(rb->PushBack("abcd"));   // 12 bytes
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("abcd"));   // 12 bytes
 
         auto alloc = rb->Alloc(4);
         UNIT_ASSERT(!HasError(alloc));
@@ -1082,7 +1127,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         rb->PopFront();
 
-        UNIT_ASSERT(rb->Commit());
+        UNIT_ASSERT(!HasError(rb->Commit()));
 
         UNIT_ASSERT_VALUES_EQUAL(data, rb->Front());
 
@@ -1166,7 +1211,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(ptr1 != nullptr);
         ptr1[0] = 'a';
         ptr1[1] = 'b';
-        UNIT_ASSERT(rb.Commit());
+        UNIT_ASSERT(!HasError(rb.Commit()));
 
         auto ptr2 = rb.Alloc(1).GetResult();
         UNIT_ASSERT(ptr2 != nullptr);
@@ -1192,9 +1237,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 srcVersion);
 
             rb->SetMetadata("abc");
-            UNIT_ASSERT(rb->PushBack("123"));
-            UNIT_ASSERT(rb->PushBack("4"));
-            UNIT_ASSERT(rb->PushBack("xz"));
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("123"));
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("4"));
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("xz"));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<ui32>(srcVersion),
@@ -1212,18 +1257,18 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL("123, 4, xz", Dump(*rb));
 
             // New entries can be added only after the migration is completed
-            UNIT_ASSERT(!rb->PushBack("!"));
+            UNIT_ASSERT_VALUES_EQUAL(false, rb->PushBack("!"));
 
             // Migration didn't happen - need to empty the buffer first
             UNIT_ASSERT_VALUES_EQUAL(0, rb->GetAvailableByteCount());
 
-            rb->PopFront();
-            rb->PopFront();
-            rb->PopFront();
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->PopFront());
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->PopFront());
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->PopFront());
 
             UNIT_ASSERT_LT(0, rb->GetAvailableByteCount());
 
-            UNIT_ASSERT(rb->PushBack("!"));
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("!"));
 
             UNIT_ASSERT_VALUES_EQUAL("!", Dump(*rb));
             UNIT_ASSERT_VALUES_EQUAL("abc", rb->GetMetadata());
@@ -1280,3 +1325,41 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 }
 
 }   // namespace NCloud
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <>
+void Out<NCloud::TResultOrError<bool>>(
+    IOutputStream& os,
+    const NCloud::TResultOrError<bool>& value)
+{
+    if (HasError(value)) {
+        os << value.GetError();
+    } else {
+        os << value.GetResult();
+    }
+}
+
+template <>
+void Out<NCloud::TResultOrError<ui32>>(
+    IOutputStream& os,
+    const NCloud::TResultOrError<ui32>& value)
+{
+    if (HasError(value)) {
+        os << value.GetError();
+    } else {
+        os << value.GetResult();
+    }
+}
+
+template <>
+void Out<NCloud::TResultOrError<TStringBuf>>(
+    IOutputStream& os,
+    const NCloud::TResultOrError<TStringBuf>& value)
+{
+    if (HasError(value)) {
+        os << value.GetError();
+    } else {
+        os << value.GetResult();
+    }
+}

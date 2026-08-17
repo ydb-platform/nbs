@@ -42,12 +42,10 @@ public:
         , LogTag(std::move(logTag))
     {
         SetCounters();
-    }
 
-    NProto::TError Init()
-    {
         if (Storage.IsCorrupted()) {
-            return MakeError(E_FAIL, "Data structure is corrupted");
+            // Reporting corrupted state is handled by TFileRingBuffer
+            return;
         }
 
         NJsonWriter::TBuf json;
@@ -65,9 +63,8 @@ public:
             .EndObject();
 
         STORAGE_INFO(
-            LogTag << " WriteBackCache has been initialized " << json.Str());
-
-        return {};
+            LogTag << " WriteBackCache storage has been initialized "
+                   << json.Str());
     }
 
     bool Empty() const override
@@ -75,9 +72,14 @@ public:
         return Storage.Empty();
     }
 
-    void Visit(const TVisitor& visitor) override
+    bool IsCorrupted() const override
     {
-        Storage.Visit(
+        return Storage.IsCorrupted();
+    }
+
+    NProto::TError Visit(const TVisitor& visitor) override
+    {
+        return Storage.Visit(
             [&visitor](ui32 checksum, ui32 tag, TStringBuf entry)
             {
                 Y_UNUSED(checksum);
@@ -97,23 +99,23 @@ public:
         return Storage.Alloc(size);
     }
 
-    void Commit() override
+    NProto::TError Commit() override
     {
-        bool success = Storage.Commit();
-        Y_ENSURE(success, "Failed to commit allocation");
+        auto res = Storage.Commit();
         SetCounters();
+        return res;
     }
 
-    void Free(const void* ptr) override
+    NProto::TError Free(const void* ptr) override
     {
-        bool success = Storage.Free(ptr);
-        Y_ENSURE(success, "Failed to free pointer " << ptr);
+        auto res = Storage.Free(ptr);
         SetCounters();
+        return res;
     }
 
-    void SetTag(const void* ptr, ui32 tag) override
+    NProto::TError SetTag(const void* ptr, ui32 tag) override
     {
-        Storage.SetTag(ptr, tag);
+        return Storage.SetTag(ptr, tag);
     }
 
     void UpdateStats() const override
@@ -140,24 +142,17 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IPersistentStoragePtr> CreateFileRingBufferPersistentStorage(
+IPersistentStoragePtr CreateFileRingBufferPersistentStorage(
     IPersistentStorageStatsPtr stats,
     TPersistentStorageConfig config,
     TLog log,
     TString logTag)
 {
-    auto storage = std::make_shared<TFileRingBufferStorage>(
+    return std::make_shared<TFileRingBufferStorage>(
         std::move(stats),
         std::move(config),
         std::move(log),
         std::move(logTag));
-
-    auto error = storage->Init();
-    if (HasError(error)) {
-        return error;
-    }
-
-    return static_cast<IPersistentStoragePtr>(storage);
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

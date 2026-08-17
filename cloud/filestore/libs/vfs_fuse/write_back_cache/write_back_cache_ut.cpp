@@ -2767,6 +2767,73 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             0,
             b.Metrics.WriteDataRequestDroppedCount->Get());
     }
+
+    Y_UNIT_TEST(ShouldReportStatsWhenFileRingBufferIsCorrupted)
+    {
+        TBootstrap b;
+
+        b.TempFileHandle.Pwrite("Corrupt cache", 13, 0);
+        b.TempFileHandle.Flush();
+
+        b.RecreateCache();
+
+        b.ModuleStats->UpdateStats(TInstant::Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Storage.Corrupted->Get());
+    }
+
+    Y_UNIT_TEST(ShouldHangWhenFileRingBufferIsCorrupted)
+    {
+        TBootstrap b;
+
+        b.TempFileHandle.Pwrite("Corrupt cache", 13, 0);
+        b.TempFileHandle.Flush();
+
+        b.RecreateCache();
+
+        auto writeFuture = b.WriteToCache(1, 0, "abc");
+        auto readFuture = b.ReadFromCache(1, 0, 3);
+        auto flushFuture = b.Cache.FlushNodeData(1);
+        auto flushAllFuture = b.Cache.FlushAllData();
+        auto releaseHandleFuture = b.Cache.ReleaseHandle(1, 101);
+
+        auto writeRequest = std::make_shared<NProto::TWriteDataRequest>();
+        writeRequest->SetNodeId(1);
+        writeRequest->SetHandle(101);
+        writeRequest->SetOffset(0);
+        writeRequest->SetBuffer("abc");
+
+        auto directWriteFuture =
+            b.Cache.WriteDataDirect(b.CallContext, std::move(writeRequest));
+
+        auto readRequest = std::make_shared<NProto::TReadDataRequest>();
+        readRequest->SetNodeId(1);
+        readRequest->SetHandle(101);
+        readRequest->SetOffset(0);
+        readRequest->SetLength(3);
+
+        auto directReadFuture =
+            b.Cache.ReadDataDirect(b.CallContext, std::move(readRequest));
+
+        auto setNodeAttrRequest =
+            std::make_shared<NProto::TSetNodeAttrRequest>();
+
+        setNodeAttrRequest->SetNodeId(1);
+
+        auto setNodeAttrFuture =
+            b.Cache.SetNodeAttr(b.CallContext, std::move(setNodeAttrRequest));
+
+        Sleep(TDuration::Seconds(1));
+
+        UNIT_ASSERT(!writeFuture.HasValue());
+        UNIT_ASSERT(!readFuture.HasValue());
+        UNIT_ASSERT(!flushFuture.HasValue());
+        UNIT_ASSERT(!flushAllFuture.HasValue());
+        UNIT_ASSERT(!releaseHandleFuture.HasValue());
+        UNIT_ASSERT(!directWriteFuture.HasValue());
+        UNIT_ASSERT(!directReadFuture.HasValue());
+        UNIT_ASSERT(!setNodeAttrFuture.HasValue());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -41,6 +41,7 @@ namespace NCloud::NFileStore{
     xxx(WriteBackCacheCorruptionError)                                         \
     xxx(WriteBackCacheDataLossError)                                           \
     xxx(WriteBackCacheImpossibleState)                                         \
+    xxx(WriteBackCacheInvalidConfiguration)                                    \
     xxx(WriteBackCacheWritingNotAllowedInDrainingMode)                         \
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \

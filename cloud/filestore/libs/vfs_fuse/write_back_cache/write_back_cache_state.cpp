@@ -16,6 +16,7 @@ using ERequestType = IWriteBackCacheStateStats::ERequestType;
 
 TWriteBackCacheState::TWriteBackCacheState(
     IQueuedOperationsProcessor& processor,
+    IPersistentStoragePtr persistentStorage,
     ITimerPtr timer,
     IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
     IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
@@ -25,22 +26,20 @@ TWriteBackCacheState::TWriteBackCacheState(
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
     , Stats(std::move(writeBackCacheStateStats))
-    , RequestManagerStats(std::move(writeDataRequestManagerStats))
     , FlushBatchLimits(flushBatchLimits)
     , LogTag(std::move(logTag))
     , Nodes(Timer, std::move(nodeStateHolderStats))
+    , RequestManager(
+          SequenceIdGenerator,
+          std::move(persistentStorage),
+          Timer,
+          std::move(writeDataRequestManagerStats))
     , QueuedOperations(processor)
 {}
 
-bool TWriteBackCacheState::Init(IPersistentStoragePtr persistentStorage)
+bool TWriteBackCacheState::Init()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
-
-    RequestManager = TWriteDataRequestManager(
-        SequenceIdGenerator,
-        std::move(persistentStorage),
-        Timer,
-        RequestManagerStats);
 
     return RequestManager.Init(
         [this](

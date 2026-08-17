@@ -54,7 +54,6 @@ private:
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const ITimerPtr Timer;
     const IWriteBackCacheStateStatsPtr Stats;
-    const IWriteDataRequestManagerStatsPtr RequestManagerStats;
     const TFlushBatchLimits FlushBatchLimits;
     const TString LogTag;
 
@@ -86,6 +85,7 @@ public:
 
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
+        IPersistentStoragePtr persistentStorage,
         ITimerPtr timer,
         IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
@@ -94,7 +94,7 @@ public:
         TString logTag);
 
     // Read state from the persistent storage
-    bool Init(IPersistentStoragePtr persistentStorage);
+    bool Init();
 
     // Prevent new WriteData requests from being added to the cache - they
     // will fail with E_REJECTED error.
