@@ -251,10 +251,6 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
         ss.SetUsedNodesCount(src.GetUsedNodesCount());
     }
 
-    for (const auto& nodeStats: src.GetNodeStats()) {
-        *dst.AddNodeStats() = nodeStats;
-    }
-
     if (--RemainingResponses == 0) {
         ReplyAndDie(ctx, {});
     }
