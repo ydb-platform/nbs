@@ -811,3 +811,130 @@ TEST(NaiveMirroredShardTest, UnalignedAppend)
             << FormatError(response.GetError());
     }
 }
+
+TEST(NaiveMirroredShardTest, DeallocatesPagesUponUnlink)
+{
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
+    TStorageFixture fx;
+
+    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+
+    const TString file1 = "file1";
+    const ui32 mode = 0644;
+    const ui64 uid = 111;
+    const ui64 gid = 222;
+
+    const ui32 createHandleFlags = ProtoFlag(TCreateHandleRequest::E_CREATE) |
+                                   ProtoFlag(TCreateHandleRequest::E_READ) |
+                                   ProtoFlag(TCreateHandleRequest::E_WRITE);
+
+    ui64 nodeId = 0;
+    ui64 handle = 0;
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.SetFlags(createHandleFlags);
+        request.SetMode(mode);
+        request.SetUid(uid);
+        request.SetGid(gid);
+        auto f = shard->CreateHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        handle = response.GetHandle();
+        EXPECT_TRUE(handle != 0);
+        nodeId = response.GetNodeAttr().GetId();
+        EXPECT_TRUE(nodeId != 0);
+    }
+
+    const auto expectedData = GenerateValidateData(4_KB);
+
+    //
+    // 3 pages, 2 clusters.
+    // Actual page usage - 2 x 8 = 16.
+    //
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(32_KB);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(40_KB);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    //
+    // Destroying the handle to let UnlinkNode release the pages.
+    //
+
+    {
+        TDestroyHandleRequest request;
+        request.SetHandle(handle);
+        auto f = shard->DestroyHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TFileSystemShardStats stats;
+        auto f = shard->CollectStats(&stats);
+        auto e = f.GetValueSync();
+        EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
+        EXPECT_EQ(1ULL, stats.UsedNodeCount);
+        EXPECT_EQ(1ULL, stats.UsedNameCount);
+        EXPECT_EQ(0ULL, stats.UsedHandleCount);
+        EXPECT_EQ(16ULL, stats.UsedPageCount);
+    }
+
+    //
+    // Unlinking the node and verifying that the pages get released.
+    //
+
+    {
+        TUnlinkNodeRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        auto f = shard->UnlinkNode(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TFileSystemShardStats stats;
+        auto f = shard->CollectStats(&stats);
+        auto e = f.GetValueSync();
+        EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
+        EXPECT_EQ(0ULL, stats.UsedNodeCount);
+        EXPECT_EQ(0ULL, stats.UsedNameCount);
+        EXPECT_EQ(0ULL, stats.UsedHandleCount);
+        EXPECT_EQ(0ULL, stats.UsedPageCount);
+    }
+}
