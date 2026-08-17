@@ -14,7 +14,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
-        tracker.UpdateAccessStats(1, start);
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, start));
 
         const auto stats = tracker.GetStats(start, 3);
 
@@ -31,8 +31,8 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
-        tracker.UpdateAccessStats(1, start);
-        tracker.UpdateAccessStats(1, start);
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, start));
 
         const auto stats = tracker.GetStats(start, 3);
 
@@ -56,10 +56,10 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
         const auto old = start - TDuration::Minutes(10);
 
         for (ui32 i = 0; i < 10; ++i) {
-            tracker.UpdateAccessStats(1, old);
+            UNIT_ASSERT(tracker.UpdateAccessStats(1, old));
         }
         for (ui32 i = 0; i < 9; ++i) {
-            tracker.UpdateAccessStats(2, start);
+            UNIT_ASSERT(tracker.UpdateAccessStats(2, start));
         }
 
         const auto stats = tracker.GetStats(start, 5);
@@ -76,8 +76,8 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
-        tracker.UpdateAccessStats(1, start);
-        tracker.UpdateAccessStats(2, start);
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(2, start));
 
         const auto stats = tracker.GetStats(start, 5);
 
@@ -93,11 +93,12 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
-        tracker.UpdateAccessStats(1, start - TDuration::Minutes(10));
-        tracker.UpdateAccessStats(2, start);
-        tracker.UpdateAccessStats(3, start);
-        tracker.UpdateAccessStats(4, start);
-        tracker.UpdateAccessStats(4, start);
+        UNIT_ASSERT(
+            tracker.UpdateAccessStats(1, start - TDuration::Minutes(10)));
+        UNIT_ASSERT(tracker.UpdateAccessStats(2, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(3, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(4, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(4, start));
 
         const auto stats = tracker.GetStats(start, 5);
 
