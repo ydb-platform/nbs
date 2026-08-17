@@ -114,8 +114,8 @@ TPartitionState MakeState(
         10,      // maxBlobsPerRange,
         1,       // compactionRangeCountPerRun
         std::move(threadSafeState),
-        0,      // tabletId
-        false,  // mixedBlocksFilterEnabled
+        0,             // tabletId
+        std::nullopt,  // mixedBlocksFilterConfig
         checkpointAwareCleanupEnabled
     );
 }
@@ -697,19 +697,17 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
     Y_UNIT_TEST(ShouldGetCleanupCommitId)
     {
-        auto prepareState = [](bool checkpointAwareCleanupEnabled)
+        auto generateCommitIds = [](TPartitionState& state)
         {
-            auto state = MakeState(
-                DefaultBlockCount,
-                checkpointAwareCleanupEnabled);
             for (ui32 i = 0; i < 100; ++i) {
                 state.GenerateCommitId();
             }
-            return state;
         };
 
-        auto disabled = prepareState(false);
-        auto enabled = prepareState(true);
+        auto disabled = MakeState(DefaultBlockCount, false);
+        auto enabled = MakeState(DefaultBlockCount, true);
+        generateCommitIds(disabled);
+        generateCommitIds(enabled);
 
         const ui64 lastCommitId = disabled.GetLastCommitId();
         UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(0, 100), lastCommitId);
