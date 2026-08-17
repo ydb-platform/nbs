@@ -53,7 +53,7 @@ private:
 public:
     TNodeAccessStatsTracker(size_t maxEntries, TDuration halfLife);
 
-    void RequestStarted(ui64 nodeId, TInstant now);
+    bool UpdateAccessStats(ui64 nodeId, TInstant now);
 
     TVector<TNodeAccessStats> GetStats(TInstant now, ui32 n) const;
 };

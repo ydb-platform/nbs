@@ -1,5 +1,4 @@
 #include "node_latency_stats.h"
-#include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
@@ -44,7 +43,7 @@ double TNodeLatencyStatsTracker::CalculateLatencyDecay(
            exp(-log(2) * elapsed.MicroSeconds() / halfLife.MicroSeconds());
 }
 
-void TNodeLatencyStatsTracker::UpdateLatencyStats(
+bool TNodeLatencyStatsTracker::UpdateLatencyStats(
     ui64 nodeId,
     EFileStoreRequest requestType,
     TInstant now,
@@ -64,10 +63,7 @@ void TNodeLatencyStatsTracker::UpdateLatencyStats(
         static_cast<double>(stats.TotalLatencyUs) / stats.RequestCount;
     stats.LastAccessed = now;
 
-    if (!Ranking.InsertOrUpdate(std::move(stats))) {
-        ReportDiagnosticStatsInsertFailed(
-            "Failed to insert latency statistics into ranking");
-    };
+    return Ranking.InsertOrUpdate(std::move(stats));
 }
 
 TVector<TNodeLatencyStats> TNodeLatencyStatsTracker::GetLatencyStats(

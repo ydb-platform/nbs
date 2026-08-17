@@ -69,7 +69,7 @@ private:
 
 public:
     TNodeLatencyStatsTracker(size_t maxEntries, TDuration decayHalfLife);
-    void UpdateLatencyStats(
+    bool UpdateLatencyStats(
         ui64 nodeId,
         EFileStoreRequest requestType,
         TInstant now,
