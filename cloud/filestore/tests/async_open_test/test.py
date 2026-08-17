@@ -140,14 +140,15 @@ def test():
             f"localhost:{server_port}", log=logger) as filestore_client:
         file_system_ids = [FILE_SYSTEM_ID]
         if SHARD_COUNT:
-            file_system_ids = wait_for(
-                "shards to appear",
-                lambda: [
-                    shard["ShardId"]
-                    for shard in get_storage_stats(
-                        filestore_client, FILE_SYSTEM_ID).get("ShardStats", [])
-                ],
-                lambda ids: len(ids) == SHARD_COUNT)
+            file_system_ids = [
+                shard["ShardId"]
+                for shard in get_storage_stats(filestore_client, FILE_SYSTEM_ID).get(
+                    "ShardStats", []
+                )
+            ]
+            assert len(file_system_ids) == SHARD_COUNT, (
+                f"Unexpected number of shards {file_system_ids}"
+            )
 
         def handles():
             return sum(
