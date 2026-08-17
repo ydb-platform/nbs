@@ -170,8 +170,12 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
     }
 
     if (!args.RequestInfo->NodeDiagnosticStatsStarted) {
-        UpdateAccessStats(args.TargetNodeId, ctx.Now());
-        args.RequestInfo->NodeDiagnosticStatsStarted = true;
+        if (UpdateAccessStats(args.NodeId, ctx.Now())) {
+            args.RequestInfo->NodeDiagnosticStatsStarted = true;
+        } else {
+            ReportDiagnosticStatsInsertFailed(
+                "Failed to insert access statistics into ranking");
+        }
     }
 
     // TODO: AccessCheck

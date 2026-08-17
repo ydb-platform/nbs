@@ -308,7 +308,7 @@ public:
         StateLoaded = true;
     }
 
-    void UpdateAccessStats(ui64 nodeId, TInstant now);
+    bool UpdateAccessStats(ui64 nodeId, TInstant now);
 
     TVector<TNodeAccessStats> GetNodeAccessStats(TInstant now, ui32 n) const;
 

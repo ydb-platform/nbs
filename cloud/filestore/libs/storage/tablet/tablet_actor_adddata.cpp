@@ -175,8 +175,12 @@ bool TIndexTabletActor::PrepareTx_AddData(
     if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
         !args.RequestInfo->NodeDiagnosticStatsStarted)
     {
-        UpdateAccessStats(args.NodeId, ctx.Now());
-        args.RequestInfo->NodeDiagnosticStatsStarted = true;
+        if (UpdateAccessStats(args.NodeId, ctx.Now())) {
+            args.RequestInfo->NodeDiagnosticStatsStarted = true;
+        } else {
+            ReportDiagnosticStatsInsertFailed(
+                "Failed to insert access statistics into ranking");
+        }
     }
 
     LOG_TRACE(

@@ -259,9 +259,9 @@ void TIndexTabletState::LoadState(
     InitShardBalancer(config);
 }
 
-void TIndexTabletState::UpdateAccessStats(ui64 nodeId, TInstant now)
+bool TIndexTabletState::UpdateAccessStats(ui64 nodeId, TInstant now)
 {
-    NodeAccessStatsTracker.UpdateAccessStats(nodeId, now);
+    return NodeAccessStatsTracker.UpdateAccessStats(nodeId, now);
 }
 
 TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(

@@ -800,8 +800,12 @@ void TIndexTabletActor::HandleDescribeData(
             ctx);
 
         if (!requestInfo->NodeDiagnosticStatsStarted) {
-            UpdateAccessStats(nodeId, ctx.Now());
-            requestInfo->NodeDiagnosticStatsStarted = true;
+            if (UpdateAccessStats(nodeId, ctx.Now())) {
+                requestInfo->NodeDiagnosticStatsStarted = true;
+            } else {
+                ReportDiagnosticStatsInsertFailed(
+                    "Failed to insert access statistics into ranking");
+            }
         }
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
@@ -968,8 +972,12 @@ bool TIndexTabletActor::PrepareTx_ReadData(
     if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
         !args.RequestInfo->NodeDiagnosticStatsStarted)
     {
-        UpdateAccessStats(args.NodeId, ctx.Now());
-        args.RequestInfo->NodeDiagnosticStatsStarted = true;
+        if (UpdateAccessStats(args.NodeId, ctx.Now())) {
+            args.RequestInfo->NodeDiagnosticStatsStarted = true;
+        } else {
+            ReportDiagnosticStatsInsertFailed(
+                "Failed to insert access statistics into ranking");
+        }
     }
     //
     // NodeId might be missing in the original request but at this stage we
