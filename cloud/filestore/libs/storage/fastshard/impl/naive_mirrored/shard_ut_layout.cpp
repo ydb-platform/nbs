@@ -96,6 +96,10 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
     auto shard =
         CreateNaiveMirroredFileSystemShard(ShardNo, fx.Factory, fx.Config);
 
+    //
+    // Json test.
+    //
+
     TStringStream json;
     shard->DumpLayoutJson(json);
 
@@ -109,6 +113,58 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
     // documented order, starting at offset 0.
     //
 
+    {
+        const auto& c = components[0];
+        EXPECT_EQ("NodeTable", c["name"].GetString());
+        EXPECT_EQ(0ULL, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(8_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(84ULL, c["slotCount"].GetUInteger());
+    }
+
+    {
+        const auto& c = components[1];
+        EXPECT_EQ("NameTable", c["name"].GetString());
+        EXPECT_EQ(8_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(4_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(85ULL, c["slotCount"].GetUInteger());
+    }
+
+    {
+        const auto& c = components[2];
+        EXPECT_EQ("HandleTable", c["name"].GetString());
+        EXPECT_EQ(12_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(12_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(768ULL, c["slotCount"].GetUInteger());
+    }
+
+    {
+        const auto& c = components[3];
+        EXPECT_EQ("PageIndex", c["name"].GetString());
+        EXPECT_EQ(24_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(52_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(2210ULL, c["slotCount"].GetUInteger());
+    }
+
+    {
+        const auto& c = components[4];
+        EXPECT_EQ("PageAllocatorBitmap", c["name"].GetString());
+        EXPECT_EQ(76_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(4_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(32768ULL, c["slotCount"].GetUInteger());
+    }
+
+    {
+        const auto& c = components[5];
+        EXPECT_EQ("DataPages", c["name"].GetString());
+        EXPECT_EQ(96_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(1_GB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(32768ULL, c["slotCount"].GetUInteger());
+    }
+
+    //
+    // Html test.
+    //
+
     const TVector<TString> expectedNames = {
         "NodeTable",
         "NameTable",
@@ -117,19 +173,6 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
         "PageAllocatorBitmap",
         "DataPages",
     };
-
-    ui64 expectedOffset = 0;
-    for (ui32 i = 0; i < components.size(); ++i) {
-        const auto& c = components[i];
-        EXPECT_EQ(expectedNames[i], c["name"].GetString());
-        EXPECT_EQ(expectedOffset, c["offsetBytes"].GetUInteger())
-            << c["name"].GetString();
-        EXPECT_GT(c["sizeBytes"].GetUInteger(), 0u)
-            << c["name"].GetString();
-        EXPECT_GT(c["slotCount"].GetUInteger(), 0u)
-            << c["name"].GetString();
-        expectedOffset += c["sizeBytes"].GetUInteger();
-    }
 
     TStringStream html;
     shard->DumpLayoutHtml(html);

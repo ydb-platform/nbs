@@ -750,6 +750,22 @@ public:
         return BitCount;
     }
 
+    [[nodiscard]] ui64 GetBitmapSize() const
+    {
+        return PageSize
+            * (BitCount / TPersistentBitmap::CalcBitsPerPage(PageSize));
+    }
+
+    [[nodiscard]] ui64 GetDataOffset() const
+    {
+        return FirstStoragePageClusterId * PageClusterSize;
+    }
+
+    [[nodiscard]] ui64 GetDataSize() const
+    {
+        return BitCount * PageClusterSize;
+    }
+
     NProto::TError Allocate(
         ui64 pageClusterCount,
         TVector<ui64>* storagePageClusterIds,
@@ -993,27 +1009,32 @@ public:
         PageStore = CreatePageStore(Storage, PageSize);
 
         ui64 firstPageNo = 0;
-        SILK_INFO("node table offset=%lu", firstPageNo * PageSize);
+        const ui64 nodeTableOffset = firstPageNo * PageSize;
+        SILK_INFO("node table offset=%lu", nodeTableOffset);
         const ui64 nodeTablePageCount =
             Nodes.Init(Config, firstPageNo, PageStore);
         firstPageNo += nodeTablePageCount;
 
-        SILK_INFO("name table offset=%lu", firstPageNo * PageSize);
+        const ui64 nameTableOffset = firstPageNo * PageSize;
+        SILK_INFO("name table offset=%lu", nameTableOffset);
         const ui64 nameTablePageCount =
             Names.Init(Config, firstPageNo, PageStore);
         firstPageNo += nameTablePageCount;
 
-        SILK_INFO("handle table offset=%lu", firstPageNo * PageSize);
+        const ui64 handleTableOffset = firstPageNo * PageSize;
+        SILK_INFO("handle table offset=%lu", handleTableOffset);
         const ui64 handleTablePageCount =
             Handles.Init(Config, firstPageNo, PageStore);
         firstPageNo += handleTablePageCount;
 
-        SILK_INFO("page index offset=%lu", firstPageNo * PageSize);
+        const ui64 pageIndexOffset = firstPageNo * PageSize;
+        SILK_INFO("page index offset=%lu", pageIndexOffset);
         const ui64 pageIndexPageCount =
             PageIndex.Init(Config, firstPageNo, PageStore);
         firstPageNo += pageIndexPageCount;
 
-        SILK_INFO("page allocator offset=%lu", firstPageNo * PageSize);
+        const ui64 pageAllocatorOffset = firstPageNo * PageSize;
+        SILK_INFO("page allocator offset=%lu", pageAllocatorOffset);
         const ui64 pageAllocatorPageCount =
             PageAllocator.Init(Config, firstPageNo, PageStore);
         firstPageNo += pageAllocatorPageCount;
@@ -1025,26 +1046,6 @@ public:
         SILK_INFO("handle table slots=%lu", Handles.GetSlotCount());
         SILK_INFO("page index table slots=%lu", PageIndex.GetSlotCount());
         SILK_INFO("page allocator bits=%lu", PageAllocator.GetBitCount());
-
-        //
-        // PageAllocator.Init returns the bitmap pages together with the
-        // data page clusters the bitmap tracks - split them back apart
-        // for the layout description.
-        //
-
-        const ui64 bitmapPageCount = PageAllocator.GetBitCount() /
-            TPersistentBitmap::CalcBitsPerPage(PageSize);
-        const ui64 dataPageCount = pageAllocatorPageCount - bitmapPageCount;
-        const ui64 nodeTableOffset = 0;
-        const ui64 nameTableOffset =
-            nodeTableOffset + nodeTablePageCount * PageSize;
-        const ui64 handleTableOffset =
-            nameTableOffset + nameTablePageCount * PageSize;
-        const ui64 pageIndexOffset =
-            handleTableOffset + handleTablePageCount * PageSize;
-        const ui64 bitmapOffset =
-            pageIndexOffset + pageIndexPageCount * PageSize;
-        const ui64 dataPagesOffset = bitmapOffset + bitmapPageCount * PageSize;
 
         Layout = {
             {
@@ -1077,17 +1078,17 @@ public:
             },
             {
                 .Name = "PageAllocatorBitmap",
-                .OffsetBytes = bitmapOffset,
-                .SizeBytes = bitmapPageCount * PageSize,
+                .OffsetBytes = pageAllocatorOffset,
+                .SizeBytes = PageAllocator.GetBitmapSize(),
                 .SlotSize = 0,
                 .SlotCount = PageAllocator.GetBitCount(),
             },
             {
                 .Name = "DataPages",
-                .OffsetBytes = dataPagesOffset,
-                .SizeBytes = dataPageCount * PageSize,
+                .OffsetBytes = PageAllocator.GetDataOffset(),
+                .SizeBytes = PageAllocator.GetDataSize(),
                 .SlotSize = PageClusterSize,
-                .SlotCount = dataPageCount / PageClusterPageCount,
+                .SlotCount = PageAllocator.GetBitCount(),
             },
         };
     }
