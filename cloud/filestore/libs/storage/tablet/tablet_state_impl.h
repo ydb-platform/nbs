@@ -62,10 +62,6 @@ struct TIndexTabletState::TImpl
     THandlesStats HandlesStats;
 
     TNodeToSessionCounters NodeToSessionCounters;
-    bool StartupGcExecuted = false;
-    ui64 MinDeletionMarkersCountSinceTabletStart = 0;
-    bool CompressNodeRef = false;
-    bool StateLoaded = false;
 
     TRangeLocks RangeLocks;
     TFreshBytes FreshBytes;

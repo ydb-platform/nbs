@@ -74,43 +74,6 @@ TIndexTabletState::TIndexTabletState()
 
 TIndexTabletState::~TIndexTabletState() = default;
 
-bool TIndexTabletState::IsStateLoaded() const
-{
-    return Impl->StateLoaded;
-}
-
-void TIndexTabletState::CompleteStateLoad()
-{
-    Impl->StateLoaded = true;
-}
-
-bool TIndexTabletState::GetCompressNodeRef() const
-{
-    return Impl->CompressNodeRef || FileSystem.GetCompressNodeRef();
-}
-
-ui64 TIndexTabletState::GetMinDeletionMarkersCountSinceTabletStart() const
-{
-    return Impl->MinDeletionMarkersCountSinceTabletStart;
-}
-
-void TIndexTabletState::UpdateMinDeletionMarkersCountSinceTabletStart()
-{
-    Impl->MinDeletionMarkersCountSinceTabletStart = Min(
-        Impl->MinDeletionMarkersCountSinceTabletStart,
-        FileSystemStats.GetDeletionMarkersCount());
-}
-
-void TIndexTabletState::SetStartupGcExecuted()
-{
-    Impl->StartupGcExecuted = true;
-}
-
-bool TIndexTabletState::GetStartupGcExecuted() const
-{
-    return Impl->StartupGcExecuted;
-}
-
 void TIndexTabletState::UpdateLogTag(TString tag)
 {
     Impl->CacheReadBypass.UpdateLogTag(tag);
@@ -239,7 +202,7 @@ void TIndexTabletState::LoadState(
 
     MaxTabletStep = Max(config.GetMaxTabletStep(), LastStep);
 
-    Impl->CompressNodeRef = config.GetEnableNodeRefCompression();
+    CompressNodeRef = config.GetEnableNodeRefCompression();
 
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
@@ -252,7 +215,7 @@ void TIndexTabletState::LoadState(
     // reboot and throttle cleanup when the amount of deletion markers is
     // expected to drop below the minimal amount.
     // https://github.com/ydb-platform/nbs/pull/3268
-    Impl->MinDeletionMarkersCountSinceTabletStart =
+    MinDeletionMarkersCountSinceTabletStart =
         fileSystemStats.GetDeletionMarkersCount();
 
     if (FileSystemStats.GetLastNodeId() < RootNodeId) {
