@@ -765,17 +765,17 @@ void TIndexTabletState::ChangeNodeCounters(
         case TNodeToSessionStat::EKind::None:
             break;
         case TNodeToSessionStat::EKind::NodesOpenForWritingBySingleSession:
-            NodeToSessionCounters.NodesOpenForWritingBySingleSession += amount;
+            Impl->NodeToSessionCounters.NodesOpenForWritingBySingleSession += amount;
             break;
         case TNodeToSessionStat::EKind::NodesOpenForWritingByMultipleSessions:
-            NodeToSessionCounters.NodesOpenForWritingByMultipleSessions +=
+            Impl->NodeToSessionCounters.NodesOpenForWritingByMultipleSessions +=
                 amount;
             break;
         case TNodeToSessionStat::EKind::NodesOpenForReadingBySingleSession:
-            NodeToSessionCounters.NodesOpenForReadingBySingleSession += amount;
+            Impl->NodeToSessionCounters.NodesOpenForReadingBySingleSession += amount;
             break;
         case TNodeToSessionStat::EKind::NodesOpenForReadingByMultipleSessions:
-            NodeToSessionCounters.NodesOpenForReadingByMultipleSessions +=
+            Impl->NodeToSessionCounters.NodesOpenForReadingByMultipleSessions +=
                 amount;
             break;
     }
