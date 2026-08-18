@@ -285,12 +285,25 @@ struct TTxPartition
             return BlockMarks[blockIndex - ReadRange.Start];
         }
 
+        TPartialBlobId GetBlobId(const TBlockMark& mark)
+        {
+            if (std::holds_alternative<NBlobMarkers::TBlobMark>(mark)) {
+                return MakePartialBlobId(
+                    std::get<NBlobMarkers::TBlobMark>(mark).BlobId);
+            }
+            return {};
+        }
+
         bool MarkBlock(ui32 blockIndex, ui64 commitId, TBlockMark mark)
         {
             auto& outputMark = GetBlockMark(blockIndex);
             auto& outputMarkCommitId = GetBlockMarkCommitId(blockIndex);
 
-            if (outputMarkCommitId < commitId) {
+            bool shouldReplaceMark =
+                outputMarkCommitId < commitId ||
+                (outputMarkCommitId == commitId &&
+                 GetBlobId(outputMark).CommitId() < GetBlobId(mark).CommitId());
+            if (shouldReplaceMark) {
                 outputMarkCommitId = commitId;
                 outputMark = std::move(mark);
                 return true;
@@ -411,7 +424,11 @@ struct TTxPartition
             bool keepTrackOfAffectedBlocks)
         {
             auto& mark = GetBlockMark(blockIndex);
-            if (mark.CommitId < commitId) {
+            bool shouldReplaceMark =
+                mark.CommitId < commitId ||
+                (mark.CommitId == commitId &&
+                 mark.BlobId.CommitId() < blobId.CommitId());
+            if (shouldReplaceMark) {
                 mark.CommitId = commitId;
                 mark.BlobId = blobId;
                 mark.BlobOffset = blobOffset;
@@ -1134,8 +1151,13 @@ struct TTxPartition
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
 
-            if (mark.CommitId < commitId) {
-                mark = TBlockMark(blockIndex, commitId, TString{content}, blobId);
+            bool shouldReplaceMark =
+                mark.CommitId < commitId ||
+                (mark.CommitId == commitId &&
+                 mark.BlobId.CommitId() < blobId.CommitId());
+            if (shouldReplaceMark) {
+                mark =
+                    TBlockMark(blockIndex, commitId, TString{content}, blobId);
             }
         }
 
@@ -1147,7 +1169,11 @@ struct TTxPartition
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
 
-            if (mark.CommitId < commitId) {
+            bool shouldReplaceMark =
+                mark.CommitId < commitId ||
+                (mark.CommitId == commitId &&
+                 mark.BlobId.CommitId() < blobId.CommitId());
+            if (shouldReplaceMark) {
                 mark = TBlockMark(blockIndex, commitId, blobId, blobOffset);
             }
         }
