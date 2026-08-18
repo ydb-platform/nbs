@@ -203,13 +203,13 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         const auto l0BlockRange =
             TBlockRange32::MakeClosedInterval(100, 200);
         NProto::TBlobMeta l0BlobMeta;
-        l0BlobMeta.MutableMixedBlocks()->AddBlocks(100);
+        l0BlobMeta.MutableL0Blocks()->AddBlocks(100);
 
         const TPartialBlobId l1BlobId(20, 2);
         const auto l1BlockRange =
             TBlockRange32::MakeClosedInterval(300, 400);
         NProto::TBlobMeta l1BlobMeta;
-        l1BlobMeta.MutableMixedBlocks()->AddBlocks(300);
+        l1BlobMeta.MutableL1Blocks()->AddBlocks(300);
 
         executor.WriteTx(
             [&](TPartitionDatabase db)
@@ -242,22 +242,27 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                const auto writeBlob = [&](TPartialBlobId blobId,
-                                           TBlockRange32 blockRange,
-                                           std::initializer_list<ui32> blocks,
-                                           std::initializer_list<ui64> commitIds)
+                const auto writeBlob =
+                    [&](TPartialBlobId blobId,
+                        TBlockRange32 blockRange,
+                        std::initializer_list<ui32> blocks,
+                        std::initializer_list<ui64> commitIds)
                 {
-                    NProto::TBlobMeta blobMeta;
-                    auto* mixedBlocks = blobMeta.MutableMixedBlocks();
+                    NProto::TBlobMeta l0BlobMeta;
+
+                    auto* l0Blocks = l0BlobMeta.MutableL0Blocks();
                     for (ui32 blockIndex: blocks) {
-                        mixedBlocks->AddBlocks(blockIndex);
+                        l0Blocks->AddBlocks(blockIndex);
                     }
                     for (ui64 commitId: commitIds) {
-                        mixedBlocks->AddCommitIds(commitId);
+                        l0Blocks->AddCommitIds(commitId);
                     }
 
-                    db.WriteL0Blob(blobId, blockRange, blobMeta);
-                    db.WriteL1Blob(blobId, blockRange, blobMeta);
+                    NProto::TBlobMeta l1BlobMeta;
+                    l1BlobMeta.MutableL1Blocks()->CopyFrom(*l0Blocks);
+
+                    db.WriteL0Blob(blobId, blockRange, l0BlobMeta);
+                    db.WriteL1Blob(blobId, blockRange, l1BlobMeta);
                 };
 
                 writeBlob(
