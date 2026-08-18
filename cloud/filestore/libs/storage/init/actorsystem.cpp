@@ -36,6 +36,7 @@
 #include <contrib/ydb/core/driver_lib/run/kikimr_services_initializers.h>
 #include <contrib/ydb/core/driver_lib/run/run.h>
 #include <contrib/ydb/core/grpc_services/grpc_request_proxy.h>
+#include <contrib/ydb/core/load_test/service_actor.h>
 #include <contrib/ydb/core/mind/labels_maintainer.h>
 #include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/mind/tenant_pool.h>
@@ -194,6 +195,21 @@ public:
                 authorizer.release(),
                 TMailboxType::Revolving,
                 appData->UserPoolId));
+
+        //
+        // BlobStorage LoadActorService
+        //
+
+        if (Args.StorageConfig->GetEnableLoadActor()) {
+            IActorPtr loadActorService(CreateLoadTestActor(appData->Counters));
+
+            setup->LocalServices.emplace_back(
+                MakeLoadServiceID(Args.NodeId),
+                TActorSetupCmd(
+                    loadActorService.release(),
+                    TMailboxType::HTSwap,
+                    appData->UserPoolId));
+        }
     }
 };
 
@@ -393,6 +409,7 @@ void TActorSystem::Init()
         Args.StorageConfig->GetConfigsDispatcherServiceEnabled();
     servicesMask.EnableViewerService =
         Args.StorageConfig->GetYdbViewerServiceEnabled();
+    servicesMask.EnableLoadService = Args.StorageConfig->GetEnableLoadActor();
 
     if (Args.AppConfig->HasAuthConfig()) {
         servicesMask.EnableSecurityServices = 1;

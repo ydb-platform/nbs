@@ -448,6 +448,8 @@ public:
     [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
 
     [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
+
+    [[nodiscard]] bool GetEnableLoadActor() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
