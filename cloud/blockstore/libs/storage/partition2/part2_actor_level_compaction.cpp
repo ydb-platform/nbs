@@ -249,9 +249,7 @@ STFUNC(TPromoteCompactionActor::StateWork)
             TEvPartitionCommonPrivate::TEvWriteBlobResponse,
             HandleWriteBlobResponse);
 
-        HFunc(
-            TEvPartitionPrivate::TEvAddBlobsResponse,
-            HandleAddBlobsResponse);
+        HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
         default:
             break;
     }
@@ -340,6 +338,7 @@ void TPartitionActor::HandlePromoteCompaction(
     const TEvPartitionPrivate::TEvPromoteCompactionRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
+    const auto* msg = ev->Get();
     auto& cm = State->GetCompactionMapL0();
 
     // TODO: implement parallel level compactions
@@ -347,16 +346,35 @@ void TPartitionActor::HandlePromoteCompaction(
         return;
     }
 
-    auto top = cm.GetCompactionMap().GetTopByUsedBlocks();
+    ui32 rangeIndex = 0;
+    if (msg->RangeIndex) {
+        ui64 rangesCount =
+            State->GetBlocksCount() / State->GetMeta().GetL0RangeSize();
 
-    const size_t usedBlocksNeededForPromoteL0 =
-        CalculateUsedBlocksNeededForPromoteL0(Config, *State);
+        if (*msg->RangeIndex >= rangesCount) {
+            NCloud::Reply(
+                ctx,
+                *ev,
+                std::make_unique<
+                    TEvPartitionPrivate::TEvPromoteCompactionResponse>(
+                    MakeError(E_ARGUMENT, "invalid range index")));
+            return;
+        }
 
-    if (top.Stat.UsedBlockCount < usedBlocksNeededForPromoteL0) {
-        return;
+        rangeIndex = *msg->RangeIndex;
+
+    } else {
+        auto top = cm.GetCompactionMap().GetTopByUsedBlocks();
+
+        const size_t usedBlocksNeededForPromoteL0 =
+            CalculateUsedBlocksNeededForPromoteL0(Config, *State);
+
+        if (top.Stat.UsedBlockCount < usedBlocksNeededForPromoteL0) {
+            return;
+        }
+
+        rangeIndex = top.BlockIndex / State->GetMeta().GetL0RangeSize();
     }
-
-    ui32 rangeIndex = top.BlockIndex / State->GetMeta().GetL0RangeSize();
 
     const ui64 commitId = SharedState->GenerateCommitId();
     if (commitId == InvalidCommitId) {
@@ -408,6 +426,7 @@ bool TPartitionActor::PreparePromoteCompaction(
         /*allowBlockDuplicates*/ false);
 
     bool ready = db.FindBlocksInL0Index(
+        visitor,
         visitor,
         range,
         /*minCommitId*/

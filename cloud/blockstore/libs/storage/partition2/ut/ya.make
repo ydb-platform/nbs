@@ -7,6 +7,7 @@ SRCS(
     part2_cleanup_logic_ut.cpp
     part2_compaction_logic_ut.cpp
     part2_database_ut.cpp
+    part2_level_index_ut.cpp
     part2_readblobinfo_logic_ut.cpp
     part2_state_ut.cpp
     part2_ut.cpp
