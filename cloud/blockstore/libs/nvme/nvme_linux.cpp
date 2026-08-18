@@ -1,5 +1,7 @@
 #include "nvme.h"
 
+#include "utils.h"
+
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -7,7 +9,9 @@
 
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
+#include <util/stream/format.h>
 #include <util/string/builder.h>
+#include <util/string/join.h>
 #include <util/system/file.h>
 
 #include <linux/fs.h>
@@ -27,7 +31,20 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void InvokeAdminCmd(TFileHandle& file, nvme_admin_cmd& cmd, const char* source)
+TString ToString(const TVector<ui8>& opcodes)
+{
+    TStringBuilder out;
+
+    out << "[ ";
+    for (ui8 opcode: opcodes) {
+        out << Hex(opcode, HF_ADDX) << " ";
+    }
+    out << "]";
+
+    return out;
+}
+
+void InvokeAdminCmd(TFileHandle& file, nvme_admin_cmd& cmd, TStringBuf source)
 {
     if (!ioctl(file, NVME_IOCTL_ADMIN_CMD, &cmd)) {
         return;
@@ -242,7 +259,7 @@ bool IsBlockOrCharDevice(TFileHandle& device)
 
 hd_driveid HDIdentity(TFileHandle& device)
 {
-    hd_driveid hd {};
+    hd_driveid hd{};
     int err = ioctl(device, HDIO_GET_IDENTITY, &hd);
 
     if (err) {
@@ -282,10 +299,21 @@ ui32 GetSanitizeAction(TFileHandle& device, TDuration timeout)
            "actions";
 }
 
+TFileHandle OpenCtrl(const TString& ctrlPath)
+{
+    TFileHandle device(ctrlPath, OpenExisting | RdWr);
+    if (!device.IsOpen()) {
+        int err = errno;
+        STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
+            << "Failed to open file " << ctrlPath.Quote();
+    }
+
+    return device;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNvmeManager final
-    : public INvmeManager
+class TNvmeManager final: public INvmeManager
 {
 private:
     const ILoggingServicePtr Logging;
@@ -295,20 +323,21 @@ private:
     TDuration SecureEraseTimeout;
     TDuration AdminCmdTimeout;
 
-    void FormatImpl(
-        const TString& path,
-        nvme_secure_erase_setting ses)
+    void FormatImpl(const TString& path, nvme_secure_erase_setting ses)
     {
         TFileHandle device(path, OpenExisting | RdOnly);
 
-        Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
+        Y_ENSURE(
+            IsBlockOrCharDevice(device),
+            "expected block or character device");
 
         nvme_ctrlr_data ctrl = NVMeIdentifyCtrl(device, AdminCmdTimeout);
 
         Y_ENSURE(ctrl.fna.format_all_ns == 0, "can't format single namespace");
         Y_ENSURE(ctrl.fna.erase_all_ns == 0, "can't erase single namespace");
         Y_ENSURE(
-            ses != NVME_FMT_NVM_SES_CRYPTO_ERASE || ctrl.fna.crypto_erase_supported == 1,
+            ses != NVME_FMT_NVM_SES_CRYPTO_ERASE ||
+                ctrl.fna.crypto_erase_supported == 1,
             "cryptographic erase is not supported");
 
         const int nsId = ioctl(device, NVME_IOCTL_ID);
@@ -320,10 +349,7 @@ private:
 
         Y_ENSURE(ns.lbaf[ns.flbas.format].ms == 0, "unexpected metadata");
 
-        nvme_format format {
-            .lbaf = ns.flbas.format,
-            .ses = ses
-        };
+        nvme_format format{.lbaf = ns.flbas.format, .ses = ses};
 
         NVMeFormatImpl(device, nsId, format, SecureEraseTimeout);
     }
@@ -331,7 +357,9 @@ private:
     void DeallocateImpl(const TString& path, ui64 offsetBytes, ui64 sizeBytes)
     {
         TFileHandle device(path, OpenExisting | RdWr);
-        Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
+        Y_ENSURE(
+            IsBlockOrCharDevice(device),
+            "expected block or character device");
 
         ui64 devSizeBytes = 0;
         int err = ioctl(device, BLKGETSIZE64, &devSizeBytes);
@@ -342,19 +370,19 @@ private:
                 << strerror(err);
         }
 
-        Y_ENSURE(offsetBytes + sizeBytes <= devSizeBytes,
+        Y_ENSURE(
+            offsetBytes + sizeBytes <= devSizeBytes,
             "invalid deallocate range: "
-            "offsetBytes=" << offsetBytes <<
-            ", sizeBytes=" << sizeBytes <<
-            ", devSizeBytes=" << devSizeBytes);
+            "offsetBytes="
+                << offsetBytes << ", sizeBytes=" << sizeBytes
+                << ", devSizeBytes=" << devSizeBytes);
 
-        ui64 range[2] = { offsetBytes, sizeBytes };
+        ui64 range[2] = {offsetBytes, sizeBytes};
         err = ioctl(device, BLKDISCARD, range);
         if (err) {
             err = errno;
             STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
-                << "NVMeDeallocateImpl failed to deallocate: "
-                << strerror(err);
+                << "NVMeDeallocateImpl failed to deallocate: " << strerror(err);
         }
     }
 
@@ -382,56 +410,61 @@ public:
         const TString& path,
         nvme_secure_erase_setting ses) override
     {
-        return Executor->Execute([=, this] {
-            try {
-                FormatImpl(path, ses);
-                return NProto::TError();
-            } catch (...) {
-                return MakeError(E_FAIL, CurrentExceptionMessage());
-            }
-        });
+        return Executor->Execute(
+            [=, this]
+            {
+                try {
+                    FormatImpl(path, ses);
+                    return NProto::TError();
+                } catch (...) {
+                    return MakeError(E_FAIL, CurrentExceptionMessage());
+                }
+            });
     }
 
-    TFuture<NProto::TError> Deallocate(
-        const TString& path,
-        ui64 offsetBytes,
-        ui64 sizeBytes) override
+    TFuture<NProto::TError>
+    Deallocate(const TString& path, ui64 offsetBytes, ui64 sizeBytes) override
     {
-        return Executor->Execute([=, this] {
-            try {
-                DeallocateImpl(path, offsetBytes, sizeBytes);
-                return NProto::TError();
-            } catch (const TServiceError &e) {
-                return MakeError(e.GetCode(), TString(e.GetMessage()));
-            } catch (...) {
-                return MakeError(E_FAIL, CurrentExceptionMessage());
-            }
-        });
+        return Executor->Execute(
+            [=, this]
+            {
+                try {
+                    DeallocateImpl(path, offsetBytes, sizeBytes);
+                    return NProto::TError();
+                } catch (const TServiceError& e) {
+                    return MakeError(e.GetCode(), TString(e.GetMessage()));
+                } catch (...) {
+                    return MakeError(E_FAIL, CurrentExceptionMessage());
+                }
+            });
     }
 
     TResultOrError<TString> GetSerialNumber(const TString& path) override
     {
-        return SafeExecute<TResultOrError<TString>>([&] {
-            TFileHandle device(path, OpenExisting | RdOnly);
+        return SafeExecute<TResultOrError<TString>>(
+            [&]
+            {
+                TFileHandle device(path, OpenExisting | RdOnly);
 
-            auto str = [] (auto& arr) {
-                auto* sn = std::bit_cast<const char*>(&arr[0]);
-                auto end = std::find(sn, sn + sizeof(arr), '\0');
+                auto str = [](auto& arr)
+                {
+                    auto* sn = std::bit_cast<const char*>(&arr[0]);
+                    auto end = std::find(sn, sn + sizeof(arr), '\0');
 
-                return TString(sn, end);
-            };
+                    return TString(sn, end);
+                };
 
-            auto [isRot, error] = IsRotational(device);
+                auto [isRot, error] = IsRotational(device);
 
-            if (!HasError(error) && isRot) {
-                auto hd = HDIdentity(device);
-                return str(hd.serial_no);
-            }
+                if (!HasError(error) && isRot) {
+                    auto hd = HDIdentity(device);
+                    return str(hd.serial_no);
+                }
 
                 auto ctrl = NVMeIdentifyCtrl(device, AdminCmdTimeout);
 
-            return str(ctrl.sn);
-        });
+                return str(ctrl.sn);
+            });
     }
 
     TResultOrError<TString> GetDeviceModel(const TString& path) override
@@ -464,17 +497,19 @@ public:
 
     TResultOrError<bool> IsSsd(const TString& path) override
     {
-        return SafeExecute<TResultOrError<bool>>([&] {
-            TFileHandle device(path, OpenExisting | RdOnly);
+        return SafeExecute<TResultOrError<bool>>(
+            [&]
+            {
+                TFileHandle device(path, OpenExisting | RdOnly);
 
-            auto [isRot, error] = IsRotational(device);
-            if (HasError(error)) {
-                STORAGE_THROW_SERVICE_ERROR(error.GetCode())
-                    << "NVMeIsSsd failed: " << error.GetMessage();
-            }
+                auto [isRot, error] = IsRotational(device);
+                if (HasError(error)) {
+                    STORAGE_THROW_SERVICE_ERROR(error.GetCode())
+                        << "NVMeIsSsd failed: " << error.GetMessage();
+                }
 
-            return TResultOrError { !isRot };
-        });
+                return TResultOrError{!isRot};
+            });
     }
 
     NProto::TError StartSanitize(const TString& ctrlPath) override
@@ -482,12 +517,7 @@ public:
         return SafeExecute<NProto::TError>(
             [&]
             {
-                TFileHandle device(ctrlPath, OpenExisting | RdWr);
-                if (!device.IsOpen()) {
-                    int err = errno;
-                    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
-                        << "Failed to open file " << ctrlPath.Quote();
-                }
+                TFileHandle device = OpenCtrl(ctrlPath);
 
                 nvme_admin_cmd cmd{
                     .opcode = NVME_OPC_SANITIZE,
@@ -511,12 +541,7 @@ public:
         return SafeExecute<TResultOrError<TSanitizeStatus>>(
             [&]() -> TResultOrError<TSanitizeStatus>
             {
-                TFileHandle device(ctrlPath, OpenExisting | RdWr);
-                if (!device.IsOpen()) {
-                    int err = errno;
-                    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
-                        << "Failed to open file " << ctrlPath.Quote();
-                }
+                TFileHandle device = OpenCtrl(ctrlPath);
 
                 char buffer[4]{};
 
@@ -526,8 +551,7 @@ public:
                     .opcode = NVME_OPC_GET_LOG_PAGE,
                     .addr = std::bit_cast<ui64>(&buffer[0]),
                     .data_len = sizeof(buffer),
-                    .cdw10 = 0x81   // Log Page ID: Sanitize Status
-                             | (numd << 16),
+                    .cdw10 = NVME_LOG_LID_SANITIZE | (numd << 16),
                     .timeout_ms =
                         static_cast<ui32>(AdminCmdTimeout.MilliSeconds())};
 
@@ -575,12 +599,7 @@ public:
         return SafeExecute<NProto::TError>(
             [&]
             {
-                TFileHandle device(ctrlPath, OpenExisting | RdWr);
-                if (!device.IsOpen()) {
-                    int err = errno;
-                    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
-                        << "Failed to open file " << ctrlPath.Quote();
-                }
+                TFileHandle device = OpenCtrl(ctrlPath);
 
                 nvme_ctrlr_data ctrl =
                     NVMeIdentifyCtrl(device, AdminCmdTimeout);
@@ -645,6 +664,219 @@ public:
 
                 return MakeError(S_OK);
             });
+    }
+
+    TVector<ui8> ReadLockdownList(
+        TFileHandle& device,
+        nvme_lockdown_log_scope scope,
+        nvme_lockdown_log_contents contents)
+    {
+        nvme_lockdown_log log{};
+
+        //
+        // Get Log Page CDW10:
+        //
+        //   [31:16] NUMDL
+        //   [15]    RAE = 0
+        //   [14]    Reserved
+        //   [13:12] CNTTS (Contents)
+        //   [11:8]  SCP (Scope)
+        //   [7:0]   LID
+        //
+        // NUMDL and NUMDU form a 0-based number of dwords to transfer.
+        // nvme_lockdown_log is 512 bytes:
+        //     512 / sizeof(uint32_t) - 1 = 127
+        //
+
+        const uint32_t numd = sizeof(nvme_lockdown_log) / sizeof(uint32_t) - 1;
+        const uint32_t scp = static_cast<uint8_t>(scope);
+        const uint32_t cntts = static_cast<uint8_t>(contents);
+
+        nvme_admin_cmd cmd = {
+            .opcode = NVME_OPC_GET_LOG_PAGE,
+            .nsid = 0,
+            .addr = reinterpret_cast<uint64_t>(&log),
+            .data_len = sizeof(log),
+            .cdw10 = (numd << 16) | (cntts << 12) | (scp << 8) |
+                     NVME_LOG_LID_CMD_AND_FEAT_LOCKDOWN,
+            .cdw11 = 0,   // LSI = 0, NUMDU = 0
+            .timeout_ms = static_cast<ui32>(AdminCmdTimeout.MilliSeconds()),
+        };
+
+        const int rc = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
+        if (rc < 0) {
+            const int err = errno;
+            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(err))
+                << "NVME_IOCTL_ADMIN_CMD(Get Log Page)";
+        }
+
+        if (rc != 0) {
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
+                << "Get Lockdown Log failed, NVMe status=" << Hex(rc, HF_ADDX);
+        }
+
+        // Validate what the controller says it returned.
+
+        const uint8_t returnedScope =
+            (log.cfila >> NVME_LOCKDOWN_SS_SHIFT) & NVME_LOCKDOWN_SS_MASK;
+        const uint8_t returnedContents =
+            (log.cfila >> NVME_LOCKDOWN_CS_SHIFT) & NVME_LOCKDOWN_CS_MASK;
+
+        if (returnedScope != scp || returnedContents != cntts) {
+            STORAGE_THROW_SERVICE_ERROR(E_INVALID_STATE)
+                << "Lockdown log returned unexpected scope/contents";
+        }
+
+        return {log.cfil, log.cfil + log.lngth};
+    }
+
+    TLockdownScopeState ReadLockdownScopeState(
+        TFileHandle& device,
+        nvme_lockdown_log_scope scope)
+    {
+        return {
+            .Supported =
+                ReadLockdownList(device, scope, NVME_LOCKDOWN_SUPPORTED_CMD),
+            .Prohibited =
+                ReadLockdownList(device, scope, NVME_LOCKDOWN_PROHIBITED_CMD),
+        };
+    }
+
+    TResultOrError<TLockdownState> GetLockdownState(
+        const TString& ctrlPath) final
+    {
+        return SafeExecute<TResultOrError<TLockdownState>>(
+            [&]
+            {
+                TFileHandle device = OpenCtrl(ctrlPath);
+
+                auto ctrl = NVMeIdentifyCtrl(device, AdminCmdTimeout);
+                if (!ctrl.oacs.lockdown) {
+                    return TLockdownState{
+                        .Supported = false,
+                    };
+                }
+
+                return TLockdownState{
+                    .Supported = true,
+                    .AdminCmd =
+                        ReadLockdownScopeState(device, NVME_LOCKDOWN_ADMIN_CMD),
+                    .FeatureId = ReadLockdownScopeState(
+                        device,
+                        NVME_LOCKDOWN_FEATURE_ID),
+                };
+            });
+    }
+
+    static TVector<ui8> CalculateOpcodesToLock(
+        TVector<ui8> allowedOpcodes,
+        const TLockdownScopeState& scope)
+    {
+        return NNvme::CalculateOpcodesToLock(
+            std::move(allowedOpcodes),
+            scope.Supported,
+            scope.Prohibited);
+    }
+
+    NProto::TError EnsureLockdown(
+        const TString& ctrlPath,
+        const TLockdownConfig& config) final
+    {
+        return SafeExecute<NProto::TError>(
+            [&]
+            {
+                TFileHandle device = OpenCtrl(ctrlPath);
+
+                auto ctrl = NVMeIdentifyCtrl(device, AdminCmdTimeout);
+                if (!ctrl.oacs.lockdown) {
+                    return MakeError(
+                        MAKE_SYSTEM_ERROR(ENOTSUP),
+                        "Lockdown command is not supported");
+                }
+
+                auto allowedAdminOpcodes = config.AllowedAdminOpcodes;
+
+                if (config.BlockLockdownCommand) {
+                    std::erase(allowedAdminOpcodes, NVME_OPS_ADMIN_LOCKDOWN);
+                } else {
+                    allowedAdminOpcodes.push_back(NVME_OPS_ADMIN_LOCKDOWN);
+                }
+
+                auto adminOpcodesToLock = CalculateOpcodesToLock(
+                    std::move(allowedAdminOpcodes),
+                    ReadLockdownScopeState(device, NVME_LOCKDOWN_ADMIN_CMD));
+
+                auto featureIdsToLock = CalculateOpcodesToLock(
+                    config.AllowedSetFeatureIds,
+                    ReadLockdownScopeState(device, NVME_LOCKDOWN_FEATURE_ID));
+
+                if (adminOpcodesToLock.empty() && featureIdsToLock.empty()) {
+                    return MakeError(S_ALREADY);
+                }
+
+                Lockdown(
+                    device,
+                    std::move(adminOpcodesToLock),
+                    std::move(featureIdsToLock));
+
+                return MakeError(S_OK);
+            });
+    }
+
+    void LockdownItem(
+        TFileHandle& device,
+        nvme_lockdown_log_scope scope,
+        ui8 opcodeOrFeatureId)
+    {
+        constexpr ui32 ifc = 0;     // Admin Submission Queue
+        constexpr ui32 prhbt = 1;   // Prohibit
+
+        nvme_admin_cmd cmd = {
+            .opcode = NVME_OPS_ADMIN_LOCKDOWN,
+            .addr = 0,
+            .data_len = 0,
+            .cdw10 = (static_cast<ui32>(opcodeOrFeatureId) << 8) | (ifc << 5) |
+                     (prhbt << 4) | static_cast<ui32>(scope),
+            .cdw14 = 0,
+            .timeout_ms = static_cast<ui32>(AdminCmdTimeout.MilliSeconds()),
+        };
+
+        InvokeAdminCmd(
+            device,
+            cmd,
+            TStringBuilder()
+                << "Lockdown item " << Hex(opcodeOrFeatureId, HF_ADDX)
+                << " in scope " << Hex(scope, HF_ADDX));
+    }
+
+    void Lockdown(
+        TFileHandle& device,
+        TVector<ui8> adminOpcodesToLock,
+        TVector<ui8> featureIdsToLock)
+    {
+        SortUnique(adminOpcodesToLock);
+        SortUnique(featureIdsToLock);
+
+        STORAGE_INFO(
+            "Lockdown. Opcodes: " << ToString(adminOpcodesToLock)
+                                  << " features: "
+                                  << ToString(featureIdsToLock));
+
+        for (ui8 feat: featureIdsToLock) {
+            LockdownItem(device, NVME_LOCKDOWN_FEATURE_ID, feat);
+        }
+
+        // Lock the Lockdown command itself last, so that all other
+        // lockdown operations can still be performed.
+        auto it =
+            std::ranges::find(adminOpcodesToLock, NVME_OPS_ADMIN_LOCKDOWN);
+        if (it != adminOpcodesToLock.end()) {
+            std::iter_swap(it, adminOpcodesToLock.rbegin());
+        }
+
+        for (ui8 opcode: adminOpcodesToLock) {
+            LockdownItem(device, NVME_LOCKDOWN_ADMIN_CMD, opcode);
+        }
     }
 
     // returns (LBA format index, block size)
