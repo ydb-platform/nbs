@@ -549,6 +549,133 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
             promotedBlobId->second,
             'c');
     }
+
+    Y_UNIT_TEST(ShouldTriggerPromoteCompactionByUsedBlocksPerRange)
+    {
+        constexpr ui32 L0RangeBlockCount = 8;
+        constexpr ui32 L1RangeBlockCount = 4;
+        constexpr ui32 BlocksForHugeBlob = 2;
+        constexpr ui32 UsedBlocksNeededForPromote =
+            BlocksForHugeBlob * L0RangeBlockCount / L1RangeBlockCount;
+        constexpr ui32 BlockCount = 2 * L0RangeBlockCount;
+
+        static_assert(UsedBlocksNeededForPromote == 4);
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetWriteBlobThresholdSSD(
+            BlocksForHugeBlob * DefaultBlockSize);
+        config.SetL0RangeSizeV2(L0RangeBlockCount * DefaultBlockSize);
+        config.SetL1RangeSizeV2(L1RangeBlockCount * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config, BlockCount);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui32 promoteRequestCount = 0;
+        ui32 promoteAddBlobsRequestCount = 0;
+        ui32 promoteCompletedCount = 0;
+        TVector<std::pair<TPartialBlobId, ui32>> l0BlobRanges;
+        TVector<ui32> promotedBlockIndices;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvPromoteCompactionRequest: {
+                        const auto* request = event->Get<
+                            TEvPartitionPrivate::TEvPromoteCompactionRequest>();
+                        UNIT_ASSERT(!request->RangeIndex);
+                        ++promoteRequestCount;
+                        break;
+                    }
+
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        const auto* request = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+
+                        if (request->Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
+                            for (const auto& blob: request->L0Blobs) {
+                                UNIT_ASSERT(!blob.BlockIndices.empty());
+                                const ui32 rangeIndex =
+                                    blob.BlockIndices.front() /
+                                    L0RangeBlockCount;
+                                l0BlobRanges.emplace_back(
+                                    blob.BlobId,
+                                    rangeIndex);
+                            }
+                        } else if (
+                            request->Mode ==
+                            EAddBlobMode::ADD_PROMOTE_COMPACTION_RESULT)
+                        {
+                            ++promoteAddBlobsRequestCount;
+
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                2,
+                                request->AffectedBlobs.size());
+                            for (const auto& [blobId, affectedBlob]:
+                                 request->AffectedBlobs)
+                            {
+                                Y_UNUSED(affectedBlob);
+
+                                bool sourceBlobFound = false;
+                                for (const auto& [sourceBlobId, rangeIndex]:
+                                     l0BlobRanges)
+                                {
+                                    if (sourceBlobId == blobId) {
+                                        UNIT_ASSERT_VALUES_EQUAL(
+                                            0,
+                                            rangeIndex);
+                                        sourceBlobFound = true;
+                                        break;
+                                    }
+                                }
+                                UNIT_ASSERT(sourceBlobFound);
+                            }
+
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                1,
+                                request->L1Blobs.size());
+                            promotedBlockIndices =
+                                request->L1Blobs.front().BlockIndices;
+                        }
+                        break;
+                    }
+
+                    case TEvPartitionPrivate::EvPromoteCompactionCompleted:
+                        ++promoteCompletedCount;
+                        break;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        for (ui32 blockIndex: {0, 1, 2, 8, 9, 10}) {
+            partition.WriteBlocks(blockIndex, 'a');
+        }
+        partition.Flush();
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, promoteRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, promoteAddBlobsRequestCount);
+
+        partition.WriteBlocks(3, 'b');
+        partition.Flush();
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return promoteCompletedCount == 1;
+        };
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, promoteRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, promoteAddBlobsRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, promoteCompletedCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui32>({0, 1, 2, 3}),
+            promotedBlockIndices);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2
