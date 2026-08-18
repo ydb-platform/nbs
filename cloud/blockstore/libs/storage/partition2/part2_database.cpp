@@ -1224,13 +1224,14 @@ static bool FindBlocksInLevelIndex(
             const auto blobMeta =
                 it.template GetValue<typename TTable::BlobMeta>();
 
-            Y_ABORT_UNLESS(blobMeta.HasMixedBlocks());
             const auto& blocks = [&]()
             {
                 if constexpr (std::is_same_v<TTable, TPartitionSchema::L0Index>)
                 {
+                    Y_ABORT_UNLESS(blobMeta.HasL0Blocks());
                     return blobMeta.GetL0Blocks();
                 } else {
+                    Y_ABORT_UNLESS(blobMeta.HasL1Blocks());
                     return blobMeta.GetL1Blocks();
                 }
             }();
