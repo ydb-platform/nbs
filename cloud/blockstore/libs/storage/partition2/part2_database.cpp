@@ -1203,6 +1203,7 @@ static bool FindBlocksInLevelIndex(
     IBlocksIndexVisitor& visitor,
     IBlobsVisitor& blobsVisitor,
     const TBlockRange32& blockRange,
+    ui64 minCommitId,
     ui64 maxCommitId,
     ui64 rangeSize)
 {
@@ -1248,13 +1249,24 @@ static bool FindBlocksInLevelIndex(
                 return true;   // interrupted
             }
 
-            for (size_t i = 0; i < blocks.BlocksSize(); ++i) {
-                const ui32 blockIndex = blocks.GetBlocks(i);
+            const auto& blockIndices = blocks.GetBlocks();
+            const auto begin = LowerBound(
+                blockIndices.begin(),
+                blockIndices.end(),
+                blockRange.Start);
+            const auto end = UpperBound(
+                begin,
+                blockIndices.end(),
+                blockRange.End);
+
+            size_t i = begin - blockIndices.begin();
+            for (auto it = begin; it != end; ++it, ++i) {
+                const ui32 blockIndex = *it;
                 const ui64 commitId = blocks.CommitIdsSize()
                                           ? blocks.GetCommitIds(i)
                                           : blobId.CommitId();
 
-                if (blockRange.Contains(blockIndex) &&
+                if (minCommitId <= commitId &&
                     commitId <= maxCommitId &&
                     !visitor.Visit(
                         blockIndex,
@@ -1279,6 +1291,7 @@ template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL0Index(
     IBlocksIndexVisitor& visitor,
     const TBlockRange32& blockRange,
+    ui64 minCommitId,
     ui64 maxCommitId)
 {
     TNoOpBlobsVisitor noOpBlobsVisitor;
@@ -1286,6 +1299,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL0Index(
         noOpBlobsVisitor,
         visitor,
         blockRange,
+        minCommitId,
         maxCommitId);
 }
 
@@ -1294,6 +1308,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL0Index(
     IBlobsVisitor& blobsVisitor,
     IBlocksIndexVisitor& blocksIndexVisitor,
     const TBlockRange32& blockRange,
+    ui64 minCommitId,
     ui64 maxCommitId)
 {
     Y_ABORT_UNLESS(L0RangeSize);
@@ -1303,6 +1318,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL0Index(
         blocksIndexVisitor,
         blobsVisitor,
         blockRange,
+        minCommitId,
         maxCommitId,
         L0RangeSize);
 }
@@ -1345,6 +1361,7 @@ template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL1Index(
     IBlocksIndexVisitor& visitor,
     const TBlockRange32& blockRange,
+    ui64 minCommitId,
     ui64 maxCommitId)
 {
     TNoOpBlobsVisitor noOpBlobsVisitor;
@@ -1352,6 +1369,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL1Index(
         noOpBlobsVisitor,
         visitor,
         blockRange,
+        minCommitId,
         maxCommitId);
 }
 
@@ -1360,6 +1378,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL1Index(
     IBlobsVisitor& blobsVisitor,
     IBlocksIndexVisitor& blocksIndexVisitor,
     const TBlockRange32& blockRange,
+    ui64 minCommitId,
     ui64 maxCommitId)
 {
     Y_ABORT_UNLESS(L1RangeSize);
@@ -1369,6 +1388,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL1Index(
         blocksIndexVisitor,
         blobsVisitor,
         blockRange,
+        minCommitId,
         maxCommitId,
         L1RangeSize);
 }

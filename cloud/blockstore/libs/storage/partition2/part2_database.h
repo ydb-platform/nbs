@@ -226,12 +226,14 @@ public:
     bool FindBlocksInL0Index(
         IBlocksIndexVisitor& visitor,
         const TBlockRange32& blockRange,
+        ui64 minCommitId = 0,
         ui64 maxCommitId = Max());
 
     bool FindBlocksInL0Index(
         IBlobsVisitor& blobsVisitor,
         IBlocksIndexVisitor& blocksIndexVisitor,
         const TBlockRange32& blockRange,
+        ui64 minCommitId = 0,
         ui64 maxCommitId = Max());
 
     //
@@ -250,12 +252,14 @@ public:
     bool FindBlocksInL1Index(
         IBlocksIndexVisitor& visitor,
         const TBlockRange32& blockRange,
+        ui64 minCommitId = 0,
         ui64 maxCommitId = Max());
 
     bool FindBlocksInL1Index(
         IBlobsVisitor& blobsVisitor,
         IBlocksIndexVisitor& blocksIndexVisitor,
         const TBlockRange32& blockRange,
+        ui64 minCommitId = 0,
         ui64 maxCommitId = Max());
 
     //
