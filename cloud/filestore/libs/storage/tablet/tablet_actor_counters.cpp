@@ -926,14 +926,16 @@ void TIndexTabletActor::HandleGetDiagnosticStats(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetDiagnosticStatsResponse>();
 
-    for (const auto& accessStats: GetNodeAccessStats(ctx.Now(), ev->Get()->Record.GetLimit())) {
+    for (const auto& accessStats:
+         GetNodeAccessStats(ctx.Now(), ev->Get()->Record.GetLimit()))
+    {
         auto* out = response->Record.AddNodeStats();
         out->SetShardId(GetFileSystemId());
-            out->SetNodeId(accessStats.NodeId);
-            out->SetRequestCount(accessStats.RequestCount);
-            out->SetAccessScore(accessStats.AccessScore);
-            out->SetLastAccessedTimestampUs(
-                accessStats.LastAccessed.MicroSeconds());
+        out->SetNodeId(accessStats.NodeId);
+        out->SetRequestCount(accessStats.RequestCount);
+        out->SetAccessScore(accessStats.AccessScore);
+        out->SetLastAccessedTimestampUs(
+            accessStats.LastAccessed.MicroSeconds());
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));

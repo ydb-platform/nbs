@@ -26,6 +26,7 @@ TAddDataActor::TAddDataActor(
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
+        ui64 nodeId,
         TVector<TMergedBlob> blobs,
         TVector<TBlockBytesMeta> unalignedDataParts,
         TWriteRange writeRange,
@@ -38,6 +39,7 @@ TAddDataActor::TAddDataActor(
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
+    , NodeId(nodeId)
     , Blobs(std::move(blobs))
     , UnalignedDataParts(std::move(unalignedDataParts))
     , WriteRange(writeRange)
@@ -115,6 +117,7 @@ void TAddDataActor::ReplyAndDie(
             BlobsSize,
             ctx.Now() - RequestInfo->StartedTs,
             CommitId,
+            NodeId,
             BackendInfo.GetIsOverloaded());
         NCloud::Send(ctx, Tablet, std::move(response));
     }

@@ -172,17 +172,6 @@ bool TIndexTabletActor::PrepareTx_AddData(
         part.NodeId = args.NodeId;
     }
 
-    if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
-        !args.RequestInfo->NodeDiagnosticStatsStarted)
-    {
-        if (UpdateAccessStats(args.NodeId, ctx.Now())) {
-            args.RequestInfo->NodeDiagnosticStatsStarted = true;
-        } else {
-            ReportDiagnosticStatsInsertFailed(
-                "Failed to insert access statistics into ranking");
-        }
-    }
-
     LOG_TRACE(
         ctx,
         TFileStoreComponents::TABLET,
@@ -296,6 +285,7 @@ void TIndexTabletActor::CompleteTx_AddData(
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
+        args.NodeId,
         std::move(blobs),
         std::move(args.UnalignedDataParts),
         TWriteRange{args.NodeId, args.ByteRange.End()},
@@ -699,6 +689,12 @@ void TIndexTabletActor::HandleAddDataCompleted(
             FormatError(msg->Error).Quote().c_str());
     } else {
         Metrics->AddData.Update(msg->Count, msg->Size, msg->Time);
+
+        if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
+            ReportDiagnosticStatsInsertFailed(
+                "Failed to insert access statistics into ranking");
+        }
+
         if (msg->IsOverloaded) {
             Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
         }

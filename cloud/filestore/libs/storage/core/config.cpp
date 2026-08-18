@@ -393,6 +393,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FanoutStatsCollectionInShardsDisabled,         bool,    false         )\
                                                                                \
     xxx(EnableLoadActor,                               bool,    false         )\
+    xxx(MaxNodeDiagnosticEntries,                      ui32,    10'000        )\
+    xxx(AccessStatsHalfLife,               TDuration,   TDuration::Minutes(10))\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

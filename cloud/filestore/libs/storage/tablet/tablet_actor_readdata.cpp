@@ -344,6 +344,7 @@ private:
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
     const ui64 CommitId;
+    const ui64 NodeId;
     const TByteRange OriginByteRange;
     const TByteRange ActualRange;
     const ui64 TotalSize;
@@ -366,6 +367,7 @@ public:
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
+        ui64 nodeId,
         TByteRange originByteRange,
         TByteRange actualRange,
         ui64 totalSize,
@@ -408,6 +410,7 @@ TReadDataActor::TReadDataActor(
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
+        ui64 nodeId,
         TByteRange originByteRange,
         TByteRange actualRange,
         ui64 totalSize,
@@ -427,6 +430,7 @@ TReadDataActor::TReadDataActor(
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
+    , NodeId(nodeId)
     , OriginByteRange(originByteRange)
     , ActualRange(actualRange)
     , TotalSize(totalSize)
@@ -518,6 +522,7 @@ void TReadDataActor::ReplyAndDie(
             error,
             std::move(MixedBlocksRanges),
             CommitId,
+            NodeId,
             1,
             OriginByteRange.Length,
             ctx.Now() - RequestInfo->StartedTs,
@@ -697,7 +702,7 @@ void TIndexTabletActor::HandleReadData(
 
 void TIndexTabletActor::HandleReadDataCompleted(
     const TEvIndexTabletPrivate::TEvReadDataCompleted::TPtr& ev,
-    const TActorContext&)
+    const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
@@ -706,6 +711,10 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
+    if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
+        ReportDiagnosticStatsInsertFailed(
+            "Failed to insert access statistics into ranking");
+    }
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
@@ -799,13 +808,9 @@ void TIndexTabletActor::HandleDescribeData(
             requestInfo->CallContext,
             ctx);
 
-        if (!requestInfo->NodeDiagnosticStatsStarted) {
-            if (UpdateAccessStats(nodeId, ctx.Now())) {
-                requestInfo->NodeDiagnosticStatsStarted = true;
-            } else {
-                ReportDiagnosticStatsInsertFailed(
-                    "Failed to insert access statistics into ranking");
-            }
+        if (!UpdateAccessStats(nodeId, ctx.Now())) {
+            ReportDiagnosticStatsInsertFailed(
+                "Failed to insert access statistics into ranking");
         }
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
@@ -969,16 +974,6 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         return false;
     }
 
-    if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
-        !args.RequestInfo->NodeDiagnosticStatsStarted)
-    {
-        if (UpdateAccessStats(args.NodeId, ctx.Now())) {
-            args.RequestInfo->NodeDiagnosticStatsStarted = true;
-        } else {
-            ReportDiagnosticStatsInsertFailed(
-                "Failed to insert access statistics into ranking");
-        }
-    }
     //
     // NodeId might be missing in the original request but at this stage we
     // have already read the Node and we can properly set NodeId in all request
@@ -1079,6 +1074,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
+        if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE) {
+            if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+                ReportDiagnosticStatsInsertFailed(
+                    "Failed to insert access statistics into ranking");
+            }
+        }
+
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),
             ctx.Now(),
@@ -1163,6 +1165,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
+        if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE) {
+            if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+                ReportDiagnosticStatsInsertFailed(
+                    "Failed to insert access statistics into ranking");
+            }
+        }
+
         return;
     }
 
@@ -1185,6 +1194,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
+        args.NodeId,
         args.OriginByteRange,
         args.ActualRange(),
         args.Node->Attrs.GetSize(),

@@ -215,6 +215,10 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     Metrics->WriteData.Update(msg->Count, msg->Size, msg->Time);
+    if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
+        ReportDiagnosticStatsInsertFailed(
+            "Failed to insert access statistics into ranking");
+    }
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
@@ -284,16 +288,6 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         return true;
     }
 
-    if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE &&
-        !args.RequestInfo->NodeDiagnosticStatsStarted)
-    {
-        if (UpdateAccessStats(args.NodeId, ctx.Now())) {
-            args.RequestInfo->NodeDiagnosticStatsStarted = true;
-        } else {
-            ReportDiagnosticStatsInsertFailed(
-                "Failed to insert access statistics into ranking");
-        }
-    }
     //
     // NodeId might be missing in the original request but at this stage we
     // have already read the Node and we can properly set NodeId in all request
@@ -461,6 +455,13 @@ void TIndexTabletActor::CompleteTx_WriteData(
             1,
             args.ByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
+
+        if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE) {
+            if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+                ReportDiagnosticStatsInsertFailed(
+                    "Failed to insert access statistics into ranking");
+            }
+        }
 
         return;
     }

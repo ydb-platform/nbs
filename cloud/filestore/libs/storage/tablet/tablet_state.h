@@ -232,7 +232,6 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
-    TNodeAccessStatsTracker NodeAccessStatsTracker;
     ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;

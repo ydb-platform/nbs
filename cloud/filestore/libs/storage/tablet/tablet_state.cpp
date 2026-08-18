@@ -16,8 +16,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t MaxNodeDiagnosticEntries = 10'000;
-constexpr TDuration AccessStatsHalfLife = TDuration::Minutes(10);
 
 IBlockLocation2RangeIndexPtr CreateHasher(const NProto::TFileSystem& fs)
 {
@@ -73,7 +71,6 @@ ui64 CalculateInMemoryIndexCacheCapacity(
 
 TIndexTabletState::TIndexTabletState()
     : Impl(new TImpl(AllocatorRegistry))
-    , NodeAccessStatsTracker(MaxNodeDiagnosticEntries, AccessStatsHalfLife)
 {}
 
 TIndexTabletState::~TIndexTabletState() = default;
@@ -241,6 +238,9 @@ void TIndexTabletState::LoadState(
     Impl->InMemoryIndexState->UpdateLogTag(LogTag);
 
     Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
+    Impl->AccessTracker.emplace(
+        config.GetMaxNodeDiagnosticEntries(),
+        config.GetAccessStatsHalfLife());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
         Impl->LargeBlocks.AddDeletionMarker(deletionMarker);
@@ -261,13 +261,13 @@ void TIndexTabletState::LoadState(
 
 bool TIndexTabletState::UpdateAccessStats(ui64 nodeId, TInstant now)
 {
-    return NodeAccessStatsTracker.UpdateAccessStats(nodeId, now);
+    return Impl->AccessTracker->UpdateAccessStats(nodeId, now);
 }
 
 TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
     TInstant now, ui32 n) const
 {
-    return NodeAccessStatsTracker.GetStats(now, n);
+    return Impl->AccessTracker->GetStats(now, n);
 }
 
 void TIndexTabletState::UpdateConfig(

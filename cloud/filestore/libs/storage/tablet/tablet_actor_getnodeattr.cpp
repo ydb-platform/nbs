@@ -169,15 +169,6 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
         return true;
     }
 
-    if (!args.RequestInfo->NodeDiagnosticStatsStarted) {
-        if (UpdateAccessStats(args.NodeId, ctx.Now())) {
-            args.RequestInfo->NodeDiagnosticStatsStarted = true;
-        } else {
-            ReportDiagnosticStatsInsertFailed(
-                "Failed to insert access statistics into ranking");
-        }
-    }
-
     // TODO: AccessCheck
     TABLET_VERIFY(args.TargetNode);
 
@@ -209,6 +200,11 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
             1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
+
+        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+            ReportDiagnosticStatsInsertFailed(
+                "Failed to insert access statistics into ranking");
+        }
     }
 
     CompleteResponse<TEvService::TGetNodeAttrMethod>(
