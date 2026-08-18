@@ -31,4 +31,6 @@ message SnapshotConfig {
     // the copy stays in sync with the main table while the historical data is
     // being backfilled, so no downtime is needed to switch over.
     optional string ChunkBlobsShadowTableName = 15;
+    optional bool ChunkBlobsStoreExternalBlobs = 16 [default = true];
+    optional bool ChunkBlobsShadowStoreExternalBlobs = 17 [default = false];
 }

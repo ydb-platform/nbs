@@ -78,7 +78,7 @@ func Create(
 		ctx,
 		config.GetStorageFolder(),
 		config.GetChunkBlobsTableName(),
-		chunkBlobsTableDescription(config, withExternalBlobs),
+		chunkBlobsTableDescription(config, config.GetChunkBlobsStoreExternalBlobs()),
 		dropUnusedColumns,
 	)
 	if err != nil {
@@ -92,7 +92,7 @@ func Create(
 			ctx,
 			config.GetStorageFolder(),
 			shadowTableName,
-			chunkBlobsTableDescription(config, withoutExternalBlobs),
+			chunkBlobsTableDescription(config, config.GetChunkBlobsShadowStoreExternalBlobs()),
 			dropUnusedColumns,
 		)
 		if err != nil {
@@ -198,16 +198,9 @@ func Drop(
 	return nil
 }
 
-type externalBlobsUsage int
-
-const (
-	withExternalBlobs externalBlobsUsage = iota
-	withoutExternalBlobs
-)
-
 func chunkBlobsTableDescription(
 	config *snapshot_config.SnapshotConfig,
-	externalBlobs externalBlobsUsage,
+	storeExternalBlobs bool,
 ) persistence.CreateTableDescription {
 
 	options := []persistence.CreateTableOption{
@@ -221,7 +214,7 @@ func chunkBlobsTableDescription(
 		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
 		persistence.WithUniformPartitions(config.GetChunkBlobsTableShardCount()),
 	}
-	if externalBlobs == withExternalBlobs {
+	if storeExternalBlobs {
 		options = append(
 			options,
 			persistence.WithExternalBlobs(config.GetExternalBlobsMediaKind()),
