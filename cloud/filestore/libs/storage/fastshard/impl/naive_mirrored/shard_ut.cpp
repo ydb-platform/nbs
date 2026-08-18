@@ -852,7 +852,7 @@ TEST(NaiveMirroredShardTest, DeallocatesPagesUponUnlink)
     const auto expectedData = GenerateValidateData(4_KB);
 
     //
-    // 3 pages, 2 clusters.
+    // 4 pages, 3 clusters, 1 skipped cluster.
     // Actual page usage - 2 x 8 = 16.
     //
 
@@ -889,6 +889,17 @@ TEST(NaiveMirroredShardTest, DeallocatesPagesUponUnlink)
             << FormatError(response.GetError());
     }
 
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(96_KB);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
     //
     // Destroying the handle to let UnlinkNode release the pages.
     //
@@ -910,7 +921,7 @@ TEST(NaiveMirroredShardTest, DeallocatesPagesUponUnlink)
         EXPECT_EQ(1ULL, stats.UsedNodeCount);
         EXPECT_EQ(1ULL, stats.UsedNameCount);
         EXPECT_EQ(0ULL, stats.UsedHandleCount);
-        EXPECT_EQ(16ULL, stats.UsedPageCount);
+        EXPECT_EQ(24ULL, stats.UsedPageCount);
     }
 
     //
