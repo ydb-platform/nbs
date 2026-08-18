@@ -619,12 +619,11 @@ public:
 
         volumeInfoIt->second->LastRemountTime = Timer->Now();
 
-        if (!inserted) {
-            AlterVolumeImpl(
-                volume.GetDiskId(),
-                volume.GetCloudId(),
-                volume.GetFolderId());
-        }
+        AlterVolumeImpl(
+            volume.GetDiskId(),
+            volume.GetCloudId(),
+            volume.GetFolderId(),
+            volume.GetStorageMediaKind());
 
         return inserted;
     }
@@ -670,7 +669,8 @@ public:
     void AlterVolumeImpl(
         const TString& diskId,
         const TString& cloudId,
-        const TString& folderId)
+        const TString& folderId,
+        NProto::EStorageMediaKind storageMediaKind)
     {
         const auto volumeIt = Volumes.find(diskId);
         if (volumeIt == Volumes.end()) {
@@ -679,13 +679,15 @@ public:
 
         NProto::TVolume volumeConfig = volumeIt->second.VolumeBase->Volume;
         if (volumeConfig.GetCloudId() == cloudId &&
-            volumeConfig.GetFolderId() == folderId)
+            volumeConfig.GetFolderId() == folderId &&
+            volumeConfig.GetStorageMediaKind() == storageMediaKind)
         {
             return;
         }
 
         volumeConfig.SetCloudId(cloudId);
         volumeConfig.SetFolderId(folderId);
+        volumeConfig.SetStorageMediaKind(storageMediaKind);
 
         TVolumeInfoHolder holder = std::move(volumeIt->second);
         Volumes.erase(volumeIt);
@@ -708,7 +710,18 @@ public:
         const TString& folderId) override
     {
         TWriteGuard guard(Lock);
-        AlterVolumeImpl(NStorage::GetLogicalDiskId(diskId), cloudId, folderId);
+
+        const auto& logicalDiskId = NStorage::GetLogicalDiskId(diskId);
+        const auto volumeIt = Volumes.find(logicalDiskId);
+        if (volumeIt == Volumes.end()) {
+            return;
+        }
+
+        AlterVolumeImpl(
+            logicalDiskId,
+            cloudId,
+            folderId,
+            volumeIt->second.VolumeBase->Volume.GetStorageMediaKind());
     }
 
     // Not thread-safe
@@ -1148,7 +1161,8 @@ private:
                 ->GetSubgroup("folder", volumeConfig.GetFolderId())
                 ->GetSubgroup(
                     "type",
-                    MediaKindToString(volumeConfig.GetStorageMediaKind()));
+                    MediaKindToStatsString(
+                        volumeConfig.GetStorageMediaKind()));
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 
@@ -1158,9 +1172,8 @@ private:
         // convention used by the DownDisks aggregate below) to produce the
         // same disk-type spelling ("network-ssd", ...) this helper already
         // produces elsewhere in the codebase.
-        // StorageMediaKind is immutable for the lifetime of a volume (unlike
-        // cloud/folder, which AlterVolume can change), so this extra level
-        // needs no re-registration/aliasing handling.
+        // All per-instance trees are rebuilt when a remount changes any label
+        // used in their subgroup chains.
         auto availabilityCountersGroup =
             AvailabilityCounters
                 ->GetSubgroup("volume", volumeConfig.GetDiskId())

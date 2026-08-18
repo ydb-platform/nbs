@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 
 #include <cloud/storage/core/config/features.pb.h>
+#include <cloud/storage/core/libs/common/media.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -97,7 +98,9 @@ NMonitoring::TDynamicCounters::TCounterPtr GetCounterToCheck(
         ->GetSubgroup("volume", DefaultDiskId)
         ->GetSubgroup("cloud", DefaultCloudId)
         ->GetSubgroup("folder", DefaultFolderId)
-        ->GetSubgroup("type", "ssd");
+        ->GetSubgroup(
+            "type",
+            MediaKindToString(NProto::STORAGE_MEDIA_SSD));
     return volumeCounters->GetCounter("MixedBytesCount");
 }
 
@@ -516,7 +519,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("type", "ssd")
+                ->GetSubgroup(
+                    "type",
+                    MediaKindToString(NProto::STORAGE_MEDIA_SSD))
                 ->FindCounter("IsLocalMount");
         UNIT_ASSERT(isLocalMountCounter);
         UNIT_ASSERT_VALUES_EQUAL(0, isLocalMountCounter->Val());
@@ -562,6 +567,96 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         RegisterVolume(runtime, DefaultDiskId);
         auto counters = BroadcastVolumeCounters(runtime, {0}, EVolumeTestOptions::VOLUME_HASCHECKPOINT);
         UNIT_ASSERT(counters[0] == 1);
+    }
+
+    Y_UNIT_TEST(ShouldReregisterCountersWhenMediaKindChanges)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        RegisterVolume(
+            runtime,
+            DefaultDiskId,
+            NProto::STORAGE_MEDIA_HYBRID,
+            false);
+
+        auto diskCounters = CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
+        diskCounters->Simple.MixedBytesCount.Set(1);
+        SendDiskStats(
+            runtime,
+            DefaultDiskId,
+            false,
+            std::move(diskCounters),
+            CreateVolumeSelfCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters),
+            EVolumeTestOptions::VOLUME_HASCLIENTS,
+            0);
+
+        auto updateMsg = std::make_unique<TEvents::TEvWakeup>();
+        runtime.Send(
+            new IEventHandle(
+                MakeStorageStatsServiceId(),
+                MakeStorageStatsServiceId(),
+                updateMsg.release(),
+                0,
+                0),
+            0);
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
+        runtime.DispatchEvents(options);
+
+        auto findType = [&] (const TString& type) {
+            return runtime.GetAppData(0)
+                .Counters->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", DefaultDiskId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->FindSubgroup("type", type);
+        };
+
+        UNIT_ASSERT(findType("hdd"));
+        UNIT_ASSERT(!findType("hybrid"));
+
+        NProto::TVolume config;
+        config.SetDiskId(DefaultDiskId);
+        config.SetCloudId(DefaultCloudId);
+        config.SetFolderId(DefaultFolderId);
+        config.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+        config.SetPartitionsCount(1);
+
+        auto configUpdated =
+            std::make_unique<TEvStatsService::TEvVolumeConfigUpdated>(
+                DefaultDiskId,
+                std::move(config));
+        runtime.Send(
+            new IEventHandle(
+                MakeStorageStatsServiceId(),
+                MakeStorageStatsServiceId(),
+                configUpdated.release(),
+                0,
+                0),
+            0);
+        options.FinalEvents.clear();
+        options.FinalEvents.emplace_back(
+            TEvStatsService::EvVolumeConfigUpdated);
+        runtime.DispatchEvents(options);
+
+        UNIT_ASSERT(!findType("hdd"));
+        auto ssdCounters = findType("ssd");
+        UNIT_ASSERT(ssdCounters);
+        UNIT_ASSERT(ssdCounters->FindCounter("MixedBytesCount"));
+
+        UnregisterVolume(runtime, DefaultDiskId);
+        options.FinalEvents.clear();
+        options.FinalEvents.emplace_back(TEvStatsService::EvUnregisterVolume);
+        runtime.DispatchEvents(options);
+        UNIT_ASSERT(!VolumeMetricsExists(*runtime.GetAppData(0).Counters));
     }
 
     void DoShouldUnregisterVolumeGroup(bool copiedDisk)
@@ -768,7 +863,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("type", "ssd")
+                ->GetSubgroup(
+                    "type",
+                    MediaKindToString(NProto::STORAGE_MEDIA_SSD))
                 ->GetCounter("IsLocalMount");
             UNIT_ASSERT_VALUES_EQUAL(0, actual);
         }
@@ -807,7 +904,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", DefaultDiskId)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("type", "ssd")
+                ->GetSubgroup(
+                    "type",
+                    MediaKindToString(NProto::STORAGE_MEDIA_SSD))
                 ->GetCounter("IsLocalMount");
             UNIT_ASSERT_VALUES_EQUAL(1, actual);
         }
@@ -887,7 +986,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     void DoTestShouldReportBytesCount(
         EPublishingPolicy policy,
         NProto::EStorageMediaKind mediaKind,
-        TString type,
         bool isSystem,
         bool copiedDisk = false)
     {
@@ -928,7 +1026,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
         runtime.DispatchEvents(options);
 
-        // should report "ssd_system" metrics.
+        auto type = MediaKindToString(mediaKind);
+        if (isSystem) {
+            type += "_system";
+        }
+
         ui64 actual = *runtime.GetAppData(0).Counters
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "service")
@@ -942,13 +1044,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_HDD,
-            "hdd",
             false,
             false);
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_HDD,
-            "hdd",
             false,
             true);
     }
@@ -958,7 +1058,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_SSD,
-            "ssd",
             false,
             false);
     }
@@ -968,7 +1067,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_HDD,
-            "hdd_system",
             true);
     }
 
@@ -977,7 +1075,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_SSD,
-            "ssd_system",
             true);
     }
 
@@ -986,7 +1083,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            "ssd_nonrepl",
             false);
     }
 
@@ -995,7 +1091,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
-            "hdd_nonrepl",
             false);
     }
 
@@ -1004,7 +1099,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
-            "ssd_mirror2",
             false);
     }
 
@@ -1013,7 +1107,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            "ssd_mirror3",
             false);
     }
 
@@ -1593,8 +1686,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
     void DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
         NProto::EStorageMediaKind mediaKind,
-        EPublishingPolicy publishingPolicy,
-        const TString& type)
+        EPublishingPolicy publishingPolicy)
     {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);
@@ -1638,7 +1730,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("type", type)
+                ->GetSubgroup("type", MediaKindToString(mediaKind))
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(42, actual);
@@ -1652,7 +1744,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 ->GetSubgroup("volume", "vol0")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
-                ->GetSubgroup("type", type)
+                ->GetSubgroup("type", MediaKindToString(mediaKind))
                 ->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(100500, actual);
@@ -1663,32 +1755,28 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            EPublishingPolicy::DiskRegistryBased,
-            "ssd_nonrepl");
+            EPublishingPolicy::DiskRegistryBased);
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForHddNonreplDisks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
-            EPublishingPolicy::DiskRegistryBased,
-            "hdd_nonrepl");
+            EPublishingPolicy::DiskRegistryBased);
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForMirror2Disks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
-            EPublishingPolicy::DiskRegistryBased,
-            "ssd_mirror2");
+            EPublishingPolicy::DiskRegistryBased);
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersForMirror3Disks)
     {
         DoTestShouldReportReadWriteZeroCountersForMediaKindAndPolicy(
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            EPublishingPolicy::DiskRegistryBased,
-            "ssd_mirror3");
+            EPublishingPolicy::DiskRegistryBased);
     }
 
     Y_UNIT_TEST(ShouldReportReadWriteZeroCountersPullScheme)
@@ -1808,7 +1896,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("folder", DefaultFolderId)
                                ->GetSubgroup(
                                    "type",
-                                   "ssd_nonrepl")
+                                   MediaKindToString(
+                                       NProto::STORAGE_MEDIA_SSD_NONREPLICATED))
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(84, actual);
@@ -1824,7 +1913,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("folder", DefaultFolderId)
                                ->GetSubgroup(
                                    "type",
-                                   "ssd_nonrepl")
+                                   MediaKindToString(
+                                       NProto::STORAGE_MEDIA_SSD_NONREPLICATED))
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(201000, actual);
@@ -1923,7 +2013,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("folder", DefaultFolderId)
                                ->GetSubgroup(
                                    "type",
-                                   "ssd_nonrepl")
+                                   MediaKindToString(
+                                       NProto::STORAGE_MEDIA_SSD_NONREPLICATED))
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("Count");
             UNIT_ASSERT_VALUES_EQUAL(0, actual);
@@ -1939,7 +2030,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetSubgroup("folder", DefaultFolderId)
                                ->GetSubgroup(
                                    "type",
-                                   "ssd_nonrepl")
+                                   MediaKindToString(
+                                       NProto::STORAGE_MEDIA_SSD_NONREPLICATED))
                                ->GetSubgroup("request", "ReadBlocks")
                                ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(0, actual);
