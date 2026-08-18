@@ -453,7 +453,7 @@ public:
 
     ui32 GetMaxNodeDiagnosticEntries() const;
 
-    TDuration GetAccessStatsHalfLife() const;
+    TDuration GetNodeAccessCountHalfLife() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -32,6 +32,14 @@ bool TNodeAccessComparator::operator()(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TNodeAccessStatsTracker::TNodeAccessStatsTracker()
+    : Ranking(
+          0,
+          TNodeAccessComparator{TDuration::Minutes(0)},
+          TNodeAccessKeyExtractor{})
+    , HalfLife(TDuration::Minutes(0))
+{}
+
 TNodeAccessStatsTracker::TNodeAccessStatsTracker(
     size_t maxEntries,
     TDuration halfLife)
@@ -41,6 +49,16 @@ TNodeAccessStatsTracker::TNodeAccessStatsTracker(
           TNodeAccessKeyExtractor{})
     , HalfLife(halfLife)
 {}
+
+void TNodeAccessStatsTracker::Reset(size_t maxEntries, TDuration halfLife)
+{
+    Ranking = TRanking(
+        maxEntries,
+        TNodeAccessComparator{halfLife},
+        TNodeAccessKeyExtractor{});
+
+    HalfLife = halfLife;
+}
 
 bool TNodeAccessStatsTracker::UpdateAccessStats(ui64 nodeId, TInstant now)
 {

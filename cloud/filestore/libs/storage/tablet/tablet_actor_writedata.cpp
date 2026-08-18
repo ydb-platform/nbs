@@ -456,11 +456,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
             args.ByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE) {
-            if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
-                ReportDiagnosticStatsInsertFailed(
-                    "Failed to insert access statistics into ranking");
-            }
+        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+            ReportDiagnosticStatsInsertFailed();
         }
 
         return;

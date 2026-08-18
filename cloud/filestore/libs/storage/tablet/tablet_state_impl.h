@@ -61,7 +61,7 @@ struct TIndexTabletState::TImpl
 
     THandlesStats HandlesStats;
 
-    std::optional<TNodeAccessStatsTracker> AccessTracker;
+    TNodeAccessStatsTracker AccessTracker;
 
     TRangeLocks RangeLocks;
     TFreshBytes FreshBytes;

@@ -691,8 +691,7 @@ void TIndexTabletActor::HandleAddDataCompleted(
         Metrics->AddData.Update(msg->Count, msg->Size, msg->Time);
 
         if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
-            ReportDiagnosticStatsInsertFailed(
-                "Failed to insert access statistics into ranking");
+            ReportDiagnosticStatsInsertFailed();
         }
 
         if (msg->IsOverloaded) {

@@ -202,8 +202,7 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
             ctx.Now() - args.RequestInfo->StartedTs);
 
         if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
-            ReportDiagnosticStatsInsertFailed(
-                "Failed to insert access statistics into ranking");
+            ReportDiagnosticStatsInsertFailed();
         }
     }
 

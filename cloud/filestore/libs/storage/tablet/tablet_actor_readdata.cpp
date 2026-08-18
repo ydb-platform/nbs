@@ -712,8 +712,7 @@ void TIndexTabletActor::HandleReadDataCompleted(
 
     Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
     if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
-        ReportDiagnosticStatsInsertFailed(
-            "Failed to insert access statistics into ranking");
+        ReportDiagnosticStatsInsertFailed();
     }
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
@@ -809,8 +808,7 @@ void TIndexTabletActor::HandleDescribeData(
             ctx);
 
         if (!UpdateAccessStats(nodeId, ctx.Now())) {
-            ReportDiagnosticStatsInsertFailed(
-                "Failed to insert access statistics into ranking");
+            ReportDiagnosticStatsInsertFailed();
         }
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
@@ -1074,11 +1072,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE) {
-            if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
-                ReportDiagnosticStatsInsertFailed(
-                    "Failed to insert access statistics into ranking");
-            }
+        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+            ReportDiagnosticStatsInsertFailed();
         }
 
         FinalizeProfileLogRequestInfo(
@@ -1165,11 +1160,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
-        if (args.Node->Attrs.GetType() == NProto::ENodeType::E_REGULAR_NODE) {
-            if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
-                ReportDiagnosticStatsInsertFailed(
-                    "Failed to insert access statistics into ranking");
-            }
+        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+            ReportDiagnosticStatsInsertFailed();
         }
 
         return;

@@ -874,7 +874,9 @@ message TStorageConfig
     // Allow to create load actor.
     optional bool EnableLoadActor = 533;
 
+    // Limits the number of entries when tracking the most accessed nodes per tablet.
     optional uint32 MaxNodeDiagnosticEntries = 534;
 
-    optional uint32 AccessStatsHalfLife = 535;
+    // Sets the time after which access count will decrease by half.
+    optional uint32 NodeAccessCountHalfLife = 535;
 }
