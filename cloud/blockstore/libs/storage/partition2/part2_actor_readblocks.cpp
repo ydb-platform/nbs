@@ -1101,17 +1101,8 @@ bool TPartitionActor::PrepareReadBlocks(
     State->FindFreshBlocks(visitor, args.ReadRange, commitId);
 
     bool ready = true;
-    if (const auto& filter = State->GetBlocksFilterL0();
-        filter.MayHaveBlocksInMixedIndex(args.ReadRange, commitId))
-    {
-        ready &= db.FindBlocksInL0Index(visitor, args.ReadRange, commitId);
-    }
-
-    if (const auto& filter = State->GetBlocksFilterL1();
-        filter.MayHaveBlocksInMixedIndex(args.ReadRange, commitId))
-    {
-        ready &= db.FindBlocksInL1Index(visitor, args.ReadRange, commitId);
-    }
+    ready &= State->FindBlocksInL0Index(db, visitor, args.ReadRange, commitId);
+    ready &= State->FindBlocksInL1Index(db, visitor, args.ReadRange, commitId);
 
     ready &= db.FindMergedBlocks(
         visitor,

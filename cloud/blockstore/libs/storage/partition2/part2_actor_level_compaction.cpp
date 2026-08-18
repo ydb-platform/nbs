@@ -188,7 +188,7 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
         l1Blobs.emplace_back(
             BlobIds[i],
             std::move(blockIndices),
-            TVector<ui64>(),
+            std::move(commitIds),
             TVector<ui32>());   // checksums
     }
 
@@ -406,7 +406,14 @@ bool TPartitionActor::PreparePromoteCompaction(
         State->GetMaxBlocksInBlob(),
         /*allowBlockDuplicates*/ false);
 
-    bool ready = db.FindBlocksInL0Index(visitor, range, args.CommitId);
+    bool ready = db.FindBlocksInL0Index(
+        visitor,
+        range,
+        /*minCommitId*/
+        State->GetBlocksFilterL0()
+            .GetRangeBaselineCommitId(args.RangeIndex)
+            .value_or(0),
+        /*maxCommitId*/ args.CommitId);
 
     if (!ready) {
         return false;
@@ -429,6 +436,10 @@ void TPartitionActor::CompletePromoteCompaction(
     const TActorContext& ctx,
     TTxPartition::TPromoteCompaction& args)
 {
+    State->GetBlocksFilterL0().UpdateCompactionBaselineCommitId(
+        args.CommitId,
+        args.ScanResult.MaxCommitId + 1);
+
     auto readBlobRequests = TPromoteCompactionVisitor::CollectReadBlobRequests(
         args.ScanResult.ResultedBlobs);
 

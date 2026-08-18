@@ -41,6 +41,32 @@ double BPFeature(const TBackpressureFeatureConfig& c, double x)
     return (1 - nx) + nx * c.MaxValue;
 }
 
+template <typename TFindBlocks>
+bool FindBlocksInLevelIndex(
+    const TCompactionMap& compactionMap,
+    const TBlocksFilter& blocksFilter,
+    const TBlockRange32& blockRange,
+    ui64 commitId,
+    TFindBlocks findBlocks)
+{
+    bool ready = true;
+    const ui32 rangeSize = compactionMap.GetRangeSize();
+
+    for (const auto& range: blockRange.Split(rangeSize)) {
+        const ui32 rangeIndex = range.Start / rangeSize;
+        const auto baselineCommitId =
+            blocksFilter.GetRangeBaselineCommitId(rangeIndex);
+
+        if (!baselineCommitId || commitId < *baselineCommitId) {
+            ready &= findBlocks(range, 0, commitId);
+        } else if (blocksFilter.MayHaveBlocksInMixedIndex(range, commitId)) {
+            ready &= findBlocks(range, *baselineCommitId, commitId);
+        }
+    }
+
+    return ready;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -342,6 +368,35 @@ void TPartitionState::ConfirmBlobs(
 
     UnconfirmedBlobs.clear();
     UnconfirmedBlobCount = 0;
+}
+
+bool TPartitionState::FindBlocksInL0Index(
+    TPartitionDatabase& db, IBlocksIndexVisitor& visitor,
+    const TBlockRange32& blockRange, ui64 commitId)
+{
+    return FindBlocksInLevelIndex(
+        CompactionMapL0.GetCompactionMap(), BlocksFilterL0, blockRange,
+        commitId,
+        [&](const TBlockRange32& range, ui64 minCommitId, ui64 maxCommitId) {
+            return db.FindBlocksInL0Index(visitor, range, minCommitId,
+                                          maxCommitId);
+        });
+}
+
+bool TPartitionState::FindBlocksInL1Index(
+    TPartitionDatabase& db, IBlocksIndexVisitor& visitor,
+    const TBlockRange32& blockRange, ui64 commitId)
+{
+    return FindBlocksInLevelIndex(
+        CompactionMapL1.GetCompactionMap(),
+        BlocksFilterL1,
+        blockRange,
+        commitId,
+        [&](const TBlockRange32& range, ui64 minCommitId, ui64 maxCommitId)
+        {
+            return db
+                .FindBlocksInL1Index(visitor, range, minCommitId, maxCommitId);
+        });
 }
 
 #define BLOCKSTORE_PARTITION2_IMPLEMENT_COUNTER(name)                           \
