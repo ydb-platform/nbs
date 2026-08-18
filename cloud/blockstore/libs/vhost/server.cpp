@@ -164,13 +164,13 @@ TFuture<NProto::TError> TServer::StartEndpoint(
     IStoragePtr storage,
     const TStorageOptions& options)
 {
-    Y_ABORT_UNLESS(options.VhostQueuesCount > 0);
+    if (options.VhostQueuesCount == 0) {
+        return MakeFuture(
+            MakeError(E_ARGUMENT, "Vhost queues count must be greater than 0"));
+    }
 
     if (ShouldStop.test()) {
-        NProto::TError error;
-        error.SetCode(E_FAIL);
-        error.SetMessage("Vhost server is stopped");
-        return MakeFuture(error);
+        return MakeFuture(MakeError(E_FAIL, "Vhost server is stopped"));
     }
 
     // There is no point in taking more executors than there are
