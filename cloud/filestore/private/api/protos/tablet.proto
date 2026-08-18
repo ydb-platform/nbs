@@ -1279,6 +1279,18 @@ message TListQuotasRequest
     string FileSystemId = 2;
 }
 
+message TQuotaUsage
+{
+    // Quota identifier.
+    uint32 QuotaId = 1;
+
+    // Bytes currently used under this quota.
+    uint64 UsedBytes = 2;
+
+    // Nodes currently used under this quota.
+    uint64 UsedNodes = 3;
+}
+
 message TListQuotasResponse
 {
     // Optional error, set only if error happened.
@@ -1286,4 +1298,7 @@ message TListQuotasResponse
 
     // All quotas defined on this filesystem.
     repeated NProto.TQuota Quotas = 2;
+
+    // Usage of each quota that has any recorded usage on this filesystem.
+    repeated TQuotaUsage Usages = 3;
 }

@@ -609,6 +609,14 @@ private:
         ui64 currentSize,
         ui64 prevSize);
 
+    // Applies a signed usage delta to quotaId's counters, both in-memory and
+    // persisted. A no-op for quotaId == 0 or a zero delta.
+    void UpdateQuotaUsage(
+        IIndexTabletDatabase& db,
+        ui32 quotaId,
+        i64 bytesDelta,
+        i64 nodesDelta);
+
     //
     // NodeAttrs
     //
@@ -1345,6 +1353,10 @@ public:
         TInstant now);
 
     void DeleteQuota(IIndexTabletDatabase& db, ui32 quotaId);
+
+    void LoadQuotaUsages(const TVector<TQuotaUsage>& usages);
+
+    TVector<TQuotaUsage> GetQuotaUsages() const;
 
     //
     // Background operations

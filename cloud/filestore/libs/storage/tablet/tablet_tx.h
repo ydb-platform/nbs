@@ -362,6 +362,7 @@ struct TTxIndexTablet
         TVector<TPartialBlobId> GarbageBlobs;
         TVector<NProto::TCheckpoint> Checkpoints;
         TVector<NProto::TQuota> Quotas;
+        TVector<TQuotaUsage> QuotaUsages;
         TVector<NProto::TDupCacheEntry> DupCache;
         TVector<NProto::TTruncateEntry> TruncateQueue;
         TMaybe<NProto::TStorageConfig> StorageConfig;
@@ -389,6 +390,7 @@ struct TTxIndexTablet
             GarbageBlobs.clear();
             Checkpoints.clear();
             Quotas.clear();
+            QuotaUsages.clear();
             DupCache.clear();
             TruncateQueue.clear();
             StorageConfig.Clear();

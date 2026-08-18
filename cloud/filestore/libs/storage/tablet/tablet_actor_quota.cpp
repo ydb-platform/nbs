@@ -251,6 +251,13 @@ void TIndexTabletActor::HandleListQuotas(
         *response->Record.AddQuotas() = std::move(quota);
     }
 
+    for (const auto& usage: GetQuotaUsages()) {
+        auto* proto = response->Record.AddUsages();
+        proto->SetQuotaId(usage.QuotaId);
+        proto->SetUsedBytes(usage.UsedBytes);
+        proto->SetUsedNodes(usage.UsedNodes);
+    }
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
