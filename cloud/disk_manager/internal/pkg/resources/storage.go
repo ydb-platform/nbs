@@ -35,6 +35,8 @@ type DiskMeta struct {
 	ScanFoundBrokenBlobs bool      `json:"scan_found_broken_blobs"`
 
 	FillGeneration uint64 `json:"fill_generation"`
+	// TabletID of the NBS 2.0 partition. Empty for classic blockstore disks.
+	TabletID string `json:"tablet_id"`
 }
 
 type ImageMeta struct {

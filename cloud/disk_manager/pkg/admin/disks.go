@@ -38,6 +38,7 @@ var stringToDiskKind = map[string]diskKind{
 		disk_manager.DiskKind_DISK_KIND_HDD_NONREPLICATED,
 	),
 	"hdd-local": diskKind(disk_manager.DiskKind_DISK_KIND_HDD_LOCAL),
+	"ssd-nbs2":  diskKind(disk_manager.DiskKind_DISK_KIND_SSD_NBS2),
 }
 
 func (k *diskKind) String() string {

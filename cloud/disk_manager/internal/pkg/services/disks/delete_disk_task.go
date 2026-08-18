@@ -8,6 +8,8 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -29,6 +31,7 @@ type deleteDiskTask struct {
 	scheduler         tasks.Scheduler
 	poolService       pools.Service
 	nbsFactory        nbs.Factory
+	nbs2Factory       nbs2.Factory
 	request           *protos.DeleteDiskRequest
 	state             *protos.DeleteDiskTaskState
 }
@@ -86,6 +89,10 @@ func (t *deleteDiskTask) deleteDisk(
 		}
 	} else {
 		zoneID = diskMeta.ZoneID
+	}
+
+	if diskMeta != nil && common.IsNbs2DiskKindString(diskMeta.Kind) {
+		return t.deleteNbs2Disk(ctx, diskMeta)
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(
@@ -213,6 +220,10 @@ func (t *deleteDiskTask) setEstimate(
 		return nil
 	}
 
+	if common.IsNbs2DiskKindString(diskMeta.Kind) {
+		return nil
+	}
+
 	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return err
@@ -245,4 +256,34 @@ func (t *deleteDiskTask) setEstimate(
 	}
 
 	return nil
+}
+
+func (t *deleteDiskTask) deleteNbs2Disk(
+	ctx context.Context,
+	diskMeta *resources.DiskMeta,
+) error {
+
+	if t.nbs2Factory == nil {
+		return errors.NewNonCancellableErrorf(
+			"nbs2 client is not configured",
+		)
+	}
+	if len(diskMeta.TabletID) == 0 {
+		return errors.NewNonCancellableErrorf(
+			"ssd-nbs2 disk %v has empty tablet id",
+			diskMeta.ID,
+		)
+	}
+
+	client, err := t.nbs2Factory.GetClient(ctx, diskMeta.ZoneID)
+	if err != nil {
+		return err
+	}
+
+	err = client.DeletePartition(ctx, diskMeta.TabletID)
+	if err != nil {
+		return err
+	}
+
+	return t.storage.DiskDeleted(ctx, diskMeta.ID, time.Now())
 }

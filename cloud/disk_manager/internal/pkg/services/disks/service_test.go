@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
@@ -50,6 +51,10 @@ func TestAreOverlayDisksSupportedForDiskKind(t *testing.T) {
 	))
 
 	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_NBS2},
+	))
+
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
 		&protos.CreateDiskParams{
 			Kind:     types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 			FolderId: "folder-id",
@@ -88,6 +93,9 @@ func TestAreOverlayDisksSupportedForDiskKind(t *testing.T) {
 	))
 	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
 		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_LOCAL},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_NBS2},
 	))
 }
 
@@ -431,4 +439,72 @@ func TestMigrateDiskDestinationPGNotFound(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "destination placement group pg-missing not found")
+}
+
+func TestCreateDiskNbs2RequiresStoragePool(t *testing.T) {
+	ctx := context.Background()
+	svc := &service{
+		config: &disks_config.DisksConfig{},
+	}
+
+	_, err := svc.CreateDisk(ctx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NBS2,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "storage_pool_name is required")
+}
+
+func TestCreateDiskNbs2RejectsImageSource(t *testing.T) {
+	ctx := context.Background()
+	svc := &service{
+		config: &disks_config.DisksConfig{},
+	}
+
+	_, err := svc.CreateDisk(ctx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: "image",
+		},
+		Size:            4096,
+		Kind:            disk_manager.DiskKind_DISK_KIND_SSD_NBS2,
+		StoragePoolName: "ddp1",
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "can only be created empty")
+}
+
+func TestResizeDiskNbs2Rejected(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	svc := &service{
+		config:          &disks_config.DisksConfig{},
+		resourceStorage: storage,
+	}
+
+	storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{
+		ZoneID: "zone",
+		Kind:   "ssd-nbs2",
+	}, nil)
+
+	_, err := svc.ResizeDisk(ctx, &disk_manager.ResizeDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		Size: 8192,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "not supported for ssd-nbs2")
+	mock.AssertExpectationsForObjects(t, storage)
 }

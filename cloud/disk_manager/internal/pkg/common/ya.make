@@ -19,6 +19,7 @@ SRCS(
 
 GO_TEST_SRCS(
     inflight_queue_test.go
+    disk_kind_test.go
 )
 
 END()
