@@ -6,6 +6,8 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/containers/2d_array/2d_array.h>
+
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -173,29 +175,16 @@ public:
 class TShardBalancerWeightedDeterministic: public TShardBalancerBase
 {
     static constexpr ui64 ScoreLevelsCount = 8;
-    static constexpr ui64 MaxScore()
-    {
-        return ScoreLevelsCount - 1;
-    }
+    static constexpr ui64 MaxScore = ScoreLevelsCount - 1;
 
     // Iterator state.
     ui64 ShardSelector;
     ui64 CurrentScore;
 
-    // Actually, it's a two-dimensional array of size:
-    // ScoreLevelsCount * Metas.size().
+    // Two-dimensional array of size:
+    // Metas.size() * ScoreLevelsCount.
     // It's a mapping from (score, shardIdx) -> nextShardIdx.
-    TVector<ui64> NextShard;
-
-    const ui64& GetNextShard(ui64 shardIdx, ui64 score) const
-    {
-        return NextShard[shardIdx * ScoreLevelsCount + score];
-    }
-
-    ui64& GetNextShard(ui64 shardIdx, ui64 score)
-    {
-        return NextShard[shardIdx * ScoreLevelsCount + score];
-    }
+    TArray2D<ui64> NextShard;
 
     void CalcScore(const TVector<TShardStats>& stats);
     void CalcNextShard();
@@ -208,8 +197,6 @@ public:
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
         TVector<TString> shardIds);
-
-public:
 
     using IShardBalancer::Update;
 

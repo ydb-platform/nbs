@@ -254,12 +254,12 @@ NProto::TError TShardBalancerWeightedRandom::SelectShard(
 ////////////////////////////////////////////////////////////////////////////////
 
 TShardBalancerWeightedDeterministic::TShardBalancerWeightedDeterministic(
-    ui32 blockSize,
-    ui64 precisionBytes,
-    ui32 maxFileBlocks,
-    ui64 desiredFreeSpaceReserve,
-    ui64 minFreeSpaceReserve,
-    TVector<TString> shardIds)
+        ui32 blockSize,
+        ui64 precisionBytes,
+        ui32 maxFileBlocks,
+        ui64 desiredFreeSpaceReserve,
+        ui64 minFreeSpaceReserve,
+        TVector<TString> shardIds)
     : TShardBalancerBase(
           blockSize,
           precisionBytes,
@@ -268,8 +268,6 @@ TShardBalancerWeightedDeterministic::TShardBalancerWeightedDeterministic(
           minFreeSpaceReserve,
           std::move(shardIds))
 {
-    Y_UNUSED(precisionBytes);
-
     // Update with empty stats.
     TVector<TShardStats> shardStats(Metas.size());
     for (ui64 i = 0; i < shardStats.size(); ++i) {
@@ -278,7 +276,7 @@ TShardBalancerWeightedDeterministic::TShardBalancerWeightedDeterministic(
     Update(shardStats, {}, {});
 
     ShardSelector = Metas.size() - 1;
-    CurrentScore = MaxScore();
+    CurrentScore = MaxScore;
 }
 
 void TShardBalancerWeightedDeterministic::CalcScore(
@@ -299,7 +297,7 @@ void TShardBalancerWeightedDeterministic::CalcScore(
     Metas.reserve(stats.size());
     for (ui64 i = 0; i < stats.size(); ++i) {
         const ui64 score = Min<ui64>(
-            MaxScore(),
+            MaxScore,
             (maxBlocksCount - stats[i].UsedBlocksCount) / step);
         Metas.emplace_back(i, stats[i], score);
     }
@@ -307,12 +305,13 @@ void TShardBalancerWeightedDeterministic::CalcScore(
 
 void TShardBalancerWeightedDeterministic::CalcNextShard()
 {
-    NextShard.assign(ScoreLevelsCount * Metas.size(), Metas.size());
+    NextShard.SetSizes(Metas.size(), ScoreLevelsCount);
+    NextShard.FillEvery(Metas.size());
 
     auto setNextShard = [this](ui64 shard, ui64 nextShard, ui64 fromScore) {
         for (ui64 score = fromScore; score != Max<ui64>(); --score) {
-            if (GetNextShard(shard, score) == Metas.size()) {
-                GetNextShard(shard, score) = nextShard;
+            if (NextShard[score][shard] == Metas.size()) {
+                NextShard[score][shard] = nextShard;
             } else {
                 break;
             }
@@ -321,7 +320,7 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
 
     const ui64 lastShardIdx = Metas.size() - 1;
     for (ui64 score = 0; score <= Metas[0].Score; ++score) {
-        GetNextShard(lastShardIdx, score) = 0;
+        NextShard[score][lastShardIdx] = 0;
     }
     TVector<const TShardMeta*> stack;
     stack.push_back(&Metas[0]);
@@ -332,7 +331,7 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
         setNextShard(lastShardIdx, i, meta.Score);
 
         // Pop the stack.
-        while (stack && meta.Score >= stack.back()->Score) {
+        while (!stack.empty() && meta.Score >= stack.back()->Score) {
             for (ui64 shardIdx = stack.back()->ShardIdx;
                  shardIdx < meta.ShardIdx;
                  ++shardIdx)
@@ -342,7 +341,7 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
             stack.pop_back();
         }
 
-        const ui64 leftBorder = stack ? stack.back()->ShardIdx : 0;
+        const ui64 leftBorder = !stack.empty() ? stack.back()->ShardIdx : 0;
         for (ui64 shardIdx = leftBorder; shardIdx < meta.ShardIdx; ++shardIdx) {
             setNextShard(shardIdx, meta.ShardIdx, meta.Score);
         }
@@ -352,16 +351,16 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
 
     // Fill the gap on the right side of the matrix.
     for (ui64 score = 0; score < ScoreLevelsCount &&
-                         GetNextShard(lastShardIdx, score) < Metas.size();
+                         NextShard[score][lastShardIdx] < Metas.size();
          ++score)
     {
-        const ui64 nextShard = GetNextShard(lastShardIdx, score);
+        const ui64 nextShard = NextShard[score][lastShardIdx];
         for (ui64 shardIdx = lastShardIdx - 1;
              shardIdx != Max<ui64>() &&
-             GetNextShard(shardIdx, score) == Metas.size();
+             NextShard[score][shardIdx] == Metas.size();
              --shardIdx)
         {
-            GetNextShard(shardIdx, score) = nextShard;
+            NextShard[score][shardIdx] = nextShard;
         }
     }
 }
@@ -379,7 +378,7 @@ NProto::TError TShardBalancerWeightedDeterministic::Update(
             << stats.size() << " != Metas.size() " << Metas.size());
     }
 
-    if (stats) {
+    if (!stats.empty()) {
         CalcScore(stats);
         CalcNextShard();
     }
@@ -393,7 +392,7 @@ NProto::TError TShardBalancerWeightedDeterministic::SelectShard(
 {
     Y_UNUSED(fileSize);
 
-    if (!Metas) {
+    if (Metas.empty()) {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder() << "Metas.size() is zero");
@@ -401,7 +400,7 @@ NProto::TError TShardBalancerWeightedDeterministic::SelectShard(
 
     // If jumping to the next shard crosses the right boundary,
     // increment CurrentScore.
-    const ui64 nextShardIdx = GetNextShard(ShardSelector, CurrentScore);
+    const ui64 nextShardIdx = NextShard[CurrentScore][ShardSelector];
     if (nextShardIdx < Metas.size() && nextShardIdx <= ShardSelector) {
         CurrentScore = (++CurrentScore) % ScoreLevelsCount;
         ShardSelector = Metas.size() - 1;
@@ -409,12 +408,12 @@ NProto::TError TShardBalancerWeightedDeterministic::SelectShard(
 
     // We are in an undefined part of the NextShard matrix.
     // That means that we should start from the initial state.
-    if (GetNextShard(ShardSelector, CurrentScore) == Metas.size()) {
+    if (NextShard[CurrentScore][ShardSelector] == Metas.size()) {
         CurrentScore = 0;
         ShardSelector = Metas.size() - 1;
     }
 
-    ShardSelector = GetNextShard(ShardSelector, CurrentScore);
+    ShardSelector = NextShard[CurrentScore][ShardSelector];
     *shardId = Metas[ShardSelector].Stats.ShardId;
 
     return {};
