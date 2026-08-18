@@ -75,6 +75,7 @@ func GetAccessToken(ctx context.Context) (string, error) {
 }
 
 func SetOutgoingAccessToken(ctx context.Context, token string) context.Context {
+	// Some credentials add "Bearer " prefix to the token, add prefix otherwise.
 	if !strings.HasPrefix(token, tokenPrefix) {
 		token = tokenPrefix + token
 	}
