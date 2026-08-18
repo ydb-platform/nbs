@@ -130,29 +130,61 @@ func TestNewS3CredentialsFromConfig(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestS3TokenAuthTransportShouldSetAuthorizationHeader(t *testing.T) {
+func roundTripS3TokenAuthRequest(
+	t *testing.T,
+	requestURL string,
+) string {
+
 	inner := &testRoundTripper{}
+	tokenProvider := &testS3TokenProvider{token: "test-token"}
 	transport := &s3TokenAuthTransport{
-		inner: inner,
-		tokenProvider: &testS3TokenProvider{
-			token: "test-token",
-		},
+		inner:         inner,
+		host:          "s3.example.com",
+		tokenProvider: tokenProvider,
 	}
 
 	request, err := http.NewRequestWithContext(
 		context.Background(),
 		http.MethodGet,
-		"http://example.com",
+		requestURL,
 		nil,
 	)
 	require.NoError(t, err)
-	request.Header.Set("Authorization", "AWS test-signature")
 
 	_, err = transport.RoundTrip(request)
 	require.NoError(t, err)
 
-	require.Equal(t, "Bearer test-token", inner.request.Header.Get("Authorization"))
-	require.Equal(t, "AWS test-signature", request.Header.Get("Authorization"))
+	return inner.request.Header.Get("Authorization")
+}
+
+func TestS3TokenAuthTransportShouldSetAuthorizationHeader(t *testing.T) {
+	authorization := roundTripS3TokenAuthRequest(
+		t,
+		"https://s3.example.com",
+	)
+
+	require.Equal(t, "Bearer test-token", authorization)
+}
+
+func TestS3TokenAuthTransportShouldNotSetAuthorizationHeaderForAnotherHost(
+	t *testing.T,
+) {
+
+	authorization := roundTripS3TokenAuthRequest(
+		t,
+		"https://another.example.com",
+	)
+
+	require.Empty(t, authorization)
+}
+
+func TestS3TokenAuthTransportShouldNotSetAuthorizationHeaderForHTTP(t *testing.T) {
+	authorization := roundTripS3TokenAuthRequest(
+		t,
+		"http://s3.example.com",
+	)
+
+	require.Empty(t, authorization)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

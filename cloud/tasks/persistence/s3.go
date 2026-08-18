@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/client"
 	aws_credentials "github.com/aws/aws-sdk-go/aws/credentials"
+	aws_endpoints "github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
@@ -52,13 +54,19 @@ func (r *s3ClientRetryer) RetryRules(req *request.Request) time.Duration {
 
 type s3TokenAuthTransport struct {
 	inner         http.RoundTripper
+	host          string
 	tokenProvider credentials.Credentials
 }
 
-func newS3TokenAuthHTTPClient(tokenProvider credentials.Credentials) *http.Client {
+func newS3TokenAuthHTTPClient(
+	host string,
+	tokenProvider credentials.Credentials,
+) *http.Client {
+
 	return &http.Client{
 		Transport: &s3TokenAuthTransport{
 			inner:         http.DefaultTransport,
+			host:          host,
 			tokenProvider: tokenProvider,
 		},
 	}
@@ -67,6 +75,10 @@ func newS3TokenAuthHTTPClient(tokenProvider credentials.Credentials) *http.Clien
 func (t *s3TokenAuthTransport) RoundTrip(
 	request *http.Request,
 ) (*http.Response, error) {
+
+	if request.URL.Scheme != "https" || request.URL.Host != t.host {
+		return t.inner.RoundTrip(request)
+	}
 
 	token, err := t.tokenProvider.Token(request.Context())
 	if err != nil {
@@ -121,7 +133,18 @@ func NewS3Client(
 		},
 	}
 	if tokenProvider != nil {
-		sessionConfig.HTTPClient = newS3TokenAuthHTTPClient(tokenProvider)
+		endpointURL, err := url.Parse(aws_endpoints.AddScheme(endpoint, false))
+		if err != nil {
+			return nil, errors.NewNonRetriableErrorf(
+				"failed to parse S3 endpoint: %w",
+				err,
+			)
+		}
+
+		sessionConfig.HTTPClient = newS3TokenAuthHTTPClient(
+			endpointURL.Host,
+			tokenProvider,
+		)
 	}
 
 	session, err := session.NewSession(sessionConfig)
