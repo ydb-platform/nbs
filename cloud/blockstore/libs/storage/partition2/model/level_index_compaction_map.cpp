@@ -24,32 +24,33 @@ TLevelIndexCompactionMap::TLevelIndexCompactionMap(
 }
 
 void TLevelIndexCompactionMap::BlobAdded(
-    const TVector<TBlock>& blocks,
+    const TVector<ui32>& blockIndices,
+    const TVector<ui64>& commitIds,
     ui64 commitId)
 {
-    STORAGE_VERIFY(!blocks.empty(), TWellKnownEntityTypes::TABLET, TabletId);
+    STORAGE_VERIFY(!blockIndices.empty() && commitIds.size() == blockIndices.size(), TWellKnownEntityTypes::TABLET, TabletId);
     STORAGE_VERIFY(
-        IsSorted(blocks.begin(), blocks.end()),
+        IsSorted(blockIndices.begin(), blockIndices.end()),
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
     const ui32 rangeIndex =
-        CompactionMap.GetRangeIndex(blocks.front().BlockIndex);
+        CompactionMap.GetRangeIndex(blockIndices.front());
     STORAGE_VERIFY(
-        rangeIndex == CompactionMap.GetRangeIndex(blocks.back().BlockIndex),
+        rangeIndex == CompactionMap.GetRangeIndex(blockIndices.back()),
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    auto stat = CompactionMap.Get(blocks.front().BlockIndex);
+    auto stat = CompactionMap.Get(blockIndices.front());
     TCompactionMap::UpdateCompactionCounter(
         stat.BlobCount + 1,
         &stat.BlobCount);
     TCompactionMap::UpdateCompactionCounter(
-        stat.BlockCount + blocks.size(),
+        stat.BlockCount + blockIndices.size(),
         &stat.BlockCount);
 
-    for (const auto& block: blocks) {
-        if (BlocksFilter.BlocksAddedToMixedIndex(block.BlockIndex, commitId)) {
+    for (size_t i = 0; i < blockIndices.size(); ++i) {
+        if (BlocksFilter.BlocksAddedToMixedIndex(blockIndices[i], commitIds[i])) {
             TCompactionMap::UpdateCompactionCounter(
                 stat.UsedBlockCount + 1,
                 &stat.UsedBlockCount);
@@ -57,7 +58,7 @@ void TLevelIndexCompactionMap::BlobAdded(
     }
 
     CompactionMap.Update(
-        blocks.front().BlockIndex,
+        blockIndices.front(),
         stat.BlobCount,
         stat.BlockCount,
         stat.UsedBlockCount,
@@ -79,7 +80,7 @@ void TLevelIndexCompactionMap::BlobAdded(
                 concurrentStat.BlobCount + 1,
                 &concurrentStat.BlobCount);
             TCompactionMap::UpdateCompactionCounter(
-                concurrentStat.BlockCount + blocks.size(),
+                concurrentStat.BlockCount + blockIndices.size(),
                 &concurrentStat.BlockCount);
         }
     }

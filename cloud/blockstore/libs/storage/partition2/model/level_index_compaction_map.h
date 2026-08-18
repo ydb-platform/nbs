@@ -56,7 +56,10 @@ public:
         ICompactionPolicyPtr compactionPolicy);
 
     /** Records a blob added to this level. Blocks must be sorted by index. */
-    void BlobAdded(const TVector<TBlock>& blocks, ui64 commitId);
+    void BlobAdded(
+        const TVector<ui32>& blockIndices,
+        const TVector<ui64>& commitIds,
+        ui64 commitId);
 
     /** Registers a compaction of the specified level ranges. */
     void CompactionStarted(TVector<ui32> rangeIndices, ui64 commitId);

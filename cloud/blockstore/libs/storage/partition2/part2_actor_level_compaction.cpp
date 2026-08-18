@@ -175,19 +175,27 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
     TVector<TAddLevelIndexBlob> l1Blobs;
 
     for (size_t i = 0; i < BlobIds.size(); ++i) {
-        TVector<TBlock> blocks;
+        TVector<ui32> blockIndices;
+        TVector<ui64> commitIds;
 
         for (const auto& [blockIndex, mark]:
              ScanResult.ResultedBlobs[i].BlockIndexToMark)
         {
-            blocks.push_back(
-                {static_cast<ui32>(blockIndex), mark.CommitId, false});
+            blockIndices.push_back(blockIndex);
+            commitIds.push_back(mark.CommitId);
         }
 
         l1Blobs.emplace_back(
             BlobIds[i],
-            std::move(blocks),
+            std::move(blockIndices),
+            TVector<ui64>(),
             TVector<ui32>());   // checksums
+    }
+
+    TAffectedBlobs affectedBlobs;
+    for (const auto& [blobId, blockRange]: ScanResult.AffectedBlobs) {
+        Y_UNUSED(blockRange);
+        affectedBlobs.emplace(blobId, TAffectedBlob{});
     }
 
     auto addBlobsRequest =
@@ -198,7 +206,8 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
             TVector<TAddFreshBlob>{},        // freshBlobs
             TVector<TAddLevelIndexBlob>{},   // l0Blobs
             std::move(l1Blobs),
-            EAddBlobMode::ADD_PROMOTE_COMPACTION_RESULT);
+            EAddBlobMode::ADD_PROMOTE_COMPACTION_RESULT,
+            std::move(affectedBlobs));
 
     NCloud::Send(ctx, TabletActorId, std::move(addBlobsRequest));
 }

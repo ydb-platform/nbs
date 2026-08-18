@@ -219,6 +219,10 @@ public:
         const TBlockRange32& blockRange,
         const NProto::TBlobMeta& blobMeta);
 
+    void DeleteL0Blob(
+        const TPartialBlobId& blobId,
+        const TBlockRange32& blockRange);
+
     bool FindBlocksInL0Index(
         IBlocksIndexVisitor& visitor,
         const TBlockRange32& blockRange,
@@ -238,6 +242,10 @@ public:
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
         const NProto::TBlobMeta& blobMeta);
+
+    void DeleteL1Blob(
+        const TPartialBlobId& blobId,
+        const TBlockRange32& blockRange);
 
     bool FindBlocksInL1Index(
         IBlocksIndexVisitor& visitor,
