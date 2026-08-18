@@ -308,6 +308,9 @@ ui32 TTestEnv::CreateBlockStoreNode(
         /*TabletBootInfoBackupFilePath=*/"",
         /*UseBinaryFormatForTabletBootInfoBackup=*/false,
         /*FallbackMode=*/false,
+        /*TenantHiveTabletId=*/0,
+        /*GoldenTabletBootInfoBackupFilePath=*/"",
+        /*FallbackModeProvider=*/{},
     });
     auto hiveProxyId = Runtime.Register(
         hiveProxy.release(),

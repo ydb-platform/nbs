@@ -14,6 +14,7 @@
 
 #include <util/folder/path.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 #include <memory>
 
@@ -26,24 +27,25 @@ class TTabletBootInfoBackup final
 {
 private:
     int LogComponent;
-    const TFsPath BackupFilePath;
+    TFsPath BackupFilePath;
+    TVector<TString> InitialBackupFilePaths;
     const bool UseBinaryFormat = false;
     const bool ReadOnlyMode = false;
 
-    // Proto from BackupFilePath is loaded into this variable.
+    // Proto from the selected backup file is loaded into this variable.
     // Tablet boot info backups are served from this variable until
     // the first scheduled backup happens.
     std::optional<NHiveProxy::NProto::TTabletBootInfoBackup> InitialBackupProto;
 
     NHiveProxy::NProto::TTabletBootInfoBackup BackupProto;
-    const TFsPath TmpBackupFilePath;
+    TFsPath TmpBackupFilePath;
 
     bool BackupProtoHasChanged = false;
 
 public:
     TTabletBootInfoBackup(
         int logComponent,
-        TString backupFilePath,
+        TVector<TString> backupFilePaths,
         bool useBinaryFormat,
         bool readOnlyMode);
 
@@ -57,9 +59,11 @@ private:
 
     bool LoadFromTextFormat(
         const NActors::TActorContext& ctx,
+        const TFsPath& backupFilePath,
         NHiveProxy::NProto::TTabletBootInfoBackup& backupProto);
     bool LoadFromBinaryFormat(
         const NActors::TActorContext& ctx,
+        const TFsPath& backupFilePath,
         NHiveProxy::NProto::TTabletBootInfoBackup& backupProto);
 
     void HandleWakeup(

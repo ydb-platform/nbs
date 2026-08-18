@@ -123,7 +123,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CommonOverlayPrefixPoolKind,   TString,      "overlay"                )\
     xxx(NonReplicatedHDDPoolName,      TString,      "rot"                    )\
                                                                                \
+    xxx(EnableHiveProxyRuntimeFallback,              bool,         false      )\
     xxx(TabletBootInfoBackupFilePath,                TString,      ""         )\
+    xxx(GoldenTabletBootInfoBackupFilePath,          TString,      ""         )\
     xxx(PathDescriptionBackupFilePath,               TString,      ""         )\
     xxx(UseBinaryFormatForPathDescriptionBackup,     bool,         false      )\
     xxx(UseBinaryFormatForTabletBootInfoBackup,      bool,         false      )\

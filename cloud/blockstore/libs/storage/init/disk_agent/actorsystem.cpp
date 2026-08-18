@@ -64,6 +64,8 @@ public:
                 .UseBinaryFormatForTabletBootInfoBackup = false,
                 .FallbackMode = false,
                 .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
+                .GoldenTabletBootInfoBackupFilePath = {},
+                .FallbackModeProvider = {},
             },
             appData
                 ->Counters

@@ -264,6 +264,9 @@ ui32 TTestEnv::AddDynamicNode()
         /*TabletBootInfoBackupFilePath=*/"",
         /*UseBinaryFormatForTabletBootInfoBackup=*/false,
         /*FallbackMode=*/false,
+        /*TenantHiveTabletId=*/0,
+        /*GoldenTabletBootInfoBackupFilePath=*/"",
+        /*FallbackModeProvider=*/{},
     });
     auto hiveProxyId = Runtime.Register(
         hiveProxy.release(),
