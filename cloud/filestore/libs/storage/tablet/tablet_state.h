@@ -228,12 +228,10 @@ private:
     ui32 Generation = 0;
     ui32 LastStep = 0;
     ui32 LastCollectPerGenerationCounter = 0;
-    bool StartupGcExecuted = false;
 
     NProto::TFileSystem FileSystem;
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
-    ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
@@ -246,10 +244,6 @@ private:
     /*const*/ ui64 LargeDeletionMarkersThresholdForBackpressure = 0;
 
     /*const*/ ui32 MaxTabletStep = Max<ui32>();
-
-    bool CompressNodeRef = false;
-
-    bool StateLoaded = false;
 
 protected:
     TString LogTag;
@@ -299,15 +293,9 @@ public:
         const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
         const TThrottlerConfig& throttlerConfig);
 
-    bool IsStateLoaded() const
-    {
-        return StateLoaded;
-    }
+    bool IsStateLoaded() const;
 
-    void CompleteStateLoad()
-    {
-        StateLoaded = true;
-    }
+    void CompleteStateLoad();
 
     bool UpdateAccessStats(ui64 nodeId, TInstant now);
 
@@ -386,10 +374,7 @@ public:
         return FileSystem.GetNodesCount();
     }
 
-    bool GetCompressNodeRef() const
-    {
-        return CompressNodeRef || FileSystem.GetCompressNodeRef();
-    }
+    bool GetCompressNodeRef() const;
 
     ui64 GetCurrentCommitId() const
     {
@@ -415,18 +400,9 @@ public:
         return FileSystemStats;
     }
 
-    ui64 GetMinDeletionMarkersCountSinceTabletStart() const
-    {
-        return MinDeletionMarkersCountSinceTabletStart;
-    }
+    ui64 GetMinDeletionMarkersCountSinceTabletStart() const;
 
-    void UpdateMinDeletionMarkersCountSinceTabletStart()
-    {
-        MinDeletionMarkersCountSinceTabletStart = Min(
-            MinDeletionMarkersCountSinceTabletStart,
-            FileSystemStats.GetDeletionMarkersCount()
-        );
-    }
+    void UpdateMinDeletionMarkersCountSinceTabletStart();
 
     const TNodeToSessionCounters& GetNodeToSessionCounters() const;
 
@@ -1281,15 +1257,9 @@ public:
         return ++LastCollectPerGenerationCounter;
     }
 
-    void SetStartupGcExecuted()
-    {
-        StartupGcExecuted = true;
-    }
+    void SetStartupGcExecuted();
 
-    bool GetStartupGcExecuted() const
-    {
-        return StartupGcExecuted;
-    }
+    bool GetStartupGcExecuted() const;
 
     void AcquireCollectBarrier(ui64 commitId);
     bool TryReleaseCollectBarrier(ui64 commitId);
