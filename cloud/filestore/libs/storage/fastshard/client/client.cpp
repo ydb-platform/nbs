@@ -82,7 +82,17 @@ std::shared_ptr<IEndpoint> TClient::Connect(const TString& host, ui16 port)
     Y_ABORT_UNLESS(printed < sizeof(portStr), "printed=%u", printed);
 
     addrinfo* res = nullptr;
-    int gai = ::getaddrinfo(host.c_str(), portStr, &hints, &res);
+    int gai = 0;
+    {
+        //
+        // getaddrinfo blocks inside libc (DNS, nsswitch). Run it on the
+        // thread-mode worker pool: on a scheduler thread it would stall
+        // every fiber homed on this CPU for the whole resolution.
+        //
+
+        FiberScheduler::ThreadModeScope scope;
+        gai = ::getaddrinfo(host.c_str(), portStr, &hints, &res);
+    }
     if (gai != 0) {
         return nullptr;
     }
