@@ -55,7 +55,18 @@ int OpenTcp(const TString& host, ui16 port)
     }
 
     addrinfo* res = nullptr;
-    if (::getaddrinfo(host.c_str(), portStr, &hints, &res) != 0) {
+    int gai = 0;
+    {
+        //
+        // getaddrinfo blocks inside libc (DNS, nsswitch). Run it on the
+        // thread-mode worker pool: on a scheduler thread it would stall
+        // every fiber homed on this CPU for the whole resolution.
+        //
+
+        FiberScheduler::ThreadModeScope scope;
+        gai = ::getaddrinfo(host.c_str(), portStr, &hints, &res);
+    }
+    if (gai != 0) {
         return -1;
     }
     Y_DEFER
