@@ -35,6 +35,7 @@ REGISTRY_ENDPOINT_RE = re.compile(
 REGISTRY_URL_RE = re.compile(
     r"f(?P<quote>[\"'])\{REGISTRY_ENDPOINT\}(?P<path>/[0-9]+)(?P=quote)"
 )
+MAPPING_REGISTRY_ENDPOINT = "{registry_endpoint}"
 
 
 @dataclass(frozen=True)
@@ -45,10 +46,7 @@ class BootstrapResource:
 
 @dataclass(frozen=True)
 class BootstrapConfig:
-    source: str
     registry_endpoint: str
-    registry_endpoint_start: int
-    registry_endpoint_end: int
     resources: dict[str, BootstrapResource]
 
 
@@ -100,8 +98,6 @@ def extract_platform_map(source: str, registry_endpoint: str) -> dict[str, Any]:
 def load_bootstrap_config(path: Path) -> BootstrapConfig:
     source = path.read_text(encoding="utf-8")
 
-    # This narrow match also gives us the exact character range to replace when
-    # generating the patch that points ya at the local mirror.
     endpoint_matches = list(REGISTRY_ENDPOINT_RE.finditer(source))
     if len(endpoint_matches) != 1:
         raise ValueError("ya must contain exactly one REGISTRY_ENDPOINT default")
@@ -148,10 +144,7 @@ def load_bootstrap_config(path: Path) -> BootstrapConfig:
         resources[resource_id] = resource
 
     return BootstrapConfig(
-        source=source,
         registry_endpoint=registry_endpoint,
-        registry_endpoint_start=endpoint_match.start("endpoint"),
-        registry_endpoint_end=endpoint_match.end("endpoint"),
         resources=resources,
     )
 
@@ -290,30 +283,74 @@ def upload_resource(s3: Any, bucket: str, key: str, path: Path, md5: str) -> Non
     )
 
 
-def localize_mapping(mapping_path: Path, local_base_url: str) -> str:
-    data = load_json(mapping_path)
+def get_mapping_resources(data: dict[str, Any], mapping_path: Path) -> dict[str, Any]:
     resources = data.get("resources")
     if not isinstance(resources, dict):
         raise ValueError(f"{mapping_path} does not contain a resources object")
+    return resources
+
+
+def get_mapping_registry_endpoint(data: dict[str, Any], mapping_path: Path) -> str:
+    extensions = data.get("extensions")
+    if not isinstance(extensions, dict):
+        raise ValueError(f"{mapping_path} does not contain an extensions object")
+    registry_endpoint = extensions.get("registry_endpoint")
+    if not isinstance(registry_endpoint, str):
+        raise ValueError(
+            f"{mapping_path} does not contain a registry_endpoint extension"
+        )
+    return registry_endpoint.rstrip("/")
+
+
+def resolve_mapping_resources(
+    data: dict[str, Any], mapping_path: Path
+) -> dict[str, str]:
+    resources = get_mapping_resources(data, mapping_path)
+    registry_endpoint: str | None = None
+    resolved: dict[str, str] = {}
+    for resource_id, url in resources.items():
+        if not isinstance(resource_id, str) or not isinstance(url, str):
+            raise ValueError(f"{mapping_path} resource entries must be strings")
+
+        template_url = f"{MAPPING_REGISTRY_ENDPOINT}/{resource_id}"
+        if url == template_url:
+            if registry_endpoint is None:
+                registry_endpoint = get_mapping_registry_endpoint(data, mapping_path)
+            resolved[resource_id] = f"{registry_endpoint}/{resource_id}"
+        elif MAPPING_REGISTRY_ENDPOINT in url:
+            raise ValueError(
+                f"{mapping_path} resource {resource_id} has an invalid registry endpoint template"
+            )
+        else:
+            resolved[resource_id] = url
+    return resolved
+
+
+def localize_mapping(mapping_path: Path, local_base_url: str) -> str:
+    data = load_json(mapping_path)
+    resources = get_mapping_resources(data, mapping_path)
 
     base = validate_local_base_url(local_base_url)
-    for resource_id in list(resources):
-        resources[resource_id] = f"{base}/{resource_id}"
+    uses_registry_endpoint = False
+    for resource_id, url in resources.items():
+        if not isinstance(resource_id, str) or not isinstance(url, str):
+            raise ValueError(f"{mapping_path} resource entries must be strings")
+
+        template_url = f"{MAPPING_REGISTRY_ENDPOINT}/{resource_id}"
+        if url == template_url:
+            uses_registry_endpoint = True
+        elif MAPPING_REGISTRY_ENDPOINT in url:
+            raise ValueError(
+                f"{mapping_path} resource {resource_id} has an invalid registry endpoint template"
+            )
+        else:
+            resources[resource_id] = f"{base}/{resource_id}"
+
+    if uses_registry_endpoint:
+        get_mapping_registry_endpoint(data, mapping_path)
+        data["extensions"]["registry_endpoint"] = base
 
     return dump_json(data)
-
-
-def localize_bootstrap_script(config: BootstrapConfig, local_base_url: str) -> str:
-    base = validate_local_base_url(local_base_url)
-    endpoint_end = config.registry_endpoint_end
-
-    # Splice at the endpoint match positions. This avoids a broad replacement
-    # that could accidentally change the same URL elsewhere in ya.
-    return (
-        config.source[: config.registry_endpoint_start]
-        + base
-        + config.source[endpoint_end:]
-    )
 
 
 def file_patch(path: Path, localized_text: str) -> str:
@@ -401,28 +438,18 @@ def main() -> int:
     args = parse_args()
     local_base_url = validate_local_base_url(args.local_base_url)
     mapping = load_json(args.mapping)
-    resources = mapping.get("resources")
-    if not isinstance(resources, dict):
-        raise ValueError(f"{args.mapping} does not contain a resources object")
+    resources = get_mapping_resources(mapping, args.mapping)
 
     bootstrap = load_bootstrap_config(args.bootstrap_script)
     args.patch_out.parent.mkdir(parents=True, exist_ok=True)
     args.summary_out.parent.mkdir(parents=True, exist_ok=True)
 
     write_patch(
-        [
-            (args.mapping, localize_mapping(args.mapping, local_base_url)),
-            (
-                args.bootstrap_script,
-                localize_bootstrap_script(bootstrap, local_base_url),
-            ),
-        ],
+        [(args.mapping, localize_mapping(args.mapping, local_base_url))],
         args.patch_out,
     )
 
-    upload_sources = {
-        str(resource_id): str(url) for resource_id, url in resources.items()
-    }
+    upload_sources = resolve_mapping_resources(mapping, args.mapping)
     expected_md5: dict[str, str] = {}
     for resource_id, resource in bootstrap.resources.items():
         upload_sources[resource_id] = resource.source_url
