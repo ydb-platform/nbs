@@ -266,6 +266,11 @@ struct TEvPartitionPrivate
         TVector<TAddFreshBlob> FreshBlobs;
         EAddBlobMode Mode = ADD_WRITE_RESULT;
 
+        // When false, AddBlobs must not advance TrimFreshLogToCommitId to the
+        // flush CommitId. Used for intermediate AddBlobs batches during a
+        // split flush so that a later failure cannot skip unflushed fresh data.
+        bool AllowFlushCommitIdAsTrimFreshLogToCommitId = true;
+
         // compaction
         TAffectedBlobs AffectedBlobs;
         TAffectedBlocks AffectedBlocks;

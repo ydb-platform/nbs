@@ -325,6 +325,7 @@ struct TTxPartition
         const TVector<TAddMergedBlob> MergedBlobs;
         const TVector<TAddFreshBlob> FreshBlobs;
         const EAddBlobMode Mode;
+        const bool AllowFlushCommitIdAsTrimFreshLogToCommitId;
 
         // compaction
         const TAffectedBlobs AffectedBlobs;
@@ -341,6 +342,7 @@ struct TTxPartition
                 TVector<TAddMergedBlob> mergedBlobs,
                 TVector<TAddFreshBlob> freshBlobs,
                 EAddBlobMode mode,
+                bool allowFlushCommitIdAsTrimFreshLogToCommitId,
                 TAffectedBlobs affectedBlobs,
                 TAffectedBlocks affectedBlocks,
                 TVector<TBlobCompactionInfo> mixedBlobCompactionInfos,
@@ -351,6 +353,8 @@ struct TTxPartition
             , MergedBlobs(std::move(mergedBlobs))
             , FreshBlobs(std::move(freshBlobs))
             , Mode(mode)
+            , AllowFlushCommitIdAsTrimFreshLogToCommitId(
+                  allowFlushCommitIdAsTrimFreshLogToCommitId)
             , AffectedBlobs(std::move(affectedBlobs))
             , AffectedBlocks(std::move(affectedBlocks))
             , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))

@@ -758,6 +758,7 @@ void TPartitionActor::HandleAddBlobs(
             std::move(msg->MergedBlobs),
             std::move(msg->FreshBlobs),
             msg->Mode,
+            msg->AllowFlushCommitIdAsTrimFreshLogToCommitId,
             std::move(msg->AffectedBlobs),
             std::move(msg->AffectedBlocks),
             std::move(msg->MixedBlobCompactionInfos),
@@ -800,8 +801,8 @@ void TPartitionActor::ExecuteAddBlobs(
         PartitionConfig.GetDiskId(),
         args.DeletionCommitId,
         State->GetMaxBlocksInBlob(),
-        Config
-            ->GetWaitForFreshWritesBeforeFlushEnabled(),   // useFlushCommitIdAsTrimFreshLogToCommitId
+        Config->GetWaitForFreshWritesBeforeFlushEnabled() &&
+            args.AllowFlushCommitIdAsTrimFreshLogToCommitId,
         LogTitle.GetChild(GetCycleCount()));
     executor.Execute(ctx, db);
 }

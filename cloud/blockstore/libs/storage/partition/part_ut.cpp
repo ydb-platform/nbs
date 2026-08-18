@@ -1916,6 +1916,66 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSplitAddBlobsByMaxBlocksPerFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetMaxBlocksPerFlush(2);
+
+        // One block per flush blob so MaxBlocksPerFlush limits AddBlobs batches.
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MaxBlocksInBlob = 1;
+
+        auto runtime = PrepareTestActorRuntime(config, 1024, {}, partitionInfo);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        for (ui32 i = 1; i <= 5; ++i) {
+            partition.WriteBlocks(i, i);
+        }
+
+        TVector<ui32> blocksPerAddBlobs;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
+                            ui32 blocks = 0;
+                            for (const auto& blob: msg->FreshBlobs) {
+                                blocks += blob.Blocks.size();
+                            }
+                            blocksPerAddBlobs.push_back(blocks);
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.Flush();
+
+        UNIT_ASSERT_VALUES_EQUAL(3, blocksPerAddBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, blocksPerAddBlobs[0]);
+        UNIT_ASSERT_VALUES_EQUAL(2, blocksPerAddBlobs[1]);
+        UNIT_ASSERT_VALUES_EQUAL(1, blocksPerAddBlobs[2]);
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMixedBlocksCount());
+        }
+
+        for (ui32 i = 1; i <= 5; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(i),
+                GetBlockContent(partition.ReadBlocks(i)));
+        }
+    }
+
     Y_UNIT_TEST(ShouldFlushBlocksFromFreshChannelAsNewBlob)
     {
         auto config = DefaultConfig();
