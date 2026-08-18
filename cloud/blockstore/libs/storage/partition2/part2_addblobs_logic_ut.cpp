@@ -319,15 +319,20 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
                 }
             });
 
-        auto args =
-            MakeArgs(commitId, {}, {},
-                     {{freshBlobId, {{2, MakeCommitId(0, 5), true},
-                                     {2, MakeCommitId(0, 7), true}},
-                       {51, 71}, 1},
-                      {zeroBlobId, {{2, MakeCommitId(0, 6), true}}, {}, 1}},
-                     {{l0BlobId, {{16, MakeCommitId(0, 4), false},
-                                  {17, MakeCommitId(0, 4), false}},
-                       {161, 171}}}, ADD_FLUSH_RESULT);
+        auto args = MakeArgs(
+            commitId,
+            {},
+            {},
+            {{freshBlobId,
+              {{2, MakeCommitId(0, 5), true}, {2, MakeCommitId(0, 7), true}},
+              {51, 71},
+              1},
+             {zeroBlobId, {{2, MakeCommitId(0, 6), true}}, {}, 1}},
+            {{l0BlobId,
+              {16, 17},
+              {MakeCommitId(0, 4), MakeCommitId(0, 4)},
+              {161, 171}}},
+            ADD_FLUSH_RESULT);
 
         RunExecute(executor, state, args, MakeCommitId(0, 50));
 
@@ -396,13 +401,12 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
             {},
             {},
             {{firstBlobId,
-              {{1, MakeCommitId(0, 5), false},
-               {2, MakeCommitId(0, 5), false}},
+              {1, 2},
+              {MakeCommitId(0, 5), MakeCommitId(0, 5)},
               {11, 22}},
              {secondBlobId,
-              {{2, MakeCommitId(0, 7), false},
-               {3, MakeCommitId(0, 7), false},
-               {4, MakeCommitId(0, 7), false}},
+              {2, 3, 4},
+              {MakeCommitId(0, 7), MakeCommitId(0, 7), MakeCommitId(0, 7)},
               {23, 33, 44}}},
             ADD_FLUSH_RESULT);
 

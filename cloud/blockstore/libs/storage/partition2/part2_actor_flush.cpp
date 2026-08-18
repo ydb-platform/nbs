@@ -230,10 +230,17 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
 
     for (auto& req: Requests) {
         BlocksCount += req.Blocks.size();
+        TVector<ui32> blockIndices;
+        TVector<ui64> commitIds;
+        for (const auto& block: req.Blocks) {
+            blockIndices.push_back(block.BlockIndex);
+            commitIds.push_back(block.CommitId);
+        }
 
         l0Blobs.emplace_back(
             req.BlobId,
-            std::move(req.Blocks),
+            std::move(blockIndices),
+            std::move(commitIds),
             std::move(req.Checksums));
     }
 

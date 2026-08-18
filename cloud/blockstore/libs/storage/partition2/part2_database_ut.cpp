@@ -295,6 +295,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                     TBlockRange32::MakeClosedInterval(12, 22);
                 constexpr ui64 maxCommitId = 15;
                 constexpr TStringBuf expected =
+                    "#15:10:10:2:1 #19:10:10:2:2 "
                     "#15:5:30:3:0 #19:15:30:3:1 #20:15:40:4:0";
 
                 TTestLevelIndexVisitor l0Visitor;

@@ -127,15 +127,18 @@ struct TWriteFreshBlocksRequest
 struct TAddLevelIndexBlob
 {
     const TPartialBlobId BlobId;
-    const TVector<TBlock> Blocks;
+    const TVector<ui32> BlockIndices;
+    const TVector<ui64> CommitIds;
     const TVector<ui32> Checksums;
 
     TAddLevelIndexBlob(
         const TPartialBlobId& blobId,
-        TVector<TBlock> blocks,
+        TVector<ui32> blockIndices,
+        TVector<ui64> commitIds,
         TVector<ui32> checksums)
         : BlobId(blobId)
-        , Blocks(std::move(blocks))
+        , BlockIndices(std::move(blockIndices))
+        , CommitIds(std::move(commitIds))
         , Checksums(std::move(checksums))
     {}
 };

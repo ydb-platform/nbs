@@ -1173,8 +1173,7 @@ void TPartitionDatabaseImpl<TCounters>::WriteL0Blob(
 {
     using TTable = TPartitionSchema::L0Index;
 
-    Y_ABORT_UNLESS(!blobMeta.HasMergedBlocks());
-    Y_ABORT_UNLESS(blobMeta.HasMixedBlocks());
+    Y_ABORT_UNLESS(blobMeta.HasL0Blocks());
 
     auto value = Table<TTable>().Key(
         blockRange.End,
@@ -1184,6 +1183,18 @@ void TPartitionDatabaseImpl<TCounters>::WriteL0Blob(
     value.Update(
         NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start),
         NIceDb::TUpdate<TTable::BlobMeta>(std::move(blobMeta)));
+}
+
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteL0Blob(
+    const TPartialBlobId& blobId,
+    const TBlockRange32& blockRange)
+{
+    using TTable = TPartitionSchema::L0Index;
+
+    Table<TTable>()
+        .Key(blockRange.End, blobId.CommitId(), blobId.UniqueId())
+        .Delete();
 }
 
 template <typename TTable, typename TCounters>
@@ -1213,13 +1224,20 @@ static bool FindBlocksInLevelIndex(
             const auto blobMeta =
                 it.template GetValue<typename TTable::BlobMeta>();
 
-            Y_ABORT_UNLESS(!blobMeta.HasMergedBlocks());
             Y_ABORT_UNLESS(blobMeta.HasMixedBlocks());
+            const auto& blocks = [&]()
+            {
+                if constexpr (std::is_same_v<TTable, TPartitionSchema::L0Index>)
+                {
+                    return blobMeta.GetL0Blocks();
+                } else {
+                    return blobMeta.GetL1Blocks();
+                }
+            }();
 
-            const auto& mixedBlocks = blobMeta.GetMixedBlocks();
             Y_ABORT_UNLESS(
-                mixedBlocks.CommitIdsSize() == 0 ||
-                mixedBlocks.CommitIdsSize() == mixedBlocks.BlocksSize());
+                blocks.CommitIdsSize() == 0 ||
+                blocks.CommitIdsSize() == blocks.BlocksSize());
 
             const auto blobId = MakePartialBlobId(
                 it.template GetValue<typename TTable::BlobCommitId>(),
@@ -1229,11 +1247,11 @@ static bool FindBlocksInLevelIndex(
                 return true;   // interrupted
             }
 
-            for (size_t i = 0; i < mixedBlocks.BlocksSize(); ++i) {
-                const ui32 blockIndex = mixedBlocks.GetBlocks(i);
-                const ui64 commitId = mixedBlocks.CommitIdsSize()
-                    ? mixedBlocks.GetCommitIds(i)
-                    : blobId.CommitId();
+            for (size_t i = 0; i < blocks.BlocksSize(); ++i) {
+                const ui32 blockIndex = blocks.GetBlocks(i);
+                const ui64 commitId = blocks.CommitIdsSize()
+                                          ? blocks.GetCommitIds(i)
+                                          : blobId.CommitId();
 
                 if (blockRange.Contains(blockIndex) &&
                     commitId <= maxCommitId &&
@@ -1298,8 +1316,7 @@ void TPartitionDatabaseImpl<TCounters>::WriteL1Blob(
 {
     using TTable = TPartitionSchema::L1Index;
 
-    Y_ABORT_UNLESS(!blobMeta.HasMergedBlocks());
-    Y_ABORT_UNLESS(blobMeta.HasMixedBlocks());
+    Y_ABORT_UNLESS(blobMeta.HasL1Blocks());
 
     auto value = Table<TTable>().Key(
         blockRange.End,
@@ -1309,6 +1326,18 @@ void TPartitionDatabaseImpl<TCounters>::WriteL1Blob(
     value.Update(
         NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start),
         NIceDb::TUpdate<TTable::BlobMeta>(std::move(blobMeta)));
+}
+
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteL1Blob(
+    const TPartialBlobId& blobId,
+    const TBlockRange32& blockRange)
+{
+    using TTable = TPartitionSchema::L1Index;
+
+    Table<TTable>()
+        .Key(blockRange.End, blobId.CommitId(), blobId.UniqueId())
+        .Delete();
 }
 
 template <typename TCounters>

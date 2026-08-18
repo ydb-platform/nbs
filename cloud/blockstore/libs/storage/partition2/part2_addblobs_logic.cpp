@@ -160,14 +160,14 @@ public:
             ProcessNewBlob</*TLevel=*/0>(actorSystem, db, blob);
 
             auto& cm = State.GetCompactionMapL0();
-            cm.BlobAdded(blob.Blocks, Args.CommitId);
+            cm.BlobAdded(blob.BlockIndices, blob.CommitIds, Args.CommitId);
         }
 
         for (const auto& blob: Args.L1Blobs) {
             ProcessNewBlob</*TLevel=*/1>(actorSystem, db, blob);
 
             auto& cm = State.GetCompactionMapL1();
-            cm.BlobAdded(blob.Blocks, Args.CommitId);
+            cm.BlobAdded(blob.BlockIndices, blob.CommitIds, Args.CommitId);
         }
 
         if (Args.Mode == ADD_COMPACTION_RESULT) {
@@ -448,27 +448,26 @@ private:
             levelBlocks = blobMeta.MutableL1Blocks();
         }
 
-        levelBlocks->MutableBlocks()->Reserve(blob.Blocks.size());
-        levelBlocks->MutableCommitIds()->Reserve(blob.Blocks.size());
+        STORAGE_VERIFY(
+            blob.BlockIndices.size() == blob.CommitIds.size() ||
+                blob.BlockIndices.size() == 0,
+            TWellKnownEntityTypes::TABLET,
+            TabletId);
 
-        for (const auto& block: blob.Blocks) {
-            STORAGE_VERIFY(
-                levelBlocks->BlocksSize() == 0 ||
-                    levelBlocks->GetBlocks(levelBlocks->BlocksSize() - 1) <
-                        block.BlockIndex,
-                TWellKnownEntityTypes::TABLET,
-                TabletId)
-            levelBlocks->AddBlocks(block.BlockIndex);
-            levelBlocks->AddCommitIds(block.CommitId);
-        }
+        levelBlocks->MutableBlocks()->Assign(
+            blob.BlockIndices.begin(),
+            blob.BlockIndices.end());
+        levelBlocks->MutableCommitIds()->Assign(
+            blob.CommitIds.begin(),
+            blob.CommitIds.end());
 
         for (ui32 checksum: blob.Checksums) {
             blobMeta.AddBlockChecksums(checksum);
         }
 
         TBlockRange32 blockRange = TBlockRange32::MakeClosedInterval(
-            blob.Blocks.front().BlockIndex,
-            blob.Blocks.back().BlockIndex);
+            blob.BlockIndices.front(),
+            blob.BlockIndices.back());
 
         if (actorSystem) {
             LOG_DEBUG(
@@ -494,8 +493,8 @@ private:
         }
 
         if constexpr (TLevel == 0) {
-            for (const auto& block: blob.Blocks) {
-                State.DeleteFreshBlock(block.BlockIndex, block.CommitId);
+            for (size_t i = 0; i < blob.BlockIndices.size(); ++i) {
+                State.DeleteFreshBlock(blob.BlockIndices[i], blob.CommitIds[i]);
             }
         }
     }
