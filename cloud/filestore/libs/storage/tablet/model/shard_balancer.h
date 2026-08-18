@@ -191,17 +191,17 @@ public:
 // x x 2 x x
 class TShardBalancerWeightedDeterministic: public TShardBalancerBase
 {
-    static constexpr ui64 ScoreLevelsCount = 8;
-    static constexpr ui64 MaxScore = ScoreLevelsCount - 1;
+    static constexpr ui32 ScoreLevelsCount = 8;
+    static constexpr ui32 MaxScore = ScoreLevelsCount - 1;
 
     // Iterator state.
-    ui64 ShardSelector;
-    ui64 CurrentScore;
+    ui32 ShardSelector;
+    ui32 CurrentScore;
 
     // Two-dimensional array of size:
     // Metas.size() * ScoreLevelsCount.
     // It's a mapping from (score, shardIdx) -> nextShardIdx.
-    TArray2D<ui64> NextShard;
+    TArray2D<ui32> NextShard;
 
     // Calculates scores in Metas, returns true if some score has changed.
     bool CalcScore(const TVector<TShardStats>& stats);

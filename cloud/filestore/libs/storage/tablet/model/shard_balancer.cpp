@@ -317,9 +317,9 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
     NextShard.SetSizes(Metas.size(), ScoreLevelsCount);
     NextShard.FillEvery(Metas.size());
 
-    auto setNextShard = [this](ui64 shardIdx, ui64 nextShardIdx, ui64 fromScore)
+    auto setNextShard = [this](ui32 shardIdx, ui32 nextShardIdx, ui32 fromScore)
     {
-        for (ui64 score = fromScore; score != Max<ui64>(); --score) {
+        for (ui32 score = fromScore; score != Max<ui32>(); --score) {
             if (NextShard[score][shardIdx] == Metas.size()) {
                 NextShard[score][shardIdx] = nextShardIdx;
             } else {
@@ -328,21 +328,21 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
         }
     };
 
-    const ui64 lastShardIdx = Metas.size() - 1;
-    for (ui64 score = 0; score <= Metas[0].Score; ++score) {
+    const ui32 lastShardIdx = Metas.size() - 1;
+    for (ui32 score = 0; score <= Metas[0].Score; ++score) {
         NextShard[score][lastShardIdx] = 0;
     }
     TVector<const TShardMeta*> stack;
     stack.push_back(&Metas[0]);
 
-    for (ui64 i = 1; i < Metas.size(); ++i) {
+    for (ui32 i = 1; i < Metas.size(); ++i) {
         const auto& meta = Metas[i];
         // Update Next for the last shard.
         setNextShard(lastShardIdx, i, meta.Score);
 
         // Pop the stack.
         while (!stack.empty() && meta.Score >= stack.back()->Score) {
-            for (ui64 shardIdx = stack.back()->ShardIdx;
+            for (ui32 shardIdx = stack.back()->ShardIdx;
                  shardIdx < meta.ShardIdx;
                  ++shardIdx)
             {
@@ -351,8 +351,8 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
             stack.pop_back();
         }
 
-        const ui64 leftBorder = !stack.empty() ? stack.back()->ShardIdx : 0;
-        for (ui64 shardIdx = leftBorder; shardIdx < meta.ShardIdx; ++shardIdx) {
+        const ui32 leftBorder = !stack.empty() ? stack.back()->ShardIdx : 0;
+        for (ui32 shardIdx = leftBorder; shardIdx < meta.ShardIdx; ++shardIdx) {
             setNextShard(shardIdx, meta.ShardIdx, meta.Score);
         }
 
@@ -360,13 +360,13 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
     }
 
     // Fill the gap on the right side of the matrix.
-    for (ui64 score = 0; score < ScoreLevelsCount &&
+    for (ui32 score = 0; score < ScoreLevelsCount &&
                          NextShard[score][lastShardIdx] < Metas.size();
          ++score)
     {
-        const ui64 nextShard = NextShard[score][lastShardIdx];
-        for (ui64 shardIdx = lastShardIdx - 1;
-             shardIdx != Max<ui64>() &&
+        const ui32 nextShard = NextShard[score][lastShardIdx];
+        for (ui32 shardIdx = lastShardIdx - 1;
+             shardIdx != Max<ui32>() &&
              NextShard[score][shardIdx] == Metas.size();
              --shardIdx)
         {
