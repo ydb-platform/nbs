@@ -874,7 +874,7 @@ message TStorageConfig
     // Allow to create load actor.
     optional bool EnableLoadActor = 533;
 
-    optional uint32 MaxNodeDiagnosticEntries = 533;
+    optional uint32 MaxNodeDiagnosticEntries = 534;
 
-    optional uint32 AccessStatsHalfLife = 534;
+    optional uint32 AccessStatsHalfLife = 535;
 }
