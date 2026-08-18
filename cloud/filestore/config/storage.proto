@@ -876,5 +876,5 @@ message TStorageConfig
 
     optional uint32 MaxNodeDiagnosticEntries = 533;
 
-    optional uint32 AccessStatsHalfLife = 534; // in minutes
+    optional uint32 AccessStatsHalfLife = 534;
 }
