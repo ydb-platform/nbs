@@ -1222,7 +1222,7 @@ static bool FindBlocksInLevelIndex(
             it.template GetValue<typename TTable::RangeEnd>());
 
         if (blobRange.Overlaps(blockRange)) {
-            const auto blobMeta =
+            auto blobMeta =
                 it.template GetValue<typename TTable::BlobMeta>();
 
             const auto& blocks = [&]()
@@ -1244,10 +1244,6 @@ static bool FindBlocksInLevelIndex(
             const auto blobId = MakePartialBlobId(
                 it.template GetValue<typename TTable::BlobCommitId>(),
                 it.template GetValue<typename TTable::BlobId>());
-
-            if (!blobsVisitor.Visit(blobRange, blobId)) {
-                return true;   // interrupted
-            }
 
             const auto& blockIndices = blocks.GetBlocks();
             const auto begin = LowerBound(
@@ -1276,6 +1272,10 @@ static bool FindBlocksInLevelIndex(
                 {
                     return true;   // interrupted
                 }
+            }
+
+            if (!blobsVisitor.VisitBlob(blobId, std::move(blobMeta))) {
+                return true;   // interrupted
             }
         }
 

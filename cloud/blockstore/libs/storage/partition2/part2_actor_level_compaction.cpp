@@ -193,9 +193,10 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
     }
 
     TAffectedBlobs affectedBlobs;
-    for (const auto& [blobId, blockRange]: ScanResult.AffectedBlobs) {
-        Y_UNUSED(blockRange);
-        affectedBlobs.emplace(blobId, TAffectedBlob{});
+    for (auto& [blobId, blobMeta]: ScanResult.AffectedBlobs) {
+        TAffectedBlob affectedBlob;
+        affectedBlob.BlobMeta = std::move(blobMeta);
+        affectedBlobs.emplace(blobId, std::move(affectedBlob));
     }
 
     auto addBlobsRequest =

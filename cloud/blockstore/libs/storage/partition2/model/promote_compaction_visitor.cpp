@@ -49,11 +49,11 @@ bool TPromoteCompactionVisitor::Visit(
     return true;
 }
 
-bool TPromoteCompactionVisitor::Visit(
-    TBlockRange32 blockRange,
-    const TPartialBlobId& blobId)
+bool TPromoteCompactionVisitor::VisitBlob(
+    const TPartialBlobId& blobId,
+    NProto::TBlobMeta blobMeta)
 {
-    AffectedBlobs[blobId] = blockRange;
+    AffectedBlobs[blobId] = std::move(blobMeta);
     return true;
 }
 
@@ -106,7 +106,10 @@ auto TPromoteCompactionVisitor::Finish() -> TScanResult
         }
     }
 
-    return {.ResultedBlobs = std::move(blobs), .AffectedBlobs = std::move(AffectedBlobs)};
+    return {
+        .ResultedBlobs = std::move(blobs),
+        .AffectedBlobs = std::move(AffectedBlobs),
+        .MaxCommitId = MaxCommitId};
 }
 
 auto TPromoteCompactionVisitor::CollectReadBlobRequests(TVector<TBlob>& blobs)

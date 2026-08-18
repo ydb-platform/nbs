@@ -217,7 +217,10 @@ bool TPartitionActor::PrepareDescribeBlocks(
     Y_UNUSED(ctx);
 
     TRequestScope timer(*args.RequestInfo);
-    TPartitionDatabase db(tx.DB);
+    TPartitionDatabase db(
+        tx.DB,
+        State->GetMeta().GetL0RangeSize(),
+        State->GetMeta().GetL1RangeSize());
 
     ui64 commitId = args.CommitId;
 
@@ -235,19 +238,16 @@ bool TPartitionActor::PrepareDescribeBlocks(
 
     TDescribeBlocksVisitor visitor(args);
     State->FindFreshBlocks(visitor, args.DescribeRange, commitId);
-    auto ready = db.FindMixedBlocks(
-        visitor,
-        args.DescribeRange,
-        false,  // precharge
-        commitId
-    );
+    bool ready =
+        State->FindBlocksInL0Index(db, visitor, args.DescribeRange, commitId);
+    ready &=
+        State->FindBlocksInL1Index(db, visitor, args.DescribeRange, commitId);
     ready &= db.FindMergedBlocks(
         visitor,
         args.DescribeRange,
-        false,  // precharge
+        false,   // precharge
         State->GetMaxBlocksInBlob(),
-        commitId
-    );
+        commitId);
 
     return ready;
 }
