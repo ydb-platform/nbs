@@ -164,6 +164,23 @@ public:
         return {};
     }
 
+    TResultOrError<TLockdownState> GetLockdownState(
+        const TString& ctrlPath) final
+    {
+        Y_UNUSED(ctrlPath);
+
+        return TLockdownState{};
+    }
+
+    NProto::TError EnsureLockdown(
+        const TString& ctrlPath,
+        const TLockdownConfig& config) final
+    {
+        Y_UNUSED(ctrlPath, config);
+
+        return {};
+    }
+
 public:
     void WaitSanitizeRequested()
     {

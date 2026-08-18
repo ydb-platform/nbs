@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     nvme.cpp
     nvme_stub.cpp
+    utils.cpp
 )
 
 IF(OS_LINUX)
@@ -19,6 +20,7 @@ END()
 
 RECURSE_FOR_TESTS(
     ut_nvme
+    ut_utils
 )
 
 RECURSE(testing)
