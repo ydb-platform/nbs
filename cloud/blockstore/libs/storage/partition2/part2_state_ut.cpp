@@ -25,6 +25,8 @@ const ui32 DefaultBlockCount = 1000;
 NProto::TPartitionMeta DefaultConfig(size_t channelCount, size_t blockCount)
 {
     NProto::TPartitionMeta meta;
+    meta.SetL0RangeSize(TCompressedBitmap::CHUNK_SIZE);
+    meta.SetL1RangeSize(TCompressedBitmap::CHUNK_SIZE);
 
     auto& config = *meta.MutableConfig();
     config.SetBlockSize(DefaultBlockSize);
@@ -88,6 +90,36 @@ struct TNoBackpressurePolicy
         return false;
     }
 };
+
+struct TTestLevelIndexVisitor final: IBlocksIndexVisitor
+{
+    TStringBuilder Result;
+
+    bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset) override
+    {
+        Y_UNUSED(blobId, blobOffset);
+
+        if (Result) {
+            Result << " ";
+        }
+        Result << "#" << blockIndex << ":" << commitId;
+        return true;
+    }
+};
+
+void SetRangeBaseline(
+    TBlocksFilter& filter,
+    ui32 rangeIndex,
+    ui64 baselineCommitId)
+{
+    filter.CompactionStarted({rangeIndex}, baselineCommitId);
+    filter.UpdateCompactionBaselineCommitId(baselineCommitId, baselineCommitId);
+    filter.CompactionFinished();
+}
 
 }   // namespace
 
@@ -463,6 +495,115 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             TVector<TMixedBlock>({blocks[0], blocks[3], blocks[4]}),
             actual
         );
+    }
+
+    Y_UNIT_TEST(ShouldFindBlocksInLevelIndicesUsingRangeBaselines)
+    {
+        constexpr ui32 l0RangeSize = 10;
+        constexpr ui32 l1RangeSize = 15;
+        auto meta = DefaultConfig(1, 30);
+        meta.SetL0RangeSize(l0RangeSize);
+        meta.SetL1RangeSize(l1RangeSize);
+
+        auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
+        TPartitionState state(
+            std::move(meta),
+            BuildDefaultCompactionPolicy(5),
+            0,   // compactionScoreHistorySize
+            0,   // cleanupScoreHistorySize
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            Max(),   // maxIORequestsInFlight
+            0,       // reassignChannelsPercentageThreshold
+            100,     // reassignFreshChannelsPercentageThreshold
+            100,     // reassignMixedChannelsPercentageThreshold
+            false,   // reassignSystemChannelsImmediately
+            5,       // channelCount
+            0,       // mixedIndexCacheSize
+            10000,   // allocationUnit
+            100,     // maxBlobsPerUnit
+            10,      // maxBlobsPerRange
+            1,       // compactionRangeCountPerRun
+            threadSafeState);
+
+        auto& l0Filter = state.GetBlocksFilterL0();
+        SetRangeBaseline(l0Filter, 0, 10);
+        SetRangeBaseline(l0Filter, 1, 20);
+        l0Filter.BlocksAddedToMixedIndex(6, 12);
+
+        auto& l1Filter = state.GetBlocksFilterL1();
+        SetRangeBaseline(l1Filter, 0, 10);
+        SetRangeBaseline(l1Filter, 1, 20);
+        l1Filter.BlocksAddedToMixedIndex(6, 12);
+        l1Filter.BlocksAddedToMixedIndex(25, 22);
+
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                ui32 uniqueId = 0;
+                const auto writeBlock = [&](ui32 blockIndex, ui64 commitId)
+                {
+                    const TPartialBlobId blobId(commitId, ++uniqueId);
+                    const auto blockRange =
+                        TBlockRange32::MakeOneBlock(blockIndex);
+
+                    NProto::TBlobMeta l0BlobMeta;
+                    l0BlobMeta.MutableL0Blocks()->AddBlocks(blockIndex);
+                    db.WriteL0Blob(blobId, blockRange, l0BlobMeta);
+
+                    NProto::TBlobMeta l1BlobMeta;
+                    l1BlobMeta.MutableL1Blocks()->AddBlocks(blockIndex);
+                    db.WriteL1Blob(blobId, blockRange, l1BlobMeta);
+                };
+
+                writeBlock(5, 5);
+                writeBlock(6, 12);
+                writeBlock(15, 15);
+                writeBlock(25, 5);
+                writeBlock(25, 22);
+            });
+
+        executor.ReadTx(
+            [&](NKikimr::NTable::TDatabase& database)
+            {
+                TPartitionDatabase db(database, l0RangeSize, l1RangeSize);
+                const auto readRange = TBlockRange32::MakeClosedInterval(5, 25);
+
+                const auto findBlocks = [&](bool l0, ui64 commitId)
+                {
+                    TTestLevelIndexVisitor visitor;
+                    const bool ready = l0 ? state.FindBlocksInL0Index(
+                                                db,
+                                                visitor,
+                                                readRange,
+                                                commitId)
+                                          : state.FindBlocksInL1Index(
+                                                db,
+                                                visitor,
+                                                readRange,
+                                                commitId);
+                    UNIT_ASSERT(ready);
+                    return TString(visitor.Result);
+                };
+
+                UNIT_ASSERT_VALUES_EQUAL("#5:5 #25:5", findBlocks(true, 9));
+                UNIT_ASSERT_VALUES_EQUAL("#25:5", findBlocks(true, 10));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#6:12 #15:15 #25:5",
+                    findBlocks(true, 15));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#6:12 #25:5 #25:22",
+                    findBlocks(true, 25));
+
+                UNIT_ASSERT_VALUES_EQUAL("#5:5 #25:5", findBlocks(false, 9));
+                UNIT_ASSERT_VALUES_EQUAL("#25:5", findBlocks(false, 10));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#6:12 #15:15 #25:5",
+                    findBlocks(false, 15));
+                UNIT_ASSERT_VALUES_EQUAL("#6:12 #25:22", findBlocks(false, 25));
+            });
     }
 
     void CheckMaxBlobsPerDisk(

@@ -35,9 +35,11 @@ class TBlocksFilter
         // The commit ID used by the compaction.
         ui64 CommitId = 0;
 
-        // Blocks added to the mixed index at or after CommitId while the
-        // compaction was in flight.
+        // Blocks added to the mixed index at or after BaselineCommitId while
+        // the compaction was in flight.
         THashSet<ui32> MixedBlocksAddedDuringCompaction;
+
+        ui64 BaselineCommitId = 0;
     };
 
 private:
@@ -113,8 +115,8 @@ public:
 
     /**
      * Publishes the result of the oldest in-flight compaction. Each compacted
-     * range receives the compaction commit ID as its new baseline and retains
-     * only mixed blocks added while that compaction was in flight.
+     * range receives the compaction baseline commit ID as its new baseline and
+     * retains only mixed blocks added while that compaction was in flight.
      */
     void CompactionFinished();
 
@@ -123,6 +125,11 @@ public:
      * changing the bitmap or range baselines.
      */
     void CompactionFailed();
+
+    void UpdateCompactionBaselineCommitId(ui64 compactionCommitId,
+                                          ui64 baselineCommitId);
+
+    std::optional<ui64> GetRangeBaselineCommitId(ui32 rangeIndex) const;
 
     /**
      * Returns the memory allocated for the bitmap and range baselines.

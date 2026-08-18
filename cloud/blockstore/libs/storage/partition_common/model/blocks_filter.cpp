@@ -83,8 +83,8 @@ bool TBlocksFilter::BlocksAddedToMixedIndex(ui64 blockIndex, ui64 commitId)
 
     for (auto& compaction: Compactions) {
         // Compactions are sorted by CommitId in ascending order.
-        if (compaction.CommitId > commitId) {
-            break;
+        if (compaction.BaselineCommitId > commitId) {
+            continue;
         }
 
         const bool hasRangeIndex =
@@ -123,7 +123,8 @@ void TBlocksFilter::CompactionStarted(TVector<ui32> rangeIndices, ui64 commitId)
 
     Compactions.push_back({.RangeIndices = std::move(rangeIndices),
                            .CommitId = commitId,
-                           .MixedBlocksAddedDuringCompaction = {}});
+                           .MixedBlocksAddedDuringCompaction = {},
+                           .BaselineCommitId = commitId});
 }
 
 void TBlocksFilter::CompactionFinished()
@@ -136,10 +137,11 @@ void TBlocksFilter::CompactionFinished()
         STORAGE_VERIFY(compactionRangeIndex < CompactionRangeCommitIds.size(),
                        TWellKnownEntityTypes::TABLET, TabletId);
 
-        CompactionRangeCommitIds[compactionRangeIndex] = compaction.CommitId;
+        CompactionRangeCommitIds[compactionRangeIndex] =
+            compaction.BaselineCommitId;
         // All mixed blocks in the compaction range should be compacted. So we
         // can clear its filter and restore only blocks added at or after the
-        // compaction commit ID.
+        // compaction baseline commit ID.
         BlocksFilter.Unset(
             compactionRangeIndex * BlocksPerRange,
             Min((compactionRangeIndex + 1) * BlocksPerRange, BlockCount));
@@ -158,6 +160,33 @@ void TBlocksFilter::CompactionFailed()
                    TabletId);
 
     Compactions.pop_front();
+}
+
+void TBlocksFilter::UpdateCompactionBaselineCommitId(ui64 compactionCommitId,
+                                                     ui64 baselineCommitId)
+{
+    STORAGE_VERIFY(!Compactions.empty(), TWellKnownEntityTypes::TABLET,
+                   TabletId);
+
+    auto compaction =
+        FindIf(Compactions.begin(), Compactions.end(),
+               [compactionCommitId](const TCompaction& compaction) {
+                   return compaction.CommitId == compactionCommitId;
+               });
+
+    STORAGE_VERIFY(compaction != Compactions.end(),
+                   TWellKnownEntityTypes::TABLET, TabletId);
+
+    compaction->BaselineCommitId = baselineCommitId;
+}
+
+std::optional<ui64> TBlocksFilter::GetRangeBaselineCommitId(
+    ui32 rangeIndex) const
+{
+    STORAGE_VERIFY(rangeIndex < CompactionRangeCommitIds.size(),
+                   TWellKnownEntityTypes::TABLET, TabletId);
+
+    return CompactionRangeCommitIds[rangeIndex];
 }
 
 ui64 TBlocksFilter::GetMemoryUsage() const

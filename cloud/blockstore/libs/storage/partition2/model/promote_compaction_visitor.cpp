@@ -159,6 +159,8 @@ void TPromoteCompactionVisitor::AddBlockMark(ui32 blockIndex, TBlockMark mark)
 
     auto& marksForBlock = blocksForRange[blockIndex];
 
+    MaxCommitId = std::max(MaxCommitId, mark.CommitId);
+
     if (AllowBlockDuplicates || marksForBlock.empty()) {
         marksForBlock.emplace_back(mark);
         return;

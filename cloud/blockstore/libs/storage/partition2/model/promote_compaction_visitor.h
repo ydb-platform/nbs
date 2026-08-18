@@ -60,6 +60,7 @@ private:
 
     TMap<ui64, TMap<ui64, TVector<TBlockMark>>> BlocksPerRange;
     THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> AffectedBlobs;
+    ui64 MaxCommitId = 0;
 
 public:
     explicit TPromoteCompactionVisitor(
@@ -90,6 +91,7 @@ public:
         TVector<TBlob> ResultedBlobs;
         THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash>
             AffectedBlobs;
+        ui64 MaxCommitId = 0;
     };
 
     TScanResult Finish();

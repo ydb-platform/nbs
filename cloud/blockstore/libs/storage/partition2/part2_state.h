@@ -1225,6 +1225,18 @@ public:
         return L0CommitQueue;
     }
 
+    bool FindBlocksInL0Index(
+        TPartitionDatabase& db,
+        IBlocksIndexVisitor& visitor,
+        const TBlockRange32& blockRange,
+        ui64 commitId);
+
+    bool FindBlocksInL1Index(
+        TPartitionDatabase& db,
+        IBlocksIndexVisitor& visitor,
+        const TBlockRange32& blockRange,
+        ui64 commitId);
+
     //
     // Stats
     //
