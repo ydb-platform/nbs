@@ -41,6 +41,8 @@ public:
             , Stats(stats)
             , Score(score)
         {}
+
+        TShardMeta() = default;
     };
 
     virtual ~IShardBalancer() = default;
@@ -201,7 +203,8 @@ class TShardBalancerWeightedDeterministic: public TShardBalancerBase
     // It's a mapping from (score, shardIdx) -> nextShardIdx.
     TArray2D<ui64> NextShard;
 
-    void CalcScore(const TVector<TShardStats>& stats);
+    // Calculates scores in Metas, returns true if some score has changed.
+    bool CalcScore(const TVector<TShardStats>& stats);
     void CalcNextShard();
 
 public:

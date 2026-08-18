@@ -277,7 +277,7 @@ TShardBalancerWeightedDeterministic::TShardBalancerWeightedDeterministic(
     CurrentScore = MaxScore;
 }
 
-void TShardBalancerWeightedDeterministic::CalcScore(
+bool TShardBalancerWeightedDeterministic::CalcScore(
     const TVector<TShardStats>& stats)
 {
     ui64 minBlocksCount = Max<ui64>();
@@ -291,14 +291,17 @@ void TShardBalancerWeightedDeterministic::CalcScore(
         (maxBlocksCount - minBlocksCount) / ScoreLevelsCount,
         PrecisionBytes / BlockSize, 1UL);
 
-    Metas.clear();
-    Metas.reserve(stats.size());
+    bool scoreChanged = (Metas.size() != stats.size());
+    Metas.resize(stats.size());
     for (ui64 i = 0; i < stats.size(); ++i) {
         const ui64 score = Min<ui64>(
             MaxScore,
             (maxBlocksCount - stats[i].UsedBlocksCount) / step);
-        Metas.emplace_back(i, stats[i], score);
+        scoreChanged = scoreChanged || (Metas[i].Score != score);
+        Metas[i] = {static_cast<ui32>(i), stats[i], score};
     }
+
+    return scoreChanged;
 }
 
 // Builds the cyclic shard-transition table (NextShard) used by SelectShard.
@@ -385,8 +388,7 @@ NProto::TError TShardBalancerWeightedDeterministic::Update(
             << stats.size() << " != Metas.size() " << Metas.size());
     }
 
-    if (!stats.empty()) {
-        CalcScore(stats);
+    if (!stats.empty() && CalcScore(stats)) {
         CalcNextShard();
     }
 
