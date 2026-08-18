@@ -1,7 +1,8 @@
 #include "tablet_actor.h"
 
-#include <cloud/filestore/libs/storage/tablet/model/simple_template.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
+
+#include <cloud/storage/core/libs/common/simple_template.h>
 
 #include <library/cpp/json/writer/json.h>
 #include <library/cpp/resource/resource.h>

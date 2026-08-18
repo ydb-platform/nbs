@@ -66,20 +66,6 @@ def test_load_bootstrap_config_extracts_all_platform_resources(
     }
 
 
-def test_localize_bootstrap_script_replaces_only_default_endpoint(
-    tmp_path: Path,
-) -> None:
-    bootstrap_script = write_bootstrap_script(tmp_path / "ya")
-    config = mirror.load_bootstrap_config(bootstrap_script)
-
-    localized = mirror.localize_bootstrap_script(
-        config, "https://mirror.example/resources/"
-    )
-
-    assert '"YA_REGISTRY_ENDPOINT", "https://mirror.example/resources"' in localized
-    assert 'f"{REGISTRY_ENDPOINT}/8580483288"' in localized
-
-
 def test_extract_platform_map_rejects_executable_python() -> None:
     source = """# Start of mapping
 PLATFORM_MAP = {
@@ -179,6 +165,42 @@ def test_is_localized_resource_url_rejects_non_matching_urls(url: str) -> None:
     )
 
 
+def test_resolve_mapping_resources_expands_registry_endpoint(tmp_path: Path) -> None:
+    mapping_path = tmp_path / "mapping.conf.json"
+    mapping = {
+        "extensions": {"registry_endpoint": "https://devtools-registry.s3.yandex.net"},
+        "resources": {"6277415836": "{registry_endpoint}/6277415836"},
+    }
+
+    assert mirror.resolve_mapping_resources(mapping, mapping_path) == {
+        "6277415836": "https://devtools-registry.s3.yandex.net/6277415836"
+    }
+
+
+def test_localize_mapping_replaces_registry_endpoint_only(tmp_path: Path) -> None:
+    mapping_path = tmp_path / "mapping.conf.json"
+    mapping_path.write_text(
+        json.dumps(
+            {
+                "extensions": {
+                    "registry_endpoint": "https://devtools-registry.s3.yandex.net"
+                },
+                "resources": {"6277415836": "{registry_endpoint}/6277415836"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    localized = json.loads(
+        mirror.localize_mapping(mapping_path, "https://mirror.example/resources/")
+    )
+
+    assert localized["extensions"]["registry_endpoint"] == (
+        "https://mirror.example/resources"
+    )
+    assert localized["resources"] == {"6277415836": "{registry_endpoint}/6277415836"}
+
+
 def test_main_skips_already_localized_resources(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -187,10 +209,13 @@ def test_main_skips_already_localized_resources(
     mapping.write_text(
         json.dumps(
             {
+                "extensions": {
+                    "registry_endpoint": "https://devtools-registry.s3.yandex.net"
+                },
                 "resources": {
                     "6277415836": f"{local_base_url}/6277415836",
-                    "6277415837": "https://devtools-registry.s3.yandex.net/6277415837",
-                }
+                    "6277415837": "{registry_endpoint}/6277415837",
+                },
             }
         ),
         encoding="utf-8",
@@ -257,7 +282,10 @@ def test_main_skips_already_localized_resources(
     assert "Uploaded or refreshed: `2`" in summary
     assert "Already up to date: `1`" in summary
     patch = patch_out.read_text(encoding="utf-8")
-    assert f'+    "YA_REGISTRY_ENDPOINT", "{local_base_url}"' in patch
+    assert "YA_REGISTRY_ENDPOINT" not in patch
+    assert str(bootstrap_script) not in patch
+    assert f'+        "registry_endpoint": "{local_base_url}"' in patch
+    assert '+        "6277415837": "{registry_endpoint}/6277415837"' in patch
 
 
 def test_main_rejects_bootstrap_resource_with_wrong_md5(

@@ -35,6 +35,7 @@ func newFactory(
 		nil, // creds
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
+		nil, // tlsProvider
 	)
 }
 

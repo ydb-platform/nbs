@@ -44,4 +44,6 @@ message TTestConfig {
   // Used in TUnalignedTestScenario
   optional TUnalignedTestConfig UnalignedTest = 12;
   optional uint32 TestCount = 13;
+  // Percentage of Zero (discard) requests among all requests.
+  optional uint32 ZeroRate = 14 [default = 0];
 }

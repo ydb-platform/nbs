@@ -87,6 +87,8 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
             request.GetGid(),
             bdev.GetDevice());
     }
+
+    attrs.SetQuotaId(request.GetQuotaId());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -648,6 +650,12 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         }
     }
 
+    if (!behaveAsShard) {
+        // args.ParentNode is only a real parent when behaveAsShard is false.
+        args.Attrs.SetQuotaId(args.ParentNode->Attrs.GetQuotaId());
+        args.Request.SetQuotaId(args.ParentNode->Attrs.GetQuotaId());
+    }
+
     // TODO: AccessCheck
 
     if (!Config->GetParentlessFilesOnly()) {
@@ -667,6 +675,15 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         }
 
         if (childRef) {
+            if (IsNodeRefLocked({args.ParentNodeId, args.Name})) {
+                args.Error = MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "node ref " << args.ParentNodeId << " " << args.Name
+                        << " is locked, CreateNode should be retried");
+                return true;
+            }
+
             // mknod, mkdir, link nor symlink does not overwrite existing files
             args.Error = ErrorAlreadyExists(args.Name);
             return true;

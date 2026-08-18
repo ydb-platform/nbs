@@ -17,6 +17,9 @@
     "test.test_eternal_load_test[add-auto-run-eternal-4tb-cluster1]": {
         "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
     },
+    "test.test_eternal_load_test[add-auto-run-eternal-512gb-different-size-requests-with-zero-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-512gb-different-size-requests-with-zero-cluster1_/testing_out_stuff_results.txt"
+    },
     "test.test_eternal_load_test[add-auto-run-eternal-640gb-verify-checkpoint-cluster1]": {
         "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
     },
@@ -31,6 +34,9 @@
     },
     "test.test_eternal_load_test[continue-load-eternal-4tb-cluster1]": {
         "uri": "file://test.test_eternal_load_test_continue-load-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_eternal_load_test[continue-load-eternal-512gb-different-size-requests-with-zero-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_continue-load-eternal-512gb-different-size-requests-with-zero-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[continue-load-eternal-640gb-verify-checkpoint-cluster1]": {
         "uri": "file://test.test_eternal_load_test_continue-load-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
@@ -47,6 +53,9 @@
     "test.test_eternal_load_test[delete-test-eternal-4tb-cluster1]": {
         "uri": "file://test.test_eternal_load_test_delete-test-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
     },
+    "test.test_eternal_load_test[delete-test-eternal-512gb-different-size-requests-with-zero-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_delete-test-eternal-512gb-different-size-requests-with-zero-cluster1_/testing_out_stuff_results.txt"
+    },
     "test.test_eternal_load_test[delete-test-eternal-640gb-verify-checkpoint-cluster1]": {
         "uri": "file://test.test_eternal_load_test_delete-test-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
     },
@@ -61,6 +70,9 @@
     },
     "test.test_eternal_load_test[rerun-load-eternal-4tb-cluster1]": {
         "uri": "file://test.test_eternal_load_test_rerun-load-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_eternal_load_test[rerun-load-eternal-512gb-different-size-requests-with-zero-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_rerun-load-eternal-512gb-different-size-requests-with-zero-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[rerun-load-eternal-640gb-verify-checkpoint-cluster1]": {
         "uri": "file://test.test_eternal_load_test_rerun-load-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
@@ -77,6 +89,9 @@
     "test.test_eternal_load_test[setup-test-eternal-4tb-cluster1]": {
         "uri": "file://test.test_eternal_load_test_setup-test-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
     },
+    "test.test_eternal_load_test[setup-test-eternal-512gb-different-size-requests-with-zero-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_setup-test-eternal-512gb-different-size-requests-with-zero-cluster1_/testing_out_stuff_results.txt"
+    },
     "test.test_eternal_load_test[setup-test-eternal-640gb-verify-checkpoint-cluster1]": {
         "uri": "file://test.test_eternal_load_test_setup-test-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"
     },
@@ -91,6 +106,9 @@
     },
     "test.test_eternal_load_test[stop-load-eternal-4tb-cluster1]": {
         "uri": "file://test.test_eternal_load_test_stop-load-eternal-4tb-cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_eternal_load_test[stop-load-eternal-512gb-different-size-requests-with-zero-cluster1]": {
+        "uri": "file://test.test_eternal_load_test_stop-load-eternal-512gb-different-size-requests-with-zero-cluster1_/testing_out_stuff_results.txt"
     },
     "test.test_eternal_load_test[stop-load-eternal-640gb-verify-checkpoint-cluster1]": {
         "uri": "file://test.test_eternal_load_test_stop-load-eternal-640gb-verify-checkpoint-cluster1_/testing_out_stuff_results.txt"

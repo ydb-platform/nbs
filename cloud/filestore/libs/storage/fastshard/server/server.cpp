@@ -447,6 +447,32 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
         if (which == 1) {
             acceptFuture.cancel();
             acceptFuture.wait();
+
+            //
+            // Drain connections whose handshake has already completed:
+            // their clients saw connect() succeed, so they must go
+            // through the regular handler shutdown (FIN via
+            // THandlerRegistry::Stop) instead of being reset when the
+            // listening socket is closed. Stop() waits for this fiber
+            // before stopping the registry, so every handler
+            // registered here is shut down and waited for.
+            //
+
+            for (;;) {
+                int cfd = ::accept4(
+                    lfd,
+                    nullptr /* addr */,
+                    nullptr /* addrlen */,
+                    SOCK_NONBLOCK | SOCK_CLOEXEC);
+                if (cfd >= 0) {
+                    RegisterHandler(cfd, *handlers, registry);
+                    continue;
+                }
+                if (errno == EINTR || errno == ECONNABORTED) {
+                    continue;
+                }
+                break;
+            }
             return 0;
         }
 

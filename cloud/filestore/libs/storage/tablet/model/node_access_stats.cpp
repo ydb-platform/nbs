@@ -1,5 +1,4 @@
 #include "node_access_stats.h"
-
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,7 +42,7 @@ TNodeAccessStatsTracker::TNodeAccessStatsTracker(
     , HalfLife(halfLife)
 {}
 
-void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
+bool TNodeAccessStatsTracker::UpdateAccessStats(ui64 nodeId, TInstant now)
 {
     TNodeAccessStats stats;
 
@@ -56,7 +55,7 @@ void TNodeAccessStatsTracker::RequestStarted(ui64 nodeId, TInstant now)
     ++stats.RequestCount;
     stats.LastAccessed = now;
 
-    Ranking.InsertOrUpdate(std::move(stats));
+    return Ranking.InsertOrUpdate(std::move(stats));
 }
 
 TVector<TNodeAccessStats> TNodeAccessStatsTracker::GetStats(

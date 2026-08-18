@@ -201,6 +201,20 @@ NProto::TError ValidateData(
 {
     auto capabilities = dataProcessor.GetCapabilities(false);
 
+    // For an empty buffer, one of the following conditions should be met:
+    // - readPos == writePos (alignment doesn't matter);
+    // - writePos == 0 and readPos points to a slack space.
+    //
+    // For a non-empty buffer, all the following conditions should be met:
+    // - readPos points to the first entry;
+    // - writePos points to the next byte after the last entry.
+
+    if (readPos == writePos) {
+        // Empty buffer
+        // It is possible that ReadPos and WritePos are not properly aligned
+        return {};
+    }
+
     if (capabilities.Alignment > 0) {
         if (readPos % capabilities.Alignment != 0) {
             return MakeError(Sprintf(
@@ -217,19 +231,6 @@ NProto::TError ValidateData(
                 writePos,
                 capabilities.Alignment));
         }
-    }
-
-    // For an empty buffer, one of the following conditions should be met:
-    // - readPos == writePos;
-    // - writePos == 0 and readPos points to a slack space.
-    //
-    // For a non-empty buffer, all the following conditions should be met:
-    // - readPos points to the first entry;
-    // - writePos points to the next byte after the last entry.
-
-    if (readPos == writePos) {
-        // Empty buffer
-        return {};
     }
 
     if (writePos == 0) {

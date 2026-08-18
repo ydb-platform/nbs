@@ -1,5 +1,6 @@
 RECURSE(
     config
+    go
     libs
     protos
     tools

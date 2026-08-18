@@ -13325,6 +13325,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldLoadMixedBlocksFilterByCompactionRanges)
     {
         constexpr ui32 rangeSize = 1024;
+        constexpr ui32 expectedLoadRequestCount = 4;
 
         auto config = DefaultConfig();
         config.SetMixedBlocksFilterEnabled(true);
@@ -13333,27 +13334,29 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto runtime = PrepareTestActorRuntime(config, 5 * rangeSize);
 
         TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        partition.WriteBlocks(TBlockRange32::WithLength(0, 1), 1);
-        partition.WriteBlocks(TBlockRange32::WithLength(4 * rangeSize, 1), 2);
-        partition.Flush();
 
         TVector<std::pair<ui32, char>> writtenBlocks;
         const auto writeClient = runtime->AllocateEdgeActor();
         ui32 flushCount = 0;
+        ui32 initialLoadRequestCount = 0;
         ui32 loadRequestCount = 0;
+        bool initialGeneration = true;
         auto observer = runtime->AddObserver<
             TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest>(
             [&](TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest::TPtr&
                     event)
             {
+                if (initialGeneration) {
+                    ++initialLoadRequestCount;
+                    return;
+                }
+
                 ++loadRequestCount;
 
                 // The last request only discovers that all ranges have been
                 // loaded. The ranges themselves are selected by its handler,
                 // not carried by the scheduled event.
-                if (loadRequestCount > 3) {
+                if (loadRequestCount == expectedLoadRequestCount) {
                     return;
                 }
 
@@ -13384,11 +13387,29 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 ++flushCount;
             });
 
+        partition.WaitReady();
+
+        runtime->WaitFor(
+            "mixed blocks filter load for initial tablet generation",
+            [&] {
+                return initialLoadRequestCount == expectedLoadRequestCount;
+            });
+        initialGeneration = false;
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(4 * rangeSize, 1), 2);
+        partition.Flush();
+
         partition.RebootTablet();
         partition.WaitReady();
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(4, loadRequestCount);
+        runtime->WaitFor(
+            "mixed blocks filter load after tablet reboot",
+            [&] {
+                return loadRequestCount == expectedLoadRequestCount;
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(expectedLoadRequestCount, loadRequestCount);
 
         for (size_t i = 0; i < writtenBlocks.size(); ++i) {
             const auto response = runtime->GrabEdgeEventRethrow<

@@ -9,6 +9,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
+#include <util/stream/str.h>
 
 #include <sys/stat.h>
 
@@ -22,6 +23,22 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
     // Tablet ut test suite contains tests with memshard w/o
     // CreateNodeUponAccess flag.
     //
+
+    Y_UNIT_TEST(ShouldDumpEmptyLayout)
+    {
+        constexpr ui32 ShardNo = 77;
+
+        NProtoPrivate::TMemFastShardConfig config;
+        auto s = CreateMemFileSystemShard(ShardNo, config);
+
+        TStringStream html;
+        s->DumpLayoutHtml(html);
+        UNIT_ASSERT_VALUES_EQUAL("", html.Str());
+
+        TStringStream json;
+        s->DumpLayoutJson(json);
+        UNIT_ASSERT_VALUES_EQUAL("{}", json.Str());
+    }
 
     Y_UNIT_TEST(ShouldCreateNodeUponAccess)
     {

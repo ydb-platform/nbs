@@ -2664,6 +2664,190 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             getNodeRefResponse->GetError().GetCode(),
             getNodeRefResponse->GetErrorReason());
     }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldRejectCreateNodeWhileDirectoryIsBeingCreatedInShard)
+    {
+        // Sharded directory creation is two-phase: the directory tablet
+        // commits the NodeRef (parent, name) -> (shardId, shardNodeName) and
+        // only then creates the node in the shard. Until the shard node is
+        // created the ref stays locked and a concurrent CreateNode with the
+        // same name should get E_REJECTED. E_FS_EXIST should only be
+        // returned once the ref is unlocked and the entry is fully visible.
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env(testEnvConfig, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        const TString shardId = "test_shard";
+
+        TAutoPtr<IEventHandle> shardCreateEvent;
+        bool shouldIntercept = true;
+        auto interceptor = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+            if (shouldIntercept &&
+                event->GetTypeRewrite() == TEvService::EvCreateNodeRequest)
+            {
+                auto* msg =
+                    event->template Get<TEvService::TEvCreateNodeRequest>();
+                if (msg->Record.GetFileSystemId() == shardId) {
+                    shardCreateEvent = std::move(event);
+                    return true;
+                }
+            }
+            return false;
+        };
+        OverrideDescribeFileStore(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            interceptor);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+
+        tablet.ConfigureShards(
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>{shardId});
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            shardId,
+            "test_main_fs",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>{shardId});
+
+        tablet.InitSession("client", "session");
+
+        const TString name = "dir";
+
+        //
+        // Client A creates a directory. The tx commits NodeRef + OpLog, then
+        // the CreateNode addressed to the shard is intercepted, freezing the
+        // window between the ref commit and the shard node creation.
+        //
+
+        {
+            auto request = tablet.CreateCreateNodeRequest(
+                TCreateNodeArgs::Directory(RootNodeId, name),
+                100 /* requestId */);
+            request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(true);
+            tablet.SendRequest(std::move(request));
+        }
+
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return shardCreateEvent != nullptr; }});
+
+        //
+        // Client B: CreateNode with the same name - the ref is locked, so
+        // the request should be rejected for a retry.
+        //
+
+        auto createNode = [&](ui64 requestId)
+        {
+            auto request = tablet.CreateCreateNodeRequest(
+                TCreateNodeArgs::Directory(RootNodeId, name),
+                requestId);
+            request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(true);
+            tablet.SendRequest(std::move(request));
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_C(response, "no CreateNode response");
+            return response;
+        };
+
+        {
+            const auto response = createNode(101);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // Client B: GetNodeAttr. The directory tablet resolves the name to
+        // the shard ref...
+        //
+
+        TString shardNodeName;
+        {
+            tablet.SendGetNodeAttrRequest(RootNodeId, name);
+            auto response = tablet.RecvGetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            const auto& node = response->Record.GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(shardId, node.GetShardFileSystemId());
+            shardNodeName = node.GetShardNodeName();
+            UNIT_ASSERT(!shardNodeName.empty());
+            UNIT_ASSERT(response->Record.GetIsNodeRefLocked());
+        }
+
+        //
+        // ...and the shard hop (emulated here the same way the service actor
+        // does it) shows that the shard node does not exist yet.
+        //
+
+        {
+            tablet.SendGetNodeAttrRequest(RootNodeId, shardNodeName);
+            auto response = tablet.RecvGetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        //
+        // Releasing the shard CreateNode completes the directory creation:
+        // client A's request succeeds, the ref gets unlocked and CreateNode
+        // starts returning E_FS_EXIST.
+        //
+
+        shouldIntercept = false;
+        env.GetRuntime().Send(shardCreateEvent.Release(), nodeIdx);
+
+        {
+            auto response = tablet.RecvCreateNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        // both the TDurableClient-style retry, which keeps the
+        // guest-generated request id, and a new request observe the created
+        // directory
+        for (const ui64 requestId: {101, 102}) {
+            const auto response = createNode(requestId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_EXIST,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            tablet.SendGetNodeAttrRequest(RootNodeId, shardNodeName);
+            auto response = tablet.RecvGetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(NProto::E_DIRECTORY_NODE),
+                static_cast<ui32>(response->Record.GetNode().GetType()));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

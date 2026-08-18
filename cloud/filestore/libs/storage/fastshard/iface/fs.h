@@ -9,6 +9,8 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/stream/fwd.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,6 +68,22 @@ struct IFileSystemShard
 
     [[nodiscard]] virtual NThreading::TFuture<NCloud::NProto::TError>
     CollectStats(TFileSystemShardStats* stats) const = 0;
+
+    /**
+     * Writes an html page describing the layout of the shard's
+     * persistent data structures.
+     *
+     * @param out - Stream the page is written to.
+     */
+    virtual void DumpLayoutHtml(IOutputStream& out) const = 0;
+
+    /**
+     * Writes a json document with the same layout data items as
+     * DumpLayoutHtml.
+     *
+     * @param out - Stream the document is written to.
+     */
+    virtual void DumpLayoutJson(IOutputStream& out) const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

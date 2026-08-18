@@ -1666,4 +1666,12 @@ message TStorageServiceConfig
 
     // Allowed CPU time spent on loading filter per second (in ms).
     optional uint64 MixedBlocksFilterAllowedCpuTimePerSecond = 523;
+
+    // When enabled, HiveProxyFallbackMode can switch HiveProxy to fallback at
+    // runtime. Switching back to normal mode requires a service restart.
+    optional bool EnableHiveProxyRuntimeFallback = 524;
+
+    // If set and valid, HiveProxy fallback mode reads tablet boot infos from
+    // this file. Otherwise, it uses TabletBootInfoBackupFilePath.
+    optional string GoldenTabletBootInfoBackupFilePath = 525;
 }

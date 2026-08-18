@@ -12,12 +12,15 @@ SRCS(
     cond.go
     disk_kind.go
     errors.go
+    grpc_client_tls_provider.go
+    grpc_server_tls_provider.go
     inflight_queue.go
     progress_saver.go
     util.go
 )
 
 GO_TEST_SRCS(
+    grpc_tls_provider_test.go
     inflight_queue_test.go
 )
 

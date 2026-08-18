@@ -79,7 +79,6 @@ int TTest::Run()
         case ECommand::GenerateConfigCmd:
             Y_ENSURE(Options->FilePath.Defined(), "You need to specify the file path");
             Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
-            Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
 
             ConfigHolder = CreateTestConfig(
                 TCreateTestConfigArguments{
@@ -89,6 +88,7 @@ int TTest::Run()
                     .IoDepth = Options->IoDepth,
                     .BlockSize = Options->BlockSize,
                     .WriteRate = Options->WriteRate,
+                    .ZeroRate = Options->ZeroRate,
                     .RequestBlockCount = Options->RequestBlockCount,
                     .WriteParts = Options->WriteParts,
                     .AlternatingPhase = Options->AlternatingPhase,
@@ -113,6 +113,24 @@ int TTest::Run()
             STORAGE_ERROR("Unknown command, check avaliable commands in the help");
             return 2;
     }
+
+    Y_ENSURE(
+        ConfigHolder->GetConfig().GetWriteRate() +
+                ConfigHolder->GetConfig().GetZeroRate() <=
+            100,
+        "Sum of WriteRate and ZeroRate should be in range [0, 100]");
+    Y_ENSURE(
+        Options->Scenario == EScenario::Aligned ||
+            ConfigHolder->GetConfig().GetZeroRate() == 0,
+        "zero-rate is only supported for aligned scenario");
+    Y_ENSURE(
+        Options->Engine == EIoEngine::Sync ||
+            ConfigHolder->GetConfig().GetZeroRate() == 0,
+        "zero-rate is only supported for sync engine");
+    Y_ENSURE(
+        !ConfigHolder->GetConfig().HasAlternatingPhase() ||
+            ConfigHolder->GetConfig().GetZeroRate() == 0,
+        "zero-rate is not supported for tests with alternating phase");
 
     return RunTest();
 }
