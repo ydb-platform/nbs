@@ -1,0 +1,28 @@
+<meta charset="UTF-8"/>
+
+<style>{{ STYLE }}</style>
+
+<h3>Fast Shard Layout</h3>
+
+<table class="fsl-table">
+    <thead>
+        <tr>
+            <th>Component</th>
+            <th>Offset, bytes</th>
+            <th>Size, bytes</th>
+            <th>Slot size, bytes</th>
+            <th>Slot count</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{ for COMPONENTS }}
+        <tr>
+            <td>{{ NAME }}</td>
+            <td>{{ OFFSET_BYTES }}</td>
+            <td>{{ SIZE_BYTES }}</td>
+            <td>{{ SLOT_SIZE }}</td>
+            <td>{{ SLOT_COUNT }}</td>
+        </tr>
+        {{ endfor }}
+    </tbody>
+</table>

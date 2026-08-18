@@ -11,9 +11,15 @@ IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     )
 
     PEERDIR(
+        cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/resources
         cloud/filestore/libs/storage/fastshard/ipc
 
+        cloud/storage/core/libs/common
+
         contrib/libs/silk/src/fibers
+
+        library/cpp/json
+        library/cpp/resource
     )
 ELSE()
     SRCS(

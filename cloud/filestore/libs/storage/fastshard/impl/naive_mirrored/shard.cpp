@@ -13,13 +13,18 @@
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/simple_template.h>
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/mutex.h>
 
+#include <library/cpp/json/writer/json.h>
+#include <library/cpp/resource/resource.h>
+
 #include <util/digest/city.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
+#include <util/string/cast.h>
 
 #include <sys/stat.h>
 
@@ -745,6 +750,22 @@ public:
         return BitCount;
     }
 
+    [[nodiscard]] ui64 GetBitmapSize() const
+    {
+        return PageSize
+            * (BitCount / TPersistentBitmap::CalcBitsPerPage(PageSize));
+    }
+
+    [[nodiscard]] ui64 GetDataOffset() const
+    {
+        return FirstStoragePageClusterId * PageClusterSize;
+    }
+
+    [[nodiscard]] ui64 GetDataSize() const
+    {
+        return BitCount * PageClusterSize;
+    }
+
     NProto::TError Allocate(
         ui64 pageClusterCount,
         TVector<ui64>* storagePageClusterIds,
@@ -881,6 +902,74 @@ auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
 // TODO(#5895) - implement layout dump
 //
 
+struct TComponentLayout
+{
+    // Component tag; the upcoming per-component statistics method will
+    // accept these tags, so they must stay stable.
+    TString Name;
+
+    ui64 OffsetBytes = 0;
+    ui64 SizeBytes = 0;
+
+    // Slot size and count in the component's own units: hash table
+    // slots for the tables, page clusters for the data region. Zero
+    // when not applicable (the allocator bitmap counts bits).
+    ui64 SlotSize = 0;
+    ui64 SlotCount = 0;
+};
+
+void DumpLayoutComponentsJson(
+    IOutputStream& out,
+    const TVector<TComponentLayout>& components)
+{
+    NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
+
+    writer.BeginObject();
+    writer.WriteKey("components");
+    writer.BeginList();
+    for (const auto& c: components) {
+        writer.BeginObject();
+        writer.WriteKey("name");
+        writer.WriteString(c.Name);
+        writer.WriteKey("offsetBytes");
+        writer.WriteULongLong(c.OffsetBytes);
+        writer.WriteKey("sizeBytes");
+        writer.WriteULongLong(c.SizeBytes);
+        writer.WriteKey("slotSize");
+        writer.WriteULongLong(c.SlotSize);
+        writer.WriteKey("slotCount");
+        writer.WriteULongLong(c.SlotCount);
+        writer.EndObject();
+    }
+    writer.EndList();
+    writer.EndObject();
+}
+
+void DumpLayoutComponentsHtml(
+    IOutputStream& out,
+    const TVector<TComponentLayout>& components)
+{
+    TVector<TTemplateVars> rows;
+    rows.reserve(components.size());
+    for (const auto& c: components) {
+        rows.push_back({
+            {"NAME", c.Name},
+            {"OFFSET_BYTES", ToString(c.OffsetBytes)},
+            {"SIZE_BYTES", ToString(c.SizeBytes)},
+            {"SLOT_SIZE", ToString(c.SlotSize)},
+            {"SLOT_COUNT", ToString(c.SlotCount)},
+        });
+    }
+
+    OutputTemplate(
+        NResource::Find("fastshard/html/layout.html"),
+        {{"STYLE", NResource::Find("fastshard/css/layout.css")}},
+        {{"COMPONENTS", std::move(rows)}},
+        out);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TFiberShardImpl
 {
 private:
@@ -896,6 +985,11 @@ private:
     THandleTable Handles;
     TPageIndex PageIndex;
     TPageAllocator PageAllocator;
+
+    // Filled once in the ctor, immutable afterwards - safe to read
+    // without Mutex from any thread.
+    TVector<TComponentLayout> Layout;
+
     mutable silk::FiberMutex Mutex;
 
 public:
@@ -915,27 +1009,32 @@ public:
         PageStore = CreatePageStore(Storage, PageSize);
 
         ui64 firstPageNo = 0;
-        SILK_INFO("node table offset=%lu", firstPageNo * PageSize);
+        const ui64 nodeTableOffset = firstPageNo * PageSize;
+        SILK_INFO("node table offset=%lu", nodeTableOffset);
         const ui64 nodeTablePageCount =
             Nodes.Init(Config, firstPageNo, PageStore);
         firstPageNo += nodeTablePageCount;
 
-        SILK_INFO("name table offset=%lu", firstPageNo * PageSize);
+        const ui64 nameTableOffset = firstPageNo * PageSize;
+        SILK_INFO("name table offset=%lu", nameTableOffset);
         const ui64 nameTablePageCount =
             Names.Init(Config, firstPageNo, PageStore);
         firstPageNo += nameTablePageCount;
 
-        SILK_INFO("handle table offset=%lu", firstPageNo * PageSize);
+        const ui64 handleTableOffset = firstPageNo * PageSize;
+        SILK_INFO("handle table offset=%lu", handleTableOffset);
         const ui64 handleTablePageCount =
             Handles.Init(Config, firstPageNo, PageStore);
         firstPageNo += handleTablePageCount;
 
-        SILK_INFO("page index offset=%lu", firstPageNo * PageSize);
+        const ui64 pageIndexOffset = firstPageNo * PageSize;
+        SILK_INFO("page index offset=%lu", pageIndexOffset);
         const ui64 pageIndexPageCount =
             PageIndex.Init(Config, firstPageNo, PageStore);
         firstPageNo += pageIndexPageCount;
 
-        SILK_INFO("page allocator offset=%lu", firstPageNo * PageSize);
+        const ui64 pageAllocatorOffset = firstPageNo * PageSize;
+        SILK_INFO("page allocator offset=%lu", pageAllocatorOffset);
         const ui64 pageAllocatorPageCount =
             PageAllocator.Init(Config, firstPageNo, PageStore);
         firstPageNo += pageAllocatorPageCount;
@@ -947,6 +1046,62 @@ public:
         SILK_INFO("handle table slots=%lu", Handles.GetSlotCount());
         SILK_INFO("page index table slots=%lu", PageIndex.GetSlotCount());
         SILK_INFO("page allocator bits=%lu", PageAllocator.GetBitCount());
+
+        Layout = {
+            {
+                .Name = "NodeTable",
+                .OffsetBytes = nodeTableOffset,
+                .SizeBytes = nodeTablePageCount * PageSize,
+                .SlotSize = NodeSlotSize,
+                .SlotCount = Nodes.GetSlotCount(),
+            },
+            {
+                .Name = "NameTable",
+                .OffsetBytes = nameTableOffset,
+                .SizeBytes = nameTablePageCount * PageSize,
+                .SlotSize = NameSlotSize,
+                .SlotCount = Names.GetSlotCount(),
+            },
+            {
+                .Name = "HandleTable",
+                .OffsetBytes = handleTableOffset,
+                .SizeBytes = handleTablePageCount * PageSize,
+                .SlotSize = HandleSlotSize,
+                .SlotCount = Handles.GetSlotCount(),
+            },
+            {
+                .Name = "PageIndex",
+                .OffsetBytes = pageIndexOffset,
+                .SizeBytes = pageIndexPageCount * PageSize,
+                .SlotSize = NodePageClusterSlotSize,
+                .SlotCount = PageIndex.GetSlotCount(),
+            },
+            {
+                .Name = "PageAllocatorBitmap",
+                .OffsetBytes = pageAllocatorOffset,
+                .SizeBytes = PageAllocator.GetBitmapSize(),
+                .SlotSize = 0,
+                .SlotCount = PageAllocator.GetBitCount(),
+            },
+            {
+                .Name = "DataPages",
+                .OffsetBytes = PageAllocator.GetDataOffset(),
+                .SizeBytes = PageAllocator.GetDataSize(),
+                .SlotSize = PageClusterSize,
+                .SlotCount = PageAllocator.GetBitCount(),
+            },
+        };
+    }
+
+public:
+    void DumpLayoutHtml(IOutputStream& out) const
+    {
+        DumpLayoutComponentsHtml(out, Layout);
+    }
+
+    void DumpLayoutJson(IOutputStream& out) const
+    {
+        DumpLayoutComponentsJson(out, Layout);
     }
 
 public:
@@ -2093,6 +2248,21 @@ public:
         }
 
         return future;
+    }
+
+    //
+    // The layout is immutable after construction and its dump does no
+    // page IO, so no fiber is needed here.
+    //
+
+    void DumpLayoutHtml(IOutputStream& out) const override
+    {
+        FiberShard->DumpLayoutHtml(out);
+    }
+
+    void DumpLayoutJson(IOutputStream& out) const override
+    {
+        FiberShard->DumpLayoutJson(out);
     }
 };
 

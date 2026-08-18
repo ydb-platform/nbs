@@ -1,0 +1,20 @@
+.fsl-table {
+    border-collapse: collapse;
+    font-family: monospace;
+}
+
+.fsl-table th,
+.fsl-table td {
+    border: 1px solid #999;
+    padding: 4px 10px;
+    text-align: right;
+}
+
+.fsl-table td:first-child,
+.fsl-table th:first-child {
+    text-align: left;
+}
+
+.fsl-table thead {
+    background: #eee;
+}

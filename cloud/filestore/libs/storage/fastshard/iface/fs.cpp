@@ -2,6 +2,8 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <util/stream/output.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,6 +39,16 @@ struct TFileSystemShardStub: IFileSystemShard
         Y_UNUSED(stats);
 
         return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    }
+
+    void DumpLayoutHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+
+    void DumpLayoutJson(IOutputStream& out) const override
+    {
+        out << "{}";
     }
 };
 

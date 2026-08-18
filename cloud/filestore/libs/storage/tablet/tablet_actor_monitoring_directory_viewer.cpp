@@ -2,8 +2,9 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-#include <cloud/filestore/libs/storage/tablet/model/simple_template.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
+
+#include <cloud/storage/core/libs/common/simple_template.h>
 
 #include <library/cpp/digest/md5/md5.h>
 #include <library/cpp/json/writer/json.h>
