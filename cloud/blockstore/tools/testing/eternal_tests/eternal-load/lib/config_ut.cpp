@@ -155,6 +155,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         "BlockSize":4096,
         "FilePath":"/dev/vdb",
         "WriteRate":50,
+        "ZeroRate":10,
         "RangeBlockCount":218453,
         "TestId":13930160852258120406
         }
@@ -176,6 +177,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         UNIT_ASSERT_EQUAL(config.GetTestCount(), 13);
         UNIT_ASSERT_EQUAL(config.GetBlockSize(), 4096);
         UNIT_ASSERT_EQUAL(config.GetWriteRate(), 50);
+        UNIT_ASSERT_EQUAL(config.GetZeroRate(), 10);
         UNIT_ASSERT_EQUAL(config.GetRangeBlockCount(), 218453);
         UNIT_ASSERT_EQUAL(config.GetAlternatingPhase(), "");
         UNIT_ASSERT_EQUAL(config.GetTestId(), 13930160852258120406ull);
@@ -205,6 +207,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
              .IoDepth = 12,
              .BlockSize = 4096,
              .WriteRate = 50,
+             .ZeroRate = 10,
              .RequestBlockCount = 1,
              .WriteParts = 1,
              .AlternatingPhase = "",

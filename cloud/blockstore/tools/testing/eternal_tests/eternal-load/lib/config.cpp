@@ -67,6 +67,7 @@ TConfigHolder::TConfigHolder(const TCreateTestConfigArguments& args)
     Config.SetTestCount(args.TestCount);
     Config.SetBlockSize(args.BlockSize);
     Config.SetWriteRate(args.WriteRate);
+    Config.SetZeroRate(args.ZeroRate);
     Config.SetIoDepth(args.IoDepth);
 
     auto& ranges = *Config.MutableRanges();

@@ -1,5 +1,7 @@
 #include "test_executor.h"
 
+#include "device_discard.h"
+
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -41,7 +43,7 @@ private:
 
     const TInstant TestStartTimestamp;
     TVector<std::unique_ptr<TTestScenario>> TestScenarios;
-    IFileIOServicePtr FileService;
+    ITestFileIOServicePtr FileService;
 
     std::atomic_bool ShouldStop = false;
     std::atomic_bool Failed = false;
@@ -52,8 +54,10 @@ private:
 
     std::atomic_uint64_t BytesRead = 0;
     std::atomic_uint64_t BytesWritten = 0;
+    std::atomic_uint64_t BytesZeroed = 0;
     ui64 PreviousBytesRead = 0;
     ui64 PreviousBytesWritten = 0;
+    ui64 PreviousBytesZeroed = 0;
     TInstant PreviousStatsTimestamp;
 
     const TLog Log;
@@ -63,7 +67,7 @@ private:
     static constexpr TDuration PrintStatsInterval = TDuration::Seconds(5);
 
 public:
-    TTestExecutor(TTestExecutorSettings settings, IFileIOServicePtr service);
+    TTestExecutor(TTestExecutorSettings settings, ITestFileIOServicePtr service);
     bool Run() override;
     void Stop() override;
     void Fail(const TString& message);
@@ -108,6 +112,11 @@ private:
         ui64 offset,
         TCallback callback) override;
 
+    void Zero(
+        ui32 count,
+        ui64 offset,
+        TCallback callback) override;
+
     void Stop() override;
 
     void Fail(const TString& message) override;
@@ -126,7 +135,7 @@ EOpenMode GetFileOpenMode(bool noDirect)
 
 TTestExecutor::TTestExecutor(
         TTestExecutorSettings settings,
-        IFileIOServicePtr service)
+        ITestFileIOServicePtr service)
     : TestStartTimestamp(Now())
     , FileService(std::move(service))
     , PreviousStatsTimestamp(TestStartTimestamp)
@@ -226,18 +235,22 @@ void TTestExecutor::PrintStats()
     auto now = Now();
     auto currentBytesRead = BytesRead.load();
     auto currentBytesWritten = BytesWritten.load();
+    auto currentBytesZeroed = BytesZeroed.load();
 
     auto elapsedSeconds = (now - PreviousStatsTimestamp).SecondsFloat();
     auto bytesRead = currentBytesRead - PreviousBytesRead;
     auto bytesWritten = currentBytesWritten - PreviousBytesWritten;
+    auto bytesZeroed = currentBytesZeroed - PreviousBytesZeroed;
 
     STORAGE_DEBUG(
         "Read: " << bytesRead / elapsedSeconds / 1_MB << " MiB/s, "
-        "Write: " << bytesWritten / elapsedSeconds / 1_MB << " MiB/s");
+        "Write: " << bytesWritten / elapsedSeconds / 1_MB << " MiB/s, "
+        "Zero: " << bytesZeroed / elapsedSeconds / 1_MB << " MiB/s");
 
     PreviousStatsTimestamp = now;
     PreviousBytesRead = currentBytesRead;
     PreviousBytesWritten = currentBytesWritten;
+    PreviousBytesZeroed = currentBytesZeroed;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -382,10 +395,42 @@ void TTestExecutor::TWorkerService::Write(
         });
 }
 
+void TTestExecutor::TWorkerService::Zero(
+    ui32 count,
+    ui64 offset,
+    TCallback callback)
+{
+    RequestCount++;
+    PendingRequestCount++;
+
+    Executor.FileService->AsyncZero(
+        Scenario.File,
+        static_cast<i64>(offset),
+        count,
+        [this, count, callback = std::move(callback)](
+            const NProto::TError& error,
+            ui32 value)
+        {
+            if (HasError(error)) {
+                Executor.Fail("Can't zero device range: " + error.GetMessage());
+            } else if (value < count) {
+                Executor.Fail(
+                    TStringBuilder() << "Zeroed less than expected: " << value
+                                     << " < " << count);
+            } else {
+                Executor.BytesZeroed += count;
+                callback();
+            }
+            if (HandleRequest()) {
+                Run();
+            }
+        });
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TAsyncIoFileService
-    : public IFileIOService
+    : public ITestFileIOService
     , private NAsyncIO::TAsyncIOService
 {
 public:
@@ -465,6 +510,19 @@ public:
         Y_ABORT("Not used");
     }
 
+    void AsyncZero(
+        TFileHandle& file,
+        i64 offset,
+        ui32 count,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(count);
+        Y_UNUSED(completion);
+        Y_ABORT("Not supported");
+    }
+
     static void RunCompletion(
         const NThreading::TFuture<ui32>& future,
         TFileIOCompletion* completion)
@@ -483,7 +541,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThreadPoolFileService: public IFileIOService
+class TThreadPoolFileService: public ITestFileIOService
 {
 private:
     TThreadPool ThreadPool;
@@ -574,6 +632,27 @@ public:
         Y_ABORT("Not supported");
     }
 
+    void AsyncZero(
+        TFileHandle& file,
+        i64 offset,
+        ui32 count,
+        TFileIOCompletion* completion) override
+    {
+        auto added = ThreadPool.AddFunc(
+            [&file, offset, count, completion]()
+            {
+                auto error =
+                    DiscardDeviceRange(file, static_cast<ui64>(offset), count);
+                if (HasError(error)) {
+                    completion->Func(completion, error, 0);
+                } else {
+                    completion->Func(completion, {}, count);
+                }
+            });
+
+        Y_ABORT_UNLESS(added, "Cannot add function to a thread pool");
+    }
+
     static void RunCompletion(i32 value, TFileIOCompletion* completion)
     {
         if (value >= 0) {
@@ -586,7 +665,81 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServicePtr CreateUringFileService()
+class TIoUringTestFileService: public ITestFileIOService
+{
+private:
+    IFileIOServicePtr Impl;
+
+public:
+    explicit TIoUringTestFileService(IFileIOServicePtr impl)
+        : Impl(std::move(impl))
+    {}
+
+    void Start() override
+    {
+        Impl->Start();
+    }
+
+    void Stop() override
+    {
+        Impl->Stop();
+    }
+
+    void AsyncRead(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<char> buffer,
+        TFileIOCompletion* completion) override
+    {
+        Impl->AsyncRead(file, offset, buffer, completion);
+    }
+
+    void AsyncReadV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<char>>& buffers,
+        TFileIOCompletion* completion) override
+    {
+        Impl->AsyncReadV(file, offset, buffers, completion);
+    }
+
+    void AsyncWrite(
+        TFileHandle& file,
+        i64 offset,
+        TArrayRef<const char> buffer,
+        TFileIOCompletion* completion,
+        ui32 flags) override
+    {
+        Impl->AsyncWrite(file, offset, buffer, completion, flags);
+    }
+
+    void AsyncWriteV(
+        TFileHandle& file,
+        i64 offset,
+        const TVector<TArrayRef<const char>>& buffers,
+        TFileIOCompletion* completion,
+        ui32 flags) override
+    {
+        Impl->AsyncWriteV(file, offset, buffers, completion, flags);
+    }
+
+    void AsyncZero(
+        TFileHandle& file,
+        i64 offset,
+        ui32 count,
+        TFileIOCompletion* completion) override
+    {
+        Y_UNUSED(file);
+        Y_UNUSED(offset);
+        Y_UNUSED(count);
+        Y_UNUSED(completion);
+        Y_ABORT("Not supported");
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+ITestFileIOServicePtr CreateUringFileService()
 {
     auto factory = CreateIoUringServiceFactory({
         .SubmissionQueueEntries = 1024,
@@ -596,10 +749,11 @@ IFileIOServicePtr CreateUringFileService()
         .SQKernelPollingEnabled = true,
     });
 
-    return factory->CreateFileIOService();
+    return std::make_shared<TIoUringTestFileService>(
+        factory->CreateFileIOService());
 }
 
-IFileIOServicePtr CreateFileService(
+ITestFileIOServicePtr CreateFileService(
     ETestExecutorFileService fileService,
     ui32 threadCount)
 {

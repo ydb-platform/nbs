@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     config.cpp
+    device_discard.cpp
     test_executor.cpp
     test_scenarios/aligned_test_scenario.cpp
     test_scenarios/simple_test_scenario.cpp
