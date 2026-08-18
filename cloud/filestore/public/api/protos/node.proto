@@ -207,6 +207,10 @@ message TCreateNodeRequest
     // on retry.
     // TODO(#2667): remove once hardlinks are created on the tablet side
     TNodeAttr ShardNodeAttr = 19;
+
+    // The QuotaId this new node should inherit, resolved by whichever tablet
+    // owns the real parent and carried along for the cross-shard operation.
+    uint32 QuotaId = 20;
 }
 
 message TCreateNodeResponse

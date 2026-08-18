@@ -240,6 +240,8 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
     // * access by parentId/name
     // * access by nodeId
     if (args.Name) {
+        const bool behaveAsShard = BehaveAsShard(args.Request.GetHeaders());
+
         // check that parent exists and is the directory;
         // TODO: what if symlink?
         if (!ReadNode(*db, args.NodeId, args.ReadCommitId, args.ParentNode)) {
@@ -262,6 +264,12 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             }
         }
 
+        if (!behaveAsShard) {
+            // args.ParentNode is only a real parent when behaveAsShard is
+            // false.
+            args.QuotaId = args.ParentNode->Attrs.GetQuotaId();
+        }
+
         // check whether child node exists
         TMaybe<INodeIndexTabletDatabase::TNodeRef> ref;
         if (!ReadNodeRef(*db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
@@ -274,8 +282,6 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 args.Error = ErrorInvalidTarget(args.NodeId, args.Name);
                 return true;
             }
-
-            const bool behaveAsShard = BehaveAsShard(args.Request.GetHeaders());
 
             // Validate there are enough free inodes. The restriction is not
             // enforced if the request comes from the main FS to the shard.
@@ -393,6 +399,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         if (args.ShardId.empty()) {
             NProto::TNode attrs =
                 CreateRegularAttrs(args.Mode, args.Uid, args.Gid);
+            attrs.SetQuotaId(args.QuotaId);
             args.TargetNodeId = CreateNode(
                 *db,
                 args.WriteCommitId,
@@ -511,6 +518,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->MutableFile()->SetMode(args.Mode);
         shardRequest->SetUid(args.Uid);
         shardRequest->SetGid(args.Gid);
+        shardRequest->SetQuotaId(args.QuotaId);
         shardRequest->SetFileSystemId(args.ShardId);
         shardRequest->SetNodeId(RootNodeId);
         shardRequest->SetName(args.ShardNodeName);

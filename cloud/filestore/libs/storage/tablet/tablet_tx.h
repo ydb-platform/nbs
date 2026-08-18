@@ -1922,6 +1922,7 @@ struct TTxIndexTablet
         const ui32 Mode;
         const ui32 Uid;
         ui32 Gid;
+        ui32 QuotaId = 0;
         const TString RequestShardId;
         NProto::TCreateHandleRequest Request;
 
@@ -1976,6 +1977,7 @@ struct TTxIndexTablet
             TargetNode.Clear();
             ParentNode.Clear();
             UpdatedNodes.clear();
+            QuotaId = 0;
 
             OpLogEntry.Clear();
 
