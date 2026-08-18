@@ -59,7 +59,8 @@ private:
     const bool AllowBlockDuplicates;
 
     TMap<ui64, TMap<ui64, TVector<TBlockMark>>> BlocksPerRange;
-    THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> AffectedBlobs;
+    THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash>
+        AffectedBlobs;
     ui64 MaxCommitId = 0;
 
 public:
@@ -84,12 +85,21 @@ public:
         return true;
     }
 
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override;
+    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    {
+        Y_UNUSED(blockRange, blobId);
+        Y_ABORT("not implemented");
+        return true;
+    }
+
+    bool VisitBlob(
+        const TPartialBlobId& blobId,
+        NProto::TBlobMeta blobMeta) override;
 
     struct TScanResult
     {
         TVector<TBlob> ResultedBlobs;
-        THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash>
+        THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash>
             AffectedBlobs;
         ui64 MaxCommitId = 0;
     };

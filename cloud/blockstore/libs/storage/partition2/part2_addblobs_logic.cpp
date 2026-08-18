@@ -175,6 +175,27 @@ public:
             ProcessAffectedBlocks(db);
         }
 
+        if (Args.Mode == ADD_PROMOTE_COMPACTION_RESULT) {
+            for (auto& [blobId, affectedBlob]: Args.AffectedBlobs) {
+                Y_ABORT_UNLESS(affectedBlob.BlobMeta.Defined());
+
+                bool inserted = State.GetCleanupQueue().Add(
+                    TCleanupQueueItem{
+                        blobId,
+                        DeletionCommitId,
+                        std::move(*affectedBlob.BlobMeta)});
+
+                STORAGE_VERIFY_DEBUG_C(
+                    inserted,
+                    TWellKnownEntityTypes::TABLET,
+                    TabletId,
+                    "Cleanup queue: blob already in cleanup queue");
+                if (inserted) {
+                    db.WriteCleanupQueue(blobId, DeletionCommitId);
+                }
+            }
+        }
+
         UpdateCompactionMap(db);
 
         if (Args.Mode == EAddBlobMode::ADD_FLUSH_RESULT) {

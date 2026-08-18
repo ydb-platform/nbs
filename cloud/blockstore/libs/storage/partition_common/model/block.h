@@ -1,8 +1,8 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/partition_common/model/public.h>
-
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/public.h>
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
@@ -87,6 +87,14 @@ struct IBlobsVisitor
     virtual bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId) = 0;
+
+    virtual bool VisitBlob(
+        const TPartialBlobId& blobId,
+        NProto::TBlobMeta blobMeta)
+    {
+        Y_UNUSED(blobId, blobMeta);
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

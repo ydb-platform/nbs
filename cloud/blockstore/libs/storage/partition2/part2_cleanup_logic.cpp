@@ -363,6 +363,20 @@ void ExecuteCleanupTransaction(
                 state.DecrementMergedBlocksCount(
                     Min(delta, state.GetMergedBlocksCount()));
             }
+        } else if (blobMeta.HasL0Blocks()) {
+            const auto& l0Blocks = blobMeta.GetL0Blocks();
+            const auto blockRange = TBlockRange32::MakeClosedInterval(
+                l0Blocks.GetBlocks(0),
+                l0Blocks.GetBlocks(l0Blocks.BlocksSize() - 1));
+
+            db.DeleteL0Blob(item.BlobId, blockRange);
+        } else if (blobMeta.HasL1Blocks()) {
+            const auto& l1Blocks = blobMeta.GetL1Blocks();
+            const auto blockRange = TBlockRange32::MakeClosedInterval(
+                l1Blocks.GetBlocks(0),
+                l1Blocks.GetBlocks(l1Blocks.BlocksSize() - 1));
+
+            db.DeleteL1Blob(item.BlobId, blockRange);
         }
 
         LOG_DEBUG(
