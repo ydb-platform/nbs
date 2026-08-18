@@ -867,6 +867,7 @@ struct TEvPartitionPrivate
 
     struct TPromoteCompactionRequest
     {
+        std::optional<ui64> RangeIndex;
     };
 
     struct TPromoteCompactionResponse
