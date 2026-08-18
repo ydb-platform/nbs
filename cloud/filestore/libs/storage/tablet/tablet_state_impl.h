@@ -61,6 +61,8 @@ struct TIndexTabletState::TImpl
 
     THandlesStats HandlesStats;
 
+    TNodeToSessionCounters NodeToSessionCounters;
+
     TRangeLocks RangeLocks;
     TFreshBytes FreshBytes;
     TFreshBlocks FreshBlocks;
