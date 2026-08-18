@@ -74,12 +74,11 @@ func Create(
 	}
 	logging.Info(ctx, "Created incremental table")
 
-	chunkBlobsDesc := chunkBlobsTableDescription(config)
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
 		config.GetChunkBlobsTableName(),
-		chunkBlobsDesc,
+		chunkBlobsTableDescription(config, withExternalBlobs),
 		dropUnusedColumns,
 	)
 	if err != nil {
@@ -93,7 +92,7 @@ func Create(
 			ctx,
 			config.GetStorageFolder(),
 			shadowTableName,
-			chunkBlobsDesc,
+			chunkBlobsTableDescription(config, withoutExternalBlobs),
 			dropUnusedColumns,
 		)
 		if err != nil {
@@ -199,14 +198,19 @@ func Drop(
 	return nil
 }
 
-// chunk_blobs and its shadow copy share this layout and are created without
-// external blobs. CreateOrAlterTable does not change storage settings of a
-// table that already exists.
+type externalBlobsUsage int
+
+const (
+	withExternalBlobs externalBlobsUsage = iota
+	withoutExternalBlobs
+)
+
 func chunkBlobsTableDescription(
 	config *snapshot_config.SnapshotConfig,
+	externalBlobs externalBlobsUsage,
 ) persistence.CreateTableDescription {
 
-	return persistence.NewCreateTableDescription(
+	options := []persistence.CreateTableOption{
 		persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("referer", persistence.Optional(persistence.TypeUTF8)),
@@ -216,7 +220,15 @@ func chunkBlobsTableDescription(
 		persistence.WithColumn("compression", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
 		persistence.WithUniformPartitions(config.GetChunkBlobsTableShardCount()),
-	)
+	}
+	if externalBlobs == withExternalBlobs {
+		options = append(
+			options,
+			persistence.WithExternalBlobs(config.GetExternalBlobsMediaKind()),
+		)
+	}
+
+	return persistence.NewCreateTableDescription(options...)
 }
 
 func snapshotStateTableDescription() persistence.CreateTableDescription {
