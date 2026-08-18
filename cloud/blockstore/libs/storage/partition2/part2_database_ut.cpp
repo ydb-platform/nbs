@@ -307,6 +307,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                 UNIT_ASSERT(db.FindBlocksInL0Index(
                     l0Visitor,
                     blockRange,
+                    0,
                     maxCommitId));
                 UNIT_ASSERT_VALUES_EQUAL(expected, l0Visitor.Result);
 
@@ -314,8 +315,34 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                 UNIT_ASSERT(db.FindBlocksInL1Index(
                     l1Visitor,
                     blockRange,
+                    0,
                     maxCommitId));
                 UNIT_ASSERT_VALUES_EQUAL(expected, l1Visitor.Result);
+
+                constexpr ui64 minCommitId = 10;
+                constexpr TStringBuf expectedInCommitRange =
+                    "#15:10:10:2:1 #19:10:10:2:2 "
+                    "#19:15:30:3:1 #20:15:40:4:0";
+
+                TTestLevelIndexVisitor boundedL0Visitor;
+                UNIT_ASSERT(db.FindBlocksInL0Index(
+                    boundedL0Visitor,
+                    blockRange,
+                    minCommitId,
+                    maxCommitId));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedInCommitRange,
+                    boundedL0Visitor.Result);
+
+                TTestLevelIndexVisitor boundedL1Visitor;
+                UNIT_ASSERT(db.FindBlocksInL1Index(
+                    boundedL1Visitor,
+                    blockRange,
+                    minCommitId,
+                    maxCommitId));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedInCommitRange,
+                    boundedL1Visitor.Result);
             });
     }
 
