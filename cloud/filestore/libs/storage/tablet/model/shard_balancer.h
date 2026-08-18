@@ -172,6 +172,21 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Deterministically selects shards with frequencies proportional to their
+// scores. The balancer traverses score levels from lowest to highest. At each
+// level, it visits every shard whose score is at least that
+// level. Therefore, a shard with score N is selected N + 1 times during a
+// complete traversal.
+//
+// For example, five shards with scores {0, 2, 4, 3, 1} are visited according
+// to the following table. Read it row by row from top to bottom, from left to
+// right; an "x" marks a shard skipped at that score level:
+//
+// 0 1 2 3 4
+// x 1 2 3 4
+// x 1 2 3 x
+// x x 2 3 x
+// x x 2 x x
 class TShardBalancerWeightedDeterministic: public TShardBalancerBase
 {
     static constexpr ui64 ScoreLevelsCount = 8;

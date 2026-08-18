@@ -66,23 +66,21 @@ TShardBalancerBase::TShardBalancerBase(
 {
     // Before the first update shards are treated like empty with
     // infinite capacity. maxFileBlocks is used as infinity here.
-    TShardStats emptyShardStats {
-        .ShardId = "",
-        .TotalBlocksCount = maxFileBlocks,
-        .UsedBlocksCount = 0,
-        .UsedNodesCount = 0,
-        .CurrentLoad = 0,
-        .Suffer = 0,
-    };
-
     TShardMetaComp metaCmp(PrecisionBytes, BlockSize);
     Metas.reserve(shardIds.size());
     for (ui32 i = 0; i < shardIds.size(); ++i) {
-        emptyShardStats.ShardId = shardIds[i];
+        TShardStats shardStats {
+            .ShardId = shardIds[i],
+            .TotalBlocksCount = maxFileBlocks,
+            .UsedBlocksCount = 0,
+            .UsedNodesCount = 0,
+            .CurrentLoad = 0,
+            .Suffer = 0,
+        };
         Metas.emplace_back(
             i,
-            emptyShardStats,
-            metaCmp.Score(emptyShardStats));
+            shardStats,
+            metaCmp.Score(shardStats));
     }
 }
 
@@ -303,15 +301,24 @@ void TShardBalancerWeightedDeterministic::CalcScore(
     }
 }
 
+// Builds the cyclic shard-transition table (NextShard) used by SelectShard.
+// The shards are scanned from left to right. A monotonic stack is used to
+// fill forward transitions, while the last column records the wraparound
+// target for each score. After the scan, these targets are used
+// to fill the remaining undefined entries at the right edge of the matrix.
+// It is guarfanteed that NextShard has defined entries (< Metas.size())
+// for all scores that less or equal to the max score from
+// TShardBalancerBase::Metas. All other entries are undefined (== Metas.size())
 void TShardBalancerWeightedDeterministic::CalcNextShard()
 {
     NextShard.SetSizes(Metas.size(), ScoreLevelsCount);
     NextShard.FillEvery(Metas.size());
 
-    auto setNextShard = [this](ui64 shard, ui64 nextShard, ui64 fromScore) {
+    auto setNextShard = [this](ui64 shardIdx, ui64 nextShardIdx, ui64 fromScore)
+    {
         for (ui64 score = fromScore; score != Max<ui64>(); --score) {
-            if (NextShard[score][shard] == Metas.size()) {
-                NextShard[score][shard] = nextShard;
+            if (NextShard[score][shardIdx] == Metas.size()) {
+                NextShard[score][shardIdx] = nextShardIdx;
             } else {
                 break;
             }
