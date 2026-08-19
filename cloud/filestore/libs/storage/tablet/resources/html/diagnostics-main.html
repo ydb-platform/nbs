@@ -1,0 +1,16 @@
+<meta charset="UTF-8"/>
+
+<style>{{ STYLE }}</style>
+<script>{{ JS }}</script>
+
+<div class="diagnostics-header">
+    <h3>Diagnostic filesystem metrics</h3>
+    <button id="diagnostics-refresh" class="btn btn-primary">Refresh</button>
+    <span id="diagnostics-status"></span>
+</div>
+
+<div id="diagnostics-content"></div>
+
+<script>
+    diagnosticsInit("{{ TABLET_ID }}");
+</script>
