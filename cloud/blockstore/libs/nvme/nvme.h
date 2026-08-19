@@ -20,6 +20,31 @@ struct TSanitizeStatus
     double Progress = 0;
 };
 
+struct TLockdownConfig
+{
+    TVector<ui8> AllowedAdminOpcodes;
+    TVector<ui8> AllowedSetFeatureIds;
+    bool BlockLockdownCommand = false;
+};
+
+struct TLockdownScopeState
+{
+    // Identifier may be prohibited using Command and Feature Lockdown.
+    TVector<ui8> Supported;
+
+    // Identifier is currently prohibited.
+    TVector<ui8> Prohibited;
+};
+
+struct TLockdownState
+{
+    // Command and Feature Lockdown is supported by the controller.
+    bool Supported = false;
+
+    TLockdownScopeState AdminCmd;
+    TLockdownScopeState FeatureId;
+};
+
 struct INvmeManager: public IStartable
 {
     virtual NThreading::TFuture<NProto::TError> Format(
@@ -41,31 +66,6 @@ struct INvmeManager: public IStartable
     virtual NProto::TError ResetToSingleNamespace(const TString& ctrlPath) = 0;
 
     virtual TResultOrError<TString> GetDeviceModel(const TString& path) = 0;
-
-    struct TLockdownConfig
-    {
-        TVector<ui8> AllowedAdminOpcodes;
-        TVector<ui8> AllowedSetFeatureIds;
-        bool BlockLockdownCommand = false;
-    };
-
-    struct TLockdownScopeState
-    {
-        // Identifier may be prohibited using Command and Feature Lockdown.
-        TVector<ui8> Supported;
-
-        // Identifier is currently prohibited.
-        TVector<ui8> Prohibited;
-    };
-
-    struct TLockdownState
-    {
-        // Command and Feature Lockdown is supported by the controller.
-        bool Supported = false;
-
-        TLockdownScopeState AdminCmd;
-        TLockdownScopeState FeatureId;
-    };
 
     virtual TResultOrError<TLockdownState> GetLockdownState(
         const TString& ctrlPath) = 0;

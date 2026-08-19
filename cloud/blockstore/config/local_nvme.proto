@@ -19,4 +19,25 @@ message TLocalNVMeConfig {
 
     // Update counters interval (in milliseconds).
     optional uint32 UpdateCountersInterval = 4;
+
+    // Configures NVMe Command and Feature Lockdown policy.
+    // The policy is applied only to NVMe devices that support the Lockdown command.
+    message TLockdownConfig {
+        // Admin command opcodes that must remain allowed.
+        // Supported opcodes not present in this list are prohibited when possible.
+        repeated uint32 AllowedAdminOpcodes = 1;
+
+        // Set Features identifiers that must remain allowed.
+        // Supported feature IDs not present in this list are prohibited when possible.
+        repeated uint32 AllowedSetFeatureIds = 2;
+
+        // Whether to prohibit the Lockdown command itself.
+        // The Lockdown command is prohibited only after all other requested
+        // lockdown operations have been applied.
+        optional bool BlockLockdownCommand = 3;
+    }
+
+    // Optional NVMe Lockdown configuration.
+    // If not specified, Lockdown is not applied.
+    optional TLockdownConfig LockdownConfig = 5;
 }

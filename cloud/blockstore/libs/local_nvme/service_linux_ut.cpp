@@ -43,6 +43,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TDuration DefaultTimeout = 5s;
+const ui8 AllowedAdminOpcodes[] = {0x1, 0x2, 0x3, 0xB};
+const ui8 AllowedSetFeatureIds[] = {0x1, 0x4, 0x5};
 
 struct TTestLocalNVMeDeviceProvider final: ILocalNVMeDeviceProvider
 {
@@ -77,15 +79,38 @@ struct TSanitizeInfo: TSanitizeStatus
     ui32 Count = 0;
 };
 
+struct TLockdownImpl
+{
+    std::function<TResultOrError<TLockdownState>(const TString& ctrlPath)>
+        GetLockdownState = [](const TString&)
+    {
+        return TLockdownState{.Supported = false};
+    };
+
+    std::function<
+        NProto::TError(const TString& ctrlPath, const TLockdownConfig& config)>
+        EnsureLockdown = [](const TString&, const NNvme::TLockdownConfig&)
+    {
+        return MakeError(
+            MAKE_SYSTEM_ERROR(ENOTSUP),
+            "Lockdown command is not supported");
+    };
+};
+
 class TTestNVMeManager: public INvmeManager
 {
 private:
     std::mutex Mutex;
     THashMap<TString, TSanitizeInfo> SanitizeInfo;
+    std::shared_ptr<TLockdownImpl> LockdownImpl;
 
     TAutoEvent SanitizeRequested;
 
 public:
+    explicit TTestNVMeManager(std::shared_ptr<TLockdownImpl> lockdownImpl)
+        : LockdownImpl(std::move(lockdownImpl))
+    {}
+
     void Start() final
     {}
 
@@ -167,18 +192,16 @@ public:
     TResultOrError<TLockdownState> GetLockdownState(
         const TString& ctrlPath) final
     {
-        Y_UNUSED(ctrlPath);
-
-        return TLockdownState{};
+        std::unique_lock lock{Mutex};
+        return LockdownImpl->GetLockdownState(ctrlPath);
     }
 
     NProto::TError EnsureLockdown(
         const TString& ctrlPath,
         const TLockdownConfig& config) final
     {
-        Y_UNUSED(ctrlPath, config);
-
-        return {};
+        std::unique_lock lock{Mutex};
+        return LockdownImpl->EnsureLockdown(ctrlPath, config);
     }
 
 public:
@@ -268,6 +291,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
     TLocalNVMeConfigPtr Config;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
+    std::shared_ptr<TLockdownImpl> LockdownImpl;
     std::shared_ptr<TTestNVMeManager> NVMeManager;
     TExecutorPtr Executor;
     ITaskQueuePtr BackgroundThreadPool;
@@ -289,7 +313,8 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
         Monitoring = CreateMonitoringServiceStub();
         Monitoring->Start();
 
-        NVMeManager = std::make_shared<TTestNVMeManager>();
+        LockdownImpl = std::make_shared<TLockdownImpl>();
+        NVMeManager = std::make_shared<TTestNVMeManager>(LockdownImpl);
 
         BackgroundThreadPool = CreateLongRunningTaskExecutor("BG");
         BackgroundThreadPool->Start();
@@ -393,6 +418,18 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
         proto.SetStateCacheFilePath(StateCacheFile);
         proto.SetUpdateDevicesInterval(TDuration(1s).MilliSeconds());
         proto.SetUpdateCountersInterval(TDuration(100ms).MilliSeconds());
+
+        auto& lockdownConfig = *proto.MutableLockdownConfig();
+
+        lockdownConfig.MutableAllowedAdminOpcodes()->Assign(
+            std::begin(AllowedAdminOpcodes),
+            std::end(AllowedAdminOpcodes));
+
+        lockdownConfig.MutableAllowedSetFeatureIds()->Assign(
+            std::begin(AllowedSetFeatureIds),
+            std::end(AllowedSetFeatureIds));
+
+        lockdownConfig.SetBlockLockdownCommand(true);
 
         Config = std::make_shared<TLocalNVMeConfig>(proto);
     }
@@ -1754,6 +1791,159 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 UNIT_ASSERT(revisionCounter);
                 UNIT_ASSERT_VALUES_EQUAL(1, revisionCounter->Val());
             }
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldLockdownDevices, TFixture)
+    {
+        const TString vfioDev = "vfio0";
+        const TString ctrlPath = "/dev/nvme0";
+        const auto& device = Devices[0];
+
+        const TVector<ui8>
+            supportedAdminOpcodes{0x1, 0x2, 0x3, 0x4, 0x5, 0xA, 0xB};
+        const TVector<ui8>
+            supportedSetFeatureIds{0x1, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8};
+
+        const TVector<ui8> prohibitedAdminOpcodesBeforeLockdown{0x4};
+        const TVector<ui8> prohibitedSetFeatureIdsBeforeLockdown{0x7};
+
+        const TVector<ui8> prohibitedAdminOpcodesAfterLockdown{0x4, 0x5, 0xA};
+        const TVector<ui8> prohibitedSetFeatureIdsAfterLockdown{
+            0x3,
+            0x6,
+            0x7,
+            0x8};
+
+        SysFs->GetVfioDeviceForPCIDeviceImpl =
+            [&](const TString& pciAddr) -> TString
+        {
+            if (pciAddr == device.GetPCIAddress()) {
+                return vfioDev;
+            }
+            return {};
+        };
+
+        TLockdownState lockdownState{
+            .Supported = true,
+            .AdminCmd =
+                {
+                    .Supported = supportedAdminOpcodes,
+                    .Prohibited = prohibitedAdminOpcodesBeforeLockdown,
+                },
+            .FeatureId =
+                {
+                    .Supported = supportedSetFeatureIds,
+                    .Prohibited = prohibitedSetFeatureIdsBeforeLockdown,
+                },
+        };
+
+        LockdownImpl->GetLockdownState =
+            [&](const auto& path) -> TResultOrError<TLockdownState>
+        {
+            if (path != ctrlPath) {
+                return MakeError(E_ARGUMENT, "Unexpected path");
+            }
+
+            return lockdownState;
+        };
+
+        LockdownImpl->EnsureLockdown =
+            [&](const auto& path, const TLockdownConfig& config)
+        {
+            if (!std::ranges::equal(
+                    AllowedAdminOpcodes,
+                    config.AllowedAdminOpcodes))
+            {
+                return MakeError(E_ARGUMENT, "Unexpected AllowedAdminOpcodes");
+            }
+
+            if (!std::ranges::equal(
+                    AllowedSetFeatureIds,
+                    config.AllowedSetFeatureIds))
+            {
+                return MakeError(E_ARGUMENT, "Unexpected AllowedSetFeatureIds");
+            }
+
+            if (!config.BlockLockdownCommand) {
+                return MakeError(E_ARGUMENT, "Unexpected BlockLockdownCommand");
+            }
+
+            if (path != ctrlPath) {
+                return MakeError(E_ARGUMENT, "Unexpected path");
+            }
+
+            lockdownState.AdminCmd.Prohibited =
+                prohibitedAdminOpcodesAfterLockdown;
+            lockdownState.FeatureId.Prohibited =
+                prohibitedSetFeatureIdsAfterLockdown;
+
+            return MakeError(S_OK);
+        };
+
+        SetProviderReady();
+
+        {
+            auto future = Service->AcquireNVMeDevice(
+                device.GetSerialNumber(),
+                EmptyIdempotenceId);
+            const auto& [_, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldFailAcquireWhenLockdownFails, TFixture)
+    {
+        const TString vfioDev = "vfio0";
+        const TString ctrlPath = "/dev/nvme0";
+        const auto& device = Devices[0];
+
+        SysFs->GetVfioDeviceForPCIDeviceImpl =
+            [&](const TString& pciAddr) -> TString
+        {
+            if (pciAddr == device.GetPCIAddress()) {
+                return vfioDev;
+            }
+            return {};
+        };
+
+        const TLockdownState lockdownState{
+            .Supported = true,
+            .AdminCmd = {.Supported = {0x1, 0x2, 0x3, 0x4, 0x5, 0xA, 0xB}},
+            .FeatureId = {.Supported = {0x1, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
+        };
+
+        LockdownImpl->GetLockdownState =
+            [&](const auto& path) -> TResultOrError<TLockdownState>
+        {
+            if (path == ctrlPath) {
+                return lockdownState;
+            }
+
+            return TLockdownState{};
+        };
+
+        const auto lockdownError = MakeError(E_INVALID_STATE, "test");
+
+        LockdownImpl->EnsureLockdown = [&](const auto&, const TLockdownConfig&)
+        {
+            return lockdownError;
+        };
+
+        SetProviderReady();
+
+        {
+            auto future = Service->AcquireNVMeDevice(
+                device.GetSerialNumber(),
+                EmptyIdempotenceId);
+            const auto& [_, error] = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                lockdownError.GetCode(),
+                error.GetCode(),
+                FormatError(error));
         }
     }
 
