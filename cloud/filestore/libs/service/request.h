@@ -211,7 +211,14 @@ enum class EFileStoreRequest
     ConfirmAddData = 58,
     CancelAddData = 59,
     ConfirmCreateHandle = 60,
-    MAX = 61,
+    Forget = 61,
+    ForgetMulti = 62,
+    OpenDir = 63,
+    ReleaseDir = 64,
+    FuseFlush = 65,
+    FuseFsync = 66,
+    FuseFsyncDir = 67,
+    MAX = 68,
 };
 
 constexpr size_t FileStoreRequestCount = static_cast<size_t>(EFileStoreRequest::MAX);

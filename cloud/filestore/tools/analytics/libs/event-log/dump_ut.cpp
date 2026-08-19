@@ -61,16 +61,24 @@ Y_UNIT_TEST_SUITE(TDumpTest)
 #undef TEST_SYSTEM_API
 
 
-#define TEST_FUSE_API(name, ...)                                               \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        #name,                                                                 \
-        RequestName(                                                           \
-            static_cast<ui32>(NFuse::EFileStoreFuseRequest::name)));           \
-// TEST_FUSE_API
+        UNIT_ASSERT_VALUES_EQUAL(
+            "FuseFlush",
+            RequestName(static_cast<ui32>(EFileStoreRequest::FuseFlush)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "FuseFsync",
+            RequestName(static_cast<ui32>(EFileStoreRequest::FuseFsync)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "FuseFsyncDir",
+            RequestName(static_cast<ui32>(EFileStoreRequest::FuseFsyncDir)));
 
-        FILESTORE_FUSE_REQUESTS(TEST_FUSE_API);
-
-#undef TEST_FUSE_API
+        // Legacy ids written to profile logs by older versions must keep
+        // being parsed
+        // TODO(#6799): should be removed.
+        UNIT_ASSERT_VALUES_EQUAL("FuseFlush", RequestName(1001));
+        UNIT_ASSERT_VALUES_EQUAL("FuseFsync", RequestName(1002));
+        UNIT_ASSERT_VALUES_EQUAL("FuseFsyncDir", RequestName(1003));
+        UNIT_ASSERT_VALUES_EQUAL("Unknown-1000", RequestName(1000));
+        UNIT_ASSERT_VALUES_EQUAL("Unknown-1004", RequestName(1004));
 
         UNIT_ASSERT_VALUES_EQUAL(
             TStringBuilder()
@@ -94,7 +102,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
     {
         const auto requests = GetRequestTypes();
 
-        UNIT_ASSERT_VALUES_EQUAL(81, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(85, requests.size());
 
         ui32 index = 0;
 #define TEST_REQUEST_TYPE(id, name)                                            \
@@ -167,10 +175,14 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TEST_REQUEST_TYPE(59, CancelAddData);
         TEST_REQUEST_TYPE(60, ConfirmCreateHandle);
 
-        // Fuse
-        TEST_REQUEST_TYPE(1001, Flush);
-        TEST_REQUEST_TYPE(1002, Fsync);
-        TEST_REQUEST_TYPE(1003, FsyncDir);
+        // Fuse-level (vfs_fuse) requests
+        TEST_REQUEST_TYPE(61, Forget);
+        TEST_REQUEST_TYPE(62, ForgetMulti);
+        TEST_REQUEST_TYPE(63, OpenDir);
+        TEST_REQUEST_TYPE(64, ReleaseDir);
+        TEST_REQUEST_TYPE(65, FuseFlush);
+        TEST_REQUEST_TYPE(66, FuseFsync);
+        TEST_REQUEST_TYPE(67, FuseFsyncDir);
 
         // Tablet
         TEST_REQUEST_TYPE(10001, Flush);

@@ -284,7 +284,27 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForFlushRequestType, TEnv)
     {
         Request.SetRequestType(
-            static_cast<ui32>(NFuse::EFileStoreFuseRequest::Flush));
+            static_cast<ui32>(EFileStoreRequest::FuseFlush));
+
+        auto printer = CreateRequestPrinter(Request.GetRequestType());
+        UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
+
+        auto* nodeInfo = Request.MutableNodeInfo();
+        nodeInfo->SetMode(1);
+        nodeInfo->SetNodeId(123);
+        nodeInfo->SetHandle(456);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "{data_only=1, node_id=123, handle=456}",
+            printer->DumpInfo(Request));
+    }
+
+    Y_UNIT_TEST_F(ShouldPrintRequestInfoForLegacyFlushRequestType, TEnv)
+    {
+        // Legacy id written to profile logs by older versions
+        // (EFileStoreFuseRequest::Flush).
+        // TODO(#6799): should be removed.
+        Request.SetRequestType(1001);
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
@@ -302,7 +322,7 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForFsyncRequestType, TEnv)
     {
         Request.SetRequestType(
-            static_cast<ui32>(NFuse::EFileStoreFuseRequest::Fsync));
+            static_cast<ui32>(EFileStoreRequest::FuseFsync));
 
         auto printer = CreateRequestPrinter(Request.GetRequestType());
         UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));

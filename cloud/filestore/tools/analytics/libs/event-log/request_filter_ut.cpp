@@ -913,6 +913,82 @@ Y_UNIT_TEST_SUITE(TRequestFilterTest)
             filter->GetFilteredRecord(ThirdRecord).ShortDebugString());
     }
 
+    Y_UNIT_TEST_F(ShouldFilterByLegacyRequestTypeRecord, TEnv)
+    {
+        NProto::TProfileLogRecord record;
+        record.SetFileSystemId("fs");
+
+        auto* newRequest = record.AddRequests();
+        newRequest->SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::FuseFlush));
+
+        auto* legacyRequest = record.AddRequests();
+        // Legacy id written to profile logs by older versions
+        // (EFileStoreFuseRequest::Flush).
+        // TODO(#6799): should be removed.
+        legacyRequest->SetRequestType(1001);
+
+        // Both the supplied request types and the request types stored in
+        // the records may be legacy ones
+        for (const ui32 requestType:
+             {static_cast<ui32>(EFileStoreRequest::FuseFlush), 1001u})
+        {
+            auto filter = CreateRequestFilterByRequestType(
+                CreateRequestFilterAccept(),
+                {requestType});
+
+            const auto filtered = filter->GetFilteredRecord(record);
+            UNIT_ASSERT_VALUES_EQUAL("fs", filtered.GetFileSystemId());
+            UNIT_ASSERT_VALUES_EQUAL(2, filtered.RequestsSize());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldNotConflateFsyncWithLegacyFuseFsync, TEnv)
+    {
+        NProto::TProfileLogRecord record;
+        record.SetFileSystemId("fs");
+
+        auto* rpcRequest = record.AddRequests();
+        rpcRequest->SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::Fsync));
+
+        auto* legacyFuseRequest = record.AddRequests();
+        // Legacy id written to profile logs by older versions
+        // (EFileStoreFuseRequest::Fsync).
+        // TODO(#6799): should be removed.
+        legacyFuseRequest->SetRequestType(1002);
+
+        // The Fsync protocol request and the fuse-level FuseFsync request
+        // are different request types, so they can be filtered
+        // independently, legacy ids included
+        {
+            auto filter = CreateRequestFilterByRequestType(
+                CreateRequestFilterAccept(),
+                {static_cast<ui32>(EFileStoreRequest::Fsync)});
+
+            const auto filtered = filter->GetFilteredRecord(record);
+            UNIT_ASSERT_VALUES_EQUAL(1, filtered.RequestsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(EFileStoreRequest::Fsync),
+                filtered.GetRequests(0).GetRequestType());
+        }
+
+        for (const ui32 requestType:
+             {static_cast<ui32>(EFileStoreRequest::FuseFsync), 1002u})
+        {
+            auto filter = CreateRequestFilterByRequestType(
+                CreateRequestFilterAccept(),
+                {requestType});
+
+            const auto filtered = filter->GetFilteredRecord(record);
+            UNIT_ASSERT_VALUES_EQUAL(1, filtered.RequestsSize());
+            // The filtered record keeps the original (legacy) request type
+            UNIT_ASSERT_VALUES_EQUAL(
+                1002u,
+                filtered.GetRequests(0).GetRequestType());
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldFilterByRangeRecord, TEnv) {
         auto filter = CreateRequestFilterByRange(
             CreateRequestFilterAccept(),

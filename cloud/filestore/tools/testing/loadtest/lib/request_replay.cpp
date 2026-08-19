@@ -119,7 +119,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
     const NProto::TProfileLogRequestInfo& request)
 {
     const auto& action = request.GetRequestType();
-    switch (static_cast<EFileStoreRequest>(action)) {
+    switch (static_cast<EFileStoreRequest>(NormalizeRequestTypeLegacy(action))) {
         case EFileStoreRequest::ReadData:
             return DoReadData(request);
         case EFileStoreRequest::WriteData:
@@ -155,12 +155,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::GetNodeXAttr:
             return {};
 
-        default:
-            break;
-    }
-
-    switch (static_cast<NFuse::EFileStoreFuseRequest>(action)) {
-        case NFuse::EFileStoreFuseRequest::Flush:
+        case EFileStoreRequest::FuseFlush:
             return DoFlush(request);
 
         default:

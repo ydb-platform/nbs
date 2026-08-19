@@ -19,4 +19,4 @@ StatFileStore
 UnlinkNode
 WriteData
 VHOST profile:
-Flush
+FuseFlush

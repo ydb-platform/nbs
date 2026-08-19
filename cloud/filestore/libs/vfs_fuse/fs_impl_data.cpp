@@ -961,7 +961,7 @@ void TFileSystem::Flush(
     const auto reqId = callContext->RequestId;
 
     NProto::TProfileLogRequestInfo requestInfo;
-    InitProfileLogRequestInfo(requestInfo, EFileStoreFuseRequest::Flush, Now());
+    InitProfileLogRequestInfo(requestInfo, EFileStoreRequest::FuseFlush, Now());
     InitNodeInfo(requestInfo, true, TNodeId{ino}, THandle{fi->fh});
     requestInfo.SetLoopThreadId(callContext->LoopThreadId);
 
@@ -1025,7 +1025,7 @@ void TFileSystem::FSync(
     const auto reqId = callContext->RequestId;
 
     NProto::TProfileLogRequestInfo requestInfo;
-    InitProfileLogRequestInfo(requestInfo, EFileStoreFuseRequest::Fsync, Now());
+    InitProfileLogRequestInfo(requestInfo, EFileStoreRequest::FuseFsync, Now());
     InitNodeInfo(
         requestInfo,
         datasync,
@@ -1149,7 +1149,7 @@ void TFileSystem::FSyncDir(
     NProto::TProfileLogRequestInfo requestInfo;
     InitProfileLogRequestInfo(
         requestInfo,
-        EFileStoreFuseRequest::FsyncDir,
+        EFileStoreRequest::FuseFsyncDir,
         Now());
     InitNodeInfo(
         requestInfo,
