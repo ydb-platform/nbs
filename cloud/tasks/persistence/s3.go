@@ -76,6 +76,8 @@ func (t *s3TokenAuthTransport) RoundTrip(
 	request *http.Request,
 ) (*http.Response, error) {
 
+	// Do not set Authorization header for http.
+	// Do not set Authorization header for redirects.
 	if request.URL.Scheme != "https" || request.URL.Host != t.host {
 		return t.inner.RoundTrip(request)
 	}
