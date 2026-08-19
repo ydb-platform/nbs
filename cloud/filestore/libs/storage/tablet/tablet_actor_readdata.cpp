@@ -339,7 +339,6 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const TString LogTag;
     const TString FileSystemId;
-    const ui64 NodeId;
     const bool ShouldCalculateChecksums;
     const ui32 BlockSize;
     const TActorId Tablet;
@@ -363,7 +362,6 @@ public:
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
-        ui64 nodeId,
         bool shouldCalculateChecksums,
         ui32 blockSize,
         TActorId tablet,
@@ -407,7 +405,6 @@ TReadDataActor::TReadDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
-        ui64 nodeId,
         bool shouldCalculateChecksums,
         ui32 blockSize,
         TActorId tablet,
@@ -428,7 +425,6 @@ TReadDataActor::TReadDataActor(
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
-    , NodeId(nodeId)
     , ShouldCalculateChecksums(shouldCalculateChecksums)
     , BlockSize(blockSize)
     , Tablet(tablet)
@@ -724,15 +720,17 @@ void TIndexTabletActor::HandleReadDataCompleted(
     {
         ReportDiagnosticStatsInsertFailed();
     }
+    if (!UpdateLatencyStats(
+            msg->NodeId,
+            EFileStoreRequest::ReadData,
+            ctx.Now(),
+            msg->Time))
+    {
+        ReportDiagnosticStatsInsertFailed();
+    }
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
-
-    UpdateLatencyStats(
-        msg->NodeId,
-        EFileStoreRequest::ReadData,
-        ctx.Now(),
-        msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -825,6 +823,14 @@ void TIndexTabletActor::HandleDescribeData(
 
         if (!UpdateAccessStats(nodeId, ctx.Now()) ||
             !UpdateLatencyStats(
+                nodeId,
+                EFileStoreRequest::DescribeData,
+                ctx.Now(),
+                ctx.Now() - requestInfo->StartedTs))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
+        if (!UpdateLatencyStats(
                 nodeId,
                 EFileStoreRequest::DescribeData,
                 ctx.Now(),
@@ -1107,6 +1113,14 @@ void TIndexTabletActor::CompleteTx_ReadData(
         {
             ReportDiagnosticStatsInsertFailed();
         }
+        if (!UpdateLatencyStats(
+                args.NodeId,
+                EFileStoreRequest::DescribeData,
+                ctx.Now(),
+                ctx.Now() - args.RequestInfo->StartedTs))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
 
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),
@@ -1185,8 +1199,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-        UpdateLatencyStats(args.NodeId, EFileStoreRequest::ReadData, ctx.Now(), ctx.Now() - args.RequestInfo->StartedTs);
-
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),
             ctx.Now(),
@@ -1196,6 +1208,15 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
         if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
             !UpdateLatencyStats(
+                args.NodeId,
+                EFileStoreRequest::ReadData,
+                ctx.Now(),
+                ctx.Now() - args.RequestInfo->StartedTs))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
+
+        if (!UpdateLatencyStats(
                 args.NodeId,
                 EFileStoreRequest::ReadData,
                 ctx.Now(),
@@ -1221,7 +1242,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
         TraceSerializer,
         LogTag,
         GetFileSystemId(),
-        args.NodeId,
         Config->GetBlockChecksumsInProfileLogEnabled(),
         GetBlockSize(),
         ctx.SelfID,

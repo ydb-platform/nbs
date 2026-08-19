@@ -16,8 +16,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t MaxSlowestRequestsEntries = 10'000;
-
 IBlockLocation2RangeIndexPtr CreateHasher(const NProto::TFileSystem& fs)
 {
     auto hasher = CreateRangeIdHasher(fs.GetRangeIdHasherType());
@@ -195,7 +193,6 @@ void TIndexTabletState::LoadState(
     const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
     const TThrottlerConfig& throttlerConfig)
 {
-    NodeLatencyStatsTracker.Initialize(MaxSlowestRequestsEntries);
     Generation = generation;
     // https://github.com/ydb-platform/nbs/issues/1714
     // because of possible race in vdisks we should not start with 0
@@ -334,16 +331,6 @@ void TIndexTabletState::SetCompressNodeRef(
 {
     FileSystem.SetCompressNodeRef(compressNodeRef);
     db.WriteFileSystem(FileSystem);
-}
-
-void TIndexTabletState::UpdateLatencyStats(ui64 nodeId, EFileStoreRequest requestType, TInstant now, TDuration latency)
-{
-    NodeLatencyStatsTracker.UpdateLatencyStats(nodeId, requestType, now, latency);
-}
-
-TVector<TNodeLatencyStats> TIndexTabletState::GetLatencyStats(TInstant now) const
-{
-    return NodeLatencyStatsTracker.GetLatencyStats(now);
 }
 
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const

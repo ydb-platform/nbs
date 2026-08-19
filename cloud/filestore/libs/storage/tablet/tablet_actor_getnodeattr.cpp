@@ -210,11 +210,14 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
         {
             ReportDiagnosticStatsInsertFailed();
         }
-        UpdateLatencyStats(
-            args.NodeId,
-            EFileStoreRequest::GetNodeAttr,
-            ctx.Now(),
-            ctx.Now() - args.RequestInfo->StartedTs);
+        if (!UpdateLatencyStats(
+                args.NodeId,
+                EFileStoreRequest::GetNodeAttr,
+                ctx.Now(),
+                ctx.Now() - args.RequestInfo->StartedTs))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
     }
 
     CompleteResponse<TEvService::TGetNodeAttrMethod>(
