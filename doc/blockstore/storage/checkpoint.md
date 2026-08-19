@@ -15,7 +15,7 @@ Blockstore API provides the following requests for working with checkpoints:
 
 ## Creation and deletion of checkpoints.
 
-The history of create checkpoint and delete checkpoint requests is stored persistently in the volume tablet's local database. If the volume tablet reboots, information about all alive checkpoints will be restored from the history, so the volume will not forget alive checkpoints. (The checkpoint is called alive if it was created and was not deleted.) 
+The history of create checkpoint and delete checkpoint requests is stored persistently in the volume tablet's local database. If the volume tablet reboots, information about all alive checkpoints will be restored from the history, so the volume will not forget alive checkpoints. (The checkpoint is called alive if it was created and was not deleted.)
 
 Checkpoint creation is idempotent, i.e. checkpoint creation does nothing if there exists an alive checkpoint with the same id. Checkpoint deletion is also idempotent, i.e. checkpoint deletion does nothing if a checkpoint with such id does not exist (was deleted or never existed).
 
