@@ -2244,6 +2244,10 @@ void TDiskRegistryActor::RenderAgentListDetailed(
                                 EDeviceStateFlags::NONE,
                                 TStringBuilder() << " " << errorDevs);
                         }
+                        if (config.UnknownDevicesSize()) {
+                            out << " / unknown "
+                                << config.UnknownDevicesSize();
+                        }
                     }
                 }
             }
