@@ -51,6 +51,7 @@ setup_remote_disk_agent() {
     truncate -s  1G "$BIN_DIR/data/remote$1-1024-1.bin"
     truncate -s  1G "$BIN_DIR/data/remote$1-1024-2.bin"
     truncate -s  1G "$BIN_DIR/data/remote$1-1024-3.bin"
+    truncate -s  1G "$BIN_DIR/data/remote$1-1024-4.bin"
 
     cat > $BIN_DIR/nbs/nbs-disk-agent-$1.txt <<EOF
 AgentId: "remote$1.cloud-example.net"
@@ -58,6 +59,7 @@ Enabled: true
 DedicatedDiskAgent: true
 Backend: DISK_AGENT_BACKEND_AIO
 AcquireRequired: true
+JournalledDeviceTcpServerListenAddress: "localhost:$(( 29900 + $1 ))"
 
 FileDevices: {
     Path: "$BIN_DIR/data/remote$1-1024-1.bin"
@@ -74,6 +76,12 @@ FileDevices: {
 FileDevices: {
     Path: "$BIN_DIR/data/remote$1-1024-3.bin"
     DeviceId: "remote$1-1024-3"
+    BlockSize: 4096
+}
+
+FileDevices: {
+    Path: "$BIN_DIR/data/remote$1-1024-4.bin"
+    DeviceId: "remote$1-1024-4"
     BlockSize: 4096
 }
 
@@ -112,6 +120,7 @@ Enabled: true
 DedicatedDiskAgent: true
 Backend: DISK_AGENT_BACKEND_AIO
 AcquireRequired: true
+JournalledDeviceTcpServerListenAddress: "localhost:29900"
 
 FileDevices: {
     Path: "$BIN_DIR/data/local-1024-1.bin"
@@ -159,11 +168,14 @@ setup_nonrepl_disk_registry() {
     setup_remote_disk_agent 4
 
     cat > "$BIN_DIR"/nbs/nbs-disk-registry.txt <<EOF
+IgnoreVersion: true
+
 KnownAgents {
     AgentId: "remote1.cloud-example.net"
     Devices: "remote1-1024-1"
     Devices: "remote1-1024-2"
     Devices: "remote1-1024-3"
+    Devices: "remote1-1024-4"
 }
 
 KnownAgents {
@@ -171,6 +183,7 @@ KnownAgents {
     Devices: "remote2-1024-1"
     Devices: "remote2-1024-2"
     Devices: "remote2-1024-3"
+    Devices: "remote2-1024-4"
 }
 
 KnownAgents {
@@ -178,6 +191,7 @@ KnownAgents {
     Devices: "remote3-1024-1"
     Devices: "remote3-1024-2"
     Devices: "remote3-1024-3"
+    Devices: "remote3-1024-4"
 }
 
 KnownAgents {
@@ -185,6 +199,7 @@ KnownAgents {
     Devices: "remote4-1024-1"
     Devices: "remote4-1024-2"
     Devices: "remote4-1024-3"
+    Devices: "remote4-1024-4"
 }
 
 KnownAgents {
