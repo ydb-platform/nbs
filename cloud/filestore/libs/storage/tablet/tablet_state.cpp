@@ -139,7 +139,10 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
     if (config.GetShardBalancerPolicy() == NProto::SBP_WEIGHTED_DETERMINISTIC &&
         !config.GetStrictFileSystemSizeEnforcementEnabled())
     {
-        ReportWeightedDeterministicBalancerRequiresStrictEnforcement();
+        ReportIncompatibleFeatures(
+            TStringBuilder()
+            << "Weighted deterministic balancer is incompatible with a "
+               "filesystem without strict file system size enforcement.");
     }
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();

@@ -8281,7 +8281,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT(counters);
         const auto counter = counters->GetCounter(
             "AppCriticalEvents/"
-            "WeightedDeterministicBalancerRequiresStrictEnforcement");
+            "IncompatibleFeatures");
         UNIT_ASSERT(counter->GetAtomic() > 0);
     }
 

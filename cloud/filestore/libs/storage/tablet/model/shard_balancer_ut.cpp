@@ -571,24 +571,22 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         checkSelectedShard(refShardIds);
         checkSelectedShard(refShardIds);
 
-        const ui64 total = 5_TB / 4_KB;
-
         ASSERT_NO_ERROR(balancer.Update({
-            {"s1", total, 1_TB / 4_KB, 0, 0},
-            {"s2", total, 1_TB / 4_KB, 0, 0},
-            {"s3", total, 1_TB / 4_KB, 0, 0},
-            {"s4", total, 1_TB / 4_KB, 0, 0},
-            {"s5", total, 0_TB / 4_KB, 0, 0},
+            {"s1", 5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {"s2", 5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {"s3", 5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {"s4", 5_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {"s5", 5_TB / 4_KB, 0_TB / 4_KB, 0, 0},
         }));
-        refShardIds = {"s5", "s5", "s5", "s5", "s5", "s5", "s5"};
+        refShardIds = {"s5", "s5", "s5", "s5", "s5", "s5"};
         checkSelectedShard(refShardIds);
 
         ASSERT_NO_ERROR(balancer.Update({
-            {"s1", total, 1_TB / 4_KB, 0, 0},
-            {"s2", total, 2_TB / 4_KB, 0, 0},
-            {"s3", total, 3_TB / 4_KB, 0, 0},
-            {"s4", total, 2_TB / 4_KB, 0, 0},
-            {"s5", total, 1_TB / 4_KB, 0, 0},
+            {"s1", 15_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {"s2", 15_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {"s3", 15_TB / 4_KB, 3_TB / 4_KB, 0, 0},
+            {"s4", 15_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {"s5", 15_TB / 4_KB, 1_TB / 4_KB, 0, 0},
         }));
         refShardIds = {
             "s1", "s2", "s3", "s4", "s5",
@@ -604,11 +602,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         checkSelectedShard(refShardIds);
 
         ASSERT_NO_ERROR(balancer.Update({
-            {"s1", total, 3_TB / 4_KB, 0, 0},
-            {"s2", total, 2_TB / 4_KB, 0, 0},
-            {"s3", total, 1_TB / 4_KB, 0, 0},
-            {"s4", total, 2_TB / 4_KB, 0, 0},
-            {"s5", total, 3_TB / 4_KB, 0, 0},
+            {"s1", 15_TB / 4_KB, 3_TB / 4_KB, 0, 0},
+            {"s2", 15_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {"s3", 15_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {"s4", 15_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {"s5", 15_TB / 4_KB, 3_TB / 4_KB, 0, 0},
         }));
         refShardIds = {
             "s1", "s2", "s3", "s4", "s5",
@@ -624,11 +622,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         checkSelectedShard(refShardIds);
 
         ASSERT_NO_ERROR(balancer.Update({
-            {"s1", total, 5_TB / 4_KB, 0, 0},
-            {"s2", total, 4_TB / 4_KB, 0, 0},
-            {"s3", total, 3_TB / 4_KB, 0, 0},
-            {"s4", total, 2_TB / 4_KB, 0, 0},
-            {"s5", total, 1_TB / 4_KB, 0, 0},
+            {"s1", 25_TB / 4_KB, 5_TB / 4_KB, 0, 0},
+            {"s2", 25_TB / 4_KB, 4_TB / 4_KB, 0, 0},
+            {"s3", 25_TB / 4_KB, 3_TB / 4_KB, 0, 0},
+            {"s4", 25_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {"s5", 25_TB / 4_KB, 1_TB / 4_KB, 0, 0},
         }));
 
         refShardIds = {"s5"};
@@ -656,11 +654,11 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         UNIT_ASSERT_EQUAL("s1", sortedShardStats[4].ShardId);
 
         ASSERT_NO_ERROR(balancer.Update({
-            {"s1", total, 1_TB / 4_KB, 0, 0},
-            {"s2", total, 2_TB / 4_KB, 0, 0},
-            {"s3", total, 3_TB / 4_KB, 0, 0},
-            {"s4", total, 4_TB / 4_KB, 0, 0},
-            {"s5", total, 5_TB / 4_KB, 0, 0},
+            {"s1", 25_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+            {"s2", 25_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+            {"s3", 25_TB / 4_KB, 3_TB / 4_KB, 0, 0},
+            {"s4", 25_TB / 4_KB, 4_TB / 4_KB, 0, 0},
+            {"s5", 25_TB / 4_KB, 5_TB / 4_KB, 0, 0},
         }));
 
         refShardIds = {

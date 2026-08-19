@@ -266,14 +266,14 @@ TShardBalancerWeightedDeterministic::TShardBalancerWeightedDeterministic(
           minFreeSpaceReserve,
           std::move(shardIds))
 {
-    // Update with empty stats.
+    // Update with zero stats.
     TVector<TShardStats> shardStats(Metas.size());
     for (ui64 i = 0; i < shardStats.size(); ++i) {
         shardStats[i] = Metas[i].Stats;
     }
     Update(shardStats, {}, {});
 
-    ShardSelector = Metas.size() - 1;
+    LastSelectedShard = Metas.size() - 1;
     CurrentScore = MaxScore;
 }
 
@@ -281,12 +281,12 @@ bool TShardBalancerWeightedDeterministic::CalcScore(
     const TVector<TShardStats>& stats)
 {
     ui64 minBlocksCount = Max<ui64>();
-    ui64 maxBlocksCount = 0;
     for (const auto& stat: stats) {
         minBlocksCount = Min<ui64>(stat.UsedBlocksCount, minBlocksCount);
-        maxBlocksCount = Max<ui64>(stat.UsedBlocksCount, maxBlocksCount);
     }
 
+    const ui64 maxBlocksCount =
+        Max<ui64>(stats[0].TotalBlocksCount / stats.size(), minBlocksCount);
     ui64 step = Max<ui64>(
         (maxBlocksCount - minBlocksCount) / ScoreLevelsCount,
         PrecisionBytes / BlockSize, 1UL);
@@ -294,9 +294,10 @@ bool TShardBalancerWeightedDeterministic::CalcScore(
     bool scoreChanged = (Metas.size() != stats.size());
     Metas.resize(stats.size());
     for (ui64 i = 0; i < stats.size(); ++i) {
-        const ui64 score = Min<ui64>(
-            MaxScore,
-            (maxBlocksCount - stats[i].UsedBlocksCount) / step);
+        const ui64 delta = maxBlocksCount > stats[i].UsedBlocksCount
+                               ? maxBlocksCount - stats[i].UsedBlocksCount
+                               : 0;
+        const ui64 score = Min<ui64>(MaxScore, delta / step);
         scoreChanged = scoreChanged || (Metas[i].Score != score);
         Metas[i] = {static_cast<ui32>(i), stats[i], score};
     }
@@ -304,73 +305,29 @@ bool TShardBalancerWeightedDeterministic::CalcScore(
     return scoreChanged;
 }
 
-// Builds the cyclic shard-transition table (NextShard) used by SelectShard.
-// The shards are scanned from left to right. A monotonic stack is used to
-// fill forward transitions, while the last column records the wraparound
-// target for each score. After the scan, these targets are used
-// to fill the remaining undefined entries at the right edge of the matrix.
-// It is guarfanteed that NextShard has defined entries (< Metas.size())
-// for all scores that less or equal to the max score from
-// TShardBalancerBase::Metas. All other entries are undefined (== Metas.size())
 void TShardBalancerWeightedDeterministic::CalcNextShard()
 {
     NextShard.SetSizes(Metas.size(), ScoreLevelsCount);
     NextShard.FillEvery(Metas.size());
 
-    auto setNextShard = [this](ui32 shardIdx, ui32 nextShardIdx, ui32 fromScore)
-    {
-        for (ui32 score = fromScore; score != Max<ui32>(); --score) {
-            if (NextShard[score][shardIdx] == Metas.size()) {
-                NextShard[score][shardIdx] = nextShardIdx;
-            } else {
+    for (ui64 score = 0; score < ScoreLevelsCount; ++score) {
+        ui64 firstQualifying = Metas.size();
+        for (ui64 shardIdx = 0; shardIdx < Metas.size(); ++shardIdx) {
+            if (Metas[shardIdx].Score >= score) {
+                firstQualifying = shardIdx;
                 break;
             }
         }
-    };
+        if (firstQualifying == Metas.size()) {
+            continue;
+        }
 
-    const ui32 lastShardIdx = Metas.size() - 1;
-    for (ui32 score = 0; score <= Metas[0].Score; ++score) {
-        NextShard[score][lastShardIdx] = 0;
-    }
-    TVector<const TShardMeta*> stack;
-    stack.push_back(&Metas[0]);
-
-    for (ui32 i = 1; i < Metas.size(); ++i) {
-        const auto& meta = Metas[i];
-        // Update Next for the last shard.
-        setNextShard(lastShardIdx, i, meta.Score);
-
-        // Pop the stack.
-        while (!stack.empty() && meta.Score >= stack.back()->Score) {
-            for (ui32 shardIdx = stack.back()->ShardIdx;
-                 shardIdx < meta.ShardIdx;
-                 ++shardIdx)
-            {
-                setNextShard(shardIdx, meta.ShardIdx, meta.Score);
+        ui64 nextQualifying = firstQualifying;
+        for (ui64 shardIdx = Metas.size(); shardIdx-- > 0;) {
+            NextShard[score][shardIdx] = nextQualifying;
+            if (Metas[shardIdx].Score >= score) {
+                nextQualifying = shardIdx;
             }
-            stack.pop_back();
-        }
-
-        const ui32 leftBorder = !stack.empty() ? stack.back()->ShardIdx : 0;
-        for (ui32 shardIdx = leftBorder; shardIdx < meta.ShardIdx; ++shardIdx) {
-            setNextShard(shardIdx, meta.ShardIdx, meta.Score);
-        }
-
-        stack.push_back(&meta);
-    }
-
-    // Fill the gap on the right side of the matrix.
-    for (ui32 score = 0; score < ScoreLevelsCount &&
-                         NextShard[score][lastShardIdx] < Metas.size();
-         ++score)
-    {
-        const ui32 nextShard = NextShard[score][lastShardIdx];
-        for (ui32 shardIdx = lastShardIdx - 1;
-             shardIdx != Max<ui32>() &&
-             NextShard[score][shardIdx] == Metas.size();
-             --shardIdx)
-        {
-            NextShard[score][shardIdx] = nextShard;
         }
     }
 }
@@ -409,21 +366,21 @@ NProto::TError TShardBalancerWeightedDeterministic::SelectShard(
 
     // If jumping to the next shard crosses the right boundary,
     // increment CurrentScore.
-    const ui64 nextShardIdx = NextShard[CurrentScore][ShardSelector];
-    if (nextShardIdx < Metas.size() && nextShardIdx <= ShardSelector) {
+    const ui64 nextShardIdx = NextShard[CurrentScore][LastSelectedShard];
+    if (nextShardIdx < Metas.size() && nextShardIdx <= LastSelectedShard) {
         CurrentScore = (++CurrentScore) % ScoreLevelsCount;
-        ShardSelector = Metas.size() - 1;
+        LastSelectedShard = Metas.size() - 1;
     }
 
     // We are in an undefined part of the NextShard matrix.
     // That means that we should start from the initial state.
-    if (NextShard[CurrentScore][ShardSelector] == Metas.size()) {
+    if (NextShard[CurrentScore][LastSelectedShard] == Metas.size()) {
         CurrentScore = 0;
-        ShardSelector = Metas.size() - 1;
+        LastSelectedShard = Metas.size() - 1;
     }
 
-    ShardSelector = NextShard[CurrentScore][ShardSelector];
-    *shardId = Metas[ShardSelector].Stats.ShardId;
+    LastSelectedShard = NextShard[CurrentScore][LastSelectedShard];
+    *shardId = Metas[LastSelectedShard].Stats.ShardId;
 
     return {};
 }

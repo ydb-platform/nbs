@@ -195,7 +195,7 @@ class TShardBalancerWeightedDeterministic: public TShardBalancerBase
     static constexpr ui32 MaxScore = ScoreLevelsCount - 1;
 
     // Iterator state.
-    ui32 ShardSelector;
+    ui32 LastSelectedShard;
     ui32 CurrentScore;
 
     // Two-dimensional array of size:
