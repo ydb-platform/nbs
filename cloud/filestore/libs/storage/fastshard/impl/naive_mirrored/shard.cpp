@@ -358,11 +358,13 @@ public:
         return Slots->Put(writeContext.Lsn, slot, writeContext.PageGroups);
     }
 
-    NProto::TError DeleteNode(ui64 nodeId, TWriteContext& writeContext)
+    NProto::TError DeleteNode(
+        ui64 nodeId,
+        TWriteContext& writeContext,
+        TNodeTableSlot* slot)
     {
-        TNodeTableSlot slot{};
         return Slots
-            ->Delete(writeContext.Lsn, nodeId, &slot, writeContext.PageGroups);
+            ->Delete(writeContext.Lsn, nodeId, slot, writeContext.PageGroups);
     }
 
     NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
@@ -670,11 +672,11 @@ public:
 
     NProto::TError Delete(
         const TNodePageClusterKey& k,
-        TWriteContext& writeContext)
+        TWriteContext& writeContext,
+        TNodePageClusterSlot* slot)
     {
-        TNodePageClusterSlot slot{};
         return Slots
-            ->Delete(writeContext.Lsn, k, &slot, writeContext.PageGroups);
+            ->Delete(writeContext.Lsn, k, slot, writeContext.PageGroups);
     }
 
     NProto::TError Get(
@@ -1360,7 +1362,8 @@ public:
                 return response;
             }
 
-            error = Nodes.DeleteNode(nodeId, writeContext);
+            TNodeTableSlot slot{};
+            error = Nodes.DeleteNode(nodeId, writeContext, &slot);
             if (HasError(error)) {
                 SILK_DEBUG(
                     "UnlinkNode::Nodes.DeleteNode error=%s",
@@ -1369,9 +1372,47 @@ public:
                 return response;
             }
 
-            //
-            // TODO(#5894): deallocate pages and delete them from page index.
-            //
+            TVector<ui64> storagePageClusterIds;
+            for (ui64 offset = 0; offset < slot.Size;
+                    offset += PageClusterSize)
+            {
+                TNodePageClusterSlot slot{};
+                error = PageIndex.Delete(
+                    {
+                        .NodeId = nodeId,
+                        .PageClusterId = offset / PageClusterSize
+                    },
+                    writeContext,
+                    &slot);
+
+                if (error.GetCode() == E_FS_NOENT) {
+                    //
+                    // This page cluster is not allocated.
+                    //
+
+                    continue;
+                }
+
+                if (HasError(error)) {
+                    SILK_DEBUG(
+                        "UnlinkNode::PageIndex.Delete error=%s",
+                        FormatError(error).c_str());
+                    *response.MutableError() = std::move(error);
+                    return response;
+                }
+
+                storagePageClusterIds.push_back(slot.StoragePageClusterId);
+            }
+
+            error =
+                PageAllocator.Deallocate(storagePageClusterIds, writeContext);
+            if (HasError(error)) {
+                SILK_DEBUG(
+                    "UnlinkNode::PageAllocator.Deallocate error=%s",
+                    FormatError(error).c_str());
+                *response.MutableError() = std::move(error);
+                return response;
+            }
         }
 
         auto pages = CollectPages(writeContext);
