@@ -302,9 +302,6 @@ private:
     NActors::IActorPtr CreateGetStorageStatsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
-    NActors::IActorPtr CreateGetNodeLatencyStatsActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
 
     NActors::IActorPtr CreateGetDiagnosticStatsActionActor(
         TRequestInfoPtr requestInfo,
