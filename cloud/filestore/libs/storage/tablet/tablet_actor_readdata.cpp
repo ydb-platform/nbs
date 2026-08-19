@@ -720,14 +720,6 @@ void TIndexTabletActor::HandleReadDataCompleted(
     {
         ReportDiagnosticStatsInsertFailed();
     }
-    if (!UpdateLatencyStats(
-            msg->NodeId,
-            EFileStoreRequest::ReadData,
-            ctx.Now(),
-            msg->Time))
-    {
-        ReportDiagnosticStatsInsertFailed();
-    }
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
@@ -823,14 +815,6 @@ void TIndexTabletActor::HandleDescribeData(
 
         if (!UpdateAccessStats(nodeId, ctx.Now()) ||
             !UpdateLatencyStats(
-                nodeId,
-                EFileStoreRequest::DescribeData,
-                ctx.Now(),
-                ctx.Now() - requestInfo->StartedTs))
-        {
-            ReportDiagnosticStatsInsertFailed();
-        }
-        if (!UpdateLatencyStats(
                 nodeId,
                 EFileStoreRequest::DescribeData,
                 ctx.Now(),
@@ -1113,14 +1097,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
         {
             ReportDiagnosticStatsInsertFailed();
         }
-        if (!UpdateLatencyStats(
-                args.NodeId,
-                EFileStoreRequest::DescribeData,
-                ctx.Now(),
-                ctx.Now() - args.RequestInfo->StartedTs))
-        {
-            ReportDiagnosticStatsInsertFailed();
-        }
 
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),
@@ -1208,15 +1184,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
         if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
             !UpdateLatencyStats(
-                args.NodeId,
-                EFileStoreRequest::ReadData,
-                ctx.Now(),
-                ctx.Now() - args.RequestInfo->StartedTs))
-        {
-            ReportDiagnosticStatsInsertFailed();
-        }
-
-        if (!UpdateLatencyStats(
                 args.NodeId,
                 EFileStoreRequest::ReadData,
                 ctx.Now(),

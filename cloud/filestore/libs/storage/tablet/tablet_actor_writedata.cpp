@@ -471,15 +471,6 @@ void TIndexTabletActor::CompleteTx_WriteData(
             ReportDiagnosticStatsInsertFailed();
         }
 
-        if (!UpdateLatencyStats(
-                args.NodeId,
-                EFileStoreRequest::WriteData,
-                ctx.Now(),
-                ctx.Now() - args.RequestInfo->StartedTs))
-        {
-            ReportDiagnosticStatsInsertFailed();
-        }
-
         return;
     }
 
