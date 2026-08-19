@@ -938,7 +938,9 @@ void TIndexTabletActor::HandleGetDiagnosticStats(
             accessStats.LastAccessed.MicroSeconds());
     }
 
-    for (const auto& latencyStats: GetLatencyStats(ctx.Now())) {
+    for (const auto& latencyStats:
+         GetLatencyStats(ctx.Now(), ev->Get()->Record.GetLimit()))
+    {
         auto* out = response->Record.AddLatencyStats();
         out->SetShardId(GetFileSystemId());
         out->SetNodeId(latencyStats.NodeId);
