@@ -186,6 +186,8 @@ private:
 
     TInstant ReassignRequestSentTs;
 
+    TInstant TabletStartTs;
+
     TThrottlerLogger ThrottlerLogger;
     ITabletThrottlerPtr Throttler;
 
@@ -604,6 +606,9 @@ private:
         bool validateHandle);
 
     NProto::TError IsDataOperationAllowed() const;
+    NProto::TError ErrorHandleNotFound(
+        const NActors::TActorContext& ctx,
+        ui64 handle) const;
     bool CanUseUnconfirmedData() const;
     bool IsTabletConsideredOverloaded() const;
 

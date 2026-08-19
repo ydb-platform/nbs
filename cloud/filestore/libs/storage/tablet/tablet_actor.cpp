@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_database_failure_injection.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
 
@@ -166,6 +167,8 @@ void TIndexTabletActor::ReportTabletState(const TActorContext& ctx)
 
 void TIndexTabletActor::OnActivateExecutor(const TActorContext& ctx)
 {
+    TabletStartTs = ctx.Now();
+
     BecomeAux(ctx, STATE_INIT);
 
     RegisterCounters(ctx);
@@ -652,6 +655,30 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
     }
 
     return {};
+}
+
+NProto::TError TIndexTabletActor::ErrorHandleNotFound(
+    const TActorContext& ctx,
+    ui64 handle) const
+{
+    // An async CreateHandle replies before its tx commits, so a tablet restart
+    // inside that window loses the handle. The client retries its queued
+    // ConfirmCreateHandle, which recreates the very same handle, so ask the
+    // client to retry instead of failing the operation with EBADF.
+    const auto graceTimeout = Config->GetUnconfirmedCreateHandleGraceTimeout();
+    if (graceTimeout
+        && Config->GetAsyncCreateHandleEnabled()
+        && ctx.Now() < TabletStartTs + graceTimeout)
+    {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NCloud::NProto::EF_INSTANT_RETRIABLE);
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "handle not confirmed yet: " << handle,
+            flags);
+    }
+
+    return ErrorInvalidHandle(handle);
 }
 
 bool TIndexTabletActor::CanUseUnconfirmedData() const

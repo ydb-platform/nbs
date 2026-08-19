@@ -85,7 +85,6 @@ void TIndexTabletActor::ExecuteTx_TestLock(
     TTransactionContext& tx,
     TTxIndexTablet::TTestLock& args)
 {
-    Y_UNUSED(ctx);
     Y_UNUSED(tx);
 
     FILESTORE_VALIDATE_TX_ERROR(TestLock, args);
@@ -97,8 +96,12 @@ void TIndexTabletActor::ExecuteTx_TestLock(
     TABLET_VERIFY(session);
 
     auto* handle = FindHandle(args.Request.GetHandle());
-    if (!handle || handle->GetSessionId() != session->GetSessionId()) {
-        args.Error = ErrorInvalidHandle();
+    if (!handle) {
+        args.Error = ErrorHandleNotFound(ctx, args.Request.GetHandle());
+        return;
+    }
+    if (handle->GetSessionId() != session->GetSessionId()) {
+        args.Error = ErrorInvalidHandle(args.Request.GetHandle());
         return;
     }
 
