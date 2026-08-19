@@ -9,6 +9,7 @@
 
 #include <util/generic/size_literals.h>
 #include <util/stream/str.h>
+#include <util/string/cast.h>
 
 #include <gtest/gtest.h>
 
@@ -82,6 +83,20 @@ struct TStorageFixture
     {
         Config.SetNodesPerGroup(NodesPerGroup);
         Config.SetExpectedGroupCapacity(64_MB);
+
+        //
+        // The null storage group factory ignores the devices; they are
+        // here so that the layout dump has something to display.
+        //
+
+        auto* group = Config.AddStorageGroups();
+        group->SetType(NProtoPrivate::TStorageGroup::E_SG_MIRROR);
+        for (ui32 i = 1; i <= 3; ++i) {
+            auto* device = group->AddDevices();
+            device->SetHost("host-" + ToString(i));
+            device->SetPort(29900 + i);
+            device->SetDeviceId("device-" + ToString(i));
+        }
     }
 };
 
@@ -162,6 +177,25 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
     }
 
     //
+    // Storage groups mirror the config, with every device field.
+    //
+
+    {
+        const auto& groups = parsed["storageGroups"].GetArray();
+        ASSERT_EQ(1u, groups.size()) << json.Str();
+        EXPECT_EQ("E_SG_MIRROR", groups[0]["type"].GetString());
+
+        const auto& devices = groups[0]["devices"].GetArray();
+        ASSERT_EQ(3u, devices.size()) << json.Str();
+        for (ui32 i = 1; i <= 3; ++i) {
+            const auto& d = devices[i - 1];
+            EXPECT_EQ("host-" + ToString(i), d["host"].GetString());
+            EXPECT_EQ(29900 + i, d["port"].GetUInteger());
+            EXPECT_EQ("device-" + ToString(i), d["deviceId"].GetString());
+        }
+    }
+
+    //
     // Html test.
     //
 
@@ -180,6 +214,20 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
     EXPECT_TRUE(html.Str().Contains("Fast Shard Layout")) << html.Str();
     for (const auto& name: expectedNames) {
         EXPECT_TRUE(html.Str().Contains("<td>" + name + "</td>"))
+            << html.Str();
+    }
+
+    EXPECT_TRUE(html.Str().Contains("Storage Groups")) << html.Str();
+    EXPECT_TRUE(html.Str().Contains("<td>E_SG_MIRROR</td>")) << html.Str();
+    for (ui32 i = 1; i <= 3; ++i) {
+        EXPECT_TRUE(
+            html.Str().Contains("<td>host-" + ToString(i) + "</td>"))
+            << html.Str();
+        EXPECT_TRUE(
+            html.Str().Contains("<td>" + ToString(29900 + i) + "</td>"))
+            << html.Str();
+        EXPECT_TRUE(
+            html.Str().Contains("<td>device-" + ToString(i) + "</td>"))
             << html.Str();
     }
 
