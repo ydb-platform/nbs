@@ -20,13 +20,13 @@
 #include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_access_stats.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_latency_stats.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/read_ahead.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/truncate_queue.h>
-#include <cloud/filestore/libs/storage/tablet/model/node_latency_stats.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -233,7 +233,6 @@ private:
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     TNodeToSessionCounters NodeToSessionCounters;
-    TNodeLatencyStatsTracker NodeLatencyStatsTracker;
     ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
@@ -433,9 +432,13 @@ public:
         return NodeToSessionCounters;
     }
 
-    void UpdateLatencyStats(ui64 nodeId, EFileStoreRequest requestType, TInstant now, TDuration latency);
+    bool UpdateLatencyStats(
+        ui64 nodeId,
+        EFileStoreRequest requestType,
+        TInstant now,
+        TDuration latency);
 
-    TVector<TNodeLatencyStats> GetLatencyStats(TInstant now) const;
+    TVector<TNodeLatencyStats> GetLatencyStats(TInstant now, ui32 n) const;
 
     TMiscNodeStats GetMiscNodeStats() const;
     THandlesStats GetHandlesStats() const;

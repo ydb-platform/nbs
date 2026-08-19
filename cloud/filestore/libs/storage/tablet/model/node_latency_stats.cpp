@@ -7,6 +7,11 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TNodeLatencyStatsTracker::TNodeLatencyStatsTracker()
+    : DecayHalfLife()
+    , Ranking(0, TNodeLatencyStatsComparator{}, TLatencyKeyExtractor{})
+{}
+
 TNodeLatencyStatsTracker::TNodeLatencyStatsTracker(
     size_t maxEntries,
     TDuration decayHalfLife)
@@ -16,6 +21,14 @@ TNodeLatencyStatsTracker::TNodeLatencyStatsTracker(
           TNodeLatencyStatsComparator{decayHalfLife},
           TLatencyKeyExtractor{})
 {}
+
+void TNodeLatencyStatsTracker::Reset(size_t maxEntries, TDuration decayHalfLife)
+{
+    Ranking = TRanking(
+        maxEntries,
+        TNodeLatencyStatsComparator{decayHalfLife},
+        TLatencyKeyExtractor{});
+}
 
 bool TNodeLatencyStatsTracker::TNodeLatencyStatsComparator::operator()(
     const TNodeLatencyStats& lhs,

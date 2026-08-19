@@ -36,9 +36,9 @@ bool TNodeAccessComparator::operator()(
 TNodeAccessStatsTracker::TNodeAccessStatsTracker()
     : Ranking(
           0,
-          TNodeAccessComparator{TDuration::Minutes(0)},
+          TNodeAccessComparator{},
           TNodeAccessKeyExtractor{})
-    , HalfLife(TDuration::Minutes(0))
+    , HalfLife()
 {}
 
 TNodeAccessStatsTracker::TNodeAccessStatsTracker(

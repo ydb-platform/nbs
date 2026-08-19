@@ -216,14 +216,19 @@ void TIndexTabletActor::HandleWriteDataCompleted(
 
     Metrics->WriteData.Update(msg->Count, msg->Size, msg->Time);
     if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
-        ReportDiagnosticStatsInsertFailed(
-            "Failed to insert access statistics into ranking");
+        ReportDiagnosticStatsInsertFailed();
+    }
+    if (!UpdateLatencyStats(
+            msg->NodeId,
+            EFileStoreRequest::WriteData,
+            ctx.Now(),
+            msg->Time))
+    {
+        ReportDiagnosticStatsInsertFailed();
     }
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
-
-    UpdateLatencyStats(msg->NodeId, EFileStoreRequest::WriteData, ctx.Now(), msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -461,7 +466,15 @@ void TIndexTabletActor::CompleteTx_WriteData(
         if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
             ReportDiagnosticStatsInsertFailed();
         }
-        UpdateLatencyStats(args.NodeId, EFileStoreRequest::WriteData, ctx.Now(), ctx.Now() - args.RequestInfo->StartedTs);
+
+        if (!UpdateLatencyStats(
+                args.NodeId,
+                EFileStoreRequest::WriteData,
+                ctx.Now(),
+                ctx.Now() - args.RequestInfo->StartedTs))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
 
         return;
     }
