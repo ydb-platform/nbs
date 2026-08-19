@@ -1133,10 +1133,13 @@ public:
     // Monitoring Http Info
     //
 
-    void SendRemoteHttpInfoRequest(const TString& query = {})
+    void SendRemoteHttpInfoRequest(
+        const TString& query = {},
+        HTTP_METHOD method = HTTP_METHOD_GET)
     {
         auto request = std::make_unique<NImpl::TEvRemoteHttpInfoRequest>(
-            "/app?" + query);
+            "/app?" + query,
+            method);
         SendRequest(std::move(request));
     }
 
@@ -1145,9 +1148,11 @@ public:
         return RecvResponse<NImpl::TEvRemoteHttpInfoResponse>();
     }
 
-    std::unique_ptr<NImpl::TEvRemoteHttpInfoResponse> GetRemoteHttpInfo(TString query = {})
+    std::unique_ptr<NImpl::TEvRemoteHttpInfoResponse> GetRemoteHttpInfo(
+        TString query = {},
+        HTTP_METHOD method = HTTP_METHOD_GET)
     {
-        SendRemoteHttpInfoRequest(std::move(query));
+        SendRemoteHttpInfoRequest(std::move(query), method);
         return RecvRemoteHttpInfoResponse();
     }
 

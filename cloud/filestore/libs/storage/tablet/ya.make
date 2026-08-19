@@ -56,6 +56,7 @@ SRCS(
     tablet_actor_loadstate_nodes.cpp
     tablet_actor_monitoring.cpp
     tablet_actor_monitoring_directory_viewer.cpp
+    tablet_actor_monitoring_fastshard_layout.cpp
     tablet_actor_monitoring_locks.cpp
     tablet_actor_oplog.cpp
     tablet_actor_quota.cpp
