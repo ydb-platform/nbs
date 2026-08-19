@@ -35,7 +35,8 @@ std::vector<std::pair<TString, TString>> BuildVolumeChain(
     return {
         {"volume", volumeInfo.GetDiskId()},
         {"cloud", volumeInfo.GetCloudId()},
-        {"folder", volumeInfo.GetFolderId()}};
+        {"folder", volumeInfo.GetFolderId()},
+        {"type", MediaKindToStatsString(volumeInfo.GetStorageMediaKind())}};
 }
 
 TIntrusivePtr<TDynamicCounters> RegisterChain(
@@ -146,6 +147,8 @@ void TStatsServiceActor::UnregisterServiceVolumeCounters(
         volume.VolumeInfo.GetCloudId(),
         volume.VolumeInfo.GetFolderId(),
         volume.VolumeInfo.GetDiskId());
+
+    volume.ServiceVolumeCounters = nullptr;
 }
 
 void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
@@ -306,7 +309,9 @@ void TStatsServiceActor::HandleVolumeConfigUpdated(
 
     const bool updateCounters =
         (volume->VolumeInfo.GetCloudId() != msg->Config.GetCloudId() ||
-            volume->VolumeInfo.GetFolderId() != msg->Config.GetFolderId());
+         volume->VolumeInfo.GetFolderId() != msg->Config.GetFolderId() ||
+         volume->VolumeInfo.GetStorageMediaKind() !=
+             msg->Config.GetStorageMediaKind());
 
     if (updateCounters) {
         UnregisterIsLocalMountCounter(AppData(ctx)->Counters, *volume);

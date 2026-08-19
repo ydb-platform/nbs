@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -508,7 +509,11 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
                                 ->GetSubgroup("volume", diskId)
                                 ->GetSubgroup("instance", clientId)
                                 ->GetSubgroup("cloud", cloudId)
-                                ->GetSubgroup("folder", folderId);
+                                ->GetSubgroup("folder", folderId)
+                                ->GetSubgroup(
+                                    "type",
+                                    MediaKindToString(
+                                        NProto::STORAGE_MEDIA_DEFAULT));
 
         auto postponedCount = diskCounters->GetSubgroup("request", "ReadBlocks")
                                  ->FindCounter("PostponedCount")
