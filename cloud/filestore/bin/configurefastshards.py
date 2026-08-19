@@ -190,9 +190,11 @@ def configure_shards(args, groups):
         shard_no = i + 1
         is_fast = shard_id in file_shard_ids
         if is_fast:
+            # The pair index is the shard position counted from the tail,
+            # so reconfiguring with a different file-shard-count never
+            # reassigns devices of the shards that stay file shards.
             fast_config = {"PersistentConfig": {
-                "StorageGroups":
-                    groups[i - (args.shard_count - args.file_shard_count)],
+                "StorageGroups": groups[args.shard_count - shard_no],
                 "NodesPerGroup": args.nodes_per_group,
                 "ExpectedGroupCapacity": args.group_capacity,
             }}
