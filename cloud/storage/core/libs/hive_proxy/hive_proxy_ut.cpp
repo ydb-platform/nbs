@@ -2048,7 +2048,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             0,
             goldenBackupFilePath);
 
-        auto regularStorageInfo = CreateTestTabletInfo(
+        TTabletStorageInfoPtr regularStorageInfo = CreateTestTabletInfo(
             FakeTablet2,
             TTabletTypes::BlockStorePartition);
         env.HiveState->StorageInfos[FakeTablet2] = regularStorageInfo;
@@ -2057,7 +2057,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
         env.SendBackupTabletBootInfos(sender, S_OK);
 
-        auto goldenStorageInfo = CreateTestTabletInfo(
+        TTabletStorageInfoPtr goldenStorageInfo = CreateTestTabletInfo(
             FakeTablet3,
             TTabletTypes::BlockStorePartition);
         NHiveProxy::NProto::TTabletBootInfoBackup goldenBackup;
@@ -2104,7 +2104,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 0,
                 goldenBackupFilePath);
 
-            auto storageInfo = CreateTestTabletInfo(
+            TTabletStorageInfoPtr storageInfo = CreateTestTabletInfo(
                 FakeTablet2,
                 TTabletTypes::BlockStorePartition);
             env.HiveState->StorageInfos[FakeTablet2] = storageInfo;
