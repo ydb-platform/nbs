@@ -210,6 +210,8 @@ void TDiskAgentActor::HandlePathsDetached(
     auto response =
         std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>(error);
     NCloud::Reply(ctx, *PendingControlPlaneRequest, std::move(response));
+
+    RestartDeviceHealthChecking(ctx);
 }
 
 void TDiskAgentActor::HandleAttachPaths(
@@ -323,6 +325,8 @@ void TDiskAgentActor::HandlePathsPrepared(
         std::make_move_iterator(deviceConfigs.end()));
 
     NCloud::Reply(ctx, *PendingControlPlaneRequest, std::move(response));
+
+    RestartDeviceHealthChecking(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
