@@ -237,6 +237,9 @@ void TIndexTabletState::LoadState(
     Impl->InMemoryIndexState->UpdateLogTag(LogTag);
 
     Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
+    Impl->AccessTracker.Reset(
+        config.GetMaxNodeDiagnosticEntries(),
+        config.GetNodeAccessCountHalfLife());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
         Impl->LargeBlocks.AddDeletionMarker(deletionMarker);
@@ -253,6 +256,17 @@ void TIndexTabletState::LoadState(
     }
 
     InitShardBalancer(config);
+}
+
+bool TIndexTabletState::UpdateAccessStats(ui64 nodeId, TInstant now)
+{
+    return Impl->AccessTracker.UpdateAccessStats(nodeId, now);
+}
+
+TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
+    TInstant now, ui32 n) const
+{
+    return Impl->AccessTracker.GetStats(now, n);
 }
 
 void TIndexTabletState::UpdateConfig(

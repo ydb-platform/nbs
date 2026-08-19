@@ -215,6 +215,10 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     Metrics->WriteData.Update(msg->Count, msg->Size, msg->Time);
+    if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
+        ReportDiagnosticStatsInsertFailed(
+            "Failed to insert access statistics into ranking");
+    }
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
@@ -451,6 +455,10 @@ void TIndexTabletActor::CompleteTx_WriteData(
             1,
             args.ByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
+
+        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+            ReportDiagnosticStatsInsertFailed();
+        }
 
         return;
     }

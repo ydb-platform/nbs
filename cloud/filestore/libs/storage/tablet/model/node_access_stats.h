@@ -51,7 +51,11 @@ private:
     TDuration HalfLife;
 
 public:
+    TNodeAccessStatsTracker();
+
     TNodeAccessStatsTracker(size_t maxEntries, TDuration halfLife);
+
+    void Reset(size_t maxEntries, TDuration halfLife);
 
     bool UpdateAccessStats(ui64 nodeId, TInstant now);
 

@@ -51,6 +51,18 @@ IActorPtr TStorageServiceActor::CreateGetStorageStatsActionActor(
         std::move(input));
 }
 
+IActorPtr TStorageServiceActor::CreateGetDiagnosticStatsActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TGetDiagnosticStatsActor = TTabletActionActor<
+        TEvIndexTablet::TEvGetDiagnosticStatsRequest,
+        TEvIndexTablet::TEvGetDiagnosticStatsResponse>;
+    return std::make_unique<TGetDiagnosticStatsActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // UnsafeNodeOps / UnsafeNodeRefOps
 

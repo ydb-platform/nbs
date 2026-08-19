@@ -450,6 +450,10 @@ public:
     [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
 
     [[nodiscard]] bool GetEnableLoadActor() const;
+
+    ui32 GetMaxNodeDiagnosticEntries() const;
+
+    TDuration GetNodeAccessCountHalfLife() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

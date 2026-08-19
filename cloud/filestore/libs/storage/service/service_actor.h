@@ -303,6 +303,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateGetDiagnosticStatsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateListLocalFileStoresActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

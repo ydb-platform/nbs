@@ -137,6 +137,7 @@ void TWriteDataActor::ReplyAndDie(
             error,
             TSet<ui32>(),
             CommitId,
+            WriteRange.NodeId,
             1,
             BlobsSize,
             ctx.Now() - RequestInfo->StartedTs,
