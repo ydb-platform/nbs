@@ -559,8 +559,7 @@ private:
     bool IsMainTablet() const;
     bool BehaveAsShard(const NProto::THeaders& headers) const;
 
-    void FillSelfStorageStats(
-        NProtoPrivate::TStorageStats* stats);
+    void FillSelfStorageStats(NProtoPrivate::TStorageStats* stats);
 
 private:
     template <typename TMethod>
