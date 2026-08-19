@@ -44,6 +44,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ERemoteMountPolicy
+{
+    None,
+    ForceBinding,
+    ForceMountAndBinding,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TEndpoint
 {
 private:
@@ -552,8 +561,7 @@ private:
 
     static TSessionConfig CreateSessionConfig(
         const NProto::TStartEndpointRequest& request,
-        bool forceRemoteMount,
-        bool forceRemoteBinding);
+        ERemoteMountPolicy remoteMountPolicy);
 
     void SwitchSessionForEndpoint(
         const TString& socketPath,
@@ -997,6 +1005,13 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             CreateCrcDigestCalculator());
     }
 
+    auto remoteMountPolicy = ERemoteMountPolicy::None;
+    if (!cellId.empty()) {
+        remoteMountPolicy = Options.TemporaryServer
+            ? ERemoteMountPolicy::ForceMountAndBinding
+            : ERemoteMountPolicy::ForceBinding;
+    }
+
     auto session = NClient::CreateSession(
         Timer,
         Scheduler,
@@ -1005,10 +1020,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         VolumeStats,
         client,
         std::move(clientConfig),
-        CreateSessionConfig(
-            request,
-            !cellId.empty() && Options.TemporaryServer,
-            !cellId.empty()));
+        CreateSessionConfig(request, remoteMountPolicy));
 
     auto switchableSession = CreateSwitchableSession(
         Logging,
@@ -1063,17 +1075,18 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
 // static
 TSessionConfig TSessionManager::CreateSessionConfig(
     const NProto::TStartEndpointRequest& request,
-    bool forceRemoteMount,
-    bool forceRemoteBinding)
+    ERemoteMountPolicy remoteMountPolicy)
 {
     TSessionConfig config;
     config.DiskId = request.GetDiskId();
     config.InstanceId = request.GetInstanceId();
     config.AccessMode = request.GetVolumeAccessMode();
-    config.MountMode = forceRemoteMount
-        ? NProto::VOLUME_MOUNT_REMOTE
-        : request.GetVolumeMountMode();
-    config.ForceRemoteBinding = forceRemoteBinding;
+    config.MountMode =
+        remoteMountPolicy == ERemoteMountPolicy::ForceMountAndBinding
+            ? NProto::VOLUME_MOUNT_REMOTE
+            : request.GetVolumeMountMode();
+    config.ForceRemoteBinding =
+        remoteMountPolicy != ERemoteMountPolicy::None;
     config.MountFlags = request.GetMountFlags();
     config.IpcType = request.GetIpcType();
     config.ClientVersionInfo = request.GetClientVersionInfo();
