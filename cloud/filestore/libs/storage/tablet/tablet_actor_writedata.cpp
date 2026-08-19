@@ -215,10 +215,8 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     Metrics->WriteData.Update(msg->Count, msg->Size, msg->Time);
-    if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
-        ReportDiagnosticStatsInsertFailed();
-    }
-    if (!UpdateLatencyStats(
+    if (!UpdateAccessStats(msg->NodeId, ctx.Now()) ||
+        !UpdateLatencyStats(
             msg->NodeId,
             EFileStoreRequest::WriteData,
             ctx.Now(),
@@ -463,11 +461,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
             args.ByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
-            ReportDiagnosticStatsInsertFailed();
-        }
-
-        if (!UpdateLatencyStats(
+        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
                 args.NodeId,
                 EFileStoreRequest::WriteData,
                 ctx.Now(),

@@ -711,10 +711,8 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
-    if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
-        ReportDiagnosticStatsInsertFailed();
-    }
-    if (!UpdateLatencyStats(
+    if (!UpdateAccessStats(msg->NodeId, ctx.Now()) ||
+        !UpdateLatencyStats(
             msg->NodeId,
             EFileStoreRequest::ReadData,
             ctx.Now(),
@@ -815,10 +813,8 @@ void TIndexTabletActor::HandleDescribeData(
             requestInfo->CallContext,
             ctx);
 
-        if (!UpdateAccessStats(nodeId, ctx.Now())) {
-            ReportDiagnosticStatsInsertFailed();
-        }
-        if (!UpdateLatencyStats(
+        if (!UpdateAccessStats(nodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
                 nodeId,
                 EFileStoreRequest::DescribeData,
                 ctx.Now(),
@@ -1092,10 +1088,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
-            ReportDiagnosticStatsInsertFailed();
-        }
-        if (!UpdateLatencyStats(
+        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
                 args.NodeId,
                 EFileStoreRequest::DescribeData,
                 ctx.Now(),
@@ -1188,11 +1182,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
-            ReportDiagnosticStatsInsertFailed();
-        }
-
-        if (!UpdateLatencyStats(
+        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
                 args.NodeId,
                 EFileStoreRequest::ReadData,
                 ctx.Now(),

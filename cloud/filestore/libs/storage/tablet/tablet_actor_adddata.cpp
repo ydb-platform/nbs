@@ -690,11 +690,8 @@ void TIndexTabletActor::HandleAddDataCompleted(
     } else {
         Metrics->AddData.Update(msg->Count, msg->Size, msg->Time);
 
-        if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
-            ReportDiagnosticStatsInsertFailed();
-        }
-
-        if (!UpdateLatencyStats(
+        if (!UpdateAccessStats(msg->NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
                 msg->NodeId,
                 EFileStoreRequest::AddData,
                 ctx.Now(),
