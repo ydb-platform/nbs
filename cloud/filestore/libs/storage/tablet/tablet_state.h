@@ -230,7 +230,6 @@ private:
     NProto::TFileSystem FileSystem;
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
-    TNodeToSessionCounters NodeToSessionCounters;
     ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
@@ -421,10 +420,7 @@ public:
         );
     }
 
-    const TNodeToSessionCounters& GetNodeToSessionCounters() const
-    {
-        return NodeToSessionCounters;
-    }
+    const TNodeToSessionCounters& GetNodeToSessionCounters() const;
 
     TMiscNodeStats GetMiscNodeStats() const;
     THandlesStats GetHandlesStats() const;
