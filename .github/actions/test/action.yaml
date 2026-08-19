@@ -83,10 +83,6 @@ inputs:
     required: false
     default: "/mnt/ya_make_tmpfs"
     description: "Mount point path for the tmpfs filesystem"
-  ya_registry_endpoint:
-    required: false
-    default: "https://devtools-registry.s3.yandex.net"
-    description: "Ya tool mirror endpoint"
 outputs:
   failed_tests:
     description: "List of failed tests"
@@ -163,7 +159,6 @@ runs:
       id: check_test_results
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
-        YA_REGISTRY_ENDPOINT: ${{ inputs.ya_registry_endpoint }}
         NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
         TEST_TIMEOUT_MINUTES: ${{ inputs.test_timeout_minutes }}
         TEST_BUDGET_MINUTES: ${{ inputs.test_budget_minutes }}

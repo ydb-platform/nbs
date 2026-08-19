@@ -32,7 +32,7 @@ def add_stage_start_to_environ(stage_name):
 RETRIES = 5
 HASH_PREFIX = 10
 
-REGISTRY_ENDPOINT = os.environ.get("YA_REGISTRY_ENDPOINT", "https://devtools-registry.s3.yandex.net")
+REGISTRY_ENDPOINT = os.environ.get("YA_REGISTRY_ENDPOINT", "https://storage.eu-north2.nebius.cloud/nbs-yatool-resources")
 
 # Please do not change this dict, it is updated automatically
 # Start of mapping
