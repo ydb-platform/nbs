@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
@@ -88,7 +89,7 @@ func (t *s3TokenAuthTransport) RoundTrip(
 	}
 
 	request = request.Clone(request.Context())
-	request.Header.Set("Authorization", "Bearer "+token)
+	headers.SetAuthorizationHeader(request.Header, token)
 
 	return t.inner.RoundTrip(request)
 }
