@@ -578,9 +578,7 @@ bool TReadBlocksActor::VerifyChecksums(
             batch.Requests[i],
             batch.BlobOffsets[i],
             batch.Checksums[i],
-            VolumeLabels->DiskId,
-            VolumeLabels->CloudId,
-            VolumeLabels->FolderId);
+            VolumeLabels);
 
         if (HasError(error)) {
             HandleError(ctx, error);

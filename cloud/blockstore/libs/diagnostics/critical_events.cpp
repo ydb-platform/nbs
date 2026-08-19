@@ -360,16 +360,20 @@ void ResetVolumeCriticalEventsCounter()
             const TCritEventParams& keyValues)                                 \
         {                                                                      \
             TString retMessage;                                                \
-            TString submsg =                                                   \
-                ComposeMessageWithSuffix(message, PrintParams(keyValues));     \
                                                                                \
-            /* Keep legacy AppCriticalEvents/ metrics alive */                 \
+            /* Keep per-host AppCriticalEvents/ metrics alive */               \
             if (VolumeCriticalEventsReportingMode !=                           \
                 NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY)       \
             {                                                                  \
+                TString params =                                               \
+                    diskId.empty()                                             \
+                        ? PrintParams(keyValues)                               \
+                        : PrintParams(TCritEventParams{{"disk", diskId}}) +    \
+                              " " + PrintParams(keyValues);                    \
+                                                                               \
                 retMessage = ReportCriticalEvent(                              \
                     GetAppCriticalEventFor##name(),                            \
-                    submsg,                                                    \
+                    ComposeMessageWithSuffix(message, params),                 \
                     /*verifyDebug=*/false);                                    \
             }                                                                  \
                                                                                \
@@ -379,20 +383,28 @@ void ResetVolumeCriticalEventsCounter()
                 return retMessage;                                             \
             }                                                                  \
                                                                                \
+            TString msg =                                                      \
+                ComposeMessageWithSuffix(message, PrintParams(keyValues));     \
+                                                                               \
             auto prefix = TCritEventParams{                                    \
                 {"disk", diskId.empty() ? "<empty>" : diskId},                 \
                 {"cloud", cloudId.empty() ? "<empty>" : cloudId},              \
                 {"folder", folderId.empty() ? "<empty>" : folderId}};          \
                                                                                \
             TString logMessage =                                               \
-                !submsg.empty()                                                \
-                    ? ComposeMessageWithSuffix(PrintParams(prefix), submsg)    \
+                !msg.empty()                                                   \
+                    ? ComposeMessageWithSuffix(PrintParams(prefix), msg)       \
                     : PrintParams(prefix);                                     \
                                                                                \
             /* Log immediately */                                              \
             retMessage = LogCriticalEvent(                                     \
                 GetVolumeCriticalEventFor##name(),                             \
                 logMessage);                                                   \
+                                                                               \
+            if (diskId.empty()) {                                              \
+                /* No metric creation for empty disk id */                     \
+                return retMessage;                                             \
+            }                                                                  \
                                                                                \
             auto key = TVolumeCriticalEventKey{                                \
                 .Event = GetVolumeCriticalEventFor##name(),                    \

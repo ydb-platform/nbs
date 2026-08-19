@@ -133,12 +133,9 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
             << " reason: " << msg->GetError().GetMessage().Quote());
 
         ReportInitFreshBlocksError(
-            PartitionConfig.GetDiskId(),
-            PartitionConfig.GetCloudId(),
-            PartitionConfig.GetFolderId(),
-            TStringBuilder()
-            << "[" << TabletID()
-            << "] LoadFreshBlobs failed: " << msg->GetStatus());
+            VolumeLabels,
+            TStringBuilder() << "[" << TabletID() << "] LoadFreshBlobs failed: "
+                             << msg->GetStatus());
         Suicide(ctx);
         return;
     }
@@ -169,12 +166,10 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
                 << FormatError(error));
 
             ReportInitFreshBlocksError(
-                PartitionConfig.GetDiskId(),
-                PartitionConfig.GetCloudId(),
-                PartitionConfig.GetFolderId(),
+                VolumeLabels,
                 TStringBuilder()
-                << "[" << TabletID() << "] Failed to parse fresh blob "
-                << "(blob commitId: " << blob.CommitId << ")");
+                    << "[" << TabletID() << "] Failed to parse fresh blob "
+                    << "(blob commitId: " << blob.CommitId << ")");
             Suicide(ctx);
             return;
         }

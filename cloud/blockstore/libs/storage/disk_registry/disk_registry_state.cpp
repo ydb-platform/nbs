@@ -1387,6 +1387,23 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
     return {};
 }
 
+const TDiskRegistryState::TDiskState&
+TDiskRegistryState::GetMirroredDiskLabelsSource(
+    const TDiskId& masterDiskId,
+    const TDiskId& replicaDiskId) const
+{
+    if (const auto* masterDisk = Disks.FindPtr(masterDiskId)) {
+        return *masterDisk;
+    }
+
+    if (const auto* replicaDisk = Disks.FindPtr(replicaDiskId)) {
+        return *replicaDisk;
+    }
+
+    static const TDiskState emptyDisk;
+    return emptyDisk;
+}
+
 void TDiskRegistryState::TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
     TDiskRegistryDatabase& db,
     TDiskState& disk,
@@ -1417,10 +1434,12 @@ void TDiskRegistryState::TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
         false);   // manual
 
     if (HasError(error)) {
+        const auto& labelsSource =
+            GetMirroredDiskLabelsSource(disk.MasterDiskId, diskId);
         ReportMirroredDiskDeviceReplacementFailure(
             disk.MasterDiskId ? disk.MasterDiskId : diskId,
-            disk.CloudId,
-            disk.FolderId,
+            labelsSource.CloudId,
+            labelsSource.FolderId,
             FormatError(error),
             {{"replica", diskId}, {"device", deviceId}});
     }
@@ -7981,13 +8000,12 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
         StorageConfig->GetMaxAutomaticDeviceReplacementsPerHour();
 
     if (rateLimit && rateLimit <= AutomaticReplacementTimestamps.size()) {
-        const auto* masterDisk = Disks.FindPtr(masterDiskId);
-        const TString& cloudId = masterDisk ? masterDisk->CloudId : TString();
-        const TString& folderId = masterDisk ? masterDisk->FolderId : TString();
+        const auto& labelsSource =
+            GetMirroredDiskLabelsSource(masterDiskId, replicaDiskId);
         ReportMirroredDiskDeviceReplacementRateLimitExceeded(
             masterDiskId,
-            cloudId,
-            folderId,
+            labelsSource.CloudId,
+            labelsSource.FolderId,
             {{"replica", replicaDiskId}, {"device", deviceId}});
         return false;
     }
@@ -7997,13 +8015,12 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
         deviceId);
 
     if (!canReplaceDevice) {
-        const auto* masterDisk = Disks.FindPtr(masterDiskId);
-        const TString& cloudId = masterDisk ? masterDisk->CloudId : TString();
-        const TString& folderId = masterDisk ? masterDisk->FolderId : TString();
+        const auto& labelsSource =
+            GetMirroredDiskLabelsSource(masterDiskId, replicaDiskId);
         ReportMirroredDiskDeviceReplacementForbidden(
             masterDiskId,
-            cloudId,
-            folderId,
+            labelsSource.CloudId,
+            labelsSource.FolderId,
             {{"replica", replicaDiskId}, {"device", deviceId}});
         return false;
     }

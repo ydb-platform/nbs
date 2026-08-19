@@ -345,11 +345,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
-        PartitionConfig.GetDiskId(),
-        PartitionConfig.GetCloudId(),
-        PartitionConfig.GetFolderId(),
-        {{"tablet_id", TabletID()},
-         {"channels", sb}});
+        VolumeLabels,
+        "Reassign request sent",
+        TCritEventParams{{"tablet_id", TabletID()}, {"channels", sb}});
     ReassignRequestSentTs = ctx.Now();
 }
 
@@ -1454,6 +1452,25 @@ NProto::TError VerifyBlockChecksum(
     }
 
     return {};
+}
+
+NProto::TError VerifyBlockChecksum(
+    const ui32 actualChecksum,
+    const NKikimr::TLogoBlobID& blobID,
+    const ui64 blockIndex,
+    const ui16 blobOffset,
+    const ui32 expectedChecksum,
+    const TVolumeLabelsConstPtr& volumeLabels)
+{
+    return VerifyBlockChecksum(
+        actualChecksum,
+        blobID,
+        blockIndex,
+        blobOffset,
+        expectedChecksum,
+        volumeLabels->DiskId,
+        volumeLabels->CloudId,
+        volumeLabels->FolderId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

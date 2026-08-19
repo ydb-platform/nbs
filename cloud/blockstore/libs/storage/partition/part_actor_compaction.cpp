@@ -384,9 +384,7 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
                 r->BlockIndex,
                 r->BlobOffset,
                 expectedChecksum,
-                VolumeLabels->DiskId,
-                VolumeLabels->CloudId,
-                VolumeLabels->FolderId);
+                VolumeLabels);
 
             if (HasError(error)) {
                 return error;

@@ -1418,6 +1418,10 @@ private:
         TString message,
         bool manual);
 
+    const TDiskState& GetMirroredDiskLabelsSource(
+        const TDiskId& masterDiskId,
+        const TDiskId& replicaDiskId) const;
+
     void TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
         TDiskRegistryDatabase& db,
         TDiskState& disk,
