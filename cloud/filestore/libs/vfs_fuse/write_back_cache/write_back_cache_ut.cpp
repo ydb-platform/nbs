@@ -2539,6 +2539,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         TShouldMaintainVisibilityOrderWhenFlushWritesInParallelDisabledTest b;
 
+        // In this test scenario, numerous reads and writes are executed.
+        // Each of them is logged - this consumes a lot of CPU and may result in
+        // test failure due to timeout.
+        b.Log.CloseLog();
+
         // Test 1: write 'X' in forward order
 
         std::thread writerThread1([&]() { b.Write(true, 'X'); });
