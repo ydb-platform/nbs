@@ -48,6 +48,8 @@ struct TClientConfig
     ui8 QpRnrRetryCount = 7;
     ui8 QpTimeout = 0;
     ui8 QpMinRnrTimer = 0;
+    bool UseMemoryWindows = false;
+    ui32 MemoryWindowsPoolSize = 0;
 
     TClientConfig();
 
