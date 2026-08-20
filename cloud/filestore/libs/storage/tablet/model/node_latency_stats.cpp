@@ -28,6 +28,8 @@ void TNodeLatencyStatsTracker::Reset(size_t maxEntries, TDuration decayHalfLife)
         maxEntries,
         TNodeLatencyStatsComparator{decayHalfLife},
         TLatencyKeyExtractor{});
+
+    DecayHalfLife = decayHalfLife;
 }
 
 bool TNodeLatencyStatsTracker::TNodeLatencyStatsComparator::operator()(
