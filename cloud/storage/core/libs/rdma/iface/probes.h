@@ -63,6 +63,42 @@
         GROUPS("StorageRequest"),                                              \
         TYPES(),                                                               \
         NAMES())                                                               \
+    PROBE(BindInBufferStarted,                                                 \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(BindInBufferCompleted,                                               \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(BindOutBufferStarted,                                                \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(BindOutBufferCompleted,                                              \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(RequestQueuedForInvalidation,                                        \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(InvalidateInBufferStarted,                                           \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(InvalidateInBufferCompleted,                                         \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(InvalidateOutBufferStarted,                                          \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
+    PROBE(InvalidateOutBufferCompleted,                                        \
+        GROUPS("StorageRequest"),                                              \
+        TYPES(ui64),                                                           \
+        NAMES("requestId"))                                                    \
 // STORAGE_RDMA_PROVIDER
 
 LWTRACE_DECLARE_PROVIDER(STORAGE_RDMA_PROVIDER)
