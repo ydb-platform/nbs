@@ -355,6 +355,63 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         }
     }
 
+    Y_UNIT_TEST(ShouldTransferFileUsageOnRenameAcrossQuotas)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.SetQuota(1, 1_GB, 100);
+        tablet.SetQuota(2, 1_GB, 100);
+
+        auto dir1Id =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir1"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dir1Id).SetQuotaId(1));
+
+        auto dir2Id =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir2"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dir2Id).SetQuotaId(2));
+
+        auto fileId = CreateNode(tablet, TCreateNodeArgs::File(dir1Id, "file"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(fileId).SetSize(100));
+
+        auto usageByQuotaId = [&] {
+            THashMap<ui32, NProtoPrivate::TQuotaUsage> result;
+            auto response = tablet.ListQuotas();
+            for (const auto& usage: response->Record.GetUsages()) {
+                result[usage.GetQuotaId()] = usage;
+            }
+            return result;
+        };
+
+        // before the move: quota 1 has its own attach point (dir1) plus the
+        // file; quota 2 only has its own attach point (dir2)
+        {
+            auto usages = usageByQuotaId();
+            UNIT_ASSERT_VALUES_EQUAL(2u, usages[1].GetUsedNodes());
+            UNIT_ASSERT_VALUES_EQUAL(100u, usages[1].GetUsedBytes());
+            UNIT_ASSERT_VALUES_EQUAL(1u, usages[2].GetUsedNodes());
+            UNIT_ASSERT_VALUES_EQUAL(0u, usages[2].GetUsedBytes());
+        }
+
+        tablet.RenameNode(dir1Id, "file", dir2Id, "file");
+
+        // after the move: the file's usage has fully transferred from quota
+        // 1 to quota 2, leaving each quota with just its own attach point
+        // plus whatever it's actually responsible for now
+        {
+            auto usages = usageByQuotaId();
+            UNIT_ASSERT_VALUES_EQUAL(1u, usages[1].GetUsedNodes());
+            UNIT_ASSERT_VALUES_EQUAL(0u, usages[1].GetUsedBytes());
+            UNIT_ASSERT_VALUES_EQUAL(2u, usages[2].GetUsedNodes());
+            UNIT_ASSERT_VALUES_EQUAL(100u, usages[2].GetUsedBytes());
+        }
+    }
+
     Y_UNIT_TEST(ShouldRejectMarkingWithDifferentExistingQuotaId)
     {
         TTestEnv env;
