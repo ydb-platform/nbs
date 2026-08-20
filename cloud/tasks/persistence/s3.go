@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -12,13 +14,22 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/client"
 	aws_credentials "github.com/aws/aws-sdk-go/aws/credentials"
+	aws_endpoints "github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+const (
+	s3ErrCodeQuotaLimitExceeded = "QuotaLimitExceeded"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -42,15 +53,54 @@ func (r *s3ClientRetryer) RetryRules(req *request.Request) time.Duration {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type s3TokenAuthTransport struct {
+	inner         http.RoundTripper
+	host          string
+	tokenProvider credentials.Credentials
+}
+
+func newS3TokenAuthHTTPClient(
+	host string,
+	tokenProvider credentials.Credentials,
+) *http.Client {
+
+	return &http.Client{
+		Transport: &s3TokenAuthTransport{
+			inner:         http.DefaultTransport,
+			host:          host,
+			tokenProvider: tokenProvider,
+		},
+	}
+}
+
+func (t *s3TokenAuthTransport) RoundTrip(
+	request *http.Request,
+) (*http.Response, error) {
+
+	// Do not set Authorization header for http.
+	// Do not set Authorization header for redirects.
+	if request.URL.Scheme != "https" || request.URL.Host != t.host {
+		return t.inner.RoundTrip(request)
+	}
+
+	token, err := t.tokenProvider.Token(request.Context())
+	if err != nil {
+		return nil, err
+	}
+
+	request = request.Clone(request.Context())
+	headers.SetAuthorizationHeader(request.Header, token)
+
+	return t.inner.RoundTrip(request)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type S3Client struct {
 	s3          *aws_s3.S3
 	callTimeout time.Duration
 	metrics     *s3Metrics
 }
-
-const (
-	s3ErrCodeQuotaLimitExceeded = "QuotaLimitExceeded"
-)
 
 func NewS3Client(
 	endpoint string,
@@ -60,6 +110,7 @@ func NewS3Client(
 	registry metrics.Registry,
 	maxRetriableErrorCount uint64,
 	availabilityMonitoring *AvailabilityMonitoring,
+	tokenProvider credentials.Credentials,
 ) (*S3Client, error) {
 
 	s3Metrics := newS3Metrics(
@@ -84,6 +135,20 @@ func NewS3Client(
 			metrics: s3Metrics,
 		},
 	}
+	if tokenProvider != nil {
+		endpointURL, err := url.Parse(aws_endpoints.AddScheme(endpoint, false))
+		if err != nil {
+			return nil, errors.NewNonRetriableErrorf(
+				"failed to parse S3 endpoint: %w",
+				err,
+			)
+		}
+
+		sessionConfig.HTTPClient = newS3TokenAuthHTTPClient(
+			endpointURL.Host,
+			tokenProvider,
+		)
+	}
 
 	session, err := session.NewSession(sessionConfig)
 	if err != nil {
@@ -101,9 +166,10 @@ func NewS3ClientFromConfig(
 	config *persistence_config.S3Config,
 	registry metrics.Registry,
 	availabilityMonitoring *AvailabilityMonitoring,
+	tokenProvider credentials.Credentials,
 ) (*S3Client, error) {
 
-	credentials, err := NewS3CredentialsFromFile(config.GetCredentialsFilePath())
+	credentials, err := newS3CredentialsFromConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +182,14 @@ func NewS3ClientFromConfig(
 		)
 	}
 
+	if !config.GetUseIamToken() {
+		tokenProvider = nil
+	} else if tokenProvider == nil {
+		return nil, errors.NewNonRetriableErrorf(
+			"S3 IAM token authorization is enabled, but token provider is not configured",
+		)
+	}
+
 	return NewS3Client(
 		config.GetEndpoint(),
 		config.GetRegion(),
@@ -124,7 +198,34 @@ func NewS3ClientFromConfig(
 		registry,
 		config.GetMaxRetriableErrorCount(),
 		availabilityMonitoring,
+		tokenProvider,
 	)
+}
+
+func newS3CredentialsFromConfig(
+	config *persistence_config.S3Config,
+) (S3Credentials, error) {
+
+	credentialsFilePath := config.GetCredentialsFilePath()
+	if config.GetUseIamToken() {
+		if len(credentialsFilePath) != 0 {
+			return S3Credentials{}, errors.NewNonRetriableErrorf(
+				"S3 IAM token authorization and credentials file path are mutually exclusive",
+			)
+		}
+
+		// AWS SDK v1 still expects credentials for signing; the transport
+		// replaces the Authorization header with the IAM bearer token.
+		return NewS3Credentials("iam-token", "iam-token"), nil
+	}
+
+	if len(credentialsFilePath) == 0 {
+		return S3Credentials{}, errors.NewNonRetriableErrorf(
+			"either S3 IAM token authorization or credentials file path must be configured",
+		)
+	}
+
+	return NewS3CredentialsFromFile(credentialsFilePath)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

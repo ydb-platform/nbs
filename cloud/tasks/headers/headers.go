@@ -2,9 +2,24 @@ package headers
 
 import (
 	"context"
+	"net/http"
+	"strings"
 
 	grpc_metadata "google.golang.org/grpc/metadata"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+const tokenPrefix = "Bearer "
+
+func SetAuthorizationHeader(header http.Header, token string) {
+	// Some credentials add "Bearer " prefix to the token, add prefix otherwise.
+	if !strings.HasPrefix(token, tokenPrefix) {
+		token = tokenPrefix + token
+	}
+
+	header.Set("Authorization", token)
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

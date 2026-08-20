@@ -2,10 +2,40 @@ package headers
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestSetAuthorizationHeader(t *testing.T) {
+	tests := []struct {
+		name     string
+		token    string
+		expected string
+	}{
+		{
+			name:     "raw token",
+			token:    "test-token",
+			expected: "Bearer test-token",
+		},
+		{
+			name:     "prefixed token",
+			token:    "Bearer test-token",
+			expected: "Bearer test-token",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			header := http.Header{}
+			SetAuthorizationHeader(header, test.token)
+			require.Equal(t, test.expected, header.Get("Authorization"))
+		})
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
