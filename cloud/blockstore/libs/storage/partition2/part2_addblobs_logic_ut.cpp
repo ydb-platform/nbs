@@ -480,6 +480,173 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
                                          cleanupQueue[0].CommitId);
             });
     }
+
+    Y_UNIT_TEST(ShouldPersistLevelIndexStateWithPromoteCompactionResult)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        const ui64 initialCommitId = MakeCommitId(0, 10);
+        const ui64 promoteCommitId = MakeCommitId(0, 20);
+        const ui64 concurrentCommitId = MakeCommitId(0, 30);
+
+        state.InitFreshBlocks({
+            {{1, initialCommitId, false}, "one", {}},
+            {{2, initialCommitId, false}, "two", {}},
+            {{3, concurrentCommitId, false}, "three", {}},
+        });
+        state.IncrementUnflushedFreshBlocksFromChannelCount(3);
+
+        const auto initialBlobId = TPartialBlobId(
+            0,
+            10,
+            0,
+            2 * DefaultBlockSize,
+            0,
+            0);
+        auto initialArgs = MakeArgs(
+            initialCommitId,
+            {},
+            {},
+            {},
+            {{initialBlobId,
+              {1, 2},
+              {initialCommitId, initialCommitId},
+              {11, 22}}},
+            ADD_FLUSH_RESULT);
+        RunExecute(executor, state, initialArgs, MakeCommitId(0, 50));
+
+        auto& compactionMapL0 = state.GetCompactionMapL0();
+        compactionMapL0.CompactionStarted({0}, promoteCommitId);
+        state.GetBlocksFilterL0().UpdateCompactionBaselineCommitId(
+            promoteCommitId,
+            initialCommitId + 1);
+
+        const auto concurrentBlobId = TPartialBlobId(
+            0,
+            30,
+            0,
+            DefaultBlockSize,
+            1,
+            0);
+        auto concurrentArgs = MakeArgs(
+            concurrentCommitId,
+            {},
+            {},
+            {},
+            {{concurrentBlobId,
+              {3},
+              {concurrentCommitId},
+              {33}}},
+            ADD_FLUSH_RESULT);
+        RunExecute(executor, state, concurrentArgs, MakeCommitId(0, 50));
+
+        const auto promotedBlobId = TPartialBlobId(
+            0,
+            20,
+            0,
+            2 * DefaultBlockSize,
+            2,
+            0);
+        TTxPartition::TAddBlobs promoteArgs(
+            MakeIntrusive<TRequestInfo>(),
+            promoteCommitId,
+            {},   // mixedBlobs
+            {},   // mergedBlobs
+            {},   // freshBlobs
+            {},   // l0Blobs
+            {{promotedBlobId,
+              {1, 2},
+              {initialCommitId, initialCommitId},
+              {11, 22}}},
+            ADD_PROMOTE_COMPACTION_RESULT,
+            {},   // affectedBlobs
+            {},   // affectedBlocks
+            {},   // mixedBlobCompactionInfos
+            {},   // mergedBlobCompactionInfos
+            EPromoteCompactionSource::L0);
+        RunExecute(executor, state, promoteArgs, MakeCommitId(0, 50));
+
+        UNIT_ASSERT(compactionMapL0.GetCompactions().empty());
+        const auto l0Stat = compactionMapL0.GetCompactionMap().Get(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, l0Stat.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, l0Stat.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, l0Stat.UsedBlockCount);
+
+        const auto& filterL0 = state.GetBlocksFilterL0();
+        const auto baselineCommitId =
+            filterL0.GetRangeBaselineCommitId(0);
+        UNIT_ASSERT(baselineCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(initialCommitId + 1, *baselineCommitId);
+        UNIT_ASSERT(!filterL0.MayHaveBlocksInMixedIndex(
+            TBlockRange32::MakeOneBlock(1),
+            *baselineCommitId));
+        UNIT_ASSERT(filterL0.MayHaveBlocksInMixedIndex(
+            TBlockRange32::MakeOneBlock(3),
+            *baselineCommitId));
+
+        const auto l1Stat =
+            state.GetCompactionMapL1().GetCompactionMap().Get(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, l1Stat.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, l1Stat.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, l1Stat.UsedBlockCount);
+
+        TVector<TLevelIndexRangeState> ranges;
+        TCompressedBitmap persistedFilterL0(state.GetBlocksCount());
+        TCompressedBitmap persistedFilterL1(state.GetBlocksCount());
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(db.ReadLevelIndexState(
+                    ranges,
+                    persistedFilterL0,
+                    persistedFilterL1));
+            });
+
+        auto restoredState = MakeState();
+        restoredState.GetBlocksFilterL0().SetBlocksFilter(
+            std::move(persistedFilterL0));
+        restoredState.GetBlocksFilterL1().SetBlocksFilter(
+            std::move(persistedFilterL1));
+        for (const auto& range: ranges) {
+            auto& restoredFilter = range.Level == ELevelIndex::L0
+                                       ? restoredState.GetBlocksFilterL0()
+                                       : restoredState.GetBlocksFilterL1();
+            auto& restoredMap = range.Level == ELevelIndex::L0
+                                    ? restoredState.GetCompactionMapL0()
+                                    : restoredState.GetCompactionMapL1();
+            if (range.BlocksFilterBaselineCommitId) {
+                restoredFilter.SetRangeBaselineCommitId(
+                    range.RangeIndex,
+                    *range.BlocksFilterBaselineCommitId);
+            }
+            restoredMap.LoadRange(
+                range.RangeIndex,
+                range.BlobCount,
+                range.BlockCount);
+        }
+
+        const auto restoredL0Stat =
+            restoredState.GetCompactionMapL0().GetCompactionMap().Get(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, restoredL0Stat.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, restoredL0Stat.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, restoredL0Stat.UsedBlockCount);
+        UNIT_ASSERT(!restoredState.GetBlocksFilterL0()
+                         .MayHaveBlocksInMixedIndex(
+                             TBlockRange32::MakeOneBlock(1),
+                             *baselineCommitId));
+        UNIT_ASSERT(restoredState.GetBlocksFilterL0()
+                        .MayHaveBlocksInMixedIndex(
+                            TBlockRange32::MakeOneBlock(3),
+                            *baselineCommitId));
+
+        const auto restoredL1Stat =
+            restoredState.GetCompactionMapL1().GetCompactionMap().Get(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, restoredL1Stat.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, restoredL1Stat.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, restoredL1Stat.UsedBlockCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

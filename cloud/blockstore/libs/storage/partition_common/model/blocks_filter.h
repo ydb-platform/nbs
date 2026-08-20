@@ -131,6 +131,16 @@ public:
 
     std::optional<ui64> GetRangeBaselineCommitId(ui32 rangeIndex) const;
 
+    /** Restores the persistent bitmap during tablet startup. */
+    void SetBlocksFilter(TCompressedBitmap blocksFilter);
+
+    /** Restores a persistent range baseline during tablet startup. */
+    void SetRangeBaselineCommitId(ui32 rangeIndex, ui64 baselineCommitId);
+
+    /** Serializes all bitmap chunks intersecting [begin, end). */
+    TCompressedBitmap::TRangeSerializer RangeSerializer(ui64 begin,
+                                                        ui64 end) const;
+
     /**
      * Returns the memory allocated for the bitmap and range baselines.
      * Transient in-flight compaction state is intentionally excluded.

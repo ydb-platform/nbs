@@ -1398,6 +1398,87 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCorrectlyWriteAndReadLevelIndexState)
+    {
+        constexpr ui32 BlockCount = 3 * TCompressedBitmap::CHUNK_SIZE;
+
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        TCompressedBitmap blocksFilterL0(BlockCount);
+        blocksFilterL0.Set(1, 2);
+        blocksFilterL0.Set(TCompressedBitmap::CHUNK_SIZE + 1,
+                           TCompressedBitmap::CHUNK_SIZE + 2);
+
+        TCompressedBitmap blocksFilterL1(BlockCount);
+        blocksFilterL1.Set(2, 3);
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                db.WriteLevelIndexRange(
+                    ELevelIndex::L0,
+                    0,
+                    2,
+                    3,
+                    42);
+                db.WriteLevelIndexRange(
+                    ELevelIndex::L1,
+                    1,
+                    4,
+                    5,
+                    std::nullopt);
+
+                for (const auto& [level, blocksFilter]: {
+                         std::pair{ELevelIndex::L0, &blocksFilterL0},
+                         std::pair{ELevelIndex::L1, &blocksFilterL1}})
+                {
+                    auto serializer =
+                        blocksFilter->RangeSerializer(0, BlockCount);
+                    TCompressedBitmap::TSerializedChunk chunk;
+                    while (serializer.Next(&chunk)) {
+                        if (!TCompressedBitmap::IsZeroChunk(chunk)) {
+                            db.WriteLevelIndexBlocksFilter(level, chunk);
+                        }
+                    }
+                }
+            });
+
+        TVector<TLevelIndexRangeState> ranges;
+        TCompressedBitmap loadedBlocksFilterL0(BlockCount);
+        TCompressedBitmap loadedBlocksFilterL1(BlockCount);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(db.ReadLevelIndexState(
+                    ranges,
+                    loadedBlocksFilterL0,
+                    loadedBlocksFilterL1));
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges.size());
+        UNIT_ASSERT(ranges[0].Level == ELevelIndex::L0);
+        UNIT_ASSERT_VALUES_EQUAL(0, ranges[0].RangeIndex);
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[0].BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, ranges[0].BlockCount);
+        UNIT_ASSERT(ranges[0].BlocksFilterBaselineCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            42,
+            *ranges[0].BlocksFilterBaselineCommitId);
+        UNIT_ASSERT(ranges[1].Level == ELevelIndex::L1);
+        UNIT_ASSERT_VALUES_EQUAL(1, ranges[1].RangeIndex);
+        UNIT_ASSERT_VALUES_EQUAL(4, ranges[1].BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(5, ranges[1].BlockCount);
+        UNIT_ASSERT(!ranges[1].BlocksFilterBaselineCommitId);
+
+        UNIT_ASSERT(loadedBlocksFilterL0.Test(1));
+        UNIT_ASSERT(loadedBlocksFilterL0.Test(
+            TCompressedBitmap::CHUNK_SIZE + 1));
+        UNIT_ASSERT(!loadedBlocksFilterL0.Test(2));
+        UNIT_ASSERT(loadedBlocksFilterL1.Test(2));
+        UNIT_ASSERT(!loadedBlocksFilterL1.Test(1));
+    }
+
     Y_UNIT_TEST(ShouldFindRangesForMergedBlobs)
     {
         TTestExecutor executor;

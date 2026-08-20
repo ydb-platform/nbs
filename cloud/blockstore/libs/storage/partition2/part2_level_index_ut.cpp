@@ -650,6 +650,11 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         UNIT_ASSERT_VALUES_EQUAL(0, l0PromoteCompletedCount);
         UNIT_ASSERT_VALUES_EQUAL(0, l1PromoteCompletedCount);
 
+        // The fourth used block must trigger promotion using the three
+        // counters restored from the local DB.
+        partition.RebootTablet();
+        partition.WaitReady();
+
         partition.WriteBlocks(L1RangeBlockCount + 1, 'b');
         partition.Flush();
 
@@ -657,6 +662,12 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(1, l0PromoteCompletedCount);
         UNIT_ASSERT_VALUES_EQUAL(0, l1PromoteCompletedCount);
+
+        // Restore the completed L0 range and the L1 result. The next L0
+        // promotion must start from an empty L0 range and add to the existing
+        // L1 filter and compaction counters.
+        partition.RebootTablet();
+        partition.WaitReady();
 
         partition.WriteBlocks(2, 'c');
         partition.WriteBlocks(3, 'c');

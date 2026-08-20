@@ -1505,6 +1505,134 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCompactionMap(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteLevelIndexRange(
+    ELevelIndex level,
+    ui32 rangeIndex,
+    ui32 blobCount,
+    ui32 blockCount,
+    std::optional<ui64> blocksFilterBaselineCommitId)
+{
+    using TTable = TPartitionSchema::LevelIndexRanges;
+
+    Table<TTable>()
+        .Key(static_cast<ui32>(level), rangeIndex)
+        .Update(NIceDb::TUpdate<TTable::BlobCount>(blobCount))
+        .Update(NIceDb::TUpdate<TTable::BlockCount>(blockCount));
+
+    if (blocksFilterBaselineCommitId) {
+        Table<TTable>()
+            .Key(static_cast<ui32>(level), rangeIndex)
+            .Update(NIceDb::TUpdate<TTable::BlocksFilterBaselineCommitId>(
+                *blocksFilterBaselineCommitId));
+    }
+}
+
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteLevelIndexBlocksFilter(
+    ELevelIndex level,
+    const TCompressedBitmap::TSerializedChunk& chunk)
+{
+    using TTable = TPartitionSchema::LevelIndexBlocksFilter;
+
+    Table<TTable>()
+        .Key(static_cast<ui32>(level), chunk.ChunkIdx)
+        .Update(NIceDb::TUpdate<TTable::Bitmap>(chunk.Data));
+}
+
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::DeleteLevelIndexBlocksFilter(
+    ELevelIndex level,
+    ui32 chunkIndex)
+{
+    using TTable = TPartitionSchema::LevelIndexBlocksFilter;
+
+    Table<TTable>()
+        .Key(static_cast<ui32>(level), chunkIndex)
+        .Delete();
+}
+
+template <typename TCounters>
+bool TPartitionDatabaseImpl<TCounters>::ReadLevelIndexState(
+    TVector<TLevelIndexRangeState>& ranges,
+    TCompressedBitmap& blocksFilterL0,
+    TCompressedBitmap& blocksFilterL1)
+{
+    using TRangesTable = TPartitionSchema::LevelIndexRanges;
+
+    auto rangesIt = Table<TRangesTable>().Range().Select();
+    if (!rangesIt.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (rangesIt.IsValid()) {
+        const ui32 levelValue =
+            rangesIt.template GetValue<TRangesTable::Level>();
+        Y_ABORT_UNLESS(
+            levelValue == static_cast<ui32>(ELevelIndex::L0) ||
+            levelValue == static_cast<ui32>(ELevelIndex::L1));
+
+        std::optional<ui64> baselineCommitId;
+        if (rangesIt.template HaveValue<
+                TRangesTable::BlocksFilterBaselineCommitId>())
+        {
+            baselineCommitId = rangesIt.template GetValue<
+                TRangesTable::BlocksFilterBaselineCommitId>();
+        }
+
+        ranges.push_back({
+            .Level = static_cast<ELevelIndex>(levelValue),
+            .RangeIndex =
+                rangesIt.template GetValue<TRangesTable::RangeIndex>(),
+            .BlobCount =
+                rangesIt.template GetValue<TRangesTable::BlobCount>(),
+            .BlockCount =
+                rangesIt.template GetValue<TRangesTable::BlockCount>(),
+            .BlocksFilterBaselineCommitId = baselineCommitId,
+        });
+
+        if (!rangesIt.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    using TFilterTable = TPartitionSchema::LevelIndexBlocksFilter;
+
+    auto filterIt = Table<TFilterTable>().Range().Select();
+    if (!filterIt.IsReady()) {
+        return false;   // not ready
+    }
+
+    while (filterIt.IsValid()) {
+        const ui32 levelValue =
+            filterIt.template GetValue<TFilterTable::Level>();
+        TCompressedBitmap* blocksFilter = nullptr;
+        switch (static_cast<ELevelIndex>(levelValue)) {
+            case ELevelIndex::L0:
+                blocksFilter = &blocksFilterL0;
+                break;
+            case ELevelIndex::L1:
+                blocksFilter = &blocksFilterL1;
+                break;
+            default:
+                Y_ABORT("Unexpected level index: %u", levelValue);
+        }
+
+        blocksFilter->Update({
+            filterIt.template GetValue<TFilterTable::ChunkIndex>(),
+            filterIt.template GetValue<TFilterTable::Bitmap>(),
+        });
+
+        if (!filterIt.Next()) {
+            return false;   // not ready
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteUsedBlocks(
     const TCompressedBitmap::TSerializedChunk& chunk)
 {

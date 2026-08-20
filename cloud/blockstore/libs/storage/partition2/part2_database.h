@@ -277,6 +277,28 @@ public:
         TVector<TCompactionCounter>& compactionMap);
 
     //
+    // LevelIndexState
+    //
+
+    void WriteLevelIndexRange(
+        ELevelIndex level,
+        ui32 rangeIndex,
+        ui32 blobCount,
+        ui32 blockCount,
+        std::optional<ui64> blocksFilterBaselineCommitId);
+
+    void WriteLevelIndexBlocksFilter(
+        ELevelIndex level,
+        const TCompressedBitmap::TSerializedChunk& chunk);
+
+    void DeleteLevelIndexBlocksFilter(ELevelIndex level, ui32 chunkIndex);
+
+    bool ReadLevelIndexState(
+        TVector<TLevelIndexRangeState>& ranges,
+        TCompressedBitmap& blocksFilterL0,
+        TCompressedBitmap& blocksFilterL1);
+
+    //
     // UsedBlocks
     //
 

@@ -110,7 +110,7 @@ void TLevelIndexCompactionMap::CompactionStarted(
          .ConcurrentRangeStats = {}});
 }
 
-void TLevelIndexCompactionMap::CompactionFinished()
+TVector<ui32> TLevelIndexCompactionMap::CompactionFinished()
 {
     STORAGE_VERIFY(
         !Compactions.empty(),
@@ -119,7 +119,7 @@ void TLevelIndexCompactionMap::CompactionFinished()
 
     BlocksFilter.CompactionFinished();
 
-    const auto& compaction = Compactions.front();
+    auto& compaction = Compactions.front();
     for (ui32 rangeIndex: compaction.RangeIndices) {
         TConcurrentRangeStat concurrentStat;
         if (const auto* stat =
@@ -135,7 +135,9 @@ void TLevelIndexCompactionMap::CompactionFinished()
             true);   // compacted
     }
 
+    auto rangeIndices = std::move(compaction.RangeIndices);
     Compactions.pop_front();
+    return rangeIndices;
 }
 
 void TLevelIndexCompactionMap::CompactionFailed()
@@ -147,6 +149,14 @@ void TLevelIndexCompactionMap::CompactionFailed()
 
     BlocksFilter.CompactionFailed();
     Compactions.pop_front();
+}
+
+void TLevelIndexCompactionMap::LoadRange(
+    ui32 rangeIndex,
+    ui32 blobCount,
+    ui32 blockCount)
+{
+    UpdateRange(rangeIndex, blobCount, blockCount, false);   // compacted
 }
 
 void TLevelIndexCompactionMap::UpdateRange(
