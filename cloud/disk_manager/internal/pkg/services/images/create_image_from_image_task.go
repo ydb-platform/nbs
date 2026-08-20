@@ -61,15 +61,14 @@ func (t *createImageFromImageTask) Run(
 	}
 
 	_, err = t.storage.CreateImage(ctx, resources.ImageMeta{
-		ID:                t.request.DstImageId,
-		FolderID:          t.request.FolderId,
-		SrcImageID:        t.request.SrcImageId,
-		CreateRequest:     t.request,
-		CreateTaskID:      selfTaskID,
-		CreatingAt:        time.Now(),
-		CreatedBy:         "",   // TODO: extract CreatedBy from execCtx.
-		UseDataplaneTasks: true, // TODO: remove it.
-		Encryption:        srcImageEncryption,
+		ID:            t.request.DstImageId,
+		FolderID:      t.request.FolderId,
+		SrcImageID:    t.request.SrcImageId,
+		CreateRequest: t.request,
+		CreateTaskID:  selfTaskID,
+		CreatingAt:    time.Now(),
+		CreatedBy:     "", // TODO: extract CreatedBy from execCtx.
+		Encryption:    srcImageEncryption,
 	})
 	if err != nil {
 		return err

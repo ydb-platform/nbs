@@ -38,39 +38,37 @@ type DiskMeta struct {
 }
 
 type ImageMeta struct {
-	ID                string                `json:"id"`
-	FolderID          string                `json:"folder_id"`
-	SrcDiskID         string                `json:"src_disk_id"`
-	CheckpointID      string                `json:"checkpoint_id"`
-	SrcImageID        string                `json:"src_image_id"`
-	SrcSnapshotID     string                `json:"src_snapshot_id"`
-	CreateRequest     proto.Message         `json:"create_request"`
-	CreateTaskID      string                `json:"create_task_id"`
-	CreatingAt        time.Time             `json:"creating_at"`
-	CreatedBy         string                `json:"created_by"`
-	DeleteTaskID      string                `json:"delete_task_id"`
-	UseDataplaneTasks bool                  `json:"use_dataplane_tasks"`
-	Size              uint64                `json:"size"`
-	StorageSize       uint64                `json:"storage_size"`
-	Encryption        *types.EncryptionDesc `json:"encryption"`
-	Ready             bool                  `json:"ready"`
+	ID            string                `json:"id"`
+	FolderID      string                `json:"folder_id"`
+	SrcDiskID     string                `json:"src_disk_id"`
+	CheckpointID  string                `json:"checkpoint_id"`
+	SrcImageID    string                `json:"src_image_id"`
+	SrcSnapshotID string                `json:"src_snapshot_id"`
+	CreateRequest proto.Message         `json:"create_request"`
+	CreateTaskID  string                `json:"create_task_id"`
+	CreatingAt    time.Time             `json:"creating_at"`
+	CreatedBy     string                `json:"created_by"`
+	DeleteTaskID  string                `json:"delete_task_id"`
+	Size          uint64                `json:"size"`
+	StorageSize   uint64                `json:"storage_size"`
+	Encryption    *types.EncryptionDesc `json:"encryption"`
+	Ready         bool                  `json:"ready"`
 }
 
 type SnapshotMeta struct {
-	ID                string                `json:"id"`
-	FolderID          string                `json:"folder_id"`
-	Disk              *types.Disk           `json:"disk"`
-	CheckpointID      string                `json:"checkpoint_id"`
-	CreateRequest     proto.Message         `json:"create_request"`
-	CreateTaskID      string                `json:"create_task_id"`
-	CreatingAt        time.Time             `json:"creating_at"`
-	CreatedBy         string                `json:"created_by"`
-	DeleteTaskID      string                `json:"delete_task_id"`
-	UseDataplaneTasks bool                  `json:"use_dataplane_tasks"`
-	Size              uint64                `json:"size"`
-	StorageSize       uint64                `json:"storage_size"`
-	Encryption        *types.EncryptionDesc `json:"encryption"`
-	Ready             bool                  `json:"ready"`
+	ID            string                `json:"id"`
+	FolderID      string                `json:"folder_id"`
+	Disk          *types.Disk           `json:"disk"`
+	CheckpointID  string                `json:"checkpoint_id"`
+	CreateRequest proto.Message         `json:"create_request"`
+	CreateTaskID  string                `json:"create_task_id"`
+	CreatingAt    time.Time             `json:"creating_at"`
+	CreatedBy     string                `json:"created_by"`
+	DeleteTaskID  string                `json:"delete_task_id"`
+	Size          uint64                `json:"size"`
+	StorageSize   uint64                `json:"storage_size"`
+	Encryption    *types.EncryptionDesc `json:"encryption"`
+	Ready         bool                  `json:"ready"`
 }
 
 type FilesystemMeta struct {

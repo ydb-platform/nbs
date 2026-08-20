@@ -64,7 +64,6 @@ type imageState struct {
 	deleteTaskID      string
 	deletingAt        time.Time
 	deletedAt         time.Time
-	useDataplaneTasks bool
 	size              uint64
 	storageSize       uint64
 	encryptionMode    uint32
@@ -77,19 +76,18 @@ func (s *imageState) toImageMeta() *ImageMeta {
 	// TODO: Image.CreateRequest should be []byte, because we can't unmarshal
 	// it here, without knowing particular protobuf message type.
 	return &ImageMeta{
-		ID:                s.id,
-		FolderID:          s.folderID,
-		SrcDiskID:         s.srcDiskID,
-		CheckpointID:      s.checkpointID,
-		SrcImageID:        s.srcImageID,
-		SrcSnapshotID:     s.srcSnapshotID,
-		CreateTaskID:      s.createTaskID,
-		CreatingAt:        s.creatingAt,
-		CreatedBy:         s.createdBy,
-		DeleteTaskID:      s.deleteTaskID,
-		UseDataplaneTasks: s.useDataplaneTasks,
-		Size:              s.size,
-		StorageSize:       s.storageSize,
+		ID:            s.id,
+		FolderID:      s.folderID,
+		SrcDiskID:     s.srcDiskID,
+		CheckpointID:  s.checkpointID,
+		SrcImageID:    s.srcImageID,
+		SrcSnapshotID: s.srcSnapshotID,
+		CreateTaskID:  s.createTaskID,
+		CreatingAt:    s.creatingAt,
+		CreatedBy:     s.createdBy,
+		DeleteTaskID:  s.deleteTaskID,
+		Size:          s.size,
+		StorageSize:   s.storageSize,
 		Encryption: &types.EncryptionDesc{
 			Mode: types.EncryptionMode(s.encryptionMode),
 			Key: &types.EncryptionDesc_KeyHash{
@@ -116,7 +114,6 @@ func (s *imageState) structValue() persistence.Value {
 		persistence.StructFieldValue("delete_task_id", persistence.UTF8Value(s.deleteTaskID)),
 		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
-		persistence.StructFieldValue("use_dataplane_tasks", persistence.BoolValue(s.useDataplaneTasks)),
 		persistence.StructFieldValue("size", persistence.Uint64Value(s.size)),
 		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
 		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
@@ -141,7 +138,6 @@ func scanImageState(res persistence.Result) (state imageState, err error) {
 		persistence.OptionalWithDefault("delete_task_id", &state.deleteTaskID),
 		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
-		persistence.OptionalWithDefault("use_dataplane_tasks", &state.useDataplaneTasks),
 		persistence.OptionalWithDefault("status", &state.status),
 		persistence.OptionalWithDefault("size", &state.size),
 		persistence.OptionalWithDefault("storage_size", &state.storageSize),
@@ -187,7 +183,6 @@ func imageStateStructTypeString() string {
 		delete_task_id: Utf8,
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
-		use_dataplane_tasks: Bool,
 		size: Uint64,
 		storage_size: Uint64,
 		encryption_mode: Uint32,
@@ -211,7 +206,6 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("delete_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithColumn("use_dataplane_tasks", persistence.Optional(persistence.TypeBool)),
 		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
@@ -406,16 +400,15 @@ func (s *storageYDB) createImage(
 	}
 
 	state := imageState{
-		id:                image.ID,
-		folderID:          image.FolderID,
-		srcDiskID:         image.SrcDiskID,
-		srcImageID:        image.SrcImageID,
-		srcSnapshotID:     image.SrcSnapshotID,
-		createRequest:     createRequest,
-		createTaskID:      image.CreateTaskID,
-		creatingAt:        image.CreatingAt,
-		createdBy:         image.CreatedBy,
-		useDataplaneTasks: image.UseDataplaneTasks,
+		id:            image.ID,
+		folderID:      image.FolderID,
+		srcDiskID:     image.SrcDiskID,
+		srcImageID:    image.SrcImageID,
+		srcSnapshotID: image.SrcSnapshotID,
+		createRequest: createRequest,
+		createTaskID:  image.CreateTaskID,
+		creatingAt:    image.CreatingAt,
+		createdBy:     image.CreatedBy,
 
 		status: imageStatusCreating,
 	}
