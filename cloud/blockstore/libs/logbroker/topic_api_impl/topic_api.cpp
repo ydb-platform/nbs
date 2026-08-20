@@ -7,9 +7,9 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/iam/iam.h>
-#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
-#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/status_codes.h>
+#include <ydb-cpp-sdk/client/iam/iam.h>
+#include <ydb-cpp-sdk/client/topic/client.h>
+#include <ydb-cpp-sdk/client/types/status_codes.h>
 
 #include <util/generic/overloaded.h>
 #include <util/stream/file.h>
@@ -91,16 +91,19 @@ private:
 
     std::shared_ptr<NYdbICredentialsProviderFactory>
         CredentialsProviderFactory;
+    TWriteSessionFactory WriteSessionFactory;
 
 public:
     TService(
             TLogbrokerConfigPtr config,
             ILoggingServicePtr logging,
             std::shared_ptr<NYdbICredentialsProviderFactory>
-            credentialsProviderFactory)
+                credentialsProviderFactory,
+            TWriteSessionFactory writeSessionFactory)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , CredentialsProviderFactory(std::move(credentialsProviderFactory))
+        , WriteSessionFactory(std::move(writeSessionFactory))
     {}
 
     TFuture<NProto::TError> Write(
@@ -119,15 +122,21 @@ public:
         Batch = std::make_unique<TBatch>(std::move(messages), now);
 
         if (!Session) {
-            TTopicClient client{GetDriver()};
+            if (WriteSessionFactory) {
+                Session = WriteSessionFactory();
+            } else {
+                TTopicClient client{GetDriver()};
 
-            Session = client.CreateWriteSession(
-                TWriteSessionSettings()
-                    .Path(Config->GetTopic())
-                    .ProducerId(Config->GetSourceId())
-                    .MessageGroupId(Config->GetSourceId())
-                    .RetryPolicy(
-                        NYdb::NTopic::IRetryPolicy::GetNoRetryPolicy()));
+                Session = client.CreateWriteSession(
+                    TWriteSessionSettings()
+                        .Path(Config->GetTopic())
+                        .ProducerId(Config->GetSourceId())
+                        .MessageGroupId(Config->GetSourceId())
+                        .RetryPolicy(
+                            NYdb::NTopic::IRetryPolicy::GetNoRetryPolicy()));
+            }
+
+            Y_ABORT_UNLESS(Session);
         } else if (ContinuationToken.has_value()) {
             TContinuationToken token{std::move(ContinuationToken.value())};
             ContinuationToken.reset();
@@ -314,13 +323,26 @@ private:
 IServicePtr CreateTopicAPIService(
     TLogbrokerConfigPtr config,
     ILoggingServicePtr logging,
-    std::shared_ptr<NYdbICredentialsProviderFactory>
-        credentialsProviderFactory)
+    std::shared_ptr<NYdbICredentialsProviderFactory> credentialsProviderFactory,
+    TWriteSessionFactory writeSessionFactory)
 {
     return std::make_shared<TService>(
         std::move(config),
         std::move(logging),
-        std::move(credentialsProviderFactory));
+        std::move(credentialsProviderFactory),
+        std::move(writeSessionFactory));
+}
+
+IServicePtr CreateTopicAPIService(
+    TLogbrokerConfigPtr config,
+    ILoggingServicePtr logging,
+    std::shared_ptr<NYdbICredentialsProviderFactory> credentialsProviderFactory)
+{
+    return CreateTopicAPIService(
+        std::move(config),
+        std::move(logging),
+        std::move(credentialsProviderFactory),
+        {});
 }
 
 IServicePtr CreateTopicAPIService(

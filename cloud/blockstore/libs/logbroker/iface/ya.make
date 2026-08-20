@@ -14,7 +14,7 @@ PEERDIR(
     library/cpp/monlib/service/pages
     library/cpp/threading/future
 
-    contrib/ydb/public/sdk/cpp/src/library/jwt
+    contrib/libs/ydb-cpp-sdk/src/client/iam
 )
 
 END()
