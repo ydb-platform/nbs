@@ -959,9 +959,12 @@ IStartablePtr CreateBlockstoreServerRdmaTarget(
     auto threadPool = CreateThreadPool("RDMA", rdmaTargetConfig->WorkerThreads);
     threadPool->Start();
 
-    // without a monitoring page there is nobody to read the connections, so
-    // the handler is left with an observer that drops them
-    auto mountRegistry = monitoring ? CreateMountRegistry(logging) : nullptr;
+    // without a page there is nobody to read the connections, so they are not
+    // tracked at all and the handler is left with an empty registry pointer
+    auto mountRegistry =
+        monitoring && rdmaTargetConfig->ConnectionMonitoringEnabled
+            ? CreateMountRegistry(logging)
+            : nullptr;
 
     auto target = std::make_shared<TRdmaTarget>(
         std::move(rdmaTargetConfig),
@@ -969,10 +972,10 @@ IStartablePtr CreateBlockstoreServerRdmaTarget(
         std::move(traceSerializer),
         std::move(server),
         std::move(threadPool),
-        std::move(mountRegistry),
+        mountRegistry,
         std::move(service));
 
-    if (monitoring) {
+    if (mountRegistry) {
         auto rootPage = monitoring->RegisterIndexPage("blockstore", "BlockStore");
         static_cast<TIndexMonPage&>(*rootPage).Register(
             new TRdmaTargetMonPage(target));

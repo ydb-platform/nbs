@@ -23,10 +23,13 @@ struct TBlockstoreServerRdmaTargetConfig
     TString Host = "localhost";
     ui32 Port = 10088;
     ui32 WorkerThreads = 1;
+    bool ConnectionMonitoringEnabled = false;
 
     explicit TBlockstoreServerRdmaTargetConfig(
         const NProto::TRdmaTarget& target)
     {
+        ConnectionMonitoringEnabled = target.GetConnectionMonitoringEnabled();
+
         const auto& endpoint = target.GetEndpoint();
 
         if (const auto& host = endpoint.GetHost()) {

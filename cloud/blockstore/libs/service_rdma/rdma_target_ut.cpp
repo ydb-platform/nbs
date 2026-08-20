@@ -153,11 +153,15 @@ struct TTestEnv
     }
 };
 
-TTestEnv CreateTestEnv(IBlockStorePtr service)
+TTestEnv CreateTestEnv(
+    IBlockStorePtr service,
+    bool connectionMonitoringEnabled = true)
 {
     auto server = std::make_shared<TTestServer>();
 
     NProto::TRdmaTarget rdmaTargetProto;
+    rdmaTargetProto.SetConnectionMonitoringEnabled(connectionMonitoringEnabled);
+
     auto config =
         std::make_shared<TBlockstoreServerRdmaTargetConfig>(rdmaTargetProto);
 
@@ -181,22 +185,25 @@ TTestEnv CreateTestEnv(IBlockStorePtr service)
         std::move(target)};
 }
 
-NMonitoring::TIndexMonPage* FindRootPage(const IMonitoringServicePtr& monitoring)
+NMonitoring::IMonPage* FindRdmaTargetPage(
+    const IMonitoringServicePtr& monitoring)
 {
     auto rootPage = monitoring->GetMonPage("blockstore");
-    UNIT_ASSERT(rootPage);
+    if (!rootPage) {
+        return nullptr;
+    }
 
     auto* indexPage =
         dynamic_cast<NMonitoring::TIndexMonPage*>(rootPage.Get());
     UNIT_ASSERT(indexPage);
 
-    return indexPage;
+    return indexPage->FindPage("RdmaTarget");
 }
 
 TString RenderMonPage(const IMonitoringServicePtr& monitoring)
 {
     auto* page = dynamic_cast<NMonitoring::THtmlMonPage*>(
-        FindRootPage(monitoring)->FindPage("RdmaTarget"));
+        FindRdmaTargetPage(monitoring));
     UNIT_ASSERT(page);
 
     TStringStream out;
@@ -506,7 +513,23 @@ Y_UNIT_TEST_SUITE(TRequestHandlerTest)
         auto service = std::make_shared<TTestService>();
         auto env = CreateTestEnv(service);
 
-        UNIT_ASSERT(FindRootPage(env.Monitoring)->FindPage("RdmaTarget"));
+        UNIT_ASSERT(FindRdmaTargetPage(env.Monitoring));
+
+        env.Target->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldNotTrackConnectionsWhenMonitoringIsDisabled)
+    {
+        auto service = std::make_shared<TTestService>();
+        auto env = CreateTestEnv(service, false);
+        auto handler = env.GetHandler();
+
+        UNIT_ASSERT(!FindRdmaTargetPage(env.Monitoring));
+
+        // the handler still has to survive the connection events
+        TTestSession session(4242);
+        handler->OnSessionCreated(session);
+        handler->OnSessionClosed(session.GetId());
 
         env.Target->Stop();
     }
