@@ -32,7 +32,7 @@ namespace {
     xxx(AsyncDestroyHandleEnabled,          bool,       false                 )\
     xxx(AsyncDestroyReadOnlyHandleEnabled,  bool,       false                 )\
     xxx(AsyncCreateHandleEnabled,           bool,       false                 )\
-    xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::MilliSeconds(50)   )\
+    xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::Zero()             )\
                                                                                \
     xxx(DirectIoEnabled,            bool,       false                         )\
     xxx(DirectIoAlign,              ui32,       4_KB                          )\

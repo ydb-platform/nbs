@@ -1,2 +1,5 @@
 AsyncDestroyHandleEnabled: true
 AsyncCreateHandleEnabled: true
+# Slow the queue drain (default is now 0/back-to-back) so restarts can happen
+# while confirmations are still pending in the queue.
+AsyncHandleOperationPeriod: 50
