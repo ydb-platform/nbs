@@ -1,5 +1,4 @@
 ENV(YDB_DRIVER_BINARY="contrib/ydb/apps/ydbd/ydbd")
-ENV(YDB_ALLOCATE_PGWIRE_PORT=true)
 
 DEPENDS(
     contrib/ydb/apps/ydbd

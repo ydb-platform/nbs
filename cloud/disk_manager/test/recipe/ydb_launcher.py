@@ -28,6 +28,8 @@ class YDBLauncher:
         self.__dynamic_storage_pools = dynamic_storage_pools
 
     def start(self):
+        # Make ydbd use the harness-allocated PGWire port; otherwise its default
+        # port 5432 may collide with a dynamically allocated monitoring port.
         os.environ["YDB_ALLOCATE_PGWIRE_PORT"] = "true"
         self.__cluster.start()
         for kimimr_node in list(self.__cluster.nodes.values()):
