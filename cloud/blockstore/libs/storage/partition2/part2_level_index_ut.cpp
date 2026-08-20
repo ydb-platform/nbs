@@ -193,28 +193,30 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 {
     Y_UNIT_TEST(ShouldFlushFreshBlocksToL0Index)
     {
-        constexpr ui32 L0RangeBlockCount = 4;
+        constexpr ui32 L1RangeBlockCount = MaxBlocksCount;
+        constexpr ui32 L0RangeBlockCount = 2 * L1RangeBlockCount;
         constexpr ui32 BlockCount = 3 * L0RangeBlockCount;
+        constexpr ui32 VersionedBlockIndex = L0RangeBlockCount - 1;
 
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetL0RangeSizeV2(L0RangeBlockCount * DefaultBlockSize);
-        config.SetL1RangeSizeV2(2 * DefaultBlockSize);
+        config.SetL1RangeSizeV2(L1RangeBlockCount * DefaultBlockSize);
 
         auto runtime = PrepareTestActorRuntime(config, BlockCount);
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
         partition.WriteBlocks(0, '0');
-        partition.WriteBlocks(3, 'a');
+        partition.WriteBlocks(VersionedBlockIndex, 'a');
         partition.CreateCheckpoint("checkpoint-1");
-        partition.WriteBlocks(3, 'b');
+        partition.WriteBlocks(VersionedBlockIndex, 'b');
         partition.CreateCheckpoint("checkpoint-2");
-        partition.WriteBlocks(3, 'c');
-        partition.WriteBlocks(4, '4');
-        partition.WriteBlocks(7, '7');
-        partition.WriteBlocks(8, '8');
-        partition.WriteBlocks(11, 'B');
+        partition.WriteBlocks(VersionedBlockIndex, 'c');
+        partition.WriteBlocks(L0RangeBlockCount, '4');
+        partition.WriteBlocks(2 * L0RangeBlockCount - 1, '7');
+        partition.WriteBlocks(2 * L0RangeBlockCount, '8');
+        partition.WriteBlocks(3 * L0RangeBlockCount - 1, 'B');
 
         ui32 flushAddBlobsRequestCount = 0;
         TVector<TVector<ui32>> l0BlobBlockIndices;
@@ -291,13 +293,13 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         Sort(flushedBlockIndices);
         const TVector<ui32> expectedFlushedBlockIndices = {
             0,
-            3,
-            3,
-            3,
-            4,
-            7,
-            8,
-            11,
+            VersionedBlockIndex,
+            VersionedBlockIndex,
+            VersionedBlockIndex,
+            L0RangeBlockCount,
+            2 * L0RangeBlockCount - 1,
+            2 * L0RangeBlockCount,
+            3 * L0RangeBlockCount - 1,
         };
         UNIT_ASSERT_VALUES_EQUAL(
             expectedFlushedBlockIndices,
@@ -337,11 +339,11 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         Sort(describedBlockIndices);
         const TVector<ui32> expectedDescribedBlockIndices = {
             0,
-            3,
-            4,
-            7,
-            8,
-            11,
+            VersionedBlockIndex,
+            L0RangeBlockCount,
+            2 * L0RangeBlockCount - 1,
+            2 * L0RangeBlockCount,
+            3 * L0RangeBlockCount - 1,
         };
         UNIT_ASSERT_VALUES_EQUAL(
             expectedDescribedBlockIndices,
@@ -352,19 +354,19 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 
         AssertDescribeBlockContent(
             partition,
-            3,
+            VersionedBlockIndex,
             "checkpoint-1",
             versionedBlockBlobId->second,
             'a');
         AssertDescribeBlockContent(
             partition,
-            3,
+            VersionedBlockIndex,
             "checkpoint-2",
             versionedBlockBlobId->second,
             'b');
         AssertDescribeBlockContent(
             partition,
-            3,
+            VersionedBlockIndex,
             {},
             versionedBlockBlobId->second,
             'c');
@@ -372,10 +374,12 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 
     Y_UNIT_TEST(ShouldPromoteSpecifiedL0RangeToL1Index)
     {
-        constexpr ui32 L0RangeBlockCount = 8;
-        constexpr ui32 L1RangeBlockCount = 4;
+        constexpr ui32 L1RangeBlockCount = MaxBlocksCount;
+        constexpr ui32 L0RangeBlockCount = 2 * L1RangeBlockCount;
         constexpr ui32 PromotedRangeIndex = 1;
         constexpr ui32 BlockCount = 2 * L0RangeBlockCount;
+        constexpr ui32 PromotedRangeStart =
+            PromotedRangeIndex * L0RangeBlockCount;
 
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
@@ -387,15 +391,19 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         partition.WaitReady();
 
         partition.WriteBlocks(0, '0');
-        partition.WriteBlocks(7, '7');
-        partition.WriteBlocks(8, 'a');
+        partition.WriteBlocks(L0RangeBlockCount - 1, '7');
+        partition.WriteBlocks(PromotedRangeStart, 'a');
         partition.CreateCheckpoint("checkpoint-1");
-        partition.WriteBlocks(8, 'b');
+        partition.WriteBlocks(PromotedRangeStart, 'b');
         partition.CreateCheckpoint("checkpoint-2");
-        partition.WriteBlocks(8, 'c');
-        partition.WriteBlocks(11, 'B');
-        partition.WriteBlocks(12, 'C');
-        partition.WriteBlocks(15, 'F');
+        partition.WriteBlocks(PromotedRangeStart, 'c');
+        partition.WriteBlocks(
+            PromotedRangeStart + L1RangeBlockCount - 1,
+            'B');
+        partition.WriteBlocks(
+            PromotedRangeStart + L1RangeBlockCount,
+            'C');
+        partition.WriteBlocks(BlockCount - 1, 'F');
 
         ui32 promoteAddBlobsRequestCount = 0;
         TMap<ui32, TLogoBlobID> l0BlobIdsByRange;
@@ -509,7 +517,12 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         }
 
         Sort(promotedBlockIndices);
-        const TVector<ui32> expectedPromotedBlockIndices = {8, 11, 12, 15};
+        const TVector<ui32> expectedPromotedBlockIndices = {
+            PromotedRangeStart,
+            PromotedRangeStart + L1RangeBlockCount - 1,
+            PromotedRangeStart + L1RangeBlockCount,
+            BlockCount - 1,
+        };
         UNIT_ASSERT_VALUES_EQUAL(
             expectedPromotedBlockIndices,
             promotedBlockIndices);
@@ -528,23 +541,23 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         UNIT_ASSERT(promotedSourceBlobId != l0BlobIdsByRange.end());
         AssertDescribeBlockContent(
             partition,
-            8,
+            PromotedRangeStart,
             "checkpoint-1",
             promotedSourceBlobId->second,
             'a');
         AssertDescribeBlockContent(
             partition,
-            8,
+            PromotedRangeStart,
             "checkpoint-2",
             promotedSourceBlobId->second,
             'b');
 
         const auto promotedBlobId =
-            l1BlobIdsByRange.find(8 / L1RangeBlockCount);
+            l1BlobIdsByRange.find(PromotedRangeStart / L1RangeBlockCount);
         UNIT_ASSERT(promotedBlobId != l1BlobIdsByRange.end());
         AssertDescribeBlockContent(
             partition,
-            8,
+            PromotedRangeStart,
             {},
             promotedBlobId->second,
             'c');
@@ -552,19 +565,24 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 
     Y_UNIT_TEST(ShouldTriggerPromoteCompactionByUsedBlocksPerRange)
     {
-        constexpr ui32 L0RangeBlockCount = 8;
-        constexpr ui32 L1RangeBlockCount = 4;
+        constexpr ui32 MergedRangeBlockCount = MaxBlocksCount;
+        constexpr ui32 L1RangeBlockCount = 2 * MergedRangeBlockCount;
+        constexpr ui32 L0RangeBlockCount = 2 * L1RangeBlockCount;
         constexpr ui32 BlocksForHugeBlob = 2;
-        constexpr ui32 UsedBlocksNeededForPromote =
+        constexpr ui32 UsedBlocksNeededForL0Promote =
             BlocksForHugeBlob * L0RangeBlockCount / L1RangeBlockCount;
-        constexpr ui32 BlockCount = 2 * L0RangeBlockCount;
+        constexpr ui32 UsedBlocksNeededForL1Promote =
+            BlocksForHugeBlob * L1RangeBlockCount / MergedRangeBlockCount;
+        constexpr ui32 BlockCount = L0RangeBlockCount;
 
-        static_assert(UsedBlocksNeededForPromote == 4);
+        static_assert(UsedBlocksNeededForL0Promote == 4);
+        static_assert(UsedBlocksNeededForL1Promote == 4);
 
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetWriteBlobThresholdSSD(
             BlocksForHugeBlob * DefaultBlockSize);
+        config.SetCleanupThreshold(1);
         config.SetL0RangeSizeV2(L0RangeBlockCount * DefaultBlockSize);
         config.SetL1RangeSizeV2(L1RangeBlockCount * DefaultBlockSize);
 
@@ -572,174 +590,75 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        ui32 l0PromoteRequestCount = 0;
-        ui32 l1PromoteRequestCount = 0;
-        ui32 l0PromoteAddBlobsRequestCount = 0;
-        ui32 l1PromoteAddBlobsRequestCount = 0;
         ui32 l0PromoteCompletedCount = 0;
         ui32 l1PromoteCompletedCount = 0;
-        TVector<std::pair<TPartialBlobId, ui32>> l0BlobRanges;
-        TVector<ui32> promotedBlockIndices;
-        ui64 maxPromotedBlockCommitId = 0;
-        ui64 mergedCommitId = 0;
-        TLogoBlobID mergedBlobId;
 
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
-                switch (event->GetTypeRewrite()) {
-                    case TEvPartitionPrivate::EvPromoteCompactionRequest: {
-                        const auto* request = event->Get<
-                            TEvPartitionPrivate::TEvPromoteCompactionRequest>();
-                        UNIT_ASSERT(!request->RangeIndex);
-                        if (request->Source ==
-                            EPromoteCompactionSource::L0)
-                        {
-                            ++l0PromoteRequestCount;
-                        } else {
-                            UNIT_ASSERT(
-                                request->Source ==
-                                EPromoteCompactionSource::L1);
-                            ++l1PromoteRequestCount;
-                        }
-                        break;
-                    }
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvPromoteCompactionCompleted)
+                {
+                    const auto* completed = event->Get<
+                        TEvPartitionPrivate::TEvPromoteCompactionCompleted>();
+                    UNIT_ASSERT_C(
+                        !HasError(completed->GetError()),
+                        FormatError(completed->GetError()));
 
-                    case TEvPartitionPrivate::EvAddBlobsRequest: {
-                        const auto* request = event->Get<
-                            TEvPartitionPrivate::TEvAddBlobsRequest>();
-
-                        if (request->Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
-                            for (const auto& blob: request->L0Blobs) {
-                                UNIT_ASSERT(!blob.BlockIndices.empty());
-                                const ui32 rangeIndex =
-                                    blob.BlockIndices.front() /
-                                    L0RangeBlockCount;
-                                l0BlobRanges.emplace_back(
-                                    blob.BlobId,
-                                    rangeIndex);
-                            }
-                        } else if (
-                            request->Mode ==
-                            EAddBlobMode::ADD_PROMOTE_COMPACTION_RESULT)
-                        {
-                            if (!request->L1Blobs.empty()) {
-                                ++l0PromoteAddBlobsRequestCount;
-                                UNIT_ASSERT(request->MergedBlobs.empty());
-                                UNIT_ASSERT_VALUES_EQUAL(
-                                    2,
-                                    request->AffectedBlobs.size());
-                                for (const auto& [blobId, affectedBlob]:
-                                     request->AffectedBlobs)
-                                {
-                                    Y_UNUSED(affectedBlob);
-
-                                    bool sourceBlobFound = false;
-                                    for (const auto& [sourceBlobId, rangeIndex]:
-                                         l0BlobRanges)
-                                    {
-                                        if (sourceBlobId == blobId) {
-                                            UNIT_ASSERT_VALUES_EQUAL(
-                                                0,
-                                                rangeIndex);
-                                            sourceBlobFound = true;
-                                            break;
-                                        }
-                                    }
-                                    UNIT_ASSERT(sourceBlobFound);
-                                }
-
-                                UNIT_ASSERT_VALUES_EQUAL(
-                                    1,
-                                    request->L1Blobs.size());
-                                promotedBlockIndices =
-                                    request->L1Blobs.front().BlockIndices;
-                                for (ui64 commitId:
-                                     request->L1Blobs.front().CommitIds)
-                                {
-                                    maxPromotedBlockCommitId = Max(
-                                        maxPromotedBlockCommitId,
-                                        commitId);
-                                }
-                            } else {
-                                ++l1PromoteAddBlobsRequestCount;
-                                UNIT_ASSERT_VALUES_EQUAL(
-                                    1,
-                                    request->AffectedBlobs.size());
-                                UNIT_ASSERT_VALUES_EQUAL(
-                                    1,
-                                    request->MergedBlobs.size());
-
-                                const auto& blob =
-                                    request->MergedBlobs.front();
-                                UNIT_ASSERT_VALUES_EQUAL(
-                                    TBlockRange32::MakeClosedInterval(0, 3),
-                                    blob.BlockRange);
-                                mergedCommitId = blob.CommitId;
-                                mergedBlobId = MakeBlobId(
-                                    TestTabletId,
-                                    blob.BlobId);
-                            }
-                        }
-                        break;
-                    }
-
-                    case TEvPartitionPrivate::EvPromoteCompactionCompleted: {
-                        const auto* completed = event->Get<
-                            TEvPartitionPrivate::
-                                TEvPromoteCompactionCompleted>();
-                        if (completed->Source ==
-                            EPromoteCompactionSource::L0)
-                        {
-                            ++l0PromoteCompletedCount;
-                        } else {
-                            UNIT_ASSERT(
-                                completed->Source ==
-                                EPromoteCompactionSource::L1);
-                            ++l1PromoteCompletedCount;
-                        }
-                        break;
+                    if (completed->Source == EPromoteCompactionSource::L0) {
+                        ++l0PromoteCompletedCount;
+                    } else {
+                        UNIT_ASSERT(
+                            completed->Source ==
+                            EPromoteCompactionSource::L1);
+                        ++l1PromoteCompletedCount;
                     }
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        for (ui32 blockIndex: {0, 1, 2, 8, 9, 10}) {
-            partition.WriteBlocks(blockIndex, 'a');
-        }
+        const auto waitForCompactions = [&](ui32 l0Count, ui32 l1Count) {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&] {
+                return l0PromoteCompletedCount == l0Count &&
+                       l1PromoteCompletedCount == l1Count;
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+        };
+
+        partition.WriteBlocks(0, 'a');
+        partition.WriteBlocks(1, 'a');
+        partition.WriteBlocks(L1RangeBlockCount, 'a');
         partition.Flush();
 
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(0, l0PromoteCompletedCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, l1PromoteCompletedCount);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, l0PromoteRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, l1PromoteRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, l0PromoteAddBlobsRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, l1PromoteAddBlobsRequestCount);
-
-        partition.WriteBlocks(3, 'b');
+        partition.WriteBlocks(L1RangeBlockCount + 1, 'b');
         partition.Flush();
 
-        TDispatchOptions options;
-        options.CustomFinalCondition = [&] {
-            return l0PromoteCompletedCount == 1 &&
-                   l1PromoteCompletedCount == 1;
-        };
-        runtime->DispatchEvents(options, TDuration::Seconds(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(1, l0PromoteRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, l1PromoteRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, l0PromoteAddBlobsRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, l1PromoteAddBlobsRequestCount);
+        waitForCompactions(1, 0);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(1, l0PromoteCompletedCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, l1PromoteCompletedCount);
-        UNIT_ASSERT_VALUES_EQUAL(
-            TVector<ui32>({0, 1, 2, 3}),
-            promotedBlockIndices);
-        UNIT_ASSERT_VALUES_EQUAL(maxPromotedBlockCommitId, mergedCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(0, l1PromoteCompletedCount);
 
-        AssertDescribeBlockContent(partition, 0, {}, mergedBlobId, 'a');
-        AssertDescribeBlockContent(partition, 3, {}, mergedBlobId, 'b');
+        partition.WriteBlocks(2, 'c');
+        partition.WriteBlocks(3, 'c');
+        partition.WriteBlocks(4, 'c');
+        partition.Flush();
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(1, l0PromoteCompletedCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, l1PromoteCompletedCount);
+
+        partition.WriteBlocks(5, 'd');
+        partition.Flush();
+
+        waitForCompactions(2, 1);
+        UNIT_ASSERT_VALUES_EQUAL(2, l0PromoteCompletedCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, l1PromoteCompletedCount);
     }
 
     Y_UNIT_TEST(ShouldPromoteSpecifiedL1RangeToFixedSizeMergedRanges)
