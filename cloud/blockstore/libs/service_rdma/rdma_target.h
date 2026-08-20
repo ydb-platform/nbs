@@ -3,11 +3,16 @@
 #include <cloud/blockstore/config/rdma.pb.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/storage/core/libs/common/public.h>
+#include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
 
+#include <util/generic/ptr.h>
 #include <util/system/hostname.h>
+
+#include <memory>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -41,10 +46,13 @@ struct TBlockstoreServerRdmaTargetConfig
 using TBlockstoreServerRdmaTargetConfigPtr =
     std::shared_ptr<TBlockstoreServerRdmaTargetConfig>;
 
+////////////////////////////////////////////////////////////////////////////////
+
 IStartablePtr CreateBlockstoreServerRdmaTarget(
     TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
     ILoggingServicePtr logging,
     ITraceSerializerPtr traceSerializer,
+    IMonitoringServicePtr monitoring,
     NCloud::NStorage::NRdma::IServerPtr server,
     IBlockStorePtr service);
 

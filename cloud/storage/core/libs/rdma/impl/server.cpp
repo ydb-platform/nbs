@@ -83,8 +83,10 @@ enum class ERequestState
 
 struct TRequest
     : TListNode<TRequest>
+    , IServerRequest
 {
     std::weak_ptr<TServerSession> Session;
+    const ui64 SessionId;
 
     ERequestState State = ERequestState::RecvRequest;
 
@@ -104,9 +106,16 @@ struct TRequest
     // hold session buffer references but are not tracked by WR queue sizes.
     bool TransferredToHandler = false;
 
-    TRequest(std::weak_ptr<TServerSession> session)
+    TRequest(std::weak_ptr<TServerSession> session, ui64 sessionId)
         : Session(std::move(session))
+        , SessionId(sessionId)
     {}
+
+    // implements IServerRequest
+    ui64 GetSessionId() const override
+    {
+        return SessionId;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -253,6 +262,7 @@ struct TEndpointCounters
 
 class TServerSession final
     : public NVerbs::ICompletionHandler
+    , public IServerSession
     , public std::enable_shared_from_this<TServerSession>
 {
     // TODO
@@ -262,6 +272,10 @@ class TServerSession final
 private:
     NVerbs::IVerbsPtr Verbs;
     NVerbs::TConnectionPtr Connection;
+
+    const TString Peer;
+    const TInstant StartTs;
+
     TCompletionPoller* CompletionPoller = nullptr;
     IServerHandlerPtr Handler;
     TServerConfigPtr Config;
@@ -329,12 +343,32 @@ public:
 
     ~TServerSession() override;
 
+    // implements IServerSession
+    ui64 GetId() const override
+    {
+        return Id;
+    }
+
+    TString GetPeer() const override
+    {
+        return Peer;
+    }
+
+    TInstant GetStartTs() const override
+    {
+        return StartTs;
+    }
+
     // called from CM thread
     void CreateQP();
     void SetupQP();
     void Start() noexcept;
     void Stop() noexcept;
     void Flush() noexcept;
+    void NotifySessionCreated() noexcept;
+
+    // called from CQ thread
+    void NotifySessionClosed() noexcept;
 
     // called from external thread
     void EnqueueRequest(TRequestPtr req) noexcept;
@@ -379,6 +413,8 @@ TServerSession::TServerSession(
         int protocolVersion)
     : Verbs(std::move(verbs))
     , Connection(std::move(connection))
+    , Peer(Verbs->GetPeer(Connection.get()))
+    , StartTs(TInstant::Now())
     , CompletionPoller(completionPoller)
     , Handler(std::move(handler))
     , Config(std::move(config))
@@ -397,7 +433,7 @@ TServerSession::TServerSession(
     });
 
     RDMA_INFO(
-        "start session [host=" << Verbs->GetPeer(Connection.get())
+        "start session [host=" << Peer
                                << " send_magic=" << Hex(SendMagic, HF_FULL)
                                << " recv_magic=" << Hex(RecvMagic, HF_FULL)
                                << "]");
@@ -656,6 +692,29 @@ void TServerSession::Flush() noexcept
     }
 }
 
+// Notifications are issued from the CM and CQ threads, so a handler that lets
+// something escape would take the whole server down with it.
+
+void TServerSession::NotifySessionCreated() noexcept
+{
+    try {
+        Handler->OnSessionCreated(*this);
+    } catch (...) {
+        RDMA_ERROR("session created handler: " << CurrentExceptionMessage());
+        Counters->Error();
+    }
+}
+
+void TServerSession::NotifySessionClosed() noexcept
+{
+    try {
+        Handler->OnSessionClosed(Id);
+    } catch (...) {
+        RDMA_ERROR("session closed handler: " << CurrentExceptionMessage());
+        Counters->Error();
+    }
+}
+
 bool TServerSession::IsFlushed() const
 {
     // ExecutingRequests counts requests transferred to the handler whose
@@ -847,7 +906,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
         return;
     }
 
-    auto req = std::make_unique<TRequest>(weak_from_this());
+    auto req = std::make_unique<TRequest>(weak_from_this(), Id);
 
     // TODO restore context from request meta
     req->CallContext = Handler->CreateCallContext();
@@ -1194,7 +1253,7 @@ public:
         return static_cast<TServerEndpoint*>(event->listen_id->context);
     }
 
-    void SendResponse(void* context, size_t responseBytes) override
+    void SendResponse(IServerRequest* context, size_t responseBytes) override
     {
         TRequestPtr req(static_cast<TRequest*>(context));
         req->Status = RDMA_PROTO_OK;
@@ -1205,7 +1264,10 @@ public:
         }
     }
 
-    void SendError(void* context, ui32 error, TStringBuf message) override
+    void SendError(
+        IServerRequest* context,
+        ui32 error,
+        TStringBuf message) override
     {
         TRequestPtr req(static_cast<TRequest*>(context));
         req->Status = RDMA_PROTO_FAIL;
@@ -1397,6 +1459,8 @@ public:
         if (Config->WaitMode == EWaitMode::Poll) {
             PollHandle.Detach(session->CompletionChannel->fd);
         }
+
+        session->NotifySessionClosed();
 
         Sessions.Delete([=](auto other) {
             return session == other.get();
@@ -1984,6 +2048,8 @@ void TServer::Accept(
 
         RDMA_DEBUG("accept " << Verbs->GetPeer(event->id));
         Verbs->Accept(event->id, &acceptParams);
+
+        session->NotifySessionCreated();
 
         // transfer session ownership to the poller
         session->CompletionPoller->Acquire(session);

@@ -1,5 +1,6 @@
 #include "rdma_target.h"
 
+#include "mount_registry.h"
 #include "rdma_protocol.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
@@ -17,10 +18,14 @@
 #include <cloud/storage/core/libs/rdma/iface/protocol.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
 
+#include <library/cpp/monlib/service/pages/html_mon_page.h>
+#include <library/cpp/monlib/service/pages/index_mon_page.h>
+#include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/list.h>
+#include <util/stream/format.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -57,15 +62,6 @@ constexpr size_t MaxRealProtoSize =
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestDetails
-{
-    void* Context = nullptr;
-    TStringBuf Out;
-    TStringBuf DataBuffer;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename TResponse>
 void FillResponse(const TCallContextPtr& callContext, TResponse& response)
 {
@@ -81,6 +77,19 @@ void FillResponse(const TCallContextPtr& callContext, TResponse& response)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TMountInfo MakeMountInfo(const NProto::TMountVolumeRequest& request)
+{
+    TMountInfo info;
+    info.DiskId = request.GetDiskId();
+    info.ClientId = request.GetHeaders().GetClientId();
+    info.VolumeAccessMode = request.GetVolumeAccessMode();
+    info.VolumeMountMode = request.GetVolumeMountMode();
+    info.MountSeqNumber = request.GetMountSeqNumber();
+    return info;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Thread-safe. After Init() public method HandleRequest() can be called
 // from any thread.
 class TRequestHandler final
@@ -90,6 +99,9 @@ class TRequestHandler final
     IBlockStorePtr Service;
     ITraceSerializerPtr TraceSerializer;
     ITaskQueuePtr TaskQueue;
+
+    // not set when nobody is going to look at the connections
+    TMountRegistryPtr MountRegistry;
 
     TLog Log;
     std::weak_ptr<NCloud::NStorage::NRdma::IServerEndpoint> Endpoint;
@@ -101,10 +113,12 @@ public:
     TRequestHandler(
         IBlockStorePtr service,
         ITraceSerializerPtr traceSerializer,
-        ITaskQueuePtr taskQueue)
+        ITaskQueuePtr taskQueue,
+        TMountRegistryPtr mountRegistry)
         : Service(std::move(service))
         , TraceSerializer(std::move(traceSerializer))
         , TaskQueue(std::move(taskQueue))
+        , MountRegistry(std::move(mountRegistry))
     {}
 
     void Init(
@@ -120,7 +134,32 @@ public:
         return NCloud::NBlockStore::CreateCallContext();
     }
 
+    void OnSessionCreated(
+        const NCloud::NStorage::NRdma::IServerSession& session) noexcept override
+    {
+        if (!MountRegistry) {
+            return;
+        }
+
+        // the session reference is only valid for the duration of this call,
+        // so everything the registry needs is copied out right here
+        MountRegistry->AddConnection(
+            session.GetId(),
+            session.GetPeer(),
+            session.GetStartTs());
+    }
+
+    void OnSessionClosed(ui64 sessionId) noexcept override
+    {
+        if (!MountRegistry) {
+            return;
+        }
+
+        MountRegistry->RemoveConnection(sessionId);
+    }
+
 private:
+
 #define BLOCKSTORE_HANDLE_REQUEST(name, ...)                             \
     case TBlockStoreServerProtocol::Ev##name##Request:                   \
         return Handle##name##Request(                                    \
@@ -133,7 +172,7 @@ private:
     // BLOCKSTORE_HANDLE_REQUEST
 
     NProto::TError DoHandleRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         TStringBuf in,
         TStringBuf out) const
@@ -168,7 +207,7 @@ private:
 #undef BLOCKSTORE_HANDLE_REQUEST
 
     void HandleRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
@@ -192,6 +231,32 @@ private:
                     }
                 }
             });
+    }
+
+    void OnVolumeMounted(
+        NCloud::NStorage::NRdma::IServerRequest* context,
+        TMountInfo info) const
+    {
+        if (!context || !MountRegistry) {
+            return;
+        }
+
+        MountRegistry->AddMount(context->GetSessionId(), std::move(info));
+    }
+
+    void OnVolumeUnmounted(
+        NCloud::NStorage::NRdma::IServerRequest* context,
+        TString diskId,
+        TString clientId) const
+    {
+        if (!context || !MountRegistry) {
+            return;
+        }
+
+        MountRegistry->RemoveMount(
+            context->GetSessionId(),
+            std::move(diskId),
+            std::move(clientId));
     }
 
     size_t SerializeReadBlocksResponse(
@@ -227,7 +292,7 @@ private:
     }
 
     NProto::TError HandleReadBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TReadBlocksRequest* request,
         TStringBuf requestData,
@@ -337,7 +402,7 @@ private:
     }
 
     NProto::TError HandleWriteBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TWriteBlocksRequest* request,
         TStringBuf requestData,
@@ -438,7 +503,7 @@ private:
     }
 
     NProto::TError HandleZeroBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TZeroBlocksRequest* request,
         TStringBuf requestData,
@@ -519,7 +584,7 @@ private:
     }
 
     NProto::TError HandlePingRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TPingRequest* request,
         TStringBuf requestData,
@@ -551,7 +616,7 @@ private:
     }
 
     NProto::TError HandleMountVolumeRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TMountVolumeRequest* request,
         TStringBuf requestData,
@@ -571,6 +636,9 @@ private:
 
         request->SetForceRemoteBinding(true);
 
+        // has to be collected before the request is moved out
+        auto mountInfo = MakeMountInfo(*request);
+
         auto req =
             std::make_shared<NProto::TMountVolumeRequest>(std::move(*request));
 
@@ -580,10 +648,17 @@ private:
             [out = out,
              context = context,
              endpoint = Endpoint,
+             mountInfo = std::move(mountInfo),
              callContext = std::move(callContext),
-             weakSelf = weak_from_this()](auto future)
+             weakSelf = weak_from_this()](auto future) mutable
             {
                 auto response = ExtractResponse(future);
+
+                if (!HasError(response.GetError())) {
+                    if (auto self = weakSelf.lock()) {
+                        self->OnVolumeMounted(context, std::move(mountInfo));
+                    }
+                }
 
                 ui32 flags = 0;
                 size_t responseBytes = 0;
@@ -622,7 +697,7 @@ private:
     }
 
     NProto::TError HandleUnmountVolumeRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TUnmountVolumeRequest* request,
         TStringBuf requestData,
@@ -640,6 +715,10 @@ private:
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
+        // have to be collected before the request is moved out
+        auto diskId = request->GetDiskId();
+        auto clientId = request->GetHeaders().GetClientId();
+
         auto req = std::make_shared<NProto::TUnmountVolumeRequest>(
             std::move(*request));
 
@@ -649,10 +728,18 @@ private:
             [out = out,
              context = context,
              endpoint = Endpoint,
+             diskId = std::move(diskId),
+             clientId = std::move(clientId),
              callContext = std::move(callContext),
              weakSelf = weak_from_this()](auto future)
             {
                 auto response = ExtractResponse(future);
+
+                if (!HasError(response.GetError())) {
+                    if (auto self = weakSelf.lock()) {
+                        self->OnVolumeUnmounted(context, diskId, clientId);
+                    }
+                }
 
                 ui32 flags = 0;
                 size_t responseBytes = 0;
@@ -695,6 +782,9 @@ private:
 
 class TRdmaTarget final: public IStartable
 {
+    // number of mount related columns, see DumpHtml()
+    static constexpr size_t MountColumnCount = 5;
+
     const TBlockstoreServerRdmaTargetConfigPtr Config;
 
     ILoggingServicePtr Logging;
@@ -702,6 +792,8 @@ class TRdmaTarget final: public IStartable
     NCloud::NStorage::NRdma::IServerPtr Server;
     ITaskQueuePtr TaskQueue;
 
+    // not set when nobody is going to look at the connections
+    TMountRegistryPtr MountRegistry;
     std::shared_ptr<TRequestHandler> Handler;
 
     TLog Log;
@@ -713,21 +805,28 @@ public:
         ITraceSerializerPtr traceSerializer,
         NCloud::NStorage::NRdma::IServerPtr server,
         ITaskQueuePtr taskQueue,
+        TMountRegistryPtr mountRegistry,
         IBlockStorePtr service)
         : Config(std::move(rdmaTargetConfig))
         , Logging(std::move(logging))
         , TraceSerializer(std::move(traceSerializer))
         , Server(std::move(server))
         , TaskQueue(std::move(taskQueue))
+        , MountRegistry(std::move(mountRegistry))
     {
         Handler = std::make_shared<TRequestHandler>(
             std::move(service),
             TraceSerializer,
-            TaskQueue);
+            TaskQueue,
+            MountRegistry);
     }
 
     void Start() override
     {
+        if (MountRegistry) {
+            MountRegistry->Start();
+        }
+
         auto endpoint =
             Server->StartEndpoint(Config->Host, Config->Port, Handler);
 
@@ -744,6 +843,106 @@ public:
     {
         Server->Stop();
         TaskQueue->Stop();
+
+        if (MountRegistry) {
+            MountRegistry->Stop();
+        }
+    }
+
+    // Renders the client connections along with the volumes mounted over them.
+    void DumpHtml(IOutputStream& out) const
+    {
+        if (!MountRegistry) {
+            out << "Connection tracking is disabled";
+            return;
+        }
+
+        auto connections = MountRegistry->GetConnections();
+
+        HTML(out) {
+            TAG(TH3) {
+                out << "Connections"
+                    << " <font color=gray>" << connections.size() << "</font>";
+            }
+
+            TABLE_SORTABLE_CLASS("table table-bordered") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLEH() { out << "SessionId"; }
+                        TABLEH() { out << "Peer"; }
+                        TABLEH() { out << "Connected"; }
+                        TABLEH() { out << "DiskId"; }
+                        TABLEH() { out << "ClientId"; }
+                        TABLEH() { out << "AccessMode"; }
+                        TABLEH() { out << "MountMode"; }
+                        TABLEH() { out << "MountSeqNumber"; }
+                    }
+                }
+
+                for (const auto& connection: connections) {
+                    if (connection.Mounts.empty()) {
+                        RenderConnection(out, connection, nullptr);
+                        continue;
+                    }
+
+                    for (const auto& mount: connection.Mounts) {
+                        RenderConnection(out, connection, &mount);
+                    }
+                }
+            }
+        }
+    }
+
+private:
+    static void RenderConnection(
+        IOutputStream& out,
+        const TConnectionInfo& connection,
+        const TMountInfo* mount)
+    {
+        HTML(out) {
+            TABLER() {
+                TABLED() { out << Hex(connection.SessionId, HF_FULL); }
+                TABLED() { out << connection.Peer; }
+                TABLED() { out << connection.StartTs; }
+
+                if (mount) {
+                    TABLED() { out << mount->DiskId; }
+                    TABLED() { out << mount->ClientId; }
+                    TABLED() {
+                        out << NProto::EVolumeAccessMode_Name(
+                            mount->VolumeAccessMode);
+                    }
+                    TABLED() {
+                        out << NProto::EVolumeMountMode_Name(
+                            mount->VolumeMountMode);
+                    }
+                    TABLED() { out << mount->MountSeqNumber; }
+                } else {
+                    // a connection that hasn't mounted anything (yet)
+                    for (size_t i = 0; i < MountColumnCount; ++i) {
+                        TABLED() { out << "-"; }
+                    }
+                }
+            }
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TRdmaTargetMonPage final: public THtmlMonPage
+{
+    const std::shared_ptr<TRdmaTarget> Target;
+
+public:
+    explicit TRdmaTargetMonPage(std::shared_ptr<TRdmaTarget> target)
+        : THtmlMonPage("RdmaTarget", "RdmaTarget", true)
+        , Target(std::move(target))
+    {}
+
+    void OutputContent(IMonHttpRequest& request) override
+    {
+        Target->DumpHtml(request.Output());
     }
 };
 
@@ -753,19 +952,33 @@ IStartablePtr CreateBlockstoreServerRdmaTarget(
     TBlockstoreServerRdmaTargetConfigPtr rdmaTargetConfig,
     ILoggingServicePtr logging,
     ITraceSerializerPtr traceSerializer,
+    IMonitoringServicePtr monitoring,
     NCloud::NStorage::NRdma::IServerPtr server,
     IBlockStorePtr service)
 {
     auto threadPool = CreateThreadPool("RDMA", rdmaTargetConfig->WorkerThreads);
     threadPool->Start();
 
-    return std::make_shared<TRdmaTarget>(
+    // without a monitoring page there is nobody to read the connections, so
+    // the handler is left with an observer that drops them
+    auto mountRegistry = monitoring ? CreateMountRegistry(logging) : nullptr;
+
+    auto target = std::make_shared<TRdmaTarget>(
         std::move(rdmaTargetConfig),
         std::move(logging),
         std::move(traceSerializer),
         std::move(server),
         std::move(threadPool),
+        std::move(mountRegistry),
         std::move(service));
+
+    if (monitoring) {
+        auto rootPage = monitoring->RegisterIndexPage("blockstore", "BlockStore");
+        static_cast<TIndexMonPage&>(*rootPage).Register(
+            new TRdmaTargetMonPage(target));
+    }
+
+    return target;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
