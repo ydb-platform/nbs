@@ -48,8 +48,7 @@ func TestConfigurePoolTaskImageNotReady(t *testing.T) {
 		ctx,
 		imageID,
 	).Once().Return(&resources.ImageMeta{
-		ID:                imageID,
-		UseDataplaneTasks: true,
+		ID: imageID,
 	}, nil)
 
 	err = task.Run(ctx, execCtx)

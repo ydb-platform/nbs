@@ -53,9 +53,8 @@ func (t *scheduleBaseDisksTask) Run(
 					ZoneId: baseDisks[i].ZoneID,
 					DiskId: baseDisks[i].ID,
 				},
-				BaseDiskCheckpointId:                baseDisks[i].CheckpointID,
-				BaseDiskSize:                        baseDisks[i].Size,
-				UseDataplaneTasksForLegacySnapshots: true, // TODO: remove it.
+				BaseDiskCheckpointId: baseDisks[i].CheckpointID,
+				BaseDiskSize:         baseDisks[i].Size,
 			},
 		)
 		if err != nil {

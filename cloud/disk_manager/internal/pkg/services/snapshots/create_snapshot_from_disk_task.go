@@ -66,15 +66,14 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	snapshotMeta, err := t.storage.CreateSnapshot(ctx, resources.SnapshotMeta{
-		ID:                t.request.DstSnapshotId,
-		FolderID:          t.request.FolderId,
-		Disk:              disk,
-		CreateRequest:     t.request,
-		CreateTaskID:      selfTaskID,
-		CreatingAt:        time.Now(),
-		CreatedBy:         "",   // TODO: extract CreatedBy from execCtx.
-		UseDataplaneTasks: true, // TODO: remove it.
-		Encryption:        diskParams.EncryptionDesc,
+		ID:            t.request.DstSnapshotId,
+		FolderID:      t.request.FolderId,
+		Disk:          disk,
+		CreateRequest: t.request,
+		CreateTaskID:  selfTaskID,
+		CreatingAt:    time.Now(),
+		CreatedBy:     "", // TODO: extract CreatedBy from execCtx.
+		Encryption:    diskParams.EncryptionDesc,
 	})
 	if err != nil {
 		return "", err

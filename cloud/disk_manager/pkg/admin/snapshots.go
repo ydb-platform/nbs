@@ -315,73 +315,6 @@ func newDeleteSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO: Remove this command after getting rid of legacy snapshot storage.
-type scheduleCreateSnapshotFromLegacySnapshotTask struct {
-	commandWithScheduler
-	snapshotID string
-}
-
-func (c *scheduleCreateSnapshotFromLegacySnapshotTask) run() error {
-	err := c.init()
-	if err != nil {
-		return err
-	}
-	defer c.close()
-
-	taskID, err := c.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(
-			c.ctx,
-			"dataplane.CreateSnapshotFromLegacySnapshot_"+c.snapshotID+"_"+generateID(),
-		),
-		"dataplane.CreateSnapshotFromLegacySnapshot",
-		"",
-		&dataplane_protos.CreateSnapshotFromLegacySnapshotRequest{
-			SrcSnapshotId: c.snapshotID,
-			DstSnapshotId: c.snapshotID,
-			UseS3:         true,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Task: %v\n", taskID)
-	return nil
-}
-
-func newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
-	clientConfig *client_config.ClientConfig,
-	serverConfig *server_config.ServerConfig,
-) *cobra.Command {
-
-	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
-	c := &scheduleCreateSnapshotFromLegacySnapshotTask{
-		commandWithScheduler: cmdWithScheduler,
-	}
-
-	cmd := &cobra.Command{
-		Use:     "schedule-create-snapshot-from-legacy-snapshot-task",
-		Aliases: []string{"schedule_create_snapshot_from_legacy_snapshot_task"},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.run()
-		},
-	}
-
-	cmd.Flags().StringVar(
-		&c.snapshotID,
-		"id",
-		"",
-		"ID of snapshot to create from legacy snapshot; required",
-	)
-	if err := cmd.MarkFlagRequired("id"); err != nil {
-		log.Fatalf("Error setting flag id as required: %v", err)
-	}
-
-	return cmd
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 type scheduleMigrateSnapshotTaskCmd struct {
 	commandWithScheduler
 	snapshotID string
@@ -510,11 +443,6 @@ func newSnapshotsCmd(
 		newListSnapshotsCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
-		// TODO: Remove this command after getting rid of legacy snapshot storage.
-		newScheduleCreateSnapshotFromLegacySnapshotTaskCmd(
-			clientConfig,
-			serverConfig,
-		),
 		newScheduleMigrateSnapshotTaskCmd(
 			clientConfig,
 			serverConfig,

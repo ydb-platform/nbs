@@ -101,10 +101,9 @@ func RegisterForExecution(
 			cloudID:  config.GetCloudId(),
 			folderID: config.GetFolderId(),
 
-			scheduler:       taskScheduler,
-			storage:         storage,
-			nbsFactory:      nbsFactory,
-			resourceStorage: resourceStorage,
+			scheduler:  taskScheduler,
+			storage:    storage,
+			nbsFactory: nbsFactory,
 		}
 	})
 	if err != nil {

@@ -65,13 +65,12 @@ func (t *createImageFromURLTask) Run(
 	}
 
 	_, err = t.storage.CreateImage(ctx, resources.ImageMeta{
-		ID:                t.request.DstImageId,
-		FolderID:          t.request.FolderId,
-		CreateRequest:     t.request,
-		CreateTaskID:      selfTaskID,
-		CreatingAt:        time.Now(),
-		CreatedBy:         "",   // TODO: extract CreatedBy from execCtx.
-		UseDataplaneTasks: true, // TODO: remove it.
+		ID:            t.request.DstImageId,
+		FolderID:      t.request.FolderId,
+		CreateRequest: t.request,
+		CreateTaskID:  selfTaskID,
+		CreatingAt:    time.Now(),
+		CreatedBy:     "", // TODO: extract CreatedBy from execCtx.
 	})
 	if err != nil {
 		return err

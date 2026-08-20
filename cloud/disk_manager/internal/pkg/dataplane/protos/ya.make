@@ -6,7 +6,6 @@ SRCS(
     collect_snapshots_task.proto
     create_dr_based_disk_checkpoint_task.proto
     create_snapshot_from_disk_task.proto
-    create_snapshot_from_legacy_snapshot_task.proto
     create_snapshot_from_snapshot_task.proto
     create_snapshot_from_url_task.proto
     delete_disk_from_incremental.proto
