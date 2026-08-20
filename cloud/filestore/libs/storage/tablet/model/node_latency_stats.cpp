@@ -21,7 +21,7 @@ TNodeLatencyStatsTracker::TNodeLatencyStatsTracker(
           maxEntries,
           TNodeLatencyStatsComparator{decayHalfLife},
           TLatencyKeyExtractor{})
-    , Enabled(maxEntries != 0 && decayHalfLife.GetValue() != 0)
+    , Enabled(maxEntries != 0 && decayHalfLife != TDuration::Zero())
 {}
 
 void TNodeLatencyStatsTracker::Reset(size_t maxEntries, TDuration decayHalfLife)
@@ -32,7 +32,7 @@ void TNodeLatencyStatsTracker::Reset(size_t maxEntries, TDuration decayHalfLife)
         TLatencyKeyExtractor{});
 
     DecayHalfLife = decayHalfLife;
-    Enabled = maxEntries != 0 && decayHalfLife.GetValue() != 0;
+    Enabled = maxEntries != 0 && decayHalfLife != TDuration::Zero();
 }
 
 bool TNodeLatencyStatsTracker::TNodeLatencyStatsComparator::operator()(

@@ -50,7 +50,7 @@ TNodeAccessStatsTracker::TNodeAccessStatsTracker(
           TNodeAccessComparator{halfLife},
           TNodeAccessKeyExtractor{})
     , HalfLife(halfLife)
-    , Enabled(maxEntries != 0 && halfLife.GetValue() != 0)
+    , Enabled(maxEntries != 0 && halfLife != TDuration::Zero())
 {}
 
 void TNodeAccessStatsTracker::Reset(size_t maxEntries, TDuration halfLife)
@@ -61,7 +61,7 @@ void TNodeAccessStatsTracker::Reset(size_t maxEntries, TDuration halfLife)
         TNodeAccessKeyExtractor{});
 
     HalfLife = halfLife;
-    Enabled = maxEntries != 0 && halfLife.GetValue() != 0;
+    Enabled = maxEntries != 0 && halfLife != TDuration::Zero();
 }
 
 bool TNodeAccessStatsTracker::UpdateAccessStats(ui64 nodeId, TInstant now)
