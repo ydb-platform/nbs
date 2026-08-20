@@ -8266,6 +8266,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             true);
     }
 
+    SERVICE_TEST(
+        ShouldReportWeightedDeterministicBalancerWithoutStrictEnforcement)
+    {
+        config.SetShardBalancerPolicy(
+            NProto::SBP_WEIGHTED_DETERMINISTIC);
+        config.SetStrictFileSystemSizeEnforcementEnabled(false);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/"
+            "IncompatibleFeatures");
+        UNIT_ASSERT(counter->GetAtomic() > 0);
+    }
+
     SERVICE_TEST(ShouldCreateALotOfShards)
     {
         const ui64 blockSize = 4_KB;

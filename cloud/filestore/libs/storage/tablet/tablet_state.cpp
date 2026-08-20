@@ -132,6 +132,19 @@ void TIndexTabletState::InitInMemoryIndexState(const TStorageConfig& config)
 
 void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
 {
+    // When a filesystem is just created, GetBlockSize() is zero.
+    // It's a protection from division by zero in a shard balancer.
+    const ui32 blockSize = GetBlockSize() ? GetBlockSize() : DefaultBlockSize;
+
+    if (config.GetShardBalancerPolicy() == NProto::SBP_WEIGHTED_DETERMINISTIC &&
+        !config.GetStrictFileSystemSizeEnforcementEnabled())
+    {
+        ReportIncompatibleFeatures(
+            TStringBuilder()
+            << "Weighted deterministic balancer is incompatible with a "
+               "filesystem without strict file system size enforcement.");
+    }
+
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     TVector<TString> balancerShardIds;
 
@@ -139,7 +152,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
     if (fileShardIds.size()) {
         Impl->FileShardBalancer = CreateShardBalancer(
             config.GetShardBalancerPolicy(),
-            GetBlockSize(),
+            blockSize,
             config.GetShardBalancerPrecisionBytes(),
             config.GetMaxFileBlocks(),
             config.GetShardBalancerDesiredFreeSpaceReserve(),
@@ -160,7 +173,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
 
     Impl->ShardBalancer = CreateShardBalancer(
         config.GetShardBalancerPolicy(),
-        GetBlockSize(),
+        blockSize,
         config.GetShardBalancerPrecisionBytes(),
         config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
