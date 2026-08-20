@@ -15,7 +15,7 @@ Blockstore API provides the following requests for working with checkpoints:
 
 ## Creation and deletion of checkpoints.
 
-The history of create checkpoint and delete checkpoint requests is stored persistently in the volume tablet's local database. If the volume tablet reboots, information about all alive checkpoints will be restored from the history, so the volume will not forget alive checkpoints. (The checkpoint is called alive if it was created and was not deleted.) 
+The history of create checkpoint and delete checkpoint requests is stored persistently in the volume tablet's local database. If the volume tablet reboots, information about all alive checkpoints will be restored from the history, so the volume will not forget alive checkpoints. (The checkpoint is called alive if it was created and was not deleted.)
 
 Checkpoint creation is idempotent, i.e. checkpoint creation does nothing if there exists an alive checkpoint with the same id. Checkpoint deletion is also idempotent, i.e. checkpoint deletion does nothing if a checkpoint with such id does not exist (was deleted or never existed).
 
@@ -30,6 +30,8 @@ The checkpoint either *has data* or *has no data* (we also say *checkpoint with 
 A checkpoint can be created either with or without data. One can delete data for an existing checkpoint using a `DeleteCheckpointData` request. So the "life cycle" of the checkpoint includes the following stages: "Checkpoint does not exist" -> "Checkpoint exists and has data" -> "Checkpoint exist and has no data" -> "Checkpoint was deleted". One of the stages "Checkpoint exists and has data" and "Checkpoint exists and has no data" can be skipped, but if the checkpoint has no data, it will never have data again.
 
 If the checkpoint has data, it forbids to delete the blobs needed for reading from this checkpoint. Namely, some blob commit id corresponds to each checkpoint with data, and a garbage collection barrier for this commit id is set up. If we don't read from the checkpoint anymore, we should delete its data -- otherwise garbage collection will be stuck.
+
+See [Checkpoint-aware cleanup](checkpoint-aware-cleanup.md) for how cleanup can still delete overwritten blobs that no live checkpoint needs.
 
 Some usecases of checkpoints with/without data:
 - Incremental snapshots: When we create a snapshot, we transfer the diff between two checkpoints. For this purpose we need the data of the high checkpoint but we don't need the data of the low checkpoint. When we create the next snapshot, the high checkpoint becomes the lower one, so we don't need its data anymore. So checkpoints for incremental snapshots are created with data, but then their data is deleted.

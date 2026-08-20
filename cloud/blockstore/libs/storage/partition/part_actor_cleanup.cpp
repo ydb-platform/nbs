@@ -47,15 +47,15 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
         });
     }
 
-    ui64 commitId = State->GetCleanupCommitId();
+    const ui64 cleanupCommitId = State->GetCleanupCommitId();
 
-    ui32 pendingBlobs = State->GetBlobCountToCleanup(
-        commitId,
-        Config->GetCleanupThreshold()
-    );
+    State->ResetCleanupMilestoneIfNeeded();
 
-    if (pendingBlobs < Config->GetCleanupThreshold()) {
-        // not ready
+    if (!State->HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            Config->GetCleanupThreshold()))
+    {
+        // Not ready
         return;
     }
 
@@ -151,10 +151,14 @@ void TPartitionActor::HandleCleanup(
         return;
     }
 
-    ui64 commitId = State->GetCleanupCommitId();
+    const ui64 cleanupCommitId = State->GetCleanupCommitId();
+
+    State->ResetCleanupMilestoneIfNeeded();
 
     auto cleanupQueue = State->GetCleanupQueue().GetItems(
-        commitId,
+        State->GetCleanupMilestoneCommitId(),
+        State->GetCleanupMilestoneBlobId(),
+        cleanupCommitId,
         Config->GetMaxBlobsToCleanup());
 
     if (!cleanupQueue) {
@@ -169,22 +173,23 @@ void TPartitionActor::HandleCleanup(
         TBlockStoreComponents::PARTITION,
         "%s Start cleanup @%lu (queue: %u)",
         LogTitle.GetWithTime().c_str(),
-        commitId,
+        cleanupCommitId,
         static_cast<ui32>(cleanupQueue.size()));
 
     State->GetCleanupState().SetStatus(EOperationStatus::Started, ctx.Now());
 
     AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
 
+    const bool checkpointAware = State->IsCheckpointAwareCleanupEnabled();
     auto tx = CreateTx<TCleanup>(
         requestInfo,
-        commitId,
+        cleanupCommitId,
         IsUseRecreatedBlobMetasOnCleanupEnabled(),
         IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
         std::move(cleanupQueue),
-        false,              // withCheckpoint
-        InvalidCommitId,    // minCheckpointCommitId
-        InvalidCommitId);   // maxCheckpointCommitId
+        checkpointAware,
+        checkpointAware ? State->GetMinCheckpointCommitId() : InvalidCommitId,
+        checkpointAware ? State->GetMaxCheckpointCommitId() : InvalidCommitId);
 
     ExecuteTx(ctx, std::move(tx));
 }
@@ -276,6 +281,7 @@ void TPartitionActor::CompleteCleanup(
 
     auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.Cleanup.AddRequest(time);
+    PartCounters->Cumulative.CleanupBlobsSkipped.Increment(args.BlobsSkipped);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

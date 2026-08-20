@@ -84,7 +84,9 @@ TPartitionState MakeState(size_t blockCount = 2048, bool mixedBlocksFilterEnable
         TTestExecutor::TabletId,
         mixedBlocksFilterEnabled
             ? std::make_optional(TMixedBlocksFilterConfig{})
-            : std::nullopt);
+            : std::nullopt,
+        false   // checkpointAwareCleanupEnabled
+    );
 }
 
 std::shared_ptr<TStorageConfig> MakeStorageConfig(

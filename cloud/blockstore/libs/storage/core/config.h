@@ -452,6 +452,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsCheckpointAwareCleanupFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -880,6 +885,8 @@ public:
     [[nodiscard]] ui64 GetMixedBlocksFilterRangesToLoadPerTx() const;
 
     [[nodiscard]] TDuration GetMixedBlocksFilterAllowedCpuTimePerSecond() const;
+
+    [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
 };
 
 ui64 GetAllocationUnit(

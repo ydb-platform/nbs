@@ -328,7 +328,8 @@ public:
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
-        const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig);
+        const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
+        bool checkpointAwareCleanupEnabled);
 
 private:
     bool LoadStateFinished = false;
@@ -937,16 +938,43 @@ public:
     //
 
 private:
+    struct TBlobCountToCleanupEstimate
+    {
+        ui32 BlobCount = 0;
+        ui64 CleanupCommitId = 0;
+        ui64 MilestoneCommitId = 0;
+        TPartialBlobId MilestoneBlobId;
+
+        TBlobCountToCleanupEstimate() = default;
+
+        TBlobCountToCleanupEstimate(
+            ui32 blobCount,
+            ui64 cleanupCommitId,
+            ui64 milestoneCommitId,
+            const TPartialBlobId& milestoneBlobId)
+            : BlobCount(blobCount)
+            , CleanupCommitId(cleanupCommitId)
+            , MilestoneCommitId(milestoneCommitId)
+            , MilestoneBlobId(milestoneBlobId)
+        {}
+    };
+
     TOperationState CleanupState;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
+    const bool CheckpointAwareCleanupEnabled;
 
-    mutable ui32 BlobCountToCleanup = 0;
-    mutable ui64 BlobCountToCleanupCommitId = 0;
+    mutable TBlobCountToCleanupEstimate BlobCountToCleanupEstimate;
 
     TDuration LastCleanupExecTime;
     TInstant LastCleanupFinishTs;
     TDuration CleanupDelay;
+
+    void UpdateOrResetCleanupMilestone(
+        ui64 newCommitId,
+        TPartialBlobId newBlobId,
+        ui64 minCheckpointCommitId,
+        ui64 maxCheckpointCommitId);
 
 public:
     TOperationState& GetCleanupState()
@@ -964,27 +992,64 @@ public:
         return CleanupQueue;
     }
 
-    ui32 GetBlobCountToCleanup(ui64 commitId, ui32 maxBlobs) const
+    bool IsCheckpointAwareCleanupEnabled() const
     {
-        if (commitId < BlobCountToCleanupCommitId
-                || BlobCountToCleanup < maxBlobs)
-        {
-            BlobCountToCleanup = CleanupQueue.GetCount(commitId);
-            BlobCountToCleanupCommitId = commitId;
+        return CheckpointAwareCleanupEnabled;
+    }
+
+    bool HasBlobCountToCleanupReachedThreshold(
+        ui64 cleanupCommitId,
+        ui32 threshold) const;
+
+    ui64 GetCleanupMilestoneCommitId() const
+    {
+        if (!CheckpointAwareCleanupEnabled) {
+            return 0;
         }
 
-        return BlobCountToCleanup;
+        return Meta.GetCleanupMilestone().GetCommitId();
     }
+
+    TPartialBlobId GetCleanupMilestoneBlobId() const
+    {
+        if (!CheckpointAwareCleanupEnabled) {
+            return {};
+        }
+
+        const auto& milestone = Meta.GetCleanupMilestone();
+        return MakePartialBlobId(
+            milestone.GetBlobCommitId(),
+            milestone.GetBlobUniqueId());
+    }
+
+    void ResetCleanupMilestoneIfNeeded()
+    {
+        if (!CheckpointAwareCleanupEnabled) {
+            return;
+        }
+
+        UpdateOrResetCleanupMilestone(
+            GetCleanupMilestoneCommitId(),
+            GetCleanupMilestoneBlobId(),
+            GetMinCheckpointCommitId(),
+            GetMaxCheckpointCommitId());
+    }
+
+    void UpdateCleanupMilestoneIfNeeded(
+        ui64 newCommitId,
+        TPartialBlobId newBlobId,
+        ui64 minCheckpointCommitId,
+        ui64 maxCheckpointCommitId);
 
     void RemoveCleanupQueueItem(const TCleanupQueueItem& item)
     {
         bool removed = CleanupQueue.Remove(item);
         Y_ABORT_UNLESS(removed);
 
-        // BlobCountToCleanup is not perfectly synchronized with CleanupQueue:
-        // it can actually be smaller
-        if (BlobCountToCleanup) {
-            --BlobCountToCleanup;
+        // BlobCountToCleanupEstimate is not perfectly synchronized with
+        // CleanupQueue: it can actually be smaller.
+        if (BlobCountToCleanupEstimate.BlobCount) {
+            --BlobCountToCleanupEstimate.BlobCount;
         }
     }
 
@@ -1030,6 +1095,10 @@ public:
     {
         return ThreadSafeState->AccessCheckpointsInFlight();
     }
+
+    ui64 GetMaxCheckpointCommitId() const;
+
+    ui64 GetMinCheckpointCommitId() const;
 
     ui64 GetCleanupCommitId() const;
 

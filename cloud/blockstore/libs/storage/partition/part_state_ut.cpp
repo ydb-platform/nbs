@@ -89,6 +89,37 @@ struct TNoBackpressurePolicy
     }
 };
 
+// TODO: use this function in other tests.
+TPartitionState MakeState(
+    size_t blockCount = DefaultBlockCount,
+    bool checkpointAwareCleanupEnabled = false)
+{
+    auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
+    return TPartitionState(
+        DefaultConfig(1, blockCount),
+        BuildDefaultCompactionPolicy(5),
+        0,   // compactionScoreHistorySize
+        0,   // cleanupScoreHistorySize
+        DefaultBPConfig(),
+        DefaultFreeSpaceConfig(),
+        Max(),   // maxIORequestsInFlight
+        0,       // reassignChannelsPercentageThreshold
+        100,     // reassignFreshChannelsPercentageThreshold
+        100,     // reassignMixedChannelsPercentageThreshold
+        false,   // reassignSystemChannelsImmediately
+        5,       // channelCount
+        0,       // mixedIndexCacheSize
+        10000,   // allocationUnit
+        100,     // maxBlobsPerUnit
+        10,      // maxBlobsPerRange,
+        1,       // compactionRangeCountPerRun
+        std::move(threadSafeState),
+        0,             // tabletId
+        std::nullopt,  // mixedBlocksFilterConfig
+        checkpointAwareCleanupEnabled
+    );
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,7 +150,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,       // compactionRangeCountPerRun
             threadSafeState,
             0,             // tabletId
-            std::nullopt   // mixedBlocksFilterConfig
+            std::nullopt,  // mixedBlocksFilterConfig
+            false          // checkpointAwareCleanupEnabled
         );
 
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
@@ -191,7 +223,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,       // compactionRangeCountPerRun
             threadSafeState,
             0,             // tabletId
-            std::nullopt   // mixedBlocksFilterConfig
+            std::nullopt,  // mixedBlocksFilterConfig
+            false          // checkpointAwareCleanupEnabled
         );
 
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
@@ -229,7 +262,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,       // compactionRangeCountPerRun
             threadSafeState,
             0,             // tabletId
-            std::nullopt   // mixedBlocksFilterConfig
+            std::nullopt,  // mixedBlocksFilterConfig
+            false          // checkpointAwareCleanupEnabled
         );
 
         state.GetLogicalUsedBlocks().Set(0, 9);
@@ -317,7 +351,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,       // compactionRangeCountPerRun
             threadSafeState,
             0,             // tabletId
-            std::nullopt   // mixedBlocksFilterConfig
+            std::nullopt,  // mixedBlocksFilterConfig
+            false          // checkpointAwareCleanupEnabled
         );
 
         state.IncrementMergedBlocksCount(5_GB / DefaultBlockSize);
@@ -363,7 +398,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,       // compactionRangeCountPerRun
             threadSafeState,
             0,             // tabletId
-            std::nullopt   // mixedBlocksFilterConfig
+            std::nullopt,  // mixedBlocksFilterConfig
+            false          // checkpointAwareCleanupEnabled
         );
 
         TTestExecutor executor;
@@ -505,7 +541,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,                 // compactionRangeCountPerRun
             threadSafeState,
             0,             // tabletId
-            std::nullopt   // mixedBlocksFilterConfig
+            std::nullopt,  // mixedBlocksFilterConfig
+            false          // checkpointAwareCleanupEnabled
         );
         UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
     }
@@ -541,7 +578,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,       // compactionRangeCountPerRun
             threadSafeState,
             0,             // tabletId
-            std::nullopt   // mixedBlocksFilterConfig
+            std::nullopt,  // mixedBlocksFilterConfig
+            false          // checkpointAwareCleanupEnabled
         );
 
         TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111, {}};
@@ -589,7 +627,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,       // compactionRangeCountPerRun
             threadSafeState,
             0,             // tabletId
-            std::nullopt   // mixedBlocksFilterConfig
+            std::nullopt,  // mixedBlocksFilterConfig
+            false          // checkpointAwareCleanupEnabled
         );
 
         const ui32 blockIndex = 0;
@@ -625,6 +664,340 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0u,
             state.CalculateNewlyZeroedBlocks(blockIndex, 30));
+    }
+
+    Y_UNIT_TEST(ShouldGetMinAndMaxCheckpointCommitId)
+    {
+        auto state = MakeState();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidCommitId,
+            state.GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetMaxCheckpointCommitId());
+
+        state.AccessCheckpoints().Add({"c1", 10, "idemp1", Now(), {}});
+        state.AccessCheckpoints().Add({"c2", 30, "idemp2", Now(), {}});
+
+        UNIT_ASSERT_VALUES_EQUAL(10u, state.GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(30u, state.GetMaxCheckpointCommitId());
+
+        UNIT_ASSERT(state.AccessCheckpointsInFlight()->AddTx("c3", nullptr, 5));
+        UNIT_ASSERT(
+            state.AccessCheckpointsInFlight()->AddTx("c4", nullptr, 40));
+
+        UNIT_ASSERT_VALUES_EQUAL(5u, state.GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(40u, state.GetMaxCheckpointCommitId());
+
+        state.AccessCheckpointsInFlight()->PopTx("c3");
+        state.AccessCheckpointsInFlight()->PopTx("c4");
+
+        UNIT_ASSERT_VALUES_EQUAL(10u, state.GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(30u, state.GetMaxCheckpointCommitId());
+    }
+
+    Y_UNIT_TEST(ShouldGetCleanupCommitId)
+    {
+        auto generateCommitIds = [](TPartitionState& state)
+        {
+            for (ui32 i = 0; i < 100; ++i) {
+                state.GenerateCommitId();
+            }
+        };
+
+        auto disabled = MakeState(DefaultBlockCount, false);
+        auto enabled = MakeState(DefaultBlockCount, true);
+        generateCommitIds(disabled);
+        generateCommitIds(enabled);
+
+        const ui64 lastCommitId = disabled.GetLastCommitId();
+        UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(0, 100), lastCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(lastCommitId, disabled.GetCleanupCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(lastCommitId, enabled.GetCleanupCommitId());
+
+        const ui64 barrierCommitId = MakeCommitId(0, 60);
+        disabled.GetCleanupQueue().AcquireBarrier(barrierCommitId);
+        enabled.GetCleanupQueue().AcquireBarrier(barrierCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            barrierCommitId - 1,
+            disabled.GetCleanupCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            barrierCommitId - 1,
+            enabled.GetCleanupCommitId());
+
+        const ui64 checkpointCommitId = MakeCommitId(0, 40);
+        disabled.AccessCheckpoints().Add(
+            {"c1", checkpointCommitId, "idemp", Now(), {}});
+        enabled.AccessCheckpoints().Add(
+            {"c1", checkpointCommitId, "idemp", Now(), {}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            checkpointCommitId - 1,
+            disabled.GetCleanupCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            barrierCommitId - 1,
+            enabled.GetCleanupCommitId());
+    }
+
+    Y_UNIT_TEST(ShouldDetectWhenBlobCountToCleanupReachedThreshold)
+    {
+        auto addBlobs = [](TPartitionState& state)
+        {
+            state.GetCleanupQueue().Add(
+                {{1, 1, 4, 4_KB, 0, 0}, MakeCommitId(0, 10), {}});
+            state.GetCleanupQueue().Add(
+                {{1, 2, 4, 4_KB, 0, 0}, MakeCommitId(0, 20), {}});
+            state.GetCleanupQueue().Add(
+                {{1, 3, 4, 4_KB, 0, 0}, MakeCommitId(0, 30), {}});
+        };
+
+        auto enabled = MakeState(DefaultBlockCount, true);
+        auto disabled = MakeState();
+
+        const ui64 cleanupCommitId = MakeCommitId(0, 100);
+        UNIT_ASSERT(!enabled.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            1));
+        UNIT_ASSERT(!disabled.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            1));
+
+        addBlobs(enabled);
+        addBlobs(disabled);
+
+        UNIT_ASSERT(!enabled.HasBlobCountToCleanupReachedThreshold(
+            MakeCommitId(0, 15),
+            2));
+        UNIT_ASSERT(enabled.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            3));
+        UNIT_ASSERT(disabled.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            3));
+
+        // Default milestone bounds are (0, 0), so the update is applied.
+        const TPartialBlobId milestoneBlobId(1, 2, 4, 4_KB, 0, 0);
+        enabled.UpdateCleanupMilestoneIfNeeded(
+            MakeCommitId(0, 20),
+            milestoneBlobId,
+            0,
+            0);
+        disabled.UpdateCleanupMilestoneIfNeeded(
+            MakeCommitId(0, 20),
+            milestoneBlobId,
+            0,
+            0);
+
+        // Checkpoint-aware cleanup respects the milestone.
+        UNIT_ASSERT(!enabled.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            2));
+        UNIT_ASSERT(enabled.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            1));
+
+        // Non-checkpoint-aware cleanup ignores the milestone and still sees
+        // all blobs.
+        UNIT_ASSERT(disabled.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            3));
+    }
+
+    Y_UNIT_TEST(ShouldUpdateCleanupMilestoneIfNeeded)
+    {
+        auto state = MakeState(DefaultBlockCount, true);
+        auto disabled = MakeState();
+
+        const ui64 minCheckpointCommitId = MakeCommitId(0, 10);
+        const ui64 maxCheckpointCommitId = MakeCommitId(0, 20);
+        const ui64 milestoneCommitId = MakeCommitId(0, 15);
+        const TPartialBlobId milestoneBlobId(1, 7);
+
+        // Stale checkpoint bounds: milestone is not updated.
+        state.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            minCheckpointCommitId,
+            maxCheckpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TPartialBlobId(),
+            state.GetCleanupMilestoneBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+
+        state.AccessCheckpoints().Add(
+            {"c1", minCheckpointCommitId, "idemp1", Now(), {}});
+        state.AccessCheckpoints().Add(
+            {"c2", maxCheckpointCommitId, "idemp2", Now(), {}});
+        state.ResetCleanupMilestoneIfNeeded();
+
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            minCheckpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxCheckpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+
+        // Matching checkpoint bounds: milestone position is updated.
+        state.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            minCheckpointCommitId,
+            maxCheckpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneBlobId,
+            state.GetCleanupMilestoneBlobId());
+
+        disabled.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            0,
+            0);
+        // Non-checkpoint-aware getters always return an empty milestone.
+        UNIT_ASSERT_VALUES_EQUAL(0u, disabled.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TPartialBlobId(),
+            disabled.GetCleanupMilestoneBlobId());
+
+        const ui64 advancedCommitId = MakeCommitId(0, 18);
+        const TPartialBlobId advancedBlobId(1, 9);
+        state.UpdateCleanupMilestoneIfNeeded(
+            advancedCommitId,
+            advancedBlobId,
+            minCheckpointCommitId,
+            maxCheckpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            advancedCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            advancedBlobId,
+            state.GetCleanupMilestoneBlobId());
+
+        // Checkpoint set changed, but milestone bounds were not reset yet:
+        // update is ignored and the previous position is kept.
+        const ui64 newMaxCheckpointCommitId = MakeCommitId(0, 30);
+        state.AccessCheckpoints().Add(
+            {"c3", newMaxCheckpointCommitId, "idemp3", Now(), {}});
+        state.UpdateCleanupMilestoneIfNeeded(
+            MakeCommitId(0, 19),
+            TPartialBlobId(1, 11),
+            minCheckpointCommitId,
+            newMaxCheckpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            advancedCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            advancedBlobId,
+            state.GetCleanupMilestoneBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            minCheckpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxCheckpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+    }
+
+    Y_UNIT_TEST(ShouldResetCleanupMilestoneIfNeeded)
+    {
+        auto disabled = MakeState();
+        disabled.AccessCheckpoints().Add(
+            {"c1", MakeCommitId(0, 10), "idemp", Now(), {}});
+        disabled.ResetCleanupMilestoneIfNeeded();
+        // Flag is disabled: milestone bounds stay at the default.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            disabled.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            disabled.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+
+        auto state = MakeState(DefaultBlockCount, true);
+
+        const ui64 checkpointCommitId = MakeCommitId(0, 10);
+        state.AccessCheckpoints().Add(
+            {"c1", checkpointCommitId, "idemp", Now(), {}});
+
+        const ui64 milestoneCommitId = MakeCommitId(0, 5);
+        const TPartialBlobId milestoneBlobId(1, 3);
+
+        // Align milestone checkpoint bounds with the current checkpoints,
+        // then set the milestone position with the same bounds.
+        state.ResetCleanupMilestoneIfNeeded();
+        state.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            checkpointCommitId,
+            checkpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneCommitId,
+            state.GetCleanupMilestoneCommitId());
+
+        // Bounds still match: milestone is preserved.
+        state.ResetCleanupMilestoneIfNeeded();
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneBlobId,
+            state.GetCleanupMilestoneBlobId());
+
+        const ui64 checkpointCommitId2 = MakeCommitId(0, 20);
+        state.AccessCheckpoints().Add(
+            {"c2", checkpointCommitId2, "idemp2", Now(), {}});
+        state.ResetCleanupMilestoneIfNeeded();
+
+        // Bounds changed: milestone is reset.
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TPartialBlobId(),
+            state.GetCleanupMilestoneBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            checkpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            checkpointCommitId2,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+
+        state.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            checkpointCommitId,
+            checkpointCommitId2);
+
+        state.ResetCleanupMilestoneIfNeeded();
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneBlobId,
+            state.GetCleanupMilestoneBlobId());
+
+        state.AccessCheckpoints().Delete("c1");
+        state.AccessCheckpoints().Delete("c2");
+        state.ResetCleanupMilestoneIfNeeded();
+
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
     }
 }
 

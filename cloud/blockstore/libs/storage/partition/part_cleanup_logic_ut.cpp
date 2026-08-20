@@ -83,7 +83,8 @@ TPartitionState MakeState(size_t blockCount = 2048)
         1,             // compactionRangeCountPerRun
         std::move(threadSafeState),
         TTestExecutor::TabletId,
-        std::nullopt   // mixedBlocksFilterConfig
+        std::nullopt,  // mixedBlocksFilterConfig
+        false          // checkpointAwareCleanupEnabled
     );
 }
 
@@ -260,7 +261,7 @@ TTxPartition::TCleanup MakeCleanupArgs(
     ui64 cleanupCommitId,
     bool useRecreatedBlobMeta,
     bool verifyRecreatedBlobMetasOnCleanup,
-    bool withCheckpoint,
+    bool checkpointAware,
     ui64 minCheckpointCommitId,
     ui64 maxCheckpointCommitId)
 {
@@ -270,7 +271,7 @@ TTxPartition::TCleanup MakeCleanupArgs(
         useRecreatedBlobMeta,
         verifyRecreatedBlobMetasOnCleanup,
         cleanupQueue,
-        withCheckpoint,
+        checkpointAware,
         minCheckpointCommitId,
         maxCheckpointCommitId);
 }
@@ -609,7 +610,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             false,   // useRecreatedBlobMeta
             false,   // verifyRecreatedBlobMetasOnCleanup
-            false,   // withCheckpoint
+            false,   // checkpointAware
             InvalidCommitId,
             InvalidCommitId);
 
@@ -684,7 +685,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             false,   // useRecreatedBlobMeta
             true,    // verifyRecreatedBlobMetasOnCleanup
-            false,   // withCheckpoint
+            false,   // checkpointAware
             InvalidCommitId,
             InvalidCommitId);
 
@@ -732,7 +733,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             true,    // useRecreatedBlobMeta
             false,   // verifyRecreatedBlobMetasOnCleanup
-            false,   // withCheckpoint
+            false,   // checkpointAware
             InvalidCommitId,
             InvalidCommitId);
         RunPrepareAndExecute(executor, env, state, args);
@@ -787,7 +788,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             true,    // useRecreatedBlobMeta
             false,   // verifyRecreatedBlobMetasOnCleanup
-            false,   // withCheckpoint
+            false,   // checkpointAware
             InvalidCommitId,
             InvalidCommitId);
         RunPrepareAndExecute(executor, env, state, args);
@@ -1024,7 +1025,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             cleanupCommitId,
             false,   // useRecreatedBlobMeta
             false,   // verifyRecreatedBlobMetasOnCleanup
-            true,    // withCheckpoint
+            true,    // checkpointAware
             minCheckpointCommitId,
             maxCheckpointCommitId);
 
@@ -1033,6 +1034,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         const size_t remainingCount =
             remainingMergedBlobs + remainingMixedBlobs;
         UNIT_ASSERT_VALUES_EQUAL(cleanedUpCount, args.CleanupQueue.size());
+        UNIT_ASSERT_VALUES_EQUAL(remainingCount, args.BlobsSkipped);
         UNIT_ASSERT_VALUES_EQUAL(
             remainingCount,
             state.GetCleanupQueue().GetCount());

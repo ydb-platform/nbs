@@ -348,7 +348,7 @@ void ExecuteCleanupTransaction(
         const auto& item = args.CleanupQueue[i];
         const auto& blobMeta = args.BlobsMeta[i];
 
-        if (args.WithCheckpoint && ShouldSkipCleanupDueToCheckpoint(
+        if (args.CheckpointAware && ShouldSkipCleanupDueToCheckpoint(
                                        item,
                                        blobMeta,
                                        args.MinCheckpointCommitId,
@@ -365,6 +365,7 @@ void ExecuteCleanupTransaction(
                 item.CommitId,
                 args.MinCheckpointCommitId,
                 args.MaxCheckpointCommitId);
+            ++args.BlobsSkipped;
             continue;
         }
 
@@ -447,10 +448,19 @@ void ExecuteCleanupTransaction(
         filteredCleanupQueue.push_back(item);
     }
 
-    if (args.WithCheckpoint) {
+    if (args.CheckpointAware) {
+        if (!args.CleanupQueue.empty()) {
+            state.UpdateCleanupMilestoneIfNeeded(
+                args.CleanupQueue.back().CommitId,
+                args.CleanupQueue.back().BlobId,
+                args.MinCheckpointCommitId,
+                args.MaxCheckpointCommitId);
+        }
+
         args.CleanupQueue = std::move(filteredCleanupQueue);
     } else {
-        Y_DEBUG_ABORT_UNLESS(filteredCleanupQueue.size() == args.CleanupQueue.size());
+        Y_DEBUG_ABORT_UNLESS(
+            filteredCleanupQueue.size() == args.CleanupQueue.size());
     }
 
     // Updating counters
