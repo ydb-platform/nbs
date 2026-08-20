@@ -187,6 +187,20 @@ TString MakeMirroredDiskDeviceReplacementMessage(
 
 /////////////////////////////////////////////////////////////////////////////////
 
+// Automatic replacement should only be attempted for current devices
+// of mirrored disk replicas.
+// The reason of check: a successfully migrated source remains allocated
+// in DeviceList until the volume acknowledges reallocation, but it is
+// no longer a current disk device.
+bool IsAutomaticReplacementCandidate(
+    const auto& disk,
+    const TString& deviceId)
+{
+    return disk.MasterDiskId && FindPtr(disk.Devices, deviceId);
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+
 bool IsDeviceDetached(
     const NProto::TAgentConfig& agent,
     const NProto::TDeviceConfig& device)
@@ -1121,17 +1135,20 @@ auto TDiskRegistryState::RegisterAgent(
                         diskId,
                         disk,
                         uuid);
-                } else if (disk.MasterDiskId) {
-                    TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
-                        db,
-                        disk,
-                        diskId,
-                        d.GetDeviceUUID(),
-                        timestamp,
-                        "device failure");
-                }
+                } else {
+                    if (IsAutomaticReplacementCandidate(disk, uuid))
+                    {
+                        TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
+                            db,
+                            disk,
+                            diskId,
+                            d.GetDeviceUUID(),
+                            timestamp,
+                            "device failure");
+                    }
 
-                CancelDeviceMigration(timestamp, db, diskId, disk, uuid);
+                    CancelDeviceMigration(timestamp, db, diskId, disk, uuid);
+                }
             }
 
             diskIds.emplace(std::move(diskId));
@@ -5464,8 +5481,8 @@ void TDiskRegistryState::ApplyAgentStateChange(
                 AddMigration(disk, diskId, deviceId);
             }
         } else {
-            if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE
-                    && disk.MasterDiskId)
+            if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE &&
+                IsAutomaticReplacementCandidate(disk, deviceId))
             {
                 TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
                     db,
@@ -6545,7 +6562,9 @@ void TDiskRegistryState::ApplyDeviceStateChange(
         return;
     }
 
-    if (device.GetState() == NProto::DEVICE_STATE_ERROR && disk->MasterDiskId) {
+    if (device.GetState() == NProto::DEVICE_STATE_ERROR &&
+        IsAutomaticReplacementCandidate(*disk, uuid))
+    {
         TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
             db,
             *disk,
@@ -6578,10 +6597,6 @@ bool TDiskRegistryState::IsMigrationTarget(
         return true;
     }
 
-    // A device can be in state described below and
-    // it must not be assumed as migration's source device.
-    // For example, we can see this when DA restarted and
-    // didn't finished its registration yet.
     return AnyOf(
         disk.FinishedMigrations,
         [&] (const auto& migration)

@@ -89,15 +89,22 @@ std::unique_ptr<TDiskRegistryState> CreateTestState(
         .Build();
 }
 
-enum class ECanceledTargetFailure
+enum class EMigrationDeviceFailure
 {
     Agent,
     Device,
     Registration,
 };
 
-void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
-    ECanceledTargetFailure failure,
+enum class EFinishedMigrationDevice
+{
+    CanceledTarget,
+    CompletedSource,
+};
+
+void DoTestShouldNotReplaceFinishedMirroredMigrationDevice(
+    EFinishedMigrationDevice finishedDevice,
+    EMigrationDeviceFailure failure,
     bool reloadState = false)
 {
     TTestExecutor executor;
@@ -176,20 +183,43 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
             target = std::move(device);
         });
 
-    // Cancel the migration by recovering its source. The target stays
-    // allocated to the replica until the volume acknowledges reallocation.
+    const bool isCanceled =
+        finishedDevice == EFinishedMigrationDevice::CanceledTarget;
+    const TString finishedDeviceId =
+        isCanceled ? target.GetDeviceUUID() : sourceId;
+    const TString diskDeviceId =
+        isCanceled ? sourceId : target.GetDeviceUUID();
+    const TString failedAgentId =
+        isCanceled ? target.GetAgentId() : devices[0].GetAgentId();
+
     executor.WriteTx(
         [&](TDiskRegistryDatabase db) mutable
         {
-            TString affectedDisk;
-            UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
-                db,
-                sourceId,
-                NProto::DEVICE_STATE_ONLINE,
-                Now(),
-                "test",
-                affectedDisk));
-            UNIT_ASSERT_VALUES_EQUAL(replicaId, affectedDisk);
+            if (isCanceled) {
+                // Cancel the migration by recovering its source. The target
+                // stays allocated to the replica until the volume acknowledges
+                // reallocation.
+                TString affectedDisk;
+                UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
+                    db,
+                    sourceId,
+                    NProto::DEVICE_STATE_ONLINE,
+                    Now(),
+                    "test",
+                    affectedDisk));
+                UNIT_ASSERT_VALUES_EQUAL(replicaId, affectedDisk);
+            } else {
+                // The source stays allocated to the replica until the volume
+                // acknowledges reallocation.
+                bool diskStateUpdated = false;
+                UNIT_ASSERT_SUCCESS(state.FinishDeviceMigration(
+                    db,
+                    replicaId,
+                    sourceId,
+                    target.GetDeviceUUID(),
+                    Now(),
+                    &diskStateUpdated));
+            }
         });
 
     {
@@ -197,14 +227,16 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
         UNIT_ASSERT_SUCCESS(state.GetDiskInfo(replicaId, diskInfo));
         UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Devices.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            sourceId,
+            diskDeviceId,
             diskInfo.Devices[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
         UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.FinishedMigrations.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            target.GetDeviceUUID(),
+            finishedDeviceId,
             diskInfo.FinishedMigrations[0].DeviceId);
-        UNIT_ASSERT(diskInfo.FinishedMigrations[0].IsCanceled);
+        UNIT_ASSERT_VALUES_EQUAL(
+            isCanceled,
+            diskInfo.FinishedMigrations[0].IsCanceled);
     }
 
     std::unique_ptr<TDiskRegistryState> reloadedStatePtr;
@@ -222,7 +254,7 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
             reloadedStatePtr->GetDiskInfo(replicaId, diskInfo));
         UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.FinishedMigrations.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            target.GetDeviceUUID(),
+            finishedDeviceId,
             diskInfo.FinishedMigrations[0].DeviceId);
         UNIT_ASSERT(diskInfo.FinishedMigrations[0].IsCanceled);
     }
@@ -242,43 +274,42 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
         [&](TDiskRegistryDatabase db) mutable
         {
             switch (failure) {
-                case ECanceledTargetFailure::Agent: {
+                case EMigrationDeviceFailure::Agent: {
                     TVector<TString> affectedDisks;
                     UNIT_ASSERT_SUCCESS(testedState.UpdateAgentState(
                         db,
-                        target.GetAgentId(),
+                        failedAgentId,
                         NProto::AGENT_STATE_UNAVAILABLE,
                         Now(),
                         "test",
                         affectedDisks));
                     break;
                 }
-                case ECanceledTargetFailure::Device: {
+                case EMigrationDeviceFailure::Device: {
                     TString affectedDisk;
                     UNIT_ASSERT_SUCCESS(testedState.UpdateDeviceState(
                         db,
-                        target.GetDeviceUUID(),
+                        finishedDeviceId,
                         NProto::DEVICE_STATE_ERROR,
                         Now(),
                         "test",
                         affectedDisk));
                     break;
                 }
-                case ECanceledTargetFailure::Registration: {
-                    // Simulate a target Disk Agent restart: the migration
-                    // target failed to initialize and is reported as ERROR
-                    // during re-registration.
+                case EMigrationDeviceFailure::Registration: {
+                    // Simulate a Disk Agent restart: the retained migration
+                    // device is reported as ERROR during re-registration.
                     const auto it = FindIf(
                         agents,
                         [&](const auto& agent)
-                        { return agent.GetAgentId() == target.GetAgentId(); });
+                        { return agent.GetAgentId() == failedAgentId; });
                     UNIT_ASSERT(it != agents.end());
 
                     NProto::TAgentConfig agent = *it;
                     UNIT_ASSERT_VALUES_EQUAL(1, agent.DevicesSize());
                     auto* device = agent.MutableDevices(0);
                     UNIT_ASSERT_VALUES_EQUAL(
-                        target.GetDeviceUUID(),
+                        finishedDeviceId,
                         device->GetDeviceUUID());
                     device->SetState(NProto::DEVICE_STATE_ERROR);
                     device->SetStateTs(Now().MicroSeconds());
@@ -299,13 +330,17 @@ void DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
     TDiskInfo diskInfo;
     UNIT_ASSERT_SUCCESS(testedState.GetDiskInfo(replicaId, diskInfo));
     UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.Devices.size());
-    UNIT_ASSERT_VALUES_EQUAL(sourceId, diskInfo.Devices[0].GetDeviceUUID());
+    UNIT_ASSERT_VALUES_EQUAL(
+        diskDeviceId,
+        diskInfo.Devices[0].GetDeviceUUID());
     UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
     UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.FinishedMigrations.size());
     UNIT_ASSERT_VALUES_EQUAL(
-        target.GetDeviceUUID(),
+        finishedDeviceId,
         diskInfo.FinishedMigrations[0].DeviceId);
-    UNIT_ASSERT(diskInfo.FinishedMigrations[0].IsCanceled);
+    UNIT_ASSERT_VALUES_EQUAL(
+        isCanceled,
+        diskInfo.FinishedMigrations[0].IsCanceled);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1958,29 +1993,55 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
     Y_UNIT_TEST(ShouldNotReplaceCanceledMigrationTargetOnAgentFailure)
     {
-        DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
-            ECanceledTargetFailure::Agent);
+        DoTestShouldNotReplaceFinishedMirroredMigrationDevice(
+            EFinishedMigrationDevice::CanceledTarget,
+            EMigrationDeviceFailure::Agent);
     }
 
     Y_UNIT_TEST(ShouldNotReplaceCanceledMigrationTargetOnDeviceFailure)
     {
-        DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
-            ECanceledTargetFailure::Device);
+        DoTestShouldNotReplaceFinishedMirroredMigrationDevice(
+            EFinishedMigrationDevice::CanceledTarget,
+            EMigrationDeviceFailure::Device);
     }
 
     Y_UNIT_TEST(
         ShouldNotReplaceCanceledMigrationTargetOnAgentRegistrationWithBrokenDevice)
     {
-        DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
-            ECanceledTargetFailure::Registration);
+        DoTestShouldNotReplaceFinishedMirroredMigrationDevice(
+            EFinishedMigrationDevice::CanceledTarget,
+            EMigrationDeviceFailure::Registration);
     }
 
     Y_UNIT_TEST(
         ShouldNotReplaceCanceledMigrationTargetOnRegistrationAfterStateReload)
     {
-        DoTestShouldNotReplaceCanceledMirroredMigrationTarget(
-            ECanceledTargetFailure::Registration,
+        DoTestShouldNotReplaceFinishedMirroredMigrationDevice(
+            EFinishedMigrationDevice::CanceledTarget,
+            EMigrationDeviceFailure::Registration,
             true);
+    }
+
+    Y_UNIT_TEST(ShouldNotReplaceCompletedMigrationSourceOnAgentFailure)
+    {
+        DoTestShouldNotReplaceFinishedMirroredMigrationDevice(
+            EFinishedMigrationDevice::CompletedSource,
+            EMigrationDeviceFailure::Agent);
+    }
+
+    Y_UNIT_TEST(ShouldNotReplaceCompletedMigrationSourceOnDeviceFailure)
+    {
+        DoTestShouldNotReplaceFinishedMirroredMigrationDevice(
+            EFinishedMigrationDevice::CompletedSource,
+            EMigrationDeviceFailure::Device);
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotReplaceCompletedMigrationSourceOnAgentRegistrationWithBrokenDevice)
+    {
+        DoTestShouldNotReplaceFinishedMirroredMigrationDevice(
+            EFinishedMigrationDevice::CompletedSource,
+            EMigrationDeviceFailure::Registration);
     }
 
     Y_UNIT_TEST(ShouldNotStartAlreadyFinishedMigrationDevice)
