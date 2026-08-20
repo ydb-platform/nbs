@@ -535,6 +535,10 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, volumeCounter->Val());
     }
 
+    // The next two tests report AppImpossibleEvents, which causes crash in
+    // debug builds ('debug', 'relwithdebinfo'), but they shall be executed
+    // within sanitizer builds (which are 'release' builds)
+#ifdef NDEBUG
     // A null labels pointer should report the bug and preserve the original
     // critical event.
     Y_UNIT_TEST(ShouldGracefullyReportNullVolumeLabels)
@@ -555,13 +559,62 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto handler = CreateCriticalEventsStatsHandler();
 
+        auto bugCounter =
+            criticalEventsGroup->FindCounter(GetCriticalEventForBug());
+        UNIT_ASSERT(bugCounter);
+        bugCounter->Set(0);
+        UNIT_ASSERT_VALUES_EQUAL(0, bugCounter->Val());
+
         const TVolumeLabelsConstPtr volumeLabels;
         const auto logMessage =
             ReportBlockDigestMismatchInBlob(volumeLabels, "some msg");
 
+        UNIT_ASSERT_VALUES_EQUAL(1, bugCounter->Val());
+
+        auto appCounter = criticalEventsGroup->FindCounter(GetAppSensorName());
+        UNIT_ASSERT(appCounter);
+        UNIT_ASSERT_VALUES_EQUAL(1, appCounter->Val());
+
+        UNIT_ASSERT_STRING_CONTAINS(logMessage, "disk:<nullptr>");
+        UNIT_ASSERT_STRING_CONTAINS(logMessage, "cloud:<empty>");
+        UNIT_ASSERT_STRING_CONTAINS(logMessage, "folder:<empty>");
+
+        handler->UpdateStats(true);
+
+        // No metrics must be created for empty diskId
+        UNIT_ASSERT(volumeCriticalEventsGroup->ReadSnapshot().empty());
+    }
+
+    // An empty diskId should report the bug and preserve the original critical
+    // event.
+    Y_UNIT_TEST(ShouldGracefullyReportEmptyDiskId)
+    {
+        ResetVolumeCriticalEventsCounter();
+
+        auto root = MakeIntrusive<TDynamicCounters>();
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
+
+        InitVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
+
+        auto handler = CreateCriticalEventsStatsHandler();
+
         auto bugCounter =
             criticalEventsGroup->FindCounter(GetCriticalEventForBug());
         UNIT_ASSERT(bugCounter);
+        bugCounter->Set(0);
+        UNIT_ASSERT_VALUES_EQUAL(0, bugCounter->Val());
+
+        const TVolumeLabels volumeLabels;
+        const auto logMessage =
+            ReportBlockDigestMismatchInBlob(volumeLabels, "some msg");
+
         UNIT_ASSERT_VALUES_EQUAL(1, bugCounter->Val());
 
         auto appCounter = criticalEventsGroup->FindCounter(GetAppSensorName());
@@ -577,6 +630,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         // No metrics must be created for empty diskId
         UNIT_ASSERT(volumeCriticalEventsGroup->ReadSnapshot().empty());
     }
+#endif   // NDEBUG
 
     // All Report...() overloads works
     Y_UNIT_TEST(ShouldProperlyImplementAllReportOverloads)

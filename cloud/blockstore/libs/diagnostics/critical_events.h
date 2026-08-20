@@ -9,7 +9,6 @@
 #include <util/string/printf.h>
 #include <util/system/src_location.h>
 
-#include <source_location>
 #include <utility>
 
 namespace NCloud::NBlockStore {
@@ -114,9 +113,8 @@ using TCritEventParams =
 /* Report AppImpossibeEvent/Bug with source location log */
 #define REPORT_BUG(message, ...)                                               \
     ::NCloud::NBlockStore::ReportBug(                                          \
-        (TStringBuilder() << __LOCATION__ << ":'"                              \
-                          << std::source_location::current().function_name()   \
-                          << "': " << (message)) __VA_OPT__(, ) __VA_ARGS__)
+        (TStringBuilder() << __LOCATION__ << ": " << (message)) __VA_OPT__(, ) \
+            __VA_ARGS__)
 
 #define BLOCKSTORE_VOLUME_CRITICAL_EVENTS(xxx)                                 \
     xxx(InvalidTabletConfig)                                                   \
@@ -226,15 +224,14 @@ BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)
         TArgs&&... args)                                                       \
     {                                                                          \
         if (!volumeLabels) {                                                   \
-            REPORT_BUG(                                                        \
-                Sprintf(                                                       \
-                    "volumeLabels = nullptr for %s report, "                   \
-                    "corresponding metric was not updated",                    \
-                    GetVolumeCriticalEventFor##name().c_str()),                \
-                /*keyValues=*/{} /* - use non-aborting overload for tests */); \
+            REPORT_BUG(Sprintf(                                                \
+                "volumeLabels = nullptr provided for %s report, "              \
+                "monitoring metrics will not be updated",                      \
+                GetVolumeCriticalEventFor##name().c_str()));                   \
         }                                                                      \
-        const auto& labels =                                                   \
-            volumeLabels ? volumeLabels : MakeVolumeLabels("", "", "");        \
+        const auto& labels = volumeLabels                                      \
+                                 ? volumeLabels                                \
+                                 : MakeVolumeLabels("<nullptr>", "", "");      \
         return Report##name(*labels, std::forward<TArgs>(args)...);            \
     }                                                                          \
     // BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE

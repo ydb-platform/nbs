@@ -401,8 +401,18 @@ void ResetVolumeCriticalEventsCounter()
                 GetVolumeCriticalEventFor##name(),                             \
                 logMessage);                                                   \
                                                                                \
-            if (diskId.empty()) {                                              \
-                /* No metric creation for empty disk id */                     \
+            if (diskId.empty() || diskId == "<nullptr>") {                     \
+                if (diskId.empty()) {                                          \
+                    REPORT_BUG(Sprintf(                                        \
+                        "empty diskId provided for %s report, "                \
+                        "monitoring metrics will not be updated",              \
+                        GetVolumeCriticalEventFor##name().c_str()));           \
+                }                                                              \
+                /* else - bug was reported earlier in                          \
+                   Report##name(TVolumeLabelsConstPtr) caller overload */      \
+                                                                               \
+                /* No metric with an empty 'volume=""' label is created for    \
+                   empty disk id */                                            \
                 return retMessage;                                             \
             }                                                                  \
                                                                                \
