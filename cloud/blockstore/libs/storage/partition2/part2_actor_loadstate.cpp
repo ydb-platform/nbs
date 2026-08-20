@@ -216,10 +216,37 @@ void TPartitionActor::CompleteLoadState(
     SharedState->Init(SelfId(), Executor()->Generation(), 0);
 
     if (!args.Meta->GetL0RangeSize() || !args.Meta->GetL1RangeSize()) {
-        args.Meta->SetL0RangeSize(
-            Config->GetL0RangeSizeV2() / partitionConfig.GetBlockSize());
-        args.Meta->SetL1RangeSize(
-            Config->GetL1RangeSizeV2() / partitionConfig.GetBlockSize());
+        const ui64 blockSize = partitionConfig.GetBlockSize();
+        const ui64 l0RangeSize = Config->GetL0RangeSizeV2();
+        const ui64 l1RangeSize = Config->GetL1RangeSizeV2();
+        const ui64 maxBlocksInBlob = partitionConfig.GetMaxBlocksInBlob()
+                                         ? partitionConfig.GetMaxBlocksInBlob()
+                                         : MaxBlocksCount;
+
+        STORAGE_VERIFY(
+            blockSize > 0 && l0RangeSize > 0 && l1RangeSize > 0,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+        STORAGE_VERIFY(
+            l0RangeSize % blockSize == 0 && l1RangeSize % blockSize == 0,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+
+        const ui64 l0RangeBlocks = l0RangeSize / blockSize;
+        const ui64 l1RangeBlocks = l1RangeSize / blockSize;
+
+        STORAGE_VERIFY(
+            l0RangeBlocks > l1RangeBlocks,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+        STORAGE_VERIFY(
+            l0RangeBlocks % l1RangeBlocks == 0 &&
+                l1RangeBlocks % maxBlocksInBlob == 0,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+
+        args.Meta->SetL0RangeSize(l0RangeBlocks);
+        args.Meta->SetL1RangeSize(l1RangeBlocks);
     }
 
     State = std::make_unique<TPartitionState>(
