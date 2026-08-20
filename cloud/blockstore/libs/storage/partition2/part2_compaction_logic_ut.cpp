@@ -26,6 +26,8 @@ namespace {
 NProto::TPartitionMeta DefaultConfig(size_t channelCount, size_t blockCount)
 {
     NProto::TPartitionMeta meta;
+    meta.SetL0RangeSize(2 * MaxBlocksCount);
+    meta.SetL1RangeSize(MaxBlocksCount);
 
     auto& config = *meta.MutableConfig();
     config.SetBlockSize(DefaultBlockSize);
@@ -660,6 +662,46 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, rangeCompactionInfos.size());
         UNIT_ASSERT(rangeCompactionInfos[0].ChecksumFixups.empty());
+    }
+
+    Y_UNIT_TEST(CompleteUsesMaximumCompactedCommitIdForMergedBlob)
+    {
+        auto state = MakeState();
+        auto storageInfo = MakeStorageInfo(1);
+
+        const auto compactionCommitId = MakeCommitId(0, 100);
+        const auto olderCommitId = MakeCommitId(0, 10);
+        const auto newerCommitId = MakeCommitId(0, 20);
+        TTxPartition::TRangeCompaction args(
+            0,
+            TBlockRange32::MakeClosedInterval(0, 3));
+
+        args.GetBlockMark(0).CommitId = olderCommitId;
+        args.GetBlockMark(1).CommitId = newerCommitId;
+
+        TVector<TBlobCompactionRequest> requests;
+        TVector<TRangeCompactionInfo> rangeCompactionInfos;
+
+        CompleteRangeCompaction(
+            false,
+            0,
+            compactionCommitId,
+            TTestExecutor::TabletId,
+            false,
+            storageInfo,
+            state,
+            args,
+            requests,
+            rangeCompactionInfos,
+            0);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, rangeCompactionInfos.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            newerCommitId,
+            rangeCompactionInfos[0].CommitId);
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            compactionCommitId,
+            rangeCompactionInfos[0].CommitId);
     }
 
     // PrepareRangeCompaction + CompleteRangeCompaction: merged blobs get

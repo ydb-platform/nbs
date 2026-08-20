@@ -340,7 +340,6 @@ private:
         TBlockRange32 writeRange);
 
     void ClearWriteQueue(const NActors::TActorContext& ctx);
-    void ProcessCommitQueue(const NActors::TActorContext& ctx);
     void ProcessCheckpointQueue(const NActors::TActorContext& ctx);
 
     template <typename TMethod>

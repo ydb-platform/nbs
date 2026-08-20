@@ -94,7 +94,7 @@ void TPartitionActor::CompleteDeleteUnconfirmedBlobs(
         CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.DeleteUnconfirmedBlobs.AddRequest(time);
 
-    ProcessCommitQueue(ctx);
+    // ProcessCommitQueue(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

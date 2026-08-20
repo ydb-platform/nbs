@@ -640,7 +640,6 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
             State->AccessCommitQueue()->ReleaseBarrier(commitId);
             State->GetGarbageQueue().ReleaseBarrier(commitId);
             State->AccessL0CommitQueue().ReleaseBarrier(commitId);
-            ProcessCommitQueue(ctx);
         }
 
         return;
@@ -847,7 +846,6 @@ void TPartitionActor::HandleFlushCompleted(
     EnqueueTrimFreshLogIfNeeded(ctx);
     EnqueueFlushIfNeeded(ctx);
     EnqueueCleanupIfNeeded(ctx);
-    ProcessCommitQueue(ctx);
     EnqueueLevelCompactionIfNeeded(ctx);
 }
 

@@ -37,6 +37,7 @@ using namespace NKikimr;
 
 TRangeCompactionInfo::TRangeCompactionInfo(
     TBlockRange32 blockRange,
+    ui64 commitId,
     TPartialBlobId originalBlobId,
     TPartialBlobId dataBlobId,
     TBlockMask dataBlobSkipMask,
@@ -52,6 +53,7 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     TAffectedBlocks affectedBlocks,
     TVector<TChecksumFixup> checksumFixups)
     : BlockRange(blockRange)
+    , CommitId(commitId)
     , OriginalBlobId(originalBlobId)
     , DataBlobId(dataBlobId)
     , DataBlobSkipMask(dataBlobSkipMask)
@@ -278,6 +280,16 @@ TCompactionBlockCounts CountDataAndZeroBlocks(
     }
 
     return counts;
+}
+
+ui64 GetMaxCommitId(
+    const TVector<TTxPartition::TRangeCompaction::TBlockMark>& blockMarks)
+{
+    ui64 maxCommitId = 0;
+    for (const auto& mark: blockMarks) {
+        maxCommitId = Max(maxCommitId, mark.CommitId);
+    }
+    return maxCommitId;
 }
 
 struct TCompactionResultBlobIds
@@ -718,10 +730,6 @@ void PrepareRangeCompaction(
         commitId,
         state.AccessCompactionMap(),
         tabletId);
-    state.FindFreshBlocks(visitor, args.BlockRange, commitId);
-    visitor.KeepTrackOfAffectedBlocks = true;
-    ready &= state.FindMixedBlocksForCompaction(db, visitor, args.RangeIdx);
-    visitor.KeepTrackOfAffectedBlocks = false;
     ready &= db.FindMergedBlocks(
         visitor,
         visitor,
@@ -814,6 +822,7 @@ void CompleteRangeCompaction(
 
     rangeCompactionInfos.emplace_back(
         args.BlockRange,
+        GetMaxCommitId(args.BlockMarks),
         patchingResult.PatchingCandidate,
         patchingResult.DataBlobId,
         buildBlobContentResult.DataBlobSkipMask,

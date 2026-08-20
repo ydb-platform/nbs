@@ -474,12 +474,13 @@ void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
-    auto value = Table<TTable>().Key(blockRange.End, ReverseCommitId(commitId));
+    auto value = Table<TTable>().Key(
+        blockRange.End,
+        ReverseCommitId(commitId),
+        blobId.CommitId(),
+        blobId.UniqueId());
 
-    value.Update(
-        NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start),
-        NIceDb::TUpdate<TTable::BlobId>(blobId.UniqueId()),
-        NIceDb::TUpdate<TTable::BlobCommitId>(blobId.CommitId()));
+    value.Update(NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start));
 
     if (!skipMask.Empty()) {
         value.Update(
@@ -493,11 +494,15 @@ void TPartitionDatabaseImpl<TCounters>::DeleteMergedBlocks(
     const TBlockRange32& blockRange,
     ui64 commitId)
 {
-    Y_UNUSED(blobId);
-
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
-    Table<TTable>().Key(blockRange.End, ReverseCommitId(commitId)).Delete();
+    Table<TTable>()
+        .Key(
+            blockRange.End,
+            ReverseCommitId(commitId),
+            blobId.CommitId(),
+            blobId.UniqueId())
+        .Delete();
 }
 
 template <typename TCounters>

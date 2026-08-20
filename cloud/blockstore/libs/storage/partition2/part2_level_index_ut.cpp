@@ -185,6 +185,20 @@ void AssertDescribeBlockContent(
         sglist.front().AsStringBuf());
 }
 
+void AssertReadBlockContent(
+    TPartitionClient& partition,
+    ui32 blockIndex,
+    char expectedContent)
+{
+    const auto response = partition.ReadBlocks(blockIndex);
+
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetBlocks().BuffersSize());
+    UNIT_ASSERT_VALUES_EQUAL(
+        TString(DefaultBlockSize, expectedContent),
+        response->Record.GetBlocks().GetBuffers(0));
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -813,6 +827,112 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
             {},
             mergedBlobIds.at(1),
             'c');
+    }
+
+    Y_UNIT_TEST(ShouldPreserveNewerL0BlocksDuringMergedRangeCompaction)
+    {
+        constexpr ui32 MergedRangeBlockCount = MaxBlocksCount;
+        constexpr ui32 L1RangeBlockCount = 2 * MergedRangeBlockCount;
+        constexpr ui32 L0RangeBlockCount = 2 * L1RangeBlockCount;
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetWriteBlobThresholdSSD(16_MB);
+        config.SetL0RangeSizeV2(L0RangeBlockCount * DefaultBlockSize);
+        config.SetL1RangeSizeV2(L1RangeBlockCount * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config, L1RangeBlockCount);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui64 promotedCommitId = 0;
+        ui64 newerL0CommitId = 0;
+        ui64 compactedCommitId = 0;
+        ui32 flushCount = 0;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvAddBlobsRequest)
+                {
+                    const auto* request = event->Get<
+                        TEvPartitionPrivate::TEvAddBlobsRequest>();
+
+                    if (request->Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
+                        ++flushCount;
+                        if (flushCount == 2) {
+                            for (const auto& blob: request->L0Blobs) {
+                                for (ui64 commitId: blob.CommitIds) {
+                                    newerL0CommitId = Max(
+                                        newerL0CommitId,
+                                        commitId);
+                                }
+                            }
+                        }
+                    } else if (
+                        request->Mode ==
+                            EAddBlobMode::ADD_PROMOTE_COMPACTION_RESULT &&
+                        !request->MergedBlobs.empty())
+                    {
+                        for (const auto& blob: request->MergedBlobs) {
+                            promotedCommitId = Max(
+                                promotedCommitId,
+                                blob.CommitId);
+                        }
+                    } else if (
+                        request->Mode ==
+                        EAddBlobMode::ADD_COMPACTION_RESULT)
+                    {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            1,
+                            request->MergedBlobs.size());
+                        compactedCommitId =
+                            request->MergedBlobs.front().CommitId;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.WriteBlocks(0, 'a');
+        partition.WriteBlocks(1, 's');
+        partition.Flush();
+
+        auto l0Request = std::make_unique<
+            TEvPartitionPrivate::TEvPromoteCompactionRequest>();
+        l0Request->RangeIndex = 0;
+        partition.SendToPipe(std::move(l0Request));
+        auto l0Response = partition.RecvResponse<
+            TEvPartitionPrivate::TEvPromoteCompactionResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, l0Response->GetStatus());
+
+        auto l1Request = std::make_unique<
+            TEvPartitionPrivate::TEvPromoteCompactionRequest>();
+        l1Request->Source = EPromoteCompactionSource::L1;
+        l1Request->RangeIndex = 0;
+        partition.SendToPipe(std::move(l1Request));
+        auto l1Response = partition.RecvResponse<
+            TEvPartitionPrivate::TEvPromoteCompactionResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, l1Response->GetStatus());
+
+        partition.WriteBlocks(0, 'b');
+        partition.Flush();
+        partition.Compaction();
+
+        UNIT_ASSERT(promotedCommitId);
+        UNIT_ASSERT(newerL0CommitId);
+        UNIT_ASSERT(compactedCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(promotedCommitId, compactedCommitId);
+        UNIT_ASSERT(compactedCommitId < newerL0CommitId);
+
+        AssertReadBlockContent(partition, 0, 'b');
+        AssertReadBlockContent(partition, 1, 's');
+
+        partition.Cleanup();
+
+        AssertReadBlockContent(partition, 0, 'b');
+        AssertReadBlockContent(partition, 1, 's');
     }
 }
 

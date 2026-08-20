@@ -494,6 +494,7 @@ void TPartitionActor::WriteMergedBlocks(
     const TActorContext& ctx,
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer)
 {
+    Y_ABORT("WriteMergedBlocks is not implemented");
     const auto commitId = State->GenerateCommitId();
 
     if (commitId == InvalidCommitId) {

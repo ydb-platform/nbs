@@ -490,6 +490,8 @@ bool TPartitionActor::WriteMixedBlocks(
     const TActorContext& ctx,
     const TVector<TRequestGroup>& groups)
 {
+    Y_ABORT("WriteMixedBlocks is not implemented");
+
     if (groups.empty()) {
         return true;
     }

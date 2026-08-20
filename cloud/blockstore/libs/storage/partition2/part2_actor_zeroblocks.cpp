@@ -282,6 +282,13 @@ void TPartitionActor::HandleZeroBlocks(
         PartitionConfig.GetStorageMediaKind(),
         requestSize);
 
+    if (!isFreshRequest) {
+        auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(
+            MakeError(E_REJECTED, "Large ZeroBlocks is not implemented"));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
     if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
         // small writes will be accumulated in FreshBlocks table
         ZeroFreshBlocks(
@@ -414,7 +421,6 @@ void TPartitionActor::HandleZeroBlocksCompletedImpl(
     SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
 
     SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
-    ProcessCommitQueue(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -507,7 +513,6 @@ void TPartitionActor::CompleteZeroBlocks(
 
     EnqueueFlushIfNeeded(ctx);
     SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
-    ProcessCommitQueue(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

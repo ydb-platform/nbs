@@ -33,33 +33,31 @@ void TPartitionActor::HandleProcessWriteQueue(
     auto guard = State->AccessWriteBuffer().Flush();
     auto& requests = guard.Get();
 
-    // building mixed blob requests
-    const auto mediaKind = PartitionConfig.GetStorageMediaKind();
-    const auto writeMixedBlobThreshold =
-        GetWriteMixedBlobThreshold(*Config, mediaKind);
-    auto writeBlobThreshold = GetWriteBlobThreshold(*Config, mediaKind);
-    if (writeMixedBlobThreshold && writeMixedBlobThreshold < writeBlobThreshold)
-    {
-        writeBlobThreshold = writeMixedBlobThreshold;
-    }
+    auto writeBlobThreshold =
+        GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
+    auto maxBlocksInBlob = writeBlobThreshold / PartitionConfig.GetBlockSize();
 
-    auto g = GroupRequests(
-        requests,
-        totalWeight,
-        writeBlobThreshold / State->GetBlockSize(),
-        State->GetMaxBlocksInBlob(),
-        Config->GetMaxBlobRangeSize() / State->GetBlockSize()
-    );
+    STORAGE_VERIFY(
+        !requests.empty(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID());
 
-    if (!WriteMixedBlocks(ctx, g.Groups)) {
-        for (auto& request: requests) {
-            request.Data.RequestInfo->CancelRequest(ctx);
+    auto* batchStartIt = requests.begin();
+    ui64 currentBatchWeight = requests.begin()->Weight;
+
+    for (auto* it = requests.begin() + 1; it != requests.end(); ++it) {
+        if (currentBatchWeight + it->Weight >= maxBlocksInBlob) {
+            WriteFreshBlocks(ctx, MakeArrayRef(batchStartIt, it));
+
+            batchStartIt = it;
+            currentBatchWeight = it->Weight;
+            continue;
         }
-        RebootPartitionOnCommitIdOverflow(ctx, "Write queue");
-        return;
+
+        currentBatchWeight += it->Weight;
     }
 
-    WriteFreshBlocks(ctx, MakeArrayRef(g.FirstUngrouped, requests.end()));
+    WriteFreshBlocks(ctx, MakeArrayRef(batchStartIt, requests.end()));
 }
 
 void TPartitionActor::ClearWriteQueue(const TActorContext& ctx)
