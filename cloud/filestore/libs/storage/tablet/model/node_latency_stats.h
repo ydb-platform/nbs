@@ -66,6 +66,7 @@ private:
         TLatencyKeyHash>;
 
     TRanking Ranking;
+    bool Enabled;
 
 public:
     TNodeLatencyStatsTracker();

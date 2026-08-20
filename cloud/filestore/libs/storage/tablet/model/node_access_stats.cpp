@@ -39,6 +39,7 @@ TNodeAccessStatsTracker::TNodeAccessStatsTracker()
           TNodeAccessComparator{},
           TNodeAccessKeyExtractor{})
     , HalfLife()
+    , Enabled(false)
 {}
 
 TNodeAccessStatsTracker::TNodeAccessStatsTracker(
@@ -49,6 +50,7 @@ TNodeAccessStatsTracker::TNodeAccessStatsTracker(
           TNodeAccessComparator{halfLife},
           TNodeAccessKeyExtractor{})
     , HalfLife(halfLife)
+    , Enabled(maxEntries != 0 && halfLife.GetValue() != 0)
 {}
 
 void TNodeAccessStatsTracker::Reset(size_t maxEntries, TDuration halfLife)
@@ -59,10 +61,15 @@ void TNodeAccessStatsTracker::Reset(size_t maxEntries, TDuration halfLife)
         TNodeAccessKeyExtractor{});
 
     HalfLife = halfLife;
+    Enabled = maxEntries != 0 && halfLife.GetValue() != 0;
 }
 
 bool TNodeAccessStatsTracker::UpdateAccessStats(ui64 nodeId, TInstant now)
 {
+    if(!Enabled){
+        return true;
+    }
+
     TNodeAccessStats stats;
 
     if (const auto* oldStats = Ranking.Find(nodeId)) {

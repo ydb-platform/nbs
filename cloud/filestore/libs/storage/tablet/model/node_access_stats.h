@@ -49,6 +49,7 @@ private:
 
     TRanking Ranking;
     TDuration HalfLife;
+    bool Enabled;
 
 public:
     TNodeAccessStatsTracker();
