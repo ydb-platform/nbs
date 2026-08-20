@@ -784,7 +784,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 blobId,
                 range,
                 skipMask,
-                std::move(ensuredBlockChecksums));
+                std::move(ensuredBlockChecksums),
+                blobId.CommitId());
             mergedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else if (channelDataKind == EChannelDataKind::Mixed) {
             TVector<ui32> blockIndices(Reserve(range.Size()));
@@ -1336,7 +1337,7 @@ public:
         : Config(config)
         , State(state)
     {
-        const auto& cm = State.GetCompactionMap();
+        const auto& cm = State.AccessCompactionMap();
         TopRangeStat = cm.GetTop().Stat;
         TopGarbageRangeStat = cm.GetTopByGarbageBlockCount().Stat;
         TopByGarbageIgnoringZeroed = cm.GetTopByGarbageIgnoringZeroed().Stat;
@@ -1904,7 +1905,7 @@ void TPartitionActor::HandleCompaction(
     const bool batchCompactionEnabled =
         Config->GetBatchCompactionEnabled() || batchCompactionEnabledForCloud;
 
-    const auto& cm = State->GetCompactionMap();
+    const auto& cm = State->AccessCompactionMap();
 
     if (!msg->RangeBlockIndices.empty()) {
         for (const auto blockIndex: msg->RangeBlockIndices) {

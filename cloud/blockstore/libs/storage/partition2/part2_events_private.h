@@ -48,6 +48,14 @@ enum EAddBlobMode
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EPromoteCompactionSource
+{
+    L0,
+    L1,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TAddMixedBlob
 {
     const TPartialBlobId BlobId;
@@ -75,16 +83,19 @@ struct TAddMergedBlob
     const TBlockRange32 BlockRange;
     const TBlockMask SkipMask;
     const TVector<ui32> Checksums;
+    const ui64 CommitId;
 
     TAddMergedBlob(
             const TPartialBlobId& blobId,
             const TBlockRange32& blockRange,
             const TBlockMask& skipMask,
-            TVector<ui32> checksums)
+            TVector<ui32> checksums,
+            ui64 commitId = 0)
         : BlobId(blobId)
         , BlockRange(blockRange)
         , SkipMask(skipMask)
         , Checksums(std::move(checksums))
+        , CommitId(commitId ? commitId : blobId.CommitId())
     {}
 };
 
@@ -161,6 +172,7 @@ struct TAffectedBlob
     {
         TBlockRange32 BlockRange;
         ui32 SkippedBlocksCount = 0;
+        ui64 CommitId = 0;
     };
 
     ui8 CompactionRangeCount = 0;
@@ -868,10 +880,20 @@ struct TEvPartitionPrivate
     struct TPromoteCompactionRequest
     {
         std::optional<ui64> RangeIndex;
+        EPromoteCompactionSource Source = EPromoteCompactionSource::L0;
     };
 
     struct TPromoteCompactionResponse
     {
+    };
+
+    struct TPromoteCompactionCompleted: TOperationCompleted
+    {
+        const EPromoteCompactionSource Source;
+
+        explicit TPromoteCompactionCompleted(EPromoteCompactionSource source)
+            : Source(source)
+        {}
     };
 
     //
@@ -938,8 +960,9 @@ struct TEvPartitionPrivate
         TResponseEvent<TUpdateResourceMetrics, EvUpdateResourceMetrics>;
 
     using TEvResumeFlush = TResponseEvent<TResumeFlush, EvResumeFlush>;
-    using TEvPromoteCompactionCompleted =
-        TResponseEvent<TOperationCompleted, EvPromoteCompactionCompleted>;
+    using TEvPromoteCompactionCompleted = TResponseEvent<
+        TPromoteCompactionCompleted,
+        EvPromoteCompactionCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

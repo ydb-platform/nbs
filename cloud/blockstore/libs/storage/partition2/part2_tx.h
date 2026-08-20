@@ -1312,6 +1312,7 @@ struct TTxPartition
     struct TPromoteCompaction
     {
         const TRequestInfoPtr RequestInfo;
+        const EPromoteCompactionSource Source;
         const ui32 RangeIndex;
         const ui64 CommitId;
 
@@ -1319,9 +1320,11 @@ struct TTxPartition
 
         TPromoteCompaction(
             TRequestInfoPtr requestInfo,
+            EPromoteCompactionSource source,
             ui32 rangeIndex,
             ui64 commitId)
             : RequestInfo(std::move(requestInfo))
+            , Source(source)
             , RangeIndex(rangeIndex)
             , CommitId(commitId)
         {}

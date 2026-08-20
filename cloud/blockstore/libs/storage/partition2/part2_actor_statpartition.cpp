@@ -83,7 +83,7 @@ void TPartitionActor::HandleStatPartition(
         State->GetCompactionIgnoringZeroedScore());
 
     response->Record.MutableStats()->SetNonEmptyRangeCount(
-        State->GetCompactionMap().GetNonEmptyRangeCount());
+        State->AccessCompactionMap().GetNonEmptyRangeCount());
 
     response->Record.MutableStats()->SetGarbageQueueSize(
         State->GetGarbageQueue().GetGarbageBlobsCount(Max<ui64>()));

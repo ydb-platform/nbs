@@ -140,7 +140,8 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
             db.WriteMergedBlocks(
                 setup.MergedBlobId,
                 TBlockRange32::MakeClosedInterval(10, 13),
-                TBlockMask{});
+                TBlockMask{},
+                setup.MergedBlobId.CommitId());
             db.WriteBlobMeta(setup.MergedBlobId, setup.MergedBlobMeta);
             db.WriteCleanupQueue(setup.MergedBlobId, deletionCommitId);
         });
@@ -163,10 +164,9 @@ struct TMergedBlobVisitor final
     TPartialBlobId BlobId;
     bool Found = false;
 
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
+    bool Visit(const TPartialBlobId& blobId, NProto::TBlobMeta blobMeta) override
     {
-        Y_UNUSED(blockRange);
-        Y_UNUSED(blobId);
+        Y_UNUSED(blobMeta);
 
         if (blobId == BlobId) {
             Found = true;
@@ -174,16 +174,6 @@ struct TMergedBlobVisitor final
         }
 
         return true;
-    }
-
-    bool Visit(
-        TBlockRange32 blockRange,
-        const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) override
-    {
-        Y_UNUSED(skippedBlocksCount);
-
-        return Visit(blockRange, blobId);
     }
 
     bool Visit(

@@ -353,7 +353,10 @@ void ExecuteCleanupTransaction(
             auto blockRange = TBlockRange32::MakeClosedInterval(
                 mergedBlocks.GetStart(),
                 mergedBlocks.GetEnd());
-            db.DeleteMergedBlocks(item.BlobId, blockRange);
+            db.DeleteMergedBlocks(
+                item.BlobId,
+                blockRange,
+                mergedBlocks.GetCommitId());
 
             ++mergedBlobsCount;
             if (!IsDeletionMarker(item.BlobId)) {

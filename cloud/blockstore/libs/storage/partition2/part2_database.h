@@ -136,11 +136,13 @@ public:
     void WriteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
-        const TBlockMask& skipMask);
+        const TBlockMask& skipMask,
+        ui64 commitId);
 
     void DeleteMergedBlocks(
         const TPartialBlobId& blobId,
-        const TBlockRange32& blockRange);
+        const TBlockRange32& blockRange,
+        ui64 commitId);
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,

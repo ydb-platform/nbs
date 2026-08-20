@@ -49,7 +49,7 @@ bool TPromoteCompactionVisitor::Visit(
     return true;
 }
 
-bool TPromoteCompactionVisitor::VisitBlob(
+bool TPromoteCompactionVisitor::Visit(
     const TPartialBlobId& blobId,
     NProto::TBlobMeta blobMeta)
 {

@@ -567,8 +567,8 @@ void TPartitionActor::HandleHttpInfo_Default(
                     DumpCompactionMap(
                         out,
                         *Info(),
-                        State->GetCompactionMap().GetTop(10),
-                        State->GetCompactionMap().GetRangeSize()
+                        State->AccessCompactionMap().GetTop(10),
+                        State->AccessCompactionMap().GetRangeSize()
                     );
 
                     TAG(TH3) {
@@ -578,8 +578,8 @@ void TPartitionActor::HandleHttpInfo_Default(
                     DumpCompactionMap(
                         out,
                         *Info(),
-                        State->GetCompactionMap().GetTopByGarbageBlockCount(10),
-                        State->GetCompactionMap().GetRangeSize()
+                        State->AccessCompactionMap().GetTopByGarbageBlockCount(10),
+                        State->AccessCompactionMap().GetRangeSize()
                     );
 
                     TAG(TH3) {

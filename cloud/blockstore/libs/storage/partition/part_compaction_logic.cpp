@@ -198,29 +198,26 @@ public:
     }
 
     bool Visit(
-        TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) override
+        NProto::TBlobMeta blobMeta) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
-        ab.MaxCommitIdInCompactionRange = blobId.CommitId();
-        ab.MinCommitIdInCompactionRange = blobId.CommitId();
+
+        const auto& mergedBlocks = blobMeta.GetMergedBlocks();
+        ab.MaxCommitIdInCompactionRange = mergedBlocks.GetCommitId();
+        ab.MinCommitIdInCompactionRange = mergedBlocks.GetCommitId();
         ab.CompactionRangeCount =
-            CompactionMap.GetRangeIndex(blockRange.End) -
-            CompactionMap.GetRangeIndex(blockRange.Start) + 1;
+            CompactionMap.GetRangeIndex(mergedBlocks.GetEnd()) -
+            CompactionMap.GetRangeIndex(mergedBlocks.GetStart()) + 1;
 
         ab.MergedBlobsSpecificInfo.ConstructInPlace();
-        ab.MergedBlobsSpecificInfo->BlockRange = blockRange;
-        ab.MergedBlobsSpecificInfo->SkippedBlocksCount = skippedBlocksCount;
-        return true;
-    }
+        ab.MergedBlobsSpecificInfo->BlockRange =
+            TBlockRange32::MakeClosedInterval(
+                mergedBlocks.GetStart(),
+                mergedBlocks.GetEnd());
+        ab.MergedBlobsSpecificInfo->SkippedBlocksCount =
+            mergedBlocks.GetSkipped();
 
-    bool Visit(
-        TBlockRange32 blockRange,
-        const TPartialBlobId& blobId) override
-    {
-        Y_UNUSED(blockRange, blobId);
-        Y_ABORT("not implemented");
         return true;
     }
 

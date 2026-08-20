@@ -160,6 +160,11 @@ struct TPartitionSchema
             using Type = TStringBuf;    // TBlockMask
         };
 
+        struct BlobCommitId
+            : public Column<7, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<RangeEnd, CommitId>;
         using TColumns = TableColumns<
             RangeStart,
@@ -167,7 +172,8 @@ struct TPartitionSchema
             CommitId,
             BlobId,
             HoleMask,
-            SkipMask
+            SkipMask,
+            BlobCommitId
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;

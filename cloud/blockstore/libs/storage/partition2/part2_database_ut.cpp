@@ -69,19 +69,12 @@ struct TTestBlockVisitor final
     THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> BlobToRange;
 
     bool Visit(
-        TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) override
+        NProto::TBlobMeta blobMeta) override
     {
-        Y_UNUSED(skippedBlocksCount);
-
-        return Visit(blockRange, blobId);
-    }
-
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
-    {
-        BlobToRange[blobId] = blockRange;
-
+        BlobToRange[blobId] = TBlockRange32::MakeClosedInterval(
+            blobMeta.GetMergedBlocks().GetStart(),
+            blobMeta.GetMergedBlocks().GetEnd());
         return true;
     }
 
@@ -586,34 +579,42 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
+            auto blobId = executor.MakeBlobId();
             db.WriteMergedBlocks(
-                executor.MakeBlobId(),
+                blobId,
                 TBlockRange32::WithLength(0, 3),
-                TBlockMask()
+                TBlockMask(),
+                blobId.CommitId()
             );
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
+            auto blobId = executor.MakeBlobId();
             db.WriteMergedBlocks(
-                executor.MakeBlobId(),
+                blobId,
                 TBlockRange32::MakeClosedInterval(4, 6),
-                TBlockMask()
+                TBlockMask(),
+                blobId.CommitId()
             );
         });
 
         ui64 maxCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
+            auto blobId = executor.MakeBlobId();
             db.WriteMergedBlocks(
-                executor.MakeBlobId(),
+                blobId,
                 TBlockRange32::MakeClosedInterval(2, 4),
-                TBlockMask()
+                TBlockMask(),
+                blobId.CommitId()
             );
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
+            auto blobId = executor.MakeBlobId();
             db.WriteMergedBlocks(
-                executor.MakeBlobId(),
+                blobId,
                 TBlockRange32::WithLength(0, 7),
-                TBlockMask()
+                TBlockMask(),
+                blobId.CommitId()
             );
         });
 
@@ -686,6 +687,68 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldUseSeparateMergedBlockAndBlobCommitIds)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        const TPartialBlobId blobId = executor.MakeBlobId();
+        const ui64 blocksCommitId = blobId.CommitId() + 100;
+        const auto blockRange = TBlockRange32::MakeClosedInterval(10, 11);
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                db.WriteMergedBlocks(
+                    blobId,
+                    blockRange,
+                    TBlockMask(),
+                    blocksCommitId);
+            });
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TTestBlockVisitor visitor;
+                UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor,
+                    visitor,
+                    blockRange,
+                    true,   // precharge
+                    MaxBlocksCount));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TStringBuilder()
+                        << "#10:" << blocksCommitId
+                        << " #11:" << blocksCommitId,
+                    visitor.Result);
+
+                THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash>
+                    expectedContent{{blobId, blockRange}};
+                ASSERT_MAP_EQUAL(expectedContent, visitor.BlobToRange);
+            });
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                db.DeleteMergedBlocks(blobId, blockRange, blocksCommitId);
+            });
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TTestBlockVisitor visitor;
+                UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor,
+                    visitor,
+                    blockRange,
+                    true,   // precharge
+                    MaxBlocksCount));
+                UNIT_ASSERT(!visitor.Result);
+                UNIT_ASSERT(visitor.BlobToRange.empty());
+            });
+    }
+
     Y_UNIT_TEST(ShouldFindMergedBlocks)
     {
         TTestExecutor executor;
@@ -694,34 +757,42 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
+            auto blobId = executor.MakeBlobId();
             db.WriteMergedBlocks(
-                executor.MakeBlobId(),
+                blobId,
                 TBlockRange32::WithLength(0, 3),
-                TBlockMask()
+                TBlockMask(),
+                blobId.CommitId()
             );
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
+            auto blobId = executor.MakeBlobId();
             db.WriteMergedBlocks(
-                executor.MakeBlobId(),
+                blobId,
                 TBlockRange32::MakeClosedInterval(4, 6),
-                TBlockMask()
+                TBlockMask(),
+                blobId.CommitId()
             );
         });
 
         ui64 maxCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
+            auto blobId = executor.MakeBlobId();
             db.WriteMergedBlocks(
-                executor.MakeBlobId(),
+                blobId,
                 TBlockRange32::MakeClosedInterval(2, 4),
-                TBlockMask()
+                TBlockMask(),
+                blobId.CommitId()
             );
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
+            auto blobId = executor.MakeBlobId();
             db.WriteMergedBlocks(
-                executor.MakeBlobId(),
+                blobId,
                 TBlockRange32::WithLength(0, 7),
-                TBlockMask()
+                TBlockMask(),
+                blobId.CommitId()
             );
         });
 
@@ -1119,7 +1190,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
             mb->SetSkipped(5);
             blob1 = executor.MakeBlobId();
             db.WriteBlobMeta(blob1, meta);
-            db.WriteMergedBlocks(blob1, range1, skipMask1);
+            db.WriteMergedBlocks(blob1, range1, skipMask1, blob1.CommitId());
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
@@ -1134,7 +1205,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
             meta.AddBlockChecksums(333);
             blob2 = executor.MakeBlobId();
             db.WriteBlobMeta(blob2, meta);
-            db.WriteMergedBlocks(blob2, range2, skipMask2);
+            db.WriteMergedBlocks(blob2, range2, skipMask2, blob2.CommitId());
         });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
@@ -1268,7 +1339,8 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                     db.WriteMergedBlocks(
                         blobIds.back(),
                         ranges[i],
-                        TBlockMask());
+                        TBlockMask(),
+                        blobIds.back().CommitId());
                 });
         }
 

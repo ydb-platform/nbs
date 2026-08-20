@@ -1238,7 +1238,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.RequestInfo,
             BlockDigestGenerator,
             State->GetBlockSize(),
-            State->GetCompactionMap().GetRangeSize(),
+            State->AccessCompactionMap().GetRangeSize(),
             SelfId(),
             args.ReadHandler,
             args.ReadRange,
@@ -1345,7 +1345,7 @@ void TPartitionActor::FinalizeReadBlocks(
     }
 
     for (const auto& stat: operation.ReadStats) {
-        State->GetCompactionMap().RegisterRead(
+        State->AccessCompactionMap().RegisterRead(
             stat.BlockIndex,
             stat.BlobCount,
             stat.BlockCount

@@ -148,7 +148,7 @@ THashSet<ui32> TPartitionActor::GetRangeIndices(
     const TVector<TAddMixedBlob>& mixedBlobs,
     const TVector<TAddMergedBlob>& mergedBlobs) const
 {
-    const auto& compactionMap = State->GetCompactionMap();
+    const auto& compactionMap = State->AccessCompactionMap();
 
     THashSet<ui32> rangeIndices;
 

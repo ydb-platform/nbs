@@ -80,21 +80,8 @@ struct IBlobsVisitor
     virtual ~IBlobsVisitor() = default;
 
     virtual bool Visit(
-        TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) = 0;
-
-    virtual bool Visit(
-        TBlockRange32 blockRange,
-        const TPartialBlobId& blobId) = 0;
-
-    virtual bool VisitBlob(
-        const TPartialBlobId& blobId,
-        NProto::TBlobMeta blobMeta)
-    {
-        Y_UNUSED(blobId, blobMeta);
-        return true;
-    }
+        NProto::TBlobMeta blobMeta) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

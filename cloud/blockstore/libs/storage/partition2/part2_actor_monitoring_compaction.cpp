@@ -49,7 +49,7 @@ void TPartitionActor::HandleHttpInfo_ForceCompaction(
         blocksCount = 0;
     }
 
-    auto& compactionMap = State->GetCompactionMap();
+    auto& compactionMap = State->AccessCompactionMap();
 
     TVector<ui32> rangesToCompact;
     if (blockIndex || blocksCount) {

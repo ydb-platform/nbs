@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/partition2/model/promote_compaction_visitor.h>
 
+#include <util/generic/size_literals.h>
+
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 using namespace NActors;
@@ -13,16 +15,73 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 CalculateUsedBlocksNeededForPromoteL0(
-    const TStorageConfigPtr config,
-    const TPartitionState& state)
+ui64 GetSourceRangeBlocksCount(
+    const TPartitionState& state,
+    EPromoteCompactionSource source)
 {
-    const size_t l1RangesCountPerL0Range =
-        state.GetMeta().GetL0RangeSize() / state.GetMeta().GetL1RangeSize();
-    const size_t blocksForHugeBlob =
+    switch (source) {
+        case EPromoteCompactionSource::L0:
+            return state.GetMeta().GetL0RangeSize();
+        case EPromoteCompactionSource::L1:
+            return state.GetMeta().GetL1RangeSize();
+    }
+    Y_UNREACHABLE();
+}
+
+ui64 GetTargetRangeBlocksCount(
+    const TPartitionState& state,
+    EPromoteCompactionSource source)
+{
+    switch (source) {
+        case EPromoteCompactionSource::L0:
+            return state.GetMeta().GetL1RangeSize();
+        case EPromoteCompactionSource::L1:
+            return state.GetCompactionMap().GetRangeSize();
+    }
+    Y_UNREACHABLE();
+}
+
+TLevelIndexCompactionMap& GetCompactionMap(
+    TPartitionState& state,
+    EPromoteCompactionSource source)
+{
+    switch (source) {
+        case EPromoteCompactionSource::L0:
+            return state.GetCompactionMapL0();
+        case EPromoteCompactionSource::L1:
+            return state.GetCompactionMapL1();
+    }
+    Y_UNREACHABLE();
+}
+
+TBlocksFilter& GetBlocksFilter(
+    TPartitionState& state,
+    EPromoteCompactionSource source)
+{
+    switch (source) {
+        case EPromoteCompactionSource::L0:
+            return state.GetBlocksFilterL0();
+        case EPromoteCompactionSource::L1:
+            return state.GetBlocksFilterL1();
+    }
+    Y_UNREACHABLE();
+}
+
+ui64 CalculateUsedBlocksNeededForPromote(
+    const TStorageConfigPtr config,
+    const TPartitionState& state,
+    EPromoteCompactionSource source)
+{
+    const ui64 sourceRangeBlocksCount =
+        GetSourceRangeBlocksCount(state, source);
+    const ui64 targetRangeBlocksCount =
+        GetTargetRangeBlocksCount(state, source);
+    const ui64 targetRangesCount =
+        (sourceRangeBlocksCount - 1) / targetRangeBlocksCount + 1;
+    const ui64 blocksForHugeBlob =
         config->GetWriteBlobThresholdSSD() / state.GetBlockSize();
 
-    return blocksForHugeBlob * l1RangesCountPerL0Range;
+    return blocksForHugeBlob * targetRangesCount;
 }
 
 class TPromoteCompactionActor final
@@ -31,6 +90,7 @@ class TPromoteCompactionActor final
 private:
     const ui64 TabletId;
     const ui64 CommitId;
+    const EPromoteCompactionSource Source;
     const NActors::TActorId TabletActorId;
     const TTabletStorageInfoPtr TabletStorageInfo;
     const TRequestInfoPtr RequestInfo;
@@ -49,6 +109,7 @@ public:
     TPromoteCompactionActor(
         ui64 tabletId,
         ui64 commitId,
+        EPromoteCompactionSource source,
         NActors::TActorId tabletActorId,
         TTabletStorageInfoPtr tabletStorageInfo,
         TRequestInfoPtr requestInfo,
@@ -58,6 +119,7 @@ public:
         TPromoteCompactionVisitor::TScanResult scanResult)
         : TabletId(tabletId)
         , CommitId(commitId)
+        , Source(source)
         , TabletActorId(tabletActorId)
         , TabletStorageInfo(std::move(tabletStorageInfo))
         , RequestInfo(std::move(requestInfo))
@@ -162,7 +224,9 @@ void TPromoteCompactionActor::WriteBlobs(const TActorContext& ctx)
         ++WriteBlobsWaitingResponses;
     }
 
-    Y_ABORT_UNLESS(WriteBlobsWaitingResponses);
+    if (WriteBlobsWaitingResponses == 0) {
+        AddBlobs(ctx);
+    }
 }
 
 void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
@@ -173,23 +237,60 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
         TabletId);
 
     TVector<TAddLevelIndexBlob> l1Blobs;
+    TVector<TAddMergedBlob> mergedBlobs;
 
-    for (size_t i = 0; i < BlobIds.size(); ++i) {
-        TVector<ui32> blockIndices;
-        TVector<ui64> commitIds;
+    if (Source == EPromoteCompactionSource::L0) {
+        l1Blobs.reserve(BlobIds.size());
 
-        for (const auto& [blockIndex, mark]:
-             ScanResult.ResultedBlobs[i].BlockIndexToMark)
-        {
-            blockIndices.push_back(blockIndex);
-            commitIds.push_back(mark.CommitId);
+        for (size_t i = 0; i < BlobIds.size(); ++i) {
+            TVector<ui32> blockIndices;
+            TVector<ui64> commitIds;
+
+            for (const auto& [blockIndex, mark]:
+                 ScanResult.ResultedBlobs[i].BlockIndexToMark)
+            {
+                blockIndices.push_back(blockIndex);
+                commitIds.push_back(mark.CommitId);
+            }
+
+            l1Blobs.emplace_back(
+                BlobIds[i],
+                std::move(blockIndices),
+                std::move(commitIds),
+                TVector<ui32>());   // checksums
         }
+    } else {
+        mergedBlobs.reserve(BlobIds.size());
 
-        l1Blobs.emplace_back(
-            BlobIds[i],
-            std::move(blockIndices),
-            std::move(commitIds),
-            TVector<ui32>());   // checksums
+        for (size_t i = 0; i < BlobIds.size(); ++i) {
+            const auto& blocks = ScanResult.ResultedBlobs[i].BlockIndexToMark;
+            STORAGE_VERIFY(
+                !blocks.empty(),
+                TWellKnownEntityTypes::TABLET,
+                TabletId);
+
+            const auto blockRange = TBlockRange32::MakeClosedInterval(
+                blocks.front().first,
+                blocks.back().first);
+
+            TBlockMask skipMask;
+            ui32 blockIndex = blockRange.Start;
+            for (const auto& [storedBlockIndex, mark]: blocks) {
+                Y_UNUSED(mark);
+                while (blockIndex < storedBlockIndex) {
+                    skipMask.Set(blockIndex - blockRange.Start);
+                    ++blockIndex;
+                }
+                ++blockIndex;
+            }
+
+            mergedBlobs.emplace_back(
+                BlobIds[i],
+                blockRange,
+                std::move(skipMask),
+                TVector<ui32>(),   // checksums
+                ScanResult.MaxCommitId);
+        }
     }
 
     TAffectedBlobs affectedBlobs;
@@ -202,8 +303,8 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
     auto addBlobsRequest =
         std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
             CommitId,
-            TVector<TAddMixedBlob>{},        // mixedBlobs
-            TVector<TAddMergedBlob>{},       // mergedBlobs
+            TVector<TAddMixedBlob>{},   // mixedBlobs
+            std::move(mergedBlobs),
             TVector<TAddFreshBlob>{},        // freshBlobs
             TVector<TAddLevelIndexBlob>{},   // l0Blobs
             std::move(l1Blobs),
@@ -219,7 +320,8 @@ void TPromoteCompactionActor::ReplyAndDie(
 {
     auto completionEvent =
         std::make_unique<TEvPartitionPrivate::TEvPromoteCompactionCompleted>(
-            error);
+            error,
+            Source);
 
     completionEvent->ExecCycles = RequestInfo->GetExecCycles();
     completionEvent->TotalCycles = RequestInfo->GetTotalCycles();
@@ -313,25 +415,32 @@ void TPromoteCompactionActor::HandleAddBlobsResponse(
 void TPartitionActor::EnqueueLevelCompactionIfNeeded(
     const NActors::TActorContext& ctx)
 {
-    auto& cm = State->GetCompactionMapL0();
-
     // TODO: implement parallel level compactions
-    if (!cm.GetCompactions().empty()) {
+    if (!State->GetCompactionMapL0().GetCompactions().empty() ||
+        !State->GetCompactionMapL1().GetCompactions().empty())
+    {
         return;
     }
 
-    auto top = cm.GetCompactionMap().GetTopByUsedBlocks();
+    for (const auto source:
+         {EPromoteCompactionSource::L0, EPromoteCompactionSource::L1})
+    {
+        auto& cm = GetCompactionMap(*State, source);
+        auto top = cm.GetCompactionMap().GetTopByUsedBlocks();
 
-    const size_t usedBlocksNeededForPromoteL0 =
-        CalculateUsedBlocksNeededForPromoteL0(Config, *State);
+        const ui64 usedBlocksNeededForPromote =
+            CalculateUsedBlocksNeededForPromote(Config, *State, source);
 
-    if (top.Stat.UsedBlockCount < usedBlocksNeededForPromoteL0) {
+        if (top.Stat.UsedBlockCount < usedBlocksNeededForPromote) {
+            continue;
+        }
+
+        auto request = std::make_unique<
+            TEvPartitionPrivate::TEvPromoteCompactionRequest>();
+        request->Source = source;
+        NCloud::Send(ctx, ctx.SelfID, std::move(request));
         return;
     }
-
-    auto request =
-        std::make_unique<TEvPartitionPrivate::TEvPromoteCompactionRequest>();
-    NCloud::Send(ctx, ctx.SelfID, std::move(request));
 }
 
 void TPartitionActor::HandlePromoteCompaction(
@@ -339,17 +448,22 @@ void TPartitionActor::HandlePromoteCompaction(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    auto& cm = State->GetCompactionMapL0();
+    auto& cm = GetCompactionMap(*State, msg->Source);
 
     // TODO: implement parallel level compactions
-    if (!cm.GetCompactions().empty()) {
+    if (!State->GetCompactionMapL0().GetCompactions().empty() ||
+        !State->GetCompactionMapL1().GetCompactions().empty())
+    {
         return;
     }
 
+    const ui64 sourceRangeBlocksCount =
+        GetSourceRangeBlocksCount(*State, msg->Source);
+
     ui32 rangeIndex = 0;
     if (msg->RangeIndex) {
-        ui64 rangesCount =
-            State->GetBlocksCount() / State->GetMeta().GetL0RangeSize();
+        const ui64 rangesCount =
+            (State->GetBlocksCount() - 1) / sourceRangeBlocksCount + 1;
 
         if (*msg->RangeIndex >= rangesCount) {
             NCloud::Reply(
@@ -366,14 +480,14 @@ void TPartitionActor::HandlePromoteCompaction(
     } else {
         auto top = cm.GetCompactionMap().GetTopByUsedBlocks();
 
-        const size_t usedBlocksNeededForPromoteL0 =
-            CalculateUsedBlocksNeededForPromoteL0(Config, *State);
+        const ui64 usedBlocksNeededForPromote =
+            CalculateUsedBlocksNeededForPromote(Config, *State, msg->Source);
 
-        if (top.Stat.UsedBlockCount < usedBlocksNeededForPromoteL0) {
+        if (top.Stat.UsedBlockCount < usedBlocksNeededForPromote) {
             return;
         }
 
-        rangeIndex = top.BlockIndex / State->GetMeta().GetL0RangeSize();
+        rangeIndex = top.BlockIndex / sourceRangeBlocksCount;
     }
 
     const ui64 commitId = SharedState->GenerateCommitId();
@@ -386,20 +500,14 @@ void TPartitionActor::HandlePromoteCompaction(
 
     auto tx = CreateTx<TPromoteCompaction>(
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
+        msg->Source,
         rangeIndex,
         commitId);
 
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
-    auto maybeTx = WaitForCommitsCompleted<std::unique_ptr<ITransactionBase>>(
-        State->AccessL0CommitQueue(),
-        commitId,
-        std::move(tx));
-
-    if (maybeTx) {
-        ExecuteTx(ctx, std::move(*maybeTx));
-    }
+    ExecuteTx(ctx, std::move(tx));
 }
 
 bool TPartitionActor::PreparePromoteCompaction(
@@ -415,25 +523,41 @@ bool TPartitionActor::PreparePromoteCompaction(
         State->GetMeta().GetL0RangeSize(),
         State->GetMeta().GetL1RangeSize());
 
+    const ui64 sourceRangeBlocksCount =
+        GetSourceRangeBlocksCount(*State, args.Source);
     auto range = TBlockRange32::WithLength(
-        args.RangeIndex * State->GetMeta().GetL0RangeSize(),
-        State->GetMeta().GetL0RangeSize());
+        args.RangeIndex * sourceRangeBlocksCount,
+        sourceRangeBlocksCount);
 
     TPromoteCompactionVisitor visitor(
-        State->GetMeta().GetL1RangeSize(),
+        GetTargetRangeBlocksCount(*State, args.Source),
         State->GetBlockSize(),
         State->GetMaxBlocksInBlob(),
         /*allowBlockDuplicates*/ false);
 
-    bool ready = db.FindBlocksInL0Index(
-        visitor,
-        visitor,
-        range,
-        /*minCommitId*/
-        State->GetBlocksFilterL0()
-            .GetRangeBaselineCommitId(args.RangeIndex)
-            .value_or(0),
-        /*maxCommitId*/ args.CommitId);
+    const ui64 minCommitId = GetBlocksFilter(*State, args.Source)
+                                 .GetRangeBaselineCommitId(args.RangeIndex)
+                                 .value_or(0);
+
+    bool ready = false;
+    switch (args.Source) {
+        case EPromoteCompactionSource::L0:
+            ready = db.FindBlocksInL0Index(
+                visitor,
+                visitor,
+                range,
+                minCommitId,
+                args.CommitId);
+            break;
+        case EPromoteCompactionSource::L1:
+            ready = db.FindBlocksInL1Index(
+                visitor,
+                visitor,
+                range,
+                minCommitId,
+                args.CommitId);
+            break;
+    }
 
     if (!ready) {
         return false;
@@ -456,17 +580,21 @@ void TPartitionActor::CompletePromoteCompaction(
     const TActorContext& ctx,
     TTxPartition::TPromoteCompaction& args)
 {
-    State->GetBlocksFilterL0().UpdateCompactionBaselineCommitId(
-        args.CommitId,
-        args.ScanResult.MaxCommitId + 1);
+    GetBlocksFilter(*State, args.Source)
+        .UpdateCompactionBaselineCommitId(
+            args.CommitId,
+            args.ScanResult.MaxCommitId + 1);
 
     auto readBlobRequests = TPromoteCompactionVisitor::CollectReadBlobRequests(
         args.ScanResult.ResultedBlobs);
 
     TVector<TPartialBlobId> blobIds;
     for (const auto& blob: args.ScanResult.ResultedBlobs) {
+        const auto channel = args.Source == EPromoteCompactionSource::L0
+                                 ? EChannelDataKind::Mixed
+                                 : EChannelDataKind::Merged;
         auto blobId = State->GenerateBlobId(
-            EChannelDataKind::Mixed,
+            channel,
             EChannelPermission::UserWritesAllowed,
             args.CommitId,
             blob.BlobContent.GetBytesCount(),
@@ -479,6 +607,7 @@ void TPartitionActor::CompletePromoteCompaction(
         ctx,
         TabletID(),
         args.CommitId,
+        args.Source,
         ctx.SelfID,
         Info(),
         std::move(args.RequestInfo),
@@ -512,9 +641,9 @@ void TPartitionActor::HandlePromoteCompactionCompleted(
             LogTitle.GetWithTime().c_str(),
             commitId,
             FormatError(msg->GetError()).c_str());
-        State->GetCompactionMapL0().CompactionFailed();
+        GetCompactionMap(*State, msg->Source).CompactionFailed();
     } else {
-        State->GetCompactionMapL0().CompactionFinished();
+        GetCompactionMap(*State, msg->Source).CompactionFinished();
     }
 
     UpdateStats(msg->Stats);

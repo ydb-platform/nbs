@@ -198,7 +198,7 @@ void TPartitionActor::CompleteDescribeRange(
     DumpDescribeHeader(out, *Info());
 
     HTML(out) {
-        const auto& cm = State->GetCompactionMap();
+        const auto& cm = State->AccessCompactionMap();
         const auto groupStart =
             cm.GetGroupStart(args.BlockRange.Start, State->GetBlockSize());
 
