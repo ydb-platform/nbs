@@ -103,6 +103,9 @@ func (t *createBaseDiskTask) Run(
 						DstDisk:                 t.request.BaseDisk,
 					},
 				)
+				if err != nil {
+					return err
+				}
 			} else {
 				taskID, err = t.scheduler.ScheduleZonalTask(
 					headers.SetIncomingIdempotencyKey(
@@ -117,9 +120,9 @@ func (t *createBaseDiskTask) Run(
 						DstDisk:       t.request.BaseDisk,
 					},
 				)
-			}
-			if err != nil {
-				return err
+				if err != nil {
+					return err
+				}
 			}
 
 			_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
