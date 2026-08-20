@@ -285,7 +285,7 @@ void TPartitionActor::CompleteLoadState(
     if (CompactionMapLoadState) {
         LoadNextCompactionMapChunk(ctx);
     } else {
-        State->GetCompactionMap().Update(
+        State->AccessCompactionMap().Update(
             args.CompactionMap,
             &State->GetUsedBlocks());
     }
@@ -445,8 +445,8 @@ bool TPartitionActor::PrepareLoadCompactionMapChunk(
     args.Counters.reserve(args.Counters.size() + args.Range.Size());
     const bool result = db.ReadCompactionMap(
         TBlockRange32::WithLength(
-            args.Range.Start * State->GetCompactionMap().GetRangeSize(),
-            args.Range.Size() * State->GetCompactionMap().GetRangeSize()),
+            args.Range.Start * State->AccessCompactionMap().GetRangeSize(),
+            args.Range.Size() * State->AccessCompactionMap().GetRangeSize()),
         args.Counters);
 
     LOG_DEBUG(
@@ -472,7 +472,7 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
     const TActorContext& ctx,
     TTxPartition::TLoadCompactionMapChunk& args)
 {
-    State->GetCompactionMap().Update(args.Counters, &State->GetUsedBlocks());
+    State->AccessCompactionMap().Update(args.Counters, &State->GetUsedBlocks());
 
     if (args.Counters.empty()) {
         CompactionMapLoadState.reset();

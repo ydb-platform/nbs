@@ -260,7 +260,7 @@ void TPartitionActor::HandleCompactRange(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    auto& compactionMap = State->GetCompactionMap();
+    auto& compactionMap = State->AccessCompactionMap();
 
     TVector<ui32> rangesToCompact;
     if (msg->Record.GetStartIndex() || msg->Record.GetBlocksCount()) {

@@ -237,8 +237,9 @@ void TWriteMergedBlocksActor::AddBlobs(
             blobs.emplace_back(
                 req.BlobId,
                 req.WriteRange,
-                TBlockMask(), // skipMask
-                std::move(req.Checksums));
+                TBlockMask(),   // skipMask
+                std::move(req.Checksums),
+                req.BlobId.CommitId());
         }
 
         request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(

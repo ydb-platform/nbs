@@ -140,7 +140,7 @@ TPrepareCompleteResult RunPrepareAndComplete(
     bool recreateBlobMetasEnabled)
 {
     const auto compactionRange =
-        state.GetCompactionMap().GetBlockRange(rangeIdx);
+        state.AccessCompactionMap().GetBlockRange(rangeIdx);
 
     TTxPartition::TRangeCompaction args(rangeIdx, compactionRange);
     THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
@@ -213,7 +213,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    blobId.CommitId());
             });
 
         TTxPartition::TRangeCompaction args(
@@ -262,7 +263,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    blobId.CommitId());
             });
 
         TTxPartition::TRangeCompaction args(
@@ -312,7 +314,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(1023, 1024),
-                    TBlockMask{});
+                    TBlockMask{},
+                    blobId.CommitId());
             });
 
         TTxPartition::TRangeCompaction args(
@@ -361,7 +364,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    blobId.CommitId());
             });
 
         state.GetCleanupQueue().Add({blobId, executor.CommitId(), {}});
@@ -412,7 +416,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    blobId.CommitId());
             });
 
         auto config = MakeStorageConfig(1000 * DefaultBlockSize);
@@ -463,7 +468,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    blobId.CommitId());
             });
 
         TTxPartition::TRangeCompaction args(
@@ -515,13 +521,15 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId1,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    blobId1.CommitId());
 
                 blobId2 = executor.MakeBlobId(4);
                 db.WriteMergedBlocks(
                     blobId2,
                     TBlockRange32::MakeClosedInterval(4, 7),
-                    TBlockMask{});
+                    TBlockMask{},
+                    blobId2.CommitId());
             });
 
         TTxPartition::TRangeCompaction args(
@@ -671,7 +679,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(blobId, blockRange, skipMask);
+                db.WriteMergedBlocks(
+                    blobId,
+                    blockRange,
+                    skipMask,
+                    blobId.CommitId());
             });
 
         const auto compactionCommitId = MakeCommitId(0, 100);
@@ -834,6 +846,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         ab.MergedBlobsSpecificInfo->BlockRange =
             TBlockRange32::MakeClosedInterval(10, 20);
         ab.MergedBlobsSpecificInfo->SkippedBlocksCount = 11;
+        ab.MergedBlobsSpecificInfo->CommitId = 42;
         args.AffectedBlobs.emplace(blobId, std::move(ab));
 
         RecreateBlobMetas(args, CommitId);
@@ -848,6 +861,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         UNIT_ASSERT_VALUES_EQUAL(10u, mergedBlocks.GetStart());
         UNIT_ASSERT_VALUES_EQUAL(20u, mergedBlocks.GetEnd());
         UNIT_ASSERT_VALUES_EQUAL(11u, mergedBlocks.GetSkipped());
+        UNIT_ASSERT_VALUES_EQUAL(42u, mergedBlocks.GetCommitId());
     }
 
     Y_UNIT_TEST(ShouldRecreateMixedBlobMetaWhenFullyAvailable)

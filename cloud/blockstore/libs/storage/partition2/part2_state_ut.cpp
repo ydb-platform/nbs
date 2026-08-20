@@ -159,7 +159,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CleanupScore);
 
         state.AddFreshBlob(1, 400_KB);
-        state.GetCompactionMap().Update(0, 10, 10, 10, 0, false);
+        state.AccessCompactionMap().Update(0, 10, 10, 10, 0, false);
         state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111, {}});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
@@ -176,7 +176,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         }
 
         state.AddFreshBlob(3, 300 * 4_KB);
-        state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
+        state.AccessCompactionMap().Update(0, 30, 30, 30, 0, false);
         state.GetCleanupQueue().Add({{1, 2, 4, 4_MB, 0, 0}, 111, {}});
 
         const auto maxBackpressure = state.CalculateCurrentBackpressure();
@@ -184,7 +184,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CompactionScore, 1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CleanupScore, 1e-5);
 
-        state.GetCompactionMap().Update(0, 100, 100, 100, 0, false);
+        state.AccessCompactionMap().Update(0, 100, 100, 100, 0, false);
 
         const auto maxBackpressure2 = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure2.CompactionScore, 1e-5);
@@ -222,7 +222,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             threadSafeState
         );
 
-        state.GetCompactionMap().Update(0, 30, 30, 30, 0, false);
+        state.AccessCompactionMap().Update(0, 30, 30, 30, 0, false);
 
         const auto bp = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_VALUES_EQUAL(0, bp.CompactionScore);
@@ -727,7 +727,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             0u,
             state.CalculateNewlyZeroedBlocks(blockIndex, 10));
 
-        state.GetCompactionMap().Update(
+        state.AccessCompactionMap().Update(
             blockIndex,
             1 /*blobCount=*/,
             15 /*blockCount=*/,

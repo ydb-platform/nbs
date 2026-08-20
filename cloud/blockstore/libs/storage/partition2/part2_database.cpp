@@ -87,18 +87,11 @@ std::pair<ui16, ui8> SplitBlobOffsetAndCompactionRangeCount(ui32 value)
 
 struct TNoOpBlobsVisitor final: public IBlobsVisitor
 {
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
-    {
-        Y_UNUSED(blockRange, blobId);
-        return true;
-    }
-
     bool Visit(
-        TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) override
+        NProto::TBlobMeta blobMeta) override
     {
-        Y_UNUSED(blockRange, blobId, skippedBlocksCount);
+        Y_UNUSED(blobId, blobMeta);
         return true;
     }
 };
@@ -476,16 +469,17 @@ template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
-    const TBlockMask& skipMask)
+    const TBlockMask& skipMask,
+    ui64 commitId)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
-    auto value =
-        Table<TTable>().Key(blockRange.End, ReverseCommitId(blobId.CommitId()));
+    auto value = Table<TTable>().Key(blockRange.End, ReverseCommitId(commitId));
 
     value.Update(
         NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start),
-        NIceDb::TUpdate<TTable::BlobId>(blobId.UniqueId()));
+        NIceDb::TUpdate<TTable::BlobId>(blobId.UniqueId()),
+        NIceDb::TUpdate<TTable::BlobCommitId>(blobId.CommitId()));
 
     if (!skipMask.Empty()) {
         value.Update(
@@ -496,13 +490,14 @@ void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
 template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::DeleteMergedBlocks(
     const TPartialBlobId& blobId,
-    const TBlockRange32& blockRange)
+    const TBlockRange32& blockRange,
+    ui64 commitId)
 {
+    Y_UNUSED(blobId);
+
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
-    Table<TTable>()
-        .Key(blockRange.End, ReverseCommitId(blobId.CommitId()))
-        .Delete();
+    Table<TTable>().Key(blockRange.End, ReverseCommitId(commitId)).Delete();
 }
 
 template <typename TCounters>
@@ -552,8 +547,10 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
             ui64 commitId =
                 ReverseCommitId(it.template GetValue<TTable::CommitId>());
             if (commitId <= maxCommitId) {
+                const ui64 blobCommitId =
+                    it.template GetValueOrDefault<TTable::BlobCommitId>();
                 auto blobId = MakePartialBlobId(
-                    commitId,
+                    blobCommitId ? blobCommitId : commitId,
                     it.template GetValue<TTable::BlobId>());
 
                 const auto holeMask = BlockMaskFromString(
@@ -562,7 +559,13 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                 const auto skipMask = BlockMaskFromString(
                     it.template GetValueOrDefault<TTable::SkipMask>());
 
-                if (!blobsVisitor.Visit(range, blobId, skipMask.Count())) {
+                NProto::TBlobMeta blobMeta;
+                blobMeta.MutableMergedBlocks()->SetStart(range.Start);
+                blobMeta.MutableMergedBlocks()->SetEnd(range.End);
+                blobMeta.MutableMergedBlocks()->SetSkipped(skipMask.Count());
+                blobMeta.MutableMergedBlocks()->SetCommitId(commitId);
+
+                if (!blobsVisitor.Visit(blobId, std::move(blobMeta))) {
                     return true;   // interrupted
                 }
 
@@ -666,8 +669,10 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                 ui64 commitId =
                     ReverseCommitId(it.template GetValue<TTable::CommitId>());
                 if (commitId <= maxCommitId) {
+                    const ui64 blobCommitId =
+                        it.template GetValueOrDefault<TTable::BlobCommitId>();
                     auto blobId = MakePartialBlobId(
-                        commitId,
+                        blobCommitId ? blobCommitId : commitId,
                         it.template GetValue<TTable::BlobId>());
 
                     const auto holeMask = BlockMaskFromString(
@@ -1274,7 +1279,7 @@ static bool FindBlocksInLevelIndex(
                 }
             }
 
-            if (!blobsVisitor.VisitBlob(blobId, std::move(blobMeta))) {
+            if (!blobsVisitor.Visit(blobId, std::move(blobMeta))) {
                 return true;   // interrupted
             }
         }

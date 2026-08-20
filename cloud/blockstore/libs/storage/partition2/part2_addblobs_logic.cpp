@@ -109,7 +109,7 @@ public:
             }
 
             if (Args.Mode == ADD_COMPACTION_RESULT) {
-                const auto& cm = State.GetCompactionMap();
+                const auto& cm = State.AccessCompactionMap();
                 const auto blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
                 auto& rangeInfo = CompactionCounters[blockIndex];
                 rangeInfo.BlobsSkippedByCompaction =
@@ -134,7 +134,7 @@ public:
             }
 
             if (Args.Mode == ADD_COMPACTION_RESULT) {
-                const auto& cm = State.GetCompactionMap();
+                const auto& cm = State.AccessCompactionMap();
                 const auto blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
                 Y_DEBUG_ABORT_UNLESS(
                     blockIndex == cm.GetRangeStart(blob.BlockRange.End));
@@ -311,6 +311,7 @@ private:
         mergedBlocks.SetStart(blob.BlockRange.Start);
         mergedBlocks.SetEnd(blob.BlockRange.End);
         mergedBlocks.SetSkipped(skipped);
+        mergedBlocks.SetCommitId(blob.CommitId);
 
         for (ui32 checksum: blob.Checksums) {
             blobMeta.AddBlockChecksums(checksum);
@@ -337,7 +338,11 @@ private:
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
-        db.WriteMergedBlocks(blob.BlobId, blob.BlockRange, blob.SkipMask);
+        db.WriteMergedBlocks(
+            blob.BlobId,
+            blob.BlockRange,
+            blob.SkipMask,
+            blob.CommitId);
 
         // update counters
         State.IncrementMergedBlobsCount(1);
@@ -536,7 +541,7 @@ private:
 
     auto& AccessRangeStat(ui32 blockIndex)
     {
-        const auto& cm = State.GetCompactionMap();
+        const auto& cm = State.AccessCompactionMap();
         auto& rangeInfo = CompactionCounters[blockIndex];
 
         if (!rangeInfo.Stat.BlobCount && Args.Mode != ADD_COMPACTION_RESULT) {
@@ -548,7 +553,7 @@ private:
 
     void UpdateCompactionCounters(const TAddMergedBlob& blob)
     {
-        const auto& cm = State.GetCompactionMap();
+        const auto& cm = State.AccessCompactionMap();
 
         auto range = TBlockRange32::MakeClosedInterval(
             cm.GetRangeStart(blob.BlockRange.Start),
@@ -596,7 +601,7 @@ private:
     template <class TAddSparseBlob>
     void UpdateCompactionCounters(const TAddSparseBlob& blob)
     {
-        const auto& cm = State.GetCompactionMap();
+        const auto& cm = State.AccessCompactionMap();
 
         ui32 prevBlockIndex = 0;
         TRangeStat* rangeStat = nullptr;
@@ -628,7 +633,7 @@ private:
             const auto usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
                 Min(static_cast<ui64>(
-                        kv.first + State.GetCompactionMap().GetRangeSize()),
+                        kv.first + State.AccessCompactionMap().GetRangeSize()),
                     State.GetUsedBlocks().Capacity()));
 
             ui32 newlyZeroedBlocks = 0;
@@ -639,7 +644,7 @@ private:
             }
 
             const ui32 prevNewlyZeroedBlocks =
-                State.GetCompactionMap().Get(kv.first).NewlyZeroedBlocks;
+                State.AccessCompactionMap().Get(kv.first).NewlyZeroedBlocks;
             const i64 newlyZeroedBlocksDiff =
                 static_cast<i64>(newlyZeroedBlocks) - prevNewlyZeroedBlocks;
             State.SetNewlyZeroedBlocks(
@@ -653,7 +658,7 @@ private:
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 kv.second.Stat.BlockCount +
                     kv.second.BlocksSkippedByCompaction);
-            State.GetCompactionMap().Update(
+            State.AccessCompactionMap().Update(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,

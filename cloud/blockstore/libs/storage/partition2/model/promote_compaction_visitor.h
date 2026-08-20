@@ -78,21 +78,7 @@ public:
         const TPartialBlobId& blobId,
         ui16 blobOffset) override;
 
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId, ui32 skippedBlocksCount) override
-    {
-        Y_UNUSED(blockRange, blobId, skippedBlocksCount);
-        Y_ABORT("not implemented");
-        return true;
-    }
-
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
-    {
-        Y_UNUSED(blockRange, blobId);
-        Y_ABORT("not implemented");
-        return true;
-    }
-
-    bool VisitBlob(
+    bool Visit(
         const TPartialBlobId& blobId,
         NProto::TBlobMeta blobMeta) override;
 

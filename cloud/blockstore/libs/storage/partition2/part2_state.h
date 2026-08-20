@@ -611,7 +611,12 @@ private:
 public:
     TOperationState& GetCompactionState(ECompactionType type);
 
-    TCompactionMap& GetCompactionMap()
+    TCompactionMap& AccessCompactionMap()
+    {
+        return CompactionMap;
+    }
+
+    const TCompactionMap& GetCompactionMap() const
     {
         return CompactionMap;
     }

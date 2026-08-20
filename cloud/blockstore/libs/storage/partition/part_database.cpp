@@ -534,7 +534,13 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                 const auto skipMask = BlockMaskFromString(
                     it.template GetValueOrDefault<TTable::SkipMask>());
 
-                if (!blobsVisitor.Visit(range, blobId, skipMask.Count())) {
+                NProto::TBlobMeta blobMeta;
+                blobMeta.MutableMergedBlocks()->SetStart(range.Start);
+                blobMeta.MutableMergedBlocks()->SetEnd(range.End);
+                blobMeta.MutableMergedBlocks()->SetSkipped(skipMask.Count());
+                blobMeta.MutableMergedBlocks()->SetCommitId(commitId);
+
+                if (!blobsVisitor.Visit(blobId, blobMeta)) {
                     return true;   // interrupted
                 }
 
@@ -590,22 +596,10 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
     struct TNoOpBlobsVisitor final: public IBlobsVisitor
     {
         bool Visit(
-            TBlockRange32 blockRange,
             const TPartialBlobId& blobId,
-            ui32 skippedBlocksCount) override
+            NProto::TBlobMeta blobMeta) override
         {
-            Y_UNUSED(blockRange);
-            Y_UNUSED(blobId);
-            Y_UNUSED(skippedBlocksCount);
-            return true;
-        }
-
-        bool Visit(
-            TBlockRange32 blockRange,
-            const TPartialBlobId& blobId) override
-        {
-            Y_UNUSED(blockRange);
-            Y_UNUSED(blobId);
+            Y_UNUSED(blobId, blobMeta);
             return true;
         }
     };
