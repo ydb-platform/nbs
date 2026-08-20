@@ -370,6 +370,10 @@ BACKENDS = {
     'io_uring': DISK_AGENT_BACKEND_IO_URING,
 }
 
+SELECTED_BACKEND = os.getenv('NBS_LOCAL_NONREPL_BACKEND')
+if SELECTED_BACKEND:
+    BACKENDS = {SELECTED_BACKEND: BACKENDS[SELECTED_BACKEND]}
+
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
 @pytest.mark.parametrize("backend", BACKENDS.values(), ids=BACKENDS.keys())
