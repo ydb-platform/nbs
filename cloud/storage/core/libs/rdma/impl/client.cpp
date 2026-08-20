@@ -76,6 +76,34 @@ using TCompletionPollerPtr = std::unique_ptr<TCompletionPoller>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBindWr
+    : ibv_send_wr
+{
+    TBindWr(
+        ui64 wrId,
+        TPooledBuffer& buf,
+        ibv_mw* mw,
+        ibv_access_flags flags)
+    {
+        Zero(*this);
+
+        wr_id = wrId;
+        opcode = IBV_WR_BIND_MW;
+        bind_mw = {
+            .mw = mw,
+            .rkey = mw->rkey,
+            .bind_info = {
+                .mr = buf.GetMemoryRegion(),
+                .addr = buf.Address,
+                .length = buf.Length,
+                .mw_access_flags = flags,
+            },
+        };
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 enum class ERequestState
 {
     Init,
@@ -617,6 +645,7 @@ private:
     void CompleteRequest(TRequestPtr req) noexcept;
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
+    bool PostSend(TRequest* req, TSendWr* send, ibv_send_wr* wr) noexcept;
     int ValidateCompletion(ibv_wc* wc) noexcept;
     ui64 GetNewReqId() noexcept;
 };
@@ -1309,34 +1338,37 @@ void TClientEndpoint::StartRequest(TRequestPtr request, TSendWr* send) noexcept
     }
 }
 
+// returns true in case of an error
+bool TClientEndpoint::PostSend(
+    TRequest* req,
+    TSendWr* send,
+    ibv_send_wr* wr) noexcept
+{
+    try {
+        Verbs->PostSend(Connection->qp, wr);
+        RDMA_TRACE(*wr << " [request=" << req->ReqId << "]" << " posted");
+        return false;
+    }
+    catch (const TServiceError& e) {
+        RDMA_ERROR(*wr << " " << e.what());
+        SendQueue.Push(send);
+        Counters->Error();
+        Disconnect();
+        return true;
+    }
+}
+
 void TClientEndpoint::BindInBuffer(TRequest* req, TSendWr* send) noexcept
 {
     req->State = ERequestState::BindInBuffer;
 
-    ibv_send_wr wr = {
-        .wr_id = send->wr.wr_id,
-        .opcode = IBV_WR_BIND_MW,
-        .bind_mw = {
-            .mw = req->InMemoryWindow.get(),
-            .rkey = req->InMemoryWindow->rkey,
-            .bind_info = {
-                .mr = req->InBuffer.GetMemoryRegion(),
-                .addr = req->InBuffer.Address,
-                .length = req->InBuffer.Length,
-                .mw_access_flags = IBV_ACCESS_REMOTE_READ,
-            },
-        },
-    };
+    TBindWr wr(
+        send->wr.wr_id,
+        req->InBuffer,
+        req->InMemoryWindow.get(),
+        IBV_ACCESS_REMOTE_READ);
 
-    try {
-        Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE(wr << " [request=" << req->ReqId << "]" << " posted");
-    }
-    catch (const TServiceError& e) {
-        RDMA_ERROR(wr << " " << e.what());
-        SendQueue.Push(send);
-        Counters->Error();
-        Disconnect();
+    if (PostSend(req, send, &wr)) {
         return;
     }
 
@@ -1350,31 +1382,13 @@ void TClientEndpoint::BindOutBuffer(TRequest* req, TSendWr* send) noexcept
 {
     req->State = ERequestState::BindOutBuffer;
 
-    ibv_send_wr wr = {
-        .wr_id = send->wr.wr_id,
-        .opcode = IBV_WR_BIND_MW,
-        .bind_mw = {
-            .mw = req->OutMemoryWindow.get(),
-            .rkey = req->OutMemoryWindow->rkey,
-            .bind_info = {
-                .mr = req->OutBuffer.GetMemoryRegion(),
-                .addr = req->OutBuffer.Address,
-                .length = req->OutBuffer.Length,
-                .mw_access_flags = IBV_ACCESS_REMOTE_WRITE,
-            },
-        },
-    };
+    TBindWr wr(
+        send->wr.wr_id,
+        req->OutBuffer,
+        req->OutMemoryWindow.get(),
+        IBV_ACCESS_REMOTE_WRITE);
 
-    try {
-        Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE(wr << " [request=" << req->ReqId << "]" << " posted");
-        RDMA_TRACE(wr << " posted");
-    }
-    catch (const TServiceError& e) {
-        RDMA_ERROR(wr << " " << e.what());
-        SendQueue.Push(send);
-        Counters->Error();
-        Disconnect();
+    if (PostSend(req, send, &wr)) {
         return;
     }
 
@@ -1382,6 +1396,22 @@ void TClientEndpoint::BindOutBuffer(TRequest* req, TSendWr* send) noexcept
         BindOutBufferStarted,
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
+}
+
+void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
+{
+    req->State = ERequestState::RecvResponse;
+
+    if (PostSend(req, send, &send->wr)) {
+        return;
+    }
+
+    LWTRACK(
+        SendRequestStarted,
+        req->CallContext->LWOrbit,
+        req->CallContext->RequestId);
+
+    Counters->SendRequestStarted();
 }
 
 void TClientEndpoint::BindCompleted(TSendWr* send) noexcept
@@ -1427,30 +1457,6 @@ void TClientEndpoint::BindCompleted(TSendWr* send) noexcept
             Disconnect();
             return;
     }
-}
-
-void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
-{
-    req->State = ERequestState::RecvResponse;
-
-    try {
-        Verbs->PostSend(Connection->qp, &send->wr);
-        RDMA_TRACE(send << " posted");
-    }
-    catch (const TServiceError& e) {
-        RDMA_ERROR(send << " " << e.what());
-        SendQueue.Push(send);
-        Counters->Error();
-        Disconnect();
-        return;
-    }
-
-    LWTRACK(
-        SendRequestStarted,
-        req->CallContext->LWOrbit,
-        req->CallContext->RequestId);
-
-    Counters->SendRequestStarted();
 }
 
 void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
@@ -1580,15 +1586,7 @@ void TClientEndpoint::InvalidateInBuffer(
         .invalidate_rkey = req->InMemoryWindow->rkey,
     };
 
-    try {
-        Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE(wr << " [request=" << req->ReqId << "]" << " posted");
-    }
-    catch (const TServiceError& e) {
-        RDMA_ERROR(wr << " " << e.what());
-        SendQueue.Push(send);
-        Counters->Error();
-        Disconnect();
+    if (PostSend(req, send, &wr)) {
         return;
     }
 
@@ -1610,15 +1608,7 @@ void TClientEndpoint::InvalidateOutBuffer(
         .invalidate_rkey = req->OutMemoryWindow->rkey,
     };
 
-    try {
-        Verbs->PostSend(Connection->qp, &wr);
-        RDMA_TRACE(wr << " [request=" << req->ReqId << "]" << " posted");
-    }
-    catch (const TServiceError& e) {
-        RDMA_ERROR(wr << " " << e.what());
-        SendQueue.Push(send);
-        Counters->Error();
-        Disconnect();
+    if (PostSend(req, send, &wr)) {
         return;
     }
 
