@@ -285,7 +285,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         auto dirId =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
         tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(1));
-        CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
+        auto fileId = CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(fileId).SetSize(100));
 
         tablet.RebootTablet();
 
@@ -293,6 +294,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         UNIT_ASSERT_VALUES_EQUAL(1, usages.size());
         UNIT_ASSERT_VALUES_EQUAL(1u, usages[0].GetQuotaId());
         UNIT_ASSERT_VALUES_EQUAL(2u, usages[0].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(100u, usages[0].GetUsedBytes());
     }
 
     Y_UNIT_TEST(ShouldNotTrackUsageForUnknownQuotaId)
@@ -355,7 +357,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         }
     }
 
-    Y_UNIT_TEST(ShouldTransferFileUsageOnRenameAcrossQuotas)
+    Y_UNIT_TEST(ShouldNotChangeUsageOnRenameWithinTheSameQuota)
     {
         TTestEnv env;
 
@@ -366,50 +368,33 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         tablet.InitSession("client", "session");
 
         tablet.SetQuota(1, 1_GB, 100);
-        tablet.SetQuota(2, 1_GB, 100);
 
+        // two separate directories, both attached to the same quota
         auto dir1Id =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir1"));
         tablet.SetNodeAttr(TSetNodeAttrArgs(dir1Id).SetQuotaId(1));
 
         auto dir2Id =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir2"));
-        tablet.SetNodeAttr(TSetNodeAttrArgs(dir2Id).SetQuotaId(2));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dir2Id).SetQuotaId(1));
 
         auto fileId = CreateNode(tablet, TCreateNodeArgs::File(dir1Id, "file"));
         tablet.SetNodeAttr(TSetNodeAttrArgs(fileId).SetSize(100));
 
-        auto usageByQuotaId = [&] {
-            THashMap<ui32, NProtoPrivate::TQuotaUsage> result;
-            auto response = tablet.ListQuotas();
-            for (const auto& usage: response->Record.GetUsages()) {
-                result[usage.GetQuotaId()] = usage;
-            }
-            return result;
-        };
+        // dir1 + dir2 attach points + file = 3 nodes, 100 bytes
+        auto usagesBefore = tablet.ListQuotas()->Record.GetUsages();
+        UNIT_ASSERT_VALUES_EQUAL(1, usagesBefore.size());
+        UNIT_ASSERT_VALUES_EQUAL(3u, usagesBefore[0].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(100u, usagesBefore[0].GetUsedBytes());
 
-        // before the move: quota 1 has its own attach point (dir1) plus the
-        // file; quota 2 only has its own attach point (dir2)
-        {
-            auto usages = usageByQuotaId();
-            UNIT_ASSERT_VALUES_EQUAL(2u, usages[1].GetUsedNodes());
-            UNIT_ASSERT_VALUES_EQUAL(100u, usages[1].GetUsedBytes());
-            UNIT_ASSERT_VALUES_EQUAL(1u, usages[2].GetUsedNodes());
-            UNIT_ASSERT_VALUES_EQUAL(0u, usages[2].GetUsedBytes());
-        }
-
+        // moving the file between two directories under the same quota
+        // shouldn't change anything - it's still the same quota either way
         tablet.RenameNode(dir1Id, "file", dir2Id, "file");
 
-        // after the move: the file's usage has fully transferred from quota
-        // 1 to quota 2, leaving each quota with just its own attach point
-        // plus whatever it's actually responsible for now
-        {
-            auto usages = usageByQuotaId();
-            UNIT_ASSERT_VALUES_EQUAL(1u, usages[1].GetUsedNodes());
-            UNIT_ASSERT_VALUES_EQUAL(0u, usages[1].GetUsedBytes());
-            UNIT_ASSERT_VALUES_EQUAL(2u, usages[2].GetUsedNodes());
-            UNIT_ASSERT_VALUES_EQUAL(100u, usages[2].GetUsedBytes());
-        }
+        auto usagesAfter = tablet.ListQuotas()->Record.GetUsages();
+        UNIT_ASSERT_VALUES_EQUAL(1, usagesAfter.size());
+        UNIT_ASSERT_VALUES_EQUAL(3u, usagesAfter[0].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(100u, usagesAfter[0].GetUsedBytes());
     }
 
     Y_UNIT_TEST(ShouldRejectMarkingWithDifferentExistingQuotaId)
