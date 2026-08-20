@@ -79,11 +79,15 @@ void TConfigsManager::ValidateMainConfig(TUpdateConfigOpContext& opCtx) {
             auto resolved = NYamlConfig::ResolveAll(tree);
 
             if (ClusterName != opCtx.Cluster) {
-                ythrow yexception() << "ClusterName mismatch";
+                ythrow yexception() << "ClusterName mismatch"
+                    << " expected " << ClusterName
+                    << " but got " << opCtx.Cluster;
             }
 
             if (opCtx.Version != YamlVersion) {
-                ythrow yexception() << "Version mismatch";
+                ythrow yexception() << "Version mismatch"
+                    << " expected " << YamlVersion
+                    << " but got " << opCtx.Version;
             }
 
             TSimpleSharedPtr<NYamlConfig::TBasicUnknownFieldsCollector> unknownFieldsCollector = new NYamlConfig::TBasicUnknownFieldsCollector;
@@ -1070,11 +1074,15 @@ void TConfigsManager::Handle(TEvConsole::TEvAddVolatileConfigRequest::TPtr &ev, 
             }
 
             if (ClusterName != clusterName) {
-                ythrow yexception() << "ClusterName mismatch";
+                ythrow yexception() << "ClusterName mismatch"
+                    << " expected " << ClusterName
+                    << " but got " << clusterName;
             }
 
             if (YamlVersion != version) {
-                ythrow yexception() << "Version mismatch";
+                ythrow yexception() << "Version mismatch"
+                    << " expected " << YamlVersion
+                    << " but got " << version;
             }
 
             VolatileYamlConfigs.try_emplace(id, cfg);
@@ -1105,11 +1113,15 @@ void TConfigsManager::Handle(TEvConsole::TEvRemoveVolatileConfigRequest::TPtr &e
     try {
         if (!rec.force()) {
             if (ClusterName != rec.identity().cluster()) {
-                ythrow yexception() << "ClusterName mismatch";
+                ythrow yexception() << "ClusterName mismatch"
+                    << " expected " << ClusterName
+                    << " but got " << rec.identity().cluster();
             }
 
             if (YamlVersion != rec.identity().version()) {
-                ythrow yexception() << "Version mismatch";
+                ythrow yexception() << "Version mismatch"
+                    << " expected " << YamlVersion
+                    << " but got " << rec.identity().version();
             }
         }
 
