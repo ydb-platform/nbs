@@ -267,6 +267,17 @@ void TPartitionActor::WriteBlocks(
         return;
     }
 
+    const auto requestSize = writeRange.Size() * State->GetBlockSize();
+    bool isFreshRequest = IsFreshRequest(
+        *Config,
+        PartitionConfig.GetStorageMediaKind(),
+        requestSize);
+
+    if (!isFreshRequest) {
+        replyError(ctx, MakeError(E_REJECTED, "Large WriteBlocks is not implemented"));
+        return;
+    }
+
     SharedState->WriteAndZeroRequestsInProgress.fetch_add(1);
 
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer{
@@ -278,12 +289,6 @@ void TPartitionActor::WriteBlocks(
             replyLocal
         }
     };
-
-    const auto requestSize = writeRange.Size() * State->GetBlockSize();
-    bool isFreshRequest = IsFreshRequest(
-        *Config,
-        PartitionConfig.GetStorageMediaKind(),
-        requestSize);
 
     if (!IsFreshBlocksWriterEnabled() && isFreshRequest) {
         if (Config->GetWriteRequestBatchingEnabled()) {
@@ -451,7 +456,6 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
     SharedState->WriteAndZeroRequestsInProgress.fetch_sub(requestCount);
 
     SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
-    ProcessCommitQueue(ctx);
     EnqueueFlushIfNeeded(ctx);
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
 }

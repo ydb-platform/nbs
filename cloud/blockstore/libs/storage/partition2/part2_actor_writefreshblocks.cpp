@@ -435,7 +435,6 @@ void TPartitionActor::CompleteWriteBlocks(
 
     EnqueueFlushIfNeeded(ctx);
     SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
-    ProcessCommitQueue(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

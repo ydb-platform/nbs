@@ -165,7 +165,7 @@ struct TPartitionSchema
         {
         };
 
-        using TKey = TableKey<RangeEnd, CommitId>;
+        using TKey = TableKey<RangeEnd, CommitId, BlobCommitId, BlobId>;
         using TColumns = TableColumns<
             RangeStart,
             RangeEnd,

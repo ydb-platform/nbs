@@ -758,20 +758,20 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
     TAffectedBlobs affectedBlobs;
     TAffectedBlocks affectedBlocks;
 
-    auto addBlob = [&] (
-        const TPartialBlobId& blobId,
-        TBlockRange32 range,
-        TBlockMask skipMask,
-        const TVector<std::optional<ui32>>& blockChecksums,
-        ui32 blobsSkipped,
-        ui32 blocksSkipped,
-        EChannelDataKind channelDataKind)
+    auto addBlob = [&](const TPartialBlobId& blobId,
+                       TBlockRange32 range,
+                       TBlockMask skipMask,
+                       const TVector<std::optional<ui32>>& blockChecksums,
+                       ui32 blobsSkipped,
+                       ui32 blocksSkipped,
+                       EChannelDataKind channelDataKind,
+                       ui64 commitId)
     {
+        Y_UNUSED(channelDataKind);
+
         while (skipMask.Get(range.End - range.Start)) {
             Y_ABORT_UNLESS(range.End > range.Start);
-            // modifying skipMask is crucial since otherwise there would be
-            // 2 blobs with the same key in merged index (the key is
-            // commitId + blockRange.End)
+            // Keep the indexed range bounded by its last referenced block.
             skipMask.Reset(range.End - range.Start);
             --range.End;
         }
@@ -779,37 +779,13 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         auto ensuredBlockChecksums =
             EnsureBlockChecksums(blockChecksums, TabletId);
 
-        if (channelDataKind == EChannelDataKind::Merged) {
-            mergedBlobs.emplace_back(
-                blobId,
-                range,
-                skipMask,
-                std::move(ensuredBlockChecksums),
-                blobId.CommitId());
-            mergedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
-        } else if (channelDataKind == EChannelDataKind::Mixed) {
-            TVector<ui32> blockIndices(Reserve(range.Size()));
-            for (auto blockIndex = range.Start; blockIndex <= range.End;
-                 ++blockIndex)
-            {
-                if (!skipMask.Get(blockIndex - range.Start)) {
-                    blockIndices.emplace_back(blockIndex);
-                }
-            }
-            mixedBlobs.emplace_back(
-                blobId,
-                std::move(blockIndices),
-                std::move(ensuredBlockChecksums),
-                0);   // unknown blob alignment
-            mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
-        } else {
-            LOG_ERROR(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "%s unexpected channel data kind %u",
-                LogTitle.GetWithTime().c_str(),
-                static_cast<int>(channelDataKind));
-        }
+        mergedBlobs.emplace_back(
+            blobId,
+            range,
+            skipMask,
+            std::move(ensuredBlockChecksums),
+            commitId);
+        mergedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
     };
 
     for (auto& rc: RangeCompactionInfos) {
@@ -821,7 +797,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockChecksums,
                 rc.BlobsSkippedByCompaction,
                 rc.BlocksSkippedByCompaction,
-                rc.ChannelDataKind);
+                rc.ChannelDataKind,
+                rc.CommitId);
         }
 
         if (rc.ZeroBlobId) {
@@ -840,7 +817,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockChecksums,
                 blobsSkipped,
                 blocksSkipped,
-                rc.ChannelDataKind);
+                rc.ChannelDataKind,
+                rc.CommitId);
         }
 
         if (rc.DataBlobId && rc.ZeroBlobId) {
@@ -2009,19 +1987,7 @@ void TPartitionActor::HandleCompaction(
         std::move(ranges),
         ctx.Now());
 
-    SharedState->WaitCommitForCompaction(ctx, std::move(tx), commitId);
-}
-
-void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
-{
-    SharedState->ProcessCommitQueue(ctx);
-    TVector<std::unique_ptr<ITransactionBase>> txs;
-    ::NCloud::NBlockStore::NStorage::ProcessCommitQueue(
-        State->AccessL0CommitQueue(),
-        txs);
-    for (auto& tx: txs) {
-        ExecuteTx(ctx, std::move(tx));
-    }
+    ExecuteTx(ctx, std::move(tx));
 }
 
 void TPartitionActor::HandleCompactionCompleted(
@@ -2119,7 +2085,6 @@ void TPartitionActor::HandleCompactionCompleted(
 
     EnqueueCompactionIfNeeded(ctx);
     EnqueueCleanupIfNeeded(ctx);
-    ProcessCommitQueue(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
