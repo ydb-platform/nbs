@@ -1,161 +1,180 @@
 #include "topic_api.h"
 
-#include <contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils/test_server.h>
-
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
-#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/topic/client.h>
+#include <ydb-cpp-sdk/client/topic/client.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/generic/overloaded.h>
-#include <util/string/printf.h>
-#include <util/system/hostname.h>
+#include <util/generic/vector.h>
 
-#include <chrono>
+#include <utility>
 
 namespace NCloud::NBlockStore::NLogbroker {
 
 using namespace NThreading;
-using namespace std::chrono_literals;
+using namespace NYdb::NTopic;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const TString TestConsumer = "test-consumer";
-const TString TestTopic = "test-topic";
-const TString TestSource = "test-source";
-const TString Database = "/Root";
-const TDuration WaitTimeout = 15s;
-
-////////////////////////////////////////////////////////////////////////////////
-
-NKikimr::Tests::TServerSettings MakeServerSettings()
+class TContinuationTokenIssuer final
+    : private NYdb::NTopic::TContinuationTokenIssuer
 {
-    using namespace NKikimrServices;
-    using namespace NActors::NLog;
-
-    auto settings = NKikimr::NPersQueueTests::PQSettings(0);
-    settings.SetDomainName("Root");
-    settings.SetNodeCount(1);
-    settings.PQConfig.SetTopicsAreFirstClassCitizen(true);
-    settings.PQConfig.SetRoot("/Root");
-    settings.PQConfig.SetDatabase("/Root");
-
-    settings.SetLoggerInitializer([] (NActors::TTestActorRuntime& runtime) {
-        runtime.SetLogPriority(PQ_READ_PROXY, PRI_DEBUG);
-        runtime.SetLogPriority(PQ_WRITE_PROXY, PRI_DEBUG);
-        runtime.SetLogPriority(PQ_MIRRORER, PRI_DEBUG);
-        runtime.SetLogPriority(PQ_METACACHE, PRI_DEBUG);
-        runtime.SetLogPriority(PERSQUEUE, PRI_DEBUG);
-        runtime.SetLogPriority(PERSQUEUE_CLUSTER_TRACKER, PRI_DEBUG);
-    });
-
-    return settings;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TFixture
-    : public NUnitTest::TBaseFixture
-{
-    std::optional<NPersQueue::TTestServer> Server;
-
-    std::optional<NYdb::TDriver> Driver;
-    std::optional<NYdb::NTopic::TTopicClient> Client;
-
-    ILoggingServicePtr Logging = CreateLoggingService(
-        "console",
-        {
-            .FiltrationLevel = TLOG_DEBUG,
-        });
-
-    void SetUp(NUnitTest::TTestContext& /*context*/) override
+public:
+    static TContinuationToken Issue()
     {
-        Server.emplace(MakeServerSettings());
-
-        Driver.emplace(NYdb::TDriverConfig()
-            .SetEndpoint("localhost:" + ToString(Server->GrpcPort))
-            .SetDatabase(Database));
-        Client.emplace(*Driver);
-
-        auto settings = NYdb::NTopic::TCreateTopicSettings()
-            .PartitioningSettings(1, 1);
-
-        NYdb::NTopic::TConsumerSettings consumers(
-            settings,
-            TestConsumer);
-
-        settings.AppendConsumers(consumers);
-
-        auto status = Client->CreateTopic(TestTopic, settings)
-            .GetValueSync();
-
-        UNIT_ASSERT_C(status.IsSuccess(), status);
-
-        Server->WaitInit(TestTopic);
-    }
-
-    auto Read(size_t count)
-    {
-        auto session = Client->CreateReadSession(NYdb::NTopic::TReadSessionSettings()
-            .ConsumerName(TestConsumer)
-            .AppendTopics(std::string(TestTopic))
-            .Decompress(true)
-            .Log(Logging->CreateLog("Read")));
-
-        TVector<TMessage> messages;
-
-        bool sessionClosed = false;
-
-        while (!sessionClosed) {
-            session->WaitEvent().Wait();
-
-            auto events = session->GetEvents();
-            for (auto& event: events) {
-                std::visit(TOverloaded {
-                    [&] (NYdb::NTopic::TReadSessionEvent::TDataReceivedEvent& ev) {
-                        UNIT_ASSERT(!ev.HasCompressedMessages());
-
-                        for (auto& m: ev.GetMessages()) {
-                            messages.emplace_back(TMessage{
-                                TString{m.GetData()},
-                                m.GetSeqNo()
-                            });
-                        }
-
-                        count -= std::min(ev.GetMessagesCount(), count);
-
-                        ev.Commit();
-
-                        if (!count) {
-                            session->Close(1s);
-                        }
-                    },
-                    [&] (NYdb::NTopic::TReadSessionEvent::TStartPartitionSessionEvent& ev) {
-                        ev.Confirm();
-                    },
-                    [&] (NYdb::NTopic::TReadSessionEvent::TStopPartitionSessionEvent& ev) {
-                        ev.Confirm();
-                    },
-                    [&] (NYdb::NTopic::TSessionClosedEvent& ev) {
-                        UNIT_ASSERT_C(ev.IsSuccess(), ev.DebugString());
-                        sessionClosed = true;
-                    },
-                    [] (const auto&) {}
-                }, event);
-            }
-        }
-
-        return messages;
+        return IssueContinuationToken();
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTestWriteSession final
+    : public IWriteSession
+{
+private:
+    std::vector<TWriteSessionEvent::TEvent> Events;
+    TVector<TMessage> Messages;
+
+public:
+    explicit TTestWriteSession(
+        std::optional<NYdb::EStatus> initialError = std::nullopt)
+    {
+        if (initialError) {
+            Events.emplace_back(TSessionClosedEvent(
+                *initialError,
+                NYdb::NIssue::TIssues{}));
+        } else {
+            AddReadyToAcceptEvent();
+        }
+    }
+
+    const TVector<TMessage>& GetMessages() const
+    {
+        return Messages;
+    }
+
+    TFuture<void> WaitEvent() override
+    {
+        UNIT_ASSERT(!Events.empty());
+        return MakeFuture();
+    }
+
+    std::optional<TWriteSessionEvent::TEvent> GetEvent(bool) override
+    {
+        if (Events.empty()) {
+            return std::nullopt;
+        }
+
+        auto event = std::move(Events.front());
+        Events.erase(Events.begin());
+        return event;
+    }
+
+    std::vector<TWriteSessionEvent::TEvent> GetEvents(
+        bool,
+        std::optional<size_t>) override
+    {
+        return std::exchange(Events, {});
+    }
+
+    TFuture<uint64_t> GetInitSeqNo() override
+    {
+        return MakeFuture<uint64_t>(0);
+    }
+
+    void Write(
+        TContinuationToken&&,
+        TWriteMessage&&,
+        TTransaction*) override
+    {
+        UNIT_FAIL("unexpected TWriteMessage overload");
+    }
+
+    void Write(
+        TContinuationToken&&,
+        std::string_view data,
+        std::optional<uint64_t> seqNo,
+        std::optional<TInstant>) override
+    {
+        UNIT_ASSERT(seqNo.has_value());
+        Messages.push_back({TString{data}, *seqNo});
+
+        TWriteSessionEvent::TAcksEvent event;
+        event.Acks.push_back({
+            .SeqNo = *seqNo,
+            .State = TWriteSessionEvent::TWriteAck::EES_WRITTEN,
+        });
+        Events.emplace_back(std::move(event));
+        AddReadyToAcceptEvent();
+    }
+
+    void WriteEncoded(
+        TContinuationToken&&,
+        TWriteMessage&&,
+        TTransaction*) override
+    {
+        UNIT_FAIL("unexpected WriteEncoded overload");
+    }
+
+    void WriteEncoded(
+        TContinuationToken&&,
+        std::string_view,
+        ECodec,
+        uint32_t,
+        std::optional<uint64_t>,
+        std::optional<TInstant>) override
+    {
+        UNIT_FAIL("unexpected WriteEncoded overload");
+    }
+
+    bool Close(TDuration) override
+    {
+        return true;
+    }
+
+    TWriterCounters::TPtr GetCounters() override
+    {
+        return {};
+    }
+
+private:
+    void AddReadyToAcceptEvent()
+    {
+        Events.emplace_back(TWriteSessionEvent::TReadyToAcceptEvent(
+            TContinuationTokenIssuer::Issue()));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TLogbrokerConfigPtr CreateConfig()
+{
+    NProto::TLogbrokerConfig config;
+    config.SetTopic("test-topic");
+    config.SetSourceId("test-source");
+    return std::make_shared<TLogbrokerConfig>(std::move(config));
+}
+
+IServicePtr CreateTestService(std::shared_ptr<TTestWriteSession> session)
+{
+    auto logging = CreateLoggingService("console", TLogSettings{});
+
+    return CreateTopicAPIService(
+        CreateConfig(),
+        std::move(logging),
+        {},
+        [session = std::move(session)]
+        {
+            return session;
+        });
+}
 
 }   // namespace
 
@@ -163,20 +182,10 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TLogbrokerTest)
 {
-    Y_UNIT_TEST_F(ShouldWriteData, TFixture)
+    Y_UNIT_TEST(ShouldWriteData)
     {
-        NProto::TLogbrokerConfig config;
-
-        config.SetAddress("localhost");
-        config.SetPort(Server->GrpcPort);
-        config.SetDatabase(Database);
-        config.SetTopic(TestTopic);
-        config.SetSourceId(TestSource);
-
-        auto service = CreateTopicAPIService(
-            std::make_shared<TLogbrokerConfig>(config),
-            Logging);
-
+        auto session = std::make_shared<TTestWriteSession>();
+        auto service = CreateTestService(session);
         service->Start();
 
         const TVector<TMessage> expectedData{
@@ -186,82 +195,43 @@ Y_UNIT_TEST_SUITE(TLogbrokerTest)
             {"bar", 1001},
         };
 
-        {
-            auto future =
-                service->Write({expectedData[0], expectedData[1]}, Now());
+        auto first = service->Write(
+            {expectedData[0], expectedData[1]},
+            Now()).GetValueSync();
+        UNIT_ASSERT_C(!HasError(first), FormatError(first));
 
-            UNIT_ASSERT(future.Wait(WaitTimeout));
+        auto second = service->Write(
+            {expectedData[2], expectedData[3]},
+            Now()).GetValueSync();
+        UNIT_ASSERT_C(!HasError(second), FormatError(second));
 
-            const auto& error = future.GetValue();
-
-            UNIT_ASSERT_C(!HasError(error), FormatError(error));
-        }
-
-        {
-            auto future =
-                service->Write({expectedData[2], expectedData[3]}, Now());
-
-            UNIT_ASSERT(future.Wait(WaitTimeout));
-
-            const auto& error = future.GetValue();
-
-            UNIT_ASSERT_C(!HasError(error), FormatError(error));
-        }
-
-        auto data = Read(expectedData.size());
-
-        UNIT_ASSERT_VALUES_EQUAL(expectedData.size(), data.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedData.size(),
+            session->GetMessages().size());
         for (size_t i = 0; i != expectedData.size(); ++i) {
-            UNIT_ASSERT_VALUES_EQUAL(expectedData[i].Payload, data[i].Payload);
-            UNIT_ASSERT_VALUES_EQUAL(expectedData[i].SeqNo, data[i].SeqNo);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedData[i].Payload,
+                session->GetMessages()[i].Payload);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedData[i].SeqNo,
+                session->GetMessages()[i].SeqNo);
         }
 
         service->Stop();
     }
 
-    void ShouldHandleErrorImpl(TLogbrokerConfigPtr config)
+    Y_UNIT_TEST(ShouldHandleSessionError)
     {
-        auto logging = CreateLoggingService("console", TLogSettings{});
-
-        auto service = CreateTopicAPIService(config, logging);
+        auto session = std::make_shared<TTestWriteSession>(
+            NYdb::EStatus::UNAVAILABLE);
+        auto service = CreateTestService(std::move(session));
         service->Start();
 
-        auto future = service->Write({TMessage{"hello", 42}}, Now());
+        auto error = service->Write({TMessage{"hello", 42}}, Now())
+            .GetValueSync();
 
-        UNIT_ASSERT(future.Wait(WaitTimeout));
-
-        const auto& error = future.GetValue();
-        UNIT_ASSERT(HasError(error));
-
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
         service->Stop();
-    }
-
-    Y_UNIT_TEST_F(ShouldHandleConnectError, TFixture)
-    {
-        NProto::TLogbrokerConfig proto;
-
-        proto.SetDatabase(Database);
-        proto.SetTopic(TestTopic);
-        proto.SetSourceId("test");
-        proto.SetAddress("unknown");
-
-        ShouldHandleErrorImpl(std::make_shared<TLogbrokerConfig>(proto));
-    }
-
-    Y_UNIT_TEST_F(ShouldHandleUnknownTopic, TFixture)
-    {
-        NProto::TLogbrokerConfig proto;
-
-        proto.SetAddress("localhost");
-        proto.SetPort(Server->GrpcPort);
-        proto.SetDatabase(Database);
-        proto.SetTopic("unknown-topic");
-        proto.SetSourceId(Sprintf(
-            "test:%s:%lu",
-            GetFQDNHostName(),
-            TInstant::Now().MilliSeconds()));
-
-        ShouldHandleErrorImpl(std::make_shared<TLogbrokerConfig>(proto));
     }
 }
 
