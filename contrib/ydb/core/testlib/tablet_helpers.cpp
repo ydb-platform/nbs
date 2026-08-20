@@ -1024,6 +1024,19 @@ namespace NKikimr {
             PrevRegistrationObserverFunc = Runtime.SetRegistrationObserverFunc(
                 [&](TTestActorRuntimeBase& runtime, const TActorId& parentId, const TActorId& actorId) {
                 TabletTracer.OnRegistration(AsKikimrRuntime(runtime), parentId, actorId);
+                // Chain to the previous observer (normally
+                // TTestActorRuntimeBase::DefaultRegistrationObserver) so that
+                // the EnableScheduleForActor whitelist keeps being propagated
+                // from parent actors to their children while the guard is
+                // active. A tablet rebooted under the guard is respawned by
+                // its (schedule-enabled) bootstrapper within the guard's
+                // lifetime; without this propagation the new tablet instance
+                // is never whitelisted, and once the guard is destroyed all
+                // the events the tablet schedules for itself are silently
+                // dropped by TTestActorRuntime::DefaultScheduledFilterFunc.
+                if (PrevRegistrationObserverFunc) {
+                    PrevRegistrationObserverFunc(runtime, parentId, actorId);
+                }
             });
 
             PrevScheduledFilterFunc = Runtime.SetScheduledEventFilter([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event,
