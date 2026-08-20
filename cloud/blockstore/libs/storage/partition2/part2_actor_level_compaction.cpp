@@ -310,6 +310,7 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
             std::move(l1Blobs),
             EAddBlobMode::ADD_PROMOTE_COMPACTION_RESULT,
             std::move(affectedBlobs));
+    addBlobsRequest->PromoteCompactionSource = Source;
 
     NCloud::Send(ctx, TabletActorId, std::move(addBlobsRequest));
 }
@@ -642,8 +643,6 @@ void TPartitionActor::HandlePromoteCompactionCompleted(
             commitId,
             FormatError(msg->GetError()).c_str());
         GetCompactionMap(*State, msg->Source).CompactionFailed();
-    } else {
-        GetCompactionMap(*State, msg->Source).CompactionFinished();
     }
 
     UpdateStats(msg->Stats);

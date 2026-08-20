@@ -189,6 +189,32 @@ std::optional<ui64> TBlocksFilter::GetRangeBaselineCommitId(
     return CompactionRangeCommitIds[rangeIndex];
 }
 
+void TBlocksFilter::SetBlocksFilter(TCompressedBitmap blocksFilter)
+{
+    STORAGE_VERIFY(blocksFilter.Capacity() == BlocksFilter.Capacity(),
+                   TWellKnownEntityTypes::TABLET, TabletId);
+
+    BlocksFilter = std::move(blocksFilter);
+}
+
+void TBlocksFilter::SetRangeBaselineCommitId(ui32 rangeIndex,
+                                             ui64 baselineCommitId)
+{
+    STORAGE_VERIFY(rangeIndex < CompactionRangeCommitIds.size(),
+                   TWellKnownEntityTypes::TABLET, TabletId);
+
+    CompactionRangeCommitIds[rangeIndex] = baselineCommitId;
+}
+
+TCompressedBitmap::TRangeSerializer TBlocksFilter::RangeSerializer(
+    ui64 begin, ui64 end) const
+{
+    STORAGE_VERIFY(begin < end && end <= BlockCount,
+                   TWellKnownEntityTypes::TABLET, TabletId);
+
+    return BlocksFilter.RangeSerializer(begin, end);
+}
+
 ui64 TBlocksFilter::GetMemoryUsage() const
 {
     return BlocksFilter.MemSize() +

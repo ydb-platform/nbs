@@ -85,6 +85,10 @@ bool TPartitionActor::PrepareLoadState(
         db.ReadMeta(args.Meta),
         db.ReadFreshBlocks(args.FreshBlocks),
         shouldLoadCompactionMapLazily ? true : db.ReadCompactionMap(args.CompactionMap),
+        db.ReadLevelIndexState(
+            args.LevelIndexRanges,
+            args.BlocksFilterL0,
+            args.BlocksFilterL1),
         db.ReadUsedBlocks(args.UsedBlocks),
         db.ReadLogicalUsedBlocks(args.LogicalUsedBlocks, args.ReadLogicalUsedBlocks),
         db.ReadCheckpoints(args.Checkpoints, args.CheckpointId2CommitId),
@@ -308,6 +312,36 @@ void TPartitionActor::CompleteLoadState(
     State->InitFreshBlocks(args.FreshBlocks);
     State->GetUsedBlocks() = std::move(args.UsedBlocks);
     State->AccessStats().SetUsedBlocksCount(State->GetUsedBlocks().Count());
+
+    State->GetBlocksFilterL0().SetBlocksFilter(
+        std::move(args.BlocksFilterL0));
+    State->GetBlocksFilterL1().SetBlocksFilter(
+        std::move(args.BlocksFilterL1));
+
+    for (const auto& range: args.LevelIndexRanges) {
+        TBlocksFilter* blocksFilter = nullptr;
+        TLevelIndexCompactionMap* compactionMap = nullptr;
+        switch (range.Level) {
+            case ELevelIndex::L0:
+                blocksFilter = &State->GetBlocksFilterL0();
+                compactionMap = &State->GetCompactionMapL0();
+                break;
+            case ELevelIndex::L1:
+                blocksFilter = &State->GetBlocksFilterL1();
+                compactionMap = &State->GetCompactionMapL1();
+                break;
+        }
+
+        if (range.BlocksFilterBaselineCommitId) {
+            blocksFilter->SetRangeBaselineCommitId(
+                range.RangeIndex,
+                *range.BlocksFilterBaselineCommitId);
+        }
+        compactionMap->LoadRange(
+            range.RangeIndex,
+            range.BlobCount,
+            range.BlockCount);
+    }
 
     if (CompactionMapLoadState) {
         LoadNextCompactionMapChunk(ctx);

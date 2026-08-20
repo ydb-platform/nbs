@@ -502,6 +502,70 @@ struct TPartitionSchema
         using Precharge = NoAutoPrecharge;
     };
 
+    struct LevelIndexRanges
+        : public TTableSchema<15>
+    {
+        struct Level
+            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct RangeIndex
+            : public Column<2, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct BlobCount
+            : public Column<3, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct BlockCount
+            : public Column<4, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct BlocksFilterBaselineCommitId
+            : public Column<5, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        using TKey = TableKey<Level, RangeIndex>;
+        using TColumns = TableColumns<
+            Level,
+            RangeIndex,
+            BlobCount,
+            BlockCount,
+            BlocksFilterBaselineCommitId>;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
+    struct LevelIndexBlocksFilter
+        : public TTableSchema<16>
+    {
+        struct Level
+            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct ChunkIndex
+            : public Column<2, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
+        struct Bitmap
+            : public Column<3, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = TStringBuf;
+        };
+
+        using TKey = TableKey<Level, ChunkIndex>;
+        using TColumns = TableColumns<Level, ChunkIndex, Bitmap>;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
     using TTables = SchemaTables<
         Meta,
         FreshBlocksIndex,
@@ -516,7 +580,9 @@ struct TPartitionSchema
         LogicalUsedBlocks,
         UnconfirmedBlobs,
         L0Index,
-        L1Index
+        L1Index,
+        LevelIndexRanges,
+        LevelIndexBlocksFilter
     >;
 
     using TSettings = SchemaSettings<

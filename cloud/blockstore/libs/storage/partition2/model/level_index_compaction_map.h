@@ -68,7 +68,7 @@ public:
      * Removes the oldest compaction input from the map and retains blobs added
      * while that compaction was in flight.
      */
-    void CompactionFinished();
+    TVector<ui32> CompactionFinished();
 
     /** Discards the oldest in-flight compaction without changing the map. */
     void CompactionFailed();
@@ -82,6 +82,9 @@ public:
     {
         return Compactions;
     }
+
+    /** Restores one persistent range during tablet startup. */
+    void LoadRange(ui32 rangeIndex, ui32 blobCount, ui32 blockCount);
 
 private:
     void UpdateRange(ui32 rangeIndex, ui32 blobCount, ui32 blockCount,

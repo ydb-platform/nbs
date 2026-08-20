@@ -306,6 +306,7 @@ struct TEvPartitionPrivate
         TAffectedBlocks AffectedBlocks;
         TVector<TBlobCompactionInfo> MixedBlobCompactionInfos;
         TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
+        TMaybe<EPromoteCompactionSource> PromoteCompactionSource;
 
         TAddBlobsRequest() = default;
 
@@ -320,7 +321,8 @@ struct TEvPartitionPrivate
                 TAffectedBlobs affectedBlobs = {},
                 TAffectedBlocks affectedBlocks = {},
                 TVector<TBlobCompactionInfo> mixedBlobCompactionInfos = {},
-                TVector<TBlobCompactionInfo> mergedBlobCompactionInfos = {})
+                TVector<TBlobCompactionInfo> mergedBlobCompactionInfos = {},
+                TMaybe<EPromoteCompactionSource> promoteCompactionSource = {})
             : CommitId(commitId)
             , MixedBlobs(std::move(mixedBlobs))
             , MergedBlobs(std::move(mergedBlobs))
@@ -332,6 +334,7 @@ struct TEvPartitionPrivate
             , AffectedBlocks(std::move(affectedBlocks))
             , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))
             , MergedBlobCompactionInfos(std::move(mergedBlobCompactionInfos))
+            , PromoteCompactionSource(promoteCompactionSource)
         {}
     };
 

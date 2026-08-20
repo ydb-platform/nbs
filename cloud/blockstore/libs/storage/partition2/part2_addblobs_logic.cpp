@@ -13,6 +13,8 @@
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 
+#include <array>
+
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 using namespace NActors;
@@ -74,6 +76,9 @@ private:
     TDenseHash<ui32, TRangeInfo> CompactionCounters{
         std::numeric_limits<ui32>::max()};
     TDenseHash<ui32, ui64> OverwrittenBlocks{std::numeric_limits<ui32>::max()};
+
+    std::array<THashSet<ui32>, 2> ChangedLevelIndexRanges;
+    std::array<THashSet<ui32>, 2> ChangedLevelIndexFilterChunks;
 
 public:
     TAddBlobsExecutor(
@@ -161,6 +166,7 @@ public:
 
             auto& cm = State.GetCompactionMapL0();
             cm.BlobAdded(blob.BlockIndices, blob.CommitIds, Args.CommitId);
+            RegisterLevelIndexBlob(ELevelIndex::L0, cm, blob);
         }
 
         for (const auto& blob: Args.L1Blobs) {
@@ -168,6 +174,7 @@ public:
 
             auto& cm = State.GetCompactionMapL1();
             cm.BlobAdded(blob.BlockIndices, blob.CommitIds, Args.CommitId);
+            RegisterLevelIndexBlob(ELevelIndex::L1, cm, blob);
         }
 
         if (Args.Mode == ADD_COMPACTION_RESULT) {
@@ -176,6 +183,8 @@ public:
         }
 
         if (Args.Mode == ADD_PROMOTE_COMPACTION_RESULT) {
+            Y_ABORT_UNLESS(Args.PromoteCompactionSource.Defined());
+
             for (auto& [blobId, affectedBlob]: Args.AffectedBlobs) {
                 Y_ABORT_UNLESS(affectedBlob.BlobMeta.Defined());
 
@@ -194,8 +203,21 @@ public:
                     db.WriteCleanupQueue(blobId, DeletionCommitId);
                 }
             }
+
+            const ELevelIndex source =
+                *Args.PromoteCompactionSource == EPromoteCompactionSource::L0
+                    ? ELevelIndex::L0
+                    : ELevelIndex::L1;
+            auto& compactionMap = GetLevelIndexCompactionMap(source);
+            const auto rangeIndices = compactionMap.CompactionFinished();
+            RegisterFinishedLevelIndexRanges(
+                source,
+                compactionMap,
+                rangeIndices);
         }
 
+        PersistLevelIndexState(db, ELevelIndex::L0);
+        PersistLevelIndexState(db, ELevelIndex::L1);
         UpdateCompactionMap(db);
 
         if (Args.Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
@@ -211,6 +233,141 @@ public:
     }
 
 private:
+    static size_t LevelIndex(ELevelIndex level)
+    {
+        return static_cast<size_t>(level);
+    }
+
+    TLevelIndexCompactionMap& GetLevelIndexCompactionMap(ELevelIndex level)
+    {
+        switch (level) {
+            case ELevelIndex::L0:
+                return State.GetCompactionMapL0();
+            case ELevelIndex::L1:
+                return State.GetCompactionMapL1();
+        }
+
+        Y_ABORT("Unexpected level index");
+    }
+
+    TBlocksFilter& GetLevelIndexBlocksFilter(ELevelIndex level)
+    {
+        switch (level) {
+            case ELevelIndex::L0:
+                return State.GetBlocksFilterL0();
+            case ELevelIndex::L1:
+                return State.GetBlocksFilterL1();
+        }
+
+        Y_ABORT("Unexpected level index");
+    }
+
+    void RegisterLevelIndexBlob(
+        ELevelIndex level,
+        const TLevelIndexCompactionMap& compactionMap,
+        const TAddLevelIndexBlob& blob)
+    {
+        Y_ABORT_UNLESS(!blob.BlockIndices.empty());
+
+        auto& changedRanges = ChangedLevelIndexRanges[LevelIndex(level)];
+        changedRanges.insert(
+            compactionMap.GetCompactionMap().GetRangeIndex(
+                blob.BlockIndices.front()));
+
+        auto& changedChunks =
+            ChangedLevelIndexFilterChunks[LevelIndex(level)];
+        for (ui32 blockIndex: blob.BlockIndices) {
+            changedChunks.insert(
+                blockIndex / TCompressedBitmap::CHUNK_SIZE);
+        }
+    }
+
+    void RegisterFinishedLevelIndexRanges(
+        ELevelIndex level,
+        const TLevelIndexCompactionMap& compactionMap,
+        const TVector<ui32>& rangeIndices)
+    {
+        auto& changedRanges = ChangedLevelIndexRanges[LevelIndex(level)];
+        auto& changedChunks = ChangedLevelIndexFilterChunks[LevelIndex(level)];
+
+        for (ui32 rangeIndex: rangeIndices) {
+            changedRanges.insert(rangeIndex);
+
+            const ui64 rangeStart =
+                static_cast<ui64>(rangeIndex) *
+                compactionMap.GetCompactionMap().GetRangeSize();
+            const ui64 rangeEnd = Min(
+                rangeStart + compactionMap.GetCompactionMap().GetRangeSize(),
+                State.GetBlocksCount());
+            const auto [firstChunk, lastChunk] =
+                TCompressedBitmap::ChunkRange(rangeStart, rangeEnd);
+            for (ui32 chunkIndex = firstChunk; chunkIndex <= lastChunk;
+                 ++chunkIndex)
+            {
+                changedChunks.insert(chunkIndex);
+            }
+        }
+    }
+
+    void PersistLevelIndexState(TPartitionDatabase& db, ELevelIndex level)
+    {
+        const auto& compactionMap =
+            GetLevelIndexCompactionMap(level).GetCompactionMap();
+        const auto& blocksFilter = GetLevelIndexBlocksFilter(level);
+
+        for (ui32 rangeIndex: ChangedLevelIndexRanges[LevelIndex(level)]) {
+            const ui64 blockIndex =
+                static_cast<ui64>(rangeIndex) * compactionMap.GetRangeSize();
+            STORAGE_VERIFY(
+                blockIndex <= Max<ui32>(),
+                TWellKnownEntityTypes::TABLET,
+                TabletId);
+
+            const auto stat = compactionMap.Get(static_cast<ui32>(blockIndex));
+            db.WriteLevelIndexRange(
+                level,
+                rangeIndex,
+                stat.BlobCount,
+                stat.BlockCount,
+                blocksFilter.GetRangeBaselineCommitId(rangeIndex));
+        }
+
+        for (ui32 chunkIndex: ChangedLevelIndexFilterChunks[LevelIndex(level)])
+        {
+            const ui64 rangeStart =
+                static_cast<ui64>(chunkIndex) * TCompressedBitmap::CHUNK_SIZE;
+            const ui64 rangeEnd =
+                Min(rangeStart + TCompressedBitmap::CHUNK_SIZE,
+                    State.GetBlocksCount());
+            STORAGE_VERIFY(
+                rangeStart < rangeEnd,
+                TWellKnownEntityTypes::TABLET,
+                TabletId);
+
+            auto serializer =
+                blocksFilter.RangeSerializer(rangeStart, rangeEnd);
+
+            TCompressedBitmap::TSerializedChunk chunk;
+
+            auto hasChunk = serializer.Next(&chunk);
+            if (!hasChunk) {
+                db.DeleteLevelIndexBlocksFilter(level, chunkIndex);
+                continue;
+            }
+
+            STORAGE_VERIFY(
+                chunk.ChunkIdx == chunkIndex,
+                TWellKnownEntityTypes::TABLET,
+                TabletId);
+
+            if (TCompressedBitmap::IsZeroChunk(chunk)) {
+                db.DeleteLevelIndexBlocksFilter(level, chunkIndex);
+            } else {
+                db.WriteLevelIndexBlocksFilter(level, chunk);
+            }
+        }
+    }
+
     void ProcessNewBlob(
         const TActorSystem* actorSystem,
         TPartitionDatabase& db,

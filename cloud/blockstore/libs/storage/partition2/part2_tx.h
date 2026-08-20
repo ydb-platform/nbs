@@ -107,6 +107,9 @@ struct TTxPartition
 
         TVector<TOwningFreshBlock> FreshBlocks;
         TVector<TCompactionCounter> CompactionMap;
+        TVector<TLevelIndexRangeState> LevelIndexRanges;
+        TCompressedBitmap BlocksFilterL0;
+        TCompressedBitmap BlocksFilterL1;
         TCompressedBitmap UsedBlocks;
         TCompressedBitmap LogicalUsedBlocks;
         bool ReadLogicalUsedBlocks = false;
@@ -118,7 +121,9 @@ struct TTxPartition
         TCommitIdToBlobsToConfirm UnconfirmedBlobs;
 
         explicit TLoadState(ui64 blocksCount)
-            : UsedBlocks(blocksCount)
+            : BlocksFilterL0(blocksCount)
+            , BlocksFilterL1(blocksCount)
+            , UsedBlocks(blocksCount)
             , LogicalUsedBlocks(blocksCount)
         {}
 
@@ -128,6 +133,9 @@ struct TTxPartition
 
             FreshBlocks.clear();
             CompactionMap.clear();
+            LevelIndexRanges.clear();
+            BlocksFilterL0.Clear();
+            BlocksFilterL1.Clear();
             UsedBlocks.Clear();
             LogicalUsedBlocks.Clear();
             ReadLogicalUsedBlocks = false;
@@ -334,6 +342,7 @@ struct TTxPartition
         const TAffectedBlocks AffectedBlocks;
         const TVector<TBlobCompactionInfo> MixedBlobCompactionInfos;
         const TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
+        const TMaybe<EPromoteCompactionSource> PromoteCompactionSource;
 
         ui64 DeletionCommitId = 0;
 
@@ -349,7 +358,8 @@ struct TTxPartition
                 TAffectedBlobs affectedBlobs,
                 TAffectedBlocks affectedBlocks,
                 TVector<TBlobCompactionInfo> mixedBlobCompactionInfos,
-                TVector<TBlobCompactionInfo> mergedBlobCompactionInfos)
+                TVector<TBlobCompactionInfo> mergedBlobCompactionInfos,
+                TMaybe<EPromoteCompactionSource> promoteCompactionSource = {})
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , MixedBlobs(std::move(mixedBlobs))
@@ -362,6 +372,7 @@ struct TTxPartition
             , AffectedBlocks(std::move(affectedBlocks))
             , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))
             , MergedBlobCompactionInfos(std::move(mergedBlobCompactionInfos))
+            , PromoteCompactionSource(promoteCompactionSource)
         {}
 
         void Clear()
