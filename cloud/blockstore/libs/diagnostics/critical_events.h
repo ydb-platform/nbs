@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/common/printable_params.h>
 #include <cloud/blockstore/libs/common/volume_labels.h>
 
+#include <util/string/printf.h>
 #include <util/system/src_location.h>
 
 #include <source_location>
@@ -111,13 +112,7 @@ using TCritEventParams =
     // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 /* Report AppImpossibeEvent/Bug with source location log */
-#define REPORT_BUG()                                                           \
-    ::NCloud::NBlockStore::ReportBug(                                          \
-        (TStringBuilder() << __LOCATION__ << ":'"                              \
-                          << std::source_location::current().function_name()   \
-                          << "'"))
-
-#define REPORT_BUG_DESCR(message, ...)                                         \
+#define REPORT_BUG(message, ...)                                               \
     ::NCloud::NBlockStore::ReportBug(                                          \
         (TStringBuilder() << __LOCATION__ << ":'"                              \
                           << std::source_location::current().function_name()   \
@@ -198,6 +193,8 @@ BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
 
 #define BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE(name)                 \
+    const TString GetVolumeCriticalEventFor##name();                           \
+    const TString GetAppCriticalEventFor##name();                              \
     TString Report##name(                                                      \
         const TString& diskId,                                                 \
         const TString& cloudId,                                                \
@@ -229,16 +226,17 @@ BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)
         TArgs&&... args)                                                       \
     {                                                                          \
         if (!volumeLabels) {                                                   \
-            REPORT_BUG_DESCR(                                                  \
-                "volumeLabels = nullptr for VolumeCriticalEvent "              \
-                "report",                                                      \
+            REPORT_BUG(                                                        \
+                Sprintf(                                                       \
+                    "volumeLabels = nullptr for %s report, "                   \
+                    "corresponding metric was not updated",                    \
+                    GetVolumeCriticalEventFor##name().c_str()),                \
                 /*keyValues=*/{} /* - use non-aborting overload for tests */); \
         }                                                                      \
-        const auto& labels = volumeLabels ?: MakeVolumeLabels("", "", "");     \
+        const auto& labels =                                                   \
+            volumeLabels ? volumeLabels : MakeVolumeLabels("", "", "");        \
         return Report##name(*labels, std::forward<TArgs>(args)...);            \
     }                                                                          \
-    const TString GetVolumeCriticalEventFor##name();                           \
-    const TString GetAppCriticalEventFor##name();                              \
     // BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
 
 BLOCKSTORE_VOLUME_CRITICAL_EVENTS(
