@@ -344,201 +344,209 @@ private:
     static constexpr TStringBuf ConsoleRed = "\033[91m";
     static constexpr TStringBuf ConsoleEnd = "\033[0m";
 
-    template <typename TValue>
-    static TString
-    TableCell(const TValue& value, size_t width, bool highlight = false)
+    using TTableRow = TVector<TString>;
+
+    static void PrintTable(
+        const TString& title,
+        const TVector<TString>& columns,
+        const TVector<TTableRow>& rows,
+        const TVector<bool>& highlightedRows = {})
     {
-        TString text = ToString(value);
-        if (text.size() < width) {
-            text = TString(width - text.size(), ' ') + text;
+        TVector<size_t> widths(columns.size());
+        for (size_t i = 0; i < columns.size(); ++i) {
+            widths[i] = columns[i].size();
         }
 
-        if (highlight) {
-            return TStringBuilder() << ConsoleRed << text << ConsoleEnd;
+        for (const auto& row: rows) {
+            Y_ABORT_UNLESS(row.size() == columns.size());
+            for (size_t i = 0; i < row.size(); ++i) {
+                widths[i] = Max(widths[i], row[i].size());
+            }
         }
 
-        return text;
-    }
-
-    static void PrintTableHeader(TStringBuf title, TStringBuf columns)
-    {
         Cout << Endl << ConsoleMagenta << title << ConsoleEnd << Endl;
-        Cout << ConsoleMagenta << columns << ConsoleEnd << Endl;
+
+        auto printRow = [&](const TTableRow& row, bool highlighted) {
+            if (highlighted) {
+                Cout << ConsoleRed;
+            }
+
+            for (size_t i = 0; i < row.size(); ++i) {
+                if (i) {
+                    Cout << " | ";
+                }
+                Cout << row[i];
+                if (i + 1 != row.size()) {
+                    Cout << TString(widths[i] - row[i].size(), ' ');
+                }
+            }
+
+            if (highlighted) {
+                Cout << ConsoleEnd;
+            }
+            Cout << Endl;
+        };
+
+        printRow(columns, false);
+
+        size_t separatorSize = 3 * (columns.size() - 1);
+        for (const auto width: widths) {
+            separatorSize += width;
+        }
+        Cout << TString(separatorSize, '-') << Endl;
+
+        if (rows.empty()) {
+            Cout << "(no data)" << Endl;
+            return;
+        }
+
+        for (size_t i = 0; i < rows.size(); ++i) {
+            printRow(rows[i], i < highlightedRows.size() && highlightedRows[i]);
+        }
     }
 
-    static void PrintNoData()
+    static TVector<bool> HighlightMaximums(const TVector<double>& values)
     {
-        Cout << "(no data)" << Endl;
+        TVector<bool> result(values.size(), false);
+        if (values.empty()) {
+            return result;
+        }
+
+        const auto maxValue = *MaxElement(values.begin(), values.end());
+        for (size_t i = 0; i < values.size(); ++i) {
+            result[i] = values[i] == maxValue;
+        }
+        return result;
     }
 
     void PrintShardTable(const TVector<TShardRow>& rows, size_t limit) const
     {
-        PrintTableHeader(
-            TStringBuilder() << "Shard stats (top " << limit << ")",
-            "#   | Shard        | Load       | Suffer   | Used blocks   | "
-            "Total blocks  | Nodes");
-        Cout << "--------------------------------------------------------------"
-                "------------------"
-             << Endl;
-
-        if (!limit) {
-            PrintNoData();
-            return;
-        }
-
-        const auto maxLoad = rows.front().CurrentLoad;
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            const bool highlight = row.CurrentLoad == maxLoad;
-            Cout << TableCell(i + 1, 3) << " | "
-                 << TableCell(row.ShardId, 12, highlight) << " | "
-                 << TableCell(row.CurrentLoad, 10, highlight) << " | "
-                 << TableCell(row.Suffer, 8) << " | "
-                 << TableCell(row.UsedBlocksCount, 13) << " | "
-                 << TableCell(row.TotalBlocksCount, 13) << " | "
-                 << TableCell(row.UsedNodesCount, 5) << Endl;
+            tableRows.push_back({
+                ToString(i + 1),
+                row.ShardId,
+                ToString(row.CurrentLoad),
+                ToString(row.Suffer),
+                ToString(row.UsedBlocksCount),
+                ToString(row.TotalBlocksCount),
+                ToString(row.UsedNodesCount)});
+            values.push_back(row.CurrentLoad);
         }
+
+        PrintTable(
+            TStringBuilder() << "Shard stats (top " << limit << ")",
+            {"#", "Shard", "Load", "Suffer", "Used blocks", "Total blocks", "Nodes"},
+            tableRows,
+            HighlightMaximums(values));
     }
 
     void PrintAccessTable(const TVector<TNodeRow>& rows, size_t limit) const
     {
-        PrintTableHeader(
-            TStringBuilder() << "Node access stats (top " << limit << ")",
-            "#   | Shard        | Node                 | Requests   | Access score | "
-            "Last accessed");
-        Cout << "--------------------------------------------------------------"
-                "--------------------"
-             << Endl;
-
-        if (!limit) {
-            PrintNoData();
-            return;
-        }
-
-        const auto maxScore = rows.front().AccessScore;
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            const bool highlight = row.AccessScore == maxScore;
-            Cout << TableCell(i + 1, 3) << " | "
-                 << TableCell(row.ShardId, 12, highlight) << " | "
-                 << TableCell(row.NodeId, 20, highlight) << " | "
-                 << TableCell(row.RequestCount, 10) << " | "
-                 << TableCell(row.AccessScore, 11, highlight) << " | "
-                 << TableCell(
-                        TInstant::MicroSeconds(row.LastAccessedTimestampUs)
-                            .ToStringUpToSeconds(),
-                        13)
-                 << Endl;
+            tableRows.push_back({
+                ToString(i + 1),
+                ToString(row.NodeId),
+                row.ShardId,
+                ToString(row.RequestCount),
+                ToString(row.AccessScore),
+                TInstant::MicroSeconds(row.LastAccessedTimestampUs)
+                    .ToStringUpToSeconds()});
+            values.push_back(row.AccessScore);
         }
+
+        PrintTable(
+            TStringBuilder() << "Node access stats (top " << limit << ")",
+            {"#", "Node", "Shard", "Requests", "Access score", "Last accessed"},
+            tableRows,
+            HighlightMaximums(values));
     }
 
     void PrintNodeLatencyTable(
         const TVector<TLatencyResult>& rows,
         size_t limit) const
     {
-        PrintTableHeader(
-            TStringBuilder() << "Node latency stats (top " << limit << ")",
-            "#   | Node                 | Shard        | Request type | Avg latency | "
-            "Total latency | Requests");
-        Cout << "--------------------------------------------------------------"
-                "------------------------------"
-             << Endl;
-
-        if (!limit) {
-            PrintNoData();
-            return;
-        }
-
-        const auto maxLatency =
-            rows.front().GroupAggregate.GetAverageDecayedLatencyUs();
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
             const auto latency =
                 row.GroupAggregate.GetAverageDecayedLatencyUs();
-            const bool highlight = latency == maxLatency;
-            Cout << TableCell(i + 1, 3) << " | "
-                 << TableCell(FromString<ui64>(row.Labels[0]), 20, highlight)
-                 << " | " << TableCell(row.Labels[1], 12, highlight) << " | "
-                 << TableCell(row.Labels[2], 12) << " | "
-                 << TableCell(latency, 11, highlight) << " | "
-                 << TableCell(row.GroupAggregate.TotalLatencyUs, 13) << " | "
-                 << TableCell(row.GroupAggregate.RequestCount, 8) << Endl;
+            tableRows.push_back({
+                ToString(i + 1),
+                row.Labels[0],
+                row.Labels[1],
+                row.Labels[2],
+                ToString(latency),
+                ToString(row.GroupAggregate.TotalLatencyUs),
+                ToString(row.GroupAggregate.RequestCount)});
+            values.push_back(latency);
         }
+
+        PrintTable(
+            TStringBuilder() << "Node latency stats (top " << limit << ")",
+            {"#", "Node", "Shard", "Request type", "Avg latency",
+             "Total latency", "Requests"},
+            tableRows,
+            HighlightMaximums(values));
     }
 
     void PrintRequestLatencyTable(
         const TVector<TLatencyResult>& rows,
         size_t limit) const
     {
-        PrintTableHeader(
-            TStringBuilder() << "Request latency stats (top " << limit << ")",
-            "#   | Shard        | Request type | Avg latency | Total latency | "
-            "Requests");
-        Cout << "--------------------------------------------------------------"
-                "----------"
-             << Endl;
-
-        if (!limit) {
-            PrintNoData();
-            return;
-        }
-
-        const auto maxLatency =
-            rows.front().GroupAggregate.TotalDecayedLatencyUs;
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            const bool highlight =
-                row.GroupAggregate.TotalDecayedLatencyUs == maxLatency;
-            Cout << TableCell(i + 1, 3) << " | "
-                 << TableCell(row.Labels[1], 12, highlight) << " | "
-                 << TableCell(row.Labels[2], 12) << " | "
-                 << TableCell(
-                        row.GroupAggregate.GetAverageDecayedLatencyUs(),
-                        11)
-                 << " | "
-                 << TableCell(
-                        row.GroupAggregate.TotalDecayedLatencyUs,
-                        13,
-                        highlight)
-                 << " | " << TableCell(row.GroupAggregate.RequestCount, 8)
-                 << Endl;
+            const auto latency =
+                row.GroupAggregate.TotalDecayedLatencyUs;
+            tableRows.push_back({
+                ToString(i + 1),
+                row.Labels[1],
+                row.Labels[2],
+                ToString(row.GroupAggregate.GetAverageDecayedLatencyUs()),
+                ToString(latency),
+                ToString(row.GroupAggregate.RequestCount)});
+            values.push_back(latency);
         }
+
+        PrintTable(
+            TStringBuilder() << "Request latency stats (top " << limit << ")",
+            {"#", "Shard", "Request type", "Avg latency", "Total latency",
+             "Requests"},
+            tableRows,
+            HighlightMaximums(values));
     }
 
     void PrintShardLatencyTable(
         const TVector<TLatencyResult>& rows,
         size_t limit) const
     {
-        PrintTableHeader(
-            TStringBuilder() << "Shard latency stats (top " << limit << ")",
-            "#   | Shard        | Avg latency | Total latency | Requests");
-        Cout << "----------------------------------------------------------"
-             << Endl;
-
-        if (!limit) {
-            PrintNoData();
-            return;
-        }
-
-        const auto maxLatency =
-            rows.front().GroupAggregate.TotalDecayedLatencyUs;
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            const bool highlight =
-                row.GroupAggregate.TotalDecayedLatencyUs == maxLatency;
-            Cout << TableCell(i + 1, 3) << " | "
-                 << TableCell(row.Labels[1], 12, highlight) << " | "
-                 << TableCell(
-                        row.GroupAggregate.GetAverageDecayedLatencyUs(),
-                        11)
-                 << " | "
-                 << TableCell(
-                        row.GroupAggregate.TotalDecayedLatencyUs,
-                        13,
-                        highlight)
-                 << " | " << TableCell(row.GroupAggregate.RequestCount, 8)
-                 << Endl;
+            const auto latency = row.GroupAggregate.TotalDecayedLatencyUs;
+            tableRows.push_back({
+                ToString(i + 1),
+                row.Labels[1],
+                ToString(row.GroupAggregate.GetAverageDecayedLatencyUs()),
+                ToString(latency),
+                ToString(row.GroupAggregate.RequestCount)});
+            values.push_back(latency);
         }
+
+        PrintTable(
+            TStringBuilder() << "Shard latency stats (top " << limit << ")",
+            {"#", "Shard", "Avg latency", "Total latency", "Requests"},
+            tableRows,
+            HighlightMaximums(values));
     }
 
     static NJson::TJsonValue MakeShardJson(const TShardRow& row)
