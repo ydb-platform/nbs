@@ -3223,6 +3223,110 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
     }
 
+    Y_UNIT_TEST(ShouldDrainHandleOpsQueueBackToBack)
+    {
+        // AsyncHandleOperationPeriod defaults to 0, so a non-empty queue is
+        // drained back-to-back: every entry is rescheduled with zero delay.
+        // With a frozen clock, running only the tasks due "now" fires just the
+        // zero-delay tasks, so the whole queue must drain without advancing
+        // time. A non-zero period would leave every processing task in the
+        // future and this drain would never complete.
+        constexpr ui32 requestCount = 3;
+
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
+        TBootstrap bootstrap(timer, scheduler, features);
+
+        std::atomic_uint handlerCalled = 0;
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto, auto)
+            {
+                ++handlerCalled;
+                return MakeFuture(NProto::TDestroyHandleResponse{});
+            });
+
+        auto inProgress =
+            bootstrap.Counters->FindSubgroup("component", "fs_ut")
+                ->FindSubgroup("request", "DestroyHandle")
+                ->GetCounter("InProgress");
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        for (ui32 i = 0; i < requestCount; ++i) {
+            auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+                10 + i,
+                2 + i,
+                O_RDONLY);
+            UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        }
+
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]
+            {
+                scheduler->RunAllScheduledTasksUntilNow();
+                return handlerCalled.load() == requestCount
+                    && AtomicGet(inProgress->GetAtomic()) == 0;
+            }));
+    }
+
+    Y_UNIT_TEST(ShouldBackOffWhenHandleOpsQueueEmpty)
+    {
+        // On an empty queue processing is rescheduled with a non zero default
+        // to avoid a busy loop.
+        constexpr auto EmptyQueueBackoff = TDuration::MilliSeconds(50);
+
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
+        TBootstrap bootstrap(timer, scheduler, features);
+
+        std::atomic_uint handlerCalled = 0;
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto, auto)
+            {
+                ++handlerCalled;
+                return MakeFuture(NProto::TDestroyHandleResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        scheduler->RunAllScheduledTasksUntilNow();
+
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            10,
+            2,
+            O_RDONLY);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+
+        // The only scheduled poll is EmptyQueueBackoff in the future, so at the
+        // current (frozen) time it does not fire and the entry stays pending.
+        scheduler->RunAllScheduledTasksUntilNow();
+        UNIT_ASSERT_VALUES_EQUAL(0U, handlerCalled.load());
+
+        // Once the backoff elapses the poll fires and picks up the entry.
+        timer->AdvanceTime(EmptyQueueBackoff);
+        scheduler->AdvanceTime(EmptyQueueBackoff);
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]
+            {
+                scheduler->RunAllScheduledTasksUntilNow();
+                return handlerCalled.load() == 1;
+            }));
+    }
+
     Y_UNIT_TEST(ShouldProcessReadOnlyDestroyHandleRequestsAsynchronously)
     {
         NProto::TFileStoreFeatures features;

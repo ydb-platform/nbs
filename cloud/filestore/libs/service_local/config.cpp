@@ -29,7 +29,7 @@ namespace {
     xxx(GuestWriteBackCacheEnabled,  bool,          false                     )\
     xxx(AsyncDestroyHandleEnabled,   bool,          false                     )\
     xxx(AsyncDestroyReadOnlyHandleEnabled, bool,    false                     )\
-    xxx(AsyncHandleOperationPeriod,  TDuration,     50ms                      )\
+    xxx(AsyncHandleOperationPeriod,  TDuration,     0ms                       )\
     xxx(OpenNodeByHandleEnabled,     bool,          false                     )\
     xxx(NodeCleanupBatchSize,        ui32,          1000                      )\
     xxx(ZeroCopyEnabled,             bool,          false                     )\
