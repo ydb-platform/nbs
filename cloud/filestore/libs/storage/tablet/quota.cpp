@@ -4,6 +4,23 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline void ClampedAdd(ui64& value, i64 delta)
+{
+    if (delta >= 0) {
+        value += static_cast<ui64>(delta);
+        return;
+    }
+
+    const ui64 decrement = static_cast<ui64>(-delta);
+    value = Y_UNLIKELY(decrement > value) ? 0 : value - decrement;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TQuotaStore::UpdateQuota(const NProto::TQuota& quota)
@@ -42,18 +59,23 @@ void TQuotaStore::LoadUsage(const TQuotaUsage& usage)
     UsageByQuotaId[usage.QuotaId] = usage;
 }
 
-void TQuotaStore::UpdateUsage(ui32 quotaId, i64 bytesDelta, i64 nodesDelta)
+const TQuotaUsage* TQuotaStore::UpdateUsage(
+    ui32 quotaId,
+    i64 bytesDelta,
+    i64 nodesDelta)
 {
     if (quotaId == 0) {
-        return;
+        return nullptr;
     }
 
     auto [it, inserted] = UsageByQuotaId.try_emplace(quotaId);
     if (inserted) {
         it->second.QuotaId = quotaId;
     }
-    it->second.UsedBytes += bytesDelta;
-    it->second.UsedNodes += nodesDelta;
+    ClampedAdd(it->second.UsedBytes, bytesDelta);
+    ClampedAdd(it->second.UsedNodes, nodesDelta);
+
+    return &it->second;
 }
 
 const TQuotaUsage* TQuotaStore::FindUsage(ui32 quotaId) const

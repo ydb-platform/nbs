@@ -28,7 +28,11 @@ public:
 
     void LoadUsage(const TQuotaUsage& usage);
 
-    void UpdateUsage(ui32 quotaId, i64 bytesDelta, i64 nodesDelta);
+    // Returns the updated usage, or nullptr for quotaId == 0 (a no-op).
+    const TQuotaUsage* UpdateUsage(
+        ui32 quotaId,
+        i64 bytesDelta,
+        i64 nodesDelta);
 
     [[nodiscard]] const TQuotaUsage* FindUsage(ui32 quotaId) const;
     [[nodiscard]] TVector<TQuotaUsage> GetUsages() const;

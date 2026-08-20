@@ -82,9 +82,8 @@ void TIndexTabletState::UpdateQuotaUsage(
         return;
     }
 
-    Impl->Quotas.UpdateUsage(quotaId, bytesDelta, nodesDelta);
-
-    const auto* usage = Impl->Quotas.FindUsage(quotaId);
+    const auto* usage =
+        Impl->Quotas.UpdateUsage(quotaId, bytesDelta, nodesDelta);
     if (usage) {
         db.WriteQuotaUsage(quotaId, usage->UsedBytes, usage->UsedNodes);
     }

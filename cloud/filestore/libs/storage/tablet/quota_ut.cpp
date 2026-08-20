@@ -180,6 +180,19 @@ Y_UNIT_TEST_SUITE(TQuotaStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(2u, usage->UsedNodes);
     }
 
+    Y_UNIT_TEST(ShouldClampUsageToZeroInsteadOfUnderflowing)
+    {
+        TQuotaStore store;
+
+        store.UpdateUsage(1, 1_GB, 1);
+
+        const auto* usage =
+            store.UpdateUsage(1, -2_GB, -2);
+        UNIT_ASSERT(usage);
+        UNIT_ASSERT_VALUES_EQUAL(0u, usage->UsedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(0u, usage->UsedNodes);
+    }
+
     Y_UNIT_TEST(ShouldIgnoreUsageUpdatesForZeroQuotaId)
     {
         TQuotaStore store;
