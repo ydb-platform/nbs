@@ -87,3 +87,29 @@ ConfigDispatcherSettings {
     Value: "true"
   }
 }
+
+
+CompactionGarbageThreshold: 20
+DisableZeroBlocksThrottlingForYDBBasedDisks: true
+FreshChannelWriteRequestsEnabled: true
+BatchCompactionEnabled: true
+HDDCompactionType: CT_LOAD
+SSDCompactionType: CT_LOAD
+IncrementalCompactionEnabled: true
+MaxSkippedBlobsDuringCompactionHDD: 0
+MultipartitionVolumesEnabled: true
+PartitionBootTimeout: 180000 # 3 min
+RunV2SoftGcAtStartup: true
+V1GarbageCompactionEnabled: true
+WriteRequestBatchingEnabled: true
+ReassignMixedChannelsPercentageThreshold: 10
+ReassignFreshChannelsPercentageThreshold: 1
+ReassignSystemChannelsImmediately: true
+FreshChannelZeroRequestsEnabled: true
+FreshChannelCountSSD: 3
+FreshBlocksWriterEnabled: true
+WriteBlobThresholdSSD: 262144 # 256 KiB - Huge Blobs threshold
+WriteBlobThreshold: 2097152 # 2 MiB - Huge Blobs threshold
+ReadBlockMaskOnCompactionOptimizationEnabled: true
+SSDMaxBlobsPerRange: 70
+UseRecreatedBlobMetasOnCleanup: true
