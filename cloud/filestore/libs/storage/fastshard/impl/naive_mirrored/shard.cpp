@@ -922,7 +922,8 @@ struct TComponentLayout
 
 void DumpLayoutComponentsJson(
     IOutputStream& out,
-    const TVector<TComponentLayout>& components)
+    const TVector<TComponentLayout>& components,
+    const NProtoPrivate::TPersistentFastShardConfig& config)
 {
     NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
 
@@ -944,17 +945,43 @@ void DumpLayoutComponentsJson(
         writer.EndObject();
     }
     writer.EndList();
+
+    writer.WriteKey("storageGroups");
+    writer.BeginList();
+    for (const auto& group: config.GetStorageGroups()) {
+        writer.BeginObject();
+        writer.WriteKey("type");
+        writer.WriteString(
+            NProtoPrivate::TStorageGroup::EStorageGroupType_Name(
+                group.GetType()));
+        writer.WriteKey("devices");
+        writer.BeginList();
+        for (const auto& device: group.GetDevices()) {
+            writer.BeginObject();
+            writer.WriteKey("host");
+            writer.WriteString(device.GetHost());
+            writer.WriteKey("port");
+            writer.WriteULongLong(device.GetPort());
+            writer.WriteKey("deviceId");
+            writer.WriteString(device.GetDeviceId());
+            writer.EndObject();
+        }
+        writer.EndList();
+        writer.EndObject();
+    }
+    writer.EndList();
     writer.EndObject();
 }
 
 void DumpLayoutComponentsHtml(
     IOutputStream& out,
-    const TVector<TComponentLayout>& components)
+    const TVector<TComponentLayout>& components,
+    const NProtoPrivate::TPersistentFastShardConfig& config)
 {
-    TVector<TTemplateVars> rows;
-    rows.reserve(components.size());
+    TVector<TTemplateVars> componentRows;
+    componentRows.reserve(components.size());
     for (const auto& c: components) {
-        rows.push_back({
+        componentRows.push_back({
             {"NAME", c.Name},
             {"OFFSET_BYTES", ToString(c.OffsetBytes)},
             {"SIZE_BYTES", ToString(c.SizeBytes)},
@@ -963,10 +990,35 @@ void DumpLayoutComponentsHtml(
         });
     }
 
+    //
+    // The template engine's loop arrays are flat, so the group/device
+    // hierarchy is flattened into one row per device with its group's
+    // number and type repeated.
+    //
+
+    TVector<TTemplateVars> deviceRows;
+    for (size_t groupNo = 0; groupNo < config.StorageGroupsSize(); ++groupNo) {
+        const auto& group = config.GetStorageGroups(groupNo);
+        for (const auto& device: group.GetDevices()) {
+            deviceRows.push_back({
+                {"GROUP_NO", ToString(groupNo)},
+                {"GROUP_TYPE",
+                 NProtoPrivate::TStorageGroup::EStorageGroupType_Name(
+                     group.GetType())},
+                {"HOST", device.GetHost()},
+                {"PORT", ToString(device.GetPort())},
+                {"DEVICE_ID", device.GetDeviceId()},
+            });
+        }
+    }
+
     OutputTemplate(
         NResource::Find("fastshard/html/layout.html"),
         {{"STYLE", NResource::Find("fastshard/css/layout.css")}},
-        {{"COMPONENTS", std::move(rows)}},
+        {
+            {"COMPONENTS", std::move(componentRows)},
+            {"DEVICES", std::move(deviceRows)},
+        },
         out);
 }
 
@@ -1098,12 +1150,12 @@ public:
 public:
     void DumpLayoutHtml(IOutputStream& out) const
     {
-        DumpLayoutComponentsHtml(out, Layout);
+        DumpLayoutComponentsHtml(out, Layout, Config);
     }
 
     void DumpLayoutJson(IOutputStream& out) const
     {
-        DumpLayoutComponentsJson(out, Layout);
+        DumpLayoutComponentsJson(out, Layout, Config);
     }
 
 public:

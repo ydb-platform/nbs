@@ -26,3 +26,28 @@
         {{ endfor }}
     </tbody>
 </table>
+
+<h3>Storage Groups</h3>
+
+<table class="fsl-table">
+    <thead>
+        <tr>
+            <th>Group</th>
+            <th>Type</th>
+            <th>Host</th>
+            <th>Port</th>
+            <th>Device id</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{ for DEVICES }}
+        <tr>
+            <td>{{ GROUP_NO }}</td>
+            <td>{{ GROUP_TYPE }}</td>
+            <td>{{ HOST }}</td>
+            <td>{{ PORT }}</td>
+            <td>{{ DEVICE_ID }}</td>
+        </tr>
+        {{ endfor }}
+    </tbody>
+</table>
