@@ -636,7 +636,7 @@ description: Implicit DatabaseConfig node
 selector: {}
 )"));
     auto node = databaseConfigRoot.Map()["config"].Copy(config);
-    selectors.at(0).Map().Append(config.Buildf("config"), node);
+    selectors.at(selectors.size() - 1).Map().Append(config.Buildf("config"), node);
 }
 
 ui64 GetVersion(const TString& config) {
