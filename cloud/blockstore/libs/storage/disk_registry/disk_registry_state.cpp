@@ -1126,16 +1126,14 @@ auto TDiskRegistryState::RegisterAgent(
             if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
                 auto& disk = Disks[diskId];
 
-                // An active or canceled migration target is not a disk device
-                // and must not be replaced.
-                if (IsMigrationTarget(disk, uuid)) {
-                    TryRestartDeviceMigration(
+                if (!RestartDeviceMigration(
                         timestamp,
                         db,
                         diskId,
                         disk,
-                        uuid);
-                } else {
+                        uuid) &&
+                    !IsFinishedMigrationDevice(disk, uuid))
+                {
                     if (IsAutomaticReplacementCandidate(disk, uuid))
                     {
                         TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
@@ -1776,7 +1774,8 @@ NProto::TError TDiskRegistryState::ValidateStartDeviceMigration(
     const TDiskId& sourceDiskId,
     const TString& sourceDeviceId)
 {
-    if (!Disks.contains(sourceDiskId)) {
+    const auto* disk = Disks.FindPtr(sourceDiskId);
+    if (!disk) {
         return MakeError(E_NOT_FOUND, TStringBuilder() <<
             "disk " << sourceDiskId.Quote() << " not found");
     }
@@ -1794,6 +1793,12 @@ NProto::TError TDiskRegistryState::ValidateStartDeviceMigration(
     if (!DeviceList.FindDevice(sourceDeviceId)) {
         return MakeError(E_NOT_FOUND, TStringBuilder() <<
             "device " << sourceDeviceId.Quote() << " not found");
+    }
+
+    if (!FindPtr(disk->Devices, sourceDeviceId)) {
+        return MakeError(E_ARGUMENT, TStringBuilder()
+            << "device " << sourceDeviceId.Quote()
+            << " is not a current device of disk " << sourceDiskId.Quote());
     }
 
     return {};
@@ -5464,8 +5469,9 @@ void TDiskRegistryState::ApplyAgentStateChange(
 
         diskIds.emplace(diskId);
 
-        if (IsMigrationTarget(disk, deviceId)) {
-            TryRestartDeviceMigration(timestamp, db, diskId, disk, deviceId);
+        if (RestartDeviceMigration(timestamp, db, diskId, disk, deviceId) ||
+            IsFinishedMigrationDevice(disk, deviceId))
+        {
             continue;
         }
 
@@ -6556,9 +6562,9 @@ void TDiskRegistryState::ApplyDeviceStateChange(
         return;
     }
 
-    // check if uuid is target for migration
-    if (IsMigrationTarget(*disk, uuid)) {
-        TryRestartDeviceMigration(now, db, diskId, *disk, uuid);
+    if (RestartDeviceMigration(now, db, diskId, *disk, uuid) ||
+        IsFinishedMigrationDevice(*disk, uuid))
+    {
         return;
     }
 
@@ -6588,25 +6594,19 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     }
 }
 
-bool TDiskRegistryState::IsMigrationTarget(
+bool TDiskRegistryState::IsFinishedMigrationDevice(
     const TDiskState& disk,
     const TDeviceId& deviceId) const
 {
-    auto it = disk.MigrationTarget2Source.find(deviceId);
-    if (it != disk.MigrationTarget2Source.end()) {
-        return true;
-    }
-
     return AnyOf(
         disk.FinishedMigrations,
         [&] (const auto& migration)
         {
-            return migration.DeviceId == deviceId &&
-                   migration.IsCanceled;
+            return migration.DeviceId == deviceId;
         });
 }
 
-void TDiskRegistryState::TryRestartDeviceMigration(
+bool TDiskRegistryState::RestartDeviceMigration(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
@@ -6614,12 +6614,16 @@ void TDiskRegistryState::TryRestartDeviceMigration(
     const TDeviceId& targetId)
 {
     auto it = disk.MigrationTarget2Source.find(targetId);
-    if (it != disk.MigrationTarget2Source.end()) {
-        const TDeviceId sourceId = it->second;
-
-        CancelDeviceMigration(now, db, diskId, disk, sourceId);
-        AddMigration(disk, diskId, sourceId);
+    if (it == disk.MigrationTarget2Source.end()) {
+        return false;
     }
+
+    const TDeviceId sourceId = it->second;
+
+    CancelDeviceMigration(now, db, diskId, disk, sourceId);
+    AddMigration(disk, diskId, sourceId);
+
+    return true;
 }
 
 void TDiskRegistryState::DeleteAllDeviceMigrations(const TDiskId& diskId)
@@ -6961,8 +6965,6 @@ NProto::TError TDiskRegistryState::AddOutdatedLaggingDevices(
             replicaState->MigrationSource2Target.contains(outdatedDeviceUUID) ||
             Migrations.contains(
                 TDeviceMigration{replicaId, outdatedDeviceUUID});
-        const bool isMigrationTarget =
-            IsMigrationTarget(*replicaState, outdatedDeviceUUID);
         if (isMigrationSource) {
             // Just snap a target device into the disk and discard the lagging
             // one.
@@ -6976,15 +6978,16 @@ NProto::TError TDiskRegistryState::AddOutdatedLaggingDevices(
                 ReportDiskRegistryCouldNotAddOutdatedLaggingDevice(
                     FormatError(error));
             }
-        } else if (isMigrationTarget) {
-            // Restart an active migration. A canceled target requires no action.
-            TryRestartDeviceMigration(
-                now,
-                db,
-                replicaId,
-                *replicaState,
-                outdatedDeviceUUID);
-        } else {
+        } else if (!RestartDeviceMigration(
+                       now,
+                       db,
+                       replicaId,
+                       *replicaState,
+                       outdatedDeviceUUID) &&
+                   !IsFinishedMigrationDevice(
+                       *replicaState,
+                       outdatedDeviceUUID))
+        {
             // Mark the lagging device as the fresh devices.
             ReplicaTable.MarkReplacementDevice(
                 diskId,

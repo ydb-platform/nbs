@@ -1120,15 +1120,15 @@ private:
         TInstant timestamp,
         TDiskId& affectedDisk);
 
-    // Returns whether 'deviceId' is the target of an active or canceled
-    // migration.
-    bool IsMigrationTarget(
+    // Returns whether 'deviceId' is retained until the volume acknowledges a
+    // finished migration.
+    bool IsFinishedMigrationDevice(
         const TDiskState& disk,
         const TDeviceId& deviceId) const;
 
     // Restarts an active migration targeting 'targetId' by rescheduling its
-    // source. Does nothing if 'targetId' is not an active migration target.
-    void TryRestartDeviceMigration(
+    // source. Returns whether 'targetId' was an active migration target.
+    bool RestartDeviceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
