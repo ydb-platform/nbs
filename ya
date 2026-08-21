@@ -113,18 +113,6 @@ def tool_root():
     return create_dirs(os.getenv('YA_CACHE_DIR_TOOLS') or os.path.join(misc_root(), 'tools'))
 
 
-# TODO: remove when switched to S3, won't be needed in OSS
-def ya_token():
-    def get_token_from_file():
-        try:
-            with open(os.environ.get('YA_TOKEN_PATH', os.path.join(home_dir(), '.ya_token')), 'r') as f:
-                return f.read().strip()
-        except:
-            pass
-
-    return os.getenv('YA_TOKEN') or get_token_from_file()
-
-
 TOOLS_DIR = tool_root()
 
 
@@ -168,14 +156,9 @@ def _fetch(url, into):
 
     from urllib.request import urlopen
     from urllib.request import Request
-    from urllib.parse import urlparse
 
     request = Request(str(url))
-    # TODO: Remove when switched to S3 distribution
     request.add_header('User-Agent', 'ya-bootstrap')
-    token = ya_token()
-    if token:
-        request.add_header('Authorization', 'OAuth {}'.format(token))
 
     md5 = hashlib.md5()
     sys.stderr.write('Downloading %s ' % url)
