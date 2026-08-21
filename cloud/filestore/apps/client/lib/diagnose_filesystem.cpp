@@ -170,6 +170,11 @@ private:
         TVector<TNodeRow>& accessRows,
         TVector<NAggregation::TRow<TLatency>>& latencyRows)
     {
+        if (BatchSize == 0) {
+            STORAGE_THROW_SERVICE_ERROR(
+                MakeError(E_ARGUMENT, "batch-size must be greater than zero"));
+        }
+        size_t completed = 0;
         for (int batchStart = 0; batchStart < shardStats.size();
              batchStart += BatchSize)
         {
@@ -214,7 +219,8 @@ private:
                                    << result.GetOutput())));
                     continue;
                 }
-
+                ++completed;
+                PrintProgress(completed, shardStats.size());
                 ProcessAccessStats(response.GetNodeStats(), accessRows);
                 ProcessLatencyStats(response.GetLatencyStats(), latencyRows);
             }
@@ -236,6 +242,25 @@ private:
         return Client->ExecuteAction(
             MakeIntrusive<TCallContext>(FileSystemId, GetRequestId(*request)),
             std::move(request));
+    }
+
+    void PrintProgress(size_t completed, size_t total)
+    {
+        if (JsonOutput) {
+            return;
+        }
+
+        size_t width = 40;
+        size_t filled = total ? completed * width / total : width;
+
+        Cout << '\r' << "Collecting access and latency stats ["
+             << TString(filled, '#') << TString(width - filled, '_') << "] "
+             << completed << '/' << total
+             << Flush;
+
+        if (completed == total) {
+            Cout << Endl;
+        }
     }
 
     void ProcessAccessStats(

@@ -326,7 +326,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(BlockChecksumsInProfileLogEnabled, bool,      false                   )\
                                                                                \
     xxx(MinShardCount,                     ui32,      0                       )\
-    xxx(MaxShardCount,                     ui32,      254                     )\
+    xxx(MaxShardCount,                     ui32,      1000                    )\
                                                                                \
     xxx(ReadBlobDisabled,                  bool,      false                   )\
     xxx(WriteBlobDisabled,                 bool,      false                   )\
