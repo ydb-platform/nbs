@@ -9,13 +9,6 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TPooledBuffer::operator TStringBuf() const
-{
-    return {reinterpret_cast<char*>(Address), Length};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TBufferPool::TChunk
     : public TIntrusiveListItem<TChunk>
 {
@@ -100,7 +93,24 @@ public:
         AllocatedBytes = 0;
         FreedBytes = 0;
     }
+
+    ibv_mr* GetMemoryRegion() const
+    {
+        return MemoryRegion.get();
+    }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+TPooledBuffer::operator TStringBuf() const
+{
+    return {reinterpret_cast<char*>(Address), Length};
+}
+
+ibv_mr* TPooledBuffer::GetMemoryRegion() const
+{
+    return Chunk->GetMemoryRegion();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

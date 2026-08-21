@@ -66,6 +66,8 @@ inline TClientConfig CreateClientConfig(const NProto::TRdmaClient& config)
     SET(QpRnrRetryCount);
     SET(QpTimeout);
     SET(QpMinRnrTimer);
+    SET(UseMemoryWindows);
+    SET(MemoryWindowsPoolSize);
 
     SET_NESTED(BufferPool, ChunkSize);
     SET_NESTED(BufferPool, MaxChunkAlloc);

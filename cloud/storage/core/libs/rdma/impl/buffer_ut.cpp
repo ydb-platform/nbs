@@ -44,6 +44,11 @@ public:
         RegisterMemoryRegion,
         (ibv_pd * pd, void* addr, size_t length, int flags),
         (override));
+    MOCK_METHOD(
+        NVerbs::TMemoryWindowPtr,
+        CreateMemoryWindow,
+        (ibv_pd* pd),
+        (override));
 
     MOCK_METHOD(
         NVerbs::TCompletionChannelPtr,

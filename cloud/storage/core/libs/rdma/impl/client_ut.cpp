@@ -1076,7 +1076,7 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
             context->CompletionHandle.Set();
         }
 
-        while (errors->Val() != 7 || active->Val() != 6) {
+        while (errors->Val() != 6 || active->Val() != 6) {
             SpinLockPause();
         }
 }
@@ -1399,6 +1399,173 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnknownProtocolVersionInRejectMessage)
     }
 
     ASSERT_GE(connectAttempts.load(), 1);
+}
+
+TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
+{
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->UseMemoryWindows = true;
+        clientConfig->MaxReconnectDelay = 5s;
+        clientConfig->MaxResponseDelay = 1s;
+
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        std::atomic<int> bound = 0;
+        std::atomic<int> invalidated = 0;
+        std::atomic<int> destroyed = 0;
+
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+        {
+            Y_UNUSED(qp);
+
+            auto guard = Guard(testContext->CompletionLock);
+
+            switch (wr->opcode) {
+                case IBV_WR_BIND_MW:
+                    bound++;
+                    break;
+
+                case IBV_WR_LOCAL_INV:
+                    invalidated++;
+                    break;
+
+                default:
+                    testContext->ReqIds.push_back(
+                        reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr)
+                            ->ReqId);
+            }
+
+            testContext->SendEvents.push_back(new ibv_send_wr(*wr));
+            testContext->CompletionHandle.Set();
+        };
+
+        testContext->DestroyMemoryWindow = [&](ibv_mw* mw) {
+            Y_UNUSED(mw);
+            destroyed++;
+        };
+
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+        struct TResponse: IClientHandler
+        {
+            ui32 Status = 0;
+            TManualEvent Received;
+
+            void HandleResponse(
+                TClientRequestPtr req,
+                ui32 status,
+                size_t responseBytes) override
+            {
+                Y_UNUSED(req);
+                Y_UNUSED(responseBytes);
+
+                Status = status;
+                Received.Signal();
+            }
+        };
+
+        auto handleRequest = [&]()
+        {
+            while (true) {
+                with_lock (testContext->CompletionLock) {
+                    if (testContext->RecvEvents && testContext->ReqIds) {
+                        auto* recv = testContext->RecvEvents.front();
+                        auto* response = reinterpret_cast<TResponseMessage*>(
+                            recv->sg_list[0].addr);
+                        Zero(*response);
+                        InitMessageHeader(response, RDMA_PROTO_VERSION);
+                        response->ReqId = testContext->ReqIds.front();
+
+                        testContext->ReqIds.pop_front();
+                        testContext->RecvEvents.pop_front();
+                        testContext->ProcessedRecvEvents.push_back(recv);
+                        testContext->CompletionHandle.Set();
+                        break;
+                    }
+                }
+            }
+        };
+
+        // normal completion will invalidate it's buffers
+        auto response1 = std::make_shared<TResponse>();
+        auto request1 = endpoint->AllocateRequest(
+            response1,
+            std::make_unique<TNullContext>(),
+            4096,
+            4096);
+        ASSERT_FALSE(HasError(request1.GetError()));
+
+        endpoint->SendRequest(
+            request1.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        handleRequest();
+
+        ASSERT_TRUE(response1->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_OK), response1->Status);
+        ASSERT_EQ(2, bound);
+        ASSERT_EQ(2, invalidated);
+        ASSERT_EQ(0, destroyed);
+
+        // timeout will result in memory windows destruction
+        auto response2 = std::make_shared<TResponse>();
+        auto request2 = endpoint->AllocateRequest(
+            response2,
+            std::make_unique<TNullContext>(),
+            4096,
+            4096);
+        ASSERT_FALSE(HasError(request2.GetError()));
+
+        endpoint->SendRequest(
+            request2.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        // do not complete request to trigger timeout
+        ASSERT_TRUE(response2->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response2->Status);
+        ASSERT_EQ(4, bound);
+        ASSERT_EQ(2, invalidated);
+        ASSERT_EQ(2, destroyed);
+
+        // complete request to drain the test transport
+        handleRequest();
+
+        // cancellation will also result in memory windows destruction
+        auto response3 = std::make_shared<TResponse>();
+        auto request3 = endpoint->AllocateRequest(
+            response3,
+            std::make_unique<TNullContext>(),
+            4096,
+            4096);
+        ASSERT_FALSE(HasError(request3.GetError()));
+
+        auto requestId3 = endpoint->SendRequest(
+            request3.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        endpoint->CancelRequest(requestId3);
+
+        ASSERT_TRUE(response3->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response3->Status);
+
+        // request can get cancelled at any stage, so `bound` can be anything
+        // between 4 and 6
+        ASSERT_GE(6, bound);
+        ASSERT_EQ(2, invalidated);
+        ASSERT_EQ(4, destroyed);
 }
 
 }   // namespace NCloud::NStorage::NRdma
