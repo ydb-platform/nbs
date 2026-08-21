@@ -46,7 +46,7 @@ def analyze_profile_log(profile_tool_bin_path,
             profile_tool_bin_path,
             profile_log_path,
             fs_name):
-        request_type = line.rstrip().split("\t")[2]
+        request_type, _ = _parse_profile_log_event(line)
 
         if node_name_filter and f"node_name={node_name_filter}" not in line:
             continue
