@@ -97,7 +97,7 @@ void TAvailabilityCounters::Register(NMonitoring::TDynamicCounters& counters)
         "Availability_MissingIntervals",
         true);   // derivative
 
-    // no intervals have been reported yet - start as available
+    // No intervals have been reported yet - start as available.
     *LastIntervalAvailableCounter = 1;
 
     // index 0 is EFileStoreAvailabilityRequestType::None and stays unused
@@ -264,20 +264,15 @@ void TAvailabilityCounters::FinishInterval()
 {
     bool intervalAvailable = true;
 
-    // index 0 is EFileStoreAvailabilityRequestType::None and stays unused
+    // Index 0 is EFileStoreAvailabilityRequestType::None and stays unused.
     for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
         auto& state = RequestTypeStates[i];
 
         TGuard g{state.Lock};
 
-        // Inflight >= InflightStartedInInterval holds because every
-        // registered completion consumes exactly one registration stamp:
-        // completions of requests started in the current interval decrement
-        // both counters, completions of older requests decrement Inflight
-        // only, and there can be no more of the latter than there are older
-        // requests still counted in Inflight. The subtraction is clamped
-        // defensively so that a violation can never wrap it into a huge
-        // hung count.
+        // Inflight >= InflightStartedInInterval holds but the subtraction is
+        // clamped defensively so that a violation can never wrap it into a
+        // huge hung count.
         Y_DEBUG_ABORT_UNLESS(
             state.Inflight >= state.InflightStartedInInterval);
         // Requests that were outstanding at the interval start and are still
@@ -301,8 +296,8 @@ void TAvailabilityCounters::FinishInterval()
         const bool requestTypeAvailable =
             !hadFailedRequest || hadNonFailedRequest;
         if (!requestTypeAvailable) {
-            // the aggregated interval availability is the logical AND over
-            // the request types
+            // The aggregated interval availability is the logical AND over
+            // the request types.
             intervalAvailable = false;
         }
 

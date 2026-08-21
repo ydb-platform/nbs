@@ -45,13 +45,8 @@ struct IRequestStats
     virtual void UpdateStats(bool updatePercentiles) = 0;
 
     // Enables the per-client filesystem availability tracking with the given
-    // interval duration (zero selects the default one) when the
-    // TFileStoreFeatures of the filesystem request it. Repeated calls are
-    // no-ops and the feature is never disabled in runtime. Must be invoked
-    // before guest requests start flowing (i.e. before the fuse loop is
-    // started). Only meaningful for per-filesystem stats: the default
-    // implementation ignores the call.
-    virtual void EnableAvailabilityTracking(TDuration /*interval*/)
+    // interval duration (zero selects the default one).
+    virtual void EnableAvailabilityTracking(TDuration /* interval */)
     {}
 
     virtual void RegisterIncompleteRequestProvider(IIncompleteRequestProviderPtr provider) = 0;

@@ -43,7 +43,6 @@ const char* GetAvailabilityRequestTypeName(
 // Number of Available intervals / Total number of intervals in the measurement
 // period × 100%
 //
-//
 // A request is outstanding at a given point in time if it was submitted but had
 // received no response, success or error, by that point.
 // A request is hung if it was outstanding for the entire duration of the N-minute
@@ -70,10 +69,9 @@ const char* GetAvailabilityRequestTypeName(
 // Availability_LastIntervalAvailable are also published per availability
 // request type, on the "request=<type>" subgroup (e.g. request=lookup):
 // there an interval is available if that request type alone shows no
-// unavailability evidence. Availability_TotalIntervals is aggregated only -
-// it is identical for every request type and equals the per-request
-// Availability_AvailableIntervals + Availability_UnavailableIntervals. The
-// aggregated availability sensors are the logical AND over the request
+// unavailability evidence.
+//
+// The aggregated availability sensors are the logical AND over the request
 // types: an interval is available overall iff it is available for every
 // request type.
 //
@@ -93,11 +91,6 @@ const char* GetAvailabilityRequestTypeName(
 // Filesystem availability for an arbitrary measurement period is then
 // increment(Availability_AvailableIntervals) /
 // increment(Availability_TotalIntervals) * 100%.
-//
-// Thread safety: RequestStarted()/RequestCompleted() may be called
-// concurrently from any threads; UpdateStats() must not be called
-// concurrently with itself (it is invoked from the single stats-updater
-// thread, see IRequestStats::UpdateStats).
 class TAvailabilityCounters
 {
 private:
@@ -138,6 +131,7 @@ private:
         NMonitoring::TDynamicCounters::TCounterPtr AvailableIntervalsCounter;
         NMonitoring::TDynamicCounters::TCounterPtr
             UnavailableIntervalsCounter;
+        // Gauge counter.
         NMonitoring::TDynamicCounters::TCounterPtr
             LastIntervalAvailableCounter;
     };
@@ -151,42 +145,22 @@ private:
     // Only accessed from UpdateStats().
     TInstant CurrentIntervalStart;
 
-    // Published counters. Unset until Register() is called; intervals
-    // finished while unregistered are not reported anywhere.
+    // Published aggregated counters.
     NMonitoring::TDynamicCounters::TCounterPtr TotalIntervalsCounter;
     NMonitoring::TDynamicCounters::TCounterPtr AvailableIntervalsCounter;
     NMonitoring::TDynamicCounters::TCounterPtr UnavailableIntervalsCounter;
     NMonitoring::TDynamicCounters::TCounterPtr LastIntervalAvailableCounter;
     NMonitoring::TDynamicCounters::TCounterPtr MissingIntervalsCounter;
 
-    // Set once by Register(), which must be called before any other method:
-    // the request hooks and UpdateStats() abort debug builds and defensively
-    // return in release builds when invoked on an unregistered object. When
-    // set, all the counter pointers, aggregated and per-request-type ones,
-    // are valid.
     bool CountersRegistered = false;
 
 public:
     explicit TAvailabilityCounters(TDuration intervalDuration);
 
-    // Registers the published sensors on the given (per-filesystem
-    // per-client) counters subgroup.
     void Register(NMonitoring::TDynamicCounters& counters);
 
-    // Registers a submitted request: remembers the current interval
-    // sequence number in callContext.AvailabilityIntervalSeqNo and clears
-    // callContext.GuestReplyErrno, so that a re-registered (retried) context
-    // starts its new attempt without the outcome of the previous one.
-    // Requests with types for which IsAvailabilityTrackedRequestType()
-    // returns false are not tracked.
     void RequestStarted(TCallContext& callContext);
 
-    // Registers a terminal outcome for the request and consumes its
-    // registration stamp (unregistered and repeated completions are
-    // ignored). callContext.GuestReplyErrno == EIO indicates a completion
-    // with an EIO error, any other value (including 0 for successful replies
-    // and cancelled requests) - a terminal outcome that keeps the request
-    // type available.
     void RequestCompleted(TCallContext& callContext);
 
     // Rolls availability intervals over. Invoked periodically from the

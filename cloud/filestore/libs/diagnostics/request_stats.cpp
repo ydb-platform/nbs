@@ -479,7 +479,7 @@ public:
     void EnableAvailabilityTracking(TDuration interval) override
     {
         if (AvailabilityCounters) {
-            // already enabled (e.g. the session was re-established)
+            // already enabled
             return;
         }
 

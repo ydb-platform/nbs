@@ -67,7 +67,7 @@ message TFileStoreFeatures
 
     // Enables the per-client filesystem availability tracking on the guest.
     bool AvailabilityTrackingEnabled = 52;
-    // Availability interval duration (in ms); 0 means the default.
+    // Availability interval duration (in ms), 0 means the default.
     uint32 AvailabilityTrackingInterval = 53;
 }
 

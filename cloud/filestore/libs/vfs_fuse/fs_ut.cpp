@@ -223,8 +223,7 @@ struct TBootstrap
         Service = std::make_shared<TFileStoreTest>();
 
         NProto::TFileStoreFeatures features = featuresConfig;
-        // Exercise the per-client availability tracking in every test; the
-        // interval matches the one used by the newfeatures test configs.
+        // Exercise the per-client availability tracking in every test.
         features.SetAvailabilityTrackingEnabled(true);
         features.SetAvailabilityTrackingInterval(15000);   // in ms
 

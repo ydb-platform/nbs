@@ -233,9 +233,7 @@ constexpr size_t FileStoreRequestCount = static_cast<size_t>(EFileStoreRequest::
 // A dedicated enum is required because EFileStoreRequest maps several
 // distinct FUSE request types onto one backend request type (e.g. lookup and
 // getattr both map to GetNodeAttr, and mkdir, symlink, link and even mknod
-// all map to CreateNode), while the SLA accounts each FUSE request type
-// independently - and some of the aliases (e.g. mknod) are not subject to
-// the SLA at all. Assigned at the FUSE dispatch (see TFileSystemLoop).
+// all map to CreateNode).
 enum class EFileStoreAvailabilityRequestType
 {
     // the request is not subject to the availability SLA
