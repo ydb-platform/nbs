@@ -167,7 +167,7 @@ public:
      * Calls the visitor for each visible allocation in the buffer in the
      * allocation order.
      *
-     * Does not visit anything and returns an error if the buffer is corrupted.
+     * Stops visiting and returns an error if the buffer is corrupted.
      */
     NProto::TError Visit(const TVisitor& visitor);
 

@@ -697,6 +697,14 @@ public:
             return MakeInvalidPointerError();
         }
 
+        if (tag > Capabilities().MaxTag) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Tag value (" << tag
+                                 << ") exceeds maximum allowed value ("
+                                 << Capabilities().MaxTag << ")");
+        }
+
         auto eh = Data()->ReadEntryHeader(it->second);
         eh.Tag = tag;
         Data()->WriteEntryHeader(it->second, eh);
@@ -784,6 +792,11 @@ public:
                     visitor(e.Header.DataChecksum, e.GetTag(), e.GetData());
                 }
             });
+
+        if (IsCorrupted()) {
+            // VisitEntries may set IsCorrupted flag during entry enumeration
+            return MakeBufferIsCorruptError();
+        }
 
         return {};
     }
