@@ -234,6 +234,7 @@ class TestCase(object):
         restart_interval=get_restart_interval(),
         check_disk_size=False,
         disk_id="",
+        bs_failure_probability=None,
     ):
         self.name = name
         self.config_path = config_path
@@ -242,6 +243,7 @@ class TestCase(object):
         self.restart_interval = restart_interval
         self.check_disk_size = check_disk_size
         self.disk_id = disk_id
+        self.bs_failure_probability = bs_failure_probability
 
 
 TESTS = [
@@ -372,6 +374,7 @@ TESTS = [
             default_storage_config(),
         ],
         None,
+        bs_failure_probability=0.0001,
     ),
     TestCase(
         "version1-compaction-to-mixed-channel",
@@ -601,6 +604,7 @@ def __run_test(test_case):
         use_in_memory_pdisks=True,
         features_config_patch=test_case.features_config_patch,
         restart_interval=test_case.restart_interval,
+        bs_failure_probability=test_case.bs_failure_probability,
     )
 
     client = TClientConfig()
