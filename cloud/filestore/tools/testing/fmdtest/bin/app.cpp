@@ -265,6 +265,8 @@ public:
                 TString content = TFileInput(filePath).ReadAll();
                 if (content != file.Content) {
                     STORAGE_ERROR("Content mismatch for " << filePath);
+                    STORAGE_ERROR("E:\t" << file.Content);
+                    STORAGE_ERROR("A:\t" << content);
                     ++errors;
                 }
 

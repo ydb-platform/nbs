@@ -201,7 +201,6 @@ public:
         : Context(context)
         , Store(store)
     {
-        Context.Lsn = Store.AllocateLsn();
     }
 
     ~TWriteContextGuard()
@@ -212,6 +211,13 @@ public:
         }
 
         // TODO(#5895) - notify storage that this Lsn was skipped
+    }
+
+    // Must be called after shard mutex is taken. Otherwise concurrent shard ops
+    // can race and cause PageStore updates which are not Lsn-ordered.
+    void Init()
+    {
+        Context.Lsn = Store.AllocateLsn();
     }
 };
 
@@ -1245,6 +1251,7 @@ public:
 
         {
             std::lock_guard g(Mutex);
+            wcg.Init();
 
             auto error = Nodes.UpdateNode(
                 request.GetNodeId(),
@@ -1338,6 +1345,7 @@ public:
         NProto::TError error;
         {
             std::lock_guard g(Mutex);
+            wcg.Init();
             error = CreateNodeImpl(
                 request.GetName(),
                 request.GetFile().GetMode(),
@@ -1394,6 +1402,7 @@ public:
 
         {
             std::lock_guard g(Mutex);
+            wcg.Init();
 
             ui64 nodeId = 0;
             auto error = Names.Get(request.GetName(), &nodeId);
@@ -1505,6 +1514,7 @@ public:
         TWriteContextGuard wcg(writeContext, *PageStore);
 
         std::unique_lock l(Mutex);
+        wcg.Init();
 
         ui64 nodeId = request.GetNodeId();
         NProto::TNodeAttr attr;
@@ -1625,6 +1635,7 @@ public:
 
         {
             std::lock_guard g(Mutex);
+            wcg.Init();
 
             auto error = Handles.Delete(request.GetHandle(), writeContext);
             if (HasError(error)) {
@@ -1727,6 +1738,7 @@ public:
 
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
+        wcg.Init();
 
         //
         // The allocation of all page clusters should happen as a single call.

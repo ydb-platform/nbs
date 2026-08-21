@@ -134,7 +134,12 @@ NProto::TError TPageStore::WritePage(
     //
 
     if (!p.Dirty) {
-        Y_ABORT_UNLESS(p.Lsn <= lsn);
+        Y_ABORT_UNLESS(
+            p.Lsn <= lsn,
+            "p.Lsn=%lu, lsn=%lu, pageNo=%lu",
+            p.Lsn,
+            lsn,
+            pageNo);
     }
 
     p = {.Content = std::move(page), .Lsn = lsn, .Dirty = true};
