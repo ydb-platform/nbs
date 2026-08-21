@@ -988,6 +988,10 @@ private:
                 StorageMediaKind,
                 CalcCompletionQueueRequestBucketCount(*Config));
             FileSystemConfig = MakeFileSystemConfig(filestore);
+            if (FileSystemConfig->GetAvailabilityTrackingEnabled()) {
+                RequestStats->EnableAvailabilityTracking(
+                    FileSystemConfig->GetAvailabilityTrackingInterval());
+            }
 
             SessionId = response.GetSession().GetSessionId();
 
@@ -1345,6 +1349,13 @@ private:
         config.SetGuestHandleKillPrivV2Enabled(
             features.GetGuestHandleKillPrivV2Enabled());
         config.SetGuestPosixAclEnabled(features.GetGuestPosixAclEnabled());
+
+        config.SetAvailabilityTrackingEnabled(
+            features.GetAvailabilityTrackingEnabled());
+        if (features.GetAvailabilityTrackingInterval()) {
+            config.SetAvailabilityTrackingInterval(
+                features.GetAvailabilityTrackingInterval());
+        }
 
         return std::make_shared<TFileSystemConfig>(config);
     }

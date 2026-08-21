@@ -100,9 +100,6 @@ const char* GetAvailabilityRequestTypeName(
 // thread, see IRequestStats::UpdateStats).
 class TAvailabilityCounters
 {
-public:
-    static constexpr TDuration DefaultIntervalDuration = TDuration::Minutes(5);
-
 private:
     // Aligned to a cache line to avoid false sharing between request types.
     struct alignas(64) TRequestTypeState
@@ -170,8 +167,7 @@ private:
     bool CountersRegistered = false;
 
 public:
-    explicit TAvailabilityCounters(
-        TDuration intervalDuration = DefaultIntervalDuration);
+    explicit TAvailabilityCounters(TDuration intervalDuration);
 
     // Registers the published sensors on the given (per-filesystem
     // per-client) counters subgroup.

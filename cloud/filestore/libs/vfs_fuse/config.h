@@ -76,6 +76,9 @@ public:
 
     bool GetGuestPosixAclEnabled() const;
 
+    bool GetAvailabilityTrackingEnabled() const;
+    TDuration GetAvailabilityTrackingInterval() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

@@ -896,4 +896,10 @@ message TStorageConfig
 
     // Sets the time after which latency of a node + request tuple will decrease by half.
     optional uint32 NodeLatencyHalfLife = 538; // measured in ms
+
+    // Enables the per-client filesystem availability tracking on the guest.
+    optional bool AvailabilityTrackingEnabled = 539;
+
+    // Availability interval duration (in ms); 0 means the default.
+    optional uint32 AvailabilityTrackingInterval = 540;
 }

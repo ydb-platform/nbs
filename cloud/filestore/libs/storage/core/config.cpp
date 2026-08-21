@@ -293,6 +293,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
+    xxx(AvailabilityTrackingEnabled,   bool,       false                      )\
+    xxx(AvailabilityTrackingInterval,  TDuration,  TDuration::Zero()          )\
     xxx(GuestCachingType,                                                      \
         NProto::EGuestCachingType,                                             \
         NProto::GCT_NONE                                                      )\

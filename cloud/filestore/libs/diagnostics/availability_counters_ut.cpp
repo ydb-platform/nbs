@@ -12,13 +12,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration Interval = TAvailabilityCounters::DefaultIntervalDuration;
+constexpr TDuration IntervalDuration = TDuration::Minutes(5);
 
 struct TEnv
 {
     NMonitoring::TDynamicCountersPtr CounterGroup =
         MakeIntrusive<NMonitoring::TDynamicCounters>();
-    TAvailabilityCounters Counters;
+    TAvailabilityCounters Counters{IntervalDuration};
     TInstant Now;
 
     NMonitoring::TDynamicCounters::TCounterPtr TotalIntervals;
@@ -51,14 +51,14 @@ struct TEnv
     // Advances time to the end of the current interval and rolls it over.
     void FinishInterval()
     {
-        Now += Interval;
+        Now += IntervalDuration;
         Counters.UpdateStats(Now);
     }
 
     void AdvanceWithinInterval(TDuration duration)
     {
         Now += duration;
-        UNIT_ASSERT(duration < Interval);
+        UNIT_ASSERT(duration < IntervalDuration);
         Counters.UpdateStats(Now);
     }
 
@@ -394,7 +394,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // exactly at the catch-up limit every elapsed interval is evaluated
         {
             TEnv env;
-            env.Now += Interval * 12;
+            env.Now += IntervalDuration * 12;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(12, 12, 0, true);
             UNIT_ASSERT_VALUES_EQUAL(0, env.MissingIntervals->Val());
@@ -403,7 +403,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // one interval beyond the limit is reported as missing, not dropped
         {
             TEnv env;
-            env.Now += Interval * 13;
+            env.Now += IntervalDuration * 13;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(12, 12, 0, true);
             UNIT_ASSERT_VALUES_EQUAL(1, env.MissingIntervals->Val());
@@ -412,7 +412,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // a two-hour gap: half evaluated, half reported as missing
         {
             TEnv env;
-            env.Now += Interval * 24;
+            env.Now += IntervalDuration * 24;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(12, 12, 0, true);
             UNIT_ASSERT_VALUES_EQUAL(12, env.MissingIntervals->Val());
@@ -433,7 +433,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             TEnv env;
             env.Start(EFileStoreAvailabilityRequestType::Read);
-            env.Now += Interval * 12;
+            env.Now += IntervalDuration * 12;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(12, 1, 11, false);
             UNIT_ASSERT_VALUES_EQUAL(0, env.MissingIntervals->Val());
@@ -442,7 +442,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             TEnv env;
             env.Start(EFileStoreAvailabilityRequestType::Read);
-            env.Now += Interval * 13;
+            env.Now += IntervalDuration * 13;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(12, 1, 11, false);
             UNIT_ASSERT_VALUES_EQUAL(1, env.MissingIntervals->Val());
@@ -451,7 +451,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             TEnv env;
             env.Start(EFileStoreAvailabilityRequestType::Read);
-            env.Now += Interval * 24;
+            env.Now += IntervalDuration * 24;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(12, 1, 11, false);
             UNIT_ASSERT_VALUES_EQUAL(12, env.MissingIntervals->Val());
@@ -468,7 +468,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.FinishInterval();
         env.AssertIntervals(1, 1, 0, true);
 
-        env.Now += Interval * 3;
+        env.Now += IntervalDuration * 3;
         env.Counters.UpdateStats(env.Now);
 
         // the request remained outstanding throughout all 3 intervals

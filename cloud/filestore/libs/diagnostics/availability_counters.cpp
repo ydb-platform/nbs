@@ -19,6 +19,8 @@ namespace {
 // to one hour, anything beyond that realigns without evaluation.
 constexpr size_t MaxIntervalsPerUpdate = 12;
 
+constexpr TDuration DefaultIntervalDuration = TDuration::Minutes(5);
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -62,7 +64,11 @@ const char* GetAvailabilityRequestTypeName(
 ////////////////////////////////////////////////////////////////////////////////
 
 TAvailabilityCounters::TAvailabilityCounters(TDuration intervalDuration)
-    : IntervalDuration(intervalDuration)
+    // a zero interval duration selects the default one
+    : IntervalDuration(
+          intervalDuration == TDuration::Zero()
+              ? DefaultIntervalDuration
+              : intervalDuration)
 {
     Y_ABORT_UNLESS(IntervalDuration > TDuration::Zero());
 
