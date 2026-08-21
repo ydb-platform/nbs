@@ -63,25 +63,22 @@ const char* GetAvailabilityRequestTypeName(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TAvailabilityCounters::TAvailabilityCounters(TDuration intervalDuration)
-    // a zero interval duration selects the default one
-    : IntervalDuration(
-          intervalDuration == TDuration::Zero()
-              ? DefaultIntervalDuration
-              : intervalDuration)
+void TAvailabilityCounters::EnableAndRegister(
+    TDuration intervalDuration,
+    NMonitoring::TDynamicCounters& counters)
 {
-    Y_ABORT_UNLESS(IntervalDuration > TDuration::Zero());
+    // Serialize concurrent calls; the losers become no-ops.
+    TGuard g{EnableLock};
 
-    // index 0 is EFileStoreAvailabilityRequestType::None and stays unused
-    for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
-        auto& state = RequestTypeStates[i];
-        // Availability intervals are numbered starting from 1.
-        state.IntervalSeqNo = 1;
+    if (CountersRegistered.load(std::memory_order_acquire)) {
+        return;
     }
-}
 
-void TAvailabilityCounters::Register(NMonitoring::TDynamicCounters& counters)
-{
+    // A zero interval duration selects the default one.
+    IntervalDuration = intervalDuration == TDuration::Zero()
+        ? DefaultIntervalDuration
+        : intervalDuration;
+
     TotalIntervalsCounter = counters.GetCounter(
         "Availability_TotalIntervals",
         true);   // derivative
@@ -120,13 +117,13 @@ void TAvailabilityCounters::Register(NMonitoring::TDynamicCounters& counters)
         *state.LastIntervalAvailableCounter = 1;
     }
 
-    CountersRegistered = true;
+    // Publishes the fully initialized state for the methods below.
+    CountersRegistered.store(true, std::memory_order_release);
 }
 
 void TAvailabilityCounters::RequestStarted(TCallContext& callContext)
 {
-    Y_DEBUG_ABORT_UNLESS(CountersRegistered);
-    if (!CountersRegistered) {
+    if (!CountersRegistered.load(std::memory_order_acquire)) {
         return;
     }
 
@@ -166,8 +163,7 @@ void TAvailabilityCounters::RequestStarted(TCallContext& callContext)
 
 void TAvailabilityCounters::RequestCompleted(TCallContext& callContext)
 {
-    Y_DEBUG_ABORT_UNLESS(CountersRegistered);
-    if (!CountersRegistered) {
+    if (!CountersRegistered.load(std::memory_order_acquire)) {
         return;
     }
 
@@ -219,8 +215,7 @@ void TAvailabilityCounters::RequestCompleted(TCallContext& callContext)
 
 void TAvailabilityCounters::UpdateStats(TInstant now)
 {
-    Y_DEBUG_ABORT_UNLESS(CountersRegistered);
-    if (!CountersRegistered) {
+    if (!CountersRegistered.load(std::memory_order_acquire)) {
         return;
     }
 

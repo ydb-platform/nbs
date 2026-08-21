@@ -9,8 +9,6 @@
 #include <cloud/filestore/libs/diagnostics/user_counter.h>
 #include <cloud/filestore/libs/service/context.h>
 
-#include <optional>
-
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -438,9 +436,9 @@ private:
 
     TDynamicCountersPtr StatsCounters;
 
-    // Present when the availability tracking is enabled for this filesystem
-    // via TFileStoreFeatures (see EnableAvailabilityTracking).
-    std::optional<TAvailabilityCounters> AvailabilityCounters;
+    // The tracking is enabled for this filesystem via TFileStoreFeatures
+    // (see EnableAvailabilityTracking); until then the tracker is inert.
+    TAvailabilityCounters AvailabilityCounters;
 
     TMutex Lock;
     TVector<IIncompleteRequestProviderPtr> IncompleteRequestProviders;
@@ -478,14 +476,8 @@ public:
 
     void EnableAvailabilityTracking(TDuration interval) override
     {
-        if (AvailabilityCounters) {
-            // already enabled
-            return;
-        }
-
         // a zero interval selects the default one
-        AvailabilityCounters.emplace(interval);
-        AvailabilityCounters->Register(*StatsCounters);
+        AvailabilityCounters.EnableAndRegister(interval, *StatsCounters);
     }
 
     void SetUserMetadata(TUserMetadata userMetadata)
@@ -509,9 +501,7 @@ public:
             GetRequestType(callContext),
             callContext.RequestSize));
 
-        if (AvailabilityCounters) {
-            AvailabilityCounters->RequestStarted(callContext);
-        }
+        AvailabilityCounters.RequestStarted(callContext);
 
         PredictionStarted(callContext);
     }
@@ -524,9 +514,7 @@ public:
             callContext,
             GetDiagnosticsErrorKind(error));
 
-        if (AvailabilityCounters) {
-            AvailabilityCounters->RequestCompleted(callContext);
-        }
+        AvailabilityCounters.RequestCompleted(callContext);
 
         PredictionCompleted(callContext);
     }
@@ -549,9 +537,7 @@ public:
         const auto requestTime = RequestCompleted(callContext, errorKind);
         LogCompleted(log, callContext, requestTime, errorKind, error);
 
-        if (AvailabilityCounters) {
-            AvailabilityCounters->RequestCompleted(callContext);
-        }
+        AvailabilityCounters.RequestCompleted(callContext);
 
         PredictionCompleted(callContext);
     }
@@ -571,9 +557,7 @@ public:
 
         Counters->UpdateStats(updatePercentiles);
         PredictorStats.UpdateStats();
-        if (AvailabilityCounters) {
-            AvailabilityCounters->UpdateStats(Timer->Now());
-        }
+        AvailabilityCounters.UpdateStats(Timer->Now());
     }
 
     void RegisterIncompleteRequestProvider(

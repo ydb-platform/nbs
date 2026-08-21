@@ -13,6 +13,7 @@
 #include <util/system/types.h>
 
 #include <array>
+#include <atomic>
 
 namespace NCloud::NFileStore {
 
@@ -121,13 +122,14 @@ private:
         // current interval.
         ui64 CompletedEio = 0;
 
-        // Sequence number of the current interval, incremented by
+        // Sequence number of the current interval (availability intervals
+        // are numbered starting from 1), incremented by
         // FinishInterval(). Used to detect whether a completing request was
         // started in the current interval.
-        ui64 IntervalSeqNo = 0;
+        ui64 IntervalSeqNo = 1;
 
         // Per-request-type published counters (on the "request=<type>"
-        // subgroup). Unset until Register() is called.
+        // subgroup). Unset until EnableAndRegister() is called.
         NMonitoring::TDynamicCounters::TCounterPtr AvailableIntervalsCounter;
         NMonitoring::TDynamicCounters::TCounterPtr
             UnavailableIntervalsCounter;
@@ -137,7 +139,8 @@ private:
     };
 
 private:
-    const TDuration IntervalDuration;
+    // Assigned by EnableAndRegister().
+    TDuration IntervalDuration;
 
     std::array<TRequestTypeState, FileStoreAvailabilityRequestTypeCount>
         RequestTypeStates;
@@ -152,12 +155,21 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr LastIntervalAvailableCounter;
     NMonitoring::TDynamicCounters::TCounterPtr MissingIntervalsCounter;
 
-    bool CountersRegistered = false;
+    // Set by EnableAndRegister() with release ordering once the interval
+    // duration and the sensors are fully initialized; the methods below
+    // load it with acquire ordering and are no-ops until then.
+    std::atomic<bool> CountersRegistered = false;
+
+    // Serializes EnableAndRegister() calls.
+    TAdaptiveLock EnableLock;
 
 public:
-    explicit TAvailabilityCounters(TDuration intervalDuration);
-
-    void Register(NMonitoring::TDynamicCounters& counters);
+    // Registers the sensors and enables the tracking with the given
+    // interval duration (zero selects the default one). Thread-safe;
+    // repeated calls are no-ops.
+    void EnableAndRegister(
+        TDuration intervalDuration,
+        NMonitoring::TDynamicCounters& counters);
 
     void RequestStarted(TCallContext& callContext);
 

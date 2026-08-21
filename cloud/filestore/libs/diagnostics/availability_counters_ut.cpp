@@ -18,7 +18,7 @@ struct TEnv
 {
     NMonitoring::TDynamicCountersPtr CounterGroup =
         MakeIntrusive<NMonitoring::TDynamicCounters>();
-    TAvailabilityCounters Counters{IntervalDuration};
+    TAvailabilityCounters Counters;
     TInstant Now;
 
     NMonitoring::TDynamicCounters::TCounterPtr TotalIntervals;
@@ -32,7 +32,7 @@ struct TEnv
         // obvious
         : Now(TInstant::Hours(100))
     {
-        Counters.Register(*CounterGroup);
+        Counters.EnableAndRegister(IntervalDuration, *CounterGroup);
         // the first call only initializes the interval boundary
         Counters.UpdateStats(Now);
 
