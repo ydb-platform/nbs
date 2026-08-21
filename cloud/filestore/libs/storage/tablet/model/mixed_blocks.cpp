@@ -330,6 +330,16 @@ void TMixedBlocks::AddDeletionMarker(
     range->DeletionMarkers.Add(deletionMarker);
 }
 
+void TMixedBlocks::AddDeletionMarkerOutOfOrder(
+    ui32 rangeId,
+    TDeletionMarker deletionMarker)
+{
+    auto* range = Impl->FindRange(rangeId);
+    Y_ABORT_UNLESS(range);
+
+    range->DeletionMarkers.AddOutOfOrder(deletionMarker);
+}
+
 TVector<TDeletionMarker> TMixedBlocks::ExtractDeletionMarkers(ui32 rangeId)
 {
     auto* range = Impl->FindRange(rangeId);

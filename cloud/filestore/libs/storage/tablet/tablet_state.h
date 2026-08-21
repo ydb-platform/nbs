@@ -1173,6 +1173,12 @@ public:
         const TBlock& block,
         ui32 blocksCount);
 
+    TWriteMixedBlocksResult WriteMixedBlocksCommitOrderAware(
+        TIndexTabletDatabase& db,
+        const TPartialBlobId& blobId,
+        const TBlock& block,
+        ui32 blocksCount);
+
     TWriteMixedBlocksResult WriteMixedBlocks(
         IIndexTabletDatabase& db,
         const TPartialBlobId& blobId,
