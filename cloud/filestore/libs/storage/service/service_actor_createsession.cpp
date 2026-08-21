@@ -826,7 +826,7 @@ bool TStorageServiceActor::RemoveSubSession(
     const TActorContext& ctx)
 {
     if (auto* session = State->FindSession(sessionId, seqNo); session) {
-        const auto subSessionCount = session->GetSubSessionCount();
+        const ui32 subSessionCount = session->GetSubSessionCount();
         const bool isLastSubSession = subSessionCount == 1;
         const auto* subSession = session->FindSubSession(seqNo);
         const auto sessionActor =
@@ -873,8 +873,8 @@ void TStorageServiceActor::HandleSessionCreated(
         ui64 ownerGeneration = msg->OwnerGeneration;
         bool staleOwnerGeneration = false;
 
-        if (session && storedOwnerGeneration && msg->OwnerGeneration) {
-            if (msg->OwnerGeneration < storedOwnerGeneration) {
+        if (session && storedOwnerGeneration && ownerGeneration) {
+            if (ownerGeneration < storedOwnerGeneration) {
                 staleOwnerGeneration = true;
                 ownerGeneration = storedOwnerGeneration;
 
@@ -892,7 +892,7 @@ void TStorageServiceActor::HandleSessionCreated(
                     storedOwnerGeneration,
                     msg->OwnerGeneration,
                     ToString(ev->Sender).c_str());
-            } else if (msg->OwnerGeneration > storedOwnerGeneration) {
+            } else if (ownerGeneration > storedOwnerGeneration) {
                 LOG_INFO(
                     ctx,
                     TFileStoreComponents::SERVICE,
@@ -910,48 +910,37 @@ void TStorageServiceActor::HandleSessionCreated(
             }
         }
 
-        if (sessionActor && *sessionActor != ev->Sender)
-        {
-            if (staleOwnerGeneration) {
-                LOG_WARN(
-                    ctx,
-                    TFileStoreComponents::SERVICE,
-                    "%s CreateSession returned session actor mismatch: "
-                    "current actor %s generation %lu, notification sender %s "
-                    "generation %lu; keeping current actor and poisoning "
-                    "notification sender",
-                    LogTag(
-                        msg->FileStore.GetFileSystemId(),
-                        msg->ClientId,
-                        msg->SessionId,
-                        msg->SessionSeqNo)
-                        .c_str(),
-                    ToString(*sessionActor).c_str(),
-                    storedOwnerGeneration,
-                    ToString(ev->Sender).c_str(),
-                    msg->OwnerGeneration);
+        if (sessionActor && *sessionActor != ev->Sender) {
+            const auto logLevel =
+                staleOwnerGeneration ? NLog::PRI_WARN : NLog::PRI_INFO;
+            const auto* action =
+                staleOwnerGeneration
+                    ? "keeping current actor and poisoning notification sender"
+                    : "keeping notification sender and poisoning current actor";
 
+            LOG_LOG(
+                ctx,
+                logLevel,
+                TFileStoreComponents::SERVICE,
+                "%s CreateSession returned session actor mismatch: "
+                "current actor %s generation %lu, notification sender %s "
+                "generation %lu; %s",
+                LogTag(
+                    msg->FileStore.GetFileSystemId(),
+                    msg->ClientId,
+                    msg->SessionId,
+                    msg->SessionSeqNo)
+                    .c_str(),
+                ToString(*sessionActor).c_str(),
+                storedOwnerGeneration,
+                ToString(ev->Sender).c_str(),
+                msg->OwnerGeneration,
+                action);
+
+            if (staleOwnerGeneration) {
                 ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
                 actorId = *sessionActor;
             } else {
-                LOG_INFO(
-                    ctx,
-                    TFileStoreComponents::SERVICE,
-                    "%s CreateSession returned session actor mismatch: "
-                    "current actor %s generation %lu, notification sender %s "
-                    "generation %lu; keeping notification sender and "
-                    "poisoning current actor",
-                    LogTag(
-                        msg->FileStore.GetFileSystemId(),
-                        msg->ClientId,
-                        msg->SessionId,
-                        msg->SessionSeqNo)
-                        .c_str(),
-                    ToString(*sessionActor).c_str(),
-                    storedOwnerGeneration,
-                    ToString(ev->Sender).c_str(),
-                    msg->OwnerGeneration);
-
                 ctx.Send(*sessionActor, new TEvents::TEvPoisonPill());
             }
         }
