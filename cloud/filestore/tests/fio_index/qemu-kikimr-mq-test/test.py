@@ -22,7 +22,7 @@ def test_fio(name):
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool")
     fs_name = "nfs_test"
-    events = profile.get_profile_log_events(
+    events = profile.iter_profile_log_events(
         profile_tool_bin_path,
         common.output_path("vhost-profile.log"),
         fs_name)
