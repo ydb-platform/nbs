@@ -533,8 +533,6 @@ public:
         const TString& sessionId,
         ui64 seqNo);
 
-    void RemoveSession(const TString& sessionId);
-
     bool IsLastSubSession(
         const TString& sessionId,
         ui64 seqNo);
