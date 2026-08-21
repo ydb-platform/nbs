@@ -99,15 +99,19 @@ public:
 
     void Commit() override
     {
-        bool success = Storage.Commit();
-        Y_ENSURE(success, "Failed to commit allocation");
+        auto res = Storage.Commit();
+        Y_ENSURE(
+            !HasError(res),
+            "Failed to commit allocation: " << FormatError(res));
         SetCounters();
     }
 
     void Free(const void* ptr) override
     {
-        bool success = Storage.Free(ptr);
-        Y_ENSURE(success, "Failed to free pointer " << ptr);
+        auto res = Storage.Free(ptr);
+        Y_ENSURE(
+            !HasError(res),
+            "Failed to free pointer " << ptr << ": " << FormatError(res));
         SetCounters();
     }
 

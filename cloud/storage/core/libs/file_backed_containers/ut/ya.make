@@ -18,6 +18,7 @@ SRCS(
     file_ring_buffer_accessor_ut.cpp
     file_ring_buffer_format_ut.cpp
     persistent_table_ut.cpp
+    test/util.cpp
 )
 
 PEERDIR(
