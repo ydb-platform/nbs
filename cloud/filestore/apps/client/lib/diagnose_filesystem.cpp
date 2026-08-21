@@ -187,7 +187,11 @@ private:
             for (size_t i = batchStart; i < batchEnd; ++i) {
                 NProtoPrivate::TGetDiagnosticStatsRequest request;
                 request.SetFileSystemId(shardStats[i].GetShardId());
-                request.SetLimit(Max(TopAccessed, SlowestNodes));
+                const ui32 latencyLimit =
+                    Max(SlowestNodes, Max(SlowestRequests, SlowestShards));
+
+                const ui32 requestLimit = Max(TopAccessed, latencyLimit);
+                request.SetLimit(requestLimit);
                 futures.push_back(SendAction("getdiagnosticstats", request));
             }
 
