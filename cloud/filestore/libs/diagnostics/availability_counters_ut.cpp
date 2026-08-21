@@ -143,10 +143,18 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TEnv env;
 
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         env.FinishInterval();
-        env.AssertIntervals(2, 2, 0, true);
+        env.AssertIntervals(
+            2,   // total
+            2,   // available
+            0,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldReportSuccessfulRequestsAsAvailable)
@@ -157,7 +165,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.CompleteOk(callContext);
 
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldReportNonEioErrorsAsAvailable)
@@ -171,7 +183,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.CompleteWithErrno(callContext, ENOENT);
 
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldReportEioOnlyIntervalAsUnavailable)
@@ -185,11 +201,19 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         }
 
         env.FinishInterval();
-        env.AssertIntervals(1, 0, 1, false);
+        env.AssertIntervals(
+            1,   // total
+            0,   // available
+            1,   // unavailable
+            false);   // last interval available
 
         // the next interval has no requests => available again
         env.FinishInterval();
-        env.AssertIntervals(2, 1, 1, true);
+        env.AssertIntervals(
+            2,   // total
+            1,   // available
+            1,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldReportMixedEioAndSuccessAsAvailable)
@@ -203,7 +227,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.CompleteOk(good);
 
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldReportHungRequestAsUnavailable)
@@ -216,18 +244,34 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // ...so it is not hung during interval 1 (it has not been
         // outstanding throughout the entire interval)
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         // it remains outstanding throughout intervals 2 and 3 => hung
         env.FinishInterval();
-        env.AssertIntervals(2, 1, 1, false);
+        env.AssertIntervals(
+            2,   // total
+            1,   // available
+            1,   // unavailable
+            false);   // last interval available
         env.FinishInterval();
-        env.AssertIntervals(3, 1, 2, false);
+        env.AssertIntervals(
+            3,   // total
+            1,   // available
+            2,   // unavailable
+            false);   // last interval available
 
         // once it completes successfully, the interval becomes available
         env.CompleteOk(callContext);
         env.FinishInterval();
-        env.AssertIntervals(4, 2, 2, true);
+        env.AssertIntervals(
+            4,   // total
+            2,   // available
+            2,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldTreatLateNonEioCompletionOfOldRequestAsAvailable)
@@ -236,14 +280,22 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         auto callContext = env.Start(EFileStoreAvailabilityRequestType::Open);
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         // the request was outstanding at the interval start and completed
         // with a non-EIO outcome during the interval => available
         env.AdvanceWithinInterval(TDuration::Minutes(1));
         env.CompleteOk(callContext);
         env.FinishInterval();
-        env.AssertIntervals(2, 2, 0, true);
+        env.AssertIntervals(
+            2,   // total
+            2,   // available
+            0,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldTreatLateEioCompletionOfOldRequestAsUnavailable)
@@ -252,13 +304,21 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         auto callContext = env.Start(EFileStoreAvailabilityRequestType::Open);
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         // the only outstanding request of this type completed with EIO
         // during the interval => unavailable
         env.CompleteWithErrno(callContext, EIO);
         env.FinishInterval();
-        env.AssertIntervals(2, 1, 1, false);
+        env.AssertIntervals(
+            2,   // total
+            1,   // available
+            1,   // unavailable
+            false);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldNotCountPendingRequestsAsAvailable)
@@ -269,7 +329,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // end is neutral: alone it does not make the interval unavailable...
         auto hungContext = env.Start(EFileStoreAvailabilityRequestType::Read);
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         // ...but it is not success evidence either: it does not make an
         // interval with a hung request available
@@ -278,16 +342,28 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             env.Start(EFileStoreAvailabilityRequestType::Read);
 
         env.FinishInterval();
-        env.AssertIntervals(2, 1, 1, false);
+        env.AssertIntervals(
+            2,   // total
+            1,   // available
+            1,   // unavailable
+            false);   // last interval available
 
         // in the next interval both requests are hung
         env.FinishInterval();
-        env.AssertIntervals(3, 1, 2, false);
+        env.AssertIntervals(
+            3,   // total
+            1,   // available
+            2,   // unavailable
+            false);   // last interval available
 
         env.CompleteOk(hungContext);
         env.CompleteOk(freshContext);
         env.FinishInterval();
-        env.AssertIntervals(4, 2, 2, true);
+        env.AssertIntervals(
+            4,   // total
+            2,   // available
+            2,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldNotCountPendingRequestsAgainstEioCompletions)
@@ -303,11 +379,19 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             env.Start(EFileStoreAvailabilityRequestType::Write);
 
         env.FinishInterval();
-        env.AssertIntervals(1, 0, 1, false);
+        env.AssertIntervals(
+            1,   // total
+            0,   // available
+            1,   // unavailable
+            false);   // last interval available
 
         env.CompleteOk(pendingContext);
         env.FinishInterval();
-        env.AssertIntervals(2, 1, 1, true);
+        env.AssertIntervals(
+            2,   // total
+            1,   // available
+            1,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldDistinguishOldAndFreshRequestsOnCompletion)
@@ -317,7 +401,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // a pending request started within the interval is neutral
         auto oldContext = env.Start(EFileStoreAvailabilityRequestType::Read);
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         // The old request completes while a fresh one is also outstanding.
         // The completion must consume the old registration via the interval
@@ -330,15 +418,27 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.CompleteOk(oldContext);
 
         env.FinishInterval();
-        env.AssertIntervals(2, 2, 0, true);
+        env.AssertIntervals(
+            2,   // total
+            2,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         // the fresh request is old by now and hangs the third interval
         env.FinishInterval();
-        env.AssertIntervals(3, 2, 1, false);
+        env.AssertIntervals(
+            3,   // total
+            2,   // available
+            1,   // unavailable
+            false);   // last interval available
 
         env.CompleteOk(freshContext);
         env.FinishInterval();
-        env.AssertIntervals(4, 3, 1, true);
+        env.AssertIntervals(
+            4,   // total
+            3,   // available
+            1,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldClassifyRequestTypesIndependently)
@@ -358,7 +458,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.CompleteWithErrno(badContext, EIO);
 
         env.FinishInterval();
-        env.AssertIntervals(1, 0, 1, false);
+        env.AssertIntervals(
+            1,   // total
+            0,   // available
+            1,   // unavailable
+            false);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldNotTrackUntrackedRequestTypes)
@@ -378,10 +482,18 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.Start(EFileStoreAvailabilityRequestType::None);
 
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         env.FinishInterval();
-        env.AssertIntervals(2, 2, 0, true);
+        env.AssertIntervals(
+            2,   // total
+            2,   // available
+            0,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldNotFinishIntervalBeforeItsEnd)
@@ -389,15 +501,27 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TEnv env;
 
         env.AdvanceWithinInterval(TDuration::Minutes(4));
-        env.AssertIntervals(0, 0, 0, true);
+        env.AssertIntervals(
+            0,   // total
+            0,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         env.AdvanceWithinInterval(
             TDuration::Minutes(1) - TDuration::Seconds(1));
-        env.AssertIntervals(0, 0, 0, true);
+        env.AssertIntervals(
+            0,   // total
+            0,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         env.Now += TDuration::Seconds(1);
         env.Counters.UpdateStats(env.Now);
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldCountIntervalsMissedBeyondCatchUpLimit)
@@ -407,7 +531,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             TEnv env;
             env.Now += IntervalDuration * 12;
             env.Counters.UpdateStats(env.Now);
-            env.AssertIntervals(12, 12, 0, true);
+            env.AssertIntervals(
+                12,   // total
+                12,   // available
+                0,   // unavailable
+                true);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(0, env.MissingIntervals->Val());
         }
 
@@ -416,7 +544,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             TEnv env;
             env.Now += IntervalDuration * 13;
             env.Counters.UpdateStats(env.Now);
-            env.AssertIntervals(12, 12, 0, true);
+            env.AssertIntervals(
+                12,   // total
+                12,   // available
+                0,   // unavailable
+                true);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(1, env.MissingIntervals->Val());
         }
 
@@ -425,12 +557,20 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             TEnv env;
             env.Now += IntervalDuration * 24;
             env.Counters.UpdateStats(env.Now);
-            env.AssertIntervals(12, 12, 0, true);
+            env.AssertIntervals(
+                12,   // total
+                12,   // available
+                0,   // unavailable
+                true);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(12, env.MissingIntervals->Val());
 
             // measurement continues normally afterwards
             env.FinishInterval();
-            env.AssertIntervals(13, 13, 0, true);
+            env.AssertIntervals(
+                13,   // total
+                13,   // available
+                0,   // unavailable
+                true);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(12, env.MissingIntervals->Val());
         }
     }
@@ -446,7 +586,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             env.Start(EFileStoreAvailabilityRequestType::Read);
             env.Now += IntervalDuration * 12;
             env.Counters.UpdateStats(env.Now);
-            env.AssertIntervals(12, 1, 11, false);
+            env.AssertIntervals(
+                12,   // total
+                1,   // available
+                11,   // unavailable
+                false);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(0, env.MissingIntervals->Val());
         }
 
@@ -455,7 +599,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             env.Start(EFileStoreAvailabilityRequestType::Read);
             env.Now += IntervalDuration * 13;
             env.Counters.UpdateStats(env.Now);
-            env.AssertIntervals(12, 1, 11, false);
+            env.AssertIntervals(
+                12,   // total
+                1,   // available
+                11,   // unavailable
+                false);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(1, env.MissingIntervals->Val());
         }
 
@@ -464,7 +612,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             env.Start(EFileStoreAvailabilityRequestType::Read);
             env.Now += IntervalDuration * 24;
             env.Counters.UpdateStats(env.Now);
-            env.AssertIntervals(12, 1, 11, false);
+            env.AssertIntervals(
+                12,   // total
+                1,   // available
+                11,   // unavailable
+                false);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(12, env.MissingIntervals->Val());
         }
     }
@@ -477,17 +629,29 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         auto callContext =
             env.Start(EFileStoreAvailabilityRequestType::GetAttr);
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         env.Now += IntervalDuration * 3;
         env.Counters.UpdateStats(env.Now);
 
         // the request remained outstanding throughout all 3 intervals
-        env.AssertIntervals(4, 1, 3, false);
+        env.AssertIntervals(
+            4,   // total
+            1,   // available
+            3,   // unavailable
+            false);   // last interval available
 
         env.CompleteOk(callContext);
         env.FinishInterval();
-        env.AssertIntervals(5, 2, 3, true);
+        env.AssertIntervals(
+            5,   // total
+            2,   // available
+            3,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldCountRequestStartedAndFailedWithinOneInterval)
@@ -502,7 +666,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.CompleteWithErrno(callContext, EIO);
 
         env.FinishInterval();
-        env.AssertIntervals(1, 0, 1, false);
+        env.AssertIntervals(
+            1,   // total
+            0,   // available
+            1,   // unavailable
+            false);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldAccountRequestTypesIndependently)
@@ -523,11 +691,21 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             env.CompleteOk(good);
 
             env.FinishInterval();
-            env.AssertIntervals(1, 0, 1, false);
+            env.AssertIntervals(
+                1,   // total
+                0,   // available
+                1,   // unavailable
+                false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::Lookup, 0, 1, false);
+                EFileStoreAvailabilityRequestType::Lookup,
+                0,   // available
+                1,   // unavailable
+                false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::GetAttr, 1, 0, true);
+                EFileStoreAvailabilityRequestType::GetAttr,
+                1,   // available
+                0,   // unavailable
+                true);   // last interval available
         }
 
         {
@@ -539,11 +717,21 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             env.CompleteOk(good);
 
             env.FinishInterval();
-            env.AssertIntervals(1, 0, 1, false);
+            env.AssertIntervals(
+                1,   // total
+                0,   // available
+                1,   // unavailable
+                false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::Open, 0, 1, false);
+                EFileStoreAvailabilityRequestType::Open,
+                0,   // available
+                1,   // unavailable
+                false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::Create, 1, 0, true);
+                EFileStoreAvailabilityRequestType::Create,
+                1,   // available
+                0,   // unavailable
+                true);   // last interval available
         }
 
         {
@@ -555,11 +743,21 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             env.CompleteOk(good);
 
             env.FinishInterval();
-            env.AssertIntervals(1, 0, 1, false);
+            env.AssertIntervals(
+                1,   // total
+                0,   // available
+                1,   // unavailable
+                false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::MkDir, 0, 1, false);
+                EFileStoreAvailabilityRequestType::MkDir,
+                0,   // available
+                1,   // unavailable
+                false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::SymLink, 1, 0, true);
+                EFileStoreAvailabilityRequestType::SymLink,
+                1,   // available
+                0,   // unavailable
+                true);   // last interval available
         }
 
         {
@@ -572,11 +770,21 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             env.CompleteOk(good);
 
             env.FinishInterval();
-            env.AssertIntervals(1, 0, 1, false);
+            env.AssertIntervals(
+                1,   // total
+                0,   // available
+                1,   // unavailable
+                false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::Write, 0, 1, false);
+                EFileStoreAvailabilityRequestType::Write,
+                0,   // available
+                1,   // unavailable
+                false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::WriteBuf, 1, 0, true);
+                EFileStoreAvailabilityRequestType::WriteBuf,
+                1,   // available
+                0,   // unavailable
+                true);   // last interval available
         }
     }
 
@@ -596,7 +804,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // the EIO completion of the first attempt is failure evidence, and
         // the pending restarted attempt is neutral => unavailable
         env.FinishInterval();
-        env.AssertIntervals(1, 0, 1, false);
+        env.AssertIntervals(
+            1,   // total
+            0,   // available
+            1,   // unavailable
+            false);   // last interval available
 
         // the successful completion of the restarted attempt is classified
         // as a success: the re-registration cleared the stale EIO of the
@@ -604,7 +816,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // does not write GuestReplyErrno
         env.CompleteOk(callContext);
         env.FinishInterval();
-        env.AssertIntervals(2, 1, 1, true);
+        env.AssertIntervals(
+            2,   // total
+            1,   // available
+            1,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldNotCountRequestStartedAfterBoundaryAsHung)
@@ -622,11 +838,19 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // the late tick closes the first interval: the request counts as
         // fresh-pending (neutral) there, not hung
         env.Counters.UpdateStats(env.Now);
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         env.CompleteOk(context);
         env.FinishInterval();
-        env.AssertIntervals(2, 2, 0, true);
+        env.AssertIntervals(
+            2,   // total
+            2,   // available
+            0,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldAccountActivityDuringUpdaterStall)
@@ -636,7 +860,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // a request outstanding from before the stall
         auto hungContext = env.Start(EFileStoreAvailabilityRequestType::Read);
         env.FinishInterval();
-        env.AssertIntervals(1, 1, 0, true);
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
 
         // the updater stalls for three intervals; requests keep starting
         // and completing meanwhile
@@ -654,11 +882,19 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // (any success => available). The remaining two stalled intervals
         // see only the still-outstanding old request => hung =>
         // unavailable.
-        env.AssertIntervals(4, 2, 2, false);
+        env.AssertIntervals(
+            4,   // total
+            2,   // available
+            2,   // unavailable
+            false);   // last interval available
 
         env.CompleteOk(hungContext);
         env.FinishInterval();
-        env.AssertIntervals(5, 3, 2, true);
+        env.AssertIntervals(
+            5,   // total
+            3,   // available
+            2,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldEnableConcurrentlyWithRequestProcessing)
@@ -719,12 +955,22 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // the failing request type is unavailable in its own counters...
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Write, 0, 1, false);
+            EFileStoreAvailabilityRequestType::Write,
+            0,   // available
+            1,   // unavailable
+            false);   // last interval available
         // ...while an idle request type is available in the same interval...
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Read, 1, 0, true);
+            EFileStoreAvailabilityRequestType::Read,
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
         // ...and the aggregated counters are the AND over the request types
-        env.AssertIntervals(1, 0, 1, false);
+        env.AssertIntervals(
+            1,   // total
+            0,   // available
+            1,   // unavailable
+            false);   // last interval available
 
         auto goodContext =
             env.Start(EFileStoreAvailabilityRequestType::Write);
@@ -732,10 +978,20 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.FinishInterval();
 
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Write, 1, 1, true);
+            EFileStoreAvailabilityRequestType::Write,
+            1,   // available
+            1,   // unavailable
+            true);   // last interval available
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Read, 2, 0, true);
-        env.AssertIntervals(2, 1, 1, true);
+            EFileStoreAvailabilityRequestType::Read,
+            2,   // available
+            0,   // unavailable
+            true);   // last interval available
+        env.AssertIntervals(
+            2,   // total
+            1,   // available
+            1,   // unavailable
+            true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldStartAsAvailable)
@@ -744,9 +1000,16 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // before any interval is finished the gauges report available, both
         // aggregated and per request type
-        env.AssertIntervals(0, 0, 0, true);
+        env.AssertIntervals(
+            0,   // total
+            0,   // available
+            0,   // unavailable
+            true);   // last interval available
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Lookup, 0, 0, true);
+            EFileStoreAvailabilityRequestType::Lookup,
+            0,   // available
+            0,   // unavailable
+            true);   // last interval available
     }
 }
 
