@@ -1,0 +1,200 @@
+---
+metadata:
+  kind: MainConfig
+  cluster: local
+  version: 1
+config:
+  yaml_config_enabled: true
+  erasure: none
+  fail_domain_type: disk
+  default_disk_type: SSD
+  self_management_config:
+    enabled: true
+  host_configs:
+  - host_config_id: 1
+    drive:
+    - path: data/pdisk-ssd-1.data
+      type: SSD
+    - path: data/pdisk-ssd-2.data
+      type: SSD
+    - path: data/pdisk-rot.data
+      type: ROT
+  hosts:
+  - host: localhost
+    port: 29501
+    host_config_id: 1
+    location:
+      data_center: "1"
+      rack: "1"
+  storage_pool_types:
+  - kind: ssd
+    pool_config:
+      box_id: 1
+      erasure_species: none
+      vdisk_kind: Default
+      kind: ssd
+      pdisk_filter:
+      - property:
+        - type: SSD
+  - kind: rot
+    pool_config:
+      box_id: 1
+      erasure_species: none
+      vdisk_kind: Default
+      kind: rot
+      pdisk_filter:
+      - property:
+        - type: ROT
+  actor_system_config:
+    executor:
+    - type: BASIC
+      threads: 9
+      spin_threshold: 1
+      name: System
+    - type: BASIC
+      threads: 16
+      spin_threshold: 1
+      name: User
+    - type: BASIC
+      threads: 7
+      spin_threshold: 1
+      name: Batch
+    - type: IO
+      threads: 1
+      name: IO
+    - type: BASIC
+      threads: 3
+      spin_threshold: 10
+      name: IC
+      time_per_mailbox_micro_secs: 100
+    scheduler:
+      resolution: 64
+      spin_threshold: 0
+      progress_threshold: 10000
+    sys_executor: 0
+    user_executor: 1
+    io_executor: 3
+    batch_executor: 2
+    service_executor:
+    - service_name: Interconnect
+      executor_id: 4
+  log_config:
+    sys_log: false
+    default_level: 3
+    entry:
+    - component: CMS_CONFIGS
+      level: 6
+  nameservice_config:
+    cluster_uuid: local
+    accept_uuid:
+    - local
+  interconnect_config:
+    start_tcp: true
+  channel_profile_config:
+    profile:
+    - profile_id: 0
+      channel:
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+    - profile_id: 1
+      channel:
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+      - erasure_species: none
+        pdisk_category: 1
+        vdisk_category: Default
+        storage_pool_kind: ssd
+  vdisk_config:
+    vdisk_kinds:
+    - kind: Log
+      base_kind: Default
+      config:
+        fresh_use_dreg: true
+        allow_keep_flags: false
+    - kind: LocalMode
+      base_kind: Default
+      config:
+        hull_comp_level0_max_ssts_at_once: 2
+        hull_comp_sorted_parts_num: 1
+  kqpconfig:
+    enable: true
+  grpc_config:
+    start_grpc_proxy: true
+    host: "[::]"
+    grpc_memory_quota_bytes: 1073741824
+    streaming_config:
+      enable_output_streams: true
+    keep_alive_enable: true
+    keep_alive_idle_timeout_trigger_sec: 90
+    keep_alive_max_probe_count: 3
+    keep_alive_probe_interval_sec: 10
+  dynamic_nameservice_config:
+    max_static_node_id: 1000
+  feature_flags:
+    enable_node_broker_delta_protocol: true
+  pqconfig:
+    enabled: false
+allowed_labels:
+  node_id:
+    type: string
+  host:
+    type: string
+  node_type:
+    type: string
+  tenant:
+    type: string
+selector_config:
+- description: dynamic tenant pool
+  selector:
+    tenant: dynamic
+  config:
+    tenant_pool_config: !inherit
+      is_enabled: true
+      slots: !append
+      - id: dynamic-slot-1
+        domain_name: Root
+        is_dynamic: true
+        type: default
+- description: Volume Preemption Off
+  selector:
+    node_type: nbs
+  config:
+    blockstore_config: !inherit
+      volume_preemption_type: PREEMPTION_NONE
+- description: Database YAML Config On
+  selector: {}
+  config:
+    feature_flags: !inherit
+      database_yaml_config_allowed: true

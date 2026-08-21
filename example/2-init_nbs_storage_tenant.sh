@@ -26,7 +26,7 @@ set -e
 # created. Tolerate that reply (and ALREADY_EXISTS on reruns), then poll
 # until the tenant path appears.
 echo "CreateTenant"
-ydbd -s grpc://localhost:$GRPC_PORT admin console execute --domain=Root --retry=10 dynamic/CreateTenant.txt || true
+ydbd -s grpc://localhost:9001 admin database /Root/NBS create --no-tx ssd:8 rot:2 || true
 
 echo "Waiting for /Root/NBS"
 created=0
@@ -56,16 +56,3 @@ echo "AllowNamedConfigs"
 ydbd -s grpc://localhost:$GRPC_PORT admin console config set --merge "$ALLOW_NAMED_CONFIGS_REQ"
 echo "SetUserAttributes(set unlimited for nonrepl disks)"
 ydbd -s grpc://localhost:$GRPC_PORT db schema user-attribute set /Root/NBS __volume_space_limit_ssd_nonrepl=$(( 999 * 1024**5 ))
-#
-# Optional: the yaml console config only sets
-# blockstore_config.volume_preemption_type=PREEMPTION_NONE for nbs
-# nodes, which matters when several nbs nodes balance volumes. Since
-# ydb 25.1 "admin config replace" validates the yaml as a complete
-# cluster config (requires domains_config etc), so this minimal file
-# is rejected - skip with a warning in that case.
-#
-echo "Set Console Config (optional)"
-if ! ydb -e grpc://localhost:$GRPC_PORT -d /Root admin config replace -f ydb/config.yaml --allow-unknown-fields; then
-    echo "WARNING: yaml console config rejected by this cluster; continuing" \
-        "without it (volume preemption stays at its default)"
-fi
