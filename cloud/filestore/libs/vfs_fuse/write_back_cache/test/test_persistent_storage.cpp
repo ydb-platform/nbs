@@ -13,11 +13,17 @@ bool TTestStorage::Empty() const
     return Data.empty();
 }
 
-void TTestStorage::Visit(const TVisitor& visitor)
+bool TTestStorage::IsCorrupted() const
+{
+    return false;
+}
+
+NProto::TError TTestStorage::Visit(const TVisitor& visitor)
 {
     for (const auto& it: List) {
         visitor(it.Tag, it.Data);
     }
+    return {};
 }
 
 ui64 TTestStorage::GetMaxSupportedAllocationByteCount() const
@@ -43,10 +49,12 @@ TResultOrError<char*> TTestStorage::Alloc(size_t size)
     return res;
 }
 
-void TTestStorage::Commit()
-{}
+NProto::TError TTestStorage::Commit()
+{
+    return {};
+}
 
-void TTestStorage::Free(const void* ptr)
+NProto::TError TTestStorage::Free(const void* ptr)
 {
     auto it = Data.find(ptr);
     Y_ENSURE(it != Data.end(), "Double free detected");
@@ -54,14 +62,16 @@ void TTestStorage::Free(const void* ptr)
     Data.erase(it);
 
     SetStats();
+    return {};
 }
 
-void TTestStorage::SetTag(const void* ptr, ui32 tag)
+NProto::TError TTestStorage::SetTag(const void* ptr, ui32 tag)
 {
     auto it = Data.find(ptr);
     Y_ENSURE(it != Data.end(), "Entry not found");
 
     it->second->Tag = tag;
+    return {};
 }
 
 void TTestStorage::UpdateStats() const

@@ -83,6 +83,7 @@ private:
 
     IPersistentStoragePtr PersistentStorage;
     TWriteBackCacheState State;
+    bool IsInitialized = false;
 
     std::atomic<bool> DrainRequested = false;
     std::atomic<bool> DrainCompleted = false;
@@ -109,60 +110,68 @@ public:
               args.ClientId.c_str()))
         , FileSystemId(args.FileSystemId)
         , FilePath(args.FilePath)
+        , PersistentStorage(CreateFileRingBufferPersistentStorage(
+              args.Stats->GetPersistentStorageStats(),
+              {.FilePath = args.FilePath, .DataCapacity = args.CapacityBytes},
+              Log,
+              LogTag))
         , State(
               *this,
+              PersistentStorage,
               Timer,
               args.Stats->GetWriteBackCacheStateStats(),
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
               BuildFlushBatchLimits(args),
               LogTag)
-    {
-        auto createPersistentStorageResult =
-            CreateFileRingBufferPersistentStorage(
-                args.Stats->GetPersistentStorageStats(),
-                {.FilePath = args.FilePath, .DataCapacity = args.CapacityBytes},
-                Log,
-                LogTag);
-
-        if (HasError(createPersistentStorageResult)) {
-            ReportWriteBackCacheCorruptionError(
-                TStringBuilder()
-                << LogTag
-                << " WriteBackCache persistent storage initialization failed: "
-                << createPersistentStorageResult.GetError()
-                << ", FilePath: " << args.FilePath.Quote());
-            return;
-        }
-
-        PersistentStorage = createPersistentStorageResult.ExtractResult();
-
-        // File ring buffer should be able to store any valid TWriteDataRequest.
-        // Inability to store it will cause this and future requests to remain
-        // in the pending queue forever (including requests with smaller size).
-        // Should fit 1 MiB of data plus some headers (assume 1 KiB is enough).
-        Y_ABORT_UNLESS(
-            PersistentStorage->GetMaxSupportedAllocationByteCount() >=
-            1024 * 1024 + 1016);
-    }
+    {}
 
     // This method should be called outside TImpl constructor because
     // it captures weak_from_this()
     void Init()
     {
-        if (!PersistentStorage) {
+        if (PersistentStorage->IsCorrupted()) {
+            ReportWriteBackCacheCorruptionError(
+                TStringBuilder()
+                << LogTag
+                << " WriteBackCache cannot be initialzed due to corrupted "
+                   "persistent storage, FilePath: "
+                << FilePath.Quote());
             return;
         }
 
-        if (!State.Init(PersistentStorage)) {
+        // File ring buffer should be able to store any valid TWriteDataRequest.
+        // Inability to store it will cause this and future requests to remain
+        // in the pending queue forever (including requests with smaller size).
+        // Should fit 1 MiB of data plus some headers (assume 1 KiB is enough).
+        const ui64 maxAllocationByteCount = 1024 * 1024 + 1016;
+
+        const ui64 maxSupportedAllocationByteCount =
+            PersistentStorage->GetMaxSupportedAllocationByteCount();
+
+        if (maxSupportedAllocationByteCount < maxAllocationByteCount) {
+            ReportWriteBackCacheInvalidConfiguration(
+                TStringBuilder() << LogTag
+                                 << " WriteBackCache cannot be initialzed "
+                                    "because MaxSupportedAllocationByteCount ("
+                                 << maxSupportedAllocationByteCount
+                                 << ") is less than the minimal allowed value ("
+                                 << maxAllocationByteCount
+                                 << "), FilePath: " << FilePath.Quote());
+            return;
+        }
+
+        if (!State.Init()) {
             ReportWriteBackCacheCorruptionError(
                 TStringBuilder()
                 << LogTag
                 << " WriteBackCache failed to deserialize requests from the "
                    "persistent storage due to corruption"
                 << ", FilePath: " << FilePath.Quote());
+            return;
         }
 
+        IsInitialized = true;
         ScheduleAutomaticFlushIfNeeded();
     }
 
@@ -206,6 +215,10 @@ public:
 
     NThreading::TFuture<NCloud::NProto::TError> Drain()
     {
+        if (!IsInitialized) {
+            return NewPromise<NCloud::NProto::TError>();
+        }
+
         if (!DrainRequested.exchange(true)) {
             STORAGE_INFO(LogTag << " Start WriteBackCache draining");
         }
@@ -236,6 +249,10 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request)
     {
+        if (!IsInitialized) {
+            return NewPromise<NProto::TReadDataResponse>();
+        }
+
         if (request->GetFileSystemId().empty()) {
             request->SetFileSystemId(callContext->FileSystemId);
         }
@@ -296,6 +313,10 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request)
     {
+        if (!IsInitialized) {
+            return NewPromise<NProto::TWriteDataResponse>();
+        }
+
         if (request->GetFileSystemId().empty()) {
             request->SetFileSystemId(callContext->FileSystemId);
         }
@@ -313,16 +334,28 @@ public:
 
     TFuture<NProto::TError> FlushNodeData(ui64 nodeId)
     {
+        if (!IsInitialized) {
+            return NewPromise<NProto::TError>();
+        }
+
         return State.AddFlushRequest(nodeId);
     }
 
     TFuture<NProto::TError> FlushAllData()
     {
+        if (!IsInitialized) {
+            return NewPromise<NProto::TError>();
+        }
+
         return State.AddFlushAllRequest();
     }
 
     TFuture<NProto::TError> ReleaseHandle(ui64 nodeId, ui64 handle)
     {
+        if (!IsInitialized) {
+            return NewPromise<NProto::TError>();
+        }
+
         return State.AddReleaseHandleRequest(nodeId, handle);
     }
 
@@ -330,6 +363,10 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request)
     {
+        if (!IsInitialized) {
+            return NewPromise<NProto::TReadDataResponse>();
+        }
+
         return ExecuteRequestUnderBarrier<NProto::TReadDataResponse>(
             request->GetNodeId(),
             [this,
@@ -346,6 +383,10 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request)
     {
+        if (!IsInitialized) {
+            return NewPromise<NProto::TWriteDataResponse>();
+        }
+
         return ExecuteRequestUnderBarrier<NProto::TWriteDataResponse>(
             request->GetNodeId(),
             [this,
@@ -362,6 +403,10 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TSetNodeAttrRequest> request)
     {
+        if (!IsInitialized) {
+            return NewPromise<NProto::TSetNodeAttrResponse>();
+        }
+
         const bool attrSizeNotAffected =
             (request->GetFlags() &
              ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) == 0;

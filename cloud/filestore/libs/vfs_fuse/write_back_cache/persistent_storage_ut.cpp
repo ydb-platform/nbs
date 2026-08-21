@@ -41,7 +41,7 @@ struct TBootstrap
 
     NProto::TError Initialize()
     {
-        auto res = CreateFileRingBufferPersistentStorage(
+        Storage = CreateFileRingBufferPersistentStorage(
             Stats,
             {.FilePath = TempFile.GetName(),
              .DataCapacity = DefaultCapacity,
@@ -49,12 +49,7 @@ struct TBootstrap
             Log,
             "[tag]");
 
-        if (HasError(res)) {
-            return res.GetError();
-        }
-
-        Storage = res.ExtractResult();
-        return {};
+        return MakeError(Storage->IsCorrupted() ? E_FAIL : S_OK);
     }
 
     void Deinitialize()
@@ -89,9 +84,9 @@ struct TBootstrap
         return HasError(allocationResult);
     }
 
-    void Free(const void* ptr) const
+    NProto::TError Free(const void* ptr) const
     {
-        Storage->Free(ptr);
+        return Storage->Free(ptr);
     }
 
     TString Dump() const
@@ -157,7 +152,7 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount->Get());
     }
 
-    Y_UNIT_TEST(ShouldThrowOnDoubleFree)
+    Y_UNIT_TEST(ShouldReturnErrorOnDoubleFree)
     {
         TBootstrap b;
 
@@ -170,11 +165,11 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         const auto* ptr2 = b.Alloc("567890");
         UNIT_ASSERT(ptr2);
 
-        b.Free(ptr2);
-        UNIT_ASSERT_EXCEPTION(b.Free(ptr2), yexception);
+        UNIT_ASSERT(!HasError(b.Free(ptr2)));
+        UNIT_ASSERT(HasError(b.Free(ptr2)));
 
-        b.Free(ptr1);
-        UNIT_ASSERT_EXCEPTION(b.Free(ptr1), yexception);
+        UNIT_ASSERT(!HasError(b.Free(ptr1)));
+        UNIT_ASSERT(HasError(b.Free(ptr1)));
     }
 
     Y_UNIT_TEST(ShouldValidateAllocationSize)
