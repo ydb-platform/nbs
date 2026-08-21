@@ -398,6 +398,7 @@ struct TSessionInfo
         subSession.OwnerGeneration = ownerGeneration;
     }
 
+    // Returns true if there are still subsessions left after removal.
     bool RemoveSubSession(ui64 seqNo)
     {
         SubSessions.erase(seqNo);
@@ -526,10 +527,9 @@ public:
 
     TSessionInfo* FindSession(const TString& sessionId) const;
 
-    // removes session with sessionid and seqno
-    // returns false if there are no more sessions
-    // with given sessionid remain
-    bool RemoveSession(
+    // Removes the subsession. If it was the last one, removes the whole
+    // session. Returns true if the session object is still alive after removal.
+    bool RemoveSubSession(
         const TString& sessionId,
         ui64 seqNo);
 

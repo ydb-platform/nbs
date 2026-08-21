@@ -820,7 +820,7 @@ void TStorageServiceActor::HandleCreateSession(
         ToString(SelfId()).c_str());
 }
 
-bool TStorageServiceActor::RemoveSession(
+bool TStorageServiceActor::RemoveSubSession(
     const TString& sessionId,
     ui64 seqNo,
     const TActorContext& ctx)
@@ -844,7 +844,7 @@ bool TStorageServiceActor::RemoveSession(
             isLastSubSession ? "true" : "false",
             ToString(SelfId()).c_str());
 
-        return State->RemoveSession(sessionId, seqNo);
+        return State->RemoveSubSession(sessionId, seqNo);
     }
     return false;
 }
@@ -1014,18 +1014,22 @@ void TStorageServiceActor::HandleSessionCreated(
                     msg->SessionSeqNo).c_str(),
                 FormatError(msg->GetError()).c_str());
 
-            if (msg->Shutdown) {
-                if (!RemoveSession(
-                        msg->SessionId,
-                        msg->SessionSeqNo,
-                        ctx))
-                {
-                    session = nullptr;
-                }
-                ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
-            } else if (!RemoveSession(msg->SessionId, msg->SessionSeqNo, ctx)) {
-                ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
+            // RemoveSubSession returns true if it did not remove the whole
+            // session object.
+            const bool sessionAlive = RemoveSubSession(
+                msg->SessionId,
+                msg->SessionSeqNo,
+                ctx);
+            if (!sessionAlive) {
                 session = nullptr;
+            }
+
+            // Shutdown means that the notification sender has already started
+            // its shutdown path, so finish it with a poison pill. For a
+            // regular failure, poison it only when this subsession was the
+            // last one and the whole session object was removed.
+            if (msg->Shutdown || !sessionAlive) {
+                ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
             }
         }
     } else {
