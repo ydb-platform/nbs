@@ -175,6 +175,7 @@ private:
                 MakeError(E_ARGUMENT, "batch-size must be greater than zero"));
         }
         size_t completed = 0;
+        size_t failed = 0;
         for (int batchStart = 0; batchStart < shardStats.size();
              batchStart += BatchSize)
         {
@@ -197,10 +198,14 @@ private:
 
             for (auto& future: futures) {
                 auto result = WaitFor(std::move(future));
+                ++completed;
+                PrintProgress(completed, shardStats.size());
+
                 if (HasError(result)) {
                     STORAGE_WARN(
                         "Diagnostic stats request failed: "
                         << FormatError(result.GetError()));
+                    ++failed;
                     continue;
                 }
 
@@ -217,13 +222,20 @@ private:
                                TStringBuilder()
                                    << "Failed to parse response json: "
                                    << result.GetOutput())));
+                    ++failed;
                     continue;
                 }
-                ++completed;
-                PrintProgress(completed, shardStats.size());
                 ProcessAccessStats(response.GetNodeStats(), accessRows);
                 ProcessLatencyStats(response.GetLatencyStats(), latencyRows);
             }
+        }
+        if (failed) {
+            STORAGE_WARN(
+                "Failed to parse response json: " << FormatError(MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Failed to collect diagnostic stats for " << failed
+                        << " of " << shardStats.size() << " shards")));
         }
     }
 
