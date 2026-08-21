@@ -17,8 +17,9 @@
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
-#include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_access_stats.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_latency_stats.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/public.h>
@@ -430,6 +431,14 @@ public:
     {
         return NodeToSessionCounters;
     }
+
+    bool UpdateLatencyStats(
+        ui64 nodeId,
+        EFileStoreRequest requestType,
+        TInstant now,
+        TDuration latency);
+
+    TVector<TNodeLatencyStats> GetLatencyStats(TInstant now, ui32 n) const;
 
     TMiscNodeStats GetMiscNodeStats() const;
     THandlesStats GetHandlesStats() const;

@@ -711,7 +711,13 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
-    if (!UpdateAccessStats(msg->NodeId, ctx.Now())) {
+    if (!UpdateAccessStats(msg->NodeId, ctx.Now()) ||
+        !UpdateLatencyStats(
+            msg->NodeId,
+            EFileStoreRequest::ReadData,
+            ctx.Now(),
+            msg->Time))
+    {
         ReportDiagnosticStatsInsertFailed();
     }
     if (msg->IsOverloaded) {
@@ -807,7 +813,13 @@ void TIndexTabletActor::HandleDescribeData(
             requestInfo->CallContext,
             ctx);
 
-        if (!UpdateAccessStats(nodeId, ctx.Now())) {
+        if (!UpdateAccessStats(nodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
+                nodeId,
+                EFileStoreRequest::DescribeData,
+                ctx.Now(),
+                ctx.Now() - requestInfo->StartedTs))
+        {
             ReportDiagnosticStatsInsertFailed();
         }
 
@@ -1076,7 +1088,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
+                args.NodeId,
+                EFileStoreRequest::DescribeData,
+                ctx.Now(),
+                ctx.Now() - args.RequestInfo->StartedTs))
+        {
             ReportDiagnosticStatsInsertFailed();
         }
 
@@ -1164,7 +1182,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now())) {
+        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
+                args.NodeId,
+                EFileStoreRequest::ReadData,
+                ctx.Now(),
+                ctx.Now() - args.RequestInfo->StartedTs))
+        {
             ReportDiagnosticStatsInsertFailed();
         }
 

@@ -938,6 +938,20 @@ void TIndexTabletActor::HandleGetDiagnosticStats(
             accessStats.LastAccessed.MicroSeconds());
     }
 
+    for (const auto& latencyStats:
+         GetLatencyStats(ctx.Now(), ev->Get()->Record.GetLimit()))
+    {
+        auto* out = response->Record.AddLatencyStats();
+        out->SetShardId(GetFileSystemId());
+        out->SetNodeId(latencyStats.NodeId);
+        out->SetRequestType(GetFileStoreRequestName(latencyStats.RequestType));
+        out->SetRequestCount(latencyStats.RequestCount);
+        out->SetTotalLatencyUs(latencyStats.TotalLatencyUs);
+        out->SetAverageLatencyDecayedUs(latencyStats.AverageLatencyDecayedUs);
+        out->SetLastAccessedTimestampUs(
+            latencyStats.LastAccessed.MicroSeconds());
+    }
+
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

@@ -250,8 +250,8 @@ message TNodeLatencyStats
     string RequestType = 2;
     uint64 NodeId = 3;
     uint64 RequestCount = 4;
-    uint64 TotalLatencyMs = 5;
-    double AverageLatencyDecayedMs = 6;
+    uint64 TotalLatencyUs = 5;
+    double AverageLatencyDecayedUs = 6;
     uint64 LastAccessedTimestampUs = 7;
 }
 

@@ -66,9 +66,12 @@ private:
         TLatencyKeyHash>;
 
     TRanking Ranking;
+    bool Enabled;
 
 public:
+    TNodeLatencyStatsTracker();
     TNodeLatencyStatsTracker(size_t maxEntries, TDuration decayHalfLife);
+    void Reset(size_t maxEntries, TDuration decayHalfLife);
     bool UpdateLatencyStats(
         ui64 nodeId,
         EFileStoreRequest requestType,

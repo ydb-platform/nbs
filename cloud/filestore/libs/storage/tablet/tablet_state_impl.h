@@ -62,6 +62,7 @@ struct TIndexTabletState::TImpl
     THandlesStats HandlesStats;
 
     TNodeAccessStatsTracker AccessTracker;
+    TNodeLatencyStatsTracker LatencyTracker;
 
     TRangeLocks RangeLocks;
     TFreshBytes FreshBytes;

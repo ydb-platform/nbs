@@ -253,6 +253,9 @@ void TIndexTabletState::LoadState(
     Impl->AccessTracker.Reset(
         config.GetMaxNodeDiagnosticEntries(),
         config.GetNodeAccessCountHalfLife());
+    Impl->LatencyTracker.Reset(
+        config.GetMaxSlowestRequestsEntries(),
+        config.GetNodeLatencyHalfLife());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
         Impl->LargeBlocks.AddDeletionMarker(deletionMarker);
@@ -280,6 +283,23 @@ TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
     TInstant now, ui32 n) const
 {
     return Impl->AccessTracker.GetStats(now, n);
+}
+
+bool TIndexTabletState::UpdateLatencyStats(
+    ui64 nodeId,
+    EFileStoreRequest requestType,
+    TInstant now,
+    TDuration latency)
+{
+    return Impl->LatencyTracker
+        .UpdateLatencyStats(nodeId, requestType, now, latency);
+}
+
+TVector<TNodeLatencyStats> TIndexTabletState::GetLatencyStats(
+    TInstant now,
+    ui32 n) const
+{
+    return Impl->LatencyTracker.GetLatencyStats(now, n);
 }
 
 void TIndexTabletState::UpdateConfig(
