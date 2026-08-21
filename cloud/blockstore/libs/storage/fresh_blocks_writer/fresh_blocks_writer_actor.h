@@ -219,6 +219,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk,                 TEvVolume)
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus,        TEvVolume)
     BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange,               TEvVolume)
+    BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlob,             TEvVolume)
 
     BLOCKSTORE_IMPLEMENT_REQUEST(GetPartCounters, TEvPartitionCommonPrivate)
 
