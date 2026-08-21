@@ -1,6 +1,6 @@
 PROGRAM(nbsd-lightweight)
 
-ALLOCATOR(TCMALLOC_256K)
+ALLOCATOR(TCMALLOC_NUMA_256K)
 
 SRCS(
     main.cpp
