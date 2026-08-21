@@ -396,9 +396,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(EnableLoadActor,                               bool,    false         )\
     xxx(MaxNodeDiagnosticEntries,                      ui32,    0             )\
-    xxx(NodeAccessCountHalfLife,              TDuration, TDuration::Minutes(0))\
+    xxx(NodeAccessCountHalfLife,                  TDuration,   {}             )\
     xxx(MaxSlowestRequestsEntries,                     ui32,    0             )\
-    xxx(NodeLatencyHalfLife,                  TDuration, TDuration::Minutes(0))\
+    xxx(NodeLatencyHalfLife,                      TDuration,   {}             )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

@@ -38,7 +38,6 @@ TNodeAccessStatsTracker::TNodeAccessStatsTracker()
           0,
           TNodeAccessComparator{},
           TNodeAccessKeyExtractor{})
-    , HalfLife()
     , Enabled(false)
 {}
 
@@ -66,7 +65,7 @@ void TNodeAccessStatsTracker::Reset(size_t maxEntries, TDuration halfLife)
 
 bool TNodeAccessStatsTracker::UpdateAccessStats(ui64 nodeId, TInstant now)
 {
-    if(!Enabled){
+    if (!Enabled) {
         return true;
     }
 

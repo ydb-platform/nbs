@@ -8,8 +8,7 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TNodeLatencyStatsTracker::TNodeLatencyStatsTracker()
-    : DecayHalfLife()
-    , Ranking(0, TNodeLatencyStatsComparator{}, TLatencyKeyExtractor{})
+    : Ranking(0, TNodeLatencyStatsComparator{}, TLatencyKeyExtractor{})
     , Enabled(false)
 {}
 
@@ -67,7 +66,7 @@ bool TNodeLatencyStatsTracker::UpdateLatencyStats(
     TInstant now,
     TDuration latency)
 {
-    if(!Enabled){
+    if (!Enabled) {
         return true;
     }
 
