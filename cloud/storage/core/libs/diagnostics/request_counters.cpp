@@ -815,9 +815,11 @@ struct TRequestCounters::TStatCounters
             case EDiagnosticsErrorKind::Success:
             case EDiagnosticsErrorKind::ErrorAborted:
             case EDiagnosticsErrorKind::ErrorFatal:
-            case EDiagnosticsErrorKind::ErrorSilent:
                 Y_DEBUG_ABORT_UNLESS(false);
                 return;
+            case EDiagnosticsErrorKind::ErrorSilent:
+                ErrorsSilent->Inc();
+                break;
             case EDiagnosticsErrorKind::Max:
                 Y_DEBUG_ABORT_UNLESS(false);
                 return;
