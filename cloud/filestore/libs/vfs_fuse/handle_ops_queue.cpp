@@ -50,6 +50,10 @@ THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
     ui64 nodeId,
     ui64 handle)
 {
+    if (RequestsToProcess.IsCorrupted()) {
+        return THandleOpsQueue::EResult::QueueIsCorrupted;
+    }
+
     NProto::TQueueEntry request;
     request.MutableDestroyHandleRequest()->SetHandle(handle);
     request.MutableDestroyHandleRequest()->SetNodeId(nodeId);
@@ -85,6 +89,11 @@ std::optional<NProto::TQueueEntry> THandleOpsQueue::Front()
 bool THandleOpsQueue::Empty() const
 {
     return RequestsToProcess.Empty();
+}
+
+bool THandleOpsQueue::IsCorrupted() const
+{
+    return RequestsToProcess.IsCorrupted();
 }
 
 void THandleOpsQueue::PopFront()
