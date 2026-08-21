@@ -878,7 +878,7 @@ message TStorageConfig
     optional uint32 MaxNodeDiagnosticEntries = 534;
 
     // Sets the time after which access count will decrease by half.
-    optional uint32 NodeAccessCountHalfLife = 535; // measured in us
+    optional uint32 NodeAccessCountHalfLife = 535; // measured in ms
 
     // Time after a tablet start during which an operation on an unknown handle
     // returns a retriable error instead of E_FS_BADHANDLE, so that a client can
@@ -891,5 +891,5 @@ message TStorageConfig
     optional uint32 MaxSlowestRequestsEntries = 537;
 
     // Sets the time after which latency of a node + request tuple will decrease by half.
-    optional uint32 NodeLatencyHalfLife = 538; // measured in us
+    optional uint32 NodeLatencyHalfLife = 538; // measured in ms
 }
