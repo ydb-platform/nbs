@@ -592,7 +592,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         for (int i = 0; i <= 32; i++) {
             TStateWithCorruptedEntryLength s(i);
             UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
-            s.RingBuffer.Visit([] (ui32, ui32, TStringBuf) {});
+            UNIT_ASSERT_VALUES_EQUAL(
+                i != 2,
+                HasError(s.RingBuffer.Visit([](ui32, ui32, TStringBuf) {})));
             UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
         }
     }
@@ -1165,8 +1167,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr1));
             UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr2));
 
-            rb->SetTag(ptr1, 1);
-            rb->SetTag(ptr2, 2);
+            UNIT_ASSERT(!HasError(rb->SetTag(ptr1, 1)));
+            UNIT_ASSERT(!HasError(rb->SetTag(ptr2, 2)));
+
+            auto setTagResult = rb->SetTag(ptr1, 8);
+            UNIT_ASSERT(HasError(setTagResult));
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, setTagResult.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(1, rb->GetTag(ptr1));
             UNIT_ASSERT_VALUES_EQUAL(2, rb->GetTag(ptr2));
