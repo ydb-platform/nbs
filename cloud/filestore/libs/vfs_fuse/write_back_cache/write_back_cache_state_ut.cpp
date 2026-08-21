@@ -113,6 +113,7 @@ struct TBootstrap
     {
         State = std::make_unique<TWriteBackCacheState>(
             Processor,
+            Storage,
             Timer,
             Stats->GetWriteBackCacheStateStats(),
             Stats->GetWriteDataRequestManagerStats(),
@@ -120,7 +121,7 @@ struct TBootstrap
             FlushBatchLimits,
             "[test]");
 
-        return State->Init(Storage);
+        return State->Init();
     }
 
     void UpdateStats() const
