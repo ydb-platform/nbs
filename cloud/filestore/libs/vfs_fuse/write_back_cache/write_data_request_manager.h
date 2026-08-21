@@ -33,9 +33,17 @@ private:
     THashSet<ui64> NodesWithBackpressure;
 
 public:
-    using TAddRequestResult = std::variant<
-        std::unique_ptr<TPendingWriteDataRequest>,
-        std::unique_ptr<TCachedWriteDataRequest>>;
+    struct TAddRequestResult
+    {
+        std::unique_ptr<TPendingWriteDataRequest> PendingRequest = nullptr;
+        std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
+    };
+
+    struct TProcessPendingRequestRequest
+    {
+        std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
+        bool Failed = false;
+    };
 
     using TCachedRequestVisitor = TFunctionRef<void(
         std::unique_ptr<TCachedWriteDataRequest> request,
@@ -52,7 +60,7 @@ public:
         IWriteDataRequestManagerStatsPtr stats);
 
     // Reads state from the persistent storage
-    bool Init(const TCachedRequestVisitor& visitor);
+    NProto::TError Init(const TCachedRequestVisitor& visitor);
 
     bool HasPendingRequests() const;
     bool HasPendingOrUnflushedRequests() const;
@@ -67,33 +75,39 @@ public:
     ui64 GetMaxUnflushedSequenceId() const;
 
     /**
-     * Adds a WriteData request to the storage.
+     * Adds a WriteData request to the persistent storage.
      *
-     * Returns std::unique_ptr<TCachedWriteDataRequest> when the request is
-     * successfully stored in the persistent storage.
+     * Returns result with non-empty TAddRequestResult::CachedRequest if the
+     * request has been successfully stored in the storage.
      *
-     * Returns std::unique_ptr<TPendingWriteDataRequest> when the storage is
-     * full or backpressure is in effect, and the request is added to the
-     * pending queue.
+     * Returns result with non-empty TAddRequestResult::PendingRequest if the
+     * the storage is full or backpressure is in effect, and the request has
+     * been added to the pending queue.
+     *
+     * Returns empty result if the storage is in failed state.
      */
-    TAddRequestResult AddRequest(
+    [[nodiscard]] TAddRequestResult AddRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     /**
-     * Takes a front request from the pending queue and tries to store it into
+     * Takes front request from the pending queue and tries to store it into
      * the persistent storage.
      *
-     * Returns std::unique_ptr<TCachedWriteDataRequest> if the request is
-     * successfully processed.
+     * Returns result with non-empty TAddRequestResult::CachedRequest if the
+     * front request has been successfully stored in the storage.
      *
-     * Returns nullptr if there are no pending requests or the persistent
-     * storage is full or backpressure is in effect.
+     * Returns result with empty TAddRequestResult::CachedRequest and
+     * TAddRequestResult::Failed == false if the storage is full, backpressure
+     * is in effect or the pending queue is empty.
+     *
+     * Returns result with empty TAddRequestResult::CachedRequest and
+     * TAddRequestResult::Failed == true if the storage is in failed state.
      */
-    std::unique_ptr<TCachedWriteDataRequest> TryProcessPendingRequest();
+    [[nodiscard]] TProcessPendingRequestRequest TryProcessPendingRequest();
 
     // Takes and removes front request from the pending queue.
     // Returns the removed request or nullptr if there are no pending requests.
-    TPendingWriteDataRequest* TryPopFrontPendingRequest();
+    [[nodiscard]] TPendingWriteDataRequest* TryPopFrontPendingRequest();
 
     // Removes the request from the pending queue
     void Remove(std::unique_ptr<TPendingWriteDataRequest> request);
@@ -101,18 +115,29 @@ public:
     /**
      * Marks the request as flushed
      * It continues residing in the persistent storage until Evict is called
+     *
+     * Returns true on success
+     * Returns false on invalid argument or corrupted state
      */
-    void SetFlushed(TCachedWriteDataRequest* request);
+    [[nodiscard]] bool SetFlushed(TCachedWriteDataRequest* request);
 
     /**
      * Marks the request as related to a released handle and stores this in
      * the persistent storage.
      * This allows the request to be properly handled after restart.
+     *
+     * Returns true on success
+     * Returns false on invalid argument or corrupted state
      */
-    void SetHandleReleased(TCachedWriteDataRequest* request);
+    [[nodiscard]] bool SetHandleReleased(TCachedWriteDataRequest* request);
 
-    // Removes previously flushed request from the persistent storage
-    void Evict(std::unique_ptr<TCachedWriteDataRequest> request);
+    /**
+     * Removes previously flushed request from the persistent storage
+     *
+     * Returns true on success
+     * Returns false on invalid argument or corrupted state
+     */
+    [[nodiscard]] bool Evict(std::unique_ptr<TCachedWriteDataRequest> request);
 
     // Prevent from adding new requests to the unflushed queue for the node
     // Returns true if backpressure was not previously set, false otherwise
@@ -125,7 +150,7 @@ public:
     void UpdateStats() const;
 
 private:
-    std::unique_ptr<TCachedWriteDataRequest> TryStoreRequestInPersistentStorage(
+    TProcessPendingRequestRequest TryStoreRequestInPersistentStorage(
         ui64 sequenceId,
         TInstant time,
         const NProto::TWriteDataRequest& request);

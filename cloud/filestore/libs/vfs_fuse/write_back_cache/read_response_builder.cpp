@@ -346,6 +346,10 @@ TReadResponseBuilder::TryFullyServeFromCache(
     TNodeCachedDataPin pin) const
 {
     auto cachedData = state.GetCachedData(NodeId, Offset, Length, pin);
+    if (cachedData.Failed) {
+        return std::nullopt;
+    }
+
     Validate(cachedData, Length);
 
     ui64 contiguousCachedDataByteCount = 0;
@@ -371,6 +375,10 @@ bool TReadResponseBuilder::AugmentResponseWithCachedData(
     TNodeCachedDataPin pin) const
 {
     auto cachedData = state.GetCachedData(NodeId, Offset, Length, pin);
+    if (cachedData.Failed) {
+        return false;
+    }
+
     Validate(cachedData, Length);
 
     AugmentResponseWithCachedData(response, cachedData);

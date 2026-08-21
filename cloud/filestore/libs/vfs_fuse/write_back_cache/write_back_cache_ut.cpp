@@ -13,6 +13,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer_accessor.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -2766,6 +2767,113 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldReportStatsWhenFileRingBufferIsCorrupted)
+    {
+        TBootstrap b;
+
+        b.TempFileHandle.Pwrite("Corrupt cache", 13, 0);
+        b.TempFileHandle.Flush();
+
+        b.RecreateCache();
+
+        b.ModuleStats->UpdateStats(TInstant::Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Storage.Corrupted->Get());
+    }
+
+    void TestHangWhenFileRingBufferIsCorrupted(TBootstrap& b)
+    {
+        auto writeFuture = b.WriteToCache(1, 0, "abc");
+        auto readFuture = b.ReadFromCache(1, 0, 3);
+        auto flushFuture = b.Cache.FlushNodeData(1);
+        auto flushAllFuture = b.Cache.FlushAllData();
+        auto releaseHandleFuture = b.Cache.ReleaseHandle(1, 101);
+
+        auto writeRequest = std::make_shared<NProto::TWriteDataRequest>();
+        writeRequest->SetNodeId(1);
+        writeRequest->SetHandle(101);
+        writeRequest->SetOffset(0);
+        writeRequest->SetBuffer("abc");
+
+        auto directWriteFuture =
+            b.Cache.WriteDataDirect(b.CallContext, std::move(writeRequest));
+
+        auto readRequest = std::make_shared<NProto::TReadDataRequest>();
+        readRequest->SetNodeId(1);
+        readRequest->SetHandle(101);
+        readRequest->SetOffset(0);
+        readRequest->SetLength(3);
+
+        auto directReadFuture =
+            b.Cache.ReadDataDirect(b.CallContext, std::move(readRequest));
+
+        auto setNodeAttrRequest =
+            std::make_shared<NProto::TSetNodeAttrRequest>();
+        setNodeAttrRequest->SetFlags(
+            ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE));
+        setNodeAttrRequest->SetNodeId(1);
+
+        auto setNodeAttrFuture =
+            b.Cache.SetNodeAttr(b.CallContext, std::move(setNodeAttrRequest));
+
+        Sleep(TDuration::Seconds(1));
+
+        UNIT_ASSERT(!writeFuture.HasValue());
+        UNIT_ASSERT(!readFuture.HasValue());
+        UNIT_ASSERT(!flushFuture.HasValue());
+        UNIT_ASSERT(!flushAllFuture.HasValue());
+        UNIT_ASSERT(!releaseHandleFuture.HasValue());
+        UNIT_ASSERT(!directWriteFuture.HasValue());
+        UNIT_ASSERT(!directReadFuture.HasValue());
+        UNIT_ASSERT(!setNodeAttrFuture.HasValue());
+    }
+
+    Y_UNIT_TEST(ShouldHangWhenFileRingBufferIsCorruptedAtInitialization)
+    {
+        TBootstrap b;
+
+        b.TempFileHandle.Pwrite("Corrupt cache", 13, 0);
+        b.TempFileHandle.Flush();
+
+        b.RecreateCache();
+
+        TestHangWhenFileRingBufferIsCorrupted(b);
+    }
+
+    Y_UNIT_TEST(ShouldHangWhenFileRingBufferBecomesCorruptedAtFlush)
+    {
+        TBootstrap b;
+
+        b.WriteToCacheSync(1, 10, "def");
+        b.WriteToCacheSync(2, 0, "abc");
+
+        {
+            TFileMapFileRingBufferAccessor accessor(
+                b.TempFileHandle.GetName(),
+                EFileRingBufferAccessorValidationMode::Normal,
+                TMemoryMapCommon::EOpenModeFlag::oRdWr);
+
+            UNIT_ASSERT(!HasError(accessor.Map()));
+            UNIT_ASSERT(
+                EFileRingBufferAccessorValidationStatus::Success ==
+                accessor.ValidateAndInitialize());
+
+            auto eh = accessor.GetDataProcessor()->ReadEntryHeader(0);
+            eh.DataSize = accessor.GetCapabilities().MaxAllocationByteCount;
+            UNIT_ASSERT(accessor.GetDataProcessor()->WriteEntryHeader(0, eh));
+        }
+
+        // Corruption should have been detected on an attempt to remove the
+        // front element after flushing the data
+        auto flushFuture = b.Cache.FlushNodeData(1);
+
+        TestHangWhenFileRingBufferIsCorrupted(b);
+
+        // Flush is succeded because flush completion happens before data
+        // eviction
+        UNIT_ASSERT(flushFuture.HasValue());
     }
 }
 

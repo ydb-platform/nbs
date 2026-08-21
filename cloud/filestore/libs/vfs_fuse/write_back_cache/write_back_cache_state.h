@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hanging_requests.h"
 #include "node_cache.h"
 #include "node_state.h"
 #include "node_state_holder.h"
@@ -20,6 +21,8 @@
 #include <util/generic/function_ref.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
+
+#include <atomic>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -54,7 +57,6 @@ private:
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const ITimerPtr Timer;
     const IWriteBackCacheStateStatsPtr Stats;
-    const IWriteDataRequestManagerStatsPtr RequestManagerStats;
     const TFlushBatchLimits FlushBatchLimits;
     const TString LogTag;
 
@@ -79,6 +81,10 @@ private:
     TIntrusiveList<TFlushRequest> FlushRequests;
     TIntrusiveList<TReleaseHandleRequest> ReleaseHandleRequests;
 
+    // Requests that are hanging due to WriteBackCache failed state
+    THangingRequests HangingRequests;
+
+    bool FailedFlag = false;
     bool DrainingMode = false;
 
 public:
@@ -86,6 +92,7 @@ public:
 
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
+        IPersistentStoragePtr persistentStorage,
         ITimerPtr timer,
         IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
@@ -93,8 +100,8 @@ public:
         const TFlushBatchLimits& flushBatchLimits,
         TString logTag);
 
-    // Read state from the persistent storage
-    bool Init(IPersistentStoragePtr persistentStorage);
+    // Reads state from the persistent storage and schedules node flush
+    NProto::TError Init();
 
     // Prevent new WriteData requests from being added to the cache - they
     // will fail with E_REJECTED error.
@@ -118,6 +125,8 @@ public:
     NThreading::TFuture<NCloud::NProto::TError> AddReleaseHandleRequest(
         ui64 nodeId,
         ui64 handle);
+
+    NThreading::TFuture<NProto::TReadDataResponse> AddHandingReadDataResponse();
 
     void TriggerPeriodicFlushAll();
 
@@ -245,6 +254,8 @@ private:
         const NCloud::NProto::TError& error);
 
     void FailAllPendingRequests(const NCloud::NProto::TError& error);
+
+    void SetFailedFlag();
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
