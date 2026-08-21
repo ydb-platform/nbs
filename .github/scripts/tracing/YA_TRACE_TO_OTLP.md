@@ -681,6 +681,31 @@ prefixes remain a fallback for older OTLP bundles. Only HTTP(S) prefixes without
 credentials, queries, fragments, or NUL bytes are retained; relative artifact
 paths are validated and encoded in the browser before a link is created.
 
+## Raw-input bundle and nonblocking CI behavior
+
+Python writes only `trace-inputs.files`, a NUL-delimited list of selected trace
+paths relative to `ya-out`. It never invokes `tar`.
+
+[`pack_ya_trace_inputs.sh`](pack_ya_trace_inputs.sh) creates
+`trace-inputs.tar.gz` in shell code. It uses `--null` and
+`--verbatim-files-from` so newlines, leading dashes, and other unusual path
+characters are treated literally. Trace files are stored below `ya-out/`; the
+event log is stored at the archive root. No separate raw-input manifest is
+needed because conversion metadata already lives in the OTLP/report manifest.
+
+[`render_ya_trace_bundle.sh`](render_ya_trace_bundle.sh) is the shared command
+used by both build and test actions. It:
+
+1. removes stale trace outputs;
+2. runs the Python converter;
+3. runs the shell packer even if Python failed;
+4. emits GitHub warnings, links, and outputs according to available files;
+5. returns success for renderer/packer failures so diagnostics cannot change
+   the build/test result.
+
+If Python fails before writing its path list, the packer independently finds
+`ytest.report.trace` files so the raw evidence can still be uploaded.
+
 ## Running the converter directly
 
 Install requirements and expose `.github` as the Python package root:
@@ -705,5 +730,24 @@ python3 -m scripts.tracing.ya_trace_report \
   --build-preset relwithdebinfo \
   --test-target cloud/blockstore \
   --retry 1 \
+  --operation tests
+```
+
+Or use the same nonblocking bundle command as CI:
+
+```bash
+bash .github/scripts/tracing/render_ya_trace_bundle.sh \
+  --report-dir /path/to/trace-summary \
+  --ya-out /path/to/ya-out \
+  --evlog /path/to/ya_evlog.jsonl \
+  --warning-title "Trace report" \
+  --html-url https://artifacts.example/trace.html \
+  --otlp-url https://artifacts.example/trace.otlp.jsonl.gz \
+  --inputs-url https://artifacts.example/trace-inputs.tar.gz \
+  -- \
+  --attempt-start-ns 1753952400000000000 \
+  --attempt-end-ns 1753952700000000000 \
+  --exit-code 0 \
+  --component cloud/blockstore \
   --operation tests
 ```
