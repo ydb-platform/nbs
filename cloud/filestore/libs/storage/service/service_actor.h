@@ -195,10 +195,6 @@ private:
         ui64 seqNo,
         const NActors::TActorContext& ctx);
 
-    void RemoveSession(
-        const TString& sessionId,
-        const NActors::TActorContext& ctx);
-
     static ui32 ExtractShardNoSafe(
         const NProto::TFileStore& filestore,
         ui64 entityId);

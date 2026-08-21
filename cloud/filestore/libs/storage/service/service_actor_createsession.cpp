@@ -849,21 +849,6 @@ bool TStorageServiceActor::RemoveSession(
     return false;
 }
 
-void TStorageServiceActor::RemoveSession(
-    const TString& sessionId,
-    const TActorContext& ctx)
-{
-    if (auto* session = State->FindSession(sessionId); session) {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE,
-            "[s:%s]remove session, subsessions=%u self %s",
-            sessionId.Quote().c_str(),
-            session->GetSubSessionCount(),
-            ToString(SelfId()).c_str());
-
-        State->RemoveSession(sessionId);
-    }
-}
-
 void TStorageServiceActor::HandleSessionCreated(
     const TEvServicePrivate::TEvSessionCreated::TPtr& ev,
     const TActorContext& ctx)
@@ -1030,9 +1015,14 @@ void TStorageServiceActor::HandleSessionCreated(
                 FormatError(msg->GetError()).c_str());
 
             if (msg->Shutdown) {
-                RemoveSession(msg->SessionId, ctx);
+                if (!RemoveSession(
+                        msg->SessionId,
+                        msg->SessionSeqNo,
+                        ctx))
+                {
+                    session = nullptr;
+                }
                 ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
-                session = nullptr;
             } else if (!RemoveSession(msg->SessionId, msg->SessionSeqNo, ctx)) {
                 ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
                 session = nullptr;

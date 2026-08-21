@@ -253,17 +253,6 @@ bool TStorageServiceState::RemoveSession(
     return true;
 }
 
-void TStorageServiceState::RemoveSession(const TString& sessionId)
-{
-    auto it = SessionById.find(sessionId);
-    if (it != SessionById.end()) {
-        auto* session = it->second;
-        std::unique_ptr<TSessionInfo> holder(session);
-        SessionById.erase(session->SessionId);
-        session->Unlink();
-    }
-}
-
 bool TStorageServiceState::IsLastSubSession(
     const TString& sessionId,
     ui64 seqNo)
