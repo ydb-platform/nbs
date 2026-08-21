@@ -24,6 +24,13 @@ TExecutor::TExecutor(
 
 void TExecutor::Shutdown()
 {
+    const ui32 assigned = GetAssignedVhostQueuesCount();
+    Y_DEBUG_ABORT_UNLESS(
+        assigned == 0,
+        "Executor %s has %d assigned vhost queues",
+        Name.c_str(),
+        assigned);
+
     VhostQueue->Stop();
     Join();
 }

@@ -295,6 +295,19 @@ message TServerConfig
     // Certificate refresh period (in milliseconds) for automatic TLS certificate
     // reloading. Zero disables periodic certificate reloading.
     optional uint32 RefreshCertsPeriod = 134;
+
+    // Number of vhost server threads used to serve a single endpoint, per
+    // media kind. Zero (the default) means a single thread per endpoint.
+    //
+    // The actual number of threads is clamped by the number of virtqueues the
+    // guest has configured for the device (VhostQueuesCount of the
+    // StartEndpoint request) and by VhostThreadsCount - the total size of the
+    // vhost thread pool.
+    optional uint32 VhostEndpointThreadCountSSD = 135;
+    optional uint32 VhostEndpointThreadCountHDD = 136;
+    optional uint32 VhostEndpointThreadCountNonReplicated = 137;
+    optional uint32 VhostEndpointThreadCountMirror2 = 138;
+    optional uint32 VhostEndpointThreadCountMirror3 = 139;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
