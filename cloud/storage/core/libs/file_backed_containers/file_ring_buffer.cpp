@@ -521,14 +521,14 @@ public:
 
     TResultOrError<char*> Alloc(size_t size)
     {
+        if (!ValidateAccess("Alloc")) {
+            return MakeBufferIsCorruptError();
+        }
+
         if (CurrentAllocation.HasValue()) {
             return MakeError(
                 E_INVALID_STATE,
                 "Previous allocation is not committed");
-        }
-
-        if (!ValidateAccess("Alloc")) {
-            return MakeBufferIsCorruptError();
         }
 
         if (size == 0) {
@@ -626,7 +626,12 @@ public:
             CurrentAllocation.ActualPos,
             CurrentAllocation.Header);
 
-        Y_ABORT_UNLESS(written);
+        if (!written) {
+            SetCorrupted(
+                TStringBuilder() << "Cannot write entry header at "
+                                 << CurrentAllocation.ActualPos);
+            return MakeBufferIsCorruptError();
+        }
 
         // A compiler-only fence is sufficient here because there is no
         // concurrent access to the memory and we just need to ensure
@@ -657,11 +662,24 @@ public:
         auto eh = Data()->ReadEntryHeader(it->second);
         eh.DataChecksum = 0;
         eh.FreeFlag = true;
-        Data()->WriteEntryHeader(it->second, eh);
+
+        bool written = Data()->WriteEntryHeader(it->second, eh);
+
+        if (!written) {
+            SetCorrupted(
+                TStringBuilder() << "Cannot write entry header at "
+                                 << CurrentAllocation.ActualPos);
+            return MakeBufferIsCorruptError();
+        }
 
         EntryMap.erase(it);
 
         EraseFreeEntriesFromFront();
+
+        if (IsCorrupted()) {
+            // EraseFreeEntriesFromFront() may set IsCorrupted flag
+            return MakeBufferIsCorruptError();
+        }
 
         return {};
     }

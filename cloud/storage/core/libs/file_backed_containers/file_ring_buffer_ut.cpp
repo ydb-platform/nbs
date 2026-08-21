@@ -663,6 +663,37 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
     }
 
+    FILE_RING_BUFFER_TEST(ShouldDetectCorruptionOnPopFront)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 42;
+        TFileRingBuffer rb(f.GetName(), len, 0, ver);
+
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("abc"));
+        UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("def"));
+
+        {
+            // Corrupt the buffer
+            TFileMapFileRingBufferAccessor accessor(
+                f.GetName(),
+                EFileRingBufferAccessorValidationMode::Normal,
+                TMemoryMapCommon::EOpenModeFlag::oRdWr);
+
+            UNIT_ASSERT(!HasError(accessor.Map()));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                EFileRingBufferAccessorValidationStatus::Success,
+                accessor.ValidateAndInitialize());
+
+            auto eh = accessor.GetDataProcessor()->ReadEntryHeader(0);
+            UNIT_ASSERT_VALUES_EQUAL(3, eh.DataSize);
+            eh.DataSize = 1000;
+            accessor.GetDataProcessor()->WriteEntryHeader(0, eh);
+        }
+
+        UNIT_ASSERT(HasError(rb.PopFront()));
+    }
+
     FILE_RING_BUFFER_TEST(ShouldGetRawCapacity)
     {
         const auto f = TTempFileHandle();
