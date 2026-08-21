@@ -18,6 +18,7 @@ from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from google.protobuf.text_format import MessageToBytes, MessageToString
 from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
 from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig
+from contrib.ydb.core.protos.config_pb2 import TBlobStorageConfig
 from contrib.ydb.core.protos.config_pb2 import TDomainsConfig
 from contrib.ydb.core.protos.config_pb2 import TDynamicNameserviceConfig
 from contrib.ydb.core.protos.config_pb2 import TLogConfig
@@ -65,6 +66,7 @@ class LocalNbs(Daemon):
             grpc_ssl_port=None,
             access_service_type=AccessService,
             log_config=None,
+            bs_failure_probability=None,
     ):
 
         if dynamic_storage_pools is not None:
@@ -124,6 +126,7 @@ class LocalNbs(Daemon):
         self.compute_config = compute_config
         self.kms_config = kms_config
         self.log_config = log_config
+        self.__bs_failure_probability = bs_failure_probability
 
         self.__proto_configs = {
             "diag.txt": self.__generate_diag_txt(),
@@ -148,6 +151,10 @@ class LocalNbs(Daemon):
 
         if kms_config is not None:
             self.__proto_configs["kms.txt"] = kms_config
+
+        if bs_failure_probability is not None:
+            self.__proto_configs["bs.txt"] = self.__generate_bs_txt(
+                bs_failure_probability)
 
         if discovery_config is not None:
             self.__proto_configs["discovery.txt"] = discovery_config
@@ -446,6 +453,14 @@ ModifyScheme {
         auth_config.AccessServiceType = self.__access_service.access_service_type
         return auth_config
 
+    def __generate_bs_txt(self, bs_failure_probability):
+        blob_storage_config = TBlobStorageConfig()
+        failure_injection_config = (
+            blob_storage_config.ServiceSet.FailureInjectionConfig
+        )
+        failure_injection_config.FailureProbability = bs_failure_probability
+        return blob_storage_config
+
     def __generate_dr_proxy_txt(self):
         config = TDiskRegistryProxyConfig()
         config.Owner = 16045690984503103501
@@ -620,6 +635,9 @@ ModifyScheme {
 
         if 'root-kms.txt' in self.__proto_configs:
             command += ["--root-kms-file", os.path.join(self.config_path(), "root-kms.txt")]
+
+        if self.__bs_failure_probability is not None:
+            command += ["--bs-file", os.path.join(self.config_path(), "bs.txt")]
 
         append_conf_file_arg(command, self.config_path(),
                              "--location-file", "location.txt")
