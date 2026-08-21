@@ -127,6 +127,14 @@ private:
     void RenderConfig(TStringStream& out) const;
     void RenderState(TStringStream& out) const;
 
+    static void BuildAdvisoryPushButton(
+        IOutputStream& out,
+        const TString& diskId);
+
+    static void BuildAdvisoryPullButton(
+        IOutputStream& out,
+        const TString& diskId);
+
     void UpdateVolumeToPush();
     void UpdateVolumeToPull(TInstant now);
 
