@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -315,13 +316,9 @@ void TDiskRegistryActor::HandleUpdateVolumeConfigResponse(
         return;
     }
 
-    auto code = error.GetCode();
-    const auto statusPathDoesNotExist =
-        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist);
-
     if (kind == EErrorKind::ErrorRetriable
-            || code == E_ABORTED
-            || code == statusPathDoesNotExist)
+            || error.GetCode() == E_ABORTED
+            || IsDiskNotFoundError(error))
     {
         auto* request = new TEvDiskRegistryPrivate::TEvUpdateVolumeConfigRequest(diskId);
 

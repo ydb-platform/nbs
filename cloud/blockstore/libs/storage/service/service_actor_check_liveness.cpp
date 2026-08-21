@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
 
@@ -99,17 +100,7 @@ void TVolumeLivenessCheckActor::HandleDescribeResponse(
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    bool deleted = false;
-
-    if (FAILED(error.GetCode()) &&
-        FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD)
-    {
-        const auto status =
-            static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
-        deleted = status == NKikimrScheme::StatusPathDoesNotExist;
-    }
-
-    if (deleted) {
+    if (IsDiskNotFoundError(error)) {
         DeletedVolumes.emplace_back(VolumesToCheck[ev->Cookie]);
     } else {
         LiveVolumes.emplace_back(VolumesToCheck[ev->Cookie]);
