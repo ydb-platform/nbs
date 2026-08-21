@@ -103,8 +103,12 @@ struct TFixture: public NUnitTest::TBaseFixture
         Logging = CreateLoggingService(
             "console",
             {.FiltrationLevel = TLOG_RESOURCES});
-        Server =
-            CreateServer(TNetworkAddress{Port}, Logging, Executor, Backend);
+        Server = CreateServer(
+            TNetworkAddress{Port},
+            "SERVER",
+            Logging,
+            Executor,
+            Backend);
 
         Logging->Start();
         Executor->Start();
