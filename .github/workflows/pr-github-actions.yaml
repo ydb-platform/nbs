@@ -291,7 +291,7 @@ jobs:
           tool: flake8
           report_name: ga-scripts-flake8
           show_summary_table: "false"
-          command: flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E704,W503 .github/
+          command: flake8 --max-line-length 128 --ignore Q000,D100,D101,D102,D103,D104,D105,D106,D107,D401,D205,D400,E203,E704,W503 .github/
 
       - name: black
         id: black
@@ -314,7 +314,8 @@ jobs:
               --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
               --self-contained-html \
               .github/scripts/*_test.py \
-              .github/scripts/tests
+              .github/scripts/tests \
+              .github/scripts/tracing
       - name: Upload pytest test results artifact
         if: ${{ env.ACT != 'true' && always() }}
         id: upload
@@ -437,6 +438,24 @@ jobs:
               status=1
           fi
           exit "$status"
+  javascript:
+    needs: [set-env, check-running-allowed, check-trigger-label]
+    if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: ".github"
+          clean: true
+      - name: set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: trace report JavaScript tests
+        run: node .github/scripts/tracing/trace_report_js_test.js
+
   workflows:
     needs: [set-env, check-running-allowed, check-trigger-label]
     if: needs.check-running-allowed.outputs.result == 'true' && needs.check-trigger-label.outputs.allowed == 'true'

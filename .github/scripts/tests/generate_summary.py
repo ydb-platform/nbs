@@ -454,6 +454,7 @@ def render_testlist_html(
     fn: str,
     summary_url: str,
     build_error_log_url: str = "",
+    trace_report_url: str = "",
 ) -> None:
     templates_path = Path(__file__).with_name("templates")
 
@@ -482,6 +483,7 @@ def render_testlist_html(
         summary_url=summary_url,
         build_error_log_url=build_error_log_url,
         build_error_target_url=build_error_target_url,
+        trace_report_url=trace_report_url,
     )
 
     with open(fn, "w") as fp:
@@ -557,6 +559,7 @@ def gen_summary(
     summary_out_folder: str,
     paths: list[TitlePathTriplet],
     build_error_log_url: str = "",
+    trace_report_url: str = "",
 ) -> TestSummary:
     summary = TestSummary()
 
@@ -577,6 +580,7 @@ def gen_summary(
             os.path.join(summary_out_folder, html_fn),
             summary_url=summary_url_prefix,
             build_error_log_url=build_error_log_url,
+            trace_report_url=trace_report_url,
         )
         summary_line.add_report(html_fn, report_url)
         summary.add_line(summary_line)
@@ -1377,6 +1381,7 @@ def main() -> None:
     )
     parser.add_argument("--test-time", default="0", required=False)
     parser.add_argument("--build-error-log-url", default="", required=False)
+    parser.add_argument("--trace-report-url", default="", required=False)
     parser.add_argument(
         "--workload-status",
         choices=("in_progress", "completed"),
@@ -1405,6 +1410,7 @@ def main() -> None:
             args.summary_out_path,
             title_path,
             build_error_log_url=args.build_error_log_url,
+            trace_report_url=args.trace_report_url,
         )
         write_summary(
             summary,
