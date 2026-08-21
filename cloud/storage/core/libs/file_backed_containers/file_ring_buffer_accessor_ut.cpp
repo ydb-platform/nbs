@@ -142,6 +142,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static bool operator==(bool lhs, const TResultOrError<bool>& rhs)
+{
+    return !HasError(rhs) && lhs == rhs.GetResult();
+}
+
 Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
 {
     Y_UNIT_TEST(ShouldValidateEmptyFile)
@@ -506,9 +511,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                UNIT_ASSERT(rb.PushBack("ABC"));
-                UNIT_ASSERT(rb.PushBack("123"));
-                UNIT_ASSERT(rb.SetMetadata("meta"));
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ABC"));
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("123"));
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.SetMetadata("meta"));
             },
             ver);
 
@@ -523,14 +528,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                while (rb.PushBack("ABCD")) {
+                while (rb.PushBack("ABCD").GetResult()) {
                     // Add elements until the buffer is full
                 }
 
                 rb.PopFront();
                 rb.PopFront();
 
-                UNIT_ASSERT(rb.PushBack("wrap"));
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("wrap"));
             },
             ver);
 
@@ -543,7 +548,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                while (rb.PushBack("ABCD")) {
+                while (rb.PushBack("ABCD").GetResult()) {
                     // Add elements until the buffer is full
                 }
 
@@ -586,7 +591,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
     {
         TBootstrap b;
         b.Execute(
-            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC")); },
+            [](TFileRingBuffer& rb)
+            { UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ABC")); },
             ver);
 
         b.AssertValidateSuccess();
@@ -602,7 +608,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
     {
         TBootstrap b;
         b.Execute(
-            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC")); },
+            [](TFileRingBuffer& rb)
+            { UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ABC")); },
             ver);
 
         b.AssertValidateSuccess();
@@ -618,7 +625,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
     {
         TBootstrap b;
         b.Execute(
-            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC")); },
+            [](TFileRingBuffer& rb)
+            { UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ABC")); },
             ver);
 
         b.AssertValidateSuccess();
@@ -632,7 +640,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
     {
         TBootstrap b;
         b.Execute(
-            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC")); },
+            [](TFileRingBuffer& rb)
+            { UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ABC")); },
             ver);
 
         b.AssertValidateSuccess();
@@ -656,8 +665,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                UNIT_ASSERT(rb.PushBack("01234567"));
-                UNIT_ASSERT(rb.PushBack("ABC"));
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("01234567"));
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ABC"));
             },
             ver);
 
@@ -703,8 +712,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                UNIT_ASSERT(rb.PushBack("ABC"));
-                UNIT_ASSERT(rb.SetMetadata("123"));
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("ABC"));
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.SetMetadata("123"));
             },
             ver);
 

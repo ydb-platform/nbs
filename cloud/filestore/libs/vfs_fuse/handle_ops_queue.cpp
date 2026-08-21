@@ -37,7 +37,8 @@ THandleOpsQueue::EResult THandleOpsQueue::AddCreateRequest(
         return THandleOpsQueue::EResult::SerializationError;
     }
 
-    if (!RequestsToProcess.PushBack(result)) {
+    auto pushPackResult = RequestsToProcess.PushBack(result);
+    if (HasError(pushPackResult) || !pushPackResult.GetResult()) {
         Stats->IncrementOverflowErrorCount();
         return THandleOpsQueue::EResult::QueueOverflow;
     }
@@ -60,7 +61,8 @@ THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
         return THandleOpsQueue::EResult::SerializationError;
     }
 
-    if (!RequestsToProcess.PushBack(result)) {
+    auto pushPackResult = RequestsToProcess.PushBack(result);
+    if (HasError(pushPackResult) || !pushPackResult.GetResult()) {
         Stats->IncrementOverflowErrorCount();
         return THandleOpsQueue::EResult::QueueOverflow;
     }
@@ -71,7 +73,13 @@ THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
 
 std::optional<NProto::TQueueEntry> THandleOpsQueue::Front()
 {
-    const auto req = RequestsToProcess.Front();
+    const auto frontResult = RequestsToProcess.Front();
+    if (HasError(frontResult)) {
+        Stats->IncrementParseErrorCount();
+        return std::nullopt;
+    }
+
+    const auto req = frontResult.GetResult();
 
     NProto::TQueueEntry entry;
     if (!entry.ParseFromArray(req.data(), req.size())) {
