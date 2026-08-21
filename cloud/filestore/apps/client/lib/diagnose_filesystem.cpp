@@ -255,8 +255,7 @@ private:
 
         Cout << '\r' << "Collecting access and latency stats ["
              << TString(filled, '#') << TString(width - filled, '_') << "] "
-             << completed << '/' << total
-             << Flush;
+             << completed << '/' << total << Flush;
 
         if (completed == total) {
             Cout << Endl;
@@ -391,7 +390,8 @@ private:
 
         Cout << Endl << ConsoleMagenta << title << ConsoleEnd << Endl;
 
-        auto printRow = [&](const TTableRow& row, bool highlighted) {
+        auto printRow = [&](const TTableRow& row, bool highlighted)
+        {
             if (highlighted) {
                 Cout << ConsoleRed;
             }
@@ -450,20 +450,26 @@ private:
         TVector<double> values;
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            tableRows.push_back({
-                ToString(i + 1),
-                row.ShardId,
-                ToString(row.CurrentLoad),
-                ToString(row.Suffer),
-                ToString(row.UsedBlocksCount),
-                ToString(row.TotalBlocksCount),
-                ToString(row.UsedNodesCount)});
+            tableRows.push_back(
+                {ToString(i + 1),
+                 row.ShardId,
+                 ToString(row.CurrentLoad),
+                 ToString(row.Suffer),
+                 ToString(row.UsedBlocksCount),
+                 ToString(row.TotalBlocksCount),
+                 ToString(row.UsedNodesCount)});
             values.push_back(row.CurrentLoad);
         }
 
         PrintTable(
             TStringBuilder() << "Shard stats (top " << limit << ")",
-            {"#", "Shard", "Load", "Suffer", "Used blocks", "Total blocks", "Nodes"},
+            {"#",
+             "Shard",
+             "Load",
+             "Suffer",
+             "Used blocks",
+             "Total blocks",
+             "Nodes"},
             tableRows,
             HighlightMaximums(values));
     }
@@ -474,14 +480,14 @@ private:
         TVector<double> values;
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            tableRows.push_back({
-                ToString(i + 1),
-                ToString(row.NodeId),
-                row.ShardId,
-                ToString(row.RequestCount),
-                ToString(row.AccessScore),
-                TInstant::MicroSeconds(row.LastAccessedTimestampUs)
-                    .ToStringUpToSeconds()});
+            tableRows.push_back(
+                {ToString(i + 1),
+                 ToString(row.NodeId),
+                 row.ShardId,
+                 ToString(row.RequestCount),
+                 ToString(row.AccessScore),
+                 TInstant::MicroSeconds(row.LastAccessedTimestampUs)
+                     .ToStringUpToSeconds()});
             values.push_back(row.AccessScore);
         }
 
@@ -502,21 +508,26 @@ private:
             const auto& row = rows[i];
             const auto latency =
                 row.GroupAggregate.GetAverageDecayedLatencyUs();
-            tableRows.push_back({
-                ToString(i + 1),
-                row.Labels[0],
-                row.Labels[1],
-                row.Labels[2],
-                ToString(latency),
-                ToString(row.GroupAggregate.TotalLatencyUs),
-                ToString(row.GroupAggregate.RequestCount)});
+            tableRows.push_back(
+                {ToString(i + 1),
+                 row.Labels[0],
+                 row.Labels[1],
+                 row.Labels[2],
+                 ToString(latency),
+                 ToString(row.GroupAggregate.TotalLatencyUs),
+                 ToString(row.GroupAggregate.RequestCount)});
             values.push_back(latency);
         }
 
         PrintTable(
             TStringBuilder() << "Node latency stats (top " << limit << ")",
-            {"#", "Node", "Shard", "Request type", "Avg latency",
-             "Total latency", "Requests"},
+            {"#",
+             "Node",
+             "Shard",
+             "Request type",
+             "Avg latency",
+             "Total latency",
+             "Requests"},
             tableRows,
             HighlightMaximums(values));
     }
@@ -529,21 +540,24 @@ private:
         TVector<double> values;
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            const auto latency =
-                row.GroupAggregate.TotalDecayedLatencyUs;
-            tableRows.push_back({
-                ToString(i + 1),
-                row.Labels[1],
-                row.Labels[2],
-                ToString(row.GroupAggregate.GetAverageDecayedLatencyUs()),
-                ToString(latency),
-                ToString(row.GroupAggregate.RequestCount)});
+            const auto latency = row.GroupAggregate.TotalDecayedLatencyUs;
+            tableRows.push_back(
+                {ToString(i + 1),
+                 row.Labels[1],
+                 row.Labels[2],
+                 ToString(row.GroupAggregate.GetAverageDecayedLatencyUs()),
+                 ToString(latency),
+                 ToString(row.GroupAggregate.RequestCount)});
             values.push_back(latency);
         }
 
         PrintTable(
             TStringBuilder() << "Request latency stats (top " << limit << ")",
-            {"#", "Shard", "Request type", "Avg latency", "Total latency",
+            {"#",
+             "Shard",
+             "Request type",
+             "Avg latency",
+             "Total latency",
              "Requests"},
             tableRows,
             HighlightMaximums(values));
@@ -558,12 +572,12 @@ private:
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
             const auto latency = row.GroupAggregate.TotalDecayedLatencyUs;
-            tableRows.push_back({
-                ToString(i + 1),
-                row.Labels[1],
-                ToString(row.GroupAggregate.GetAverageDecayedLatencyUs()),
-                ToString(latency),
-                ToString(row.GroupAggregate.RequestCount)});
+            tableRows.push_back(
+                {ToString(i + 1),
+                 row.Labels[1],
+                 ToString(row.GroupAggregate.GetAverageDecayedLatencyUs()),
+                 ToString(latency),
+                 ToString(row.GroupAggregate.RequestCount)});
             values.push_back(latency);
         }
 
