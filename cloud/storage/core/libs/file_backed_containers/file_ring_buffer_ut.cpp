@@ -1,6 +1,8 @@
 #include "file_ring_buffer.h"
 #include "file_ring_buffer_accessor.h"
 
+#include <cloud/storage/core/libs/file_backed_containers/test/util.h>
+
 #include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -13,21 +15,6 @@
 namespace NCloud {
 
 using EVersion = EFileRingBufferVersion;
-
-static bool operator==(bool lhs, const TResultOrError<bool>& rhs)
-{
-    return !HasError(rhs) && lhs == rhs.GetResult();
-}
-
-static bool operator==(ui32 lhs, const TResultOrError<ui32>& rhs)
-{
-    return !HasError(rhs) && lhs == rhs.GetResult();
-}
-
-static bool operator==(TString lhs, const TResultOrError<TStringBuf>& rhs)
-{
-    return !HasError(rhs) && lhs == TString(rhs.GetResult());
-}
 
 namespace {
 
@@ -448,8 +435,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             } else {
                 UNIT_ASSERT_VALUES_EQUAL(Dump(ri), Dump(*rb));
                 // Cerr << "POP\t" << ri.Front() << Endl;
-                ri.PopFront();
-                rb->PopFront();
+                auto riResult = ri.PopFront();
+                auto rbResult = rb->PopFront();
+                UNIT_ASSERT(!HasError(riResult));
+                UNIT_ASSERT(!HasError(rbResult));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    riResult.GetResult(),
+                    rbResult.GetResult());
             }
 
             // Cerr << ri.Size() << " " << remainingBytes << Endl;
@@ -1158,7 +1150,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(!HasError(alloc));
         data.copy(alloc.GetResult(), data.size());
 
-        rb->PopFront();
+        UNIT_ASSERT_VALUES_EQUAL(true, rb->PopFront());
 
         UNIT_ASSERT(!HasError(rb->Commit()));
 
@@ -1220,8 +1212,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT(ptr4 != nullptr);
             UNIT_ASSERT_VALUES_EQUAL(2, rb->GetTag(ptr4));
 
-            rb->PopFront();
-            rb->PopFront();
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->PopFront());
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->PopFront());
             UNIT_ASSERT(rb->Empty());
 
             // Reuse entry
@@ -1273,7 +1265,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 8,
                 srcVersion);
 
-            rb->SetMetadata("abc");
+            UNIT_ASSERT_VALUES_EQUAL(true, rb->SetMetadata("abc"));
             UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("123"));
             UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("4"));
             UNIT_ASSERT_VALUES_EQUAL(true, rb->PushBack("xz"));
@@ -1362,41 +1354,3 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 }
 
 }   // namespace NCloud
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <>
-void Out<NCloud::TResultOrError<bool>>(
-    IOutputStream& os,
-    const NCloud::TResultOrError<bool>& value)
-{
-    if (HasError(value)) {
-        os << value.GetError();
-    } else {
-        os << value.GetResult();
-    }
-}
-
-template <>
-void Out<NCloud::TResultOrError<ui32>>(
-    IOutputStream& os,
-    const NCloud::TResultOrError<ui32>& value)
-{
-    if (HasError(value)) {
-        os << value.GetError();
-    } else {
-        os << value.GetResult();
-    }
-}
-
-template <>
-void Out<NCloud::TResultOrError<TStringBuf>>(
-    IOutputStream& os,
-    const NCloud::TResultOrError<TStringBuf>& value)
-{
-    if (HasError(value)) {
-        os << value.GetError();
-    } else {
-        os << value.GetResult();
-    }
-}

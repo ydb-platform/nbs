@@ -2,6 +2,8 @@
 
 #include "file_ring_buffer_accessor.h"
 
+#include <cloud/storage/core/libs/file_backed_containers/test/util.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/stream/output.h>
@@ -141,11 +143,6 @@ public:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
-static bool operator==(bool lhs, const TResultOrError<bool>& rhs)
-{
-    return !HasError(rhs) && lhs == rhs.GetResult();
-}
 
 Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
 {
@@ -528,12 +525,17 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                while (rb.PushBack("ABCD").GetResult()) {
+                while (true) {
                     // Add elements until the buffer is full
+                    auto res = rb.PushBack("ABCD");
+                    UNIT_ASSERT(!HasError(res));
+                    if (!res.GetResult()) {
+                        break;
+                    }
                 }
 
-                rb.PopFront();
-                rb.PopFront();
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
 
                 UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("wrap"));
             },
@@ -548,14 +550,19 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                while (rb.PushBack("ABCD").GetResult()) {
+                while (true) {
                     // Add elements until the buffer is full
+                    auto res = rb.PushBack("ABCD");
+                    UNIT_ASSERT(!HasError(res));
+                    if (!res.GetResult()) {
+                        break;
+                    }
                 }
 
-                rb.PopFront();
-                rb.PopFront();
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
+                UNIT_ASSERT_VALUES_EQUAL(true, rb.PopFront());
 
-                rb.Alloc(4);
+                UNIT_ASSERT(!HasError(rb.Alloc(4)));
             },
             ver);
 
@@ -730,6 +737,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
 }
 
 }   // namespace NCloud
+
 
 template <>
 void Out<NCloud::EFileRingBufferAccessorValidationStatus>(
