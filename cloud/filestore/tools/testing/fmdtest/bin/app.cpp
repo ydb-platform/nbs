@@ -264,7 +264,8 @@ public:
 
                 TString content = TFileInput(filePath).ReadAll();
                 if (content != file.Content) {
-                    STORAGE_ERROR("Content mismatch for " << filePath);
+                    STORAGE_ERROR("Content mismatch for " << filePath
+                        << " (ino=" << file.Ino << ")");
                     STORAGE_ERROR("E:\t" << file.Content);
                     STORAGE_ERROR("A:\t" << content);
                     ++errors;
@@ -524,7 +525,8 @@ private:
 
             TString content = TFileInput(filePath).ReadAll();
             if (content != file.Content) {
-                STORAGE_ERROR("Content mismatch for stolen file " << filePath);
+                STORAGE_ERROR("Content mismatch for stolen file " << filePath
+                    << " (ino=" << file.Ino << ")");
                 STORAGE_ERROR("E:\t" << file.Content);
                 STORAGE_ERROR("A:\t" << content);
                 ++errors;
