@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 
-rm -rf data/*
-rm -f  certs/*
-rm -f  logs/*
-
-rm -f data
-rm -f certs
-rm -f logs
+rm -rf data
+rm -rf certs
+rm -rf logs
 
 rm -f backups.*/{*.txt,*.json}
 

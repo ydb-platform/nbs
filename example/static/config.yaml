@@ -171,6 +171,8 @@ allowed_labels:
     type: string
   host:
     type: string
+  node_type:
+    type: string
   tenant:
     type: string
 selector_config:
@@ -187,7 +189,7 @@ selector_config:
         type: default
 - description: Volume Preemption Off
   selector:
-    nbs: true
+    node_type: nbs
   config:
     blockstore_config: !inherit
       volume_preemption_type: PREEMPTION_NONE
