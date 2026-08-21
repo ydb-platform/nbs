@@ -322,7 +322,7 @@ void TStorageServiceActor::HandleSessionDestroyed(
         session->CreateDestroyState = ESessionCreateDestroyState::STATE_NONE;
         const auto fsId = session->FileStore.GetFileSystemId();
         const auto clientId = session->ClientId;
-        if (!State->RemoveSession(msg->SessionId, msg->SeqNo)) {
+        if (!State->RemoveSubSession(msg->SessionId, msg->SeqNo)) {
             StatsRegistry->Unregister(fsId, clientId);
         }
     } else {

@@ -190,7 +190,7 @@ private:
 
     TInFlightRequest* FindInFlightRequest(ui64 cookie);
 
-    bool RemoveSession(
+    bool RemoveSubSession(
         const TString& sessionId,
         ui64 seqNo,
         const NActors::TActorContext& ctx);

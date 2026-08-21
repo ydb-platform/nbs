@@ -236,7 +236,7 @@ TSessionInfo* TStorageServiceState::FindSession(const TString& sessionId) const
     return nullptr;
 }
 
-bool TStorageServiceState::RemoveSession(
+bool TStorageServiceState::RemoveSubSession(
     const TString& sessionId,
     ui64 seqNo)
 {
