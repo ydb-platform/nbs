@@ -91,6 +91,16 @@ TTabletMetrics::TTabletMetrics(IMetricsRegistryPtr metricsRegistry)
     , AggregatableFsRegistry(CreateMetricsRegistryStub())
 {}
 
+TTabletMetrics::~TTabletMetrics()
+{
+    MaxUsedQuota.Unregister(MaxUsedQuotaKey);
+    ReadDataPostponed.Unregister(ReadDataPostponedKey);
+    WriteDataPostponed.Unregister(WriteDataPostponedKey);
+
+    AggregatableFsRegistry.reset();
+    FsRegistry.reset();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TTabletMetrics::Register(
@@ -334,14 +344,14 @@ void TTabletMetrics::Register(
     REGISTER_LOCAL(RejectedRequests, EMetricType::MT_DERIVATIVE);
     REGISTER_LOCAL(PostponedRequests, EMetricType::MT_DERIVATIVE);
     REGISTER_LOCAL(UsedQuota, EMetricType::MT_DERIVATIVE);
-    MaxUsedQuota.Register(
+    MaxUsedQuotaKey = MaxUsedQuota.Register(
         FsRegistry,
         {CreateSensor("MaxUsedQuota")},
         EAggregationType::AT_MAX);
-    ReadDataPostponed.Register(
+    ReadDataPostponedKey = ReadDataPostponed.Register(
         FsRegistry,
         {CreateLabel("request", "ReadData"), CreateLabel("histogram", "ThrottlerDelay")});
-    WriteDataPostponed.Register(
+    WriteDataPostponedKey = WriteDataPostponed.Register(
         FsRegistry,
         {CreateLabel("request", "WriteData"), CreateLabel("histogram", "ThrottlerDelay")});
 

@@ -5,6 +5,7 @@
 #include "tablet_tx.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/histogram.h>
+#include <cloud/filestore/libs/diagnostics/metrics/key.h>
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
 
@@ -332,7 +333,13 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     NMetrics::IMetricsRegistryPtr FsRegistry;
     NMetrics::IMetricsRegistryPtr AggregatableFsRegistry;
 
+    // Keys of the registrations that hold FsRegistry alive, needed by ~TTabletMetrics().
+    NMetrics::TMetricKey MaxUsedQuotaKey;
+    NMetrics::TMetricKey ReadDataPostponedKey;
+    NMetrics::TMetricKey WriteDataPostponedKey;
+
     explicit TTabletMetrics(NMetrics::IMetricsRegistryPtr metricsRegistry);
+    ~TTabletMetrics();
 
     void Register(
         const TString& fsId,
