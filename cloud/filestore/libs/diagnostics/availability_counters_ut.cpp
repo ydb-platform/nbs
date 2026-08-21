@@ -4,7 +4,9 @@
 
 #include <util/generic/ptr.h>
 
+#include <atomic>
 #include <cerrno>
+#include <thread>
 
 namespace NCloud::NFileStore {
 
@@ -312,24 +314,31 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        // An old hung request together with a fresh EIO completion: every
-        // outstanding request is either hung or completed with EIO =>
-        // unavailable. This requires correctly attributing the completion to
-        // the fresh request via the interval sequence number.
-        auto hungContext = env.Start(EFileStoreAvailabilityRequestType::Read);
+        // a pending request started within the interval is neutral
+        auto oldContext = env.Start(EFileStoreAvailabilityRequestType::Read);
         env.FinishInterval();
         env.AssertIntervals(1, 1, 0, true);
 
+        // The old request completes while a fresh one is also outstanding.
+        // The completion must consume the old registration via the interval
+        // sequence number: the fresh request then stays fresh-pending
+        // (neutral) and the successful completion is the only evidence =>
+        // available. Decrementing the fresh request's accounting instead
+        // would classify it as hung and flip the interval to unavailable.
         auto freshContext =
             env.Start(EFileStoreAvailabilityRequestType::Read);
-        env.CompleteWithErrno(freshContext, EIO);
+        env.CompleteOk(oldContext);
 
         env.FinishInterval();
-        env.AssertIntervals(2, 1, 1, false);
+        env.AssertIntervals(2, 2, 0, true);
 
-        env.CompleteOk(hungContext);
+        // the fresh request is old by now and hangs the third interval
         env.FinishInterval();
-        env.AssertIntervals(3, 2, 1, true);
+        env.AssertIntervals(3, 2, 1, false);
+
+        env.CompleteOk(freshContext);
+        env.FinishInterval();
+        env.AssertIntervals(4, 3, 1, true);
     }
 
     Y_UNIT_TEST(ShouldClassifyRequestTypesIndependently)
@@ -356,10 +365,12 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        // requests outside the availability SLA - e.g. mknod, access, xattr
-        // and lock requests - get no availability request type at the FUSE
-        // dispatch and do not affect the metric even if they fail with EIO
-        // or hang
+        // Requests with EFileStoreAvailabilityRequestType::None do not
+        // affect the metric even if they fail with EIO or hang. (The FUSE
+        // dispatch assigns None to the requests outside the availability
+        // SLA - e.g. mknod, access, xattr and lock requests; that
+        // assignment lives in the CALL table in loop.cpp and is not covered
+        // here.)
         auto eioContext =
             env.Start(EFileStoreAvailabilityRequestType::None);
         env.CompleteWithErrno(eioContext, EIO);
@@ -494,12 +505,14 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.AssertIntervals(1, 0, 1, false);
     }
 
-    Y_UNIT_TEST(ShouldAccountFuseRequestTypesIndependently)
+    Y_UNIT_TEST(ShouldAccountRequestTypesIndependently)
     {
-        // EFileStoreRequest maps each of these FUSE request pairs onto one
+        // EFileStoreRequest maps each of these request pairs onto one
         // backend request type; the SLA accounts them independently, so a
-        // FUSE request type failing with EIO makes the interval unavailable
-        // even when its backend sibling succeeds in the same interval
+        // request type failing with EIO makes the interval unavailable even
+        // when its backend sibling succeeds in the same interval. (That the
+        // FUSE callbacks assign these enums is a property of the CALL table
+        // in loop.cpp and is not covered here.)
 
         {
             // lookup and getattr both map to GetNodeAttr
@@ -527,6 +540,10 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
             env.FinishInterval();
             env.AssertIntervals(1, 0, 1, false);
+            env.AssertRequestIntervals(
+                EFileStoreAvailabilityRequestType::Open, 0, 1, false);
+            env.AssertRequestIntervals(
+                EFileStoreAvailabilityRequestType::Create, 1, 0, true);
         }
 
         {
@@ -539,6 +556,10 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
             env.FinishInterval();
             env.AssertIntervals(1, 0, 1, false);
+            env.AssertRequestIntervals(
+                EFileStoreAvailabilityRequestType::MkDir, 0, 1, false);
+            env.AssertRequestIntervals(
+                EFileStoreAvailabilityRequestType::SymLink, 1, 0, true);
         }
 
         {
@@ -552,15 +573,21 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
             env.FinishInterval();
             env.AssertIntervals(1, 0, 1, false);
+            env.AssertRequestIntervals(
+                EFileStoreAvailabilityRequestType::Write, 0, 1, false);
+            env.AssertRequestIntervals(
+                EFileStoreAvailabilityRequestType::WriteBuf, 1, 0, true);
         }
     }
 
-    Y_UNIT_TEST(ShouldSupportRestartedRequests)
+    Y_UNIT_TEST(ShouldSupportCallContextReuse)
     {
         TEnv env;
 
-        // some request types are retried by the vfs layer by completing and
-        // re-starting the same call context
+        // Pins the contract for a call context that is completed and then
+        // re-registered - the shape a vfs-layer retry would take. The hooks
+        // are driven directly; no dispatch-level retry path is exercised
+        // here.
         auto callContext = env.Start(EFileStoreAvailabilityRequestType::Read);
         env.CompleteWithErrno(callContext, EIO);
 
@@ -578,6 +605,96 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         env.CompleteOk(callContext);
         env.FinishInterval();
         env.AssertIntervals(2, 1, 1, true);
+    }
+
+    Y_UNIT_TEST(ShouldNotCountRequestStartedAfterBoundaryAsHung)
+    {
+        TEnv env;
+
+        // the wall clock crosses the interval boundary while the stats
+        // updater stalls...
+        env.Now += IntervalDuration + TDuration::Seconds(1);
+
+        // ...and a request starts in the gap between the boundary and the
+        // late updater tick
+        auto context = env.Start(EFileStoreAvailabilityRequestType::Read);
+
+        // the late tick closes the first interval: the request counts as
+        // fresh-pending (neutral) there, not hung
+        env.Counters.UpdateStats(env.Now);
+        env.AssertIntervals(1, 1, 0, true);
+
+        env.CompleteOk(context);
+        env.FinishInterval();
+        env.AssertIntervals(2, 2, 0, true);
+    }
+
+    Y_UNIT_TEST(ShouldAccountActivityDuringUpdaterStall)
+    {
+        TEnv env;
+
+        // a request outstanding from before the stall
+        auto hungContext = env.Start(EFileStoreAvailabilityRequestType::Read);
+        env.FinishInterval();
+        env.AssertIntervals(1, 1, 0, true);
+
+        // the updater stalls for three intervals; requests keep starting
+        // and completing meanwhile
+        auto eioContext = env.Start(EFileStoreAvailabilityRequestType::Read);
+        env.CompleteWithErrno(eioContext, EIO);
+        auto okContext = env.Start(EFileStoreAvailabilityRequestType::Read);
+        env.CompleteOk(okContext);
+
+        env.Now += IntervalDuration * 3;
+        env.Counters.UpdateStats(env.Now);
+
+        // Catch-up: the first stalled interval sees all the evidence
+        // accumulated during the stall, and the successful completion makes
+        // it available despite the EIO completion and the old hung request
+        // (any success => available). The remaining two stalled intervals
+        // see only the still-outstanding old request => hung =>
+        // unavailable.
+        env.AssertIntervals(4, 2, 2, false);
+
+        env.CompleteOk(hungContext);
+        env.FinishInterval();
+        env.AssertIntervals(5, 3, 2, true);
+    }
+
+    Y_UNIT_TEST(ShouldEnableConcurrentlyWithRequestProcessing)
+    {
+        // A sanitizer-oriented test: request processing and the stats
+        // updater run while the tracking is being enabled. The hooks must
+        // be no-ops until the tracker is published and must never observe
+        // a partially initialized one; run under TSAN to verify.
+        auto counterGroup = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        TAvailabilityCounters counters;
+
+        std::atomic<bool> stop = false;
+
+        std::thread updater([&] {
+            TInstant now = TInstant::Hours(100);
+            while (!stop.load()) {
+                counters.UpdateStats(now);
+                now += TDuration::Seconds(1);
+            }
+        });
+
+        std::thread requester([&] {
+            while (!stop.load()) {
+                auto context = MakeIntrusive<TCallContext>();
+                context->AvailabilityRequestType =
+                    EFileStoreAvailabilityRequestType::Read;
+                counters.RequestStarted(*context);
+                counters.RequestCompleted(*context);
+            }
+        });
+
+        counters.EnableAndRegister(IntervalDuration, *counterGroup);
+
+        stop = true;
+        updater.join();
+        requester.join();
     }
 
     Y_UNIT_TEST(ShouldPublishPerRequestTypeCounters)
