@@ -126,7 +126,6 @@ class LocalNbs(Daemon):
         self.compute_config = compute_config
         self.kms_config = kms_config
         self.log_config = log_config
-        self.__bs_failure_probability = bs_failure_probability
 
         self.__proto_configs = {
             "diag.txt": self.__generate_diag_txt(),
@@ -636,7 +635,7 @@ ModifyScheme {
         if 'root-kms.txt' in self.__proto_configs:
             command += ["--root-kms-file", os.path.join(self.config_path(), "root-kms.txt")]
 
-        if self.__bs_failure_probability is not None:
+        if "bs.txt" in self.__proto_configs:
             command += ["--bs-file", os.path.join(self.config_path(), "bs.txt")]
 
         append_conf_file_arg(command, self.config_path(),
