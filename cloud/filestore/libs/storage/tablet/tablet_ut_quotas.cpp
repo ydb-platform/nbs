@@ -216,6 +216,187 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
             TSetNodeAttrArgs(blockDevId).SetQuotaId(1));
     }
 
+    Y_UNIT_TEST(ShouldTrackAndReportQuotaUsage)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.SetQuota(1, 1_GB, 100);
+
+        auto dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(1));
+
+        // attaching the directory itself flips its QuotaId from 0 to 1,
+        // which the UpdateNode usage hook treats as the node moving into
+        // the new quota - so the attach point itself counts as +1 node
+        auto usages = tablet.ListQuotas()->Record.GetUsages();
+        UNIT_ASSERT_VALUES_EQUAL(1, usages.size());
+        UNIT_ASSERT_VALUES_EQUAL(1u, usages[0].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(0u, usages[0].GetUsedBytes());
+
+        auto fileId = CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(fileId).SetSize(100));
+
+        CreateNode(tablet, TCreateNodeArgs::Directory(dirId, "subdir"));
+
+        THashMap<ui32, NProtoPrivate::TQuotaUsage> usageByQuotaId;
+        {
+            auto response = tablet.ListQuotas();
+            for (const auto& usage: response->Record.GetUsages()) {
+                usageByQuotaId[usage.GetQuotaId()] = usage;
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, usageByQuotaId.size());
+        UNIT_ASSERT_VALUES_EQUAL(3u, usageByQuotaId[1].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(100u, usageByQuotaId[1].GetUsedBytes());
+
+        tablet.UnlinkNode(dirId, "file", false);
+
+        usageByQuotaId.clear();
+        {
+            auto response = tablet.ListQuotas();
+            for (const auto& usage: response->Record.GetUsages()) {
+                usageByQuotaId[usage.GetQuotaId()] = usage;
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2u, usageByQuotaId[1].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(0u, usageByQuotaId[1].GetUsedBytes());
+    }
+
+    Y_UNIT_TEST(ShouldPersistQuotaUsageAcrossReboot)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.SetQuota(1, 1_GB, 100);
+
+        auto dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(1));
+        auto fileId = CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(fileId).SetSize(100));
+
+        tablet.RebootTablet();
+
+        auto usages = tablet.ListQuotas()->Record.GetUsages();
+        UNIT_ASSERT_VALUES_EQUAL(1, usages.size());
+        UNIT_ASSERT_VALUES_EQUAL(1u, usages[0].GetQuotaId());
+        UNIT_ASSERT_VALUES_EQUAL(2u, usages[0].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(100u, usages[0].GetUsedBytes());
+    }
+
+    Y_UNIT_TEST(ShouldNotTrackUsageForUnknownQuotaId)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        // quota 99 is never defined via SetQuota - attaching a directory to
+        // it and creating nodes under it should not produce a usage entry,
+        // since there's no quota definition to attribute the usage to
+        auto dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(99));
+        CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
+
+        auto usages = tablet.ListQuotas()->Record.GetUsages();
+        UNIT_ASSERT_VALUES_EQUAL(0, usages.size());
+    }
+
+    Y_UNIT_TEST(ShouldRemoveUsageWhenQuotaIsDeleted)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.SetQuota(1, 1_GB, 100);
+
+        auto dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(1));
+        CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
+
+        {
+            auto usages = tablet.ListQuotas()->Record.GetUsages();
+            UNIT_ASSERT_VALUES_EQUAL(1, usages.size());
+        }
+
+        tablet.DeleteQuota(1);
+
+        {
+            auto usages = tablet.ListQuotas()->Record.GetUsages();
+            UNIT_ASSERT_VALUES_EQUAL(0, usages.size());
+        }
+
+        // re-creating the quota starts usage tracking from a clean slate,
+        // rather than resurrecting the old, now-orphaned usage
+        tablet.SetQuota(1, 1_GB, 100);
+        {
+            auto usages = tablet.ListQuotas()->Record.GetUsages();
+            UNIT_ASSERT_VALUES_EQUAL(0, usages.size());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotChangeUsageOnRenameWithinTheSameQuota)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.SetQuota(1, 1_GB, 100);
+
+        // two separate directories, both attached to the same quota
+        auto dir1Id =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir1"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dir1Id).SetQuotaId(1));
+
+        auto dir2Id =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir2"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dir2Id).SetQuotaId(1));
+
+        auto fileId = CreateNode(tablet, TCreateNodeArgs::File(dir1Id, "file"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(fileId).SetSize(100));
+
+        // dir1 + dir2 attach points + file = 3 nodes, 100 bytes
+        auto usagesBefore = tablet.ListQuotas()->Record.GetUsages();
+        UNIT_ASSERT_VALUES_EQUAL(1, usagesBefore.size());
+        UNIT_ASSERT_VALUES_EQUAL(3u, usagesBefore[0].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(100u, usagesBefore[0].GetUsedBytes());
+
+        // moving the file between two directories under the same quota
+        // shouldn't change anything - it's still the same quota either way
+        tablet.RenameNode(dir1Id, "file", dir2Id, "file");
+
+        auto usagesAfter = tablet.ListQuotas()->Record.GetUsages();
+        UNIT_ASSERT_VALUES_EQUAL(1, usagesAfter.size());
+        UNIT_ASSERT_VALUES_EQUAL(3u, usagesAfter[0].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(100u, usagesAfter[0].GetUsedBytes());
+    }
+
     Y_UNIT_TEST(ShouldRejectMarkingWithDifferentExistingQuotaId)
     {
         TTestEnv env;

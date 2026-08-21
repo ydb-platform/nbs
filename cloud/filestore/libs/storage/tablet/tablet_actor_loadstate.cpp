@@ -113,6 +113,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db->ReadGarbageBlobs(args.GarbageBlobs),
         db->ReadCheckpoints(args.Checkpoints),
         db->ReadQuotas(args.Quotas),
+        db->ReadQuotaUsages(args.QuotaUsages),
         db->ReadTruncateQueue(args.TruncateQueue),
         db->ReadStorageConfig(args.StorageConfig),
         db->ReadSessionHistoryEntries(args.SessionHistory),
@@ -454,6 +455,11 @@ void TIndexTabletActor::CompleteTx_LoadState(
         LogTag << " Loading tablet quotas: "
             << args.Quotas.size());
     LoadQuotas(args.Quotas);
+
+    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LogTag << " Loading tablet quota usages: "
+            << args.QuotaUsages.size());
+    LoadQuotaUsages(args.QuotaUsages);
 
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading fresh bytes: "

@@ -111,6 +111,21 @@ Y_UNIT_TEST_SUITE(TQuotaStoreTest)
         UNIT_ASSERT(store.FindQuota(2));
     }
 
+    Y_UNIT_TEST(ShouldRemoveUsageOnQuotaRemoval)
+    {
+        TQuotaStore store;
+
+        store.UpdateQuota(MakeQuota(1, 100, 1_GB));
+        store.UpdateQuota(MakeQuota(2, 200, 2_GB));
+        store.UpdateUsage(1, 1_GB, 5);
+        store.UpdateUsage(2, 2_GB, 10);
+
+        store.RemoveQuota(1);
+
+        UNIT_ASSERT(!store.FindUsage(1));
+        UNIT_ASSERT(store.FindUsage(2));
+    }
+
     Y_UNIT_TEST(ShouldGetAllQuotas)
     {
         TQuotaStore store;
@@ -125,6 +140,118 @@ Y_UNIT_TEST_SUITE(TQuotaStoreTest)
         THashSet<ui32> quotaIds;
         for (const auto& quota: quotas) {
             quotaIds.insert(quota.GetQuotaId());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(3u, quotaIds.size());
+        UNIT_ASSERT(quotaIds.contains(1));
+        UNIT_ASSERT(quotaIds.contains(2));
+        UNIT_ASSERT(quotaIds.contains(3));
+    }
+
+    Y_UNIT_TEST(ShouldReturnNullptrForUnknownUsage)
+    {
+        TQuotaStore store;
+
+        UNIT_ASSERT(!store.FindUsage(42));
+    }
+
+    Y_UNIT_TEST(ShouldAccumulateUsageFromDeltas)
+    {
+        TQuotaStore store;
+
+        store.UpdateUsage(1, 1_GB, 1);
+        store.UpdateUsage(1, 2_GB, 2);
+
+        const auto* usage = store.FindUsage(1);
+        UNIT_ASSERT(usage);
+        UNIT_ASSERT_VALUES_EQUAL(3_GB, usage->UsedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(3u, usage->UsedNodes);
+    }
+
+    Y_UNIT_TEST(ShouldDecrementUsageOnNegativeDeltas)
+    {
+        TQuotaStore store;
+
+        store.UpdateUsage(1, 3_GB, 3);
+        store.UpdateUsage(1, -1_GB, -1);
+
+        const auto* usage = store.FindUsage(1);
+        UNIT_ASSERT(usage);
+        UNIT_ASSERT_VALUES_EQUAL(2_GB, usage->UsedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(2u, usage->UsedNodes);
+    }
+
+    Y_UNIT_TEST(ShouldClampUsageToZeroInsteadOfUnderflowing)
+    {
+        TQuotaStore store;
+
+        store.UpdateUsage(1, 1_GB, 1);
+
+        const auto* usage =
+            store.UpdateUsage(1, -2_GB, -2);
+        UNIT_ASSERT(usage);
+        UNIT_ASSERT_VALUES_EQUAL(0u, usage->UsedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(0u, usage->UsedNodes);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreUsageUpdatesForZeroQuotaId)
+    {
+        TQuotaStore store;
+
+        store.UpdateUsage(0, 1_GB, 1);
+
+        UNIT_ASSERT(!store.FindUsage(0));
+    }
+
+    Y_UNIT_TEST(ShouldNotAffectOtherQuotasUsageOnUpdate)
+    {
+        TQuotaStore store;
+
+        store.UpdateUsage(1, 1_GB, 1);
+        store.UpdateUsage(2, 2_GB, 2);
+
+        const auto* usage1 = store.FindUsage(1);
+        UNIT_ASSERT(usage1);
+        UNIT_ASSERT_VALUES_EQUAL(1_GB, usage1->UsedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(1u, usage1->UsedNodes);
+
+        const auto* usage2 = store.FindUsage(2);
+        UNIT_ASSERT(usage2);
+        UNIT_ASSERT_VALUES_EQUAL(2_GB, usage2->UsedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(2u, usage2->UsedNodes);
+    }
+
+    Y_UNIT_TEST(ShouldLoadUsageAsAbsoluteValue)
+    {
+        TQuotaStore store;
+
+        store.UpdateUsage(1, 1_GB, 1);
+
+        TQuotaUsage loaded;
+        loaded.QuotaId = 1;
+        loaded.UsedBytes = 5_GB;
+        loaded.UsedNodes = 5;
+        store.LoadUsage(loaded);
+
+        const auto* usage = store.FindUsage(1);
+        UNIT_ASSERT(usage);
+        UNIT_ASSERT_VALUES_EQUAL(5_GB, usage->UsedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(5u, usage->UsedNodes);
+    }
+
+    Y_UNIT_TEST(ShouldGetAllUsages)
+    {
+        TQuotaStore store;
+
+        store.UpdateUsage(1, 1_GB, 1);
+        store.UpdateUsage(2, 2_GB, 2);
+        store.UpdateUsage(3, 3_GB, 3);
+
+        auto usages = store.GetUsages();
+        UNIT_ASSERT_VALUES_EQUAL(3u, usages.size());
+
+        THashSet<ui32> quotaIds;
+        for (const auto& usage: usages) {
+            quotaIds.insert(usage.QuotaId);
         }
         UNIT_ASSERT_VALUES_EQUAL(3u, quotaIds.size());
         UNIT_ASSERT(quotaIds.contains(1));
