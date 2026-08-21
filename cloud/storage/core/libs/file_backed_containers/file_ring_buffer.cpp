@@ -15,6 +15,8 @@
 #include <util/system/compiler.h>
 #include <util/system/filemap.h>
 
+#include <atomic>
+
 namespace NCloud {
 
 namespace {
@@ -137,7 +139,7 @@ class TFileRingBuffer::TImpl
 private:
     const TFileRingBufferArgs Args;
     TFileMapFileRingBufferAccessor Accessor;
-    bool Corrupted = false;
+    std::atomic<bool> Corrupted = false;
 
     TEntryInfo CurrentAllocation = TEntryInfo::CreateInvalid();
     ui64 MaxObservedEntryByteCount = 0;
@@ -788,13 +790,13 @@ public:
 
     bool IsCorrupted() const
     {
-        return Corrupted;
+        return Corrupted.load(std::memory_order_relaxed);
     }
 
     void SetCorrupted(const TString& message)
     {
-        if (!Corrupted) {
-            Corrupted = true;
+        auto prevValue = Corrupted.exchange(true);
+        if (!prevValue) {
             ReportFileRingBufferCorruptionDetectedError(
                 "Corruption detected in FileRingBuffer, path: " +
                 Args.FilePath + ", message: " + message);

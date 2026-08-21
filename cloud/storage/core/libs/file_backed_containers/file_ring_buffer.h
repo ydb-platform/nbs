@@ -12,6 +12,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Non-thread safe
 class TFileRingBuffer
 {
 public:
@@ -170,7 +171,17 @@ public:
      */
     NProto::TError Visit(const TVisitor& visitor);
 
+    // This method is thread safe
     bool IsCorrupted() const;
+
+    /**
+     * Sets Corrupted flag and fires a critical event if the flag has not
+     * been previously set. Unsetting the flag is not possible.
+     *
+     * All further operations on the buffer will fail once the flag is set.
+     *
+     * This method is thread safe
+     */
     void SetCorrupted();
 
     ui64 GetRawCapacity() const;

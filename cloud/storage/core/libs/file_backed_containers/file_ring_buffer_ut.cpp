@@ -1319,7 +1319,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         {
             TFileRingBuffer rb(f.GetName(), len, 0, EVersion::V6);
-            UNIT_ASSERT(rb.PushBack("b"));
+            UNIT_ASSERT_VALUES_EQUAL(true, rb.PushBack("b"));
         }
     }
 }
