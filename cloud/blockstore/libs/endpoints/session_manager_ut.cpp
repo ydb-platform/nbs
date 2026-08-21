@@ -725,11 +725,14 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             };
 
         TVector<NProto::EVolumeMountMode> mountModes;
+        TVector<bool> forceRemoteBindings;
 
         auto cellService = std::make_shared<TTestService>();
         cellService->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
                 mountModes.push_back(request->GetVolumeMountMode());
+                forceRemoteBindings.push_back(
+                    request->GetForceRemoteBinding());
 
                 NProto::TMountVolumeResponse response;
                 response.MutableVolume()->SetDiskId(request->GetDiskId());
@@ -811,6 +814,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(expectedMountMode),
             static_cast<int>(mountModes.back()));
+        UNIT_ASSERT_VALUES_EQUAL(1, forceRemoteBindings.size());
+        UNIT_ASSERT(forceRemoteBindings.back());
 
         {
             auto future = sessionManager->AlterSession(
@@ -829,6 +834,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(expectedMountMode),
             static_cast<int>(mountModes.back()));
+        UNIT_ASSERT_VALUES_EQUAL(2, forceRemoteBindings.size());
+        UNIT_ASSERT(forceRemoteBindings.back());
     }
 
     Y_UNIT_TEST(ShouldForceRemoteMountModeForCellEndpointsWhenTemporaryServer)

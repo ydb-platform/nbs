@@ -1421,7 +1421,8 @@ void TVolumeSessionActor::HandleInternalMountVolume(
                 msg->PreemptionSource,
                 msg->BindingType,
                 msg->Record.GetVolumeMountMode(),
-                !IsDiskRegistryMediaKind(VolumeInfo->StorageMediaKind));
+                !IsDiskRegistryMediaKind(VolumeInfo->StorageMediaKind),
+                msg->Record.GetForceRemoteBinding());
             shouldReply =
                 (bindingType == VolumeInfo->BindingType) &&
                 clientInfo &&

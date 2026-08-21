@@ -153,7 +153,8 @@ struct TVolumeInfo
         NProto::EPreemptionSource preemptionSource,
         NProto::EVolumeBinding bindingMode,
         NProto::EVolumeMountMode clientMode,
-        bool applyLocalVolumesLimit);
+        bool applyLocalVolumesLimit,
+        bool forceRemoteBinding);
 
     void OnMountCancelled(
         TSharedServiceCounters& sharedCounters,

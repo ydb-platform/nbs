@@ -7419,6 +7419,34 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volumeClient1.RemoveClient(clientInfo.GetClientId());
 
+        // Removing one pipe must persist the remaining logical client rather
+        // than deleting its DB row.
+        volume.RebootTablet();
+        volume.WaitReady();
+
+        // Check the state loaded from local DB before sending a new AddClient.
+        // Otherwise AddClient could recreate the missing row and make this
+        // test pass with an unconditional db.RemoveClient as well.
+        volume.SendStatVolumeRequest(
+            TString(),
+            TVector<TString>(),
+            true   // noPartition
+        );
+        {
+            auto response = volume.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            const auto& clients = response->Record.GetClients();
+            UNIT_ASSERT_VALUES_EQUAL(1, clients.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                clientInfo.GetClientId(),
+                clients[0].GetClientId());
+        }
+
+        volumeClient1.ReconnectPipe();
+        volumeClient2.ReconnectPipe();
+        volumeClient2.AddClient(clientInfo);
+
         volumeClient2.WriteBlocks(
             TBlockRange64::MakeOneBlock(0),
             clientInfo.GetClientId(),

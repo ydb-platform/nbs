@@ -52,6 +52,7 @@ struct TSessionConfig
 
     NProto::EVolumeAccessMode AccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
     NProto::EVolumeMountMode MountMode = NProto::VOLUME_MOUNT_LOCAL;
+    bool ForceRemoteBinding = false;
     ui32 MountFlags = 0;
 
     NProto::EClientIpcType IpcType = NProto::IPC_GRPC;
