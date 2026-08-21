@@ -88,7 +88,10 @@ func newYDBClient(
 	config *server_config.ServerConfig,
 ) (*persistence.YDBClient, error) {
 
-	creds := auth.NewCredentials(ctx, config.AuthConfig)
+	creds, err := auth.NewCredentials(ctx, config.AuthConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create credentials: %w", err)
+	}
 
 	db, err := persistence.NewYDBClient(
 		ctx,
