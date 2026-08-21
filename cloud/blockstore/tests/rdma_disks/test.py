@@ -65,7 +65,7 @@ def start_nbs_daemon(ydb):
 
     yield nbs
 
-    nbs.kill()
+    nbs.stop()
 
 
 def _remove_host(client, agent_id):
@@ -166,7 +166,7 @@ def test_m3_rdma_simple_io(ydb, nbs, tmp_path):
     session.unmount_volume()
 
     for disk_agent in disk_agents:
-        disk_agent.kill()
+        disk_agent.stop()
 
 
 def test_m3_rdma_restart_disk_agent_during_migration(ydb, nbs, tmp_path):
@@ -258,4 +258,4 @@ def test_m3_rdma_restart_disk_agent_during_migration(ydb, nbs, tmp_path):
     session.unmount_volume()
 
     for disk_agent in disk_agents:
-        disk_agent.kill()
+        disk_agent.stop()
