@@ -24,6 +24,8 @@ func DiskKindToString(kind types.DiskKind) string {
 		return "hdd-nonreplicated"
 	case types.DiskKind_DISK_KIND_HDD_LOCAL:
 		return "hdd-local"
+	case types.DiskKind_DISK_KIND_SSD_NBS2:
+		return "ssd-nbs2"
 	}
 	return "unknown"
 }
@@ -46,6 +48,8 @@ func DiskKindFromString(kind string) (types.DiskKind, error) {
 		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
 	case "hdd-local":
 		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
+	case "ssd-nbs2":
+		return types.DiskKind_DISK_KIND_SSD_NBS2, nil
 	default:
 		return 0, NewInvalidArgumentError(
 			"unknown disk kind %v",
@@ -57,4 +61,12 @@ func DiskKindFromString(kind string) (types.DiskKind, error) {
 func IsLocalDiskKind(kind types.DiskKind) bool {
 	return kind == types.DiskKind_DISK_KIND_SSD_LOCAL ||
 		kind == types.DiskKind_DISK_KIND_HDD_LOCAL
+}
+
+func IsNbs2DiskKind(kind types.DiskKind) bool {
+	return kind == types.DiskKind_DISK_KIND_SSD_NBS2
+}
+
+func IsNbs2DiskKindString(kind string) bool {
+	return kind == "ssd-nbs2"
 }

@@ -15,6 +15,7 @@ enum DiskKind {
     DISK_KIND_SSD_MIRROR3 = 6;
     DISK_KIND_HDD_NONREPLICATED = 7;
     DISK_KIND_HDD_LOCAL = 8;
+    DISK_KIND_SSD_NBS2 = 9;
 }
 
 enum DiskState {

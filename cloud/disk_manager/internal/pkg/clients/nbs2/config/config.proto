@@ -1,0 +1,18 @@
+syntax = "proto2";
+
+package nbs2;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message Zone {
+    repeated string Endpoints = 1;
+}
+
+message ClientConfig {
+    map<string, Zone> Zones = 1;
+    optional string RootCertsFile = 2;
+    optional bool Insecure = 3 [default = true];
+    optional string RequestTimeout = 4 [default = "20s"];
+}

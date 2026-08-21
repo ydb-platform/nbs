@@ -7,6 +7,7 @@ import "cloud/disk_manager/internal/pkg/auth/config/config.proto";
 import "cloud/disk_manager/internal/pkg/cells/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nbs/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nfs/config/config.proto";
+import "cloud/disk_manager/internal/pkg/clients/nbs2/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/config/config.proto";
 import "cloud/tasks/logging/config/config.proto";
 import "cloud/disk_manager/internal/pkg/monitoring/config/config.proto";
@@ -57,6 +58,7 @@ message ServerConfig {
     optional GrpcConfig GrpcConfig = 1;
     required tasks.TasksConfig TasksConfig = 2;
     optional nbs.ClientConfig NbsConfig = 3;
+    optional nbs2.ClientConfig Nbs2Config = 22;
     optional pools.PoolsConfig PoolsConfig = 4;
     optional images.ImagesConfig ImagesConfig = 5;
     optional snapshots.SnapshotsConfig SnapshotsConfig = 6;

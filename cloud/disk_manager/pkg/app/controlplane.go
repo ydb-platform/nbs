@@ -9,6 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	cells_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 
@@ -137,6 +138,7 @@ func registerControlplaneTasks(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
+	nbs2Factory nbs2.Factory,
 	nfsFactory nfs.Factory,
 	poolStorage pools_storage.Storage,
 	poolService pools.Service,
@@ -178,6 +180,7 @@ func registerControlplaneTasks(
 		taskScheduler,
 		poolService,
 		nbsFactory,
+		nbs2Factory,
 		cellSelector,
 	)
 	if err != nil {
@@ -319,6 +322,12 @@ func initControlplane(
 		nfsTlsProvider,
 	)
 
+	nbs2Factory, err := nbs2.NewFactory(config.GetNbs2Config())
+	if err != nil {
+		logging.Error(ctx, "Failed to create nbs2 factory: %v", err)
+		return nil, err
+	}
+
 	poolService := pools.NewService(taskScheduler, poolStorage)
 
 	var filesystemService filesystem.Service
@@ -396,6 +405,7 @@ func initControlplane(
 		taskRegistry,
 		taskScheduler,
 		nbsFactory,
+		nbs2Factory,
 		nfsFactory,
 		poolStorage,
 		poolService,

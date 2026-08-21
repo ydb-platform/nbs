@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
@@ -26,6 +27,7 @@ func RegisterForExecution(
 	taskScheduler tasks.Scheduler,
 	poolService pools.Service,
 	nbsFactory nbs.Factory,
+	nbs2Factory nbs2.Factory,
 	cellSelector cells.CellSelector,
 ) error {
 
@@ -48,6 +50,7 @@ func RegisterForExecution(
 			storage:      resourceStorage,
 			scheduler:    taskScheduler,
 			nbsFactory:   nbsFactory,
+			nbs2Factory:  nbs2Factory,
 			cellSelector: cellSelector,
 		}
 	})
@@ -99,6 +102,7 @@ func RegisterForExecution(
 			scheduler:         taskScheduler,
 			poolService:       poolService,
 			nbsFactory:        nbsFactory,
+			nbs2Factory:       nbs2Factory,
 		}
 	})
 	if err != nil {

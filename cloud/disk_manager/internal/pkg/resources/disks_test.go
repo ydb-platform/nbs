@@ -48,6 +48,7 @@ func requireDisksAreEqual(t *testing.T, expected DiskMeta, actual DiskMeta) {
 	}
 	require.Equal(t, expected.CreatedBy, actual.CreatedBy)
 	require.Equal(t, expected.DeleteTaskID, actual.DeleteTaskID)
+	require.Equal(t, expected.TabletID, actual.TabletID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

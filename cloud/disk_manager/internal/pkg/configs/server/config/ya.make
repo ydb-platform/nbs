@@ -11,6 +11,7 @@ PEERDIR(
     cloud/disk_manager/internal/pkg/cells/config
     cloud/disk_manager/internal/pkg/clients/nbs/config
     cloud/disk_manager/internal/pkg/clients/nfs/config
+    cloud/disk_manager/internal/pkg/clients/nbs2/config
     cloud/disk_manager/internal/pkg/dataplane/config
     cloud/tasks/logging/config
     cloud/disk_manager/internal/pkg/monitoring/config

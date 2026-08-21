@@ -78,6 +78,7 @@ type diskState struct {
 	scanFoundBrokenBlobs bool
 
 	fillGeneration uint64
+	tabletID       string
 }
 
 func (s *diskState) toDiskMeta() *DiskMeta {
@@ -105,6 +106,7 @@ func (s *diskState) toDiskMeta() *DiskMeta {
 		ScanFoundBrokenBlobs: s.scanFoundBrokenBlobs,
 
 		FillGeneration: s.fillGeneration,
+		TabletID:       s.tabletID,
 	}
 }
 
@@ -139,6 +141,7 @@ func (s *diskState) structValue() persistence.Value {
 		persistence.StructFieldValue("scan_found_broken_blobs", persistence.BoolValue(s.scanFoundBrokenBlobs)),
 
 		persistence.StructFieldValue("fill_generation", persistence.Uint64Value(s.fillGeneration)),
+		persistence.StructFieldValue("tablet_id", persistence.UTF8Value(s.tabletID)),
 	)
 }
 
@@ -168,6 +171,7 @@ func scanDiskState(res persistence.Result) (state diskState, err error) {
 		persistence.OptionalWithDefault("scanned_at", &state.scannedAt),
 		persistence.OptionalWithDefault("scan_found_broken_blobs", &state.scanFoundBrokenBlobs),
 		persistence.OptionalWithDefault("fill_generation", &state.fillGeneration),
+		persistence.OptionalWithDefault("tablet_id", &state.tabletID),
 	)
 	return
 }
@@ -221,7 +225,8 @@ func diskStateStructTypeString() string {
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
 
-		fill_generation: Uint64>`
+		fill_generation: Uint64,
+		tablet_id: Utf8>`
 }
 
 func diskStateTableDescription() persistence.CreateTableDescription {
@@ -255,6 +260,7 @@ func diskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("scan_found_broken_blobs", persistence.Optional(persistence.TypeBool)),
 
 		persistence.WithColumn("fill_generation", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("tablet_id", persistence.Optional(persistence.TypeUTF8)),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -383,7 +389,8 @@ func (s *storageYDB) createDisk(
 		creatingAt:    disk.CreatingAt,
 		createdBy:     disk.CreatedBy,
 
-		status: diskStatusCreating,
+		status:   diskStatusCreating,
+		tabletID: disk.TabletID,
 	}
 
 	err = s.updateDiskState(ctx, tx, state)
@@ -466,6 +473,9 @@ func (s *storageYDB) diskCreated(
 
 	state.status = diskStatusReady
 	state.createdAt = disk.CreatedAt
+	if len(disk.TabletID) > 0 {
+		state.tabletID = disk.TabletID
+	}
 
 	err = s.updateDiskState(ctx, tx, state)
 	if err != nil {

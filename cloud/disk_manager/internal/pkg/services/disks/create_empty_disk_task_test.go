@@ -10,6 +10,8 @@ import (
 	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2"
+	nbs2_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
@@ -667,4 +669,102 @@ func TestCreateEmptyLocalDiskTask(t *testing.T) {
 		execCtx,
 		cellSelector,
 	)
+}
+
+func TestCreateEmptyNbs2DiskTask(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbs2Factory := nbs2_mocks.NewFactoryMock()
+	nbs2Client := nbs2_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+
+	params := &protos.CreateDiskParams{
+		BlocksCount:     123,
+		BlockSize:       4096,
+		Kind:            types.DiskKind_DISK_KIND_SSD_NBS2,
+		StoragePoolName: "ddp1",
+		CloudId:         "cloud",
+		FolderId:        "folder",
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+	}
+	task := &createEmptyDiskTask{
+		storage:     storage,
+		nbs2Factory: nbs2Factory,
+		params:      params,
+		state:       &protos.CreateEmptyDiskTaskState{},
+	}
+
+	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
+		ID: "disk",
+	}, nil)
+	storage.On("DiskCreated", ctx, mock.MatchedBy(func(meta resources.DiskMeta) bool {
+		return meta.ID == "disk" && meta.TabletID == "tablet-1"
+	})).Return(nil)
+
+	nbs2Factory.On("GetClient", ctx, "zone").Return(nbs2Client, nil)
+	nbs2Client.On("CreatePartition", ctx, nbs2.CreatePartitionParams{
+		DiskID:          "disk",
+		BlockSize:       4096,
+		BlocksCount:     123,
+		StoragePoolName: "ddp1",
+	}).Return("tablet-1", nil)
+
+	execCtx.On("SaveState", ctx).Return(nil)
+
+	err := task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	require.Equal(t, "tablet-1", task.state.TabletId)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbs2Factory,
+		nbs2Client,
+		execCtx,
+	)
+}
+
+func TestCancelCreateEmptyNbs2DiskTask(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbs2Factory := nbs2_mocks.NewFactoryMock()
+	nbs2Client := nbs2_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+
+	params := &protos.CreateDiskParams{
+		Kind: types.DiskKind_DISK_KIND_SSD_NBS2,
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+	}
+	task := &createEmptyDiskTask{
+		storage:     storage,
+		nbs2Factory: nbs2Factory,
+		params:      params,
+		state:       &protos.CreateEmptyDiskTaskState{TabletId: "tablet-1"},
+	}
+
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.DiskMeta{
+		ID:       "disk",
+		ZoneID:   "zone",
+		Kind:     "ssd-nbs2",
+		TabletID: "tablet-1",
+	}, nil)
+	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
+
+	nbs2Factory.On("GetClient", ctx, "zone").Return(nbs2Client, nil)
+	nbs2Client.On("DeletePartition", ctx, "tablet-1").Return(nil)
+
+	err := task.Cancel(ctx, execCtx)
+	require.NoError(t, err)
+	mock.AssertExpectationsForObjects(t, storage, nbs2Factory, nbs2Client, execCtx)
 }
