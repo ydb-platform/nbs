@@ -751,3 +751,51 @@ bash .github/scripts/tracing/render_ya_trace_bundle.sh \
   --component cloud/blockstore \
   --operation tests
 ```
+
+## Workflow-level merging
+
+Ya conversion produces one trace bundle per build/test invocation.
+[`workflow_trace_report.py`](workflow_trace_report.py) can later fetch the
+completed GitHub run's jobs and raw ya OTLP bundles. It creates workflow queue,
+job queue, job, and step spans, rewrites imported ya span IDs into the workflow
+trace ID, and attaches each imported root to the smallest containing/overlapping
+job. This step consumes OTLP; it does not reparse ya trace files.
+
+For the first attempt, the workflow root retains GitHub's creation-to-update
+interval and its queue span. For reruns, `created_at` still refers to the
+original attempt and is ignored. The root instead begins at the earliest usable
+current `run_started_at` or job timestamp, then an imported-span timestamp; if
+none is usable, it deterministically falls back to `updated_at`.
+
+GitHub `success` conclusions map to OTLP `OK`. Failure-like conclusions,
+including `stale`, map to `ERROR`; neutral and skipped conclusions remain
+`UNSET`.
+
+## Code map
+
+| Component | Responsibility |
+| --- | --- |
+| [`ya_trace_report.py`](ya_trace_report.py) | CLI, discovery, resource metadata, file list, bundle orchestration |
+| [`yatrace/projection.py`](yatrace/projection.py) | Root span, logical/evlog projection order, longest-test ranking |
+| [`projector.py`](projector.py) | Bound trace/resource/scope/parent context and stable span creation |
+| [`yatrace/trace_collection.py`](yatrace/trace_collection.py) | Safe discovery and enrichment lookup API |
+| [`yatrace/trace_loader.py`](yatrace/trace_loader.py) | JSONL parsing, merging, chunk assignment, attempt normalization |
+| [`yatrace/trace_model.py`](yatrace/trace_model.py) | `SuiteTrace`, `Chunk`, `TestAttempt`, `TestEvent`, durations, and logs |
+| [`yatrace/trace_spans.py`](yatrace/trace_spans.py) | Suite, chunk, ordered test timing, result markers, and inferred test stages |
+| [`yatrace/evlog_loader.py`](yatrace/evlog_loader.py) | Event-log parsing, details, failures, and statistics selection |
+| [`yatrace/node.py`](yatrace/node.py) | One normalized event-log `YaNode` and classification |
+| [`yatrace/evlog_data.py`](yatrace/evlog_data.py) | Immutable event-log aggregate |
+| [`yatrace/evlog.py`](yatrace/evlog.py) | Ya phases and event-log projection orchestration |
+| [`yatrace/test_operations.py`](yatrace/test_operations.py) | Direct worker/chunk matching and test operation spans |
+| [`yatrace/build_operations.py`](yatrace/build_operations.py) | Build envelope, direct selection, nodes, and commands |
+| [`yatrace/worker_spans.py`](yatrace/worker_spans.py) | Worker, phase, build-node, and command projection |
+| [`yatrace/statistics.py`](yatrace/statistics.py) | Cache, graph, execution, and aggregate attributes |
+| [`yatrace/critical_path.py`](yatrace/critical_path.py) | Ya critical-path parsing and build/test matching |
+| [`otlp`](otlp) | Official proto-backed types plus IDs, attributes, `Ns`, `Interval`, and `Trace` |
+| [`trace_io.py`](trace_io.py) | Validated, batched OTLP JSONL read/write |
+| [`trace_report.py`](trace_report.py) | Static HTML model/rendering and bundle output |
+| [`render_ya_trace_bundle.sh`](render_ya_trace_bundle.sh) | Shared nonblocking CI wrapper |
+| [`pack_ya_trace_inputs.sh`](pack_ya_trace_inputs.sh) | Literal-path raw-input tar archive |
+| [`workflow_trace.py`](workflow_trace.py) | Workflow, queue, job, step, and imported-span projection |
+| [`workflow_trace_report.py`](workflow_trace_report.py) | GitHub/S3 input loading and combined workflow bundle CLI |
+| [`render-workflow-trace.yaml`](../../workflows/render-workflow-trace.yaml) | Trusted post-workflow rendering and upload |
