@@ -135,6 +135,7 @@ void TPartitionActor::WriteFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
+            VolumeLabels,
             nullptr);   // sharedState
 
         Actors.Insert(actor);
@@ -519,6 +520,7 @@ void TPartitionActor::ZeroFreshBlocks(
             BlockDigestGenerator,
             true,   // waitForAddFreshBlocksResponseBeforeResponse
             TabletID(),
+            VolumeLabels,
             nullptr);   // sharedState
 
         Actors.Insert(actor);

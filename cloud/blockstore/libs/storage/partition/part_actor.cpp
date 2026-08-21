@@ -69,6 +69,10 @@ TPartitionActor::TPartitionActor(
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
+    , VolumeLabels(MakeVolumeLabels(
+          PartitionConfig.GetDiskId(),
+          PartitionConfig.GetCloudId(),
+          PartitionConfig.GetFolderId()))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -341,9 +345,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
-        {{"disk", PartitionConfig.GetDiskId()},
-         {"tablet_id", TabletID()},
-         {"channels", sb}});
+        VolumeLabels,
+        "Reassign request sent",
+        TCritEventParams{{"tablet_id", TabletID()}, {"channels", sb}});
     ReassignRequestSentTs = ctx.Now();
 }
 
@@ -1415,7 +1419,9 @@ NProto::TError VerifyBlockChecksum(
     const ui64 blockIndex,
     const ui16 blobOffset,
     const ui32 expectedChecksum,
-    const TString& diskId)
+    const TString& diskId,
+    const TString& cloudId,
+    const TString& folderId)
 {
     if (expectedChecksum == 0) {
         // 0 is a special case - block digest calculation can be
@@ -1429,8 +1435,10 @@ NProto::TError VerifyBlockChecksum(
 
     if (actualChecksum != expectedChecksum) {
         ReportBlockDigestMismatchInBlob(
-            {{"disk", diskId},
-             {"BlockIndex", blockIndex},
+            diskId,
+            cloudId,
+            folderId,
+            {{"BlockIndex", blockIndex},
              {"blobOffset", blobOffset},
              {"blob", blobID.ToString()}});
         // we might read proper data upon retry - let's give it a chance
@@ -1444,6 +1452,25 @@ NProto::TError VerifyBlockChecksum(
     }
 
     return {};
+}
+
+NProto::TError VerifyBlockChecksum(
+    const ui32 actualChecksum,
+    const NKikimr::TLogoBlobID& blobID,
+    const ui64 blockIndex,
+    const ui16 blobOffset,
+    const ui32 expectedChecksum,
+    const TVolumeLabelsConstPtr& volumeLabels)
+{
+    return VerifyBlockChecksum(
+        actualChecksum,
+        blobID,
+        blockIndex,
+        blobOffset,
+        expectedChecksum,
+        volumeLabels->DiskId,
+        volumeLabels->CloudId,
+        volumeLabels->FolderId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

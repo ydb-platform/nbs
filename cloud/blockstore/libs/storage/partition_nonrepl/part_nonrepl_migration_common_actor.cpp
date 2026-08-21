@@ -22,6 +22,8 @@ TNonreplicatedPartitionMigrationCommonActor::
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         ui64 blockCount,
         ui64 blockSize,
         IProfileLogPtr profileLog,
@@ -37,6 +39,8 @@ TNonreplicatedPartitionMigrationCommonActor::
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , DiskId(std::move(diskId))
+    , CloudId(std::move(cloudId))
+    , FolderId(std::move(folderId))
     , BlockSize(blockSize)
     , BlockCount(blockCount)
     , BlockDigestGenerator(std::move(digestGenerator))
@@ -63,6 +67,8 @@ TNonreplicatedPartitionMigrationCommonActor::
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         ui64 blockCount,
         ui64 blockSize,
         IProfileLogPtr profileLog,
@@ -77,6 +83,8 @@ TNonreplicatedPartitionMigrationCommonActor::
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , DiskId(std::move(diskId))
+    , CloudId(std::move(cloudId))
+    , FolderId(std::move(folderId))
     , BlockSize(blockSize)
     , BlockCount(blockCount)
     , BlockDigestGenerator(std::move(digestGenerator))

@@ -15,6 +15,8 @@ struct TFollowerDiskActorParams
     const NProto::EStorageMediaKind LeaderMediaKind =
         NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
     const TString LeaderDiskId;
+    const TString LeaderCloudId;
+    const TString LeaderFolderId;
     const ui64 LeaderBlockCount = 0;
     const ui32 LeaderBlockSize = 0;
 

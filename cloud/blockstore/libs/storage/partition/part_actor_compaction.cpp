@@ -143,7 +143,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const ui64 TabletId;
-    const TString DiskId;
+    const TVolumeLabelsConstPtr VolumeLabels;
     const TActorId Tablet;
     const ui32 BlockSize;
     const ui32 MaxAffectedBlocksPerCompaction;
@@ -199,7 +199,7 @@ public:
     TCompactionActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
-        TString diskId,
+        TVolumeLabelsConstPtr volumeLabels,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxAffectedBlocksPerCompaction,
@@ -275,7 +275,7 @@ private:
 TCompactionActor::TCompactionActor(
         TRequestInfoPtr requestInfo,
         ui64 tabletId,
-        TString diskId,
+        TVolumeLabelsConstPtr volumeLabels,
         const TActorId& tablet,
         ui32 blockSize,
         ui32 maxAffectedBlocksPerCompaction,
@@ -293,7 +293,7 @@ TCompactionActor::TCompactionActor(
         TVector<TPartialBlobId> blobsToReadBlobMetas)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
-    , DiskId(std::move(diskId))
+    , VolumeLabels(std::move(volumeLabels))
     , Tablet(tablet)
     , BlockSize(blockSize)
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
@@ -384,7 +384,7 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
                 r->BlockIndex,
                 r->BlobOffset,
                 expectedChecksum,
-                DiskId);
+                VolumeLabels);
 
             if (HasError(error)) {
                 return error;
@@ -2274,7 +2274,7 @@ void TPartitionActor::CompleteCompaction(
         ctx,
         args.RequestInfo,
         TabletID(),
-        PartitionConfig.GetDiskId(),
+        VolumeLabels,
         SelfId(),
         State->GetBlockSize(),
         Config->GetMaxAffectedBlocksPerCompaction(),

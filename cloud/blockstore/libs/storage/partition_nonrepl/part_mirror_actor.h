@@ -75,6 +75,8 @@ private:
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const TPartitionBudgetManagerPtr PartitionBudgetManager;
     const TString DiskId;
+    const TString CloudId;
+    const TString FolderId;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
     const NActors::TActorId ResyncActorId;

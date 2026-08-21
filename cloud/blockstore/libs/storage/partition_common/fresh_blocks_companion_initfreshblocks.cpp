@@ -40,9 +40,11 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
 
     if (FAILED(msg->GetStatus())) {
         ReportInitFreshBlocksError(
+            PartitionConfig.GetDiskId(),
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
             TStringBuilder() << "LoadFreshBlobs failed, error: "
-                             << FormatError(msg->GetError()),
-            {{"disk", PartitionConfig.GetDiskId()}});
+                             << FormatError(msg->GetError()));
         Client.Poison(ctx);
         return;
     }
@@ -66,10 +68,12 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
 
         if (FAILED(error.GetCode())) {
             ReportInitFreshBlocksError(
+                PartitionConfig.GetDiskId(),
+                PartitionConfig.GetCloudId(),
+                PartitionConfig.GetFolderId(),
                 TStringBuilder() << "Failed to parse fresh blob error: "
                                  << FormatError(error),
-                {{"disk", PartitionConfig.GetDiskId()},
-                 {"commit_id", blob.CommitId}});
+                {{"commit_id", blob.CommitId}});
             Client.Poison(ctx);
             return;
         }

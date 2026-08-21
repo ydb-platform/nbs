@@ -131,6 +131,8 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const TString DiskId;
+    const TString CloudId;
+    const TString FolderId;
     const ui64 BlockSize;
     const ui64 BlockCount;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -212,6 +214,8 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         ui64 blockCount,
         ui64 blockSize,
         IProfileLogPtr profileLog,
@@ -228,6 +232,8 @@ public:
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         ui64 blockCount,
         ui64 blockSize,
         IProfileLogPtr profileLog,

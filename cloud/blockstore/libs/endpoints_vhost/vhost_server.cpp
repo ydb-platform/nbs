@@ -53,6 +53,8 @@ public:
         NVhost::TStorageOptions options;
         options.DeviceName = request.GetDeviceName();
         options.DiskId = request.GetDiskId();
+        options.CloudId = volume.GetCloudId();
+        options.FolderId = volume.GetFolderId();
         options.ClientId = request.GetClientId();
         options.BlockSize = volume.GetBlockSize();
         options.BlocksCount = volume.GetBlocksCount();

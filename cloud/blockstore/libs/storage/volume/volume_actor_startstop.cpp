@@ -158,6 +158,8 @@ void TVolumeActor::OnPartitionStateChanged(
                     LogTitle.GetChild(GetCycleCount()),
                     TraceSerializer,
                     GetDiskId(),
+                    State->GetMeta().GetVolumeConfig().GetCloudId(),
+                    State->GetMeta().GetVolumeConfig().GetFolderId(),
                     State->GetMeta().GetVolumeConfig().GetBlockSize(),
                     State->GetMeta().GetVolumeConfig().GetBlocksPerStripe(),
                     Config->GetRequestSplitterPolicy(),
@@ -246,7 +248,9 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                 .CreationTs = State->GetCreationTs(),
                 .MediaKind = mediaKind,
                 .EncryptionMode = static_cast<NProto::EEncryptionMode>(
-                    volumeConfig.GetEncryptionDesc().GetMode())},
+                    volumeConfig.GetEncryptionDesc().GetMode()),
+                .CloudId = volumeConfig.GetCloudId(),
+                .FolderId = volumeConfig.GetFolderId()},
             State->GetDiskId(),
             State->GetMeta().GetConfig().GetBlockSize(),
             SelfId(),
@@ -440,6 +444,10 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                     TFollowerDiskActorParams{
                         .LeaderMediaKind = State->GetStorageMediaKind(),
                         .LeaderDiskId = State->GetDiskId(),
+                        .LeaderCloudId =
+                            State->GetConfig().GetCloudId(),
+                        .LeaderFolderId =
+                            State->GetConfig().GetFolderId(),
                         .LeaderBlockCount = State->GetBlocksCount(),
                         .LeaderBlockSize = State->GetBlockSize(),
                         .LeaderVolumeActorId = SelfId(),

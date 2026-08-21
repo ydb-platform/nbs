@@ -32,13 +32,13 @@ TIntrusivePtr<TDynamicCounters> FindNestedGroup(
     return group;
 }
 
-// Resolves the per-disk counter group under component=service_volume.
+// Resolves the per-disk counter group under component=critical_events.
 TIntrusivePtr<TDynamicCounters> FindVolumeGroup(
-    TDynamicCountersPtr serviceVolumeGroup,
+    TDynamicCountersPtr volumeCriticalEventsGroup,
     const TVolumeLabels& v)
 {
     return FindNestedGroup(
-        serviceVolumeGroup,
+        volumeCriticalEventsGroup,
         {{"volume", v.DiskId}, {"cloud", v.CloudId}, {"folder", v.FolderId}});
 }
 
@@ -135,11 +135,6 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
 
         auto assertInitialized = [&](const TString& sensorName)
         {
-            // TODO: fails until all per-disk critical events are removed from
-            // AppCriticalEvents API (now are duplicated in VolumeCriticalEvents
-            // API)
-            return;
-
             auto msg = Sprintf(
                 "reportingMode=%s, sensor=%s",
                 NProto::EVolumeCriticalEventsReportingMode_Name(reportingMode)
@@ -220,15 +215,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
             UNIT_ASSERT_C(appCounter, msg);
             UNIT_ASSERT_VALUES_EQUAL_C(1, appCounter->Val(), msg);
         } else {
-            // TODO: fails until all per-disk critical events are removed from
-            // AppCriticalEvents API (now are duplicated in VolumeCriticalEvents
-            // API)
-
-            // Restore after removed
-            // UNIT_ASSERT_C(!appCounter, msg);
-
-            // Remove after removed
-            UNIT_ASSERT_VALUES_EQUAL_C(0, appCounter->Val(), msg);
+            UNIT_ASSERT_C(!appCounter, msg);
         }
 
         handler->UpdateStats(true);
@@ -547,6 +534,103 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         handler->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(1, volumeCounter->Val());
     }
+
+    // The next two tests report AppImpossibleEvents, which causes crash in
+    // debug builds ('debug', 'relwithdebinfo'), but they shall be executed
+    // within sanitizer builds (which are 'release' builds)
+#ifdef NDEBUG
+    // A null labels pointer should report the bug and preserve the original
+    // critical event.
+    Y_UNIT_TEST(ShouldGracefullyReportNullVolumeLabels)
+    {
+        ResetVolumeCriticalEventsCounter();
+
+        auto root = MakeIntrusive<TDynamicCounters>();
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
+
+        InitVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
+
+        auto handler = CreateCriticalEventsStatsHandler();
+
+        auto bugCounter =
+            criticalEventsGroup->FindCounter(GetCriticalEventForBug());
+        UNIT_ASSERT(bugCounter);
+        bugCounter->Set(0);
+        UNIT_ASSERT_VALUES_EQUAL(0, bugCounter->Val());
+
+        const TVolumeLabelsConstPtr volumeLabels;
+        const auto logMessage =
+            ReportBlockDigestMismatchInBlob(volumeLabels, "some msg");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, bugCounter->Val());
+
+        auto appCounter = criticalEventsGroup->FindCounter(GetAppSensorName());
+        UNIT_ASSERT(appCounter);
+        UNIT_ASSERT_VALUES_EQUAL(1, appCounter->Val());
+
+        UNIT_ASSERT_STRING_CONTAINS(logMessage, "disk:<nullptr>");
+        UNIT_ASSERT_STRING_CONTAINS(logMessage, "cloud:<empty>");
+        UNIT_ASSERT_STRING_CONTAINS(logMessage, "folder:<empty>");
+
+        handler->UpdateStats(true);
+
+        // No metrics must be created for empty diskId
+        UNIT_ASSERT(volumeCriticalEventsGroup->ReadSnapshot().empty());
+    }
+
+    // An empty diskId should report the bug and preserve the original critical
+    // event.
+    Y_UNIT_TEST(ShouldGracefullyReportEmptyDiskId)
+    {
+        ResetVolumeCriticalEventsCounter();
+
+        auto root = MakeIntrusive<TDynamicCounters>();
+        auto criticalEventsGroup =
+            root->GetSubgroup("component", AppCriticalEventsComponent.data());
+        auto volumeCriticalEventsGroup = root->GetSubgroup(
+            "component",
+            VolumeCriticalEventsComponent.data());
+
+        InitVolumeCriticalEventsReportingMode(
+            NProto::EVolumeCriticalEventsReportingMode::ALL);
+        InitCriticalEventsCounter(criticalEventsGroup);
+        InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
+
+        auto handler = CreateCriticalEventsStatsHandler();
+
+        auto bugCounter =
+            criticalEventsGroup->FindCounter(GetCriticalEventForBug());
+        UNIT_ASSERT(bugCounter);
+        bugCounter->Set(0);
+        UNIT_ASSERT_VALUES_EQUAL(0, bugCounter->Val());
+
+        const TVolumeLabels volumeLabels;
+        const auto logMessage =
+            ReportBlockDigestMismatchInBlob(volumeLabels, "some msg");
+
+        UNIT_ASSERT_VALUES_EQUAL(1, bugCounter->Val());
+
+        auto appCounter = criticalEventsGroup->FindCounter(GetAppSensorName());
+        UNIT_ASSERT(appCounter);
+        UNIT_ASSERT_VALUES_EQUAL(1, appCounter->Val());
+
+        UNIT_ASSERT_STRING_CONTAINS(logMessage, "disk:<empty>");
+        UNIT_ASSERT_STRING_CONTAINS(logMessage, "cloud:<empty>");
+        UNIT_ASSERT_STRING_CONTAINS(logMessage, "folder:<empty>");
+
+        handler->UpdateStats(true);
+
+        // No metrics must be created for empty diskId
+        UNIT_ASSERT(volumeCriticalEventsGroup->ReadSnapshot().empty());
+    }
+#endif   // NDEBUG
 
     // All Report...() overloads works
     Y_UNIT_TEST(ShouldProperlyImplementAllReportOverloads)

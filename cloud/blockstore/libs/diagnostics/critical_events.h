@@ -6,6 +6,9 @@
 #include <cloud/blockstore/libs/common/printable_params.h>
 #include <cloud/blockstore/libs/common/volume_labels.h>
 
+#include <util/string/printf.h>
+#include <util/system/src_location.h>
+
 #include <utility>
 
 namespace NCloud::NBlockStore {
@@ -16,69 +19,36 @@ using TCritEventParams =
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CRITICAL_EVENTS(xxx)                                        \
-    xxx(InvalidTabletConfig)                                                   \
-    xxx(ReassignTablet)                                                        \
-    xxx(TabletBSFailure)                                                       \
-    xxx(DiskAllocationFailure)                                                 \
-    xxx(CollectGarbageError)                                                   \
     xxx(VhostQueueRunningError)                                                \
-    xxx(MigrationFailed)                                                       \
-    xxx(BadMigrationConfig)                                                    \
-    xxx(InitFreshBlocksError)                                                  \
-    xxx(TrimFreshLogError)                                                     \
-    xxx(NrdDestructionError)                                                   \
-    xxx(FailedToStartVolumeLocally)                                            \
     xxx(PublishDiskStateError)                                                 \
     xxx(EndpointRestoringError)                                                \
     xxx(HangingYdbStatsRequest)                                                \
     xxx(UserNotificationError)                                                 \
     xxx(BackupPathDescriptionsFailure)                                         \
     xxx(RdmaError)                                                             \
-    xxx(MirroredDiskAllocationCleanupFailure)                                  \
-    xxx(MirroredDiskAllocationPlacementGroupCleanupFailure)                    \
-    xxx(MirroredDiskDeviceReplacementForbidden)                                \
-    xxx(MirroredDiskDeviceReplacementFailure)                                  \
-    xxx(MirroredDiskDeviceReplacementRateLimitExceeded)                        \
-    xxx(MirroredDiskMinorityChecksumMismatch)                                  \
-    xxx(MirroredDiskMajorityChecksumMismatch)                                  \
-    xxx(MirroredDiskChecksumMismatchUponRead)                                  \
-    xxx(MirroredDiskAddTagFailed)                                              \
     xxx(CounterUpdateRace)                                                     \
     xxx(EndpointStartingError)                                                 \
-    xxx(ResyncFailed)                                                          \
     xxx(DiskRegistryBackupFailed)                                              \
     xxx(RegisterAgentWithEmptyRackName)                                        \
-    xxx(AddConfirmedBlobsError)                                                \
-    xxx(ConfirmBlobsError)                                                     \
     xxx(ManuallyPreemptedVolumesFileError)                                     \
     xxx(ServiceProxyWakeupTimerHit)                                            \
     xxx(ReceivedUnknownTaskId)                                                 \
-    xxx(MigrationSourceNotFound)                                               \
     xxx(UnexpectedBatchMigration)                                              \
     xxx(FreshDeviceNotFoundInConfig)                                           \
     xxx(DiskRegistryDeviceNotFoundSoft)                                        \
     xxx(DiskRegistrySourceDiskNotFound)                                        \
     xxx(EndpointSwitchFailure)                                                 \
     xxx(ExternalEndpointUnexpectedExit)                                        \
-    xxx(BlockDigestMismatchInBlob)                                             \
     xxx(DiskRegistryResumeDeviceFailed)                                        \
     xxx(DiskRegistryAgentDevicePoolConfigMismatch)                             \
     xxx(DiskRegistryPurgeHostError)                                            \
     xxx(DiskRegistryOccupiedDeviceConfigurationHasChanged)                     \
     xxx(DiskRegistryWrongMigratedDeviceOwnership)                              \
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
-    xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
-    xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
-    xxx(MirroredDiskResyncChecksumMismatch)                                    \
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
-    xxx(ReleaseShadowDiskError)                                                \
     xxx(WrongCellIdInDescribeVolume)                                           \
-    xxx(TrimFreshLogTimeout)                                                   \
     xxx(DiskRegistryStateIntegrityBroken)                                      \
-    xxx(AddFreshBlocksResultedInError)                                         \
-    xxx(OverlappingRequestsDetected)                                           \
-    xxx(CrossPartitionRequestDetected)                                         \
-// BLOCKSTORE_CRITICAL_EVENTS
+    // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
     xxx(AcquiredDiskEraseAttempt)                                              \
@@ -136,7 +106,15 @@ using TCritEventParams =
     xxx(RdmaMessageTypeMismatch)                                               \
     xxx(BlockChecksumAbsent)                                                   \
     xxx(CleanupBlobMetaBlocksMismatch)                                         \
-// BLOCKSTORE_IMPOSSIBLE_EVENTS
+    xxx(Bug) /* General software bug event.                                    \
+                Used for non-specialized or unclassified errors. */            \
+    // BLOCKSTORE_IMPOSSIBLE_EVENTS
+
+/* Report AppImpossibeEvent/Bug with source location log */
+#define REPORT_BUG(message, ...)                                               \
+    ::NCloud::NBlockStore::ReportBug(                                          \
+        (TStringBuilder() << __LOCATION__ << ": " << (message)) __VA_OPT__(, ) \
+            __VA_ARGS__)
 
 #define BLOCKSTORE_VOLUME_CRITICAL_EVENTS(xxx)                                 \
     xxx(InvalidTabletConfig)                                                   \
@@ -162,12 +140,12 @@ using TCritEventParams =
     xxx(ResyncFailed)                                                          \
     xxx(AddConfirmedBlobsError)                                                \
     xxx(ConfirmBlobsError)                                                     \
+    xxx(MigrationSourceNotFound)                                               \
     xxx(BlockDigestMismatchInBlob)                                             \
     xxx(ErrorWasSentToTheGuestForReliableDisk)                                 \
     xxx(ErrorWasSentToTheGuestForNonReliableDisk)                              \
     xxx(MirroredDiskResyncChecksumMismatch)                                    \
     xxx(ReleaseShadowDiskError)                                                \
-    xxx(WrongCellIdInDescribeVolume)                                           \
     xxx(TrimFreshLogTimeout)                                                   \
     xxx(AddFreshBlocksResultedInError)                                         \
     xxx(OverlappingRequestsDetected)                                           \
@@ -181,12 +159,11 @@ using TCritEventParams =
     TString Report##name(                                                      \
         const TString& message,                                                \
         const TCritEventParams& keyValues);                                    \
-    TString Report##name(                                                      \
-        const TCritEventParams& keyValues);                                    \
+    TString Report##name(const TCritEventParams& keyValues);                   \
     const TString GetCriticalEventFor##name();                                 \
-// BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE
+    // BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE
 
-    BLOCKSTORE_CRITICAL_EVENTS(BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE)
+BLOCKSTORE_CRITICAL_EVENTS(BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE)
 #undef BLOCKSTORE_DECLARE_CRITICAL_EVENT_ROUTINE
 
 #define BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE(name)             \
@@ -194,13 +171,12 @@ using TCritEventParams =
     TString Report##name(                                                      \
         const TString& message,                                                \
         const TCritEventParams& keyValues);                                    \
-    TString Report##name(                                                      \
-        const TCritEventParams& keyValues);                                    \
+    TString Report##name(const TCritEventParams& keyValues);                   \
     const TString GetCriticalEventFor##name();                                 \
-// BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
+    // BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
-    BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(
-        BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE)
+BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(
+    BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE)
 #undef BLOCKSTORE_DECLARE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
 #define BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE(name)                      \
@@ -208,55 +184,60 @@ using TCritEventParams =
     TString Report##name(                                                      \
         const TString& message,                                                \
         const TCritEventParams& keyValues);                                    \
-    TString Report##name(                                                      \
-        const TCritEventParams& keyValues);                                    \
+    TString Report##name(const TCritEventParams& keyValues);                   \
     const TString GetCriticalEventFor##name();                                 \
-// BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
-    BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)
+    // BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
+BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef BLOCKSTORE_DECLARE_IMPOSSIBLE_EVENT_ROUTINE
 
-#define BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE(name)             \
-        TString Report##name(                                                  \
-            const TString& diskId,                                             \
-            const TString& cloudId,                                            \
-            const TString& folderId,                                           \
-            const TString& message = "");                                      \
-        TString Report##name(                                                  \
-            const TString& diskId,                                             \
-            const TString& cloudId,                                            \
-            const TString& folderId,                                           \
-            const TString& message,                                            \
-            const TCritEventParams& keyValues);                                \
-        TString Report##name(                                                  \
-            const TString& diskId,                                             \
-            const TString& cloudId,                                            \
-            const TString& folderId,                                           \
-            const TCritEventParams& keyValues);                                \
-        template <typename... TArgs>                                           \
-        TString Report##name(                                                  \
-            const TVolumeLabels& volumeLabels,                                 \
-            TArgs&&... args)                                                   \
-        {                                                                      \
-            return Report##name(                                               \
-                volumeLabels.DiskId,                                           \
-                volumeLabels.CloudId,                                          \
-                volumeLabels.FolderId,                                         \
-                std::forward<TArgs>(args)...);                                 \
+#define BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE(name)                 \
+    const TString GetVolumeCriticalEventFor##name();                           \
+    const TString GetAppCriticalEventFor##name();                              \
+    TString Report##name(                                                      \
+        const TString& diskId,                                                 \
+        const TString& cloudId,                                                \
+        const TString& folderId,                                               \
+        const TString& message = "");                                          \
+    TString Report##name(                                                      \
+        const TString& diskId,                                                 \
+        const TString& cloudId,                                                \
+        const TString& folderId,                                               \
+        const TString& message,                                                \
+        const TCritEventParams& keyValues);                                    \
+    TString Report##name(                                                      \
+        const TString& diskId,                                                 \
+        const TString& cloudId,                                                \
+        const TString& folderId,                                               \
+        const TCritEventParams& keyValues);                                    \
+    template <typename... TArgs>                                               \
+    TString Report##name(const TVolumeLabels& volumeLabels, TArgs&&... args)   \
+    {                                                                          \
+        return Report##name(                                                   \
+            volumeLabels.DiskId,                                               \
+            volumeLabels.CloudId,                                              \
+            volumeLabels.FolderId,                                             \
+            std::forward<TArgs>(args)...);                                     \
+    }                                                                          \
+    template <typename... TArgs>                                               \
+    TString Report##name(                                                      \
+        const TVolumeLabelsConstPtr& volumeLabels,                             \
+        TArgs&&... args)                                                       \
+    {                                                                          \
+        if (!volumeLabels) {                                                   \
+            REPORT_BUG(Sprintf(                                                \
+                "volumeLabels = nullptr provided for %s report, "              \
+                "monitoring metrics will not be updated",                      \
+                GetVolumeCriticalEventFor##name().c_str()));                   \
         }                                                                      \
-        template <typename... TArgs>                                           \
-        TString Report##name(                                                  \
-            const TVolumeLabelsConstPtr& volumeLabels,                         \
-            TArgs&&... args)                                                   \
-        {                                                                      \
-            Y_ABORT_UNLESS(volumeLabels);                                      \
-            return Report##name(*volumeLabels, std::forward<TArgs>(args)...);  \
-        }                                                                      \
-        const TString GetVolumeCriticalEventFor##name();                       \
-        const TString GetAppCriticalEventFor##name();                          \
-        // BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
+        const auto& labels = volumeLabels                                      \
+                                 ? volumeLabels                                \
+                                 : MakeVolumeLabels("<nullptr>", "", "");      \
+        return Report##name(*labels, std::forward<TArgs>(args)...);            \
+    }                                                                          \
+    // BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
 
-    BLOCKSTORE_VOLUME_CRITICAL_EVENTS(
-        BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE)
+BLOCKSTORE_VOLUME_CRITICAL_EVENTS(
+    BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE)
 #undef BLOCKSTORE_DECLARE_VOLUME_CRITICAL_EVENT_ROUTINE
 
 }   // namespace NCloud::NBlockStore

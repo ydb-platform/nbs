@@ -8,6 +8,7 @@
 #include "part2_state.h"
 #include "part2_tx.h"
 
+#include <cloud/blockstore/libs/common/volume_labels.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -99,6 +100,7 @@ private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
+    const TVolumeLabelsConstPtr VolumeLabels;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;

@@ -50,6 +50,8 @@ TFollowerDiskActor::TFollowerDiskActor(
           config,
           std::move(diagnosticConfig),
           params.LeaderDiskId,
+          params.LeaderCloudId,
+          params.LeaderFolderId,
           params.LeaderBlockCount,
           params.LeaderBlockSize,
           std::move(profileLog),

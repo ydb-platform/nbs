@@ -24,6 +24,8 @@ class TMultiPartitionWrapperActor final
 private:
     const TChildLogTitle LogTitle;
     const ITraceSerializerPtr TraceSerializer;
+    const TString CloudId;
+    const TString FolderId;
     const ui32 BlockSize = 0;
     const ui32 BlocksPerStripe = 0;
     const NProto::ERequestSplitterPolicy SplitterPolicy =
@@ -35,6 +37,8 @@ public:
         TChildLogTitle logTitle,
         ITraceSerializerPtr traceSerializer,
         const TString& diskId,
+        const TString& cloudId,
+        const TString& folderId,
         ui32 blockSize,
         ui32 blocksPerStripe,
         NProto::ERequestSplitterPolicy splitterPolicy,

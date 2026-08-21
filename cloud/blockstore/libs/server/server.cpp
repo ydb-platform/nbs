@@ -740,7 +740,9 @@ private:
                 const auto* msg = "DescribeVolume response cell id mismatch";
                 ReportWrongCellIdInDescribeVolume(
                     msg,
-                    {{"expected", AppCtx.CellId}, {"actual", cellId}});
+                    {{"disk", Request->GetDiskId()},
+                     {"expected", AppCtx.CellId},
+                     {"actual", cellId}});
 
                 STORAGE_THROW_SERVICE_ERROR(E_REJECTED) << msg;
             }

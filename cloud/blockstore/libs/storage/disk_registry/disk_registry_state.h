@@ -857,6 +857,7 @@ public:
     bool CheckIfDeviceReplacementIsAllowed(
         TInstant now,
         const TDiskId& masterDiskId,
+        const TDiskId& replicaDiskId,
         const TDeviceId& deviceId);
 
     NProto::TError CreateDiskFromDevices(
@@ -1416,6 +1417,10 @@ private:
         TInstant timestamp,
         TString message,
         bool manual);
+
+    const TDiskState& GetMirroredDiskLabelsSource(
+        const TDiskId& masterDiskId,
+        const TDiskId& replicaDiskId) const;
 
     void TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
         TDiskRegistryDatabase& db,

@@ -26,7 +26,7 @@ TTrimFreshLogActor::TTrimFreshLogActor(
         ui32 recordGeneration,
         ui32 perGenerationCounter,
         TVector<ui32> freshChannels,
-        TString diskId,
+        TVolumeLabelsConstPtr volumeLabels,
         TDuration timeout)
     : RequestInfo(std::move(requestInfo))
     , PartitionActorId(partitionActorId)
@@ -35,7 +35,7 @@ TTrimFreshLogActor::TTrimFreshLogActor(
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
     , FreshChannels(std::move(freshChannels))
-    , DiskId(std::move(diskId))
+    , VolumeLabels(std::move(volumeLabels))
     , Timeout(timeout)
 {}
 
@@ -138,11 +138,17 @@ void TTrimFreshLogActor::HandleCollectGarbageResult(
         HasError(error))
     {
         TCritEventParams critEventParams =
-             {{"disk", DiskId}, {"TabletId", TabletInfo->TabletID}};
+             {{"TabletId", TabletInfo->TabletID}};
         if (msg->Status == NKikimrProto::EReplyStatus::DEADLINE) {
-            ReportTrimFreshLogTimeout(FormatError(error), critEventParams);
+            ReportTrimFreshLogTimeout(
+                VolumeLabels,
+                FormatError(error),
+                critEventParams);
         } else {
-            ReportTrimFreshLogError(FormatError(error), critEventParams);
+            ReportTrimFreshLogError(
+                VolumeLabels,
+                FormatError(error),
+                critEventParams);
         }
         Error = std::move(error);
     }

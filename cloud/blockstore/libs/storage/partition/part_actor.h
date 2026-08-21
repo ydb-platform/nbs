@@ -7,6 +7,7 @@
 #include "part_state.h"
 #include "part_tx.h"
 
+#include <cloud/blockstore/libs/common/volume_labels.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
@@ -121,6 +122,7 @@ private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
+    const TVolumeLabelsConstPtr VolumeLabels;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -848,6 +850,16 @@ NProto::TError VerifyBlockChecksum(
     const ui64 blockIndex,
     const ui16 blobOffset,
     const ui32 expectedChecksum,
-    const TString& diskId);
+    const TString& diskId,
+    const TString& cloudId,
+    const TString& folderId);
+
+NProto::TError VerifyBlockChecksum(
+    const ui32 actualChecksum,
+    const NKikimr::TLogoBlobID& blobID,
+    const ui64 blockIndex,
+    const ui16 blobOffset,
+    const ui32 expectedChecksum,
+    const TVolumeLabelsConstPtr& volumeLabels);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

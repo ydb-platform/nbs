@@ -133,6 +133,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         BlockDigestGenerator,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
         PartitionTabletID,
+        VolumeLabels,
         SharedState);
 
     Actors.Insert(actor);
@@ -219,6 +220,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         BlockDigestGenerator,
         false,   // waitForAddFreshBlocksResponseBeforeResponse
         PartitionTabletID,
+        VolumeLabels,
         SharedState);
 
     Actors.Insert(actor);
