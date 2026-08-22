@@ -5,6 +5,7 @@
 #include <silk/fibers/fiber.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/buffer.h>
 #include <util/generic/string.h>
 #include <util/generic/utility.h>
 #include <util/generic/vector.h>
@@ -221,7 +222,7 @@ public:
             ui64 FirstPageNo = 0;
             ui64 PageCount = 0;
             ui32 PageSize = 0;
-            TString Buffer;
+            TBuffer Buffer;
             iovec Iov{};
             ui64 BytesRead = 0;
             FiberScheduler::IoFuture Future;
@@ -242,9 +243,9 @@ public:
             op.FirstPageNo = ref.GetFirstPageNo();
             op.PageCount = ref.GetPageCount();
             op.PageSize = ref.GetPageSize();
-            op.Buffer.ReserveAndResize(op.PageCount * op.PageSize);
-            op.Iov.iov_base = op.Buffer.begin();
-            op.Iov.iov_len = op.Buffer.size();
+            op.Buffer.Resize(op.PageCount * op.PageSize);
+            op.Iov.iov_base = op.Buffer.Data();
+            op.Iov.iov_len = op.Buffer.Size();
             const ui64 offset = op.FirstPageNo * op.PageSize;
             FiberScheduler::read(
                 fd,
@@ -303,9 +304,9 @@ public:
             auto* pg = resp.AddPageGroups();
             pg->SetFirstPageNo(op.FirstPageNo);
             for (ui64 i = 0; i < op.PageCount; ++i) {
-                pg->AddContent(op.Buffer.substr(
-                    static_cast<size_t>(i) * op.PageSize,
-                    op.PageSize));
+                pg->AddContent()->assign(
+                    op.Buffer.Data() + static_cast<size_t>(i) * op.PageSize,
+                    op.PageSize);
             }
         }
         return resp;

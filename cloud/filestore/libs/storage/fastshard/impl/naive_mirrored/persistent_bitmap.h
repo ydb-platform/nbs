@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <util/generic/buffer.h>
 #include <util/generic/stack.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
@@ -19,7 +20,7 @@ private:
     const ui64 BitsPerPage;
     IPageStorePtr PageStore;
 
-    mutable TVector<TString> BitmapPages;
+    mutable TVector<TBuffer> BitmapPages;
     mutable TStack<ui64> BitmapPagesWithFreeBits;
 
 public:

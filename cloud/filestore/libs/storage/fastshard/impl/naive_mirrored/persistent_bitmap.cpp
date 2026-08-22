@@ -11,12 +11,12 @@ namespace {
 constexpr ui64 InvalidBitNo = Max<ui64>();
 constexpr ui64 BitsPerWord = 64;
 
-bool IsFull(const TString& bitmapPage)
+bool IsFull(const TBuffer& bitmapPage)
 {
-    Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
+    Y_ABORT_UNLESS(bitmapPage.Size() % sizeof(ui64) == 0);
 
-    for (ui64 i = 0; i < bitmapPage.size(); i += sizeof(ui64)) {
-        const ui64* word = reinterpret_cast<const ui64*>(bitmapPage.data() + i);
+    for (ui64 i = 0; i < bitmapPage.Size(); i += sizeof(ui64)) {
+        const ui64* word = reinterpret_cast<const ui64*>(bitmapPage.Data() + i);
         if (~*word != 0) {
             return false;
         }
@@ -37,34 +37,34 @@ static ui16 PopCount(ui64 x)
     return byteSums * 0x0101010101010101ULL >> 56;
 }
 
-ui64 PopCount(const TString& bitmapPage)
+ui64 PopCount(const TBuffer& bitmapPage)
 {
-    Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
+    Y_ABORT_UNLESS(bitmapPage.Size() % sizeof(ui64) == 0);
     ui64 c = 0;
 
-    for (ui64 i = 0; i < bitmapPage.size(); i += sizeof(ui64)) {
-        const ui64* word = reinterpret_cast<const ui64*>(bitmapPage.data() + i);
+    for (ui64 i = 0; i < bitmapPage.Size(); i += sizeof(ui64)) {
+        const ui64* word = reinterpret_cast<const ui64*>(bitmapPage.Data() + i);
         c += PopCount(*word);
     }
 
     return c;
 }
 
-bool GetBit(TString& bitmapPage, ui64 bit)
+bool GetBit(TBuffer& bitmapPage, ui64 bit)
 {
-    Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
+    Y_ABORT_UNLESS(bitmapPage.Size() % sizeof(ui64) == 0);
 
     ui64* word =
-        reinterpret_cast<ui64*>(bitmapPage.begin()) + bit / BitsPerWord;
+        reinterpret_cast<ui64*>(bitmapPage.Data()) + bit / BitsPerWord;
     return (*word & (1ULL << (bit % BitsPerWord))) != 0;
 }
 
-void SetBit(TString& bitmapPage, ui64 bit, bool isReset)
+void SetBit(TBuffer& bitmapPage, ui64 bit, bool isReset)
 {
-    Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
+    Y_ABORT_UNLESS(bitmapPage.Size() % sizeof(ui64) == 0);
 
     ui64* word =
-        reinterpret_cast<ui64*>(bitmapPage.begin()) + bit / BitsPerWord;
+        reinterpret_cast<ui64*>(bitmapPage.Data()) + bit / BitsPerWord;
     if (isReset) {
         *word &= ~(1ULL << (bit % BitsPerWord));
     } else {
@@ -72,12 +72,12 @@ void SetBit(TString& bitmapPage, ui64 bit, bool isReset)
     }
 }
 
-ui64 FindFirstFreeBit(const TString& bitmapPage)
+ui64 FindFirstFreeBit(const TBuffer& bitmapPage)
 {
-    Y_ABORT_UNLESS(bitmapPage.size() % sizeof(ui64) == 0);
+    Y_ABORT_UNLESS(bitmapPage.Size() % sizeof(ui64) == 0);
 
-    for (ui64 i = 0; i < bitmapPage.size(); i += sizeof(ui64)) {
-        const ui64* word = reinterpret_cast<const ui64*>(bitmapPage.data() + i);
+    for (ui64 i = 0; i < bitmapPage.Size(); i += sizeof(ui64)) {
+        const ui64* word = reinterpret_cast<const ui64*>(bitmapPage.Data() + i);
         if (~*word != 0) {
             return i * 8 + std::countr_one(*word);
         }
@@ -237,7 +237,7 @@ NProto::TError TPersistentBitmap::InitIfNeeded() const
             return error;
         }
 
-        Y_ABORT_UNLESS(BitmapPages[i].size() == PageSize);
+        Y_ABORT_UNLESS(BitmapPages[i].Size() == PageSize);
 
         if (!IsFull(BitmapPages[i])) {
             BitmapPagesWithFreeBits.push(i);

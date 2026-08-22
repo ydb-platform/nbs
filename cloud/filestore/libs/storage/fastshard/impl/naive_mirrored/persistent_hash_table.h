@@ -9,6 +9,7 @@
 #include <silk/util/logger.h>
 
 #include <util/digest/city.h>
+#include <util/generic/buffer.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
@@ -58,13 +59,13 @@ private:
         const ui64 SlotSize;
         const ui64 SlotCount;
         const ui64 SlotsPerPage;
-        TString Page;
+        TBuffer Page;
         bool Dirty = false;
         ui64 SlotNo;
 
         struct TDirtyPage
         {
-            TString Content;
+            TBuffer Content;
             ui64 PageNo = 0;
         };
 
@@ -140,7 +141,7 @@ private:
         [[nodiscard]] const char* GetRaw() const
         {
             const ui64 offsetInPage = (SlotNo % SlotsPerPage) * SlotSize;
-            return Page.data() + offsetInPage;
+            return Page.Data() + offsetInPage;
         }
 
         [[nodiscard]] const TValue& Get() const
@@ -151,7 +152,7 @@ private:
         void Write(const char* data)
         {
             const ui64 offsetInPage = (SlotNo % SlotsPerPage) * SlotSize;
-            char* dst = Page.begin() + offsetInPage;
+            char* dst = Page.Data() + offsetInPage;
             memcpy(dst, data, sizeof(TValue));
             dst += sizeof(TValue);
             const ui64 tail = SlotSize - sizeof(TValue);
@@ -164,7 +165,7 @@ private:
         void Clear()
         {
             const ui64 offsetInPage = (SlotNo % SlotsPerPage) * SlotSize;
-            memset(Page.begin() + offsetInPage, 0, SlotSize);
+            memset(Page.Data() + offsetInPage, 0, SlotSize);
             Dirty = true;
         }
 
@@ -310,7 +311,7 @@ private:
     [[nodiscard]] NProto::TError WritePage(
         ui64 lsn,
         ui64 slotNo,
-        TString page,
+        TBuffer page,
         TVector<TPageGroup>& pageGroups)
     {
         const ui64 pageNo = FirstPageNo + slotNo / SlotsPerPage;
@@ -318,7 +319,7 @@ private:
     }
 
     [[nodiscard]] NProto::TError
-    ReadPage(ui64 lsn, ui64 slotNo, TString* page) const
+    ReadPage(ui64 lsn, ui64 slotNo, TBuffer* page) const
     {
         const ui64 pageNo = FirstPageNo + slotNo / SlotsPerPage;
         return PageStore->ReadPage(lsn, pageNo, page);
@@ -337,14 +338,14 @@ private:
     [[nodiscard]] NProto::TError
     LookupSlot(ui64 lsn, ui64 slotNo, TValue* v) const
     {
-        TString page;
+        TBuffer page;
         auto error = ReadPage(lsn, slotNo, &page);
         if (HasError(error)) {
             return error;
         }
 
         const ui32 relSlotNo = slotNo % SlotsPerPage;
-        const char* ptr = page.data() + relSlotNo * SlotSize;
+        const char* ptr = page.Data() + relSlotNo * SlotSize;
         return LookupSlot(ptr, v) ? MakeError(S_OK) : MakeError(S_FALSE);
     }
 
@@ -466,14 +467,14 @@ private:
         ui64 slotNo,
         TVector<TPageGroup>& pageGroups)
     {
-        TString page;
+        TBuffer page;
         auto error = ReadPage(lsn, slotNo, &page);
         if (HasError(error)) {
             return error;
         }
 
         const ui32 relSlotNo = slotNo % SlotsPerPage;
-        char* ptr = page.begin() + relSlotNo * SlotSize;
+        char* ptr = page.Data() + relSlotNo * SlotSize;
         memcpy(ptr, &v, sizeof(TValue));
 
         error = WritePage(lsn, slotNo, std::move(page), pageGroups);
