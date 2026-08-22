@@ -18,6 +18,31 @@ using namespace NMetrics;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void MergeQuotaUsages(
+    NProtoPrivate::TStorageStats& dst,
+    const NProtoPrivate::TStorageStats& src)
+{
+    for (const auto& srcUsage: src.GetQuotaUsages()) {
+        NProtoPrivate::TQuotaUsage* dstUsage = nullptr;
+        for (auto& usage: *dst.MutableQuotaUsages()) {
+            if (usage.GetQuotaId() == srcUsage.GetQuotaId()) {
+                dstUsage = &usage;
+                break;
+            }
+        }
+        if (!dstUsage) {
+            dstUsage = dst.AddQuotaUsages();
+            dstUsage->SetQuotaId(srcUsage.GetQuotaId());
+        }
+        dstUsage->SetUsedBytes(
+            dstUsage->GetUsedBytes() + srcUsage.GetUsedBytes());
+        dstUsage->SetUsedNodes(
+            dstUsage->GetUsedNodes() + srcUsage.GetUsedNodes());
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // TAggregateStatsActor always replies with
 // TAggregateStatsCompleted to a TIndexTabletActor that created the actor.
 // 1. IsBackgroundRequest. It means the actor was created in
@@ -229,6 +254,8 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
 
     dst.SetSevenBytesHandlesCount(
         dst.GetSevenBytesHandlesCount() + src.GetSevenBytesHandlesCount());
+
+    MergeQuotaUsages(dst, src);
 
     LOG_DEBUG(
         ctx,
@@ -810,6 +837,13 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetUnconfirmedDataCount(
         UnconfirmedData.size() + UnconfirmedDataInProgress.size());
     stats->SetConfirmedDataCount(ConfirmedData.size());
+
+    for (const auto& usage: GetQuotaUsages()) {
+        auto* proto = stats->AddQuotaUsages();
+        proto->SetQuotaId(usage.QuotaId);
+        proto->SetUsedBytes(usage.UsedBytes);
+        proto->SetUsedNodes(usage.UsedNodes);
+    }
 }
 
 void TIndexTabletActor::HandleGetStorageStats(

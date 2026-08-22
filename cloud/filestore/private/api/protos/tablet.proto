@@ -176,6 +176,10 @@ message TStorageStats
     repeated TNodeStats NodeStats = 7001;
 
     repeated TNodeLatencyStats LatencyStats = 8001;
+
+    // aggregated usage per quota, summed across this tablet and (once
+    // fanned out and merged by TAggregateStatsActor) every shard
+    repeated TQuotaUsage QuotaUsages = 9001;
 }
 
 enum EStatsRequestMode
