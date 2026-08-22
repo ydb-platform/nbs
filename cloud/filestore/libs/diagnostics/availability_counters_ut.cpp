@@ -68,7 +68,7 @@ struct TEnv
     }
 
     // Maps the published label back to the request type through the
-    // production forward mapping; an unknown name fails the test.
+    // production forward mapping.
     static ERequestType RequestTypeByName(const TString& requestName)
     {
         // index 0 is ERequestType::None, which has no published name
@@ -82,9 +82,6 @@ struct TEnv
         return ERequestType::None;
     }
 
-    // Starts a request of the type whose published label is requestName,
-    // so that the tests drive requests by the same literal name they
-    // assert on.
     TCallContextPtr Start(const TString& requestName)
     {
         auto callContext = MakeIntrusive<TCallContext>();
@@ -483,13 +480,6 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        // Requests with ERequestType::None do not affect the metric even
-        // if they fail with EIO or hang. (The FUSE dispatch assigns None to
-        // the requests outside the availability SLA - e.g. mknod, access,
-        // xattr and lock requests; that assignment lives in the CALL table
-        // in loop.cpp and is not covered here.) None has no published name,
-        // so these requests are driven directly rather than through
-        // Start().
         auto eioContext = MakeIntrusive<TCallContext>();
         eioContext->AvailabilityRequestType = ERequestType::None;
         env.Counters.RequestStarted(*eioContext, env.Now);
@@ -597,8 +587,10 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         // the request is started right away: the first interval sees a fresh
         // pending request (neutral => available), the remaining evaluated
-        // intervals see it hung (=> unavailable); the intervals beyond the
-        // catch-up limit are reported as missing, not as unavailable
+        // intervals see it hung (=> unavailable)
+        //
+        // the intervals beyond the catch-up limit are reported as missing,
+        // not as unavailable
         {
             TEnv env;
             env.Start("read");
@@ -691,13 +683,6 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
     Y_UNIT_TEST(ShouldAccountRequestTypesIndependently)
     {
-        // EFileStoreRequest maps each of these request pairs onto one
-        // backend request type; the SLA accounts them independently, so a
-        // request type failing with EIO makes the interval unavailable even
-        // when its backend sibling succeeds in the same interval. (That the
-        // FUSE callbacks assign these enums is a property of the CALL table
-        // in loop.cpp and is not covered here.)
-
         {
             // lookup and getattr both map to GetNodeAttr
             TEnv env;
@@ -819,9 +804,10 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // exist
         env.Counters.UpdateStats(env.Now);
 
-        // Reach the end of the interval in which the request actually
-        // started: it was fresh-pending there => neutral, not hung. Both
-        // intervals must be available.
+        // reach the end of the interval in which the request actually
+        // started: it was fresh-pending there => neutral, not hung
+        //
+        // both intervals must be available
         env.Now += IntervalDuration - TDuration::Seconds(1);
         env.Counters.UpdateStats(env.Now);
 
@@ -845,11 +831,13 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             0,   // unavailable
             true);   // last interval available
 
-        // It stays outstanding through the entire second interval and
+        // it stays outstanding through the entire second interval and
         // completes successfully one second after the boundary, before any
-        // updater tick. The completion event rolls the accounting first, so
+        // updater tick
+        //
+        // the completion event rolls the accounting first, so
         // the second interval is still classified with the request hung
-        // through it, and the success lands in the third interval.
+        // through it, and the success lands in the third interval
         env.Now += IntervalDuration + TDuration::Seconds(1);
         env.CompleteOk(callContext);
         env.Counters.UpdateStats(env.Now);
@@ -873,9 +861,9 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        // No updater ticks happen between the events below: every event is
+        // no updater ticks happen between the events below: every event is
         // still assigned to its actual wall-clock interval because the
-        // request hooks roll the accounting on demand.
+        // request hooks roll the accounting on demand
 
         env.Now += IntervalDuration + TDuration::Seconds(1);
         // interval 2: a starts (interval 1 elapsed empty => available)
@@ -935,9 +923,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // two racing EnableAndRegister() calls. The updater advances the
         // shared clock, so interval boundaries are crossed while requests
         // are processed: the on-demand rollover in the request hooks races
-        // the updater rollover. The gates guarantee full iterations both
-        // before and after enabling and several boundaries crossed after
-        // enabling; run under TSAN to verify the publication.
+        // the updater rollover.
         std::atomic<ui64> nowUs = start.MicroSeconds();
         std::atomic<ui64> iterations = 0;
         std::atomic<bool> stop = false;
@@ -990,7 +976,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // The pre-enable request completes after enabling: it carries no
         // stamp and is ignored. A repeated completion of a tracked request
-        // is ignored the same way; neither may disturb the accounting.
+        // is ignored the same way, neither may disturb the accounting.
         const auto end = TInstant::MicroSeconds(nowUs.load());
         counters.RequestCompleted(*preEnable, end);
         auto repeated = MakeIntrusive<TCallContext>();
