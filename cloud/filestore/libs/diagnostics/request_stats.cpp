@@ -501,7 +501,7 @@ public:
             GetRequestType(callContext),
             callContext.RequestSize));
 
-        AvailabilityCounters.RequestStarted(callContext);
+        AvailabilityCounters.RequestStarted(callContext, Timer->Now());
 
         PredictionStarted(callContext);
     }
@@ -514,7 +514,7 @@ public:
             callContext,
             GetDiagnosticsErrorKind(error));
 
-        AvailabilityCounters.RequestCompleted(callContext);
+        AvailabilityCounters.RequestCompleted(callContext, Timer->Now());
 
         PredictionCompleted(callContext);
     }
@@ -537,7 +537,7 @@ public:
         const auto requestTime = RequestCompleted(callContext, errorKind);
         LogCompleted(log, callContext, requestTime, errorKind, error);
 
-        AvailabilityCounters.RequestCompleted(callContext);
+        AvailabilityCounters.RequestCompleted(callContext, Timer->Now());
 
         PredictionCompleted(callContext);
     }

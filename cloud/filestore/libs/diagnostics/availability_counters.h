@@ -104,7 +104,7 @@ private:
         ui64 Inflight = 0;
 
         // The counters below describe the current (not yet finished)
-        // interval and are reset by FinishInterval().
+        // interval and are reset when the interval is rolled over.
 
         // Outstanding requests that were started in the current interval.
         // The remaining (Inflight - InflightStartedInInterval) requests were
@@ -123,9 +123,9 @@ private:
         ui64 CompletedEio = 0;
 
         // Sequence number of the current interval (availability intervals
-        // are numbered starting from 1), incremented by
-        // FinishInterval(). Used to detect whether a completing request was
-        // started in the current interval.
+        // are numbered starting from 1), incremented by the interval
+        // rollover. Used to detect whether a completing request was started
+        // in the current interval.
         ui64 IntervalSeqNo = 1;
 
         // Per-request-type published counters (on the "request=<type>"
@@ -145,8 +145,22 @@ private:
     std::array<TRequestTypeState, FileStoreAvailabilityRequestTypeCount>
         RequestTypeStates;
 
-    // Only accessed from UpdateStats().
+    // Guarded by RollLock.
     TInstant CurrentIntervalStart;
+
+    // The first interval after enabling may begin mid-interval (measurement
+    // starts at the enabling instant, aligned backward): such a partially
+    // observed interval is rolled over without classification.
+    //
+    // Guarded by RollLock.
+    bool SkipCurrentInterval = false;
+
+    // End of the current interval in microseconds, 0 until the first event
+    // or update initializes the measurement.
+    std::atomic<ui64> CurrentIntervalEndUs = 0;
+
+    // Serializes interval rolling, see RollIntervals().
+    TAdaptiveLock RollLock;
 
     // Published aggregated counters.
     NMonitoring::TDynamicCounters::TCounterPtr TotalIntervalsCounter;
@@ -156,7 +170,7 @@ private:
     NMonitoring::TDynamicCounters::TCounterPtr MissingIntervalsCounter;
 
     // Set by EnableAndRegister() with release ordering once the interval
-    // duration and the sensors are fully initialized; the methods below
+    // duration and the sensors are fully initialized, the methods below
     // load it with acquire ordering and are no-ops until then.
     std::atomic<bool> CountersRegistered = false;
 
@@ -171,16 +185,34 @@ public:
         TDuration intervalDuration,
         NMonitoring::TDynamicCounters& counters);
 
-    void RequestStarted(TCallContext& callContext);
+    // The request hooks take the actual event time and assign the event to
+    // its wall-clock interval: elapsed intervals are rolled over first, so
+    // an event arriving after an interval boundary but before the periodic
+    // updater tick is never attributed to the interval that has already
+    // ended.
+    void RequestStarted(TCallContext& callContext, TInstant now);
 
-    void RequestCompleted(TCallContext& callContext);
+    void RequestCompleted(TCallContext& callContext, TInstant now);
 
     // Rolls availability intervals over. Invoked periodically from the
-    // stats-updater thread.
+    // stats-updater thread; the request hooks roll on demand as well, so
+    // this only bounds the classification latency of quiet periods.
     void UpdateStats(TInstant now);
 
 private:
-    void FinishInterval();
+    // Rolls all the intervals that have fully elapsed by the given
+    // instant: classifies and publishes each one (except a partially
+    // observed first interval), bounded by MaxIntervalsPerUpdate with the
+    // overflow reported as missing intervals.
+    void RollIntervals(TInstant now);
+
+    void DoRequestStarted(
+        TCallContext& callContext,
+        TRequestTypeState& state);
+
+    void DoRequestCompleted(
+        TCallContext& callContext,
+        TRequestTypeState& state);
 
     TInstant AlignToInterval(TInstant instant) const;
 };

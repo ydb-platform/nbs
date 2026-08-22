@@ -97,7 +97,7 @@ void TAvailabilityCounters::EnableAndRegister(
     // No intervals have been reported yet - start as available.
     *LastIntervalAvailableCounter = 1;
 
-    // index 0 is EFileStoreAvailabilityRequestType::None and stays unused
+    // Index 0 is EFileStoreAvailabilityRequestType::None and stays unused.
     for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
         auto& state = RequestTypeStates[i];
         auto requestCounters = counters.GetSubgroup(
@@ -121,7 +121,9 @@ void TAvailabilityCounters::EnableAndRegister(
     CountersRegistered.store(true, std::memory_order_release);
 }
 
-void TAvailabilityCounters::RequestStarted(TCallContext& callContext)
+void TAvailabilityCounters::RequestStarted(
+    TCallContext& callContext,
+    TInstant now)
 {
     if (!CountersRegistered.load(std::memory_order_acquire)) {
         return;
@@ -136,11 +138,35 @@ void TAvailabilityCounters::RequestStarted(TCallContext& callContext)
     auto& state = RequestTypeStates[
         static_cast<size_t>(callContext.AvailabilityRequestType)];
 
-    TGuard g{state.Lock};
+    for (;;) {
+        // Assign the event to its actual wall-clock interval: roll the
+        // elapsed intervals over before applying it.
+        RollIntervals(now);
 
-    // A repeated registration without a completion in between would leak the
-    // previous registration's accounting: only one completion follows, so
-    // the extra inflight unit would be reported as hung forever.
+        TGuard g{state.Lock};
+
+        // The interval may have rolled between RollIntervals() and taking
+        // the state lock - retry so that the event can never be applied to
+        // an interval that has already ended.
+        if (now.MicroSeconds() >=
+            CurrentIntervalEndUs.load(std::memory_order_acquire))
+        {
+            continue;
+        }
+
+        DoRequestStarted(callContext, state);
+        return;
+    }
+}
+
+// Protected by state.Lock.
+void TAvailabilityCounters::DoRequestStarted(
+    TCallContext& callContext,
+    TRequestTypeState& state)
+{
+    // A repeated registration without a completion in between would leak
+    // the previous registration's accounting: only one completion follows,
+    // so the extra inflight unit would be reported as hung forever.
     if (callContext.AvailabilityIntervalSeqNo != 0) {
         ReportAvailabilityCountersDoubleRegistration(
             TStringBuilder() << "request type: "
@@ -152,16 +178,11 @@ void TAvailabilityCounters::RequestStarted(TCallContext& callContext)
     ++state.InflightStartedInInterval;
 
     callContext.AvailabilityIntervalSeqNo = state.IntervalSeqNo;
-
-    // A registration starts a fresh attempt: clear the outcome of a possible
-    // previous attempt of this context. Production success replies do not
-    // write GuestReplyErrno - they rely on it being 0 - so a restarted
-    // context would otherwise be classified with the stale EIO of its
-    // previous attempt.
-    callContext.GuestReplyErrno = 0;
 }
 
-void TAvailabilityCounters::RequestCompleted(TCallContext& callContext)
+void TAvailabilityCounters::RequestCompleted(
+    TCallContext& callContext,
+    TInstant now)
 {
     if (!CountersRegistered.load(std::memory_order_acquire)) {
         return;
@@ -176,16 +197,39 @@ void TAvailabilityCounters::RequestCompleted(TCallContext& callContext)
     auto& state = RequestTypeStates[
         static_cast<size_t>(callContext.AvailabilityRequestType)];
 
-    TGuard g{state.Lock};
+    for (;;) {
+        // Assign the event to its actual wall-clock interval: roll the
+        // elapsed intervals over before applying it, so that a completion
+        // arriving after an interval boundary cannot retroactively make the
+        // interval it hung through available.
+        RollIntervals(now);
 
-    // Every completion is expected to pair with exactly one registration:
-    // the stamp is put there by RequestStarted() and consumed below by the
-    // first completion, so a zero stamp means an unregistered or repeated
-    // completion.
+        TGuard g{state.Lock};
+
+        // The interval may have rolled between RollIntervals() and taking
+        // the state lock - retry so that the event can never be applied to
+        // an interval that has already ended.
+        if (now.MicroSeconds() >=
+            CurrentIntervalEndUs.load(std::memory_order_acquire))
+        {
+            continue;
+        }
+
+        DoRequestCompleted(callContext, state);
+        return;
+    }
+}
+
+// Protected by state.Lock.
+void TAvailabilityCounters::DoRequestCompleted(
+    TCallContext& callContext,
+    TRequestTypeState& state)
+{
+    // The stamp is put there by RequestStarted() and consumed below by the
+    // first completion. A zero stamp means the request either started
+    // before the tracking was enabled or was already completed, it is
+    // ignored either way.
     if (callContext.AvailabilityIntervalSeqNo == 0) {
-        ReportAvailabilityCountersUnpairedCompletion(
-            TStringBuilder() << "request type: "
-                << static_cast<ui32>(callContext.AvailabilityRequestType));
         return;
     }
 
@@ -219,10 +263,31 @@ void TAvailabilityCounters::UpdateStats(TInstant now)
         return;
     }
 
+    RollIntervals(now);
+}
+
+void TAvailabilityCounters::RollIntervals(TInstant now)
+{
+    // Fast path: an event or update well inside the current interval.
+    if (now.MicroSeconds() <
+        CurrentIntervalEndUs.load(std::memory_order_acquire))
+    {
+        return;
+    }
+
+    TGuard g{RollLock};
+
     if (!CurrentIntervalStart) {
-        // First call - start measuring from the current wall-clock-aligned
-        // interval boundary so that intervals of all clients are aligned.
+        // First event or update - start measuring from the current
+        // wall-clock-aligned interval boundary so that intervals of all
+        // clients are aligned. If the measurement does not begin exactly at
+        // a boundary, the first interval is only partially observed and is
+        // rolled over without classification below.
         CurrentIntervalStart = AlignToInterval(now);
+        SkipCurrentInterval = now != CurrentIntervalStart;
+        CurrentIntervalEndUs.store(
+            (CurrentIntervalStart + IntervalDuration).MicroSeconds(),
+            std::memory_order_release);
         return;
     }
 
@@ -230,13 +295,90 @@ void TAvailabilityCounters::UpdateStats(TInstant now)
     while (now >= CurrentIntervalStart + IntervalDuration &&
            finishedIntervals < MaxIntervalsPerUpdate)
     {
-        // More than one interval may have elapsed if the stats updater was
-        // stalled. The first iteration evaluates all the accumulated data;
+        // More than one interval may have elapsed if neither the stats
+        // updater nor any request event has rolled the accounting for a
+        // while. The first iteration evaluates all the accumulated data;
         // subsequent iterations see empty per-interval counters, so a gap
         // interval is classified as unavailable iff some requests remained
-        // outstanding (i.e. hung) throughout it, which is exactly what the
-        // definition prescribes.
-        FinishInterval();
+        // outstanding (i.e. hung) throughout it.
+
+        // A partially observed interval (the one during which the
+        // measurement began mid-interval) is rolled over - accounting
+        // resets, outstanding requests become old - but is not classified
+        // or counted.
+        const bool skipClassification = SkipCurrentInterval;
+        SkipCurrentInterval = false;
+
+        bool intervalAvailable = true;
+
+        // Index 0 is EFileStoreAvailabilityRequestType::None, stays unused.
+        for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
+            auto& state = RequestTypeStates[i];
+
+            TGuard stateGuard{state.Lock};
+
+            // Inflight >= InflightStartedInInterval holds but the
+            // subtraction is clamped defensively so that a violation can
+            // never wrap it into a huge hung count.
+            Y_DEBUG_ABORT_UNLESS(
+                state.Inflight >= state.InflightStartedInInterval);
+            // Requests that were outstanding at the interval start and are
+            // still outstanding at the interval end, i.e. remained
+            // outstanding throughout the entire interval => hung.
+            const ui64 hung =
+                state.Inflight >= state.InflightStartedInInterval
+                    ? state.Inflight - state.InflightStartedInInterval
+                    : 0;
+
+            // A request type makes the interval unavailable if it shows
+            // failure evidence - at least one request completed with an EIO
+            // error during the interval or hung through it - and no success
+            // evidence - no request completed with a non-EIO outcome during
+            // the interval. Requests that were started during the interval
+            // and have not completed by its end count as neither: their
+            // outcome is not known yet and will be accounted for in the
+            // interval where they complete (or in the intervals they hang
+            // through).
+            const bool hadFailedRequest = state.CompletedEio > 0 || hung > 0;
+            const bool hadNonFailedRequest = state.CompletedNonEio > 0;
+
+            const bool requestTypeAvailable =
+                !hadFailedRequest || hadNonFailedRequest;
+            if (!requestTypeAvailable) {
+                // The aggregated interval availability is the logical AND
+                // over the request types.
+                intervalAvailable = false;
+            }
+
+            if (!skipClassification) {
+                if (requestTypeAvailable) {
+                    state.AvailableIntervalsCounter->Inc();
+                } else {
+                    state.UnavailableIntervalsCounter->Inc();
+                }
+                *state.LastIntervalAvailableCounter =
+                    requestTypeAvailable ? 1 : 0;
+            }
+
+            // Roll over to the next interval. All requests still
+            // outstanding become "outstanding since the interval start" for
+            // the new interval.
+            state.CompletedNonEio = 0;
+            state.CompletedEio = 0;
+            state.InflightStartedInInterval = 0;
+            ++state.IntervalSeqNo;
+        }
+
+        if (!skipClassification) {
+            TotalIntervalsCounter->Inc();
+            if (intervalAvailable) {
+                AvailableIntervalsCounter->Inc();
+            } else {
+                UnavailableIntervalsCounter->Inc();
+            }
+            *LastIntervalAvailableCounter = intervalAvailable ? 1 : 0;
+        }
+
         CurrentIntervalStart += IntervalDuration;
         ++finishedIntervals;
     }
@@ -251,73 +393,13 @@ void TAvailabilityCounters::UpdateStats(TInstant now)
             (alignedNow - CurrentIntervalStart).MicroSeconds() /
             IntervalDuration.MicroSeconds();
         MissingIntervalsCounter->Add(missingIntervals);
+
         CurrentIntervalStart = alignedNow;
     }
-}
 
-void TAvailabilityCounters::FinishInterval()
-{
-    bool intervalAvailable = true;
-
-    // Index 0 is EFileStoreAvailabilityRequestType::None and stays unused.
-    for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
-        auto& state = RequestTypeStates[i];
-
-        TGuard g{state.Lock};
-
-        // Inflight >= InflightStartedInInterval holds but the subtraction is
-        // clamped defensively so that a violation can never wrap it into a
-        // huge hung count.
-        Y_DEBUG_ABORT_UNLESS(
-            state.Inflight >= state.InflightStartedInInterval);
-        // Requests that were outstanding at the interval start and are still
-        // outstanding at the interval end, i.e. remained outstanding
-        // throughout the entire interval => hung.
-        const ui64 hung = state.Inflight >= state.InflightStartedInInterval
-            ? state.Inflight - state.InflightStartedInInterval
-            : 0;
-
-        // A request type makes the interval unavailable if it shows failure
-        // evidence - at least one request completed with an EIO error during
-        // the interval or hung through it - and no success evidence - no
-        // request completed with a non-EIO outcome during the interval.
-        // Requests that were started during the interval and have not
-        // completed by its end count as neither: their outcome is not known
-        // yet and will be accounted for in the interval where they complete
-        // (or in the intervals they hang through).
-        const bool hadFailedRequest = state.CompletedEio > 0 || hung > 0;
-        const bool hadNonFailedRequest = state.CompletedNonEio > 0;
-
-        const bool requestTypeAvailable =
-            !hadFailedRequest || hadNonFailedRequest;
-        if (!requestTypeAvailable) {
-            // The aggregated interval availability is the logical AND over
-            // the request types.
-            intervalAvailable = false;
-        }
-
-        if (requestTypeAvailable) {
-            state.AvailableIntervalsCounter->Inc();
-        } else {
-            state.UnavailableIntervalsCounter->Inc();
-        }
-        *state.LastIntervalAvailableCounter = requestTypeAvailable ? 1 : 0;
-
-        // Roll over to the next interval. All requests still outstanding
-        // become "outstanding since the interval start" for the new interval.
-        state.CompletedNonEio = 0;
-        state.CompletedEio = 0;
-        state.InflightStartedInInterval = 0;
-        ++state.IntervalSeqNo;
-    }
-
-    TotalIntervalsCounter->Inc();
-    if (intervalAvailable) {
-        AvailableIntervalsCounter->Inc();
-    } else {
-        UnavailableIntervalsCounter->Inc();
-    }
-    *LastIntervalAvailableCounter = intervalAvailable ? 1 : 0;
+    CurrentIntervalEndUs.store(
+        (CurrentIntervalStart + IntervalDuration).MicroSeconds(),
+        std::memory_order_release);
 }
 
 TInstant TAvailabilityCounters::AlignToInterval(TInstant instant) const

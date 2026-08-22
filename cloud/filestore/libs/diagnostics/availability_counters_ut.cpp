@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cerrno>
 #include <thread>
+#include <utility>
 
 namespace NCloud::NFileStore {
 
@@ -68,7 +69,7 @@ struct TEnv
     {
         auto callContext = MakeIntrusive<TCallContext>();
         callContext->AvailabilityRequestType = requestType;
-        Counters.RequestStarted(*callContext);
+        Counters.RequestStarted(*callContext, Now);
         return callContext;
     }
 
@@ -76,7 +77,7 @@ struct TEnv
     {
         // production success replies do not write GuestReplyErrno: they rely
         // on it being 0 for the current attempt
-        Counters.RequestCompleted(*callContext);
+        Counters.RequestCompleted(*callContext, Now);
     }
 
     void CompleteWithErrno(
@@ -84,7 +85,7 @@ struct TEnv
         int guestReplyErrno)
     {
         callContext->GuestReplyErrno = guestReplyErrno;
-        Counters.RequestCompleted(*callContext);
+        Counters.RequestCompleted(*callContext, Now);
     }
 
     // Asserts against the per-request-type published counters on the
@@ -788,68 +789,69 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSupportCallContextReuse)
+    Y_UNIT_TEST(ShouldNotMarkPostBoundaryStartHung)
     {
         TEnv env;
 
-        // Pins the contract for a call context that is completed and then
-        // re-registered - the shape a vfs-layer retry would take. The hooks
-        // are driven directly; no dispatch-level retry path is exercised
-        // here.
-        auto callContext = env.Start(EFileStoreAvailabilityRequestType::Read);
-        env.CompleteWithErrno(callContext, EIO);
-
-        env.Counters.RequestStarted(*callContext);
-
-        // the EIO completion of the first attempt is failure evidence, and
-        // the pending restarted attempt is neutral => unavailable
-        env.FinishInterval();
-        env.AssertIntervals(
-            1,   // total
-            0,   // available
-            1,   // unavailable
-            false);   // last interval available
-
-        // the successful completion of the restarted attempt is classified
-        // as a success: the re-registration cleared the stale EIO of the
-        // first attempt, and the success reply itself - as in production -
-        // does not write GuestReplyErrno
-        env.CompleteOk(callContext);
-        env.FinishInterval();
-        env.AssertIntervals(
-            2,   // total
-            1,   // available
-            1,   // unavailable
-            true);   // last interval available
-    }
-
-    Y_UNIT_TEST(ShouldNotCountRequestStartedAfterBoundaryAsHung)
-    {
-        TEnv env;
-
-        // the wall clock crosses the interval boundary while the stats
-        // updater stalls...
+        // move one second into the next wall-clock interval without any
+        // updater tick
         env.Now += IntervalDuration + TDuration::Seconds(1);
 
-        // ...and a request starts in the gap between the boundary and the
-        // late updater tick
-        auto context = env.Start(EFileStoreAvailabilityRequestType::Read);
+        // the request starts in (wall-clock) interval 2; the start event
+        // itself rolls the accounting past the boundary first
+        env.Start(EFileStoreAvailabilityRequestType::Read);
 
-        // the late tick closes the first interval: the request counts as
-        // fresh-pending (neutral) there, not hung
+        // the late updater closes interval 1, in which the request did not
+        // exist
         env.Counters.UpdateStats(env.Now);
-        env.AssertIntervals(
-            1,   // total
-            1,   // available
-            0,   // unavailable
-            true);   // last interval available
 
-        env.CompleteOk(context);
-        env.FinishInterval();
+        // Reach the end of the interval in which the request actually
+        // started: it was fresh-pending there => neutral, not hung. Both
+        // intervals must be available.
+        env.Now += IntervalDuration - TDuration::Seconds(1);
+        env.Counters.UpdateStats(env.Now);
+
         env.AssertIntervals(
             2,   // total
             2,   // available
             0,   // unavailable
+            true);   // last interval available
+    }
+
+    Y_UNIT_TEST(ShouldKeepHungIntervalUnavailableOnPostBoundaryCompletion)
+    {
+        TEnv env;
+
+        // the request is fresh-pending in the first interval => neutral
+        auto callContext = env.Start(EFileStoreAvailabilityRequestType::Read);
+        env.FinishInterval();
+        env.AssertIntervals(
+            1,   // total
+            1,   // available
+            0,   // unavailable
+            true);   // last interval available
+
+        // It stays outstanding through the entire second interval and
+        // completes successfully one second after the boundary, before any
+        // updater tick. The completion event rolls the accounting first, so
+        // the second interval is still classified with the request hung
+        // through it, and the success lands in the third interval.
+        env.Now += IntervalDuration + TDuration::Seconds(1);
+        env.CompleteOk(callContext);
+        env.Counters.UpdateStats(env.Now);
+        env.AssertIntervals(
+            2,   // total
+            1,   // available
+            1,   // unavailable
+            false);   // last interval available
+
+        // the third interval carries the successful completion
+        env.Now += IntervalDuration - TDuration::Seconds(1);
+        env.Counters.UpdateStats(env.Now);
+        env.AssertIntervals(
+            3,   // total
+            2,   // available
+            1,   // unavailable
             true);   // last interval available
     }
 
@@ -857,80 +859,173 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        // a request outstanding from before the stall
-        auto hungContext = env.Start(EFileStoreAvailabilityRequestType::Read);
-        env.FinishInterval();
+        // No updater ticks happen between the events below: every event is
+        // still assigned to its actual wall-clock interval because the
+        // request hooks roll the accounting on demand.
+
+        env.Now += IntervalDuration + TDuration::Seconds(1);
+        // interval 2: a starts (interval 1 elapsed empty => available)
+        auto a = env.Start(EFileStoreAvailabilityRequestType::Read);
+
+        env.Now += IntervalDuration;
+        // interval 3: a completes successfully; a was fresh-pending in
+        // interval 2 => neutral there => interval 2 is available; b starts
+        env.CompleteOk(a);
+        auto b = env.Start(EFileStoreAvailabilityRequestType::Write);
+
+        env.Now += IntervalDuration;
+        // interval 4: b completes with EIO; interval 3 saw a's success and
+        // the fresh-pending b => available
+        env.CompleteWithErrno(b, EIO);
+
+        env.Counters.UpdateStats(env.Now);
         env.AssertIntervals(
-            1,   // total
-            1,   // available
+            3,   // total
+            3,   // available
             0,   // unavailable
             true);   // last interval available
 
-        // the updater stalls for three intervals; requests keep starting
-        // and completing meanwhile
-        auto eioContext = env.Start(EFileStoreAvailabilityRequestType::Read);
-        env.CompleteWithErrno(eioContext, EIO);
-        auto okContext = env.Start(EFileStoreAvailabilityRequestType::Read);
-        env.CompleteOk(okContext);
-
-        env.Now += IntervalDuration * 3;
+        // interval 4 carries only b's EIO completion => unavailable
+        env.Now += IntervalDuration - TDuration::Seconds(1);
         env.Counters.UpdateStats(env.Now);
-
-        // Catch-up: the first stalled interval sees all the evidence
-        // accumulated during the stall, and the successful completion makes
-        // it available despite the EIO completion and the old hung request
-        // (any success => available). The remaining two stalled intervals
-        // see only the still-outstanding old request => hung =>
-        // unavailable.
         env.AssertIntervals(
             4,   // total
-            2,   // available
-            2,   // unavailable
-            false);   // last interval available
-
-        env.CompleteOk(hungContext);
-        env.FinishInterval();
-        env.AssertIntervals(
-            5,   // total
             3,   // available
-            2,   // unavailable
+            1,   // unavailable
+            false);   // last interval available
+        env.AssertRequestIntervals(
+            EFileStoreAvailabilityRequestType::Write,
+            3,   // available
+            1,   // unavailable
+            false);   // last interval available
+        env.AssertRequestIntervals(
+            EFileStoreAvailabilityRequestType::Read,
+            4,   // available
+            0,   // unavailable
             true);   // last interval available
     }
 
     Y_UNIT_TEST(ShouldEnableConcurrentlyWithRequestProcessing)
     {
-        // A sanitizer-oriented test: request processing and the stats
-        // updater run while the tracking is being enabled. The hooks must
-        // be no-ops until the tracker is published and must never observe
-        // a partially initialized one; run under TSAN to verify.
         auto counterGroup = MakeIntrusive<NMonitoring::TDynamicCounters>();
         TAvailabilityCounters counters;
+        const TInstant start = TInstant::Hours(100);
 
+        // a request started before the tracking is enabled gets no stamp
+        auto preEnable = MakeIntrusive<TCallContext>();
+        preEnable->AvailabilityRequestType =
+            EFileStoreAvailabilityRequestType::Read;
+        counters.RequestStarted(*preEnable, start);
+        UNIT_ASSERT_VALUES_EQUAL(0, preEnable->AvailabilityIntervalSeqNo);
+
+        // Request processing and the stats updater run concurrently with
+        // two racing EnableAndRegister() calls; the gates below guarantee
+        // full iterations both before and after enabling. Run under TSAN to
+        // verify the publication.
+        std::atomic<ui64> iterations = 0;
         std::atomic<bool> stop = false;
-
-        std::thread updater([&] {
-            TInstant now = TInstant::Hours(100);
-            while (!stop.load()) {
-                counters.UpdateStats(now);
-                now += TDuration::Seconds(1);
-            }
-        });
 
         std::thread requester([&] {
             while (!stop.load()) {
                 auto context = MakeIntrusive<TCallContext>();
                 context->AvailabilityRequestType =
                     EFileStoreAvailabilityRequestType::Read;
-                counters.RequestStarted(*context);
-                counters.RequestCompleted(*context);
+                counters.RequestStarted(*context, start);
+                counters.RequestCompleted(*context, start);
+                ++iterations;
+            }
+        });
+        std::thread updater([&] {
+            while (!stop.load()) {
+                counters.UpdateStats(start);
             }
         });
 
-        counters.EnableAndRegister(IntervalDuration, *counterGroup);
+        // at least one full iteration with the tracking disabled
+        while (iterations.load() == 0) {}
+
+        std::atomic<bool> go = false;
+        std::thread enabler1([&] {
+            while (!go.load()) {}
+            counters.EnableAndRegister(IntervalDuration, *counterGroup);
+        });
+        std::thread enabler2([&] {
+            while (!go.load()) {}
+            counters.EnableAndRegister(IntervalDuration, *counterGroup);
+        });
+        go = true;
+        enabler1.join();
+        enabler2.join();
+
+        // at least 100 full iterations with the tracking enabled
+        const ui64 enabledFrom = iterations.load();
+        while (iterations.load() < enabledFrom + 100) {}
 
         stop = true;
-        updater.join();
         requester.join();
+        updater.join();
+
+        // The pre-enable request completes after enabling: it carries no
+        // stamp and is ignored. A repeated completion of a tracked request
+        // is ignored the same way; neither may disturb the accounting.
+        counters.RequestCompleted(*preEnable, start);
+        auto repeated = MakeIntrusive<TCallContext>();
+        repeated->AvailabilityRequestType =
+            EFileStoreAvailabilityRequestType::Read;
+        counters.RequestStarted(*repeated, start);
+        counters.RequestCompleted(*repeated, start);
+        counters.RequestCompleted(*repeated, start);
+
+        // the classification works after the race and the ignored events:
+        // the enabled-phase successes make the first interval available
+        counters.UpdateStats(start + IntervalDuration);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counterGroup->GetCounter(
+                "Availability_TotalIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counterGroup->GetCounter(
+                "Availability_AvailableIntervals",
+                true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldSkipPartiallyObservedFirstInterval)
+    {
+        auto counterGroup = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        TAvailabilityCounters counters;
+        counters.EnableAndRegister(IntervalDuration, *counterGroup);
+
+        // the measurement begins two minutes into a wall-clock interval
+        const TInstant alignedStart = TInstant::Hours(100);
+        const TInstant enableTime = alignedStart + TDuration::Minutes(2);
+        counters.UpdateStats(enableTime);
+
+        // an EIO completion within the partially observed interval
+        auto context = MakeIntrusive<TCallContext>();
+        context->AvailabilityRequestType =
+            EFileStoreAvailabilityRequestType::Read;
+        counters.RequestStarted(*context, enableTime);
+        context->GuestReplyErrno = EIO;
+        counters.RequestCompleted(*context, enableTime);
+
+        // The partial interval rolls over without classification: it never
+        // reaches the published counters even though it saw an EIO, because
+        // its first two minutes were not observed at all.
+        counters.UpdateStats(alignedStart + IntervalDuration);
+        auto total =
+            counterGroup->GetCounter("Availability_TotalIntervals", true);
+        UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
+
+        // the first fully observed interval is classified normally
+        counters.UpdateStats(alignedStart + IntervalDuration * 2);
+        UNIT_ASSERT_VALUES_EQUAL(1, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counterGroup->GetCounter(
+                "Availability_AvailableIntervals",
+                true)->Val());
     }
 
     Y_UNIT_TEST(ShouldPublishPerRequestTypeCounters)
