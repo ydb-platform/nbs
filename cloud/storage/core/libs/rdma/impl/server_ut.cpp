@@ -64,16 +64,27 @@ struct TClientHandler
     }
 };
 
+struct TSessionInfo
+{
+    ui64 Id = 0;
+    TString Peer;
+    TInstant StartTs;
+};
+
 struct TServerHandler
     : IServerHandler
 {
+    TAdaptiveLock SessionLock;
+    TVector<TSessionInfo> CreatedSessions;
+    TVector<ui64> ClosedSessions;
+
     TCallContextBasePtr CreateCallContext() override
     {
         return MakeIntrusive<TCallContextBase>(ui64{0});
     }
 
     void HandleRequest(
-        void* context,
+        IServerRequest* context,
         TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
@@ -83,24 +94,48 @@ struct TServerHandler
         Y_UNUSED(in);
         Y_UNUSED(out);
     }
+
+    void OnSessionCreated(const IServerSession& session) noexcept override
+    {
+        with_lock (SessionLock) {
+            CreatedSessions.push_back(
+                {session.GetId(), session.GetPeer(), session.GetStartTs()});
+        }
+    }
+
+    void OnSessionClosed(ui64 sessionId) noexcept override
+    {
+        with_lock (SessionLock) {
+            ClosedSessions.push_back(sessionId);
+        }
+    }
+
+    TVector<TSessionInfo> GetCreatedSessions()
+    {
+        with_lock (SessionLock) {
+            return CreatedSessions;
+        }
+    }
+
+    TVector<ui64> GetClosedSessions()
+    {
+        with_lock (SessionLock) {
+            return ClosedSessions;
+        }
+    }
 };
 
 struct TDelayedServerHandler final
-    : IServerHandler
+    : TServerHandler
 {
     NThreading::TPromise<void> RequestReceived =
         NThreading::NewPromise<void>();
 
-    void* Context = nullptr;
+    IServerRequest* Context = nullptr;
     TStringBuf Out;
 
-    TCallContextBasePtr CreateCallContext() override
-    {
-        return MakeIntrusive<TCallContextBase>(ui64{0});
-    }
-
     void HandleRequest(
-        void* context,
+        IServerRequest* context,
         TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
@@ -770,6 +805,146 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
     endpoint->SendResponse(handler->Context, 0);
 
     sessionDestroyed.GetFuture().GetValueSync();
+}
+
+TEST(TRdmaServerTest, ShouldNotifyHandlerAboutSessionLifecycle)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    // let Stop() complete: the fake verbs only drains the queues if the
+    // transition to the error state flushes them
+    context->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(context);
+        }
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 1;
+    serverConfig->RecvQueueSize = 1;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+
+    auto handler = std::make_shared<TServerHandler>();
+    server->StartEndpoint("::", 10020, handler);
+
+    EXPECT_TRUE(handler->GetCreatedSessions().empty());
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->SendQueueSize),
+        static_cast<ui16>(serverConfig->RecvQueueSize),
+        serverConfig->MaxBufferSize);
+
+    auto activeRecv = GetServerCounters(monitoring)->GetCounter("ActiveRecv");
+    while (activeRecv->Val() != serverConfig->RecvQueueSize) {
+        SpinLockPause();
+    }
+
+    auto created = handler->GetCreatedSessions();
+    ASSERT_EQ(1u, created.size());
+    EXPECT_NE(0u, created[0].Id);
+    EXPECT_FALSE(created[0].Peer.empty());
+    EXPECT_NE(TInstant::Zero(), created[0].StartTs);
+
+    // the connection is still up, so nothing has been closed yet
+    EXPECT_TRUE(handler->GetClosedSessions().empty());
+
+    server->Stop();
+
+    auto closed = handler->GetClosedSessions();
+    ASSERT_EQ(1u, closed.size());
+    EXPECT_EQ(created[0].Id, closed[0]);
+}
+
+TEST(TRdmaServerTest, ShouldReportSessionTheRequestArrivedFrom)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    context->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(context);
+        }
+    };
+
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        PostSend<TResponseMessage>(context, qp, wr);
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 1;
+    serverConfig->RecvQueueSize = 1;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+
+    auto handler = std::make_shared<TDelayedServerHandler>();
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    NVerbs::CreateConnection(
+        context,
+        static_cast<ui16>(serverConfig->SendQueueSize),
+        static_cast<ui16>(serverConfig->RecvQueueSize),
+        serverConfig->MaxBufferSize);
+
+    auto activeRecv = GetServerCounters(monitoring)->GetCounter("ActiveRecv");
+    while (activeRecv->Val() != serverConfig->RecvQueueSize) {
+        SpinLockPause();
+    }
+
+    with_lock (context->CompletionLock) {
+        ASSERT_FALSE(context->RecvEvents.empty());
+
+        auto* recv = context->RecvEvents.back();
+        context->RecvEvents.pop_back();
+
+        auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+        memset(msg, 0, sizeof(*msg));
+        InitMessageHeader(msg, RDMA_PROTO_VERSION);
+        msg->ReqId = 1;
+        msg->Out.Length = 4_KB;
+
+        context->ProcessedRecvEvents.push_back(recv);
+        context->CompletionHandle.Set();
+    }
+
+    handler->RequestReceived.GetFuture().GetValueSync();
+    ASSERT_NE(nullptr, handler->Context);
+
+    auto created = handler->GetCreatedSessions();
+    ASSERT_EQ(1u, created.size());
+    EXPECT_EQ(created[0].Id, handler->Context->GetSessionId());
+
+    // an unanswered request keeps the session from being released, so the
+    // handler cannot be told the session is gone while it still owns one
+    EXPECT_TRUE(handler->GetClosedSessions().empty());
+
+    endpoint->SendResponse(handler->Context, 0);
+
+    server->Stop();
+
+    auto closed = handler->GetClosedSessions();
+    ASSERT_EQ(1u, closed.size());
+    EXPECT_EQ(created[0].Id, closed[0]);
 }
 
 int NVerbs::DestroyId(rdma_cm_id* id)

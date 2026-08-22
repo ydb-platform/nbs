@@ -3,6 +3,7 @@ UNITTEST_FOR(cloud/blockstore/libs/service_rdma)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
+    mount_registry_ut.cpp
     rdma_target_ut.cpp
 )
 

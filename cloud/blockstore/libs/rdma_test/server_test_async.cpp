@@ -29,12 +29,16 @@ TString MakeKey(const TString& host, ui32 port)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class IRequestWrapper
+class IRequestWrapper: public NCloud::NStorage::NRdma::IServerRequest
 {
 public:
-    virtual ~IRequestWrapper() = default;
     virtual void SendResponse(size_t responseBytes) = 0;
     virtual void SendError(ui32 error, TStringBuf message) = 0;
+
+    [[nodiscard]] ui64 GetSessionId() const override
+    {
+        return 0;
+    }
 };
 
 template <typename TRequestResponse>
@@ -99,14 +103,19 @@ public:
         : Handler(std::move(handler))
     {}
 
-    void SendResponse(void* context, size_t responseBytes) override
+    void SendResponse(
+        NCloud::NStorage::NRdma::IServerRequest* context,
+        size_t responseBytes) override
     {
         std::unique_ptr<IRequestWrapper> wrapper(
             static_cast<IRequestWrapper*>(context));
         wrapper->SendResponse(responseBytes);
     }
 
-    void SendError(void* context, ui32 error, TStringBuf message) override
+    void SendError(
+        NCloud::NStorage::NRdma::IServerRequest* context,
+        ui32 error,
+        TStringBuf message) override
     {
         std::unique_ptr<IRequestWrapper> wrapper(
             static_cast<IRequestWrapper*>(context));
