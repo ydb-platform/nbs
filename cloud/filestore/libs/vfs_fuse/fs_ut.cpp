@@ -221,8 +221,14 @@ struct TBootstrap
         Fuse = std::make_shared<TFuseVirtioClient>(SocketPath, WaitTimeout);
 
         Service = std::make_shared<TFileStoreTest>();
+
+        NProto::TFileStoreFeatures features = featuresConfig;
+        // Exercise the per-client availability tracking in every test.
+        features.SetAvailabilityTrackingEnabled(true);
+        features.SetAvailabilityTrackingInterval(15000);   // in ms
+
         Service->CreateSessionHandler =
-            [featuresConfig](auto callContext, auto request)
+            [features](auto callContext, auto request)
         {
             Y_UNUSED(callContext);
 
@@ -230,8 +236,7 @@ struct TBootstrap
             NProto::TCreateSessionResponse result;
             result.MutableSession()->SetSessionId(SessionId);
             result.MutableFileStore()->SetBlockSize(4096);
-            result.MutableFileStore()->MutableFeatures()->CopyFrom(
-                featuresConfig);
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(features);
             result.MutableFileStore()->SetFileSystemId(FileSystemId);
             return MakeFuture(result);
         };

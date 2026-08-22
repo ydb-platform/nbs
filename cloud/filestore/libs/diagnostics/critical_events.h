@@ -104,6 +104,7 @@ namespace NCloud::NFileStore{
     xxx(InMemoryIndexStateNotInitialized)                                      \
     xxx(WriteDataRequestWithBufferAndPayload)                                  \
     xxx(DiagnosticStatsInsertFailed)                                           \
+    xxx(AvailabilityCountersDoubleRegistration)                                \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -123,6 +123,11 @@ void FillFeatures(
     features->SetUseCustomReadDataResponseParser(
         config.GetUseCustomReadDataResponseParser());
 
+    features->SetAvailabilityTrackingEnabled(
+        config.GetAvailabilityTrackingEnabled());
+    features->SetAvailabilityTrackingInterval(
+        config.GetAvailabilityTrackingInterval().MilliSeconds());
+
     features->SetStatFileStoreCacheTTL(
         config.GetStatFileStoreCacheTTL().MilliSeconds());
 

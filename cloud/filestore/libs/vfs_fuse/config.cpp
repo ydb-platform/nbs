@@ -59,6 +59,8 @@ namespace {
     xxx(GuestHandleKillPrivV2Enabled, bool,     false                         )\
     xxx(GuestPosixAclEnabled,         bool,     false                         )\
     xxx(ZeroCopyReadEnabled,          bool,     false                         )\
+    xxx(AvailabilityTrackingEnabled,  bool,     false                         )\
+    xxx(AvailabilityTrackingInterval, TDuration,  TDuration::Minutes(5)      )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \
