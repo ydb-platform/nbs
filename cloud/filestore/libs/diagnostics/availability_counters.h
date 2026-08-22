@@ -214,6 +214,10 @@ private:
         TCallContext& callContext,
         TRequestTypeState& state);
 
+    // Rolls the state of one request type over to the next interval and
+    // returns whether the finished interval was available for it.
+    bool RollRequestTypeState(TRequestTypeState& state, bool publish);
+
     TInstant AlignToInterval(TInstant instant) const;
 };
 

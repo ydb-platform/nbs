@@ -291,6 +291,20 @@ void TAvailabilityCounters::RollIntervals(TInstant now)
         return;
     }
 
+    if (SkipCurrentInterval &&
+        now >= CurrentIntervalStart + IntervalDuration)
+    {
+        // A partially observed interval (the one during which the
+        // measurement began mid-interval) is rolled over - accounting
+        // resets, outstanding requests become old - but is not classified
+        // or counted.
+        SkipCurrentInterval = false;
+        for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
+            RollRequestTypeState(RequestTypeStates[i], false /* publish */);
+        }
+        CurrentIntervalStart += IntervalDuration;
+    }
+
     size_t finishedIntervals = 0;
     while (now >= CurrentIntervalStart + IntervalDuration &&
            finishedIntervals < MaxIntervalsPerUpdate)
@@ -301,83 +315,25 @@ void TAvailabilityCounters::RollIntervals(TInstant now)
         // subsequent iterations see empty per-interval counters, so a gap
         // interval is classified as unavailable iff some requests remained
         // outstanding (i.e. hung) throughout it.
-
-        // A partially observed interval (the one during which the
-        // measurement began mid-interval) is rolled over - accounting
-        // resets, outstanding requests become old - but is not classified
-        // or counted.
-        const bool skipClassification = SkipCurrentInterval;
-        SkipCurrentInterval = false;
-
         bool intervalAvailable = true;
 
         // Index 0 is EFileStoreAvailabilityRequestType::None, stays unused.
         for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
-            auto& state = RequestTypeStates[i];
-
-            TGuard stateGuard{state.Lock};
-
-            // Inflight >= InflightStartedInInterval holds but the
-            // subtraction is clamped defensively so that a violation can
-            // never wrap it into a huge hung count.
-            Y_DEBUG_ABORT_UNLESS(
-                state.Inflight >= state.InflightStartedInInterval);
-            // Requests that were outstanding at the interval start and are
-            // still outstanding at the interval end, i.e. remained
-            // outstanding throughout the entire interval => hung.
-            const ui64 hung =
-                state.Inflight >= state.InflightStartedInInterval
-                    ? state.Inflight - state.InflightStartedInInterval
-                    : 0;
-
-            // A request type makes the interval unavailable if it shows
-            // failure evidence - at least one request completed with an EIO
-            // error during the interval or hung through it - and no success
-            // evidence - no request completed with a non-EIO outcome during
-            // the interval. Requests that were started during the interval
-            // and have not completed by its end count as neither: their
-            // outcome is not known yet and will be accounted for in the
-            // interval where they complete (or in the intervals they hang
-            // through).
-            const bool hadFailedRequest = state.CompletedEio > 0 || hung > 0;
-            const bool hadNonFailedRequest = state.CompletedNonEio > 0;
-
-            const bool requestTypeAvailable =
-                !hadFailedRequest || hadNonFailedRequest;
-            if (!requestTypeAvailable) {
+            if (!RollRequestTypeState(RequestTypeStates[i], true /* publish */))
+            {
                 // The aggregated interval availability is the logical AND
                 // over the request types.
                 intervalAvailable = false;
             }
-
-            if (!skipClassification) {
-                if (requestTypeAvailable) {
-                    state.AvailableIntervalsCounter->Inc();
-                } else {
-                    state.UnavailableIntervalsCounter->Inc();
-                }
-                *state.LastIntervalAvailableCounter =
-                    requestTypeAvailable ? 1 : 0;
-            }
-
-            // Roll over to the next interval. All requests still
-            // outstanding become "outstanding since the interval start" for
-            // the new interval.
-            state.CompletedNonEio = 0;
-            state.CompletedEio = 0;
-            state.InflightStartedInInterval = 0;
-            ++state.IntervalSeqNo;
         }
 
-        if (!skipClassification) {
-            TotalIntervalsCounter->Inc();
-            if (intervalAvailable) {
-                AvailableIntervalsCounter->Inc();
-            } else {
-                UnavailableIntervalsCounter->Inc();
-            }
-            *LastIntervalAvailableCounter = intervalAvailable ? 1 : 0;
+        TotalIntervalsCounter->Inc();
+        if (intervalAvailable) {
+            AvailableIntervalsCounter->Inc();
+        } else {
+            UnavailableIntervalsCounter->Inc();
         }
+        *LastIntervalAvailableCounter = intervalAvailable ? 1 : 0;
 
         CurrentIntervalStart += IntervalDuration;
         ++finishedIntervals;
@@ -400,6 +356,54 @@ void TAvailabilityCounters::RollIntervals(TInstant now)
     CurrentIntervalEndUs.store(
         (CurrentIntervalStart + IntervalDuration).MicroSeconds(),
         std::memory_order_release);
+}
+
+bool TAvailabilityCounters::RollRequestTypeState(
+    TRequestTypeState& state,
+    bool publish)
+{
+    TGuard g{state.Lock};
+
+    // Inflight >= InflightStartedInInterval holds but the subtraction is
+    // clamped defensively so that a violation can never wrap it into a huge
+    // hung count.
+    Y_DEBUG_ABORT_UNLESS(state.Inflight >= state.InflightStartedInInterval);
+    // Requests that were outstanding at the interval start and are still
+    // outstanding at the interval end, i.e. remained outstanding throughout
+    // the entire interval => hung.
+    const ui64 hung = state.Inflight >= state.InflightStartedInInterval
+        ? state.Inflight - state.InflightStartedInInterval
+        : 0;
+
+    // A request type makes the interval unavailable if it shows failure
+    // evidence - at least one request completed with an EIO error during
+    // the interval or hung through it - and no success evidence - no
+    // request completed with a non-EIO outcome during the interval.
+    // Requests that were started during the interval and have not completed
+    // by its end count as neither: their outcome is not known yet and will
+    // be accounted for in the interval where they complete (or in the
+    // intervals they hang through).
+    const bool hadFailedRequest = state.CompletedEio > 0 || hung > 0;
+    const bool hadNonFailedRequest = state.CompletedNonEio > 0;
+    const bool available = !hadFailedRequest || hadNonFailedRequest;
+
+    if (publish) {
+        if (available) {
+            state.AvailableIntervalsCounter->Inc();
+        } else {
+            state.UnavailableIntervalsCounter->Inc();
+        }
+        *state.LastIntervalAvailableCounter = available ? 1 : 0;
+    }
+
+    // Roll over to the next interval. All requests still outstanding become
+    // "outstanding since the interval start" for the new interval.
+    state.CompletedNonEio = 0;
+    state.CompletedEio = 0;
+    state.InflightStartedInInterval = 0;
+    ++state.IntervalSeqNo;
+
+    return available;
 }
 
 TInstant TAvailabilityCounters::AlignToInterval(TInstant instant) const
