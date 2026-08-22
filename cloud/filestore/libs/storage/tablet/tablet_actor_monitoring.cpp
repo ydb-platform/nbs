@@ -1356,15 +1356,24 @@ void TIndexTabletActor::RenderHttpInfo_QuotasTab(IOutputStream& out)
                         TABLEH() { out << "QuotaId"; }
                         TABLEH() { out << "MaxBytes"; }
                         TABLEH() { out << "MaxNodes"; }
+                        TABLEH() { out << "UsedBytes"; }
+                        TABLEH() { out << "UsedNodes"; }
                         TABLEH() { out << "CreatedAt"; }
                     }
                 }
 
                 for (const auto& quota: quotas) {
+                    const auto* usage = FindQuotaUsage(quota.GetQuotaId());
                     TABLER() {
                         TABLED() { out << quota.GetQuotaId(); }
                         TABLED() { out << FormatByteSize(quota.GetMaxBytes()); }
                         TABLED() { out << quota.GetMaxNodes(); }
+                        TABLED() {
+                            out << (usage
+                                ? FormatByteSize(usage->UsedBytes)
+                                : FormatByteSize(0));
+                        }
+                        TABLED() { out << (usage ? usage->UsedNodes : 0); }
                         TABLED() {
                             out << TInstant::MicroSeconds(
                                 quota.GetCreationTimestampUs());

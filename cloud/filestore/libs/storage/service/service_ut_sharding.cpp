@@ -620,6 +620,74 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST(ShouldAggregateQuotaUsageAcrossShards)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        {
+            NProtoPrivate::TSetQuotaRequest request;
+            request.SetFileSystemId(fsConfig.FsId);
+            request.SetQuotaId(42);
+            request.SetMaxBytes(1_GB);
+            request.SetMaxNodes(100);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setquota", buf);
+        }
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // attach the quota to a directory on main - files are regular nodes,
+        // so main auto-routes their creation into shards (round-robin) and
+        // forwards the inherited QuotaId along with each one; the directory
+        // itself stays on main and its own attach bumps main's own local
+        // usage by 1
+        auto dirId = service
+                         .CreateNode(
+                             headers,
+                             TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                         ->Record.GetNode()
+                         .GetId();
+        service.SetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            TSetNodeAttrArgs(dirId).SetQuotaId(42));
+
+        constexpr ui32 fileCount = 4;
+        for (ui32 i = 0; i < fileCount; ++i) {
+            service.CreateNode(
+                headers,
+                TCreateNodeArgs::File(dirId, "file" + ToString(i)));
+        }
+
+        // each shard should have received at least one of the files -
+        // otherwise this test wouldn't actually be exercising cross-shard
+        // aggregation
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            const auto stats = GetStorageStats(service, shardId);
+            const auto& usages = stats.GetStats().GetQuotaUsages();
+            UNIT_ASSERT_VALUES_EQUAL_C(1, usages.size(), shardId);
+            UNIT_ASSERT_VALUES_EQUAL_C(42u, usages[0].GetQuotaId(), shardId);
+            UNIT_ASSERT_C(usages[0].GetUsedNodes() > 0, shardId);
+        }
+
+        // forcing main to fan out and aggregate should sum main's own local
+        // usage (the directory attach point) and both shards' contributions
+        // (the files) together
+        const auto aggregate = GetStorageStats(
+            service,
+            fsConfig.FsId,
+            0 /* cacheTTL */,
+            NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+        const auto& usages = aggregate.GetStats().GetQuotaUsages();
+        UNIT_ASSERT_VALUES_EQUAL(1, usages.size());
+        UNIT_ASSERT_VALUES_EQUAL(42u, usages[0].GetQuotaId());
+        UNIT_ASSERT_VALUES_EQUAL(1 + fileCount, usages[0].GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(0u, usages[0].GetUsedBytes());
+    }
+
     SERVICE_TEST(ShouldCheckForShardsInAdapterModeUponSessionCreationInShards)
     {
         //
