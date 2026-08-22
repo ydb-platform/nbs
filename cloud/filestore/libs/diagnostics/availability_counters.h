@@ -214,9 +214,19 @@ private:
         TCallContext& callContext,
         TRequestTypeState& state);
 
+    // Finishes the current interval and advances to the next one: rolls
+    // every request type state over and, when publishCounters is set,
+    // classifies the interval and publishes both the per-type and the
+    // aggregated counters.
+    //
+    // Called under RollLock.
+    void RollInterval(bool publishCounters);
+
     // Rolls the state of one request type over to the next interval and
     // returns whether the finished interval was available for it.
-    bool RollRequestTypeState(TRequestTypeState& state, bool publish);
+    bool RollRequestTypeStateAndReturnAvailability(
+        TRequestTypeState& state,
+        bool publishCounters);
 
     TInstant AlignToInterval(TInstant instant) const;
 };

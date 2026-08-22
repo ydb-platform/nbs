@@ -297,12 +297,10 @@ void TAvailabilityCounters::RollIntervals(TInstant now)
         // A partially observed interval (the one during which the
         // measurement began mid-interval) is rolled over - accounting
         // resets, outstanding requests become old - but is not classified
-        // or counted.
+        // or counted: neither the per-type nor the aggregated counters are
+        // published for it.
         SkipCurrentInterval = false;
-        for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
-            RollRequestTypeState(RequestTypeStates[i], false /* publish */);
-        }
-        CurrentIntervalStart += IntervalDuration;
+        RollInterval(false /* publishCounters */);
     }
 
     size_t finishedIntervals = 0;
@@ -315,27 +313,7 @@ void TAvailabilityCounters::RollIntervals(TInstant now)
         // subsequent iterations see empty per-interval counters, so a gap
         // interval is classified as unavailable iff some requests remained
         // outstanding (i.e. hung) throughout it.
-        bool intervalAvailable = true;
-
-        // Index 0 is EFileStoreAvailabilityRequestType::None, stays unused.
-        for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
-            if (!RollRequestTypeState(RequestTypeStates[i], true /* publish */))
-            {
-                // The aggregated interval availability is the logical AND
-                // over the request types.
-                intervalAvailable = false;
-            }
-        }
-
-        TotalIntervalsCounter->Inc();
-        if (intervalAvailable) {
-            AvailableIntervalsCounter->Inc();
-        } else {
-            UnavailableIntervalsCounter->Inc();
-        }
-        *LastIntervalAvailableCounter = intervalAvailable ? 1 : 0;
-
-        CurrentIntervalStart += IntervalDuration;
+        RollInterval(true /* publishCounters */);
         ++finishedIntervals;
     }
 
@@ -358,9 +336,38 @@ void TAvailabilityCounters::RollIntervals(TInstant now)
         std::memory_order_release);
 }
 
-bool TAvailabilityCounters::RollRequestTypeState(
+void TAvailabilityCounters::RollInterval(bool publishCounters)
+{
+    bool intervalAvailable = true;
+
+    // Index 0 is EFileStoreAvailabilityRequestType::None, stays unused.
+    for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
+        if (!RollRequestTypeStateAndReturnAvailability(
+                RequestTypeStates[i],
+                publishCounters))
+        {
+            // The aggregated interval availability is the logical AND over
+            // the request types.
+            intervalAvailable = false;
+        }
+    }
+
+    if (publishCounters) {
+        TotalIntervalsCounter->Inc();
+        if (intervalAvailable) {
+            AvailableIntervalsCounter->Inc();
+        } else {
+            UnavailableIntervalsCounter->Inc();
+        }
+        *LastIntervalAvailableCounter = intervalAvailable ? 1 : 0;
+    }
+
+    CurrentIntervalStart += IntervalDuration;
+}
+
+bool TAvailabilityCounters::RollRequestTypeStateAndReturnAvailability(
     TRequestTypeState& state,
-    bool publish)
+    bool publishCounters)
 {
     TGuard g{state.Lock};
 
@@ -387,7 +394,7 @@ bool TAvailabilityCounters::RollRequestTypeState(
     const bool hadNonFailedRequest = state.CompletedNonEio > 0;
     const bool available = !hadFailedRequest || hadNonFailedRequest;
 
-    if (publish) {
+    if (publishCounters) {
         if (available) {
             state.AvailableIntervalsCounter->Inc();
         } else {
