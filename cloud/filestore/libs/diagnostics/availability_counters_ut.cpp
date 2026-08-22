@@ -15,6 +15,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using ERequestType = EFileStoreAvailabilityRequestType;
+
 constexpr TDuration IntervalDuration = TDuration::Minutes(5);
 
 struct TEnv
@@ -65,10 +67,28 @@ struct TEnv
         Counters.UpdateStats(Now);
     }
 
-    TCallContextPtr Start(EFileStoreAvailabilityRequestType requestType)
+    // Maps the published label back to the request type through the
+    // production forward mapping; an unknown name fails the test.
+    static ERequestType RequestTypeByName(const TString& requestName)
+    {
+        // index 0 is ERequestType::None, which has no published name
+        for (size_t i = 1; i < FileStoreAvailabilityRequestTypeCount; ++i) {
+            const auto requestType = static_cast<ERequestType>(i);
+            if (requestName == GetAvailabilityRequestTypeName(requestType)) {
+                return requestType;
+            }
+        }
+        UNIT_FAIL("unknown availability request name: " << requestName);
+        return ERequestType::None;
+    }
+
+    // Starts a request of the type whose published label is requestName,
+    // so that the tests drive requests by the same literal name they
+    // assert on.
+    TCallContextPtr Start(const TString& requestName)
     {
         auto callContext = MakeIntrusive<TCallContext>();
-        callContext->AvailabilityRequestType = requestType;
+        callContext->AvailabilityRequestType = RequestTypeByName(requestName);
         Counters.RequestStarted(*callContext, Now);
         return callContext;
     }
@@ -90,15 +110,15 @@ struct TEnv
 
     // Asserts against the per-request-type published counters on the
     // "request=<type>" subgroup.
+    // The name is passed as the literal expected label so that the test
+    // does not use the production mapping function as its own oracle.
     void AssertRequestIntervals(
-        EFileStoreAvailabilityRequestType requestType,
+        const TString& requestName,
         i64 available,
         i64 unavailable,
         bool lastAvailable)
     {
-        auto group = CounterGroup->FindSubgroup(
-            "request",
-            GetAvailabilityRequestTypeName(requestType));
+        auto group = CounterGroup->FindSubgroup("request", requestName);
         UNIT_ASSERT(group);
         // the total is aggregated only - per-request it would be identical
         // for every request type
@@ -162,7 +182,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        auto callContext = env.Start(EFileStoreAvailabilityRequestType::Read);
+        auto callContext = env.Start("read");
         env.CompleteOk(callContext);
 
         env.FinishInterval();
@@ -179,8 +199,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // completion with an error response other than EIO is a normal
         // terminal outcome
-        auto callContext =
-            env.Start(EFileStoreAvailabilityRequestType::GetAttr);
+        auto callContext = env.Start("getattr");
         env.CompleteWithErrno(callContext, ENOENT);
 
         env.FinishInterval();
@@ -196,8 +215,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TEnv env;
 
         for (int i = 0; i < 3; ++i) {
-            auto callContext =
-                env.Start(EFileStoreAvailabilityRequestType::Write);
+            auto callContext = env.Start("write");
             env.CompleteWithErrno(callContext, EIO);
         }
 
@@ -221,10 +239,10 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        auto bad = env.Start(EFileStoreAvailabilityRequestType::Write);
+        auto bad = env.Start("write");
         env.CompleteWithErrno(bad, EIO);
 
-        auto good = env.Start(EFileStoreAvailabilityRequestType::Write);
+        auto good = env.Start("write");
         env.CompleteOk(good);
 
         env.FinishInterval();
@@ -240,7 +258,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TEnv env;
 
         // the request is started in interval 1...
-        auto callContext = env.Start(EFileStoreAvailabilityRequestType::Fsync);
+        auto callContext = env.Start("fsync");
 
         // ...so it is not hung during interval 1 (it has not been
         // outstanding throughout the entire interval)
@@ -279,7 +297,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        auto callContext = env.Start(EFileStoreAvailabilityRequestType::Open);
+        auto callContext = env.Start("open");
         env.FinishInterval();
         env.AssertIntervals(
             1,   // total
@@ -303,7 +321,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        auto callContext = env.Start(EFileStoreAvailabilityRequestType::Open);
+        auto callContext = env.Start("open");
         env.FinishInterval();
         env.AssertIntervals(
             1,   // total
@@ -328,7 +346,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // a request started during the interval and still outstanding at its
         // end is neutral: alone it does not make the interval unavailable...
-        auto hungContext = env.Start(EFileStoreAvailabilityRequestType::Read);
+        auto hungContext = env.Start("read");
         env.FinishInterval();
         env.AssertIntervals(
             1,   // total
@@ -339,8 +357,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // ...but it is not success evidence either: it does not make an
         // interval with a hung request available
         env.AdvanceWithinInterval(TDuration::Minutes(2));
-        auto freshContext =
-            env.Start(EFileStoreAvailabilityRequestType::Read);
+        auto freshContext = env.Start("read");
 
         env.FinishInterval();
         env.AssertIntervals(
@@ -373,11 +390,10 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // an EIO completion is failure evidence; a request started during
         // the interval and still pending at its end does not neutralize it
-        auto eioContext = env.Start(EFileStoreAvailabilityRequestType::Write);
+        auto eioContext = env.Start("write");
         env.CompleteWithErrno(eioContext, EIO);
 
-        auto pendingContext =
-            env.Start(EFileStoreAvailabilityRequestType::Write);
+        auto pendingContext = env.Start("write");
 
         env.FinishInterval();
         env.AssertIntervals(
@@ -400,7 +416,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TEnv env;
 
         // a pending request started within the interval is neutral
-        auto oldContext = env.Start(EFileStoreAvailabilityRequestType::Read);
+        auto oldContext = env.Start("read");
         env.FinishInterval();
         env.AssertIntervals(
             1,   // total
@@ -414,8 +430,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // (neutral) and the successful completion is the only evidence =>
         // available. Decrementing the fresh request's accounting instead
         // would classify it as hung and flip the interval to unavailable.
-        auto freshContext =
-            env.Start(EFileStoreAvailabilityRequestType::Read);
+        auto freshContext = env.Start("read");
         env.CompleteOk(oldContext);
 
         env.FinishInterval();
@@ -448,14 +463,12 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // plenty of successful reads...
         for (int i = 0; i < 100; ++i) {
-            auto callContext =
-                env.Start(EFileStoreAvailabilityRequestType::Read);
+            auto callContext = env.Start("read");
             env.CompleteOk(callContext);
         }
 
         // ...do not mask a fully failed write type
-        auto badContext =
-            env.Start(EFileStoreAvailabilityRequestType::Write);
+        auto badContext = env.Start("write");
         env.CompleteWithErrno(badContext, EIO);
 
         env.FinishInterval();
@@ -470,17 +483,21 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        // Requests with EFileStoreAvailabilityRequestType::None do not
-        // affect the metric even if they fail with EIO or hang. (The FUSE
-        // dispatch assigns None to the requests outside the availability
-        // SLA - e.g. mknod, access, xattr and lock requests; that
-        // assignment lives in the CALL table in loop.cpp and is not covered
-        // here.)
-        auto eioContext =
-            env.Start(EFileStoreAvailabilityRequestType::None);
+        // Requests with ERequestType::None do not affect the metric even
+        // if they fail with EIO or hang. (The FUSE dispatch assigns None to
+        // the requests outside the availability SLA - e.g. mknod, access,
+        // xattr and lock requests; that assignment lives in the CALL table
+        // in loop.cpp and is not covered here.) None has no published name,
+        // so these requests are driven directly rather than through
+        // Start().
+        auto eioContext = MakeIntrusive<TCallContext>();
+        eioContext->AvailabilityRequestType = ERequestType::None;
+        env.Counters.RequestStarted(*eioContext, env.Now);
         env.CompleteWithErrno(eioContext, EIO);
         // never completed
-        env.Start(EFileStoreAvailabilityRequestType::None);
+        auto hungContext = MakeIntrusive<TCallContext>();
+        hungContext->AvailabilityRequestType = ERequestType::None;
+        env.Counters.RequestStarted(*hungContext, env.Now);
 
         env.FinishInterval();
         env.AssertIntervals(
@@ -584,7 +601,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // catch-up limit are reported as missing, not as unavailable
         {
             TEnv env;
-            env.Start(EFileStoreAvailabilityRequestType::Read);
+            env.Start("read");
             env.Now += IntervalDuration * 30;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
@@ -597,7 +614,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         {
             TEnv env;
-            env.Start(EFileStoreAvailabilityRequestType::Read);
+            env.Start("read");
             env.Now += IntervalDuration * 31;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
@@ -610,7 +627,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         {
             TEnv env;
-            env.Start(EFileStoreAvailabilityRequestType::Read);
+            env.Start("read");
             env.Now += IntervalDuration * 60;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
@@ -627,8 +644,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TEnv env;
 
         // a request hangs and the stats updater stalls for 3 intervals
-        auto callContext =
-            env.Start(EFileStoreAvailabilityRequestType::GetAttr);
+        auto callContext = env.Start("getattr");
         env.FinishInterval();
         env.AssertIntervals(
             1,   // total
@@ -661,8 +677,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // an EIO completion of a request that both started and finished
         // within the interval still makes the interval unavailable
-        auto callContext =
-            env.Start(EFileStoreAvailabilityRequestType::MkDir);
+        auto callContext = env.Start("mkdir");
         env.AdvanceWithinInterval(TDuration::Seconds(30));
         env.CompleteWithErrno(callContext, EIO);
 
@@ -686,9 +701,9 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             // lookup and getattr both map to GetNodeAttr
             TEnv env;
-            auto bad = env.Start(EFileStoreAvailabilityRequestType::Lookup);
+            auto bad = env.Start("lookup");
             env.CompleteWithErrno(bad, EIO);
-            auto good = env.Start(EFileStoreAvailabilityRequestType::GetAttr);
+            auto good = env.Start("getattr");
             env.CompleteOk(good);
 
             env.FinishInterval();
@@ -698,12 +713,12 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 1,   // unavailable
                 false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::Lookup,
+                "lookup",
                 0,   // available
                 1,   // unavailable
                 false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::GetAttr,
+                "getattr",
                 1,   // available
                 0,   // unavailable
                 true);   // last interval available
@@ -712,9 +727,9 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             // open and create both map to CreateHandle
             TEnv env;
-            auto bad = env.Start(EFileStoreAvailabilityRequestType::Open);
+            auto bad = env.Start("open");
             env.CompleteWithErrno(bad, EIO);
-            auto good = env.Start(EFileStoreAvailabilityRequestType::Create);
+            auto good = env.Start("create");
             env.CompleteOk(good);
 
             env.FinishInterval();
@@ -724,12 +739,12 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 1,   // unavailable
                 false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::Open,
+                "open",
                 0,   // available
                 1,   // unavailable
                 false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::Create,
+                "create",
                 1,   // available
                 0,   // unavailable
                 true);   // last interval available
@@ -738,9 +753,9 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             // mkdir and symlink both map to CreateNode
             TEnv env;
-            auto bad = env.Start(EFileStoreAvailabilityRequestType::MkDir);
+            auto bad = env.Start("mkdir");
             env.CompleteWithErrno(bad, EIO);
-            auto good = env.Start(EFileStoreAvailabilityRequestType::SymLink);
+            auto good = env.Start("symlink");
             env.CompleteOk(good);
 
             env.FinishInterval();
@@ -750,12 +765,12 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 1,   // unavailable
                 false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::MkDir,
+                "mkdir",
                 0,   // available
                 1,   // unavailable
                 false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::SymLink,
+                "symlink",
                 1,   // available
                 0,   // unavailable
                 true);   // last interval available
@@ -764,10 +779,9 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             // write and write_buf both map to WriteData
             TEnv env;
-            auto bad = env.Start(EFileStoreAvailabilityRequestType::Write);
+            auto bad = env.Start("write");
             env.CompleteWithErrno(bad, EIO);
-            auto good =
-                env.Start(EFileStoreAvailabilityRequestType::WriteBuf);
+            auto good = env.Start("write_buf");
             env.CompleteOk(good);
 
             env.FinishInterval();
@@ -777,12 +791,12 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 1,   // unavailable
                 false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::Write,
+                "write",
                 0,   // available
                 1,   // unavailable
                 false);   // last interval available
             env.AssertRequestIntervals(
-                EFileStoreAvailabilityRequestType::WriteBuf,
+                "write_buf",
                 1,   // available
                 0,   // unavailable
                 true);   // last interval available
@@ -799,7 +813,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // the request starts in (wall-clock) interval 2; the start event
         // itself rolls the accounting past the boundary first
-        env.Start(EFileStoreAvailabilityRequestType::Read);
+        env.Start("read");
 
         // the late updater closes interval 1, in which the request did not
         // exist
@@ -823,7 +837,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TEnv env;
 
         // the request is fresh-pending in the first interval => neutral
-        auto callContext = env.Start(EFileStoreAvailabilityRequestType::Read);
+        auto callContext = env.Start("read");
         env.FinishInterval();
         env.AssertIntervals(
             1,   // total
@@ -865,13 +879,13 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         env.Now += IntervalDuration + TDuration::Seconds(1);
         // interval 2: a starts (interval 1 elapsed empty => available)
-        auto a = env.Start(EFileStoreAvailabilityRequestType::Read);
+        auto a = env.Start("read");
 
         env.Now += IntervalDuration;
         // interval 3: a completes successfully; a was fresh-pending in
         // interval 2 => neutral there => interval 2 is available; b starts
         env.CompleteOk(a);
-        auto b = env.Start(EFileStoreAvailabilityRequestType::Write);
+        auto b = env.Start("write");
 
         env.Now += IntervalDuration;
         // interval 4: b completes with EIO; interval 3 saw a's success and
@@ -894,12 +908,12 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             1,   // unavailable
             false);   // last interval available
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Write,
+            "write",
             3,   // available
             1,   // unavailable
             false);   // last interval available
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Read,
+            "read",
             4,   // available
             0,   // unavailable
             true);   // last interval available
@@ -913,31 +927,35 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // a request started before the tracking is enabled gets no stamp
         auto preEnable = MakeIntrusive<TCallContext>();
-        preEnable->AvailabilityRequestType =
-            EFileStoreAvailabilityRequestType::Read;
+        preEnable->AvailabilityRequestType = ERequestType::Read;
         counters.RequestStarted(*preEnable, start);
         UNIT_ASSERT_VALUES_EQUAL(0, preEnable->AvailabilityIntervalSeqNo);
 
         // Request processing and the stats updater run concurrently with
-        // two racing EnableAndRegister() calls; the gates below guarantee
-        // full iterations both before and after enabling. Run under TSAN to
-        // verify the publication.
+        // two racing EnableAndRegister() calls. The updater advances the
+        // shared clock, so interval boundaries are crossed while requests
+        // are processed: the on-demand rollover in the request hooks races
+        // the updater rollover. The gates guarantee full iterations both
+        // before and after enabling and several boundaries crossed after
+        // enabling; run under TSAN to verify the publication.
+        std::atomic<ui64> nowUs = start.MicroSeconds();
         std::atomic<ui64> iterations = 0;
         std::atomic<bool> stop = false;
 
         std::thread requester([&] {
             while (!stop.load()) {
                 auto context = MakeIntrusive<TCallContext>();
-                context->AvailabilityRequestType =
-                    EFileStoreAvailabilityRequestType::Read;
-                counters.RequestStarted(*context, start);
-                counters.RequestCompleted(*context, start);
+                context->AvailabilityRequestType = ERequestType::Read;
+                const auto now = TInstant::MicroSeconds(nowUs.load());
+                counters.RequestStarted(*context, now);
+                counters.RequestCompleted(*context, now);
                 ++iterations;
             }
         });
         std::thread updater([&] {
             while (!stop.load()) {
-                counters.UpdateStats(start);
+                counters.UpdateStats(TInstant::MicroSeconds(nowUs.fetch_add(
+                    TDuration::Seconds(1).MicroSeconds())));
             }
         });
 
@@ -957,9 +975,14 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         enabler1.join();
         enabler2.join();
 
-        // at least 100 full iterations with the tracking enabled
+        // at least 100 full iterations and three elapsed intervals with
+        // the tracking enabled
         const ui64 enabledFrom = iterations.load();
-        while (iterations.load() < enabledFrom + 100) {}
+        const ui64 enabledNowUs = nowUs.load();
+        while (iterations.load() < enabledFrom + 100 ||
+               nowUs.load() <
+                   enabledNowUs + 3 * IntervalDuration.MicroSeconds())
+        {}
 
         stop = true;
         requester.join();
@@ -968,27 +991,31 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // The pre-enable request completes after enabling: it carries no
         // stamp and is ignored. A repeated completion of a tracked request
         // is ignored the same way; neither may disturb the accounting.
-        counters.RequestCompleted(*preEnable, start);
+        const auto end = TInstant::MicroSeconds(nowUs.load());
+        counters.RequestCompleted(*preEnable, end);
         auto repeated = MakeIntrusive<TCallContext>();
-        repeated->AvailabilityRequestType =
-            EFileStoreAvailabilityRequestType::Read;
-        counters.RequestStarted(*repeated, start);
-        counters.RequestCompleted(*repeated, start);
-        counters.RequestCompleted(*repeated, start);
+        repeated->AvailabilityRequestType = ERequestType::Read;
+        counters.RequestStarted(*repeated, end);
+        counters.RequestCompleted(*repeated, end);
+        counters.RequestCompleted(*repeated, end);
 
-        // the classification works after the race and the ignored events:
-        // the enabled-phase successes make the first interval available
-        counters.UpdateStats(start + IntervalDuration);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counterGroup->GetCounter(
-                "Availability_TotalIntervals",
-                true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            counterGroup->GetCounter(
-                "Availability_AvailableIntervals",
-                true)->Val());
+        // The accounting stays consistent across the concurrent rollovers:
+        // every closed interval is classified exactly once. Which intervals
+        // a racing request lands in is timing-dependent, so per-interval
+        // classification is not asserted here - the deterministic tests
+        // above cover it.
+        counters.UpdateStats(end + IntervalDuration);
+        const i64 total = counterGroup->GetCounter(
+            "Availability_TotalIntervals",
+            true)->Val();
+        const i64 available = counterGroup->GetCounter(
+            "Availability_AvailableIntervals",
+            true)->Val();
+        const i64 unavailable = counterGroup->GetCounter(
+            "Availability_UnavailableIntervals",
+            true)->Val();
+        UNIT_ASSERT(total >= 2);
+        UNIT_ASSERT_VALUES_EQUAL(total, available + unavailable);
     }
 
     Y_UNIT_TEST(ShouldSkipPartiallyObservedFirstInterval)
@@ -997,26 +1024,34 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TAvailabilityCounters counters;
         counters.EnableAndRegister(IntervalDuration, *counterGroup);
 
-        // the measurement begins two minutes into a wall-clock interval
+        // The measurement begins with the first observed activity after
+        // enabling - here the request event itself, with no updater tick
+        // before it - two minutes into a wall-clock interval.
         const TInstant alignedStart = TInstant::Hours(100);
-        const TInstant enableTime = alignedStart + TDuration::Minutes(2);
-        counters.UpdateStats(enableTime);
+        const TInstant firstEventTime = alignedStart + TDuration::Minutes(2);
 
         // an EIO completion within the partially observed interval
         auto context = MakeIntrusive<TCallContext>();
-        context->AvailabilityRequestType =
-            EFileStoreAvailabilityRequestType::Read;
-        counters.RequestStarted(*context, enableTime);
+        context->AvailabilityRequestType = ERequestType::Read;
+        counters.RequestStarted(*context, firstEventTime);
         context->GuestReplyErrno = EIO;
-        counters.RequestCompleted(*context, enableTime);
+        counters.RequestCompleted(*context, firstEventTime);
 
-        // The partial interval rolls over without classification: it never
-        // reaches the published counters even though it saw an EIO, because
-        // its first two minutes were not observed at all.
+        // The partial interval rolls over without classification even
+        // though it saw an EIO, because its first two minutes were not
+        // observed at all: neither the aggregated nor the per-type
+        // counters are published for it.
         counters.UpdateStats(alignedStart + IntervalDuration);
         auto total =
             counterGroup->GetCounter("Availability_TotalIntervals", true);
         UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
+        auto readGroup = counterGroup->FindSubgroup("request", "read");
+        UNIT_ASSERT(readGroup);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            readGroup->GetCounter(
+                "Availability_UnavailableIntervals",
+                true)->Val());
 
         // the first fully observed interval is classified normally
         counters.UpdateStats(alignedStart + IntervalDuration * 2);
@@ -1037,26 +1072,26 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "write",
             TString(GetAvailabilityRequestTypeName(
-                EFileStoreAvailabilityRequestType::Write)));
+                ERequestType::Write)));
         UNIT_ASSERT_VALUES_EQUAL(
             "write_buf",
             TString(GetAvailabilityRequestTypeName(
-                EFileStoreAvailabilityRequestType::WriteBuf)));
+                ERequestType::WriteBuf)));
 
-        auto badContext = env.Start(EFileStoreAvailabilityRequestType::Write);
+        auto badContext = env.Start("write");
         env.CompleteWithErrno(badContext, EIO);
 
         env.FinishInterval();
 
         // the failing request type is unavailable in its own counters...
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Write,
+            "write",
             0,   // available
             1,   // unavailable
             false);   // last interval available
         // ...while an idle request type is available in the same interval...
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Read,
+            "read",
             1,   // available
             0,   // unavailable
             true);   // last interval available
@@ -1067,18 +1102,17 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             1,   // unavailable
             false);   // last interval available
 
-        auto goodContext =
-            env.Start(EFileStoreAvailabilityRequestType::Write);
+        auto goodContext = env.Start("write");
         env.CompleteOk(goodContext);
         env.FinishInterval();
 
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Write,
+            "write",
             1,   // available
             1,   // unavailable
             true);   // last interval available
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Read,
+            "read",
             2,   // available
             0,   // unavailable
             true);   // last interval available
@@ -1101,7 +1135,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             0,   // unavailable
             true);   // last interval available
         env.AssertRequestIntervals(
-            EFileStoreAvailabilityRequestType::Lookup,
+            "lookup",
             0,   // available
             0,   // unavailable
             true);   // last interval available
