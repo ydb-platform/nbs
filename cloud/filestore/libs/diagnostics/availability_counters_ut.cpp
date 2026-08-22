@@ -530,11 +530,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // exactly at the catch-up limit every elapsed interval is evaluated
         {
             TEnv env;
-            env.Now += IntervalDuration * 12;
+            env.Now += IntervalDuration * 30;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
-                12,   // total
-                12,   // available
+                30,   // total
+                30,   // available
                 0,   // unavailable
                 true);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(0, env.MissingIntervals->Val());
@@ -543,36 +543,36 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         // one interval beyond the limit is reported as missing, not dropped
         {
             TEnv env;
-            env.Now += IntervalDuration * 13;
+            env.Now += IntervalDuration * 31;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
-                12,   // total
-                12,   // available
+                30,   // total
+                30,   // available
                 0,   // unavailable
                 true);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(1, env.MissingIntervals->Val());
         }
 
-        // a two-hour gap: half evaluated, half reported as missing
+        // a five-hour gap: half evaluated, half reported as missing
         {
             TEnv env;
-            env.Now += IntervalDuration * 24;
+            env.Now += IntervalDuration * 60;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
-                12,   // total
-                12,   // available
+                30,   // total
+                30,   // available
                 0,   // unavailable
                 true);   // last interval available
-            UNIT_ASSERT_VALUES_EQUAL(12, env.MissingIntervals->Val());
+            UNIT_ASSERT_VALUES_EQUAL(30, env.MissingIntervals->Val());
 
             // measurement continues normally afterwards
             env.FinishInterval();
             env.AssertIntervals(
-                13,   // total
-                13,   // available
+                31,   // total
+                31,   // available
                 0,   // unavailable
                 true);   // last interval available
-            UNIT_ASSERT_VALUES_EQUAL(12, env.MissingIntervals->Val());
+            UNIT_ASSERT_VALUES_EQUAL(30, env.MissingIntervals->Val());
         }
     }
 
@@ -585,12 +585,12 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             TEnv env;
             env.Start(EFileStoreAvailabilityRequestType::Read);
-            env.Now += IntervalDuration * 12;
+            env.Now += IntervalDuration * 30;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
-                12,   // total
+                30,   // total
                 1,   // available
-                11,   // unavailable
+                29,   // unavailable
                 false);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(0, env.MissingIntervals->Val());
         }
@@ -598,12 +598,12 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             TEnv env;
             env.Start(EFileStoreAvailabilityRequestType::Read);
-            env.Now += IntervalDuration * 13;
+            env.Now += IntervalDuration * 31;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
-                12,   // total
+                30,   // total
                 1,   // available
-                11,   // unavailable
+                29,   // unavailable
                 false);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(1, env.MissingIntervals->Val());
         }
@@ -611,14 +611,14 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         {
             TEnv env;
             env.Start(EFileStoreAvailabilityRequestType::Read);
-            env.Now += IntervalDuration * 24;
+            env.Now += IntervalDuration * 60;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
-                12,   // total
+                30,   // total
                 1,   // available
-                11,   // unavailable
+                29,   // unavailable
                 false);   // last interval available
-            UNIT_ASSERT_VALUES_EQUAL(12, env.MissingIntervals->Val());
+            UNIT_ASSERT_VALUES_EQUAL(30, env.MissingIntervals->Val());
         }
     }
 

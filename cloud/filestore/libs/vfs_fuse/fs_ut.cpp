@@ -7507,12 +7507,20 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             return MakeFuture(result);
         };
 
+        // start the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // The completed wait below guarantees the availability events were
+        // recorded before the clock advances, so the success is classified
+        // in the first interval - the assertions cover the request itself,
+        // not an idle interval.
         auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
             "/file1",
             RootNodeId);
         UNIT_ASSERT(handle.Wait(WaitTimeout));
 
-        // cross the interval boundary and run the real registry updater
+        // roll the first interval
         timer->AdvanceTime(TDuration::MilliSeconds(15000));
         bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
 
@@ -7561,18 +7569,30 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 NProto::TCreateHandleResponse(TErrorResponse(E_IO)));
         };
 
+        // start the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // roll the first interval and start the second interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // request is started in the second interval
         auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
             "/file1",
             RootNodeId);
         UNIT_ASSERT(handle.Wait(WaitTimeout));
 
+        // roll the second interval
+        //
+        // request returned Eio => interval unvailable
         timer->AdvanceTime(TDuration::MilliSeconds(15000));
         bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
 
         auto counters = bootstrap.GetFileSystemStatsCounters();
         UNIT_ASSERT(counters);
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            2,
             counters->GetCounter(
                 "Availability_TotalIntervals",
                 true)->Val());
@@ -7608,27 +7628,56 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         auto hungPromise = NewPromise<NProto::TCreateHandleResponse>();
+        auto requestReceived = NewPromise<void>();
         bootstrap.Service->CreateHandleHandler =
             [&] (auto callContext, auto request)
         {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
+            requestReceived.TrySetValue();
             return hungPromise.GetFuture();
         };
 
-        // the request is sent and stays outstanding
+        // start the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // request is started in the first interval
         auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
             "/file1",
             RootNodeId);
 
-        // it is fresh-pending (neutral) in the interval it started in
+        // The request is processed on the fuse loop thread asynchronously:
+        // wait until it has actually reached the service - its availability
+        // registration happens earlier on the same path - before advancing
+        // the fake clock. Otherwise the registration races the advances and
+        // may see a later fake time, shifting the request into a later
+        // interval.
+        UNIT_ASSERT(requestReceived.GetFuture().Wait(WaitTimeout));
+
+        // it is fresh-pending (neutral) in the first interval
+        //
+        // roll the first interval and start the second interval
         timer->AdvanceTime(TDuration::MilliSeconds(15000));
         bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
 
-        // ...and hung through the next interval => unavailable
+        // request hung through the second interval => unavailable
         timer->AdvanceTime(TDuration::MilliSeconds(15000));
         bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
 
+        // Unblock the request before the assertions so that a failing
+        // assertion cannot unwind into Stop() with the request still
+        // outstanding.
+        NProto::TCreateHandleResponse result;
+        result.SetHandle(1);
+        result.MutableNodeAttr()->SetId(2);
+        result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+        hungPromise.SetValue(result);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+
+        // Two intervals are classified: the first interval saw the request
+        // fresh-pending (neutral, no failure evidence) => available, the
+        // second interval saw it hung throughout => unavailable.
         auto counters = bootstrap.GetFileSystemStatsCounters();
         UNIT_ASSERT(counters);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -7646,14 +7695,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             counters->GetCounter(
                 "Availability_UnavailableIntervals",
                 true)->Val());
-
-        // unblock the request before stopping
-        NProto::TCreateHandleResponse result;
-        result.SetHandle(1);
-        result.MutableNodeAttr()->SetId(2);
-        result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
-        hungPromise.SetValue(result);
-        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter(
+                "Availability_LastIntervalAvailable")->Val());
     }
 }
 

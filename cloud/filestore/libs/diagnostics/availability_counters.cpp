@@ -15,11 +15,11 @@ namespace {
 
 // Limits the number of intervals finished by a single UpdateStats() call.
 // Protects against unbounded catch-up loops after large forward clock jumps.
-// With the default 5-minute interval this covers a stats-updater stall of up
+// With the default 2-minute interval this covers a stats-updater stall of up
 // to one hour, anything beyond that realigns without evaluation.
-constexpr size_t MaxIntervalsPerUpdate = 12;
+constexpr size_t MaxIntervalsPerUpdate = 30;
 
-constexpr TDuration DefaultIntervalDuration = TDuration::Minutes(5);
+constexpr TDuration DefaultIntervalDuration = TDuration::Minutes(2);
 
 }   // namespace
 

@@ -60,7 +60,7 @@ namespace {
     xxx(GuestPosixAclEnabled,         bool,     false                         )\
     xxx(ZeroCopyReadEnabled,          bool,     false                         )\
     xxx(AvailabilityTrackingEnabled,  bool,     false                         )\
-    xxx(AvailabilityTrackingInterval, TDuration,  TDuration::Minutes(5)      )\
+    xxx(AvailabilityTrackingInterval, TDuration,  TDuration::Minutes(2)      )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \
