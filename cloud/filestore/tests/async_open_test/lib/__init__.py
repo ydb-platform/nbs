@@ -192,7 +192,8 @@ def async_test():
             lambda counts: all(count > 0 for count in counts.values()))
 
         # The queue is processed one entry per AsyncHandleOperationPeriod
-        # (50ms by default), so draining all OPEN_HANDLE_COUNT confirmations
+        # (set to 50ms in nfs-storage-patch.txt; the product default is now 0
+        # for back-to-back drain), so draining all OPEN_HANDLE_COUNT confirmations
         # takes tens of seconds. Waiting for half of them leaves the rest
         # pending in the queue while the restarts below happen.
         wait_for(
