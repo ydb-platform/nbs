@@ -63,8 +63,11 @@ const char* GetAvailabilityRequestTypeName(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TAvailabilityCounters::TAvailabilityCounters(TString fileSystemId)
+    : FileSystemId{std::move(fileSystemId)}
+{}
+
 void TAvailabilityCounters::EnableAndRegister(
-    TString fileSystemId,
     TDuration intervalDuration,
     NMonitoring::TDynamicCounters& counters)
 {
@@ -74,8 +77,6 @@ void TAvailabilityCounters::EnableAndRegister(
     if (CountersRegistered.load(std::memory_order_acquire)) {
         return;
     }
-
-    FileSystemId = std::move(fileSystemId);
 
     // A zero interval duration selects the default one.
     IntervalDuration = intervalDuration == TDuration::Zero()

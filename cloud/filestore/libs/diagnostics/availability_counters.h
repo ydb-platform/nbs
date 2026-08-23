@@ -177,13 +177,14 @@ private:
     // Serializes EnableAndRegister() calls.
     TAdaptiveLock EnableLock;
 
-    TString FileSystemId;
+    const TString FileSystemId;
 
 public:
+    explicit TAvailabilityCounters(TString fileSystemId);
+
     // Registers the sensors and enables the tracking with the given
     // interval duration (zero selects the default one).
     void EnableAndRegister(
-        TString fileSystemId,
         TDuration intervalDuration,
         NMonitoring::TDynamicCounters& counters);
 

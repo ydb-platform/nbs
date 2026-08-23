@@ -24,7 +24,7 @@ struct TEnv
 {
     NMonitoring::TDynamicCountersPtr CounterGroup =
         MakeIntrusive<NMonitoring::TDynamicCounters>();
-    TAvailabilityCounters Counters;
+    TAvailabilityCounters Counters{"fs"};
     TInstant Now;
 
     NMonitoring::TDynamicCounters::TCounterPtr TotalIntervals;
@@ -38,7 +38,7 @@ struct TEnv
         // obvious
         : Now(TInstant::Hours(100))
     {
-        Counters.EnableAndRegister("fs", IntervalDuration, *CounterGroup);
+        Counters.EnableAndRegister(IntervalDuration, *CounterGroup);
         // the first call only initializes the interval boundary
         Counters.UpdateStats(Now);
 
@@ -940,7 +940,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     Y_UNIT_TEST(ShouldEnableConcurrentlyWithRequestProcessing)
     {
         auto counterGroup = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        TAvailabilityCounters counters;
+        TAvailabilityCounters counters{"fs"};
         const TInstant start = TInstant::Hours(100);
 
         // a request started before the tracking is enabled gets no stamp
@@ -981,11 +981,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         std::atomic<bool> go = false;
         std::thread enabler1([&] {
             while (!go.load()) {}
-            counters.EnableAndRegister("fs", IntervalDuration, *counterGroup);
+            counters.EnableAndRegister(IntervalDuration, *counterGroup);
         });
         std::thread enabler2([&] {
             while (!go.load()) {}
-            counters.EnableAndRegister("fs", IntervalDuration, *counterGroup);
+            counters.EnableAndRegister(IntervalDuration, *counterGroup);
         });
         go = true;
         enabler1.join();
@@ -1037,8 +1037,8 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     Y_UNIT_TEST(ShouldSkipPartiallyObservedFirstInterval)
     {
         auto counterGroup = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        TAvailabilityCounters counters;
-        counters.EnableAndRegister("fs", IntervalDuration, *counterGroup);
+        TAvailabilityCounters counters{"fs"};
+        counters.EnableAndRegister(IntervalDuration, *counterGroup);
 
         // The measurement begins with the first observed activity after
         // enabling - here the request event itself, with no updater tick

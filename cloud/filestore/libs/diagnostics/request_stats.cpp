@@ -472,15 +472,13 @@ public:
         , Predictor{std::move(predictor)}
         , PredictorStats{counters, std::move(timer)}
         , StatsCounters{std::move(counters)}
+        , AvailabilityCounters{FileSystemId}
     {}
 
     void EnableAvailabilityTracking(TDuration interval) override
     {
         // a zero interval selects the default one
-        AvailabilityCounters.EnableAndRegister(
-            FileSystemId,
-            interval,
-            *StatsCounters);
+        AvailabilityCounters.EnableAndRegister(interval, *StatsCounters);
     }
 
     void SetUserMetadata(TUserMetadata userMetadata)
