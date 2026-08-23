@@ -1136,6 +1136,10 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
 
         TAG(TH3) { out << "State"; }
         DIV() { out << "Current commitId: " << GetCurrentCommitId(); }
+        DIV() {
+            out << "Nodes with deferred destruction: "
+                << GetDeferredNodeDestructionCount();
+        }
         DIV() { DumpOperationState("Flush", FlushState, out); }
         DIV() { DumpOperationState("BlobIndexOp", BlobIndexOpState, out); }
         DIV() { DumpOperationState("CollectGarbage", CollectGarbageState, out); }

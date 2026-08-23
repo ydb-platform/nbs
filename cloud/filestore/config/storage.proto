@@ -887,7 +887,9 @@ message TStorageConfig
     // Time after a tablet start during which an operation on an unknown handle
     // returns a retriable error instead of E_FS_BADHANDLE, so that a client can
     // recover a handle lost by a tablet restart via its queued
-    // ConfirmCreateHandle. 0 disables the grace window. In ms.
+    // ConfirmCreateHandle. During the same window the destruction of a node
+    // that becomes unreferenced is deferred, so that such a handle can still be
+    // confirmed for it. 0 disables the grace window. In ms.
     optional uint32 UnconfirmedCreateHandleGraceTimeout = 536;
 
     // Limits the number of entries when tracking
@@ -906,4 +908,12 @@ message TStorageConfig
     // Delay between processing entries in the async handle operations queue,
     // in ms.
     optional uint32 AsyncHandleOperationDrainPeriod = 541;
+
+    // Limits the number of nodes whose destruction is deferred by
+    // UnconfirmedCreateHandleGraceTimeout. 0 disables the deferral.
+    optional uint64 MaxDeferredNodeDestructionCount = 542;
+
+    // Limits the number of nodes destroyed by a single transaction of the
+    // background task that destroys the deferred nodes.
+    optional uint32 MaxDeferredNodeDestructionsPerTx = 543;
 }

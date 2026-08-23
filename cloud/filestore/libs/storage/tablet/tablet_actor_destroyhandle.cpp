@@ -123,17 +123,13 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
 
     if (args.Node->Attrs.GetLinks() == 0 && !HasOpenHandles(args.Node->NodeId))
     {
-        auto e = RemoveNode(*db, *args.Node, args.Node->MinCommitId, commitId);
-
-        if (HasError(e)) {
-            WriteOrphanNode(
-                *db,
-                TStringBuilder() << "DestroyHandle: " << args.SessionId
-                                 << ", Handle: " << args.Request.GetHandle()
-                                 << ", RemoveNode: " << args.Node->NodeId
-                                 << ", Error: " << FormatError(e),
-                args.Node->NodeId);
-        }
+        DeferNodeDestructionOrRemoveNode(
+            *db,
+            ctx,
+            *args.Node,
+            commitId,
+            TStringBuilder() << "DestroyHandle: " << args.SessionId
+                             << ", Handle: " << args.Request.GetHandle());
     }
 
     EnqueueTruncateIfNeeded(ctx);

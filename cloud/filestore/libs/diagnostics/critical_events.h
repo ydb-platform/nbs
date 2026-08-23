@@ -28,6 +28,7 @@ namespace NCloud::NFileStore{
     xxx(DuplicateRequestId)                                                    \
     xxx(InvalidDupCacheEntry)                                                  \
     xxx(GeneratedOrphanNode)                                                   \
+    xxx(DeferredNodeDestructionLimitExceeded)                                  \
     xxx(ReceivedNodeOpErrorFromShard)                                          \
     xxx(LocalFsMaxSessionNodesInUse)                                           \
     xxx(LocalFsMaxSessionFileHandlesInUse)                                     \

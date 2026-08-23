@@ -120,6 +120,11 @@ NProto::TError TIndexTabletState::RemoveNode(
     ui64 minCommitId,
     ui64 maxCommitId)
 {
+    // the node is gone - nothing to destroy later, no matter how this call ends
+    if (HasDeferredNodeDestruction(node.NodeId)) {
+        RemoveDeferredNodeDestruction(db, node.NodeId);
+    }
+
     // SymLinks have size (equal to TargetPath) but store no real data so there
     // is no need to write deletion markers upon SymLink removal
     if (!node.Attrs.GetSymLink()) {
@@ -156,6 +161,12 @@ NProto::TError TIndexTabletState::RemoveNode(
     return {};
 }
 
+bool TIndexTabletState::UnlinkDestroysNode(
+    const INodeIndexTabletDatabase::TNode& node) const
+{
+    return node.Attrs.GetLinks() <= 1 && !HasOpenHandles(node.NodeId);
+}
+
 NProto::TError TIndexTabletState::UnlinkNode(
     IIndexTabletDatabase& db,
     ui64 parentNodeId,
@@ -163,9 +174,12 @@ NProto::TError TIndexTabletState::UnlinkNode(
     const INodeIndexTabletDatabase::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId,
-    bool removeNodeRef)
+    bool removeNodeRef,
+    bool deferDestruction)
 {
-    if (node.Attrs.GetLinks() > 1 || HasOpenHandles(node.NodeId)) {
+    const bool destroysNode = UnlinkDestroysNode(node);
+
+    if (!destroysNode || deferDestruction) {
         auto attrs = CopyAttrs(node.Attrs, E_CM_CMTIME | E_CM_UNREF);
         UpdateNode(
             db,
@@ -174,6 +188,10 @@ NProto::TError TIndexTabletState::UnlinkNode(
             maxCommitId,
             attrs,
             node.Attrs);
+
+        if (destroysNode) {
+            AddDeferredNodeDestruction(db, node.NodeId);
+        }
     } else {
         auto e = RemoveNode(
             db,
@@ -275,6 +293,50 @@ void TIndexTabletState::WriteOrphanNode(
     ReportGeneratedOrphanNode(message);
     db.WriteOrphanNode(nodeId);
     Impl->OrphanNodeIds.insert(nodeId);
+}
+
+void TIndexTabletState::AddDeferredNodeDestruction(
+    IIndexTabletDatabase& db,
+    ui64 nodeId)
+{
+    db.WriteDeferredNodeDestruction(nodeId);
+    Impl->DeferredNodeDestructionIds.insert(nodeId);
+}
+
+void TIndexTabletState::RemoveDeferredNodeDestruction(
+    IIndexTabletDatabase& db,
+    ui64 nodeId)
+{
+    db.DeleteDeferredNodeDestruction(nodeId);
+    Impl->DeferredNodeDestructionIds.erase(nodeId);
+}
+
+bool TIndexTabletState::HasDeferredNodeDestruction(ui64 nodeId) const
+{
+    return Impl->DeferredNodeDestructionIds.contains(nodeId);
+}
+
+ui64 TIndexTabletState::GetDeferredNodeDestructionCount() const
+{
+    return Impl->DeferredNodeDestructionIds.size();
+}
+
+TVector<ui64> TIndexTabletState::GetDeferredNodeDestructionIds(
+    ui64 maxCount) const
+{
+    TVector<ui64> nodeIds;
+    nodeIds.reserve(
+        Min<ui64>(maxCount, Impl->DeferredNodeDestructionIds.size()));
+
+    for (const ui64 nodeId: Impl->DeferredNodeDestructionIds) {
+        if (nodeIds.size() >= maxCount) {
+            break;
+        }
+
+        nodeIds.push_back(nodeId);
+    }
+
+    return nodeIds;
 }
 
 bool TIndexTabletState::HasPendingNodeCreateInShard(const TString& nodeName) const

@@ -1,3 +1,4 @@
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -9,6 +10,7 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+using namespace NMonitoring;
 
 namespace {
 
@@ -62,6 +64,40 @@ ui64 CreateAndLoseAsyncHandle(
     tablet.RecoverSession();
 
     return handle;
+}
+
+NProto::TStorageConfig DeferredNodeDestructionConfig()
+{
+    NProto::TStorageConfig config;
+    config.SetAsyncCreateHandleEnabled(true);
+    config.SetUnconfirmedCreateHandleGraceTimeout(
+        TDuration::Seconds(5).MilliSeconds());
+    config.SetTabletRegularTasksSchedulePeriod(
+        TDuration::Seconds(1).MilliSeconds());
+    return config;
+}
+
+void WriteFileContent(
+    TIndexTabletClient& tablet,
+    ui64 nodeId,
+    ui64 len,
+    char fill)
+{
+    const ui64 handle = CreateHandle(tablet, nodeId);
+    tablet.WriteData(handle, 0, len, fill);
+    tablet.DestroyHandle(handle);
+}
+
+// Lets the grace period expire and the deferred node destruction run.
+void WaitForDeferredNodeDestruction(TTestEnv& env, TIndexTabletClient& tablet)
+{
+    tablet.AdvanceTime(TDuration::Seconds(10));
+    env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+}
+
+ui64 GetUsedNodesCount(TIndexTabletClient& tablet)
+{
+    return GetStorageStats(tablet).GetUsedNodesCount();
 }
 
 }   // namespace
@@ -1273,6 +1309,351 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             "Expected at least 3 different generations due to tablet reboot, "
             "got "
                 << rebootTracker.GetGenerationCount());
+    }
+
+    Y_UNIT_TEST(ShouldDeferNodeDestructionForUnconfirmedHandle)
+    {
+        TTestEnv env({}, DeferredNodeDestructionConfig());
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        WriteFileContent(tablet, id, 1_KB, 'a');
+
+        const ui64 handle = CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        TIndexTabletClient tablet2(env.GetRuntime(), nodeIdx, tabletId);
+        tablet2.InitSession("client2", "session2");
+
+        // Another client unlinks the node before the lost handle has been
+        // confirmed. The node is unlinked but not destroyed.
+        tablet2.UnlinkNode(RootNodeId, "test", false);
+        tablet2.AssertGetNodeAttrFailed(RootNodeId, "test");
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        tablet.ConfirmCreateHandle(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500);
+
+        WaitForDeferredNodeDestruction(env, tablet);
+
+        // The confirmed handle keeps the node alive and its data intact.
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+        auto response = tablet.ReadData(handle, 0, 1_KB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            CreateBuffer(1_KB, 'a'),
+            response->Record.GetBuffer());
+
+        tablet.DestroyHandle(handle);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetUsedNodesCount(tablet));
+    }
+
+    Y_UNIT_TEST(ShouldDestroyDeferredNodeAfterGraceExpires)
+    {
+        TTestEnv env({}, DeferredNodeDestructionConfig());
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        WriteFileContent(tablet, id, 1_KB, 'a');
+
+        const ui64 handle = CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        // Nobody confirmed the handle, so the node is destroyed once the grace
+        // period is over - together with its data.
+        WaitForDeferredNodeDestruction(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetUsedNodesCount(tablet));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetStorageStats(tablet).GetUsedBlocksCount());
+
+        auto response = tablet.AssertConfirmCreateHandleFailed(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            response->Record.GetError().GetCode(),
+            response->Record.GetError().GetMessage());
+    }
+
+    Y_UNIT_TEST(ShouldDestroyDeferredNodeAfterTabletRestart)
+    {
+        TTestEnv env({}, DeferredNodeDestructionConfig());
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        // The deferred destruction is persistent, so the node is neither
+        // leaked nor destroyed too early after another restart.
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        WaitForDeferredNodeDestruction(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetUsedNodesCount(tablet));
+    }
+
+    Y_UNIT_TEST(ShouldNotDeferNodeDestructionIfGraceTimeoutIsZero)
+    {
+        auto storageConfig = DeferredNodeDestructionConfig();
+        storageConfig.SetUnconfirmedCreateHandleGraceTimeout(0);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetUsedNodesCount(tablet));
+    }
+
+    Y_UNIT_TEST(ShouldNotDeferNodeDestructionIfLimitIsZero)
+    {
+        auto storageConfig = DeferredNodeDestructionConfig();
+        storageConfig.SetMaxDeferredNodeDestructionCount(0);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        // The deferral is disabled, so the unlink is neither deferred nor
+        // rejected.
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetUsedNodesCount(tablet));
+    }
+
+    Y_UNIT_TEST(ShouldNotDeferDirectoryDestruction)
+    {
+        TTestEnv env({}, DeferredNodeDestructionConfig());
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+        UNIT_ASSERT_VALUES_EQUAL(2, GetUsedNodesCount(tablet));
+
+        // A directory can't have handles, so its destruction is never deferred.
+        tablet.UnlinkNode(RootNodeId, "dir", true);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+    }
+
+    Y_UNIT_TEST(ShouldNotDeferDestructionOfNodesCreatedAfterRestart)
+    {
+        TTestEnv env({}, DeferredNodeDestructionConfig());
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        UNIT_ASSERT_VALUES_EQUAL(2, GetUsedNodesCount(tablet));
+
+        // No handle for a node created after the restart could have been lost
+        // by that restart, so its destruction is not deferred.
+        tablet.UnlinkNode(RootNodeId, "test2", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+    }
+
+    Y_UNIT_TEST(ShouldDeferNodeDestructionUponRenameNode)
+    {
+        TTestEnv env({}, DeferredNodeDestructionConfig());
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+
+        const ui64 handle = CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        // Renaming over the node unlinks it just like UnlinkNode does.
+        tablet.RenameNode(RootNodeId, "test2", RootNodeId, "test");
+        UNIT_ASSERT_VALUES_EQUAL(2, GetUsedNodesCount(tablet));
+
+        tablet.ConfirmCreateHandle(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500);
+
+        WaitForDeferredNodeDestruction(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(2, GetUsedNodesCount(tablet));
+
+        tablet.DestroyHandle(handle);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+    }
+
+    Y_UNIT_TEST(ShouldDeferNodeDestructionUponDestroyHandle)
+    {
+        TTestEnv env({}, DeferredNodeDestructionConfig());
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        TIndexTabletClient tablet2(env.GetRuntime(), nodeIdx, tabletId);
+        tablet2.InitSession("client2", "session2");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const ui64 handle2 =
+            CreateHandle(tablet2, id, {}, TCreateHandleArgs::RDNLY);
+
+        const ui64 handle = CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+        // the tablet was rebooted, so the other client's pipe is stale
+        tablet2.ReconnectPipe();
+        tablet2.RecoverSession();
+
+        // The node survives the unlink because of the other session's handle.
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        // Closing that handle would destroy the node - the lost handle is not
+        // known to the tablet yet, so the destruction is deferred instead.
+        tablet2.DestroyHandle(handle2);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        tablet.ConfirmCreateHandle(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500);
+
+        WaitForDeferredNodeDestruction(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        tablet.DestroyHandle(handle);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetUsedNodesCount(tablet));
+    }
+
+    Y_UNIT_TEST(ShouldDeferNodeDestructionUponDestroySession)
+    {
+        TTestEnv env({}, DeferredNodeDestructionConfig());
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        TIndexTabletClient tablet2(env.GetRuntime(), nodeIdx, tabletId);
+        tablet2.InitSession("client2", "session2");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        CreateHandle(tablet2, id, {}, TCreateHandleArgs::RDNLY);
+
+        const ui64 handle = CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+        // the tablet was rebooted, so the other client's pipe is stale
+        tablet2.ReconnectPipe();
+        tablet2.RecoverSession();
+
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        // Same as ShouldDeferNodeDestructionUponDestroyHandle, but the other
+        // session's handles are destroyed by the session cleanup.
+        tablet2.DestroySession();
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        tablet.ConfirmCreateHandle(
+            id,
+            handle,
+            TCreateHandleArgs::RDNLY,
+            100500);
+
+        WaitForDeferredNodeDestruction(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        tablet.DestroyHandle(handle);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetUsedNodesCount(tablet));
+    }
+
+    Y_UNIT_TEST(ShouldNotDeferNodeDestructionIfLimitIsReached)
+    {
+        auto storageConfig = DeferredNodeDestructionConfig();
+        storageConfig.SetMaxDeferredNodeDestructionCount(1);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto limitExceeded = counters->GetCounter(
+            "AppCriticalEvents/DeferredNodeDestructionLimitExceeded",
+            true);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+
+        CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        // fills up the deferral limit
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        UNIT_ASSERT_VALUES_EQUAL(2, GetUsedNodesCount(tablet));
+        UNIT_ASSERT_VALUES_EQUAL(0, limitExceeded->Val());
+
+        // The limit leaves no room for another deferral. The unlink is not
+        // rejected - a retriable error here would be retried in a loop by the
+        // leader tablet - the node is destroyed and the event is reported.
+        tablet.UnlinkNode(RootNodeId, "test2", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+        UNIT_ASSERT_VALUES_EQUAL(1, limitExceeded->Val());
+
+        WaitForDeferredNodeDestruction(env, tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetUsedNodesCount(tablet));
     }
 }
 

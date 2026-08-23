@@ -423,6 +423,14 @@ public:
     bool ReadOrphanNodes(TVector<ui64>& nodeIds) override;
 
     //
+    // DeferredNodeDestruction
+    //
+
+    void WriteDeferredNodeDestruction(ui64 nodeId) override;
+    void DeleteDeferredNodeDestruction(ui64 nodeId) override;
+    bool ReadDeferredNodeDestructions(TVector<ui64>& nodeIds) override;
+
+    //
     // NewBlobs
     //
 

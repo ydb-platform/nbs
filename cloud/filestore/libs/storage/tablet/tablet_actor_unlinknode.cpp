@@ -530,7 +530,8 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             *args.ChildNode,
             args.ChildNode->MinCommitId,
             args.CommitId,
-            /* removeNodeRef */ !Config->GetParentlessFilesOnly());
+            /* removeNodeRef */ !Config->GetParentlessFilesOnly(),
+            ShouldDeferNodeDestruction(ctx, *args.ChildNode, "UnlinkNode"));
 
         if (HasError(e)) {
             args.Error = std::move(e);

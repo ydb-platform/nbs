@@ -314,18 +314,15 @@ void TIndexTabletActor::DestroySessionHandlesAndRemoveNodes(
                 nodeId,
                 it->Attrs.GetSize());
 
-            auto e = RemoveNode(
+            const bool removed = DeferNodeDestructionOrRemoveNode(
                 db,
+                ctx,
                 *it,
-                it->MinCommitId,
-                commitId);
+                commitId,
+                TStringBuilder() << operation << ": "
+                                 << session->GetSessionId());
 
-            if (HasError(e)) {
-                WriteOrphanNode(db, TStringBuilder()
-                    << "DestroySession: " << session->GetSessionId()
-                    << ", RemoveNode: " << nodeId
-                    << ", Error: " << FormatError(e), nodeId);
-            } else {
+            if (removed) {
                 ++removedNodeCount;
             }
         }
@@ -657,6 +654,83 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
     return {};
 }
 
+bool TIndexTabletActor::IsInUnconfirmedCreateHandleGracePeriod(
+    const TActorContext& ctx) const
+{
+    const auto graceTimeout = Config->GetUnconfirmedCreateHandleGraceTimeout();
+
+    return graceTimeout
+        && Config->GetAsyncCreateHandleEnabled()
+        && ctx.Now() < TabletStartTs + graceTimeout;
+}
+
+bool TIndexTabletActor::NeedsNodeDestructionDeferral(
+    const TActorContext& ctx,
+    const INodeIndexTabletDatabase::TNode& node) const
+{
+    // After a restart, defer destruction of nodes that may still have an
+    // unconfirmed handle. Only pre-existing regular nodes can have one.
+    return Config->GetMaxDeferredNodeDestructionCount()
+        && IsInUnconfirmedCreateHandleGracePeriod(ctx)
+        && !GetFileSystem().GetIsFastShard()
+        && node.Attrs.GetType() == NProto::E_REGULAR_NODE
+        && node.NodeId <= MaxNodeIdAtStart;
+}
+
+bool TIndexTabletActor::ShouldDeferNodeDestruction(
+    const TActorContext& ctx,
+    const INodeIndexTabletDatabase::TNode& node,
+    TStringBuf operation)
+{
+    if (!UnlinkDestroysNode(node) || !NeedsNodeDestructionDeferral(ctx, node)) {
+        return false;
+    }
+
+    const ui64 deferredCount = GetDeferredNodeDestructionCount();
+    if (deferredCount >= Config->GetMaxDeferredNodeDestructionCount()) {
+        ReportDeferredNodeDestructionLimitExceeded(TStringBuilder()
+            << operation << ": NodeId: " << node.NodeId
+            << ", DeferredNodeDestructionCount: " << deferredCount);
+
+        Metrics->NodeDestructionsDeferralSkipped.fetch_add(
+            1,
+            std::memory_order_relaxed);
+
+        return false;
+    }
+
+    return true;
+}
+
+bool TIndexTabletActor::DeferNodeDestructionOrRemoveNode(
+    IIndexTabletDatabase& db,
+    const TActorContext& ctx,
+    const INodeIndexTabletDatabase::TNode& node,
+    ui64 commitId,
+    const TString& operation)
+{
+    if (ShouldDeferNodeDestruction(ctx, node, operation)) {
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s Deferring node destruction upon %s n:%lu",
+            LogTag.c_str(),
+            operation.c_str(),
+            node.NodeId);
+
+        AddDeferredNodeDestruction(db, node.NodeId);
+        return false;
+    }
+
+    auto e = RemoveNode(db, node, node.MinCommitId, commitId);
+    if (HasError(e)) {
+        WriteOrphanNode(db, TStringBuilder()
+            << operation << ": RemoveNode: " << node.NodeId
+            << ", Error: " << FormatError(e), node.NodeId);
+        return false;
+    }
+
+    return true;
+}
+
 NProto::TError TIndexTabletActor::ErrorHandleNotFound(
     const TActorContext& ctx,
     ui64 handle) const
@@ -665,11 +739,7 @@ NProto::TError TIndexTabletActor::ErrorHandleNotFound(
     // inside that window loses the handle. The client retries its queued
     // ConfirmCreateHandle, which recreates the very same handle, so ask the
     // client to retry instead of failing the operation with EBADF.
-    const auto graceTimeout = Config->GetUnconfirmedCreateHandleGraceTimeout();
-    if (graceTimeout
-        && Config->GetAsyncCreateHandleEnabled()
-        && ctx.Now() < TabletStartTs + graceTimeout)
-    {
+    if (IsInUnconfirmedCreateHandleGracePeriod(ctx)) {
         ui32 flags = 0;
         SetProtoFlag(flags, NCloud::NProto::EF_INSTANT_RETRIABLE);
         return MakeError(
@@ -1930,6 +2000,7 @@ bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
 void TIndexTabletActor::RunRegularTasks(const TActorContext& ctx)
 {
     DeleteOldResponseLogEntries(ctx);
+    DestroyDeferredNodes(ctx);
 
     ctx.Schedule(Config->GetTabletRegularTasksSchedulePeriod(),
         new TEvIndexTabletPrivate::TEvRunRegularTasks());

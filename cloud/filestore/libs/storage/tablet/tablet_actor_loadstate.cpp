@@ -5,6 +5,7 @@
 
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
@@ -121,6 +122,7 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db->ReadResponseLog(args.ResponseLog),
         db->ReadLargeDeletionMarkers(args.LargeDeletionMarkers),
         db->ReadOrphanNodes(args.OrphanNodeIds),
+        db->ReadDeferredNodeDestructions(args.DeferredNodeDestructionIds),
         db->ReadUnconfirmedData(args.UnconfirmedData),
     };
 
@@ -267,6 +269,7 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         args.TabletStorageInfo,
         args.LargeDeletionMarkers,
         args.OrphanNodeIds,
+        args.DeferredNodeDestructionIds,
         args.OpLog,
         args.ResponseLog,
         config);
@@ -400,6 +403,11 @@ void TIndexTabletActor::CompleteTx_LoadState(
             LogTag << " Read " << args.OrphanNodeIds.size()
             << " orphan nodes");
     }
+    if (args.DeferredNodeDestructionIds) {
+        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+            LogTag << " Read " << args.DeferredNodeDestructionIds.size()
+            << " nodes with deferred destruction");
+    }
 
     LoadState(
         Executor()->Generation(),
@@ -409,10 +417,13 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.TabletStorageInfo,
         args.LargeDeletionMarkers,
         args.OrphanNodeIds,
+        args.DeferredNodeDestructionIds,
         args.OpLog,
         args.ResponseLog,
         config);
     UpdateLogTag();
+
+    MaxNodeIdAtStart = ShardedId(GetLastNodeId(), GetFileSystem().GetShardNo());
 
     NMetrics::Store(Metrics->OpLogEntryCount, GetOpLogEntryCount());
     NMetrics::Store(Metrics->ResponseLogEntryCount, GetResponseLogEntryCount());
