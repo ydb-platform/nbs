@@ -477,7 +477,10 @@ public:
     void EnableAvailabilityTracking(TDuration interval) override
     {
         // a zero interval selects the default one
-        AvailabilityCounters.EnableAndRegister(interval, *StatsCounters);
+        AvailabilityCounters.EnableAndRegister(
+            FileSystemId,
+            interval,
+            *StatsCounters);
     }
 
     void SetUserMetadata(TUserMetadata userMetadata)

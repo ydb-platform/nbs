@@ -61,10 +61,10 @@ const char* GetAvailabilityRequestTypeName(
 //
 // Published sensors (registered on the per-filesystem per-client counters
 // subgroup of the request stats):
-//  * Availability_TotalIntervals       - derivative, finished 5-min intervals;
+//  * Availability_TotalIntervals       - derivative, finished intervals;
 //  * Availability_AvailableIntervals   - derivative, available intervals;
 //  * Availability_UnavailableIntervals - derivative, unavailable intervals;
-//  * Availability_LastIntervalAvailable - gauge, 1 if the last finished
+//  * Availability_LastIntervalAvailable - gauge, 1 if the last evaluated
 //                                        interval was available, 0 otherwise;
 // Availability_{Available,Unavailable}Intervals and
 // Availability_LastIntervalAvailable are also published per availability
@@ -177,11 +177,13 @@ private:
     // Serializes EnableAndRegister() calls.
     TAdaptiveLock EnableLock;
 
+    TString FileSystemId;
+
 public:
     // Registers the sensors and enables the tracking with the given
-    // interval duration (zero selects the default one). Thread-safe;
-    // repeated calls are no-ops.
+    // interval duration (zero selects the default one).
     void EnableAndRegister(
+        TString fileSystemId,
         TDuration intervalDuration,
         NMonitoring::TDynamicCounters& counters);
 

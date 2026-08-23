@@ -67,6 +67,8 @@ namespace NCloud::NFileStore{
     xxx(ResetSessionInterrupted)                                               \
     xxx(DestroySessionInterrupted)                                             \
     xxx(IncompatibleFeatures)                                                  \
+    xxx(AvailabilityCountersUnavailableInterval)                               \
+    xxx(AvailabilityCountersMissingIntervals)                                  \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

@@ -64,6 +64,7 @@ const char* GetAvailabilityRequestTypeName(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TAvailabilityCounters::EnableAndRegister(
+    TString fileSystemId,
     TDuration intervalDuration,
     NMonitoring::TDynamicCounters& counters)
 {
@@ -73,6 +74,8 @@ void TAvailabilityCounters::EnableAndRegister(
     if (CountersRegistered.load(std::memory_order_acquire)) {
         return;
     }
+
+    FileSystemId = std::move(fileSystemId);
 
     // A zero interval duration selects the default one.
     IntervalDuration = intervalDuration == TDuration::Zero()
@@ -327,6 +330,9 @@ void TAvailabilityCounters::RollIntervals(TInstant now)
             (alignedNow - CurrentIntervalStart).MicroSeconds() /
             IntervalDuration.MicroSeconds();
         MissingIntervalsCounter->Add(missingIntervals);
+        ReportAvailabilityCountersMissingIntervals(
+            TStringBuilder() << "filesystem " << FileSystemId << ": "
+                << missingIntervals << " intervals were missed");
 
         CurrentIntervalStart = alignedNow;
     }
@@ -339,6 +345,7 @@ void TAvailabilityCounters::RollIntervals(TInstant now)
 void TAvailabilityCounters::RollInterval(bool publishCounters)
 {
     bool intervalAvailable = true;
+    TStringBuilder unavailableRequestTypes;
 
     // Index 0 is EFileStoreAvailabilityRequestType::None, stays unused.
     for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
@@ -349,6 +356,9 @@ void TAvailabilityCounters::RollInterval(bool publishCounters)
             // The aggregated interval availability is the logical AND over
             // the request types.
             intervalAvailable = false;
+            unavailableRequestTypes << " "
+                << GetAvailabilityRequestTypeName(
+                    static_cast<EFileStoreAvailabilityRequestType>(i));
         }
     }
 
@@ -360,6 +370,13 @@ void TAvailabilityCounters::RollInterval(bool publishCounters)
             UnavailableIntervalsCounter->Inc();
         }
         *LastIntervalAvailableCounter = intervalAvailable ? 1 : 0;
+
+        if (!intervalAvailable) {
+            ReportAvailabilityCountersUnavailableInterval(
+                TStringBuilder() << "filesystem " << FileSystemId
+                    << ", unavailable request types:"
+                    << unavailableRequestTypes);
+        }
     }
 
     CurrentIntervalStart += IntervalDuration;
