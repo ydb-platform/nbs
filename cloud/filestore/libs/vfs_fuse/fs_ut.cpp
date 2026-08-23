@@ -3237,8 +3237,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldDrainHandleOpsQueueBackToBack)
     {
-        // AsyncHandleOperationPeriod defaults to 0, so a non-empty queue is
-        // drained back-to-back: every entry is rescheduled with zero delay.
+        // AsyncHandleOperationDrainPeriod is 0, so a non-empty queue is drained
+        // back-to-back: every entry is rescheduled with zero delay.
         // With a frozen clock, running only the tasks due "now" fires just the
         // zero-delay tasks, so the whole queue must drain without advancing
         // time. A non-zero period would leave every processing task in the
@@ -3247,6 +3247,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
+        features.SetAsyncHandleOperationIdlePeriod(50);
+        features.SetAsyncHandleOperationDrainPeriod(0);
 
         auto timer = std::make_shared<TTestTimer>();
         auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
@@ -3288,14 +3290,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             }));
     }
 
-    Y_UNIT_TEST(ShouldBackOffWhenHandleOpsQueueEmpty)
+    Y_UNIT_TEST(ShouldUseIdlePeriodWhenHandleOpsQueueEmpty)
     {
-        // On an empty queue processing is rescheduled with a non zero default
-        // to avoid a busy loop.
-        constexpr auto EmptyQueueBackoff = TDuration::MilliSeconds(50);
-
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
+        features.SetAsyncHandleOperationIdlePeriod(50);
+        features.SetAsyncHandleOperationDrainPeriod(0);
+        const auto idlePeriod = TDuration::MilliSeconds(
+            features.GetAsyncHandleOperationIdlePeriod());
 
         auto timer = std::make_shared<TTestTimer>();
         auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
@@ -3322,14 +3324,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             O_RDONLY);
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
 
-        // The only scheduled poll is EmptyQueueBackoff in the future, so at the
+        // The only scheduled poll is idlePeriod in the future, so at the
         // current (frozen) time it does not fire and the entry stays pending.
         scheduler->RunAllScheduledTasksUntilNow();
         UNIT_ASSERT_VALUES_EQUAL(0U, handlerCalled.load());
 
         // Once the backoff elapses the poll fires and picks up the entry.
-        timer->AdvanceTime(EmptyQueueBackoff);
-        scheduler->AdvanceTime(EmptyQueueBackoff);
+        timer->AdvanceTime(idlePeriod);
+        scheduler->AdvanceTime(idlePeriod);
         UNIT_ASSERT(WaitForCondition(
             WaitTimeout,
             [&]

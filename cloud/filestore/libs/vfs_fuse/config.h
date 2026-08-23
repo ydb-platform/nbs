@@ -41,7 +41,8 @@ public:
     bool GetAsyncDestroyHandleEnabled() const;
     bool GetAsyncDestroyReadOnlyHandleEnabled() const;
     bool GetAsyncCreateHandleEnabled() const;
-    TDuration GetAsyncHandleOperationPeriod() const;
+    TDuration GetAsyncHandleOperationIdlePeriod() const;
+    TDuration GetAsyncHandleOperationDrainPeriod() const;
 
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;

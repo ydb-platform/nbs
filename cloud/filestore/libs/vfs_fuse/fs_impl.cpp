@@ -29,11 +29,6 @@ ui64 GenerateCacheVersion(std::atomic<ui64>& version)
     return version.fetch_add(1, std::memory_order_release) + 1;
 }
 
-// AsyncHandleOperationPeriod defaults to 0 so a non-empty queue is drained
-// back-to-back. When the queue is empty we back off by this hardcoded delay
-// instead to avoid busy looping.
-constexpr TDuration EmptyHandleOpsQueueBackoff = TDuration::MilliSeconds(50);
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -93,7 +88,8 @@ TFileSystem::~TFileSystem()
 void TFileSystem::Init()
 {
     STORAGE_INFO("scheduling handle ops queue processing");
-    ScheduleProcessHandleOpsQueue(Config->GetAsyncHandleOperationPeriod());
+    ScheduleProcessHandleOpsQueue(
+        Config->GetAsyncHandleOperationDrainPeriod());
 }
 
 void TFileSystem::Reset()
@@ -420,7 +416,8 @@ void TFileSystem::CompleteHandleOpsQueueEntry()
         HandleOpsQueue->PopFront();
     }
     ProcessDelayedRelease();
-    ScheduleProcessHandleOpsQueue(Config->GetAsyncHandleOperationPeriod());
+    ScheduleProcessHandleOpsQueue(
+        Config->GetAsyncHandleOperationDrainPeriod());
 }
 
 void TFileSystem::ProcessDelayedRelease()
@@ -445,7 +442,8 @@ void TFileSystem::ProcessHandleOpsQueue()
 {
     TGuard g{HandleOpsQueueLock};
     if (HandleOpsQueue->Empty()) {
-        ScheduleProcessHandleOpsQueue(EmptyHandleOpsQueueBackoff);
+        ScheduleProcessHandleOpsQueue(
+            Config->GetAsyncHandleOperationIdlePeriod());
         return;
     }
 
@@ -456,7 +454,8 @@ void TFileSystem::ProcessHandleOpsQueue()
             << "Failed to get TQueueEntry from queue, filesystem: "
             << Config->GetFileSystemId());
         HandleOpsQueue->PopFront();
-        ScheduleProcessHandleOpsQueue(Config->GetAsyncHandleOperationPeriod());
+        ScheduleProcessHandleOpsQueue(
+            Config->GetAsyncHandleOperationIdlePeriod());
         return;
     }
 
@@ -518,7 +517,8 @@ void TFileSystem::ProcessHandleOpsQueue()
             TStringBuilder() << "Unexpected TQueueEntry in queue, filesystem: "
                              << Config->GetFileSystemId());
         HandleOpsQueue->PopFront();
-        ScheduleProcessHandleOpsQueue(Config->GetAsyncHandleOperationPeriod());
+        ScheduleProcessHandleOpsQueue(
+            Config->GetAsyncHandleOperationIdlePeriod());
         return;
     }
 

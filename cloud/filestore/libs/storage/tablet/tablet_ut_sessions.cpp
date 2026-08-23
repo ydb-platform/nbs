@@ -1423,6 +1423,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetHasXAttrs(true);
         features.SetMaxFuseLoopThreads(1);
         features.SetTabletDirectRdmaEnabled(false);
+        features.SetAsyncHandleOperationIdlePeriod(
+            TDuration::MilliSeconds(50).MilliSeconds());
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
@@ -1436,8 +1438,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetPreferredBlockSizeMultiplier(2);
         config.SetAsyncDestroyHandleEnabled(true);
         config.SetAsyncDestroyReadOnlyHandleEnabled(true);
-        config.SetAsyncHandleOperationPeriod(
+        config.SetAsyncHandleOperationIdlePeriod(
             TDuration::MilliSeconds(100).MilliSeconds());
+        config.SetAsyncHandleOperationDrainPeriod(
+            TDuration::MilliSeconds(10).MilliSeconds());
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
@@ -1471,8 +1475,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetPreferredBlockSize(4_KB * 2);
         features.SetAsyncDestroyHandleEnabled(true);
         features.SetAsyncDestroyReadOnlyHandleEnabled(true);
-        features.SetAsyncHandleOperationPeriod(
+        features.SetAsyncHandleOperationIdlePeriod(
             TDuration::MilliSeconds(100).MilliSeconds());
+        features.SetAsyncHandleOperationDrainPeriod(
+            TDuration::MilliSeconds(10).MilliSeconds());
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);
