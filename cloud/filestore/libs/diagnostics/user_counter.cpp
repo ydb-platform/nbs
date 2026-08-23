@@ -31,6 +31,14 @@ constexpr TStringBuf FILESTORE_INDEX_LATENCY         = "filestore.index_latency"
 constexpr TStringBuf FILESTORE_INDEX_ERRORS          = "filestore.index_errors";
 constexpr TStringBuf FILESTORE_INDEX_CUMULATIVE_TIME = "filestore.index_cumulative_time";
 
+// Availability counters
+constexpr TStringBuf FILESTORE_AVAILABILITY_TOTAL_INTERVALS =
+    "filestore.availability_total_intervals";
+constexpr TStringBuf FILESTORE_AVAILABILITY_AVAILABLE_INTERVALS =
+    "filestore.availability_available_intervals";
+constexpr TStringBuf FILESTORE_AVAILABILITY_UNAVAILABLE_INTERVALS =
+    "filestore.availability_unavailable_intervals";
+
 TLabels MakeFilestoreLabels(
     const TString& cloudId,
     const TString& folderId,
@@ -171,6 +179,36 @@ void RegisterFilestore(
         FILESTORE_WRITE_LATENCY,
         histogramCounterOptions);
 
+    // Availability counters. The availability tracker registers them
+    // lazily (and only when the tracking feature is enabled), while the
+    // user metric wrappers capture the source counters eagerly at
+    // registration time - so the counters are created here with the same
+    // flags the tracker uses; they stay at zero until (and unless) the
+    // tracking is enabled.
+    for (const auto* name:
+         {"Availability_TotalIntervals",
+          "Availability_AvailableIntervals",
+          "Availability_UnavailableIntervals"})
+    {
+        src->GetCounter(name, true /* derivative */);
+    }
+
+    AddUserMetric(
+        dsc,
+        commonLabels,
+        { { src, "Availability_TotalIntervals" } },
+        FILESTORE_AVAILABILITY_TOTAL_INTERVALS);
+    AddUserMetric(
+        dsc,
+        commonLabels,
+        { { src, "Availability_AvailableIntervals" } },
+        FILESTORE_AVAILABILITY_AVAILABLE_INTERVALS);
+    AddUserMetric(
+        dsc,
+        commonLabels,
+        { { src, "Availability_UnavailableIntervals" } },
+        FILESTORE_AVAILABILITY_UNAVAILABLE_INTERVALS);
+
     TVector<TBaseDynamicCounters> indexOpsCounters;
     TVector<TBaseDynamicCounters> indexErrorCounters;
 
@@ -258,6 +296,16 @@ void UnregisterFilestore(
     dsc.RemoveUserMetric(commonLabels, FILESTORE_WRITE_BYTES_BURST);
     dsc.RemoveUserMetric(commonLabels, FILESTORE_WRITE_LATENCY);
     dsc.RemoveUserMetric(commonLabels, FILESTORE_WRITE_ERRORS);
+
+    dsc.RemoveUserMetric(
+        commonLabels,
+        FILESTORE_AVAILABILITY_TOTAL_INTERVALS);
+    dsc.RemoveUserMetric(
+        commonLabels,
+        FILESTORE_AVAILABILITY_AVAILABLE_INTERVALS);
+    dsc.RemoveUserMetric(
+        commonLabels,
+        FILESTORE_AVAILABILITY_UNAVAILABLE_INTERVALS);
 
     dsc.RemoveUserMetric(commonLabels, FILESTORE_INDEX_OPS);
     dsc.RemoveUserMetric(commonLabels, FILESTORE_INDEX_ERRORS);
