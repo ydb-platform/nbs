@@ -1,4 +1,5 @@
 #include "availability_counters.h"
+#include "critical_events.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -23,7 +24,7 @@ struct TEnv
 {
     NMonitoring::TDynamicCountersPtr CounterGroup =
         MakeIntrusive<NMonitoring::TDynamicCounters>();
-    TAvailabilityCounters Counters;
+    TAvailabilityCounters Counters{"fs"};
     TInstant Now;
 
     NMonitoring::TDynamicCounters::TCounterPtr TotalIntervals;
@@ -211,6 +212,10 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
+        InitCriticalEventsCounter(env.CounterGroup);
+        const TString unavailableEvent =
+            "AppCriticalEvents/AvailabilityCountersUnavailableInterval";
+
         for (int i = 0; i < 3; ++i) {
             auto callContext = env.Start("write");
             env.CompleteWithErrno(callContext, EIO);
@@ -222,14 +227,22 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             0,       // available
             1,       // unavailable
             false);  // last interval available
+        // the unavailable interval raises the critical event
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.CounterGroup->GetCounter(unavailableEvent, true)->Val());
 
-        // the next interval has no requests => available again
+        // the next interval has no requests => available again, and no new
+        // critical event is raised
         env.FinishInterval();
         env.AssertIntervals(
             2,       // total
             1,       // available
             1,       // unavailable
             true);   // last interval available
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.CounterGroup->GetCounter(unavailableEvent, true)->Val());
     }
 
     Y_UNIT_TEST(ShouldReportMixedEioAndSuccessAsAvailable)
@@ -534,9 +547,13 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
     Y_UNIT_TEST(ShouldCountIntervalsMissedBeyondCatchUpLimit)
     {
+        const TString missingEvent =
+            "AppCriticalEvents/AvailabilityCountersMissingIntervals";
+
         // exactly at the catch-up limit every elapsed interval is evaluated
         {
             TEnv env;
+            InitCriticalEventsCounter(env.CounterGroup);
             env.Now += IntervalDuration * 30;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
@@ -545,11 +562,16 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 0,       // unavailable
                 true);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(0, env.MissingIntervals->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                env.CounterGroup->GetCounter(missingEvent, true)->Val());
         }
 
         // one interval beyond the limit is reported as missing, not dropped
+        // and raises the critical event
         {
             TEnv env;
+            InitCriticalEventsCounter(env.CounterGroup);
             env.Now += IntervalDuration * 31;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
@@ -558,11 +580,15 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 0,       // unavailable
                 true);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(1, env.MissingIntervals->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                env.CounterGroup->GetCounter(missingEvent, true)->Val());
         }
 
         // a five-hour gap: half evaluated, half reported as missing
         {
             TEnv env;
+            InitCriticalEventsCounter(env.CounterGroup);
             env.Now += IntervalDuration * 60;
             env.Counters.UpdateStats(env.Now);
             env.AssertIntervals(
@@ -571,6 +597,10 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 0,       // unavailable
                 true);   // last interval available
             UNIT_ASSERT_VALUES_EQUAL(30, env.MissingIntervals->Val());
+            // the realignment raises the event once, whatever the gap size
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                env.CounterGroup->GetCounter(missingEvent, true)->Val());
 
             // measurement continues normally afterwards
             env.FinishInterval();
@@ -910,7 +940,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     Y_UNIT_TEST(ShouldEnableConcurrentlyWithRequestProcessing)
     {
         auto counterGroup = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        TAvailabilityCounters counters;
+        TAvailabilityCounters counters{"fs"};
         const TInstant start = TInstant::Hours(100);
 
         // a request started before the tracking is enabled gets no stamp
@@ -1007,7 +1037,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     Y_UNIT_TEST(ShouldSkipPartiallyObservedFirstInterval)
     {
         auto counterGroup = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        TAvailabilityCounters counters;
+        TAvailabilityCounters counters{"fs"};
         counters.EnableAndRegister(IntervalDuration, *counterGroup);
 
         // The measurement begins with the first observed activity after

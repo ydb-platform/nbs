@@ -472,6 +472,7 @@ public:
         , Predictor{std::move(predictor)}
         , PredictorStats{counters, std::move(timer)}
         , StatsCounters{std::move(counters)}
+        , AvailabilityCounters{FileSystemId}
     {}
 
     void EnableAvailabilityTracking(TDuration interval) override
