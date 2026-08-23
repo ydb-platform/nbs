@@ -1459,6 +1459,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetUseCustomReadDataResponseParser(true);
         config.SetExternalReadDataPayload(true);
         config.SetTabletDirectRdmaEnabled(true);
+        config.SetAvailabilityTrackingEnabled(true);
+        config.SetAvailabilityTrackingInterval(
+            TDuration::Seconds(15).MilliSeconds());
 
         features.SetTwoStageReadEnabled(true);
         features.SetTwoStageReadThreshold(64_KB);
@@ -1491,6 +1494,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetUseCustomReadDataResponseParser(true);
         features.SetExternalReadDataPayload(true);
         features.SetTabletDirectRdmaEnabled(true);
+        features.SetAvailabilityTrackingEnabled(true);
+        features.SetAvailabilityTrackingInterval(
+            TDuration::Seconds(15).MilliSeconds());
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }

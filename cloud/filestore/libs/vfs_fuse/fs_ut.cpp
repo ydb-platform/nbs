@@ -221,6 +221,7 @@ struct TBootstrap
         Fuse = std::make_shared<TFuseVirtioClient>(SocketPath, WaitTimeout);
 
         Service = std::make_shared<TFileStoreTest>();
+
         Service->CreateSessionHandler =
             [featuresConfig](auto callContext, auto request)
         {
@@ -298,6 +299,17 @@ struct TBootstrap
             CreateProfileLogStub(),
             Session,
             std::move(fileMapMemoryLimiter));
+    }
+
+    NMonitoring::TDynamicCountersPtr GetFileSystemStatsCounters() const
+    {
+        return Counters
+            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "");
     }
 
     NMonitoring::TDynamicCountersPtr GetDirectoryHandleCounters() const
@@ -7461,6 +7473,232 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             }));
 
         restWriteDataPromise.SetValue({});
+    }
+
+    NProto::TFileStoreFeatures AvailabilityTrackingFeatures()
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAvailabilityTrackingEnabled(true);
+        features.SetAvailabilityTrackingInterval(15000);   // in ms
+        return features;
+    }
+
+    Y_UNIT_TEST(ShouldTrackAvailabilityOfSuccessfulRequests)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap{
+            timer,
+            CreateScheduler(),
+            AvailabilityTrackingFeatures()};
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        bootstrap.Service->CreateHandleHandler =
+            [] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            NProto::TCreateHandleResponse result;
+            result.SetHandle(1);
+            result.MutableNodeAttr()->SetId(2);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+            return MakeFuture(result);
+        };
+
+        // start the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // The completed wait below guarantees the availability events were
+        // recorded before the clock advances, so the success is classified
+        // in the first interval - the assertions cover the request itself,
+        // not an idle interval.
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file1",
+            RootNodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+
+        // roll the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        auto counters = bootstrap.GetFileSystemStatsCounters();
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_TotalIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_AvailableIntervals",
+                true)->Val());
+
+        // the fuse create callback is published under request=create
+        auto createCounters = counters->FindSubgroup("request", "create");
+        UNIT_ASSERT(createCounters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            createCounters->GetCounter(
+                "Availability_AvailableIntervals",
+                true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldTrackAvailabilityOfEioRequests)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap{
+            timer,
+            CreateScheduler(),
+            AvailabilityTrackingFeatures()};
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        bootstrap.Service->CreateHandleHandler =
+            [] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            // E_IO is delivered to the guest as errno EIO
+            return MakeFuture(
+                NProto::TCreateHandleResponse(TErrorResponse(E_IO)));
+        };
+
+        // start the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // roll the first interval and start the second interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // request is started in the second interval
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file1",
+            RootNodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+
+        // roll the second interval
+        //
+        // request returned Eio => interval unvailable
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        auto counters = bootstrap.GetFileSystemStatsCounters();
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            counters->GetCounter(
+                "Availability_TotalIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_UnavailableIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter(
+                "Availability_LastIntervalAvailable")->Val());
+
+        auto createCounters = counters->FindSubgroup("request", "create");
+        UNIT_ASSERT(createCounters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            createCounters->GetCounter(
+                "Availability_UnavailableIntervals",
+                true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldTrackAvailabilityOfHungRequests)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap{
+            timer,
+            CreateScheduler(),
+            AvailabilityTrackingFeatures()};
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto hungPromise = NewPromise<NProto::TCreateHandleResponse>();
+        auto requestReceived = NewPromise<void>();
+        bootstrap.Service->CreateHandleHandler =
+            [&] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            requestReceived.TrySetValue();
+            return hungPromise.GetFuture();
+        };
+
+        // start the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // request is started in the first interval
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file1",
+            RootNodeId);
+
+        // The request is processed on the fuse loop thread asynchronously:
+        // wait until it has actually reached the service - its availability
+        // registration happens earlier on the same path - before advancing
+        // the fake clock. Otherwise the registration races the advances and
+        // may see a later fake time, shifting the request into a later
+        // interval.
+        UNIT_ASSERT(requestReceived.GetFuture().Wait(WaitTimeout));
+
+        // it is fresh-pending (neutral) in the first interval
+        //
+        // roll the first interval and start the second interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // request hung through the second interval => unavailable
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // Unblock the request before the assertions so that a failing
+        // assertion cannot unwind into Stop() with the request still
+        // outstanding.
+        NProto::TCreateHandleResponse result;
+        result.SetHandle(1);
+        result.MutableNodeAttr()->SetId(2);
+        result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+        hungPromise.SetValue(result);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+
+        // Two intervals are classified: the first interval saw the request
+        // fresh-pending (neutral, no failure evidence) => available, the
+        // second interval saw it hung throughout => unavailable.
+        auto counters = bootstrap.GetFileSystemStatsCounters();
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            counters->GetCounter(
+                "Availability_TotalIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_AvailableIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_UnavailableIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter(
+                "Availability_LastIntervalAvailable")->Val());
     }
 }
 

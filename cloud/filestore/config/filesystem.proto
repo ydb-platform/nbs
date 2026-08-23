@@ -127,4 +127,10 @@ message TFileSystemConfig
 
     // Async processing of read-only create handle requests.
     optional bool AsyncCreateHandleEnabled = 37;
+
+    // Enables the per-client filesystem availability tracking.
+    optional bool AvailabilityTrackingEnabled = 38;
+
+    // Availability interval duration (in ms); 0 means the default.
+    optional uint32 AvailabilityTrackingInterval = 39;
 }

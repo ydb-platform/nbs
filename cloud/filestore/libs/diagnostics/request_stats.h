@@ -44,6 +44,11 @@ struct IRequestStats
 
     virtual void UpdateStats(bool updatePercentiles) = 0;
 
+    // Enables the per-client filesystem availability tracking with the given
+    // interval duration (zero selects the default one).
+    virtual void EnableAvailabilityTracking(TDuration /* interval */)
+    {}
+
     virtual void RegisterIncompleteRequestProvider(IIncompleteRequestProviderPtr provider) = 0;
 
     virtual void Reset() = 0;
