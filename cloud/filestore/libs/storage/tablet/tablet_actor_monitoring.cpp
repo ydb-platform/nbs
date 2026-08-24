@@ -1356,14 +1356,24 @@ void TIndexTabletActor::RenderHttpInfo_QuotasTab(IOutputStream& out)
                         TABLEH() { out << "QuotaId"; }
                         TABLEH() { out << "MaxBytes"; }
                         TABLEH() { out << "MaxNodes"; }
-                        TABLEH() { out << "UsedBytes"; }
-                        TABLEH() { out << "UsedNodes"; }
+                        TABLEH() { out << "TabletUsedBytes"; }
+                        TABLEH() { out << "TabletUsedNodes"; }
+                        TABLEH() { out << "FilesystemUsedBytes"; }
+                        TABLEH() { out << "FilesystemUsedNodes"; }
                         TABLEH() { out << "CreatedAt"; }
                     }
                 }
 
+                const auto& aggregateUsages =
+                    CachedAggregateStats.GetQuotaUsages();
+
                 for (const auto& quota: quotas) {
                     const auto* usage = FindQuotaUsage(quota.GetQuotaId());
+                    const auto aggregateIt =
+                        aggregateUsages.find(quota.GetQuotaId());
+                    const bool hasAggregate =
+                        aggregateIt != aggregateUsages.end();
+
                     TABLER() {
                         TABLED() { out << quota.GetQuotaId(); }
                         TABLED() { out << FormatByteSize(quota.GetMaxBytes()); }
@@ -1374,6 +1384,17 @@ void TIndexTabletActor::RenderHttpInfo_QuotasTab(IOutputStream& out)
                                 : FormatByteSize(0));
                         }
                         TABLED() { out << (usage ? usage->UsedNodes : 0); }
+                        TABLED() {
+                            out << (hasAggregate
+                                ? FormatByteSize(
+                                      aggregateIt->second.GetUsedBytes())
+                                : FormatByteSize(0));
+                        }
+                        TABLED() {
+                            out << (hasAggregate
+                                ? aggregateIt->second.GetUsedNodes()
+                                : 0);
+                        }
                         TABLED() {
                             out << TInstant::MicroSeconds(
                                 quota.GetCreationTimestampUs());
