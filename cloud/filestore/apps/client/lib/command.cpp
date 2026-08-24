@@ -92,6 +92,12 @@ TCommand::TCommand()
         .RequiredArgument("STR")
         .StoreResult(&ServerUnixSocketPath);
 
+    Opts.AddLongOption(
+            "request-timeout",
+            "request timeout in milliseconds (overrides client config)")
+        .RequiredArgument("NUM")
+        .StoreResult(&RequestTimeout);
+
     Opts.AddLongOption("skip-cert-verification", "skip server certificate verification")
         .StoreTrue(&SkipCertVerification);
 
@@ -214,6 +220,9 @@ void TCommand::Init()
     }
     if (ServerUnixSocketPath){
         config.SetUnixSocketPath(ServerUnixSocketPath);
+    }
+    if (RequestTimeout.Defined()) {
+        config.SetRequestTimeout(*RequestTimeout);
     }
     if (config.GetHost() == "localhost" &&
         config.GetSecurePort() != 0)
