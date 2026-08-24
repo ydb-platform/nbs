@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import signal
 import tempfile
 
 from pathlib import Path
@@ -34,6 +35,10 @@ KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
         {"Kind": "DEVICE_POOL_KIND_DEFAULT", "AllocationUnit": DEVICE_SIZE},
     ]}
+
+
+def __kill_process(daemon):
+    os.kill(daemon.pid, signal.SIGKILL)
 
 
 @pytest.fixture(name='ydb')
@@ -83,7 +88,7 @@ def start_nbs_daemon_with_dr(request, ydb):
 
     yield daemon
 
-    daemon.kill()
+    daemon.stop()
 
 
 @pytest.fixture(name='nbs')
@@ -103,7 +108,7 @@ def start_nbs_daemon(request, ydb):
 
     yield daemon
 
-    daemon.kill()
+    daemon.stop()
 
 
 @pytest.fixture(name='agent_ids')
@@ -270,7 +275,7 @@ def test_should_mount_volume_with_unknown_devices(
     session.unmount_volume()
 
     # stop the agent
-    agent.kill()
+    __kill_process(agent)
 
     time.sleep(1)
 
@@ -288,7 +293,7 @@ def test_should_mount_volume_with_unknown_devices(
 
     wait_for_all_volumes_to_be_notified(client)
 
-    nbs_with_dr.kill()
+    __kill_process(nbs_with_dr)
     restart_volume(client, "vol1")
 
     session.mount_volume()
@@ -353,7 +358,7 @@ def test_should_mount_volume_without_dr(nbs_with_dr, nbs, agent_ids, disk_agent_
 
     session.unmount_volume()
 
-    nbs_with_dr.kill()
+    __kill_process(nbs_with_dr)
     restart_volume(client, "vol1")
 
     session.mount_volume()
@@ -432,13 +437,13 @@ def test_should_mount_volume_with_unavailable_agents(
         wait_for_all_volumes_to_be_notified(client)
 
     # stop the agent
-    agents[0].kill()
+    __kill_process(agents[0])
 
     client.wait_agent_state(agent_ids[0], "AGENT_STATE_UNAVAILABLE")
 
     wait_for_all_volumes_to_be_notified(client)
 
-    nbs_with_dr.kill()
+    __kill_process(nbs_with_dr)
     restart_volume(client, "vol1")
 
     unavailable_agent = bkp['Agents'][0]
@@ -492,7 +497,7 @@ def test_should_stop_not_restored_endpoint(nbs_with_dr,
         seq_number=0
     )
 
-    nbs.kill()
+    __kill_process(nbs)
     if not pass_client_id:
         time.sleep(INACTIVE_CLIENTS_TIMEOUT + 1)
     nbs.start()
@@ -565,7 +570,7 @@ def test_should_stop_not_restored_endpoint_when_volume_was_deleted(nbs_with_dr,
         seq_number=0
     )
 
-    nbs.kill()
+    __kill_process(nbs)
     nbs.start()
 
     client.destroy_volume(
