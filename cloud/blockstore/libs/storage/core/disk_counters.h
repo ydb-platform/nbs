@@ -149,6 +149,14 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter UnflushedFreshBlobBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter UnflushedFreshZeroBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter UsedBytesCount{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
@@ -268,6 +276,8 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::MergedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::UntrimmedFreshBlobBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::UnflushedFreshBlobBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::UnflushedFreshZeroBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::UsedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::LogicalUsedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::IORequestsQueued>(),

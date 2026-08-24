@@ -14675,6 +14675,75 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             response->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldReportUnflushedFreshBlobAndZeroBytesCounters)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetFlushThreshold(4_MB);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        ui64 unflushedFreshBlobBytesCount = Max<ui64>();
+        ui64 unflushedFreshZeroBytesCount = Max<ui64>();
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+                {
+                    const auto& sc =
+                        event->Get<TEvStatsService::TEvVolumePartCounters>()
+                            ->DiskCounters->Simple;
+                    unflushedFreshBlobBytesCount =
+                        sc.UnflushedFreshBlobBytesCount.Value;
+                    unflushedFreshZeroBytesCount =
+                        sc.UnflushedFreshZeroBytesCount.Value;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        auto updateCounters = [&]()
+        {
+            partition.SendToPipe(
+                std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+            {
+                TDispatchOptions options;
+                options.FinalEvents.emplace_back(
+                    TEvStatsService::EvVolumePartCounters);
+                runtime->DispatchEvents(options);
+            }
+        };
+
+        updateCounters();
+        UNIT_ASSERT_VALUES_EQUAL(0, unflushedFreshBlobBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, unflushedFreshZeroBytesCount);
+
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        updateCounters();
+        UNIT_ASSERT_GT(unflushedFreshBlobBytesCount, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, unflushedFreshZeroBytesCount);
+        const auto blobBytesAfterWrite = unflushedFreshBlobBytesCount;
+
+        partition.ZeroBlocks(TBlockRange32::MakeOneBlock(1));
+        updateCounters();
+        UNIT_ASSERT_GT(
+            unflushedFreshBlobBytesCount,
+            blobBytesAfterWrite);
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultBlockSize,
+            unflushedFreshZeroBytesCount);
+
+        partition.Flush();
+        updateCounters();
+        UNIT_ASSERT_VALUES_EQUAL(0, unflushedFreshBlobBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, unflushedFreshZeroBytesCount);
+    }
+
     Y_UNIT_TEST(
         ShouldReportAddFreshBlocksResultedInErrorOnlyForNonRetriableErrors)
     {
