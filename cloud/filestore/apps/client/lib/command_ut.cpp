@@ -52,7 +52,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             "--config",
             configFile.GetName(),
             "--request-timeout",
-            "190000"};
+            "180000"};
 
         std::vector<char*> argv;
         argv.reserve(args.size());
@@ -64,7 +64,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             command.Run(argv.size(), argv.data()));
-        UNIT_ASSERT_VALUES_EQUAL(190000, command.ObservedRequestTimeout);
+        UNIT_ASSERT_VALUES_EQUAL(180000, command.ObservedRequestTimeout);
     }
 }
 
