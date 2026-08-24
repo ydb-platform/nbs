@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
-	public_auth "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
@@ -20,7 +20,7 @@ import (
 
 type AuthConfig = auth_config.AuthConfig
 
-type Credentials = public_auth.Credentials
+type Credentials = auth.Credentials
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
 )
@@ -63,7 +64,7 @@ func TestNewFederatedCredentials(t *testing.T) {
 	defer server.Close()
 
 	credentials, err := NewFederatedCredentials(&FederatedCredentials{
-		TokenExchangeEndpoint: stringPointer(server.URL),
+		TokenExchangeEndpoint: proto.String(server.URL),
 		SubjectToken:          tokenValue("subject-token", subjectTokenType),
 		ActorToken: tokenFile(
 			writeTokenFile(t, "actor-token\n"),
@@ -102,20 +103,20 @@ func TestTokenSourceRereadsTokenFile(t *testing.T) {
 
 func TestFederatedCredentialsValidation(t *testing.T) {
 	_, err := NewFederatedCredentials(&FederatedCredentials{
-		TokenExchangeEndpoint: stringPointer("grpcs://tokens.example.com"),
+		TokenExchangeEndpoint: proto.String("grpcs://tokens.example.com"),
 		SubjectToken:          tokenValue("token", "token-type"),
 	})
 	require.ErrorContains(t, err, "invalid HTTP token exchange endpoint")
 
 	_, err = NewFederatedCredentials(&FederatedCredentials{
-		TokenExchangeEndpoint: stringPointer("https://sts.example.com"),
+		TokenExchangeEndpoint: proto.String("https://sts.example.com"),
 	})
 	require.ErrorContains(t, err, "subject token is missing")
 
 	_, err = NewFederatedCredentials(&FederatedCredentials{
-		TokenExchangeEndpoint: stringPointer("https://sts.example.com"),
+		TokenExchangeEndpoint: proto.String("https://sts.example.com"),
 		SubjectToken: &TypedToken{
-			TokenType: stringPointer("token-type"),
+			TokenType: proto.String("token-type"),
 		},
 	})
 	require.ErrorContains(t, err, "subject token source is missing")
@@ -123,14 +124,14 @@ func TestFederatedCredentialsValidation(t *testing.T) {
 
 func tokenValue(value string, tokenType string) *TypedToken {
 	return &TypedToken{
-		TokenType: stringPointer(tokenType),
+		TokenType: proto.String(tokenType),
 		Source:    &auth_config.TypedToken_Value{Value: value},
 	}
 }
 
 func tokenFile(file string, tokenType string) *TypedToken {
 	return &TypedToken{
-		TokenType: stringPointer(tokenType),
+		TokenType: proto.String(tokenType),
 		Source:    &auth_config.TypedToken_File{File: file},
 	}
 }

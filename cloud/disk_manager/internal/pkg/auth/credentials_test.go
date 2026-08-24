@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
@@ -28,9 +29,9 @@ func TestNewCredentialsWithoutConfiguration(t *testing.T) {
 
 func TestNewCredentialsRejectsMixedFederatedConfiguration(t *testing.T) {
 	credentials, err := NewCredentials(context.Background(), &AuthConfig{
-		MetadataUrl: stringPointer("http://metadata.invalid"),
+		MetadataUrl: proto.String("http://metadata.invalid"),
 		FederatedCredentials: &FederatedCredentials{
-			TokenExchangeEndpoint: stringPointer("https://sts.example.com"),
+			TokenExchangeEndpoint: proto.String("https://sts.example.com"),
 			SubjectToken:          tokenValue("token", "token-type"),
 		},
 	})
@@ -52,8 +53,4 @@ func TestCredentialsWrapper(t *testing.T) {
 	_, err = credentials.Token(context.Background())
 	require.ErrorContains(t, err, "token error")
 	require.True(t, task_errors.CanRetry(err))
-}
-
-func stringPointer(value string) *string {
-	return &value
 }
