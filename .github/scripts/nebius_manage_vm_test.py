@@ -891,7 +891,7 @@ def test_build_instance_request_without_public_ip():
         labels={},
     )
 
-    assert request.spec.network_interfaces[0].public_ip_address is None
+    assert not request.spec.network_interfaces[0].HasField("public_ip_address")
 
 
 @pytest.mark.parametrize(

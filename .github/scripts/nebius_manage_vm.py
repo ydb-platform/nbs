@@ -761,7 +761,7 @@ async def remove_disk_by_id(sdk: SDK, disk_id: str):
     except Exception as e:
         logger.exception("Failed to delete Disk with ID %s", disk_id, exc_info=True)
         if request is not None:
-            logger.error("Response: %s", request.status)
+            logger.error("Response: %s", request.status())
         raise e
 
 
@@ -776,7 +776,7 @@ async def remove_vm_by_id(sdk: SDK, instance_id: str = None):
     except Exception as e:
         logger.exception("Failed to delete VM with ID %s", instance_id, exc_info=True)
         if request is not None:
-            logger.error("Response: %s", request.status)
+            logger.error("Response: %s", request.status())
         raise e
 
 
