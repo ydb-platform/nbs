@@ -120,10 +120,11 @@ TEST(NaiveGroupTest, MirrorsWrites)
             TStorageFixture fx;
 
             {
-                TVector<TPageGroup> pageGroups = {{
-                    .FirstPageNo = 111,
-                    .Content = {"page1", "page2"},
-                }};
+                TPageGroup pageGroup{.FirstPageNo = 111};
+                pageGroup.Content.emplace_back("page1", 5U /* len */);
+                pageGroup.Content.emplace_back("page2", 5U /* len */);
+                TVector<TPageGroup> pageGroups;
+                pageGroups.push_back(std::move(pageGroup));
 
                 auto error = fx.Group->WriteLogRecord(
                     defaultHeaders,
@@ -196,9 +197,10 @@ TEST(NaiveGroupTest, RoundRobinsRead)
                             pageGroups[j].Content.size());
                         for (ui64 k = 0; k < pageGroups[j].Content.size(); ++k)
                         {
-                            EXPECT_STREQ(
-                                epg.GetContent(k).c_str(),
-                                pageGroups[j].Content[k].c_str());
+                            const auto& c = pageGroups[j].Content[k];
+                            EXPECT_EQ(
+                                epg.GetContent(k),
+                                TString(c.Data(), c.Size()));
                         }
                     }
                 }

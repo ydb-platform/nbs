@@ -26,7 +26,7 @@ protected:
 private:
     struct TPage
     {
-        TString Content;
+        TBuffer Content;
         ui64 Lsn = 0;
         bool Dirty = false;
     };
@@ -52,10 +52,10 @@ public:
     NProto::TError WritePage(
         ui64 lsn,
         ui64 pageNo,
-        TString page,
+        TBuffer page,
         TVector<TPageGroup>& logRecord) override;
     NProto::TError
-    ReadPage(ui64 lsn, ui64 pageNo, TString* page) const override;
+    ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,7 +89,7 @@ void TPageStore::RollbackPages(const TVector<ui64>& pages)
 NProto::TError TPageStore::WritePage(
     ui64 lsn,
     ui64 pageNo,
-    TString page,
+    TBuffer page,
     TVector<TPageGroup>& logRecord)
 {
     std::lock_guard g(Mutex);
@@ -126,7 +126,7 @@ NProto::TError TPageStore::WritePage(
 
     if (!found) {
         logRecord.push_back(
-            {.FirstPageNo = pageNo, .Content = TVector<TString>({page})});
+            {.FirstPageNo = pageNo, .Content = TVector<TBuffer>({page})});
     }
 
     //
@@ -147,9 +147,9 @@ NProto::TError TPageStore::WritePage(
     return {};
 }
 
-NProto::TError TPageStore::ReadPage(ui64 lsn, ui64 pageNo, TString* page) const
+NProto::TError TPageStore::ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const
 {
-    page->clear();
+    page->Clear();
 
     TPageCache::iterator cachedPage;
     {
@@ -185,7 +185,7 @@ NProto::TError TPageStore::ReadPage(ui64 lsn, ui64 pageNo, TString* page) const
     {
         std::lock_guard g(Mutex);
 
-        if (page->empty()) {
+        if (page->Empty()) {
             PageCache.erase(cachedPage);
         } else {
             cachedPage->second.Content = *page;
@@ -231,11 +231,11 @@ NProto::TError TPageStore::ReadPage(ui64 lsn, ui64 pageNo, TString* page) const
                 << "unexpected page count: " << rpg.Content.size());
     }
 
-    if (rpg.Content[0].size() < PageSize) {
+    if (rpg.Content[0].Size() < PageSize) {
         return MakeError(
             E_BADMSG,
             TStringBuilder()
-                << "unexpected page size: " << rpg.Content[0].size());
+                << "unexpected page size: " << rpg.Content[0].Size());
     }
 
     *page = std::move(rpg.Content[0]);
@@ -251,11 +251,12 @@ public:
         : TPageStore(nullptr /* storage */, pageSize)
     {}
 
-    NProto::TError ReadPage(ui64 lsn, ui64 pageNo, TString* page) const override
+    NProto::TError ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const override
     {
         auto error = TPageStore::ReadPage(lsn, pageNo, page);
         if (error.GetCode() == E_NOT_FOUND) {
-            *page = TString(PageSize, 0);
+            page->Clear();
+            page->Fill(0, PageSize);
             return {};
         }
 

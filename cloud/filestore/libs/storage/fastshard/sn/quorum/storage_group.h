@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
 
+#include <util/generic/buffer.h>
 #include <util/generic/vector.h>
 
 #include <memory>
@@ -20,7 +21,7 @@ struct TPageGroupRef
 struct TPageGroup
 {
     ui64 FirstPageNo = 0;
-    TVector<TString> Content;
+    TVector<TBuffer> Content;
 };
 
 /**

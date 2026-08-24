@@ -22,6 +22,7 @@
 #include <library/cpp/resource/resource.h>
 
 #include <util/digest/city.h>
+#include <util/generic/buffer.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
@@ -1905,7 +1906,7 @@ public:
                     break;
                 }
 
-                TString page;
+                TBuffer page;
                 if (isUnalignedHead || isUnalignedTail) {
                     error = PageStore->ReadPage(
                         writeContext.Lsn,
@@ -1920,7 +1921,7 @@ public:
                         break;
                     }
                 } else {
-                    page.ReserveAndResize(PageSize);
+                    page.Resize(PageSize);
                 }
 
                 const ui64 offsetInPage =
@@ -1930,7 +1931,7 @@ public:
                 const ui64 toCopy =
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
-                    page.begin() + offsetInPage,
+                    page.Data() + offsetInPage,
                     request.GetBuffer().data() + bufferOffset,
                     toCopy);
 
@@ -2127,7 +2128,7 @@ public:
                     break;
                 }
 
-                TString page;
+                TBuffer page;
                 error = PageStore->ReadPage(0 /* lsn */, storagePageNo, &page);
 
                 SILK_DEBUG(
@@ -2152,7 +2153,7 @@ public:
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
                     buffer.begin() + bufferOffset,
-                    page.begin() + offsetInPage,
+                    page.Data() + offsetInPage,
                     toCopy);
 
                 bufferOffset += toCopy;
