@@ -140,6 +140,9 @@ private:
     ui64 UnflushedFreshBlobByteCount = 0;
     TMap<ui64, ui64> UnflushedFreshBlobByteCountByCommitId;
 
+    ui64 UnflushedFreshZeroBlockCount = 0;
+    TMap<ui64, ui64> UnflushedFreshZeroBlockCountByCommitId;
+
 public:
     explicit TPartitionFreshBlobState(ui64 tabletID)
         : TabletID(tabletID)
@@ -160,12 +163,24 @@ public:
         return UnflushedFreshBlobByteCount;
     }
 
+    [[nodiscard]] ui64 GetUnflushedFreshBlobZeroBlockCount() const
+    {
+        return UnflushedFreshZeroBlockCount;
+    }
+
     [[nodiscard]] TVector<ui64> GetUnflushedFreshBlobCommitIds(
         ui64 commitId) const;
 
-    void AddFreshBlob(ui64 commitId, ui64 blobSize);
+    void AddFreshBlob(ui64 commitId, ui64 blobSize, ui64 zeroBlockCount = 0);
     void TrimFreshBlobs(ui64 commitId);
-    ui64 FlushFreshBlob(ui64 commitId);
+
+    struct TFlushedFreshBlob
+    {
+        ui64 ByteCount = 0;
+        ui64 ZeroBlockCount = 0;
+    };
+
+    TFlushedFreshBlob FlushFreshBlob(ui64 commitId);
 };
 
 class TPartitionTrimFreshLogState
@@ -258,6 +273,11 @@ public:
     [[nodiscard]] ui32 GetUnflushedFreshBlocksCountFromChannel() const
     {
         return UnflushedFreshBlocksFromChannelCount;
+    }
+
+    [[nodiscard]] ui64 GetUnflushedFreshZeroBlockCount() const
+    {
+        return Blocks.GetZeroBlockCount();
     }
 
 private:

@@ -3,6 +3,7 @@
 #include <cloud/storage/core/libs/common/alloc.h>
 
 #include <util/generic/set.h>
+#include <util/system/yassert.h>
 
 #include <cstring>
 
@@ -57,6 +58,7 @@ struct TBlockIndex::TImpl
 
     IAllocator* Allocator;
     TBlockMap Blocks;
+    ui64 ZeroBlockCount = 0;
 
     TImpl(IAllocator* allocator)
         : Allocator(allocator)
@@ -114,6 +116,10 @@ bool TBlockIndex::AddBlock(
         Impl->Allocator->Release(alloc);
     }
 
+    if (inserted && !blockContent) {
+        ++Impl->ZeroBlockCount;
+    }
+
     return inserted;
 }
 
@@ -131,6 +137,9 @@ bool TBlockIndex::RemoveBlock(ui32 blockIndex, ui64 commitId, bool isStoredInDb)
                 it->Content.size()
             };
             Impl->Allocator->Release(alloc);
+        } else {
+            Y_ABORT_UNLESS(Impl->ZeroBlockCount > 0);
+            --Impl->ZeroBlockCount;
         }
 
         Impl->Blocks.erase(it);
@@ -138,6 +147,11 @@ bool TBlockIndex::RemoveBlock(ui32 blockIndex, ui64 commitId, bool isStoredInDb)
     }
 
     return false;
+}
+
+ui64 TBlockIndex::GetZeroBlockCount() const
+{
+    return Impl->ZeroBlockCount;
 }
 
 void TBlockIndex::FindBlocks(

@@ -44,6 +44,8 @@ public:
 
     bool RemoveBlock(ui32 blockIndex, ui64 commitId, bool isStoredInDb);
 
+    [[nodiscard]] ui64 GetZeroBlockCount() const;
+
     void FindBlocks(
         IFreshBlocksIndexVisitor& visitor,
         const TBlockRange32& blockRange,

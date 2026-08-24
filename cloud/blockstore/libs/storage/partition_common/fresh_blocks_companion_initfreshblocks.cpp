@@ -59,6 +59,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
 
     TVector<NPartition::TOwningFreshBlock> blocks;
     for (const auto& blob: msg->Blobs) {
+        const auto blocksBefore = blocks.size();
         auto error = ParseFreshBlobContent(
             blob.CommitId,
             blob.BlobId,
@@ -78,7 +79,17 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
             return;
         }
 
-        FreshBlobState.AddFreshBlob(blob.CommitId, blob.Data.size());
+        ui64 zeroBlockCount = 0;
+        for (size_t i = blocksBefore; i < blocks.size(); ++i) {
+            if (!blocks[i].Content) {
+                ++zeroBlockCount;
+            }
+        }
+
+        FreshBlobState.AddFreshBlob(
+            blob.CommitId,
+            blob.Data.size(),
+            zeroBlockCount);
     }
 
     for (const auto& block: blocks) {

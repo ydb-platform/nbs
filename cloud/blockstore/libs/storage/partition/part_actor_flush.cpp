@@ -786,15 +786,19 @@ void TPartitionActor::HandleFlushCompleted(
         }
 
         ui64 flushedFreshBlobByteCount = 0;
+        ui64 flushedFreshZeroBlockCount = 0;
 
         for (const auto& freshBlobCommitId: msg->FlushedFreshBlobCommitIds) {
-            flushedFreshBlobByteCount +=
-                State->FlushFreshBlob(freshBlobCommitId);
+            const auto flushed = State->FlushFreshBlob(freshBlobCommitId);
+            flushedFreshBlobByteCount += flushed.ByteCount;
+            flushedFreshZeroBlockCount += flushed.ZeroBlockCount;
         }
 
         if (FreshBlocksWriter) {
             SharedState->UnflushedFreshBlobByteCount.fetch_sub(
                 flushedFreshBlobByteCount);
+            SharedState->UnflushedFreshZeroBlockCount.fetch_sub(
+                flushedFreshZeroBlockCount);
         }
     }
 

@@ -1680,4 +1680,9 @@ message TStorageServiceConfig
     // If false (default), cleanup removes only blobs that were added to the
     // cleanup queue before all checkpoints.
     optional bool CheckpointAwareCleanupEnabled = 526;
+
+    // Maximum allowed logical size of zero blocks in fresh after which we
+    // start to reject writes. Unlike FreshByteCountHardLimit, this counts
+    // the full size of zero blocks (block count * block size).
+    optional uint64 FreshZeroSizeHardLimit = 527;
 }

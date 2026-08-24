@@ -79,6 +79,30 @@ Y_UNIT_TEST_SUITE(TPartition1BlockIndexTest)
         UNIT_ASSERT_VALUES_EQUAL(block.Meta.IsStoredInDb, true);
         UNIT_ASSERT_VALUES_EQUAL(block.Content, "x");
     }
+
+    Y_UNIT_TEST(ShouldCountZeroBlocks)
+    {
+        TBlockIndex index;
+        UNIT_ASSERT_VALUES_EQUAL(0, index.GetZeroBlockCount());
+
+        index.AddBlock(0, 1, true, {}, {});
+        UNIT_ASSERT_VALUES_EQUAL(1, index.GetZeroBlockCount());
+
+        index.AddBlock(1, 1, true, "x", {});
+        UNIT_ASSERT_VALUES_EQUAL(1, index.GetZeroBlockCount());
+
+        index.AddBlock(2, 1, false, {}, {});
+        UNIT_ASSERT_VALUES_EQUAL(2, index.GetZeroBlockCount());
+
+        UNIT_ASSERT(index.RemoveBlock(0, 1, true));
+        UNIT_ASSERT_VALUES_EQUAL(1, index.GetZeroBlockCount());
+
+        UNIT_ASSERT(index.RemoveBlock(1, 1, true));
+        UNIT_ASSERT_VALUES_EQUAL(1, index.GetZeroBlockCount());
+
+        UNIT_ASSERT(index.RemoveBlock(2, 1, false));
+        UNIT_ASSERT_VALUES_EQUAL(0, index.GetZeroBlockCount());
+    }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition::NPartition
+}   // namespace NCloud::NBlockStore::NStorage::NPartition

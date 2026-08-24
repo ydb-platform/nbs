@@ -76,6 +76,7 @@ public:
     NPartition::TGroupDowntimes GroupDowntimes;
 
     std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
+    std::atomic<ui64> UnflushedFreshZeroBlockCount = 0;
 
     std::atomic<ui64> WriteAndZeroRequestsInProgress = 0;
 
@@ -135,6 +136,11 @@ public:
     std::shared_ptr<std::atomic<ui64>> GetUnflushedFreshBlobByteCount()
     {
         return {shared_from_this(), &UnflushedFreshBlobByteCount};
+    }
+
+    std::shared_ptr<std::atomic<ui64>> GetUnflushedFreshZeroBlockCount()
+    {
+        return {shared_from_this(), &UnflushedFreshZeroBlockCount};
     }
 
     ui64 GenerateCommitId();

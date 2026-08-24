@@ -40,19 +40,19 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    if (State->GetUnflushedFreshBlobByteCount()
-            >= Config->GetFreshByteCountHardLimit())
+    if (auto error = MakeFreshHardLimitExceededError(
+            State->GetUnflushedFreshBlobByteCount(),
+            State->GetUnflushedFreshZeroSize(),
+            Config->GetFreshByteCountHardLimit(),
+            Config->GetFreshZeroSizeHardLimit());
+        !error.empty())
     {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);
             auto response = CreateWriteBlocksResponse(
                 r.Data.ReplyLocal,
-                MakeError(
-                    E_REJECTED,
-                    TStringBuilder() << "FreshByteCountHardLimit exceeded: "
-                                     << State->GetUnflushedFreshBlobByteCount(),
-                    flags));
+                MakeError(E_REJECTED, error, flags));
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -239,7 +239,13 @@ void TPartitionActor::HandleAddFreshBlocks(
         }
     }
 
-    State->AddFreshBlob(msg->CommitId, msg->BlobSize);
+    ui64 zeroBlockCount = 0;
+    if (msg->WriteHandlers.empty()) {
+        for (const auto& blockRange: msg->BlockRanges) {
+            zeroBlockCount += blockRange.Size();
+        }
+    }
+    State->AddFreshBlob(msg->CommitId, msg->BlobSize, zeroBlockCount);
 
     // TODO(NBS-1976): update used blocks map
 
@@ -451,17 +457,18 @@ void TPartitionActor::ZeroFreshBlocks(
         TabletID(),
         "All small writes should be handled by TFreshBlockWriter");
 
-    if (State->GetUnflushedFreshBlobByteCount() >=
-        Config->GetFreshByteCountHardLimit())
+    if (auto error = MakeFreshHardLimitExceededError(
+            State->GetUnflushedFreshBlobByteCount(),
+            State->GetUnflushedFreshZeroSize(),
+            Config->GetFreshByteCountHardLimit(),
+            Config->GetFreshZeroSizeHardLimit());
+        !error.empty())
     {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);
         auto response =
-            std::make_unique<TEvService::TEvZeroBlocksResponse>(MakeError(
-                E_REJECTED,
-                TStringBuilder() << "FreshByteCountHardLimit exceeded: "
-                                 << State->GetUnflushedFreshBlobByteCount(),
-                flags));
+            std::make_unique<TEvService::TEvZeroBlocksResponse>(
+                MakeError(E_REJECTED, std::move(error), flags));
 
         LWTRACK(
             ResponseSent_Partition,

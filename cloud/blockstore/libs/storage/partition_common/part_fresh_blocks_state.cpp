@@ -56,7 +56,10 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     return commitIds;
 }
 
-void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
+void TPartitionFreshBlobState::AddFreshBlob(
+    ui64 commitId,
+    ui64 blobSize,
+    ui64 zeroBlockCount)
 {
     {
         const bool inserted =
@@ -83,6 +86,20 @@ void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
         UnflushedFreshBlobByteCount =
             SafeIncrement(UnflushedFreshBlobByteCount, blobSize);
     }
+
+    if (zeroBlockCount) {
+        const bool inserted =
+            UnflushedFreshZeroBlockCountByCommitId
+                .insert({commitId, zeroBlockCount})
+                .second;
+        STORAGE_VERIFY_C(
+            inserted,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId);
+        UnflushedFreshZeroBlockCount =
+            SafeIncrement(UnflushedFreshZeroBlockCount, zeroBlockCount);
+    }
 }
 
 void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
@@ -102,7 +119,8 @@ void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
     }
 }
 
-ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
+TPartitionFreshBlobState::TFlushedFreshBlob
+TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
 {
     auto& blobs = UnflushedFreshBlobByteCountByCommitId;
 
@@ -113,15 +131,25 @@ ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
         TabletID,
         "Commit id: " << commitId);
 
-    ui64 blobSize = it->second;
+    TFlushedFreshBlob flushed;
+    flushed.ByteCount = it->second;
 
     UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, 1);
     UnflushedFreshBlobByteCount =
-        SafeDecrement(UnflushedFreshBlobByteCount, blobSize);
+        SafeDecrement(UnflushedFreshBlobByteCount, flushed.ByteCount);
 
     blobs.erase(it);
 
-    return blobSize;
+    auto zeroIt = UnflushedFreshZeroBlockCountByCommitId.find(commitId);
+    if (zeroIt != UnflushedFreshZeroBlockCountByCommitId.end()) {
+        flushed.ZeroBlockCount = zeroIt->second;
+        UnflushedFreshZeroBlockCount = SafeDecrement(
+            UnflushedFreshZeroBlockCount,
+            flushed.ZeroBlockCount);
+        UnflushedFreshZeroBlockCountByCommitId.erase(zeroIt);
+    }
+
+    return flushed;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

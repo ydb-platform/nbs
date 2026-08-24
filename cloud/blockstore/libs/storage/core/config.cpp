@@ -393,6 +393,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshByteCountThresholdForBackpressure,         ui32,   40_MB         )\
     xxx(FreshByteCountFeatureMaxValue,                  ui32,   10            )\
     xxx(FreshByteCountHardLimit,                        ui32,   256_MB        )\
+    xxx(FreshZeroSizeHardLimit,                         ui64,   1_GB          )\
                                                                                \
     xxx(CleanupQueueBytesLimitForBackpressure,            ui64,   4_TB        )\
     xxx(CleanupQueueBytesThresholdForBackpressure,        ui64,   1_TB        )\

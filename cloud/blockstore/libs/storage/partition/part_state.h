@@ -440,7 +440,7 @@ public:
     //
 
 public:
-    void AddFreshBlob(ui64 commitId, ui64 blobSize);
+    void AddFreshBlob(ui64 commitId, ui64 blobSize, ui64 zeroBlockCount = 0);
 
     //
     // Fresh Blocks
@@ -527,6 +527,11 @@ public:
     {
         return GetStats().GetFreshBlocksCount() +
                GetUnflushedFreshBlocksCountFromChannel();
+    }
+
+    ui64 GetUnflushedFreshZeroSize() const
+    {
+        return GetUnflushedFreshZeroBlockCount() * GetBlockSize();
     }
 
     ui32 IncrementUnflushedFreshBlocksFromDbCount(size_t value);

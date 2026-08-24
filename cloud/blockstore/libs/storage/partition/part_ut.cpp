@@ -14601,6 +14601,80 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             response->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldRejectSmallWritesAfterReachingFreshZeroSizeHardLimit)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetFreshZeroSizeHardLimit(8_KB);
+        config.SetFlushThreshold(4_MB);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.ZeroBlocks(TBlockRange32::MakeOneBlock(0));
+        partition.ZeroBlocks(TBlockRange32::MakeOneBlock(1));
+
+        partition.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(2), 1);
+        auto response = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
+        UNIT_ASSERT_STRING_CONTAINS(
+            response->GetErrorReason(),
+            "FreshZeroSizeHardLimit");
+
+        partition.Flush();
+
+        partition.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(2), 1);
+        response = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldRejectSmallZerosAfterReachingFreshZeroSizeHardLimit)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetFreshZeroSizeHardLimit(8_KB);
+        config.SetFlushThreshold(4_MB);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.ZeroBlocks(TBlockRange32::MakeOneBlock(0));
+        partition.ZeroBlocks(TBlockRange32::MakeOneBlock(1));
+
+        partition.SendZeroBlocksRequest(2);
+        auto response = partition.RecvZeroBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
+        UNIT_ASSERT_STRING_CONTAINS(
+            response->GetErrorReason(),
+            "FreshZeroSizeHardLimit");
+
+        partition.Flush();
+
+        partition.SendZeroBlocksRequest(2);
+        response = partition.RecvZeroBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
     Y_UNIT_TEST(
         ShouldReportAddFreshBlocksResultedInErrorOnlyForNonRetriableErrors)
     {
