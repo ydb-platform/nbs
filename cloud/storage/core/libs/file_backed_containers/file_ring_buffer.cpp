@@ -2,6 +2,7 @@
 #include "file_ring_buffer_accessor.h"
 #include "file_ring_buffer_format.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
@@ -492,23 +493,18 @@ public:
         }
     }
 
-    TResultOrError<bool> PushBack(TStringBuf data)
+    TPushBackResult PushBack(TStringBuf data)
     {
         if (!ValidateAccess("PushBack")) {
             return MakeBufferIsCorruptError();
         }
 
         auto allocationResult = Alloc(data.size());
-
-        if (HasError(allocationResult)) {
-            return allocationResult.GetError();
+        if (allocationResult.AllocationPtr == nullptr) {
+            return allocationResult.Error;
         }
 
-        if (allocationResult.GetResult() == nullptr) {
-            return false;
-        }
-
-        data.copy(allocationResult.GetResult(), data.size());
+        data.copy(allocationResult.AllocationPtr, data.size());
 
         auto commitResult = Commit();
 
@@ -519,7 +515,7 @@ public:
         return true;
     }
 
-    TResultOrError<char*> Alloc(size_t size)
+    TAllocResult Alloc(size_t size)
     {
         if (!ValidateAccess("Alloc")) {
             return MakeBufferIsCorruptError();
@@ -689,7 +685,7 @@ public:
         return Capabilities().MaxTag;
     }
 
-    TResultOrError<ui32> GetTag(const void* ptr) const
+    TGetTagResult GetTag(const void* ptr) const
     {
         if (!ValidateAccess("GetTag")) {
             return MakeBufferIsCorruptError();
@@ -729,7 +725,7 @@ public:
         return {};
     }
 
-    TResultOrError<TStringBuf> Front()
+    TFrontResult Front()
     {
         if (!ValidateAccess("Front")) {
             return MakeBufferIsCorruptError();
@@ -745,7 +741,7 @@ public:
         return e.GetData();
     }
 
-    TResultOrError<bool> PopFront()
+    TPopFrontResult PopFront()
     {
         if (!ValidateAccess("PopFront")) {
             return MakeBufferIsCorruptError();
@@ -895,7 +891,7 @@ public:
         return Capabilities().MaxAllocationByteCount;
     }
 
-    TResultOrError<TStringBuf> GetMetadata()
+    TGetMetadataResult GetMetadata()
     {
         if (!ValidateAccess("GetMetadata")) {
             return MakeBufferIsCorruptError();
@@ -911,7 +907,7 @@ public:
         return TStringBuf{data.data(), Header()->MetadataSize};
     }
 
-    TResultOrError<bool> SetMetadata(TStringBuf buf)
+    TSetMetadataResult SetMetadata(TStringBuf buf)
     {
         if (!ValidateAccess("SetMetadata")) {
             return MakeBufferIsCorruptError();
@@ -946,12 +942,12 @@ TFileRingBuffer::TFileRingBuffer(
 
 TFileRingBuffer::~TFileRingBuffer() = default;
 
-TResultOrError<bool> TFileRingBuffer::PushBack(TStringBuf data)
+TFileRingBuffer::TPushBackResult TFileRingBuffer::PushBack(TStringBuf data)
 {
     return Impl->PushBack(data);
 }
 
-TResultOrError<char*> TFileRingBuffer::Alloc(size_t size)
+TFileRingBuffer::TAllocResult TFileRingBuffer::Alloc(size_t size)
 {
     return Impl->Alloc(size);
 }
@@ -971,7 +967,7 @@ ui32 TFileRingBuffer::GetMaxTag() const
     return Impl->GetMaxTag();
 }
 
-TResultOrError<ui32> TFileRingBuffer::GetTag(const void* ptr) const
+TFileRingBuffer::TGetTagResult TFileRingBuffer::GetTag(const void* ptr) const
 {
     return Impl->GetTag(ptr);
 }
@@ -981,12 +977,12 @@ NProto::TError TFileRingBuffer::SetTag(const void* ptr, ui32 tag)
     return Impl->SetTag(ptr, tag);
 }
 
-TResultOrError<TStringBuf> TFileRingBuffer::Front()
+TFileRingBuffer::TFrontResult TFileRingBuffer::Front()
 {
     return Impl->Front();
 }
 
-TResultOrError<bool> TFileRingBuffer::PopFront()
+TFileRingBuffer::TPopFrontResult TFileRingBuffer::PopFront()
 {
     return Impl->PopFront();
 }
@@ -1051,12 +1047,12 @@ ui64 TFileRingBuffer::GetMaxSupportedAllocationByteCount() const
     return Impl->GetMaxSupportedAllocationByteCount();
 }
 
-TResultOrError<TStringBuf> TFileRingBuffer::GetMetadata() const
+TFileRingBuffer::TGetMetadataResult TFileRingBuffer::GetMetadata() const
 {
     return Impl->GetMetadata();
 }
 
-TResultOrError<bool> TFileRingBuffer::SetMetadata(TStringBuf data)
+TFileRingBuffer::TSetMetadataResult TFileRingBuffer::SetMetadata(TStringBuf data)
 {
     return Impl->SetMetadata(data);
 }

@@ -2,7 +2,7 @@
 
 #include "file_ring_buffer_format.h"
 
-#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/strbuf.h>
 
@@ -12,12 +12,38 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define FILE_RING_BUFFER_RESULT_STRUCT(fn, type, name)                         \
+    struct T##fn##Result                                                       \
+    {                                                                          \
+        type const name;                                                       \
+        NProto::TError const Error;                                            \
+                                                                               \
+        T##fn##Result(type arg)                                                \
+            : name(std::move(arg)), Error()                                    \
+        {}                                                                     \
+                                                                               \
+        T##fn##Result(NProto::TError error)                                    \
+            : name(), Error(std::move(error))                                  \
+        {}                                                                     \
+    };                                                                         \
+// FILE_RING_BUFFER_RESULT_STRUCT
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Non-thread safe
 class TFileRingBuffer
 {
 public:
     using TVisitor =
         std::function<void(ui32 checksum, ui32 tag, TStringBuf entry)>;
+
+    FILE_RING_BUFFER_RESULT_STRUCT(Alloc, char*, AllocationPtr);
+    FILE_RING_BUFFER_RESULT_STRUCT(GetMetadata, TStringBuf, Metadata);
+    FILE_RING_BUFFER_RESULT_STRUCT(GetTag, ui32, Tag);
+    FILE_RING_BUFFER_RESULT_STRUCT(Front, TStringBuf, Data);
+    FILE_RING_BUFFER_RESULT_STRUCT(PopFront, bool, Removed);
+    FILE_RING_BUFFER_RESULT_STRUCT(PushBack, bool, Pushed);
+    FILE_RING_BUFFER_RESULT_STRUCT(SetMetadata, bool, Updated);
 
 private:
     class TImpl;
@@ -52,30 +78,36 @@ public:
     /**
      * Allocates a new entry in the buffer and copies the data into it.
      *
-     * On success, return true. The entry becomes visible immediately.
+     * On success, TPushBackResult::Pushed is true. The entry becomes visible
+     * immediately.
      *
-     * On failure, return false if the buffer is full or an error if
-     * allocation is not possible due to corruption or invalid argument.
+     * On failure, TPushBackResult::Pushed is false.
+     * Additionally, TAllocResult::Error is set if allocation has failed for any
+     * reason other than insufficient capacity, for example, buffer corruption
+     * or invalid argument.
      *
      * Note: only one allocation is possible at a time. Calling PushBack while
      * an allocation made by Alloc is not committed will return an error.
      */
-    TResultOrError<bool> PushBack(TStringBuf data);
+    TPushBackResult PushBack(TStringBuf data);
 
     /**
      * In-place allocation of a memory block of the given size in the buffer.
      *
-     * On success, returns a pointer to the allocated memory. The caller should
-     * fill the allocated memory with data and then commit it. Non-committed
-     * allocations are not visible and will be lost on buffer recreation.
+     * On success, TAllocResult::AllocationPtr contains a pointer to the
+     * allocated memory. The caller should fill the allocated memory with data
+     * and then commit it. Non-committed allocations are not visible and will be
+     * lost on buffer recreation.
      *
-     * On failure, returns nullptr if the buffer is full or an error if
-     * allocation is not possible due to corruption or invalid argument.
+     * On failure, TAllocResult::AllocationPtr is nullptr.
+     * Additionally, TAllocResult::Error is set if allocation has failed for any
+     * reason other than insufficient capacity, for example, buffer corruption
+     * or invalid argument.
      *
      * Note: only one allocation is possible at a time. Repeated Alloc will
      * return an error.
      */
-    TResultOrError<char*> Alloc(size_t size);
+    TAllocResult Alloc(size_t size);
 
     /**
      * Completes the previously made allocation by calculating checksum and
@@ -112,10 +144,11 @@ public:
     /**
      * Gets the tag value associated with the allocation.
      *
-     * Returns tag value on success.
-     * Returns an error if the pointer is invalid or if the buffer is corrupted.
+     * On success, TGetTagResult::Tag contains a tag value.
+     *
+     * On failure, TGetTagResult::Error is set.
      */
-    TResultOrError<ui32> GetTag(const void* ptr) const;
+    TGetTagResult GetTag(const void* ptr) const;
 
     /**
      * Sets the tag value associated with the allocation.
@@ -128,20 +161,22 @@ public:
     /**
      * Gets the front allocation of the buffer.
      *
-     * Returns the contents of the front allocation on success.
-     * Returns empty string if the buffer is empty.
-     * Returns an error if storage is corrupted.
+     * TFrontResult::Data contains the contents of the front allocation or
+     * empty value if the buffer is empty or corrupted.
+     *
+     * Additionally, TFrontResult::Error is set on corruption.
      */
-    TResultOrError<TStringBuf> Front();
+    TFrontResult Front();
 
     /**
      * Frees the front allocation.
      *
-     * Returns true on success.
-     * Returns false if the buffer is empty.
-     * Returns an error if the buffer is corrupted.
+     * PopFrontResult::Removed is true if the front allocation has been
+     * successfully freed or false if the buffer is empty or corrupted.
+     *
+     * Additionally, TFrontResult::Error is set on corruption.
      */
-    TResultOrError<bool> PopFront();
+    TPopFrontResult PopFront();
 
     /**
      * Returns the number of visible allocations in the buffer.
@@ -212,19 +247,22 @@ public:
     /**
      * Gets metadata
      *
-     * Returns the metadata contents on success
-     * Returns an error if the buffer is corrupted
+     * On success, TGetMetadataResult::Data contains the metadata.
+     *
+     * On failure, TGetMetadataResult::Error is set.
      */
-    TResultOrError<TStringBuf> GetMetadata() const;
+    TGetMetadataResult GetMetadata() const;
 
     /**
      * Sets metadata
      *
-     * Returns true on success
-     * Returns false if the argument exceeds the metadata capacity
-     * Returns an error if the buffer is corrupted
+     * TSetMetadataResult::Updated is true if metadata has been set or false
+     * if is cannot be set due to its size or buffer corruption.
+     * Additionally, TFrontResult::Error is set on corruption.
      */
-    TResultOrError<bool> SetMetadata(TStringBuf data);
+    TSetMetadataResult SetMetadata(TStringBuf data);
 };
+
+#undef FILE_RING_BUFFER_RESULT_STRUCT
 
 }   // namespace NCloud

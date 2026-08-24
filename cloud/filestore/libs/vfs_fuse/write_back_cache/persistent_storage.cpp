@@ -94,7 +94,12 @@ public:
 
     TResultOrError<char*> Alloc(size_t size) override
     {
-        return Storage.Alloc(size);
+        auto allocResult = Storage.Alloc(size);
+        if (HasError(allocResult.Error)) {
+            return allocResult.Error;
+        } else {
+            return allocResult.AllocationPtr;
+        }
     }
 
     void Commit() override
