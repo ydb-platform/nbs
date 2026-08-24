@@ -100,11 +100,10 @@ func NewFederatedCredentials(
 		config.GetTokenExchangeEndpoint(),
 	)
 	endpoint, err := url.ParseRequestURI(tokenExchangeEndpoint)
-	if err != nil || endpoint.Host == "" ||
-		(endpoint.Scheme != "http" && endpoint.Scheme != "https") {
+	if err != nil || endpoint.Host == "" || endpoint.Scheme != "https" {
 
 		return nil, fmt.Errorf(
-			"invalid HTTP token exchange endpoint %q",
+			"invalid HTTPS token exchange endpoint %q",
 			tokenExchangeEndpoint,
 		)
 	}

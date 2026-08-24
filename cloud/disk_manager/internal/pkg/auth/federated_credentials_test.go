@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -21,8 +22,14 @@ func TestNewFederatedCredentials(t *testing.T) {
 	)
 
 	mock := tokenexchange_mock.New("iam-token")
-	server := httptest.NewServer(mock)
+	server := httptest.NewTLSServer(mock)
 	defer server.Close()
+
+	defaultTransport := http.DefaultTransport
+	http.DefaultTransport = server.Client().Transport
+	defer func() {
+		http.DefaultTransport = defaultTransport
+	}()
 
 	credentials, err := NewFederatedCredentials(&FederatedCredentials{
 		TokenExchangeEndpoint: proto.String(server.URL),
@@ -77,7 +84,13 @@ func TestFederatedCredentialsValidation(t *testing.T) {
 		TokenExchangeEndpoint: proto.String("grpcs://tokens.example.com"),
 		SubjectToken:          tokenValue("token", "token-type"),
 	})
-	require.ErrorContains(t, err, "invalid HTTP token exchange endpoint")
+	require.ErrorContains(t, err, "invalid HTTPS token exchange endpoint")
+
+	_, err = NewFederatedCredentials(&FederatedCredentials{
+		TokenExchangeEndpoint: proto.String("http://sts.example.com"),
+		SubjectToken:          tokenValue("token", "token-type"),
+	})
+	require.ErrorContains(t, err, "invalid HTTPS token exchange endpoint")
 
 	_, err = NewFederatedCredentials(&FederatedCredentials{
 		TokenExchangeEndpoint: proto.String("https://sts.example.com"),
@@ -103,6 +116,20 @@ func TestFederatedCredentialsValidation(t *testing.T) {
 		SubjectToken:          tokenFile(" ", "token-type"),
 	})
 	require.ErrorContains(t, err, "subject token source is empty")
+
+	_, err = NewFederatedCredentials(&FederatedCredentials{
+		TokenExchangeEndpoint: proto.String("https://sts.example.com"),
+		SubjectToken:          tokenValue("subject-token", "token-type"),
+		ActorToken:            tokenValue(" ", "token-type"),
+	})
+	require.ErrorContains(t, err, "actor token source is empty")
+
+	_, err = NewFederatedCredentials(&FederatedCredentials{
+		TokenExchangeEndpoint: proto.String("https://sts.example.com"),
+		SubjectToken:          tokenValue("subject-token", "token-type"),
+		ActorToken:            tokenFile(" ", "token-type"),
+	})
+	require.ErrorContains(t, err, "actor token source is empty")
 }
 
 func tokenValue(value string, tokenType string) *TypedToken {
