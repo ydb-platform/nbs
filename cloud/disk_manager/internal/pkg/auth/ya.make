@@ -8,6 +8,7 @@ SRCS(
 GO_TEST_SRCS(
     credentials_test.go
     federated_credentials_test.go
+    rfc8693_credentials_test.go
 )
 
 END()

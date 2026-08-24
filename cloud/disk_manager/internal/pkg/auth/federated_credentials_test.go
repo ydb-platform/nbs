@@ -2,8 +2,6 @@ package auth
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -11,6 +9,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
+	tokenexchange_mock "github.com/ydb-platform/nbs/cloud/disk_manager/test/mocks/tokenexchange"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -21,46 +20,8 @@ func TestNewFederatedCredentials(t *testing.T) {
 		actorTokenType   = "urn:ietf:params:oauth:token-type:jwt"
 	)
 
-	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(
-		writer http.ResponseWriter,
-		request *http.Request,
-	) {
-		requestCount++
-		require.Equal(t, http.MethodPost, request.Method)
-		require.NoError(t, request.ParseForm())
-		require.Equal(
-			t,
-			"urn:ietf:params:oauth:grant-type:token-exchange",
-			request.Form.Get("grant_type"),
-		)
-		require.Equal(
-			t,
-			"urn:ietf:params:oauth:token-type:access_token",
-			request.Form.Get("requested_token_type"),
-		)
-		require.Equal(t, "subject-token", request.Form.Get("subject_token"))
-		require.Equal(
-			t,
-			subjectTokenType,
-			request.Form.Get("subject_token_type"),
-		)
-		require.Equal(t, "actor-token", request.Form.Get("actor_token"))
-		require.Equal(
-			t,
-			actorTokenType,
-			request.Form.Get("actor_token_type"),
-		)
-
-		writer.Header().Set("Content-Type", "application/json")
-		_, err := fmt.Fprint(writer, `{
-			"access_token": "iam-token",
-			"issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
-			"token_type": "Bearer",
-			"expires_in": 3600
-		}`)
-		require.NoError(t, err)
-	}))
+	mock := tokenexchange_mock.New("iam-token")
+	server := httptest.NewServer(mock)
 	defer server.Close()
 
 	credentials, err := NewFederatedCredentials(&FederatedCredentials{
@@ -80,7 +41,14 @@ func TestNewFederatedCredentials(t *testing.T) {
 	token, err = credentials.Token(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "Bearer iam-token", token)
-	require.Equal(t, 1, requestCount)
+	require.Equal(t, []tokenexchange_mock.Request{{
+		GrantType:          tokenexchange_mock.TokenExchangeGrantType,
+		RequestedTokenType: tokenexchange_mock.AccessTokenType,
+		SubjectToken:       "subject-token",
+		SubjectTokenType:   subjectTokenType,
+		ActorToken:         "actor-token",
+		ActorTokenType:     actorTokenType,
+	}}, mock.Requests())
 }
 
 func TestTokenSourceRereadsTokenFile(t *testing.T) {
