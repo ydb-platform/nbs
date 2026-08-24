@@ -77,6 +77,9 @@ func newTokenSource(
 
 	value := strings.TrimSpace(config.GetValue())
 	file := strings.TrimSpace(config.GetFile())
+	if value == "" && file == "" {
+		return nil, fmt.Errorf("%s token source is empty", name)
+	}
 
 	return &tokenSource{
 		value:     value,
@@ -88,6 +91,10 @@ func newTokenSource(
 func NewFederatedCredentials(
 	config *FederatedCredentials,
 ) (Credentials, error) {
+
+	if config == nil {
+		return nil, fmt.Errorf("federated credentials config is missing")
+	}
 
 	tokenExchangeEndpoint := strings.TrimSpace(
 		config.GetTokenExchangeEndpoint(),

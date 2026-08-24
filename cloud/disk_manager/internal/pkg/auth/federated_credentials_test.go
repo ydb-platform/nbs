@@ -70,7 +70,10 @@ func TestTokenSourceRereadsTokenFile(t *testing.T) {
 }
 
 func TestFederatedCredentialsValidation(t *testing.T) {
-	_, err := NewFederatedCredentials(&FederatedCredentials{
+	_, err := NewFederatedCredentials(nil)
+	require.ErrorContains(t, err, "federated credentials config is missing")
+
+	_, err = NewFederatedCredentials(&FederatedCredentials{
 		TokenExchangeEndpoint: proto.String("grpcs://tokens.example.com"),
 		SubjectToken:          tokenValue("token", "token-type"),
 	})
@@ -88,6 +91,18 @@ func TestFederatedCredentialsValidation(t *testing.T) {
 		},
 	})
 	require.ErrorContains(t, err, "subject token source is missing")
+
+	_, err = NewFederatedCredentials(&FederatedCredentials{
+		TokenExchangeEndpoint: proto.String("https://sts.example.com"),
+		SubjectToken:          tokenValue(" ", "token-type"),
+	})
+	require.ErrorContains(t, err, "subject token source is empty")
+
+	_, err = NewFederatedCredentials(&FederatedCredentials{
+		TokenExchangeEndpoint: proto.String("https://sts.example.com"),
+		SubjectToken:          tokenFile(" ", "token-type"),
+	})
+	require.ErrorContains(t, err, "subject token source is empty")
 }
 
 func tokenValue(value string, tokenType string) *TypedToken {
