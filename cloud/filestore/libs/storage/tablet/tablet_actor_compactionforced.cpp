@@ -248,6 +248,34 @@ struct TDeleteZeroCompactionRangesRequestConstructor
     }
 };
 
+struct TFlushRequestConstructor
+{
+    std::unique_ptr<TEvIndexTabletPrivate::TEvFlushRequest> operator()(
+        const ui32 /*rangeId*/) const
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvFlushRequest>();
+    }
+};
+
+struct TFlushBytesRequestConstructor
+{
+    std::unique_ptr<TEvIndexTabletPrivate::TEvFlushBytesRequest> operator()(
+        const ui32 /*rangeId*/) const
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesRequest>();
+    }
+};
+
+struct TCollectGarbageRequestConstructor
+{
+    std::unique_ptr<TEvIndexTabletPrivate::TEvCollectGarbageRequest> operator()(
+        const ui32 /*rangeId*/) const
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageRequest>();
+    }
+};
+
+
 using TForcedCompactionActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvCompactionResponse,
     TCompactionRequestConstructor>;
@@ -259,6 +287,19 @@ using TForcedCleanupActor = TForcedOperationActor<
 using TDeleteRangesWithEmptyScoreActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvDeleteZeroCompactionRangesResponse,
     TDeleteZeroCompactionRangesRequestConstructor>;
+
+using TForcedFlushActor = TForcedOperationActor<
+    TEvIndexTabletPrivate::TEvFlushResponse,
+    TFlushRequestConstructor>;
+
+using TForcedFlushBytesActor = TForcedOperationActor<
+    TEvIndexTabletPrivate::TEvFlushBytesResponse,
+    TFlushBytesRequestConstructor>;
+
+using TForcedCollectGarbageActor = TForcedOperationActor<
+    TEvIndexTabletPrivate::TEvCollectGarbageResponse,
+    TCollectGarbageRequestConstructor>;
+
 
 }   // namespace
 
@@ -291,8 +332,9 @@ void TIndexTabletActor::HandleForcedRangeOperation(
     auto* msg = ev->Get();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedRangeOperation request for %lu ranges",
+        "%s ForcedRangeOperation request mode=%u for %lu ranges",
         LogTag.c_str(),
+        msg->Mode,
         msg->Ranges.size());
 
     auto replyError = [&] (
@@ -358,6 +400,33 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 std::move(requestInfo));
             break;
 
+        case TEvIndexTabletPrivate::EForcedRangeOperationMode::Flush:
+            actor = std::make_unique<TForcedFlushActor>(
+                ctx.SelfID,
+                LogTag,
+                Config->GetCompactionRetryTimeout(),
+                *GetForcedRangeOperationState(),
+                std::move(requestInfo));
+            break;
+
+        case TEvIndexTabletPrivate::EForcedRangeOperationMode::FlushBytes:
+            actor = std::make_unique<TForcedFlushBytesActor>(
+                ctx.SelfID,
+                LogTag,
+                Config->GetCompactionRetryTimeout(),
+                *GetForcedRangeOperationState(),
+                std::move(requestInfo));
+            break;
+
+        case TEvIndexTabletPrivate::EForcedRangeOperationMode::CollectGarbage:
+            actor = std::make_unique<TForcedCollectGarbageActor>(
+                ctx.SelfID,
+                LogTag,
+                Config->GetCompactionRetryTimeout(),
+                *GetForcedRangeOperationState(),
+                std::move(requestInfo));
+            break;
+
         default:
             TABLET_VERIFY_C(false, "unexpected forced compaction mode");
     }
@@ -371,12 +440,12 @@ void TIndexTabletActor::HandleForcedRangeOperationCompleted(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedRangeOperation completed (%s)",
-        LogTag.c_str(),
-        FormatError(msg->GetError()).c_str());
-
     TABLET_VERIFY(IsForcedRangeOperationRunning());
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s ForcedRangeOperation mode=%u completed (%s)",
+        LogTag.c_str(),
+        GetForcedRangeOperationState()->Mode,
+        FormatError(msg->GetError()).c_str());
     WorkerActors.erase(ev->Sender);
 
     CompleteForcedRangeOperation();
