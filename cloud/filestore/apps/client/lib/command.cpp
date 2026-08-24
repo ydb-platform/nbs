@@ -221,8 +221,8 @@ void TCommand::Init()
     if (ServerUnixSocketPath){
         config.SetUnixSocketPath(ServerUnixSocketPath);
     }
-    if (RequestTimeout.Defined()) {
-        config.SetRequestTimeout(*RequestTimeout);
+    if (RequestTimeout) {
+        config.SetRequestTimeout(RequestTimeout);
     }
     if (config.GetHost() == "localhost" &&
         config.GetSecurePort() != 0)

@@ -60,7 +60,7 @@ protected:
     TString ServerUnixSocketPath;
     bool SkipCertVerification = false;
     TString ConfigFile;
-    TMaybe<ui32> RequestTimeout;
+    ui32 RequestTimeout = 0;
 
     TClientConfigPtr ClientConfig;
 
