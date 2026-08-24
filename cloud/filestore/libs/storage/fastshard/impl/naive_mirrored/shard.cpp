@@ -750,7 +750,9 @@ public:
         FirstStoragePageClusterId = RoundUp(firstPageNo, PageClusterPageCount)
             / PageClusterPageCount;
 
-        return Bitmap->GetPageCount() + pageClusterCount * PageClusterPageCount;
+        return Bitmap->GetPageCount()
+            + (FirstStoragePageClusterId * PageClusterPageCount - firstPageNo)
+            + pageClusterCount * PageClusterPageCount;
     }
 
     [[nodiscard]] ui64 GetBitCount() const
