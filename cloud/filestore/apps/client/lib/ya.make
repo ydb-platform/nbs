@@ -56,6 +56,7 @@ PEERDIR(
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/iam/iface
 
     contrib/ydb/library/actors/util
     library/cpp/colorizer
