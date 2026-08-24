@@ -2,7 +2,7 @@
 
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-#include <cloud/filestore/libs/storage/tablet/model/simple_template.h>
+#include <cloud/storage/core/libs/common/simple_template.h>
 
 #include <library/cpp/json/writer/json.h>
 #include <library/cpp/resource/resource.h>
@@ -11,7 +11,6 @@
 #include <util/stream/str.h>
 #include <util/string/builder.h>
 
-#include <algorithm>
 #include <tuple>
 #include <utility>
 
