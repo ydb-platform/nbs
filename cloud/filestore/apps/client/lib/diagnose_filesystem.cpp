@@ -114,6 +114,8 @@ private:
         const TRequest& requestProto,
         TResponse* responseProto)
     {
+        auto callContext = PrepareCallContext(FileSystemId);
+
         TString input;
         google::protobuf::util::MessageToJsonString(requestProto, &input);
 
@@ -121,12 +123,11 @@ private:
         auto request = std::make_shared<NProto::TExecuteActionRequest>();
         request->SetAction(action);
         request->SetInput(std::move(input));
+        request->MutableHeaders()->SetRequestId(callContext->RequestId);
 
         STORAGE_DEBUG("Sending ExecuteAction request");
-        const auto requestId = GetRequestId(*request);
-        auto result = WaitFor(Client->ExecuteAction(
-            MakeIntrusive<TCallContext>(FileSystemId, requestId),
-            std::move(request)));
+        auto result = WaitFor(
+            Client->ExecuteAction(std::move(callContext), std::move(request)));
 
         STORAGE_DEBUG("Received ExecuteAction response");
 
@@ -244,6 +245,8 @@ private:
         const TString& action,
         const TRequest& requestProto)
     {
+        auto callContext = PrepareCallContext(FileSystemId);
+
         TString input;
         google::protobuf::util::MessageToJsonString(requestProto, &input);
 
@@ -251,8 +254,10 @@ private:
         auto request = std::make_shared<NProto::TExecuteActionRequest>();
         request->SetAction(action);
         request->SetInput(std::move(input));
+        request->MutableHeaders()->SetRequestId(callContext->RequestId);
+
         return Client->ExecuteAction(
-            MakeIntrusive<TCallContext>(FileSystemId, GetRequestId(*request)),
+            std::move(callContext),
             std::move(request));
     }
 

@@ -57,12 +57,11 @@ public:
         auto request = std::make_shared<NProto::TExecuteActionRequest>();
         request->SetAction(Action);
         request->SetInput(inputJsonStr);
+        request->MutableHeaders()->SetRequestId(callContext->RequestId);
 
         STORAGE_DEBUG("Sending ExecuteAction request");
-        const auto requestId = GetRequestId(*request);
-        auto result = WaitFor(Client->ExecuteAction(
-            MakeIntrusive<TCallContext>(requestId),
-            std::move(request)));
+        auto result = WaitFor(
+            Client->ExecuteAction(std::move(callContext), std::move(request)));
 
         STORAGE_DEBUG("Received ExecuteAction response");
 
