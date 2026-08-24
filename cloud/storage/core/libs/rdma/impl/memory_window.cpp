@@ -1,5 +1,7 @@
 #include "memory_window.h"
 
+#include <cloud/storage/common/libs/common/error.h>
+
 namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -21,7 +23,9 @@ NVerbs::TMemoryWindowPtr TMemoryWindowsPool::Acquire()
         Pool.pop_front();
         return window;
     }
-    return Verbs->CreateMemoryWindow(ProtectionDomain);
+    if (Verbs && ProtectionDomain) {
+        return Verbs->CreateMemoryWindow(ProtectionDomain);
+    }
 }
 
 void TMemoryWindowsPool::Release(NVerbs::TMemoryWindowPtr window)

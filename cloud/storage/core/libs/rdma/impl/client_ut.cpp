@@ -1499,7 +1499,7 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
             }
         };
 
-        // normal completion will invalidate it's buffers
+        // normal completion will invalidate its buffers
         auto response1 = std::make_shared<TResponse>();
         auto request1 = endpoint->AllocateRequest(
             response1,

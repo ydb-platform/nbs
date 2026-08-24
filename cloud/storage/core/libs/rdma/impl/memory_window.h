@@ -12,9 +12,9 @@ namespace NCloud::NStorage::NRdma {
 class TMemoryWindowsPool
 {
 private:
-    NVerbs::IVerbsPtr Verbs;
-    ibv_pd* ProtectionDomain;
-    size_t Capacity;
+    NVerbs::IVerbsPtr Verbs = NVerbs::NullPtr;
+    ibv_pd* ProtectionDomain = nullptr;
+    size_t Capacity = 0;
 
     std::deque<NVerbs::TMemoryWindowPtr> Pool;
 

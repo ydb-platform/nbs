@@ -367,9 +367,13 @@ struct TEndpointCounters
         QueuedRequests->Dec();
     }
 
-    void SendRequestStarted()
+    void RequestStarted()
     {
         ActiveRequests->Inc();
+    }
+
+    void SendRequestStarted()
+    {
         ActiveSend->Inc();
     }
 
@@ -633,6 +637,7 @@ private:
     void StartRequest(TRequestPtr req, TSendWr* send) noexcept;
     void SendRequest(TRequest* req, TSendWr* send) noexcept;
     void SendRequestCompleted(TSendWr* send) noexcept;
+    void BindBuffers(TRequest* req, TSendWr* send) noexcept;
     void BindInBuffer(TRequest* req, TSendWr* send) noexcept;
     void BindOutBuffer(TRequest* req, TSendWr* send) noexcept;
     void BindCompleted(TSendWr* send) noexcept;
@@ -766,24 +771,25 @@ void TClientEndpoint::CreateQP()
         Verbs->RdmaCreateQP(Connection.get(), &qp_attrs);
     }
 
-    if (Config.UseMemoryWindows && Config.MemoryWindowsPoolSize == 0) {
-        Config.MemoryWindowsPoolSize = Config.SendQueueSize * 2;
-        RDMA_INFO(
-            "MemoryWindowsPoolSize is not configured, set to "
-            << "SendQueueSize * 2 = " << Config.MemoryWindowsPoolSize);
+    int sendFlags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+    int recvFlags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE;
+
+    if (Config.UseMemoryWindows) {
+        if (Config.MemoryWindowsPoolSize == 0) {
+            Config.MemoryWindowsPoolSize = Config.SendQueueSize * 2;
+            RDMA_INFO(
+                "MemoryWindowsPoolSize is not configured, set to "
+                << "SendQueueSize * 2 = " << Config.MemoryWindowsPoolSize);
+        }
+
+        MemoryWindows.Init(Verbs, Connection->pd, Config.MemoryWindowsPoolSize);
+
+        sendFlags |= IBV_ACCESS_MW_BIND;
+        recvFlags |= IBV_ACCESS_MW_BIND;
     }
 
-    MemoryWindows.Init(Verbs, Connection->pd, Config.MemoryWindowsPoolSize);
-
-    SendBuffers.Init(
-        Verbs,
-        Connection->pd,
-        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_MW_BIND);
-
-    RecvBuffers.Init(
-        Verbs,
-        Connection->pd,
-        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_MW_BIND);
+    SendBuffers.Init(Verbs, Connection->pd, sendFlags);
+    RecvBuffers.Init(Verbs, Connection->pd, recvFlags);
 
     SendBuffer = SendBuffers.AcquireBuffer(
         Config.SendQueueSize * sizeof(TRequestMessage), true);
@@ -1143,6 +1149,9 @@ void TClientEndpoint::AbortRequests() noexcept
         Y_ABORT_UNLESS(req);
         RDMA_DEBUG("abort request " << req->ReqId);
         Counters->RequestDequeued();
+        if (req->State != ERequestState::Init) {
+            Counters->RequestAborted();
+        }
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
     }
 
@@ -1329,10 +1338,10 @@ void TClientEndpoint::StartRequest(TRequestPtr request, TSendWr* send) noexcept
     msg->In = req->InBuffer;
     msg->Out = req->OutBuffer;
 
+    Counters->RequestStarted();
+
     if (Config.UseMemoryWindows) {
-        req->InMemoryWindow = MemoryWindows.Acquire();
-        req->OutMemoryWindow = MemoryWindows.Acquire();
-        BindInBuffer(req, send);
+        BindBuffers(req, send);
     } else {
         SendRequest(req, send);
     }
@@ -1351,6 +1360,27 @@ bool TClientEndpoint::PostSend(
     }
     catch (const TServiceError& e) {
         RDMA_ERROR(*wr << " " << e.what());
+        SendQueue.Push(send);
+        Counters->Error();
+        Disconnect();
+        return true;
+    }
+}
+
+void TClientEndpoint::BindBuffers(TRequest* req, TSendWr* send) noexcept
+{
+    try {
+        req->InMemoryWindow = MemoryWindows.Acquire();
+        req->OutMemoryWindow = MemoryWindows.Acquire();
+
+        BindInBuffer(req, send);
+    }
+    catch (TServiceError& e) {
+        RDMA_ERROR(send << " " << e.what());
+
+        req->InMemoryWindow.reset();
+        req->OutMemoryWindow.reset();
+
         SendQueue.Push(send);
         Counters->Error();
         Disconnect();
