@@ -172,6 +172,16 @@ struct TBlobCompactionInfo
 {
     const ui32 BlobsSkippedByCompaction = 0;
     const ui32 BlocksSkippedByCompaction = 0;
+    const ui32 MixedBlockCountSkippedByCompaction = 0;
+
+    TBlobCompactionInfo(
+            ui32 blobsSkippedByCompaction,
+            ui32 blocksSkippedByCompaction,
+            ui32 mixedBlockCountSkippedByCompaction)
+        : BlobsSkippedByCompaction(blobsSkippedByCompaction)
+        , BlocksSkippedByCompaction(blocksSkippedByCompaction)
+        , MixedBlockCountSkippedByCompaction(mixedBlockCountSkippedByCompaction)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -323,7 +333,8 @@ struct TEvPartitionPrivate
         GarbageCompaction,
         // Similar to GarbageCompaction, but does not treat previously used
         // blocks that are now zeroed as garbage.
-        IgnoringZeroedCompaction
+        IgnoringZeroedCompaction,
+        MixedBlockCountCompaction
     };
 
     struct TCompactionRequest

@@ -1680,4 +1680,24 @@ message TStorageServiceConfig
     // If false (default), cleanup removes only blobs that were added to the
     // cleanup queue before all checkpoints.
     optional bool CheckpointAwareCleanupEnabled = 526;
+
+    // Enables compaction triggered by the number of mixed blocks for HDD
+    // volumes.
+    optional bool MixedBlocksCountCompactionEnabledHDD = 527;
+
+    // Enables compaction triggered by the number of mixed blocks for SSD
+    // volumes.
+    optional bool MixedBlocksCountCompactionEnabledSSD = 528;
+
+    // Number of mixed blocks in a compaction range that triggers compaction for
+    // HDD volumes. Zero means using WriteBlobThreshold converted to blocks.
+    optional uint32 MixedBlocksCountCompactionThresholdHDD = 529;
+
+    // Number of mixed blocks in a compaction range that triggers compaction for
+    // SSD volumes. Zero means using WriteBlobThresholdSSD converted to blocks.
+    optional uint32 MixedBlocksCountCompactionThresholdSSD = 530;
+
+    // MaxMixedBlocksPerDisk will be proportional to the disk size.
+    optional uint32 SSDMaxMixedBlocksPerUnit = 531;
+    optional uint32 HDDMaxMixedBlocksPerUnit = 532;
 }

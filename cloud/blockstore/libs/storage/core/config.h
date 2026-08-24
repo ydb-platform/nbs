@@ -887,6 +887,18 @@ public:
     [[nodiscard]] TDuration GetMixedBlocksFilterAllowedCpuTimePerSecond() const;
 
     [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
+
+    [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledHDD() const;
+
+    [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledSSD() const;
+
+    [[nodiscard]] ui32 GetMixedBlocksCountCompactionThresholdHDD() const;
+
+    [[nodiscard]] ui32 GetMixedBlocksCountCompactionThresholdSSD() const;
+
+    [[nodiscard]] ui32 GetSSDMaxMixedBlocksPerUnit() const;
+
+    [[nodiscard]] ui32 GetHDDMaxMixedBlocksPerUnit() const;
 };
 
 ui64 GetAllocationUnit(

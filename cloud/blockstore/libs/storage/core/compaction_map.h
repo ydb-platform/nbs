@@ -68,6 +68,7 @@ public:
         ui32 blockCount,
         ui32 usedBlockCount,
         ui32 newlyZeroedBlocks,
+        ui32 mixedBlockCount,
         bool compacted);
     void RegisterRead(ui32 blockIndex, ui32 blobCount, ui32 blockCount);
     void Clear();
@@ -77,12 +78,15 @@ public:
     TVector<TCompactionCounter> GetTopsFromGroups(size_t groupCount) const;
     TCompactionCounter GetTopByGarbageBlockCount() const;
     TCompactionCounter GetTopByGarbageIgnoringZeroed() const;
+    TCompactionCounter GetTopByMixedBlockCount() const;
 
     TVector<TCompactionCounter> GetTop(size_t count) const;
     TVector<TCompactionCounter> GetTopByGarbageBlockCount(size_t count) const;
     TVector<TCompactionCounter> GetTopByGarbageIgnoringZeroed(size_t count) const;
+    TVector<TCompactionCounter> GetTopByMixedBlockCount(size_t count) const;
     TVector<ui32> GetNonEmptyRanges() const;
     ui32 GetNonEmptyRangeCount() const;
+    ui64 GetMixedBlocksCountPerDisk() const;
     ui32 GetRangeStart(ui32 blockIndex) const;
     ui32 GetRangeIndex(ui32 blockIndex) const;
     ui32 GetRangeIndex(TBlockRange32 blockRange) const;
