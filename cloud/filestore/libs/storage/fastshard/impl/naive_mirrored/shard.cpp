@@ -730,6 +730,7 @@ private:
     std::unique_ptr<TPersistentBitmap> Bitmap;
     ui64 FirstStoragePageClusterId = 0;
     ui64 BitCount = 0;
+    ui64 BitmapSize = 0;
 
 public:
     ui64 Init(
@@ -738,20 +739,18 @@ public:
         IPageStorePtr pageStore)
     {
         const ui64 pageClusterCount = CalcPageClusterCount(config);
-        const ui64 bitsPerPage = TPersistentBitmap::CalcBitsPerPage(PageSize);
-        BitCount = RoundUp(pageClusterCount, bitsPerPage);
-        const ui64 bitmapPageCount = BitCount / bitsPerPage;
+        BitCount = pageClusterCount;
         Bitmap = std::make_unique<TPersistentBitmap>(
             firstPageNo,
-            bitmapPageCount,
+            BitCount,
             PageSize,
             std::move(pageStore));
-        firstPageNo += bitmapPageCount;
-        FirstStoragePageClusterId =
-            RoundUp(firstPageNo + bitmapPageCount, PageClusterPageCount) /
-            PageClusterPageCount;
+        BitmapSize = Bitmap->GetPageCount() * PageSize;
+        firstPageNo += Bitmap->GetPageCount();
+        FirstStoragePageClusterId = RoundUp(firstPageNo, PageClusterPageCount)
+            / PageClusterPageCount;
 
-        return bitmapPageCount + pageClusterCount * PageClusterPageCount;
+        return Bitmap->GetPageCount() + pageClusterCount * PageClusterPageCount;
     }
 
     [[nodiscard]] ui64 GetBitCount() const
@@ -761,8 +760,7 @@ public:
 
     [[nodiscard]] ui64 GetBitmapSize() const
     {
-        return PageSize
-            * (BitCount / TPersistentBitmap::CalcBitsPerPage(PageSize));
+        return BitmapSize;
     }
 
     [[nodiscard]] ui64 GetDataOffset() const

@@ -92,12 +92,12 @@ ui64 FindFirstFreeBit(const TBuffer& bitmapPage)
 
 bool TPersistentBitmap::Validate(ui64 bit, NProto::TError* error) const
 {
-    if (bit >= PageCount * BitsPerPage) {
+    if (bit >= MaxBits) {
         *error = MakeError(
             E_ARGUMENT,
             TStringBuilder() << "out of bounds"
                                 " bitmap access: "
-                             << bit << " >= " << (PageCount * BitsPerPage));
+                             << bit << " >= " << MaxBits);
         return false;
     }
 
@@ -218,6 +218,13 @@ NProto::TError TPersistentBitmap::Allocate(
         *bits += PopCount(page);
     }
 
+    Y_ABORT_UNLESS(
+        *bits >= UnusedBits,
+        "bits=%lu, unused=%lu",
+        *bits,
+        UnusedBits);
+    *bits -= UnusedBits;
+
     return {};
 }
 
@@ -227,9 +234,10 @@ NProto::TError TPersistentBitmap::InitIfNeeded() const
         return {};
     }
 
-    BitmapPages.resize(PageCount);
+    const ui64 bitsPerPage = CalcBitsPerPage(PageSize);
+    BitmapPages.resize(GetPageCount());
 
-    for (ui64 i = 0; i < PageCount; ++i) {
+    for (ui64 i = 0; i < BitmapPages.size(); ++i) {
         const ui64 pageNo = FirstPageNo + i;
         auto error = PageStore->ReadPage(0 /* lsn */, pageNo, &BitmapPages[i]);
         if (HasError(error)) {
@@ -238,6 +246,23 @@ NProto::TError TPersistentBitmap::InitIfNeeded() const
         }
 
         Y_ABORT_UNLESS(BitmapPages[i].Size() == PageSize);
+
+        if (i == BitmapPages.size() - 1) {
+            const ui64 endBit = MaxBits % bitsPerPage;
+            if (endBit) {
+                if (endBit % 8 != 0) {
+                    return MakeError(E_INVALID_STATE, TStringBuilder()
+                        << "unaligned max bit count: " << MaxBits);
+                }
+
+                const ui64 endByte = endBit / 8;
+                memset(
+                    BitmapPages[i].data() + endByte,
+                    0xFF,
+                    PageSize - endByte);
+                UnusedBits = (PageSize - endByte) * 8;
+            }
+        }
 
         if (!IsFull(BitmapPages[i])) {
             BitmapPagesWithFreeBits.push(i);

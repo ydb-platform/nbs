@@ -49,7 +49,7 @@ void Rollback(TVector<TPageGroup>& groups, IPageStore& pageStore)
 struct TFixture
 {
     const ui64 FirstPageNo = 10;
-    const ui64 PageCount = 2;
+    const ui64 MaxBits = 60000;
 
     IPageStorePtr PageStore = CreateMemPageStore(PageSize);
     std::unique_ptr<TPersistentBitmap> Bitmap;
@@ -63,7 +63,7 @@ struct TFixture
     {
         Bitmap = std::make_unique<TPersistentBitmap>(
             FirstPageNo,
-            PageCount,
+            MaxBits,
             PageSize,
             PageStore);
     }
@@ -146,8 +146,7 @@ TEST(PersistentBitmapTest, OutOfSpace)
 
     TVector<TPageGroup> pageGroups;
 
-    const ui64 cap =
-        TPersistentBitmap::CalcBitsPerPage(PageSize) * fx.PageCount;
+    const ui64 cap = fx.MaxBits;
 
     THashSet<ui64> bitSet;
 
@@ -188,8 +187,7 @@ TEST(PersistentBitmapTest, SetResetAllocateRandomized)
     const double setProb = 0.01;
     const double resetProb = 0.5;
     const double allocateProb = 0.6;
-    const ui64 cap =
-        TPersistentBitmap::CalcBitsPerPage(PageSize) * fx.PageCount;
+    const ui64 cap = fx.MaxBits;
 
     TDynBitMap refImpl;
     refImpl.Reserve(cap);

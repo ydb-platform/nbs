@@ -165,15 +165,15 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
         EXPECT_EQ("PageAllocatorBitmap", c["name"].GetString());
         EXPECT_EQ(76_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(4_KB, c["sizeBytes"].GetUInteger());
-        EXPECT_EQ(32768ULL, c["slotCount"].GetUInteger());
+        EXPECT_EQ(2048ULL, c["slotCount"].GetUInteger());
     }
 
     {
         const auto& c = components[5];
         EXPECT_EQ("DataPages", c["name"].GetString());
         EXPECT_EQ(96_KB, c["offsetBytes"].GetUInteger());
-        EXPECT_EQ(1_GB, c["sizeBytes"].GetUInteger());
-        EXPECT_EQ(32768ULL, c["slotCount"].GetUInteger());
+        EXPECT_EQ(64_MB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(2048ULL, c["slotCount"].GetUInteger());
     }
 
     //
