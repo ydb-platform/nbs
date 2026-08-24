@@ -400,8 +400,8 @@ message TStorageConfig
     // Async processing of destroy handle requests.
     optional bool AsyncDestroyHandleEnabled = 379;
 
-    // Period of processing create/destroy handle requests.
-    optional uint32 AsyncHandleOperationPeriod = 380;
+    // Polling period when the async handle operations queue is empty, in ms.
+    optional uint32 AsyncHandleOperationIdlePeriod = 380;
 
     // Dynamic node registration params.
     optional uint32 NodeRegistrationMaxAttempts = 381;
@@ -902,4 +902,8 @@ message TStorageConfig
 
     // Availability interval duration (in ms); 0 means the default.
     optional uint32 AvailabilityTrackingInterval = 540;
+
+    // Delay between processing entries in the async handle operations queue,
+    // in ms.
+    optional uint32 AsyncHandleOperationDrainPeriod = 541;
 }
