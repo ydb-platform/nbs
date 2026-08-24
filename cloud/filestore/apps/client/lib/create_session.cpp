@@ -47,7 +47,10 @@ public:
         request->MutableHeaders()->SetClientId(ClientId);
         request->MutableHeaders()->SetSessionSeqNo(SeqNo);
 
-        TCallContextPtr ctx = MakeIntrusive<TCallContext>(FileSystemId);
+        const auto requestId = CreateRequestId();
+        request->MutableHeaders()->SetRequestId(requestId);
+        TCallContextPtr ctx =
+            MakeIntrusive<TCallContext>(FileSystemId, requestId);
         auto response = WaitFor(Client->CreateSession(ctx, std::move(request)));
         CheckResponse(response);
         Print(response, JsonOutput);

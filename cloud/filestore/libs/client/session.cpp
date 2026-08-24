@@ -250,7 +250,9 @@ public:
         bool readOnly = false,
         ui64 mountSeqNumber = 0) override
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
         callContext->RequestType = EFileStoreRequest::CreateSession;
 
         auto state = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
@@ -267,7 +269,9 @@ public:
         bool readOnly,
         ui64 mountSeqNumber) override
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
         callContext->RequestType = EFileStoreRequest::CreateSession;
 
         auto state = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
@@ -282,7 +286,9 @@ public:
 
     TFuture<NProto::TDestroySessionResponse> DestroySession() override
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
         callContext->RequestType = EFileStoreRequest::DestroySession;
 
         auto state = MakeIntrusive<TRequestState<TDestroySessionMethod>>(
@@ -294,7 +300,9 @@ public:
 
     TFuture<NProto::TPingSessionResponse> PingSession()
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
         callContext->RequestType = EFileStoreRequest::PingSession;
 
         auto state = MakeIntrusive<TRequestState<TPingSessionMethod>>(
@@ -619,7 +627,9 @@ private:
                 case SessionRequested: {
                     SessionState = SessionEstablishing;
 
-                    auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+                    auto callContext = MakeIntrusive<TCallContext>(
+                        Config->GetFileSystemId(),
+                        CreateRequestId());
                     callContext->RequestType = EFileStoreRequest::CreateSession;
 
                     requestState = MakeIntrusive<TRequestState<TCreateSessionMethod>>(

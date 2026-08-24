@@ -59,7 +59,7 @@ private:
 
     ui64 InitialFileSize = 0;
 
-    std::atomic<ui64> LastRequestId = 0;
+    std::atomic<ui64> LastRequestId = 1;
 
     // static constexpr ui32 LockLength = 4096;
 

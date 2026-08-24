@@ -2,12 +2,14 @@
 
 #include "config.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
+#include <cloud/filestore/libs/service/request.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -49,6 +51,63 @@ std::pair<TClientConfigPtr, TServerConfigPtr> CreateConfigs()
     };
 }
 
+void DoTestShouldHandleRequest(
+    ui64 requestId,
+    ui64 expectedCriticalEventCount)
+{
+    auto logging = CreateLoggingService("console");
+
+    auto service = std::make_shared<TFileStoreTest>();
+    service->PingHandler = [] (auto, auto) {
+        return MakeFuture<NProto::TPingResponse>();
+    };
+
+    auto [clientConfig, serverConfig] = CreateConfigs();
+
+    auto registry = CreateRequestStatsRegistryStub();
+    auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+    auto server = CreateServer(
+        serverConfig,
+        logging,
+        registry->GetRequestStats(),
+        counters,
+        CreateProfileLogStub(),
+        CreateSchedulerStub(),
+        service,
+        CreateCertificateProviderStub());
+    server->Start();
+
+    auto client = CreateFileStoreClient(
+        clientConfig,
+        logging,
+        CreateCertificateProviderStub());
+    client->Start();
+
+    InitCriticalEventsCounter(counters);
+    auto criticalEvent = counters->GetCounter(
+        GetCriticalEventForClientRequestIdIsZero(),
+        true);
+
+    auto context = MakeIntrusive<TCallContext>(requestId);
+    auto request = std::make_shared<NProto::TPingRequest>();
+    request->MutableHeaders()->SetRequestId(requestId);
+
+    UNIT_ASSERT_VALUES_EQUAL(0, criticalEvent->Val());
+
+    auto future = client->Ping(
+        std::move(context),
+        std::move(request));
+
+    const auto& response = future.GetValue(WaitTimeout);
+    UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+    UNIT_ASSERT_VALUES_EQUAL(
+        expectedCriticalEventCount,
+        criticalEvent->Val());
+
+    client->Stop();
+    server->Stop();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,46 +116,20 @@ Y_UNIT_TEST_SUITE(TFileStoreClientTest)
 {
     Y_UNIT_TEST(ShouldHandleRequests)
     {
-        auto logging = CreateLoggingService("console");
-
-        auto service = std::make_shared<TFileStoreTest>();
-        service->PingHandler = [] (auto, auto) {
-            return MakeFuture<NProto::TPingResponse>();
-        };
-
-        auto [clientConfig, serverConfig] = CreateConfigs();
-
-        auto registry = CreateRequestStatsRegistryStub();
-        auto server = CreateServer(
-            serverConfig,
-            logging,
-            registry->GetRequestStats(),
-            MakeIntrusive<NMonitoring::TDynamicCounters>(),
-            CreateProfileLogStub(),
-            CreateSchedulerStub(),
-            service,
-            CreateCertificateProviderStub());
-        server->Start();
-
-        auto client = CreateFileStoreClient(
-            clientConfig,
-            logging,
-            CreateCertificateProviderStub());
-        client->Start();
-
-        auto context = MakeIntrusive<TCallContext>();
-        auto request = std::make_shared<NProto::TPingRequest>();
-
-        auto future = client->Ping(
-            std::move(context),
-            std::move(request));
-
-        const auto& response = future.GetValue(WaitTimeout);
-        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
-
-        client->Stop();
-        server->Stop();
+        DoTestShouldHandleRequest(
+            CreateRequestId(),
+            0 /* expectedCriticalEventCount */);
     }
+
+    // A zero request id triggers a debug abort in the client.
+#ifdef NDEBUG
+    Y_UNIT_TEST(ShouldReportCriticalEventForZeroRequestId)
+    {
+        DoTestShouldHandleRequest(
+            0 /* requestId */,
+            1 /* expectedCriticalEventCount */);
+    }
+#endif
 }
 
 }   // namespace NCloud::NFileStore::NClient

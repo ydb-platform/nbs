@@ -25,6 +25,7 @@ namespace NCloud::NFileStore{
     xxx(AsyncCreateHandleCleanupFailed)                                        \
     xxx(HandleOpsQueueProcessError)                                            \
     xxx(HandleOpsQueueCreatingOrDeletingError)                                 \
+    xxx(ClientRequestIdIsZero)                                                 \
     xxx(DuplicateRequestId)                                                    \
     xxx(InvalidDupCacheEntry)                                                  \
     xxx(GeneratedOrphanNode)                                                   \

@@ -192,7 +192,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         UNIT_ASSERT_VALUES_EQUAL(pingCalled, 1);
 
         auto future = bootstrap.Session->CreateNode(
-            MakeIntrusive<TCallContext>(FileSystemId),
+            MakeIntrusive<TCallContext>(FileSystemId, CreateRequestId()),
             std::make_shared<NProto::TCreateNodeRequest>());
         UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
 
@@ -247,7 +247,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         TVector<TFuture<NProto::TCreateNodeResponse>> futures(count);
         for (ui32 i = 0; i < 5; ++i) {
             futures[i] = bootstrap.Session->CreateNode(
-                MakeIntrusive<TCallContext>(FileSystemId),
+                MakeIntrusive<TCallContext>(FileSystemId, CreateRequestId()),
                 std::make_shared<NProto::TCreateNodeRequest>());
         }
 
@@ -326,7 +326,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         TVector<TFuture<NProto::TCreateNodeResponse>> futures(count);
         for (ui32 i = 0; i < 5; ++i) {
             futures[i] = bootstrap.Session->CreateNode(
-                MakeIntrusive<TCallContext>(FileSystemId),
+                MakeIntrusive<TCallContext>(FileSystemId, CreateRequestId()),
                 std::make_shared<NProto::TCreateNodeRequest>());
         }
 
@@ -549,7 +549,7 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 
         {
             auto future = bootstrap.Session->CreateNode(
-                MakeIntrusive<TCallContext>(FileSystemId),
+                MakeIntrusive<TCallContext>(FileSystemId, CreateRequestId()),
                 std::make_shared<NProto::TCreateNodeRequest>());
             UNIT_ASSERT(!HasError(future.GetValueSync()));
         }

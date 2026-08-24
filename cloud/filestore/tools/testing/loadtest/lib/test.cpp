@@ -1122,7 +1122,9 @@ public:
                 MakeTestTag().c_str(),
                 ProtoMessagePrinter.ToString(*request).c_str());
 
-            TCallContextPtr ctx = MakeIntrusive<TCallContext>();
+            const auto requestId = CreateRequestId();
+            request->MutableHeaders()->SetRequestId(requestId);
+            TCallContextPtr ctx = MakeIntrusive<TCallContext>(requestId);
             auto result = Client->CreateFileStore(ctx, request);
             WaitForCompletion(GetRequestName(*request), result);
         }
@@ -1161,7 +1163,9 @@ public:
             auto request = std::make_shared<NProto::TDestroyFileStoreRequest>();
             request->SetFileSystemId(filesystemId);
 
-            TCallContextPtr ctx = MakeIntrusive<TCallContext>();
+            const auto requestId = CreateRequestId();
+            request->MutableHeaders()->SetRequestId(requestId);
+            TCallContextPtr ctx = MakeIntrusive<TCallContext>(requestId);
             auto result = Client->DestroyFileStore(ctx, request);
             WaitForCompletion(GetRequestName(*request), result);
         }

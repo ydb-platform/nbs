@@ -513,7 +513,9 @@ private:
 
         for (size_t i = 0; i < requests.size(); ++i) {
             auto& request = requests[i];
-            auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
+            auto callContext = MakeIntrusive<TCallContext>(
+                FileSystemId,
+                CreateRequestId());
 
             callContext->RequestType = EFileStoreRequest::WriteData;
             callContext->RequestSize =

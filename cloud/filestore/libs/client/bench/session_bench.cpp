@@ -118,14 +118,14 @@ struct TSessionSetup
     TFuture<NProto::TReadDataResponse> ReadData()
     {
         return Session->ReadData(
-            MakeIntrusive<TCallContext>(FileSystemId),
+            MakeIntrusive<TCallContext>(FileSystemId, CreateRequestId()),
             std::make_shared<NProto::TReadDataRequest>());
     }
 
     TFuture<NProto::TWriteDataResponse> WriteData()
     {
         return Session->WriteData(
-            MakeIntrusive<TCallContext>(FileSystemId),
+            MakeIntrusive<TCallContext>(FileSystemId, CreateRequestId()),
             std::make_shared<NProto::TWriteDataRequest>());
     }
 

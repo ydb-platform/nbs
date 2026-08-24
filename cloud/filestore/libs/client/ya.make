@@ -14,6 +14,7 @@ PEERDIR(
     cloud/filestore/public/api/grpc
     cloud/filestore/public/api/protos
 
+    cloud/filestore/libs/diagnostics
     cloud/filestore/libs/service
 
     cloud/storage/core/libs/common

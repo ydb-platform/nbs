@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -27,6 +28,19 @@ namespace {
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr size_t MaxRetryCount = 3;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TFuture<NProto::TPingResponse> SendPing(IFileStoreService& client)
+{
+    const auto requestId = CreateRequestId();
+    auto request = std::make_shared<NProto::TPingRequest>();
+    request->MutableHeaders()->SetRequestId(requestId);
+
+    return client.Ping(
+        MakeIntrusive<TCallContext>(requestId),
+        std::move(request));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -127,9 +141,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             return MakeFuture(std::move(response));
         };
 
-        auto future = bootstrap.Durable->Ping(
-            MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>());
+        auto future = SendPing(*bootstrap.Durable);
 
         const auto& response = future.GetValue(WaitTimeout);
         UNIT_ASSERT(!HasError(response));
@@ -152,9 +164,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             return MakeFuture(std::move(response));
         };
 
-        auto future = bootstrap.Durable->Ping(
-            MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>());
+        auto future = SendPing(*bootstrap.Durable);
 
         const auto& response = future.GetValue(WaitTimeout);
         UNIT_ASSERT(HasError(response));
@@ -175,9 +185,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             IFileStoreServicePtr durable = std::move(bootstrap.Durable);
             UNIT_ASSERT(!bootstrap.Durable);
 
-            future = durable->Ping(
-                MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TPingRequest>());
+            future = SendPing(*durable);
 
             durable->Stop();
         }
@@ -209,9 +217,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             IFileStoreServicePtr durable = std::move(bootstrap.Durable);
             UNIT_ASSERT(!bootstrap.Durable);
 
-            future = durable->Ping(
-                MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TPingRequest>());
+            future = SendPing(*durable);
 
             durable->Stop();
         }
@@ -360,9 +366,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             return MakeFuture<NProto::TPingResponse>(TErrorResponse(E_REJECTED));
         };
 
-        auto future = bootstrap.Durable->Ping(
-            MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>());
+        auto future = SendPing(*bootstrap.Durable);
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(

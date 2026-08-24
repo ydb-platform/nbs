@@ -166,8 +166,10 @@ private:
         }
         file.Close();
 
-        auto ctx = MakeIntrusive<TCallContext>();
+        const auto requestId = CreateRequestId();
+        auto ctx = MakeIntrusive<TCallContext>(requestId);
         auto req = std::make_shared<NProto::TMmapRequest>();
+        req->MutableHeaders()->SetRequestId(requestId);
         req->SetFilePath(FilePath);
         req->SetSize(ShmSize);
         req->SetPageSize(PageSize);
@@ -188,8 +190,10 @@ private:
     void TeardownSharedMemory()
     {
         if (RegionId != 0) {
-            auto ctx = MakeIntrusive<TCallContext>();
+            const auto requestId = CreateRequestId();
+            auto ctx = MakeIntrusive<TCallContext>(requestId);
             auto req = std::make_shared<NProto::TMunmapRequest>();
+            req->MutableHeaders()->SetRequestId(requestId);
             req->SetId(RegionId);
             ShmControl->Munmap(std::move(ctx), std::move(req)).Wait();
             RegionId = 0;
@@ -218,8 +222,10 @@ private:
             return;
         }
 
-        auto ctx = MakeIntrusive<TCallContext>();
+        const auto requestId = CreateRequestId();
+        auto ctx = MakeIntrusive<TCallContext>(requestId);
         auto req = std::make_shared<NProto::TPingMmapRegionRequest>();
+        req->MutableHeaders()->SetRequestId(requestId);
         req->SetId(RegionId);
 
         ShmControl->PingMmapRegion(std::move(ctx), std::move(req))

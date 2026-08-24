@@ -69,7 +69,7 @@ private:
     ui64 WriteBytes = DefaultBlockSize;
     ui64 InitialFileSize = 0;
 
-    std::atomic<ui64> LastRequestId = 0;
+    std::atomic<ui64> LastRequestId = 1;
 
 public:
     TDatashardLikeRequestGenerator(

@@ -5,6 +5,7 @@
 
 #include <cloud/filestore/public/api/grpc/service.grpc.pb.h>
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/endpoint.h>
 #include <cloud/filestore/libs/service/filestore.h>
@@ -37,6 +38,7 @@
 #include <util/string/join.h>
 #include <util/system/spinlock.h>
 #include <util/system/thread.h>
+#include <util/system/yassert.h>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -288,7 +290,10 @@ private:
         }
 
         RequestId = CallContext->RequestId;
+        Y_DEBUG_ABORT_UNLESS(RequestId);
         if (!RequestId) {
+            ReportClientRequestIdIsZero(
+                TStringBuilder() << GetRequestInfo(*Request));
             RequestId = CreateRequestId();
             headers.SetRequestId(RequestId);
         }
