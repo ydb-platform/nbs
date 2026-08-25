@@ -31,9 +31,11 @@ FILESTORE_CLIENT_BIN="cloud/filestore/apps/client/filestore-client"
 FILESTORE_SERVER_BIN="cloud/filestore/apps/server/filestore-server"
 FILESTORE_VHOST_BIN="cloud/filestore/apps/vhost/filestore-vhost"
 QEMU_IMAGE="cloud/storage/core/tools/testing/qemu/image-noble/rootfs.img"
+LIBFUSE_SO="contrib/libs/fuse/dynamic/libfuse.so"
+LIBVIRTIOFSD_SO="cloud/contrib/virtiofsd/dynamic/libvirtiofsd.so"
 
 # create symlinks
-for file in $YDBD_BIN $FILESTORE_CLIENT_BIN $FILESTORE_SERVER_BIN $FILESTORE_VHOST_BIN $QEMU_IMAGE; do
+for file in $YDBD_BIN $FILESTORE_CLIENT_BIN $FILESTORE_SERVER_BIN $FILESTORE_VHOST_BIN $QEMU_IMAGE $LIBFUSE_SO $LIBVIRTIOFSD_SO; do
     ln -svf $BUILD_ROOT/$file $BIN_DIR/
 done
 

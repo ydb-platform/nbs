@@ -42,10 +42,7 @@ cd cloud/filestore/bin
 ```bash
 export REPO_ROOT=<path-to-repo-root>
 
-export FILESTORE_APPS_PATH=cloud/filestore/buildall/cloud/filestore/apps
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/$FILESTORE_APPS_PATH/client
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/$FILESTORE_APPS_PATH/server
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/$FILESTORE_APPS_PATH/vhost
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$REPO_ROOT/cloud/filestore/bin
 ```
 
 - use initctl.sh to format and initialize kikimr service

@@ -7,6 +7,8 @@ PEERDIR(
     cloud/filestore/apps/vhost
     cloud/storage/core/tools/testing/qemu/bin
     cloud/storage/core/tools/testing/qemu/image-noble
+    contrib/libs/fuse/dynamic
+    cloud/contrib/virtiofsd/dynamic
 )
 
 END()
