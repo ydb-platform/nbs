@@ -331,7 +331,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(BlockChecksumsInProfileLogEnabled, bool,      false                   )\
                                                                                \
     xxx(MinShardCount,                     ui32,      0                       )\
-    xxx(MaxShardCount,                     ui32,      1000                     )\
+    xxx(MaxShardCount,                     ui32,      254                     )\
                                                                                \
     xxx(ReadBlobDisabled,                  bool,      false                   )\
     xxx(WriteBlobDisabled,                 bool,      false                   )\
@@ -400,10 +400,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FanoutStatsCollectionInShardsDisabled,         bool,    false         )\
                                                                                \
     xxx(EnableLoadActor,                               bool,    false         )\
-    xxx(MaxNodeDiagnosticEntries,                      ui32,    10000             )\
-    xxx(NodeAccessCountHalfLife,                  TDuration,   TDuration::Minutes(10)             )\
-    xxx(MaxSlowestRequestsEntries,                     ui32,    10000             )\
-    xxx(NodeLatencyHalfLife,                      TDuration,   TDuration::Minutes(10)             )\
+    xxx(MaxNodeDiagnosticEntries,                      ui32,    0             )\
+    xxx(NodeAccessCountHalfLife,                  TDuration,   {}             )\
+    xxx(MaxSlowestRequestsEntries,                     ui32,    0             )\
+    xxx(NodeLatencyHalfLife,                      TDuration,   {}             )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
