@@ -68,8 +68,20 @@ def stable_span_id(*parts: object) -> bytes:
     return _stable_id(*parts, size=8)
 
 
+def _ns_from_proto(value: object) -> Ns:
+    return Ns(0 if value is None else value)  # type: ignore[arg-type]
+
+
+def _ns_value(value: object, field: str) -> int:
+    if not isinstance(value, Ns):
+        raise TypeError(f"{field} must be Ns")
+    return value.value
+
+
 def span_duration_ns(span: Span) -> Ns:
-    return Ns(max(0, (span.end_time_unix_nano or 0) - (span.start_time_unix_nano or 0)))
+    start_ns = _ns_from_proto(span.start_time_unix_nano)
+    end_ns = _ns_from_proto(span.end_time_unix_nano)
+    return Ns(max(0, end_ns.value - start_ns.value))
 
 
 def span_status_code(span: Span) -> int:
@@ -89,8 +101,8 @@ def make_span(
     trace_id: bytes,
     span_id: bytes,
     name: str,
-    start_ns: Ns | int,
-    end_ns: Ns | int,
+    start_ns: Ns,
+    end_ns: Ns,
     parent_span_id: bytes = b"",
     attributes: Mapping[str, Any] | None = None,
     events: Sequence[Span.Event] = (),
@@ -103,8 +115,8 @@ def make_span(
         parent_span_id=parent_span_id,
         name=name,
         kind=Span.SpanKind.SPAN_KIND_INTERNAL,
-        start_time_unix_nano=Ns(start_ns),
-        end_time_unix_nano=Ns(end_ns),
+        start_time_unix_nano=_ns_value(start_ns, "start_ns"),
+        end_time_unix_nano=_ns_value(end_ns, "end_ns"),
         attributes=encode_attributes(attributes or {}),
         events=list(events),
         status=Status(
@@ -117,12 +129,12 @@ def make_span(
 def make_event(
     *,
     name: str,
-    time_ns: Ns | int,
+    time_ns: Ns,
     attributes: Mapping[str, Any] | None = None,
 ) -> Span.Event:
     return Span.Event(
         name=name,
-        time_unix_nano=Ns(time_ns),
+        time_unix_nano=_ns_value(time_ns, "time_ns"),
         attributes=encode_attributes(attributes or {}),
     )
 
@@ -139,18 +151,19 @@ def validate_span(span: Span) -> None:
         len(span.parent_span_id) != 8 or span.parent_span_id == b"\0" * 8
     ):
         raise ValueError(f"Invalid parent span ID for {span.name!r}")
-    start_ns = Ns(span.start_time_unix_nano or 0)
-    end_ns = Ns(span.end_time_unix_nano or 0)
-    if end_ns < start_ns or start_ns > MAX_UINT64 or end_ns > MAX_UINT64:
+    start_ns = _ns_from_proto(span.start_time_unix_nano)
+    end_ns = _ns_from_proto(span.end_time_unix_nano)
+    if end_ns < start_ns or start_ns.value > MAX_UINT64 or end_ns.value > MAX_UINT64:
         raise ValueError(f"Invalid timestamps for {span.name!r}")
-    if any(Ns(event.time_unix_nano or 0) > MAX_UINT64 for event in span.events):
+    event_times_ns = (_ns_from_proto(event.time_unix_nano) for event in span.events)
+    if any(time_ns.value > MAX_UINT64 for time_ns in event_times_ns):
         raise ValueError(f"Invalid event timestamp for {span.name!r}")
     if span_status_code(span) not in {0, 1, 2}:
         raise ValueError(f"Invalid status code for {span.name!r}")
 
 
 def normalize_span_times(span: Span) -> None:
-    span.start_time_unix_nano = Ns(span.start_time_unix_nano or 0)
-    span.end_time_unix_nano = Ns(span.end_time_unix_nano or 0)
+    span.start_time_unix_nano = _ns_from_proto(span.start_time_unix_nano).value
+    span.end_time_unix_nano = _ns_from_proto(span.end_time_unix_nano).value
     for event in span.events:
-        event.time_unix_nano = Ns(event.time_unix_nano or 0)
+        event.time_unix_nano = _ns_from_proto(event.time_unix_nano).value

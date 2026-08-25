@@ -76,12 +76,13 @@ Unix nanoseconds. Ya inputs do not all use that unit:
 | Test `value.time` | seconds | `Ns.from_s_or_zero(value)` |
 | Event-log `value.time=[start,end]` | Unix seconds | `Ns.from_s(start/end)` |
 | Critical-path `start_ts`, `end_ts`, `elapsed` | milliseconds | `Ns.from_ms(...)` or seconds for attributes |
-| CLI `--attempt-start-ns`, `--attempt-end-ns` | Unix nanoseconds | `Ns(value)` |
+| CLI `--attempt-start-ns`, `--attempt-end-ns` | Unix nanoseconds | `Ns(int(value))` |
 
-[`Ns`](otlp/time.py) is an `int` subtype that documents and validates a
-non-negative nanosecond value. [`Interval`](otlp/time.py) contains two `Ns`
-values and provides the operations used throughout matching and clipping:
-`len(interval)`, `clamp`, `overlap`, `boundary_distance`, and `intersection`.
+[`Ns`](otlp/time.py) is a frozen value object containing a non-negative integer
+nanosecond count. Its arithmetic preserves the type and rejects mixed operands.
+[`Interval`](otlp/time.py) requires `Ns` boundaries instead of coercing plain
+integers. Unit conversions round to the nearest nanosecond; inputs that need
+exact decimal preservation should be parsed as `Decimal` before conversion.
 
 For example:
 
