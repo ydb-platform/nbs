@@ -463,8 +463,6 @@ def test_do_not_restore_endpoint_with_missing_volume():
     blocks_count = 10000
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
-    volume_created = False
-    endpoint_started = False
     try:
         result = run(
             "createvolume",
@@ -476,7 +474,6 @@ def test_do_not_restore_endpoint_with_missing_volume():
             str(block_size),
         )
         assert result.returncode == 0
-        volume_created = True
 
         result = run(
             "startendpoint",
@@ -491,7 +488,6 @@ def test_do_not_restore_endpoint_with_missing_volume():
             nbd_device
         )
         assert result.returncode == 0
-        endpoint_started = True
 
         shutil.copytree(endpoints_dir, backup_endpoints_dir)
 
@@ -499,20 +495,18 @@ def test_do_not_restore_endpoint_with_missing_volume():
         log_called_process_error(e)
         raise
     finally:
-        if endpoint_started:
-            run(
-                "stopendpoint",
-                "--socket",
-                socket_path,
-            )
+        run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
 
-        if volume_created:
-            run(
-                "destroyvolume",
-                "--disk-id",
-                volume_name,
-                input=volume_name,
-            )
+        run(
+            "destroyvolume",
+            "--disk-id",
+            volume_name,
+            input=volume_name,
+        )
 
         cleanup_after_test(env)
 
