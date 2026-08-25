@@ -145,8 +145,8 @@ message TLocalServiceConfig
     // Async processing of destroy handle requests
     optional bool AsyncDestroyHandleEnabled = 12;
 
-    // Period of processing create/destroy handle requests
-    optional uint32 AsyncHandleOperationPeriod = 13;
+    // Polling period when the async handle operations queue is empty.
+    optional uint32 AsyncHandleOperationIdlePeriod = 13;
 
     // Use open_by_handle_at to lookup nodes
     optional bool OpenNodeByHandleEnabled = 14;
@@ -234,6 +234,9 @@ message TLocalServiceConfig
 
     // Async processing of destroy handle requests only for read only handles.
     optional bool AsyncDestroyReadOnlyHandleEnabled = 42;
+
+    // Delay between processing entries in the async handle operations queue.
+    optional uint32 AsyncHandleOperationDrainPeriod = 43;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

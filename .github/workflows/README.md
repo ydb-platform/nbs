@@ -67,14 +67,14 @@ cat <<EOF > /tmp/act-pr-event.json
 EOF
 act pull_request --bind \
   -W .github/workflows/pr-github-actions.yaml \
-  -j check-trigger-label \
+  -j check-running-allowed \
   -e /tmp/act-pr-event.json \
   -P self-hosted=ghcr.io/catthehacker/ubuntu:act-latest \
   -P runner_light=ghcr.io/catthehacker/ubuntu:act-latest \
   --pull=false
 ```
 
-The allowed-label case should also set `allowed=true`:
+The allowed-label case should run `check-running-allowed`:
 
 ```bash
 cat <<EOF > /tmp/act-pr-event-large-tests.json
@@ -107,14 +107,15 @@ cat <<EOF > /tmp/act-pr-event-large-tests.json
 EOF
 act pull_request --bind \
   -W .github/workflows/pr-github-actions.yaml \
-  -j check-trigger-label \
+  -j check-running-allowed \
   -e /tmp/act-pr-event-large-tests.json \
   -P self-hosted=ghcr.io/catthehacker/ubuntu:act-latest \
   -P runner_light=ghcr.io/catthehacker/ubuntu:act-latest \
+  --var LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS="['large-tests']" \
   --pull=false
 ```
 
-The ignored-label case should set `allowed=false`:
+The ignored-label case should skip `check-running-allowed`:
 
 ```bash
 cat <<EOF > /tmp/act-pr-event-doc-label.json
@@ -147,9 +148,10 @@ cat <<EOF > /tmp/act-pr-event-doc-label.json
 EOF
 act pull_request --bind \
   -W .github/workflows/pr-github-actions.yaml \
-  -j check-trigger-label \
+  -j check-running-allowed \
   -e /tmp/act-pr-event-doc-label.json \
   -P self-hosted=ghcr.io/catthehacker/ubuntu:act-latest \
   -P runner_light=ghcr.io/catthehacker/ubuntu:act-latest \
+  --var LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS="['large-tests']" \
   --pull=false
 ```

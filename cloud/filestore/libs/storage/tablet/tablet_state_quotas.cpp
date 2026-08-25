@@ -63,6 +63,11 @@ void TIndexTabletState::LoadQuotaUsages(const TVector<TQuotaUsage>& usages)
     }
 }
 
+const TQuotaUsage* TIndexTabletState::FindQuotaUsage(ui32 quotaId) const
+{
+    return Impl->Quotas.FindUsage(quotaId);
+}
+
 TVector<TQuotaUsage> TIndexTabletState::GetQuotaUsages() const
 {
     return Impl->Quotas.GetUsages();

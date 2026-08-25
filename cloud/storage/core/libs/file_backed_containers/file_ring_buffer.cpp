@@ -2,6 +2,7 @@
 #include "file_ring_buffer_accessor.h"
 #include "file_ring_buffer_format.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
@@ -15,7 +16,7 @@
 #include <util/system/compiler.h>
 #include <util/system/filemap.h>
 
-#include <span>
+#include <atomic>
 
 namespace NCloud {
 
@@ -120,6 +121,16 @@ THeader InitHeader(const TFileRingBufferArgs& args)
     return res;
 }
 
+NProto::TError MakeBufferIsCorruptError()
+{
+    return MakeError(E_INVALID_STATE, "Buffer is corrupted");
+}
+
+NProto::TError MakeInvalidPointerError()
+{
+    return MakeError(E_ARGUMENT, "Invalid pointer");
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -129,7 +140,7 @@ class TFileRingBuffer::TImpl
 private:
     const TFileRingBufferArgs Args;
     TFileMapFileRingBufferAccessor Accessor;
-    bool Corrupted = false;
+    std::atomic<bool> Corrupted = false;
 
     TEntryInfo CurrentAllocation = TEntryInfo::CreateInvalid();
     ui64 MaxObservedEntryByteCount = 0;
@@ -482,64 +493,68 @@ public:
         }
     }
 
-    bool PushBack(TStringBuf data)
+    TPushBackResult PushBack(TStringBuf data)
     {
         if (!ValidateAccess("PushBack")) {
-            return false;
+            return TPushBackResult(MakeBufferIsCorruptError());
         }
 
-        auto allocationStatus = Alloc(data.size());
-        if (HasError(allocationStatus) ||
-            allocationStatus.GetResult() == nullptr)
-        {
-            return false;
+        auto allocationResult = Alloc(data.size());
+        if (allocationResult.AllocationPtr == nullptr) {
+            return TPushBackResult(allocationResult.Error);
         }
 
-        data.copy(allocationStatus.GetResult(), data.size());
+        data.copy(allocationResult.AllocationPtr, data.size());
 
-        return Commit();
+        auto commitResult = Commit();
+
+        if (HasError(commitResult)) {
+            return TPushBackResult(commitResult);
+        }
+
+        return TPushBackResult(true);
     }
 
-    TResultOrError<char*> Alloc(size_t size)
+    TAllocResult Alloc(size_t size)
     {
-        if (CurrentAllocation.HasValue()) {
-            return MakeError(
-                E_INVALID_STATE,
-                "Previous allocation is not committed");
+        if (!ValidateAccess("Alloc")) {
+            return TAllocResult(MakeBufferIsCorruptError());
         }
 
-        if (!ValidateAccess("Alloc")) {
-            return MakeError(E_INVALID_STATE, "Buffer is corrupted");
+        if (CurrentAllocation.HasValue()) {
+            return TAllocResult(MakeError(
+                E_INVALID_STATE,
+                "Previous allocation is not committed"));
         }
 
         if (size == 0) {
-            return MakeError(
+            return TAllocResult(MakeError(
                 E_ARGUMENT,
-                "Zero size allocations are not allowed");
+                "Zero size allocations are not allowed"));
         }
 
         if (IsMigrationNeeded()) {
             // Return "storage is full" error.
             // Migration will happen when the buffer is emptied.
-            return nullptr;
+            return TAllocResult(nullptr);
         }
 
         if (size > Capabilities().MaxAllocationByteCount) {
-            return MakeError(
+            return TAllocResult(MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "Allocation data size (" << size
                     << ") exceeds maximum allowed size ("
-                    << Capabilities().MaxAllocationByteCount << ")");
+                    << Capabilities().MaxAllocationByteCount << ")"));
         }
 
         const auto sz = Data()->GetEntrySize(size);
         if (sz > Header()->DataCapacity) {
-            return MakeError(
+            return TAllocResult(MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "Allocation entry size (" << sz
                                  << ") exceeds DataCapacity ("
-                                 << Header()->DataCapacity << ")");
+                                 << Header()->DataCapacity << ")"));
         }
         auto writePos = Header()->WritePos;
 
@@ -560,7 +575,7 @@ public:
                 if (freeSpace < sz) {
                     if (Header()->ReadPos <= sz) {
                         // out of space
-                        return nullptr;
+                        return TAllocResult(nullptr);
                     }
                     WriteSlackSpaceMarker(Header()->WritePos);
                     writePos = 0;
@@ -571,7 +586,7 @@ public:
                 // there should remain free space between the occupied regions
                 if (freeSpace <= sz) {
                     // out of space
-                    return nullptr;
+                    return TAllocResult(nullptr);
                 }
             }
         }
@@ -587,13 +602,17 @@ public:
             {.DataSize = static_cast<ui32>(size)},
             ptr);
 
-        return ptr;
+        return TAllocResult(ptr);
     }
 
-    bool Commit()
+    NProto::TError Commit()
     {
+        if (!ValidateAccess("Commit")) {
+            return MakeBufferIsCorruptError();
+        }
+
         if (!CurrentAllocation.HasValue()) {
-            return false;
+            return MakeError(E_ARGUMENT, "No allocation to commit");
         }
 
         CurrentAllocation.Header.DataChecksum =
@@ -603,7 +622,12 @@ public:
             CurrentAllocation.ActualPos,
             CurrentAllocation.Header);
 
-        Y_ABORT_UNLESS(written);
+        if (!written) {
+            SetCorrupted(
+                TStringBuilder() << "Cannot write entry header at "
+                                 << CurrentAllocation.ActualPos);
+            return MakeBufferIsCorruptError();
+        }
 
         // A compiler-only fence is sufficient here because there is no
         // concurrent access to the memory and we just need to ensure
@@ -617,30 +641,43 @@ public:
         EntryMap[CurrentAllocation.Data] = CurrentAllocation.ActualPos;
 
         CurrentAllocation = TEntryInfo::CreateInvalid();
-        return true;
+        return {};
     }
 
-    bool Free(const void* ptr)
+    NProto::TError Free(const void* ptr)
     {
         if (!ValidateAccess("Free")) {
-            return false;
+            return MakeBufferIsCorruptError();
         }
 
         auto it = EntryMap.find(ptr);
         if (it == EntryMap.end()) {
-            return false;
+            return MakeInvalidPointerError();
         }
 
         auto eh = Data()->ReadEntryHeader(it->second);
         eh.DataChecksum = 0;
         eh.FreeFlag = true;
-        Data()->WriteEntryHeader(it->second, eh);
+
+        bool written = Data()->WriteEntryHeader(it->second, eh);
+
+        if (!written) {
+            SetCorrupted(
+                TStringBuilder()
+                << "Cannot write entry header at " << it->second);
+            return MakeBufferIsCorruptError();
+        }
 
         EntryMap.erase(it);
 
         EraseFreeEntriesFromFront();
 
-        return true;
+        if (IsCorrupted()) {
+            // EraseFreeEntriesFromFront() may set IsCorrupted flag
+            return MakeBufferIsCorruptError();
+        }
+
+        return {};
     }
 
     ui32 GetMaxTag() const
@@ -648,65 +685,95 @@ public:
         return Capabilities().MaxTag;
     }
 
-    ui32 GetTag(const void* ptr) const
+    TGetTagResult GetTag(const void* ptr) const
     {
         if (!ValidateAccess("GetTag")) {
-            return 0;
+            return TGetTagResult(MakeBufferIsCorruptError());
         }
 
         auto it = EntryMap.find(ptr);
         if (it == EntryMap.end()) {
-            return 0;
+            return TGetTagResult(MakeInvalidPointerError());
         }
 
         auto eh = Data()->ReadEntryHeader(it->second);
-        return eh.Tag;
+        return TGetTagResult(eh.Tag);
     }
 
-    void SetTag(const void* ptr, ui32 tag)
+    NProto::TError SetTag(const void* ptr, ui32 tag)
     {
         if (!ValidateAccess("SetTag")) {
-            return;
+            return MakeBufferIsCorruptError();
         }
 
         auto it = EntryMap.find(ptr);
         if (it == EntryMap.end()) {
-            return;
+            return MakeInvalidPointerError();
+        }
+
+        if (tag > Capabilities().MaxTag) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Tag value (" << tag
+                                 << ") exceeds maximum allowed value ("
+                                 << Capabilities().MaxTag << ")");
         }
 
         auto eh = Data()->ReadEntryHeader(it->second);
         eh.Tag = tag;
-        Data()->WriteEntryHeader(it->second, eh);
+
+        bool written = Data()->WriteEntryHeader(it->second, eh);
+
+        if (!written) {
+            SetCorrupted(
+                TStringBuilder()
+                << "Cannot write entry header at " << it->second);
+            return MakeBufferIsCorruptError();
+        }
+
+        return {};
     }
 
-    TStringBuf Front()
+    TFrontResult Front()
     {
         if (!ValidateAccess("Front")) {
-            return {};
+            return TFrontResult(MakeBufferIsCorruptError());
         }
 
         auto e = GetFrontEntry();
 
         if (e.IsInvalid()) {
             SetCorrupted("Invalid front entry");
-            return {};
+            return TFrontResult(MakeBufferIsCorruptError());
         }
 
-        return e.GetData();
+        return TFrontResult(e.GetData());
     }
 
-    void PopFront()
+    TPopFrontResult PopFront()
     {
         if (!ValidateAccess("PopFront")) {
-            return;
+            return TPopFrontResult(MakeBufferIsCorruptError());
         }
 
-        auto cur = GetFrontEntry();
-        if (!cur.HasValue()) {
-            return;
+        auto e = GetFrontEntry();
+
+        if (e.IsInvalid()) {
+            SetCorrupted("Invalid front entry");
+            return TPopFrontResult(MakeBufferIsCorruptError());
         }
 
-        Free(cur.Data);
+        if (!e.HasValue()) {
+            return TPopFrontResult(false);
+        }
+
+        auto status = Free(e.Data);
+
+        if (HasError(status)) {
+            return TPopFrontResult(status);
+        }
+
+        return TPopFrontResult(true);
     }
 
     ui64 Size() const
@@ -735,10 +802,10 @@ public:
         return !IsCorrupted();
     }
 
-    void Visit(const TVisitor& visitor)
+    NProto::TError Visit(const TVisitor& visitor)
     {
         if (!ValidateAccess("Visit")) {
-            return;
+            return MakeBufferIsCorruptError();
         }
 
         VisitEntries(
@@ -748,17 +815,24 @@ public:
                     visitor(e.Header.DataChecksum, e.GetTag(), e.GetData());
                 }
             });
+
+        if (IsCorrupted()) {
+            // VisitEntries may set IsCorrupted flag during entry enumeration
+            return MakeBufferIsCorruptError();
+        }
+
+        return {};
     }
 
     bool IsCorrupted() const
     {
-        return Corrupted;
+        return Corrupted.load(std::memory_order_relaxed);
     }
 
     void SetCorrupted(const TString& message)
     {
-        if (!Corrupted) {
-            Corrupted = true;
+        auto prevValue = Corrupted.exchange(true);
+        if (!prevValue) {
             ReportFileRingBufferCorruptionDetectedError(
                 "Corruption detected in FileRingBuffer, path: " +
                 Args.FilePath + ", message: " + message);
@@ -826,38 +900,38 @@ public:
         return Capabilities().MaxAllocationByteCount;
     }
 
-    TStringBuf GetMetadata()
+    TGetMetadataResult GetMetadata()
     {
         if (!ValidateAccess("GetMetadata")) {
-            return {};
+            return TGetMetadataResult(MakeBufferIsCorruptError());
         }
 
         auto data = Accessor.GetRawMetadata();
 
         if (Header()->MetadataSize > data.size()) {
             SetCorrupted("Invalid MetadataSize");
-            return {};
+            return TGetMetadataResult(MakeBufferIsCorruptError());
         }
 
-        return {data.data(), Header()->MetadataSize};
+        return TGetMetadataResult({data.data(), Header()->MetadataSize});
     }
 
-    bool SetMetadata(TStringBuf buf)
+    TSetMetadataResult SetMetadata(TStringBuf buf)
     {
         if (!ValidateAccess("SetMetadata")) {
-            return false;
+            return TSetMetadataResult(MakeBufferIsCorruptError());
         }
 
         auto data = Accessor.GetRawMetadata();
 
         if (buf.size() > data.size()) {
-            return false;
+            return TSetMetadataResult(false);
         }
 
         Header()->MetadataSize = buf.size();
         Header()->MetadataChecksum = Crc32c(buf.data(), buf.size());
         buf.copy(data.data(), buf.size());
-        return true;
+        return TSetMetadataResult(true);
     }
 };
 
@@ -877,22 +951,22 @@ TFileRingBuffer::TFileRingBuffer(
 
 TFileRingBuffer::~TFileRingBuffer() = default;
 
-bool TFileRingBuffer::PushBack(TStringBuf data)
+TFileRingBuffer::TPushBackResult TFileRingBuffer::PushBack(TStringBuf data)
 {
     return Impl->PushBack(data);
 }
 
-TResultOrError<char*> TFileRingBuffer::Alloc(size_t size)
+TFileRingBuffer::TAllocResult TFileRingBuffer::Alloc(size_t size)
 {
     return Impl->Alloc(size);
 }
 
-bool TFileRingBuffer::Commit()
+NProto::TError TFileRingBuffer::Commit()
 {
     return Impl->Commit();
 }
 
-bool TFileRingBuffer::Free(const void* ptr)
+NProto::TError TFileRingBuffer::Free(const void* ptr)
 {
     return Impl->Free(ptr);
 }
@@ -902,24 +976,24 @@ ui32 TFileRingBuffer::GetMaxTag() const
     return Impl->GetMaxTag();
 }
 
-ui32 TFileRingBuffer::GetTag(const void* ptr) const
+TFileRingBuffer::TGetTagResult TFileRingBuffer::GetTag(const void* ptr) const
 {
     return Impl->GetTag(ptr);
 }
 
-void TFileRingBuffer::SetTag(const void* ptr, ui32 tag)
+NProto::TError TFileRingBuffer::SetTag(const void* ptr, ui32 tag)
 {
-    Impl->SetTag(ptr, tag);
+    return Impl->SetTag(ptr, tag);
 }
 
-TStringBuf TFileRingBuffer::Front()
+TFileRingBuffer::TFrontResult TFileRingBuffer::Front()
 {
     return Impl->Front();
 }
 
-void TFileRingBuffer::PopFront()
+TFileRingBuffer::TPopFrontResult TFileRingBuffer::PopFront()
 {
-    Impl->PopFront();
+    return Impl->PopFront();
 }
 
 ui64 TFileRingBuffer::Size() const
@@ -937,9 +1011,9 @@ bool TFileRingBuffer::Validate()
     return Impl->Validate();
 }
 
-void TFileRingBuffer::Visit(const TVisitor& visitor)
+NProto::TError TFileRingBuffer::Visit(const TVisitor& visitor)
 {
-    Impl->Visit(visitor);
+    return Impl->Visit(visitor);
 }
 
 bool TFileRingBuffer::IsCorrupted() const
@@ -982,12 +1056,12 @@ ui64 TFileRingBuffer::GetMaxSupportedAllocationByteCount() const
     return Impl->GetMaxSupportedAllocationByteCount();
 }
 
-TStringBuf TFileRingBuffer::GetMetadata() const
+TFileRingBuffer::TGetMetadataResult TFileRingBuffer::GetMetadata() const
 {
     return Impl->GetMetadata();
 }
 
-bool TFileRingBuffer::SetMetadata(TStringBuf data)
+TFileRingBuffer::TSetMetadataResult TFileRingBuffer::SetMetadata(TStringBuf data)
 {
     return Impl->SetMetadata(data);
 }

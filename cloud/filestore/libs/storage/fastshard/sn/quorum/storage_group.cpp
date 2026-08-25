@@ -104,8 +104,10 @@ public:
             auto* w = request.AddPageGroups();
             w->SetFirstPageNo(pg.FirstPageNo);
             w->MutableContent()->Reserve(pg.Content.size());
-            for (auto& c: pg.Content) {
-                *w->AddContent() = std::move(c);
+            for (const auto& c: pg.Content) {
+                // proto content is TString - the copy stays until the
+                // protocol itself switches away from TString
+                w->AddContent()->assign(c.Data(), c.Size());
             }
         }
         SILK_DEBUG("sg write: %s", DebugMessage(request).c_str());
@@ -146,8 +148,8 @@ public:
                 auto& r = pageGroups->emplace_back();
                 r.FirstPageNo = pg.GetFirstPageNo();
                 r.Content.reserve(pg.ContentSize());
-                for (auto& c: *pg.MutableContent()) {
-                    r.Content.emplace_back(std::move(c));
+                for (const auto& c: pg.GetContent()) {
+                    r.Content.emplace_back(c.data(), c.size());
                 }
             }
         }

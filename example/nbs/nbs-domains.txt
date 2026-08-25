@@ -1,6 +1,6 @@
 Domain {
   DomainId: 1
-  SchemeRoot: 72075186232723360
+  SchemeRoot: 72057594046678944
   SSId: 1
   HiveUid: 1
   PlanResolution: 10
@@ -33,9 +33,15 @@ Domain {
       }
     }
   }
-  ExplicitMediators: 72075186232426497
-  ExplicitCoordinators: 72075186232360961
-  ExplicitAllocators: 72075186232492033
+  ExplicitMediators: 72057594046382081
+  ExplicitMediators: 72057594046382082
+  ExplicitMediators: 72057594046382083
+  ExplicitCoordinators: 72057594046316545
+  ExplicitCoordinators: 72057594046316546
+  ExplicitCoordinators: 72057594046316547
+  ExplicitAllocators: 72057594046447617
+  ExplicitAllocators: 72057594046447618
+  ExplicitAllocators: 72057594046447619
 }
 StateStorage {
   SSId: 1
@@ -48,4 +54,3 @@ HiveConfig {
   HiveUid: 1
   Hive: 72057594037968897
 }
-

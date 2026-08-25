@@ -41,7 +41,8 @@ public:
     bool GetAsyncDestroyHandleEnabled() const;
     bool GetAsyncDestroyReadOnlyHandleEnabled() const;
     bool GetAsyncCreateHandleEnabled() const;
-    TDuration GetAsyncHandleOperationPeriod() const;
+    TDuration GetAsyncHandleOperationIdlePeriod() const;
+    TDuration GetAsyncHandleOperationDrainPeriod() const;
 
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;
@@ -75,6 +76,9 @@ public:
     bool GetGuestHandleKillPrivV2Enabled() const;
 
     bool GetGuestPosixAclEnabled() const;
+
+    bool GetAvailabilityTrackingEnabled() const;
+    TDuration GetAvailabilityTrackingInterval() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

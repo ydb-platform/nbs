@@ -40,8 +40,8 @@ message TFileSystemConfig
     // Async processing of destroy handle requests.
     optional bool AsyncDestroyHandleEnabled = 11;
 
-    // Period of processing create/destroy handle requests.
-    optional uint32 AsyncHandleOperationPeriod = 12;
+    // Polling period when the async handle operations queue is empty.
+    optional uint32 AsyncHandleOperationIdlePeriod = 12;
 
     // Enable O_DIRECT when working with files
     optional bool DirectIoEnabled = 13;
@@ -127,4 +127,13 @@ message TFileSystemConfig
 
     // Async processing of read-only create handle requests.
     optional bool AsyncCreateHandleEnabled = 37;
+
+    // Enables the per-client filesystem availability tracking.
+    optional bool AvailabilityTrackingEnabled = 38;
+
+    // Availability interval duration (in ms); 0 means the default.
+    optional uint32 AvailabilityTrackingInterval = 39;
+
+    // Delay between processing entries in the async handle operations queue.
+    optional uint32 AsyncHandleOperationDrainPeriod = 40;
 }

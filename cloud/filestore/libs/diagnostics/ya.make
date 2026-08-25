@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    availability_counters.cpp
     config.cpp
     critical_events.cpp
     filesystem_counters.cpp

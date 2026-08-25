@@ -251,9 +251,14 @@ TString ReplaceMetadata(const TString& config, const TMainMetadata& metadata);
 TString UpgradeMainConfigVersion(const TString& config);
 
 /**
- * Takes valid MainConfig and increases version exactly by one
+ * Takes valid StorageConfig and increases version exactly by one
  */
 TString UpgradeStorageConfigVersion(const TString& config);
+
+/**
+ * Takes valid DatabaseConfig and increases version exactly by one
+ */
+TString UpgradeDatabaseConfigVersion(const TString& config);
 
 /**
  * Replaces metadata in database config

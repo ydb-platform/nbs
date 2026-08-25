@@ -264,7 +264,10 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AsyncCreateHandleEnabled,                       bool,       false     )\
     xxx(TabletUnsafeAsyncReadOnlyCreateHandleEnabled,   bool,       false     )\
     xxx(TabletUnsafeAsyncDestroyHandleEnabled,          bool,       false     )\
-    xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
+    xxx(AsyncHandleOperationIdlePeriod,                                        \
+                                       TDuration,  TDuration::MilliSeconds(50))\
+    xxx(AsyncHandleOperationDrainPeriod,                                       \
+                                       TDuration,  TDuration::Zero()          )\
     xxx(UnconfirmedCreateHandleGraceTimeout,                                   \
                                        TDuration,  TDuration::Minutes(2)      )\
                                                                                \
@@ -293,6 +296,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
+    xxx(AvailabilityTrackingEnabled,   bool,       false                      )\
+    xxx(AvailabilityTrackingInterval,  TDuration,  TDuration::Zero()          )\
     xxx(GuestCachingType,                                                      \
         NProto::EGuestCachingType,                                             \
         NProto::GCT_NONE                                                      )\

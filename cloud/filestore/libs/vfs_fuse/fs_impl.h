@@ -514,7 +514,7 @@ private:
 
     void ClearDirectoryCache();
 
-    void ScheduleProcessHandleOpsQueue();
+    void ScheduleProcessHandleOpsQueue(TDuration delay);
     void ProcessHandleOpsQueue();
 
     void DoWrite(

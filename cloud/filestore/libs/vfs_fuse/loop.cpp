@@ -988,6 +988,10 @@ private:
                 StorageMediaKind,
                 CalcCompletionQueueRequestBucketCount(*Config));
             FileSystemConfig = MakeFileSystemConfig(filestore);
+            if (FileSystemConfig->GetAvailabilityTrackingEnabled()) {
+                RequestStats->EnableAvailabilityTracking(
+                    FileSystemConfig->GetAvailabilityTrackingInterval());
+            }
 
             SessionId = response.GetSession().GetSessionId();
 
@@ -1295,8 +1299,14 @@ private:
             features.GetAsyncDestroyReadOnlyHandleEnabled());
         config.SetAsyncCreateHandleEnabled(
             features.GetAsyncCreateHandleEnabled());
-        config.SetAsyncHandleOperationPeriod(
-            features.GetAsyncHandleOperationPeriod());
+        // If the idle period is not published by the server, fall back to the
+        // default period.
+        if (features.GetAsyncHandleOperationIdlePeriod()) {
+            config.SetAsyncHandleOperationIdlePeriod(
+                features.GetAsyncHandleOperationIdlePeriod());
+        }
+        config.SetAsyncHandleOperationDrainPeriod(
+            features.GetAsyncHandleOperationDrainPeriod());
 
         config.SetDirectIoEnabled(features.GetDirectIoEnabled());
         config.SetDirectIoAlign(features.GetDirectIoAlign());
@@ -1345,6 +1355,13 @@ private:
         config.SetGuestHandleKillPrivV2Enabled(
             features.GetGuestHandleKillPrivV2Enabled());
         config.SetGuestPosixAclEnabled(features.GetGuestPosixAclEnabled());
+
+        config.SetAvailabilityTrackingEnabled(
+            features.GetAvailabilityTrackingEnabled());
+        if (features.GetAvailabilityTrackingInterval()) {
+            config.SetAvailabilityTrackingInterval(
+                features.GetAvailabilityTrackingInterval());
+        }
 
         return std::make_shared<TFileSystemConfig>(config);
     }
@@ -1604,6 +1621,7 @@ private:
         Method&& m,
         const char* name,
         EFileStoreRequest requestType,
+        EFileStoreAvailabilityRequestType availabilityRequestType,
         ui32 requestSize,
         fuse_req_t req,
         Args&&... args) noexcept
@@ -1615,6 +1633,7 @@ private:
             pThis->Config->GetFileSystemId(),
             fuse_req_unique(req));
         callContext->RequestType = requestType;
+        callContext->AvailabilityRequestType = availabilityRequestType;
         callContext->RequestSize = requestSize;
         callContext->LoopThreadId = TThread::CurrentThreadNumericId();
 
@@ -1665,15 +1684,20 @@ private:
 
     static void InitOps(fuse_lowlevel_ops& ops)
     {
-#define CALL(m, requestType, requestSize, req, ...)                            \
+#define CALL(m, requestType, availabilityRequestType, requestSize, req, ...)  \
     TFileSystemLoop::Call(                                                     \
         &IFileSystem::m,                                                       \
         #m,                                                                    \
         requestType,                                                           \
+        availabilityRequestType,                                               \
         requestSize,                                                           \
         req,                                                                   \
         __VA_ARGS__)                                                           \
 // CALL
+
+        using EAvailability = EFileStoreAvailabilityRequestType;
+
+        // clang-format off
 
         //
         // Initialization
@@ -1691,7 +1715,7 @@ private:
         //
 
         ops.statfs = [] (fuse_req_t req, fuse_ino_t ino) {
-            CALL(StatFs, EFileStoreRequest::StatFileStore, 0, req, ino);
+            CALL(StatFs, EFileStoreRequest::StatFileStore, EAvailability::None, 0, req, ino);
         };
 
         //
@@ -1699,43 +1723,43 @@ private:
         //
 
         ops.lookup = [] (fuse_req_t req, fuse_ino_t parent, const char* name) {
-            CALL(Lookup, EFileStoreRequest::GetNodeAttr, 0, req, parent, name);
+            CALL(Lookup, EFileStoreRequest::GetNodeAttr, EAvailability::Lookup, 0, req, parent, name);
         };
         ops.forget = [] (fuse_req_t req, fuse_ino_t ino, unsigned long nlookup) {
-            CALL(Forget, EFileStoreRequest::Forget, 0, req, ino, nlookup);
+            CALL(Forget, EFileStoreRequest::Forget, EAvailability::None, 0, req, ino, nlookup);
         };
         ops.forget_multi = [] (fuse_req_t req, size_t count, fuse_forget_data* forgets) {
-            CALL(ForgetMulti, EFileStoreRequest::ForgetMulti, 0, req, count, forgets);
+            CALL(ForgetMulti, EFileStoreRequest::ForgetMulti, EAvailability::None, 0, req, count, forgets);
         };
         ops.mkdir = [] (fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mode) {
-            CALL(MkDir, EFileStoreRequest::CreateNode, 0, req, parent, name, mode);
+            CALL(MkDir, EFileStoreRequest::CreateNode, EAvailability::MkDir, 0, req, parent, name, mode);
         };
         ops.rmdir = [] (fuse_req_t req, fuse_ino_t parent, const char* name) {
-            CALL(RmDir, EFileStoreRequest::UnlinkNode, 0, req, parent, name);
+            CALL(RmDir, EFileStoreRequest::UnlinkNode, EAvailability::RmDir, 0, req, parent, name);
         };
         ops.mknod = [] (fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mode, dev_t rdev) {
-            CALL(MkNode, EFileStoreRequest::CreateNode, 0, req, parent, name, mode, rdev);
+            CALL(MkNode, EFileStoreRequest::CreateNode, EAvailability::None, 0, req, parent, name, mode, rdev);
         };
         ops.unlink = [] (fuse_req_t req, fuse_ino_t parent, const char* name) {
-            CALL(Unlink, EFileStoreRequest::UnlinkNode, 0, req, parent, name);
+            CALL(Unlink, EFileStoreRequest::UnlinkNode, EAvailability::Unlink, 0, req, parent, name);
         };
 #if defined(FUSE_VIRTIO)
         ops.rename = [] (fuse_req_t req, fuse_ino_t parent, const char* name, fuse_ino_t newparent, const char* newname, uint32_t flags) {
-            CALL(Rename, EFileStoreRequest::RenameNode, 0, req, parent, name, newparent, newname, flags);
+            CALL(Rename, EFileStoreRequest::RenameNode, EAvailability::Rename, 0, req, parent, name, newparent, newname, flags);
         };
 #else
         ops.rename = [] (fuse_req_t req, fuse_ino_t parent, const char* name, fuse_ino_t newparent, const char* newname) {
-            CALL(Rename, EFileStoreRequest::RenameNode, 0, req, parent, name, newparent, newname, 0);
+            CALL(Rename, EFileStoreRequest::RenameNode, EAvailability::Rename, 0, req, parent, name, newparent, newname, 0);
         };
 #endif
         ops.symlink = [] (fuse_req_t req, const char* link, fuse_ino_t parent, const char* name) {
-            CALL(SymLink, EFileStoreRequest::CreateNode, 0, req, link, parent, name);
+            CALL(SymLink, EFileStoreRequest::CreateNode, EAvailability::SymLink, 0, req, link, parent, name);
         };
         ops.link = [] (fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent, const char* newname) {
-            CALL(Link, EFileStoreRequest::CreateNode, 0, req, ino, newparent, newname);
+            CALL(Link, EFileStoreRequest::CreateNode, EAvailability::Link, 0, req, ino, newparent, newname);
         };
         ops.readlink = [] (fuse_req_t req, fuse_ino_t ino) {
-            CALL(ReadLink, EFileStoreRequest::ReadLink, 0, req, ino);
+            CALL(ReadLink, EFileStoreRequest::ReadLink, EAvailability::ReadLink, 0, req, ino);
         };
 
         //
@@ -1743,13 +1767,13 @@ private:
         //
 
         ops.setattr = [] (fuse_req_t req, fuse_ino_t ino, struct stat* attr, int to_set, fuse_file_info* fi) {
-            CALL(SetAttr, EFileStoreRequest::SetNodeAttr, 0, req, ino, attr, to_set, fi);
+            CALL(SetAttr, EFileStoreRequest::SetNodeAttr, EAvailability::SetAttr, 0, req, ino, attr, to_set, fi);
         };
         ops.getattr = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(GetAttr, EFileStoreRequest::GetNodeAttr, 0, req, ino, fi);
+            CALL(GetAttr, EFileStoreRequest::GetNodeAttr, EAvailability::GetAttr, 0, req, ino, fi);
         };
         ops.access = [] (fuse_req_t req, fuse_ino_t ino, int mask) {
-            CALL(Access, EFileStoreRequest::AccessNode, 0, req, ino, mask);
+            CALL(Access, EFileStoreRequest::AccessNode, EAvailability::None, 0, req, ino, mask);
         };
 
         //
@@ -1757,16 +1781,16 @@ private:
         //
 
         ops.setxattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name, const char* value, size_t size, int flags) {
-            CALL(SetXAttr, EFileStoreRequest::SetNodeXAttr, 0, req, ino, name, TString{value, size}, flags);
+            CALL(SetXAttr, EFileStoreRequest::SetNodeXAttr, EAvailability::None, 0, req, ino, name, TString{value, size}, flags);
         };
         ops.getxattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name, size_t size) {
-            CALL(GetXAttr, EFileStoreRequest::GetNodeXAttr, 0, req, ino, name, size);
+            CALL(GetXAttr, EFileStoreRequest::GetNodeXAttr, EAvailability::None, 0, req, ino, name, size);
         };
         ops.listxattr = [] (fuse_req_t req, fuse_ino_t ino, size_t size) {
-            CALL(ListXAttr, EFileStoreRequest::ListNodeXAttr, 0, req, ino, size);
+            CALL(ListXAttr, EFileStoreRequest::ListNodeXAttr, EAvailability::None, 0, req, ino, size);
         };
         ops.removexattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name) {
-            CALL(RemoveXAttr, EFileStoreRequest::RemoveNodeXAttr, 0, req, ino, name);
+            CALL(RemoveXAttr, EFileStoreRequest::RemoveNodeXAttr, EAvailability::None, 0, req, ino, name);
         };
 
         //
@@ -1774,19 +1798,19 @@ private:
         //
 
         ops.opendir = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(OpenDir, EFileStoreRequest::OpenDir, 0, req, ino, fi);
+            CALL(OpenDir, EFileStoreRequest::OpenDir, EAvailability::OpenDir, 0, req, ino, fi);
         };
 #if defined(FUSE_VIRTIO)
         ops.readdirplus = [] (fuse_req_t req, fuse_ino_t ino, size_t size, off_t offset, fuse_file_info* fi) {
-            CALL(ReadDir, EFileStoreRequest::ListNodes, 0, req, ino, size, offset, fi);
+            CALL(ReadDir, EFileStoreRequest::ListNodes, EAvailability::ReadDirPlus, 0, req, ino, size, offset, fi);
         };
 #else
         ops.readdir = [] (fuse_req_t req, fuse_ino_t ino, size_t size, off_t offset, fuse_file_info* fi) {
-            CALL(ReadDir, EFileStoreRequest::ListNodes, 0, req, ino, size, offset, fi);
+            CALL(ReadDir, EFileStoreRequest::ListNodes, EAvailability::ReadDir, 0, req, ino, size, offset, fi);
         };
 #endif
         ops.releasedir = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(ReleaseDir, EFileStoreRequest::ReleaseDir, 0, req, ino, fi);
+            CALL(ReleaseDir, EFileStoreRequest::ReleaseDir, EAvailability::ReleaseDir, 0, req, ino, fi);
         };
 
         //
@@ -1794,34 +1818,34 @@ private:
         //
 
         ops.create = [] (fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mode, fuse_file_info* fi) {
-            CALL(Create, EFileStoreRequest::CreateHandle, 0, req, parent, name, mode, fi);
+            CALL(Create, EFileStoreRequest::CreateHandle, EAvailability::Create, 0, req, parent, name, mode, fi);
         };
         ops.open = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(Open, EFileStoreRequest::CreateHandle, 0, req, ino, fi);
+            CALL(Open, EFileStoreRequest::CreateHandle, EAvailability::Open, 0, req, ino, fi);
         };
         ops.read = [] (fuse_req_t req, fuse_ino_t ino, size_t size, off_t offset, fuse_file_info* fi) {
-            CALL(Read, EFileStoreRequest::ReadData, size, req, ino, size, offset, fi);
+            CALL(Read, EFileStoreRequest::ReadData, EAvailability::Read, size, req, ino, size, offset, fi);
         };
         ops.write = [] (fuse_req_t req, fuse_ino_t ino, const char* buf, size_t size, off_t offset, fuse_file_info* fi) {
-            CALL(Write, EFileStoreRequest::WriteData, size, req, ino, TStringBuf{buf, size}, offset, fi);
+            CALL(Write, EFileStoreRequest::WriteData, EAvailability::Write, size, req, ino, TStringBuf{buf, size}, offset, fi);
         };
         ops.write_buf = [] (fuse_req_t req, fuse_ino_t ino, fuse_bufvec* bufv, off_t offset, fuse_file_info* fi) {
-            CALL(WriteBuf, EFileStoreRequest::WriteData, fuse_buf_size(bufv), req, ino, bufv, offset, fi);
+            CALL(WriteBuf, EFileStoreRequest::WriteData, EAvailability::WriteBuf, fuse_buf_size(bufv), req, ino, bufv, offset, fi);
         };
         ops.fallocate = [] (fuse_req_t req, fuse_ino_t ino, int mode, off_t offset, off_t length, fuse_file_info* fi) {
-            CALL(FAllocate, EFileStoreRequest::AllocateData, length, req, ino, mode, offset, length, fi);
+            CALL(FAllocate, EFileStoreRequest::AllocateData, EAvailability::None, length, req, ino, mode, offset, length, fi);
         };
         ops.flush = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(Flush, EFileStoreRequest::FuseFlush, 0, req, ino, fi);
+            CALL(Flush, EFileStoreRequest::FuseFlush, EAvailability::Flush, 0, req, ino, fi);
         };
         ops.fsync = [] (fuse_req_t req, fuse_ino_t ino, int datasync, fuse_file_info* fi) {
-            CALL(FSync, EFileStoreRequest::FuseFsync, 0, req, ino, datasync, fi);
+            CALL(FSync, EFileStoreRequest::FuseFsync, EAvailability::Fsync, 0, req, ino, datasync, fi);
         };
         ops.fsyncdir = [] (fuse_req_t req, fuse_ino_t ino, int datasync, fuse_file_info* fi) {
-            CALL(FSyncDir, EFileStoreRequest::FuseFsyncDir, 0, req, ino, datasync, fi);
+            CALL(FSyncDir, EFileStoreRequest::FuseFsyncDir, EAvailability::None, 0, req, ino, datasync, fi);
         };
         ops.release = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
-            CALL(Release, EFileStoreRequest::DestroyHandle, 0, req, ino, fi);
+            CALL(Release, EFileStoreRequest::DestroyHandle, EAvailability::Release, 0, req, ino, fi);
         };
 
         //
@@ -1829,15 +1853,17 @@ private:
         //
 
         ops.getlk = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi, struct flock* lock) {
-            CALL(GetLock, EFileStoreRequest::TestLock, lock->l_len, req, ino, fi, lock);
+            CALL(GetLock, EFileStoreRequest::TestLock, EAvailability::None, lock->l_len, req, ino, fi, lock);
         };
         ops.setlk = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi, struct flock* lock, int sleep) {
-            CALL(SetLock, GetLockRequestType(lock), lock->l_len, req, ino, fi, lock, sleep != 0);
+            CALL(SetLock, GetLockRequestType(lock), EAvailability::None, lock->l_len, req, ino, fi, lock, sleep != 0);
         };
         ops.flock = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi, int op) {
-            CALL(FLock, GetLockRequestType(op), 0, req, ino, fi, op);
+            CALL(FLock, GetLockRequestType(op), EAvailability::None, 0, req, ino, fi, op);
         };
 #undef CALL
+
+        // clang-format on
     }
 
 private:

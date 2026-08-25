@@ -277,7 +277,8 @@ public:
     bool GetAsyncCreateHandleEnabled() const;
     bool GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() const;
     bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
-    TDuration GetAsyncHandleOperationPeriod() const;
+    TDuration GetAsyncHandleOperationIdlePeriod() const;
+    TDuration GetAsyncHandleOperationDrainPeriod() const;
     TDuration GetUnconfirmedCreateHandleGraceTimeout() const;
 
     void Dump(IOutputStream& out) const;
@@ -353,6 +354,8 @@ public:
     bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
+    bool GetAvailabilityTrackingEnabled() const;
+    TDuration GetAvailabilityTrackingInterval() const;
     NProto::EGuestCachingType GetGuestCachingType() const;
     ui64 GetSessionHandleOffloadedStatsCapacity() const;
 

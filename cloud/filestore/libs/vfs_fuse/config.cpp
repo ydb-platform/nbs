@@ -32,7 +32,8 @@ namespace {
     xxx(AsyncDestroyHandleEnabled,          bool,       false                 )\
     xxx(AsyncDestroyReadOnlyHandleEnabled,  bool,       false                 )\
     xxx(AsyncCreateHandleEnabled,           bool,       false                 )\
-    xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::MilliSeconds(50)   )\
+    xxx(AsyncHandleOperationIdlePeriod, TDuration, TDuration::MilliSeconds(50))\
+    xxx(AsyncHandleOperationDrainPeriod, TDuration, TDuration::Zero()         )\
                                                                                \
     xxx(DirectIoEnabled,            bool,       false                         )\
     xxx(DirectIoAlign,              ui32,       4_KB                          )\
@@ -59,6 +60,8 @@ namespace {
     xxx(GuestHandleKillPrivV2Enabled, bool,     false                         )\
     xxx(GuestPosixAclEnabled,         bool,     false                         )\
     xxx(ZeroCopyReadEnabled,          bool,     false                         )\
+    xxx(AvailabilityTrackingEnabled,  bool,     false                         )\
+    xxx(AvailabilityTrackingInterval, TDuration,  TDuration::Minutes(2)      )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

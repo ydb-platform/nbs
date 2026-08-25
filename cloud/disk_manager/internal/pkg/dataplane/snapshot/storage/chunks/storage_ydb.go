@@ -25,12 +25,14 @@ type StorageYDB struct {
 func NewStorageYDB(
 	db *persistence.YDBClient,
 	tablesPath string,
+	tableName string,
+	shadowTableName string,
 	metrics metrics.Metrics,
 	probeCompressionPercentage map[string]uint32,
 ) *StorageYDB {
 
 	return &StorageYDB{
-		storageCommon:              newStorageCommon(db, tablesPath),
+		storageCommon:              newStorageCommon(db, tablesPath, tableName, shadowTableName),
 		metrics:                    metrics,
 		probeCompressionPercentage: probeCompressionPercentage,
 	}
@@ -47,15 +49,15 @@ func (s *StorageYDB) ReadChunk(
 
 	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
+		pragma TablePathPrefix = "%[1]v";
 		declare $shard_id as Uint64;
 		declare $chunk_id as Utf8;
 
-		select * from chunk_blobs
+		select * from %[2]v
 		where shard_id = $shard_id and
 			chunk_id = $chunk_id and
 			referer = "";
-	`, s.tablesPath),
+	`, s.tablesPath, s.tableName),
 		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunk.ID))),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunk.ID)),
 	)
