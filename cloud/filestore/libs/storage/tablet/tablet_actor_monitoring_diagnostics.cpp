@@ -329,8 +329,8 @@ private:
         // TotalLatencyDecayed DESC,  LastAccessedTimestamp DESC
         return std::tie(
                    rhsLatency,
-                   lhs.GroupAggregate.LastAccessedTimestampUs) <
-               std::tie(lhsLatency, rhs.GroupAggregate.LastAccessedTimestampUs);
+                   rhs.GroupAggregate.LastAccessedTimestampUs) <
+               std::tie(lhsLatency, lhs.GroupAggregate.LastAccessedTimestampUs);
     }
 
     template <typename T>

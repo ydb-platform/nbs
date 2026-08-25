@@ -2,7 +2,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace NCloud::NFileStore::NAggregation{
+namespace NCloud::NFileStore::NAggregation {
 
 namespace {
 

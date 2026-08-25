@@ -64,6 +64,7 @@ function diagnosticsInit(tabletId) {
     var content = document.getElementById('diagnostics-content');
     var refresh = document.getElementById('diagnostics-refresh');
     var status = document.getElementById('diagnostics-status');
+    var latestRequest = 0;
     var settings = {
         topLoaded: '10',
         sortBy: 'load',
@@ -89,6 +90,7 @@ function diagnosticsInit(tabletId) {
     }
 
     function load() {
+        var requestId = ++latestRequest;
         refresh.disabled = true;
         status.textContent = 'Loading...';
         var url = window.location.pathname + '?TabletID=' + encodeURIComponent(tabletId)
@@ -103,6 +105,9 @@ function diagnosticsInit(tabletId) {
         fetch(url)
             .then(function(response) { return response.json(); })
             .then(function(data) {
+                if (requestId !== latestRequest) {
+                    return;
+                }
                 content.textContent = '';
                 if (data.error) {
                     var error = document.createElement('div');
@@ -167,6 +172,9 @@ function diagnosticsInit(tabletId) {
                 });
             })
             .catch(function(error) {
+                if (requestId !== latestRequest) {
+                    return;
+                }
                 content.textContent = '';
                 var item = document.createElement('div');
                 item.className = 'alert alert-danger';
@@ -174,6 +182,9 @@ function diagnosticsInit(tabletId) {
                 content.appendChild(item);
             })
             .then(function() {
+                if (requestId !== latestRequest) {
+                    return;
+                }
                 refresh.disabled = false;
                 status.textContent = '';
             });
