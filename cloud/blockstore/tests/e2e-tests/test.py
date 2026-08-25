@@ -580,8 +580,11 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
         raise
+    finally:
+        run("stopendpoint", "--socket", socket_path)
+        run("destroyvolume", "--disk-id", volume_name, input=volume_name)
 
-    cleanup_after_test(env)
+        cleanup_after_test(env)
 
 
 def test_discard_device():
