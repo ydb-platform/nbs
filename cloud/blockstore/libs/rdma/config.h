@@ -21,6 +21,11 @@ public:
         : Config(std::move(config))
     {}
 
+    [[nodiscard]] const NProto::TRdmaConfig& GetConfigProto() const
+    {
+        return Config;
+    }
+
     auto GetClientEnabled() const
     {
         return Config.GetClientEnabled();
@@ -63,5 +68,6 @@ public:
 };
 
 using TRdmaConfigPtr = std::shared_ptr<TRdmaConfig>;
+using TRdmaConfigConstPtr = std::shared_ptr<const TRdmaConfig>;
 
 }   // namespace NCloud::NBlockStore::NRdma

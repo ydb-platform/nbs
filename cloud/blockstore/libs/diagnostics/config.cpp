@@ -178,6 +178,11 @@ TDiagnosticsConfig::TDiagnosticsConfig(NProto::TDiagnosticsConfig diagnosticsCon
     : DiagnosticsConfig(std::move(diagnosticsConfig))
 {}
 
+const NProto::TDiagnosticsConfig& TDiagnosticsConfig::GetConfigProto() const
+{
+    return DiagnosticsConfig;
+}
+
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
 type TDiagnosticsConfig::Get##name() const                                     \
 {                                                                              \

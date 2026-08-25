@@ -30,10 +30,17 @@ class TFeaturesConfig
     };
 
 private:
+    // Source feature definitions owned by this object and used to build the
+    // lookup map.
+    NProto::TFeaturesConfig Config;
+
+    // Parsed feature definitions indexed by feature name.
     THashMap<TString, TFeatureInfo> Features;
 
 public:
     explicit TFeaturesConfig(NProto::TFeaturesConfig config = {});
+
+    [[nodiscard]] const NProto::TFeaturesConfig& GetConfigProto() const;
 
     bool IsValid() const;
 

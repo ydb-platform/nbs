@@ -20,6 +20,8 @@ private:
 public:
     TYdbStatsConfig(NProto::TYdbStatsConfig statsUploadConfig = {});
 
+    [[nodiscard]] const NProto::TYdbStatsConfig& GetConfigProto() const;
+
     bool IsValid() const;
 
     TString GetStatsTableName() const;

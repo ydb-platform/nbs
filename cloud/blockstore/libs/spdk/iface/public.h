@@ -39,6 +39,7 @@ struct TDeviceRateLimits
 
 class TSpdkEnvConfig;
 using TSpdkEnvConfigPtr = std::shared_ptr<TSpdkEnvConfig>;
+using TSpdkEnvConfigConstPtr = std::shared_ptr<const TSpdkEnvConfig>;
 
 struct ISpdkEnv;
 using ISpdkEnvPtr = std::shared_ptr<ISpdkEnv>;

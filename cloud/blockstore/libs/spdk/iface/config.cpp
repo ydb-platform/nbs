@@ -49,6 +49,11 @@ TSpdkEnvConfig::TSpdkEnvConfig(NProto::TSpdkEnvConfig config)
     : Config(std::move(config))
 {}
 
+const NProto::TSpdkEnvConfig& TSpdkEnvConfig::GetConfigProto() const
+{
+    return Config;
+}
+
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
 type TSpdkEnvConfig::Get##name() const                                         \
 {                                                                              \

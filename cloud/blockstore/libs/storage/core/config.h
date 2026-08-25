@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+
 #include <cloud/blockstore/config/server.pb.h>
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/storage/core/libs/features/features_config.h>
@@ -102,14 +104,14 @@ private:
 public:
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigPtr featuresConfig);
+        NFeatures::TFeaturesConfigConstPtr featuresConfig);
 
     // Use the supplied config-independent controls for ICB overrides. If
     // controls is null, create config-bound controls from storageServiceConfig,
     // as the two-argument constructor does.
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigPtr featuresConfig,
+        NFeatures::TFeaturesConfigConstPtr featuresConfig,
         TStorageConfigControlsPtr controls);
 
     // Create a raw-proto copy that shares Features and the live ICB controls.
@@ -123,7 +125,7 @@ public:
     // construction.
     TStorageConfigControlsPtr GetStorageConfigControls() const;
 
-    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
 
     void SetVolumePreemptionType(
         NProto::EVolumePreemptionType volumePreemptionType);
@@ -155,7 +157,9 @@ public:
 
     TValueByName GetValueByName(const TString& name) const;
 
-    [[nodiscard]] NProto::TStorageServiceConfig GetStorageConfigProto() const;
+    // Return a proto copy with current ICB overrides applied.
+    [[nodiscard]] NProto::TStorageServiceConfig
+    GetEffectiveStorageConfigProto() const;
 
     TString GetSchemeShardDir() const;
     [[nodiscard]] ui32 GetListVolumesConcurrency() const;

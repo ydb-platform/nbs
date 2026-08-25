@@ -33,6 +33,11 @@ public:
         , NetworkMbitThroughput(networkMbitThroughput)
     {}
 
+    [[nodiscard]] const NProto::TDiskAgentConfig& GetConfigProto() const
+    {
+        return Config;
+    }
+
     bool GetEnabled() const;
     TString GetAgentId() const;
     ui64 GetSeqNumber() const;

@@ -65,6 +65,11 @@ TYdbStatsConfig::TYdbStatsConfig(NProto::TYdbStatsConfig ydbStatsConfig)
     : YdbStatsConfig(std::move(ydbStatsConfig))
 {}
 
+const NProto::TYdbStatsConfig& TYdbStatsConfig::GetConfigProto() const
+{
+    return YdbStatsConfig;
+}
+
 bool TYdbStatsConfig::IsValid() const
 {
     return

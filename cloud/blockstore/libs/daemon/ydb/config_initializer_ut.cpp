@@ -686,7 +686,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         ci.InitServerConfig();
         ci.InitStorageConfig();
 
-        const auto& proto = ci.StorageConfig->GetStorageConfigProto();
+        const auto proto = ci.StorageConfig->GetEffectiveStorageConfigProto();
 
         UNIT_ASSERT_VALUES_EQUAL(100, proto.GetNodeRegistrationMaxAttempts());
         UNIT_ASSERT_VALUES_EQUAL(200, proto.GetNodeRegistrationTimeout());
@@ -728,7 +728,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         ci.InitServerConfig();
         ci.InitStorageConfig();
 
-        const auto& proto = ci.StorageConfig->GetStorageConfigProto();
+        const auto proto = ci.StorageConfig->GetEffectiveStorageConfigProto();
 
         UNIT_ASSERT_VALUES_EQUAL(100, proto.GetNodeRegistrationMaxAttempts());
         UNIT_ASSERT_VALUES_EQUAL(200, proto.GetNodeRegistrationTimeout());
@@ -762,7 +762,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
         ci.ApplyCustomCMSConfigs(appCfg);
 
-        const auto& proto = ci.StorageConfig->GetStorageConfigProto();
+        const auto proto = ci.StorageConfig->GetEffectiveStorageConfigProto();
 
         UNIT_ASSERT_VALUES_EQUAL(100, proto.GetNodeRegistrationMaxAttempts());
         UNIT_ASSERT_VALUES_EQUAL(200, proto.GetNodeRegistrationTimeout());
@@ -799,7 +799,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
         ci.ApplyCustomCMSConfigs(appCfg);
 
-        const auto& proto = ci.StorageConfig->GetStorageConfigProto();
+        const auto proto = ci.StorageConfig->GetEffectiveStorageConfigProto();
 
         UNIT_ASSERT_VALUES_EQUAL(100, proto.GetNodeRegistrationMaxAttempts());
         UNIT_ASSERT_VALUES_EQUAL(200, proto.GetNodeRegistrationTimeout());
