@@ -3,10 +3,10 @@ UNITTEST_FOR(cloud/blockstore/libs/cells/impl)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
-    cell_host_impl_ut.cpp
-    cell_impl_ut.cpp
     cell_manager_ut.cpp
+    connection_ut.cpp
     describe_volume_ut.cpp
+    host_pool_ut.cpp
 )
 
 PEERDIR(

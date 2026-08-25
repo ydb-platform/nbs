@@ -18,6 +18,7 @@
 #include <util/generic/guid.h>
 #include <util/generic/size_literals.h>
 #include <util/string/escape.h>
+#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -6370,6 +6371,23 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         }
 
         service.UnmountVolume(DefaultDiskId, sessionId);
+    }
+
+    Y_UNIT_TEST(ShouldReportTabletHostInMountResponse)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+
+        auto response = service.MountVolume();
+        UNIT_ASSERT_C(!HasError(response->GetError()), response->GetError());
+        UNIT_ASSERT_VALUES_EQUAL(
+            FQDNHostName(),
+            response->Record.GetTabletHost());
+
+        service.UnmountVolume(DefaultDiskId, response->Record.GetSessionId());
     }
 }
 

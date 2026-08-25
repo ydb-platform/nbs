@@ -52,24 +52,57 @@ struct TTestDumpable
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestCellConnection: public ICellConnection
+{
+    const IBlockStorePtr Service;
+    const IStoragePtr Storage;
+
+    TTestCellConnection(IBlockStorePtr service, IStoragePtr storage)
+        : Service(std::move(service))
+        , Storage(std::move(storage))
+    {}
+
+    TString GetHost() const override
+    {
+        return "cell-fqdn";
+    }
+
+    IBlockStorePtr GetService() override
+    {
+        return Service;
+    }
+
+    IStoragePtr GetStorage() override
+    {
+        return Storage;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTestCellManager: public ICellManager
 {
-    using TGetCellEndpointHandler = std::function<TResultOrError<TCellHostEndpoint>(
+    using TCreateConnectionHandler = std::function<TResultOrError<ICellConnectionPtr>(
         const TString& cellId,
         const NClient::TClientAppConfigPtr& clientConfig)>;
 
-    TGetCellEndpointHandler GetCellEndpointHandler;
+    TCreateConnectionHandler CreateConnectionHandler;
 
     TTestCellManager()
         : ICellManager(nullptr)
     {}
 
-    TResultOrError<TCellHostEndpoint> GetCellEndpoint(
+    TCellConnectionFuture CreateConnection(
         const TString& cellId,
-        const NClient::TClientAppConfigPtr& clientConfig) override
+        const TString& fqdn,
+        const NClient::TClientAppConfigPtr& clientConfig,
+        ICellConnectionObserverPtr observer) override
     {
-        UNIT_ASSERT(GetCellEndpointHandler);
-        return GetCellEndpointHandler(cellId, clientConfig);
+        Y_UNUSED(fqdn);
+        Y_UNUSED(observer);
+
+        UNIT_ASSERT(CreateConnectionHandler);
+        return MakeFuture(CreateConnectionHandler(cellId, clientConfig));
     }
 
     TDescribeVolumeFuture DescribeVolume(
@@ -746,17 +779,16 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             };
 
         auto cellManager = std::make_shared<TTestCellManager>();
-        cellManager->GetCellEndpointHandler =
+        cellManager->CreateConnectionHandler =
             [&] (const TString& requestedCellId,
                  const NClient::TClientAppConfigPtr& clientConfig)
-                -> TResultOrError<TCellHostEndpoint>
+                -> TResultOrError<ICellConnectionPtr>
             {
+                Y_UNUSED(clientConfig);
                 UNIT_ASSERT_VALUES_EQUAL(cellId, requestedCellId);
-                return TCellHostEndpoint(
-                    clientConfig,
-                    "cell-fqdn",
+                return ICellConnectionPtr(std::make_shared<TTestCellConnection>(
                     cellService,
-                    CreateStorageStub());
+                    CreateStorageStub()));
             };
 
         auto executor = TExecutor::Create("TestService");
