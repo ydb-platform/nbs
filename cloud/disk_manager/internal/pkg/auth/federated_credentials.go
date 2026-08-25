@@ -29,14 +29,18 @@ func (s *tokenSource) Token() (credentials.Token, error) {
 	if s.file != "" {
 		token, err := os.ReadFile(s.file)
 		if err != nil {
-			return credentials.Token{}, fmt.Errorf("read token file: %w", err)
+			return credentials.Token{}, fmt.Errorf(
+				"read token file %q: %w",
+				s.file,
+				err,
+			)
 		}
 		value = string(token)
 	}
 
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return credentials.Token{}, fmt.Errorf("token is empty")
+		return credentials.Token{}, fmt.Errorf("token from %s is empty", s)
 	}
 
 	return credentials.Token{
