@@ -65,8 +65,13 @@ using ::NCloud::NBlockStore::NStorage::TPartitionThreadSafeState;
     xxx(MergedBlocksCount)                                                     \
     xxx(MixedBlobsCount)                                                       \
     xxx(MergedBlobsCount)                                                      \
+    xxx(MixedIndexBlocksCount)                                                 \
+    xxx(MergedIndexBlocksCount)                                                \
+    xxx(MixedIndexBlobsCount)                                                  \
+    xxx(MergedIndexBlobsCount)                                                 \
     xxx(UsedBlocksCount)                                                       \
-    xxx(LogicalUsedBlocksCount)                                                \
+    xxx(LogicalUsedBlocksCount)
+
 // BLOCKSTORE_PARTITION_PROTO_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -304,6 +309,7 @@ private:
     const ICompactionPolicyPtr CompactionPolicy;
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
+    const bool UseBlobChannelDataKindForCounters;
 
     TPartitionThreadSafeStatePtr ThreadSafeState;
 
@@ -329,12 +335,18 @@ public:
         TPartitionThreadSafeStatePtr threadSafeState,
         ui64 tabletId,
         const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
-        bool checkpointAwareCleanupEnabled);
+        bool checkpointAwareCleanupEnabled,
+        bool useBlobChannelDataKindForCounters = false);
 
 private:
     bool LoadStateFinished = false;
 
 public:
+    bool ShouldUseBlobChannelDataKindForCounters() const
+    {
+        return UseBlobChannelDataKindForCounters;
+    }
+
     void FinishLoadState()
     {
         LoadStateFinished = true;
@@ -859,8 +871,7 @@ public:
     void StartRebuildBlockCount()
     {
         RebuildState.StartRebuildBlockCount(
-            GetMixedBlobsCount(),
-            GetMergedBlobsCount());
+            GetMixedIndexBlobsCount(), GetMergedIndexBlobsCount());
     }
 
     TMedatadataRebuildProgress GetMetadataRebuildProgress() const
@@ -878,10 +889,16 @@ public:
         RebuildState.Complete();
     }
 
-    void UpdateBlocksCountersAfterMetadataRebuild(ui64 mixed, ui64 merged)
+    void UpdateBlocksCountersAfterMetadataRebuild(
+        ui64 mixedIndex,
+        ui64 mergedIndex,
+        ui64 mixedChannel,
+        ui64 mergedChannel)
     {
-        AccessStats().SetMixedBlocksCount(mixed);
-        AccessStats().SetMergedBlocksCount(merged);
+        AccessStats().SetMixedIndexBlocksCount(mixedIndex);
+        AccessStats().SetMergedIndexBlocksCount(mergedIndex);
+        AccessStats().SetMixedBlocksCount(mixedChannel);
+        AccessStats().SetMergedBlocksCount(mergedChannel);
     }
 
     //
@@ -905,8 +922,8 @@ public:
     void StartScanDisk()
     {
         ScanDiskState.Start(
-            GetMixedBlobsCount(),
-            GetMergedBlobsCount());
+            GetMixedIndexBlobsCount(),
+            GetMergedIndexBlobsCount());
     }
 
     TScanDiskProgress GetScanDiskProgress() const

@@ -20,6 +20,61 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void DecrementBlobCounters(
+    TPartitionState& state,
+    const TPartialBlobId& blobId,
+    EChannelDataKind indexKind,
+    ui64 blocksCount)
+{
+    // Deletion markers contribute to blob totals, but not block totals.
+    blocksCount = IsDeletionMarker(blobId) ? 0 : blocksCount;
+
+    switch (indexKind) {
+        case EChannelDataKind::Mixed:
+            state.DecrementMixedIndexBlobsCount(
+                Min<ui64>(1, state.GetMixedIndexBlobsCount()));
+            state.DecrementMixedIndexBlocksCount(
+                Min(blocksCount, state.GetMixedIndexBlocksCount()));
+            break;
+        case EChannelDataKind::Merged:
+            state.DecrementMergedIndexBlobsCount(
+                Min<ui64>(1, state.GetMergedIndexBlobsCount()));
+            state.DecrementMergedIndexBlocksCount(
+                Min(blocksCount, state.GetMergedIndexBlocksCount()));
+            break;
+        default:
+            Y_ABORT("Unexpected index kind: %u", static_cast<ui32>(indexKind));
+    }
+
+    // Deletion markers do not have a data channel, so classify them by their
+    // index kind even when channel-based counters are enabled.
+    const auto countersKind =
+        state.ShouldUseBlobChannelDataKindForCounters() &&
+                !IsDeletionMarker(blobId)
+            ? state.GetChannelDataKind(blobId.Channel())
+            : indexKind;
+    switch (countersKind) {
+        case EChannelDataKind::Mixed:
+            state.DecrementMixedBlobsCount(
+                Min<ui64>(1, state.GetMixedBlobsCount()));
+            state.DecrementMixedBlocksCount(
+                Min(blocksCount, state.GetMixedBlocksCount()));
+            break;
+        case EChannelDataKind::Merged:
+            state.DecrementMergedBlobsCount(
+                Min<ui64>(1, state.GetMergedBlobsCount()));
+            state.DecrementMergedBlocksCount(
+                Min(blocksCount, state.GetMergedBlocksCount()));
+            break;
+        default:
+            Y_ABORT(
+                "Unexpected blob channel data kind: %u",
+                static_cast<ui32>(countersKind));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
@@ -337,9 +392,6 @@ void ExecuteCleanupTransaction(
 {
     TRequestScope timer(*args.RequestInfo);
 
-    size_t mixedBlobsCount = 0;
-    size_t mergedBlobsCount = 0;
-
     TVector<TCleanupQueueItem> filteredCleanupQueue;
     filteredCleanupQueue.reserve(args.CleanupQueue.size());
 
@@ -389,9 +441,8 @@ void ExecuteCleanupTransaction(
                 }
             }
 
-            ++mixedBlobsCount;
+            ui64 blockCountInBlob = 0;
             if (!IsDeletionMarker(item.BlobId)) {
-                ui64 blockCountInBlob = 0;
                 if (args.UseRecreatedBlobMeta) {
                     STORAGE_VERIFY_C(
                         state.GetBlockSize() > 0 &&
@@ -405,12 +456,9 @@ void ExecuteCleanupTransaction(
                 } else {
                     blockCountInBlob = mixedBlocks.BlocksSize();
                 }
-                // Mins for block counts are needed due to some
-                // inconsistencies
-                // caused by NBS-1422
-                state.DecrementMixedBlocksCount(
-                    Min(blockCountInBlob, state.GetMixedBlocksCount()));
             }
+            DecrementBlobCounters(
+                state, item.BlobId, EChannelDataKind::Mixed, blockCountInBlob);
         } else if (blobMeta.HasMergedBlocks()) {
             const auto& mergedBlocks = blobMeta.GetMergedBlocks();
 
@@ -419,14 +467,12 @@ void ExecuteCleanupTransaction(
                 mergedBlocks.GetEnd());
             db.DeleteMergedBlocks(item.BlobId, blockRange);
 
-            ++mergedBlobsCount;
+            ui64 blocksCount = 0;
             if (!IsDeletionMarker(item.BlobId)) {
-                // Mins for block counts are needed due to some inconsistencies
-                // caused by NBS-1422
-                ui64 delta = blockRange.Size() - mergedBlocks.GetSkipped();
-                state.DecrementMergedBlocksCount(
-                    Min(delta, state.GetMergedBlocksCount()));
+                blocksCount = blockRange.Size() - mergedBlocks.GetSkipped();
             }
+            DecrementBlobCounters(
+                state, item.BlobId, EChannelDataKind::Merged, blocksCount);
         }
 
         LOG_DEBUG(
@@ -462,10 +508,6 @@ void ExecuteCleanupTransaction(
         Y_DEBUG_ABORT_UNLESS(
             filteredCleanupQueue.size() == args.CleanupQueue.size());
     }
-
-    // Updating counters
-    state.DecrementMixedBlobsCount(mixedBlobsCount);
-    state.DecrementMergedBlobsCount(mergedBlobsCount);
 
     db.WriteMeta(state.GetMeta());
 }

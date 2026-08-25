@@ -578,6 +578,8 @@ struct TTxPartition
 
         ui64 MixedBlockCount = 0;
         ui64 MergedBlockCount = 0;
+        ui64 MixedChannelBlockCount = 0;
+        ui64 MergedChannelBlockCount = 0;
 
         TPartialBlobId LastReadBlobId;
 
@@ -601,6 +603,8 @@ struct TTxPartition
             ReadCount = 0;
             MixedBlockCount = 0;
             MergedBlockCount = 0;
+            MixedChannelBlockCount = 0;
+            MergedChannelBlockCount = 0;
             LastReadBlobId = {};
         }
     };

@@ -92,11 +92,11 @@ message TPartitionStats
     TIOCounters SysWriteCounters = 4;
     TIOCounters SysChecksumCounters = 14;
 
-    // Numbers of stored blobs.
+    // Numbers of stored blobs (classified by channel).
     uint64 MixedBlobsCount = 5;
     uint64 MergedBlobsCount = 6;
 
-    // Numbers of stored blocks.
+    // Numbers of stored blocks (classified by channel).
     uint64 FreshBlocksCount = 7;
     uint64 MixedBlocksCount = 8;
     uint64 MergedBlocksCount = 9;
@@ -131,6 +131,14 @@ message TPartitionStats
     // Triggers counters for compaction by garbage ignoring zeroed blocks.
     uint64 CompactionByIgnoringZeroedPerRange = 24;
     uint64 CompactionByIgnoringZeroedPerDisk = 25;
+
+    // Numbers of blobs classified by the index they are stored in.
+    uint64 MixedIndexBlobsCount = 26;
+    uint64 MergedIndexBlobsCount = 27;
+
+    // Numbers of blocks classified by the index they are stored in.
+    uint64 MixedIndexBlocksCount = 28;
+    uint64 MergedIndexBlocksCount = 29;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -887,6 +887,8 @@ public:
     [[nodiscard]] TDuration GetMixedBlocksFilterAllowedCpuTimePerSecond() const;
 
     [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
+
+    [[nodiscard]] bool GetUseBlobChannelDataKindForCounters() const;
 };
 
 ui64 GetAllocationUnit(

@@ -243,9 +243,13 @@ struct TBlockCountRebuildState
 {
     ui64 MixedBlocks = 0;
     ui64 MergedBlocks = 0;
+    ui64 MixedChannelBlocks = 0;
+    ui64 MergedChannelBlocks = 0;
 
     ui64 InitialMixedBlocks = 0;
     ui64 InitialMergedBlocks = 0;
+    ui64 InitialMixedChannelBlocks = 0;
+    ui64 InitialMergedChannelBlocks = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

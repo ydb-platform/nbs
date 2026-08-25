@@ -474,6 +474,8 @@ private:
         ui64 finalCommitId,
         ui64 mixedBlocksCount,
         ui64 mergedBlocksCount,
+        ui64 mixedChannelBlocksCount,
+        ui64 mergedChannelBlocksCount,
         TDuration retryTimeout);
 
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);

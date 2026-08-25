@@ -67,7 +67,8 @@ TPartitionState::TPartitionState(
         ui64 tabletId,
         const std::optional<TMixedBlocksFilterConfig>
             mixedBlocksFilterConfig,
-        bool checkpointAwareCleanupEnabled)
+        bool checkpointAwareCleanupEnabled,
+        bool useBlobChannelDataKindForCounters)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -85,6 +86,7 @@ TPartitionState::TPartitionState(
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
+    , UseBlobChannelDataKindForCounters(useBlobChannelDataKindForCounters)
     , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
@@ -118,6 +120,40 @@ TPartitionState::TPartitionState(
         }
     }
     InitChannels();
+
+    auto& stats = AccessStats();
+    if (!stats.GetMixedIndexBlobsCount() && !stats.GetMergedIndexBlobsCount() &&
+        (stats.GetMixedBlobsCount() || stats.GetMergedBlobsCount()))
+    {
+        stats.SetMixedIndexBlobsCount(stats.GetMixedBlobsCount());
+        stats.SetMergedIndexBlobsCount(stats.GetMergedBlobsCount());
+    }
+    if (!stats.GetMixedIndexBlocksCount() &&
+        !stats.GetMergedIndexBlocksCount() &&
+        (stats.GetMixedBlocksCount() || stats.GetMergedBlocksCount()))
+    {
+        stats.SetMixedIndexBlocksCount(stats.GetMixedBlocksCount());
+        stats.SetMergedIndexBlocksCount(stats.GetMergedBlocksCount());
+    }
+
+    if (!UseBlobChannelDataKindForCounters) {
+        stats.SetMixedBlobsCount(stats.GetMixedIndexBlobsCount());
+        stats.SetMergedBlobsCount(stats.GetMergedIndexBlobsCount());
+        stats.SetMixedBlocksCount(stats.GetMixedIndexBlocksCount());
+        stats.SetMergedBlocksCount(stats.GetMergedIndexBlocksCount());
+    } else if (GetChannelsByKind([](EChannelDataKind kind)
+                                 { return kind == EChannelDataKind::Mixed; })
+                   .empty())
+    {
+        // If there are no channels with kind mixed, all blobs from mixed index
+        // table were written to merged channel.
+        stats.SetMergedBlobsCount(
+            stats.GetMergedBlobsCount() + stats.GetMixedBlobsCount());
+        stats.SetMixedBlobsCount(0);
+        stats.SetMergedBlocksCount(
+            stats.GetMergedBlocksCount() + stats.GetMixedBlocksCount());
+        stats.SetMixedBlocksCount(0);
+    }
 }
 
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const

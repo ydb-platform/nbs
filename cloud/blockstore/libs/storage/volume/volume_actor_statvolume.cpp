@@ -76,10 +76,14 @@ void Merge(const NProto::TVolumeStats& source, NProto::TVolumeStats& target)
 
     MERGE_FIELD(MixedBlobsCount);
     MERGE_FIELD(MergedBlobsCount);
+    MERGE_FIELD(MixedIndexBlobsCount);
+    MERGE_FIELD(MergedIndexBlobsCount);
 
     MERGE_FIELD(FreshBlocksCount);
     MERGE_FIELD(MixedBlocksCount);
     MERGE_FIELD(MergedBlocksCount);
+    MERGE_FIELD(MixedIndexBlocksCount);
+    MERGE_FIELD(MergedIndexBlocksCount);
     MERGE_FIELD(UsedBlocksCount);
     MERGE_FIELD(LogicalUsedBlocksCount);
     MERGE_FIELD(GarbageBlocksCount);

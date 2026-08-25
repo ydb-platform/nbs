@@ -30,6 +30,10 @@ void CopyPartitionStats(T1& l, const T2& r)
     COPY_FIELD(l, r, MergedBlobsCount);
     COPY_FIELD(l, r, MixedBlocksCount);
     COPY_FIELD(l, r, MergedBlocksCount);
+    COPY_FIELD(l, r, MixedIndexBlobsCount);
+    COPY_FIELD(l, r, MergedIndexBlobsCount);
+    COPY_FIELD(l, r, MixedIndexBlocksCount);
+    COPY_FIELD(l, r, MergedIndexBlocksCount);
     COPY_FIELD(l, r, UsedBlocksCount);
     COPY_FIELD(l, r, LogicalUsedBlocksCount);
 }
