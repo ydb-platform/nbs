@@ -1137,7 +1137,7 @@ void TIndexTabletActor::HandleForcedOperation(
     const TActorContext& ctx)
 {
     const auto& request = ev->Get()->Record;
-    using EMode = TEvIndexTabletPrivate::EForcedRangeOperationMode;
+    using EMode = TEvIndexTabletPrivate::EForcedOperationMode;
     EMode mode{};
     NProto::TError e;
     switch (request.GetOpType()) {
@@ -1161,8 +1161,8 @@ void TIndexTabletActor::HandleForcedOperation(
         }
     }
 
-    if (e.GetCode() == S_OK && IsForcedRangeOperationRunning()) {
-        const auto currentMode = GetForcedRangeOperationState()->Mode;
+    if (e.GetCode() == S_OK && IsForcedOperationRunning()) {
+        const auto currentMode = GetForcedOperationState()->Mode;
         if (currentMode == mode) {
             e = MakeError(S_ALREADY, "already launched");
         } else {
@@ -1190,9 +1190,9 @@ void TIndexTabletActor::HandleForcedOperation(
             ranges.erase(ranges.begin(), b);
         }
         response->Record.SetRangeCount(ranges.size());
-        auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
+        auto operationId = EnqueueForcedOperation(mode, std::move(ranges));
         response->Record.SetOperationId(std::move(operationId));
-        EnqueueForcedRangeOperationIfNeeded(ctx);
+        EnqueueForcedOperationIfNeeded(ctx);
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));
@@ -1207,7 +1207,7 @@ void TIndexTabletActor::HandleForcedOperationStatus(
     using TResponse = TEvIndexTablet::TEvForcedOperationStatusResponse;
     auto response = std::make_unique<TResponse>();
 
-    const auto* state = FindForcedRangeOperation(request.GetOperationId());
+    const auto* state = FindForcedOperation(request.GetOperationId());
     if (state) {
         response->Record.SetRangeCount(state->RangesToCompact.size());
         response->Record.SetProcessedRangeCount(state->Current);
@@ -1360,7 +1360,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
-        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);
@@ -1438,8 +1438,8 @@ STFUNC(TIndexTabletActor::StateWork)
             TEvIndexTabletPrivate::TEvCancelUnconfirmedData,
             HandleCancelUnconfirmedData);
         HFunc(
-            TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
-            HandleForcedRangeOperationProgress);
+            TEvIndexTabletPrivate::TEvForcedOperationProgress,
+            HandleForcedOperationProgress);
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInShard,
             HandleNodeCreatedInShard);
@@ -1617,7 +1617,7 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
-        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
@@ -1684,7 +1684,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
-        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedOperationProgress);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvEnqueueBlobIndexOpIfNeeded);

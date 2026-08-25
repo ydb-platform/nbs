@@ -344,7 +344,7 @@ private:
         const TCleanupInfo& cleanupInfo);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
-    void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
+    void EnqueueForcedOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
     void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
 
@@ -734,8 +734,8 @@ private:
         NKikimr::NTabletFlatExecutor::TTransactionContext& tx,
         TTxIndexTablet::TAddDataBase& args);
 
-    void HandleForcedRangeOperationProgress(
-        const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
+    void HandleForcedOperationProgress(
+        const TEvIndexTabletPrivate::TEvForcedOperationProgress::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleLoadNodeRefsRequest(

@@ -42,7 +42,7 @@ private:
     const TString LogTag;
     const TDuration RetryTimeout;
 
-    TIndexTabletState::TForcedRangeOperationState State;
+    TIndexTabletState::TForcedOperationState State;
     const TRequestInfoPtr RequestInfo;
 
 public:
@@ -50,7 +50,7 @@ public:
         TActorId tablet,
         TString logTag,
         TDuration retry,
-        TIndexTabletState::TForcedRangeOperationState state,
+        TIndexTabletState::TForcedOperationState state,
         TRequestInfoPtr requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
@@ -87,7 +87,7 @@ TForcedOperationActor<TResponseType, TRequestConstructor>::
         TActorId tablet,
         TString logTag,
         TDuration retry,
-        TIndexTabletState::TForcedRangeOperationState state,
+        TIndexTabletState::TForcedOperationState state,
         TRequestInfoPtr requestInfo)
     : Tablet(tablet)
     , LogTag(std::move(logTag))
@@ -105,7 +105,7 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::Bootstrap(
     FILESTORE_TRACK(
         RequestReceived_TabletWorker,
         RequestInfo->CallContext,
-        "ForcedRangeOperation");
+        "ForcedOperation");
 
     SendRangeOperationRequest(ctx);
 }
@@ -188,19 +188,19 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
     {
         // notify tablet
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedRangeOperationCompleted>(error);
+            TEvIndexTabletPrivate::TEvForcedOperationCompleted>(error);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
     FILESTORE_TRACK(
         ResponseSent_TabletWorker,
         RequestInfo->CallContext,
-        "ForcedRangeOperation");
+        "ForcedOperation");
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedRangeOperationResponse>(error);
+            TEvIndexTabletPrivate::TEvForcedOperationResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -211,7 +211,7 @@ template <typename TResponseType, typename TRequestConstructor>
 void TForcedOperationActor<TResponseType, TRequestConstructor>::
     ReportProgress(const TActorContext& ctx)
 {
-    using TEvent = TEvIndexTabletPrivate::TEvForcedRangeOperationProgress;
+    using TEvent = TEvIndexTabletPrivate::TEvForcedOperationProgress;
     NCloud::Send(ctx, Tablet, std::make_unique<TEvent>(State.Current));
 }
 
@@ -264,34 +264,34 @@ using TDeleteRangesWithEmptyScoreActor = TForcedOperationActor<
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::EnqueueForcedRangeOperationIfNeeded(
+void TIndexTabletActor::EnqueueForcedOperationIfNeeded(
     const TActorContext& ctx)
 {
-    if (IsForcedRangeOperationRunning()) {
+    if (IsForcedOperationRunning()) {
         return;
     }
 
-    auto pendingRequest = DequeueForcedRangeOperation();
+    auto pendingRequest = DequeueForcedOperation();
     if (pendingRequest.Ranges.empty()) {
         return;
     }
 
     auto request =
-        std::make_unique<TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
+        std::make_unique<TEvIndexTabletPrivate::TEvForcedOperationRequest>(
             std::move(pendingRequest.Ranges),
             pendingRequest.Mode,
             std::move(pendingRequest.OperationId));
     ctx.Send(ctx.SelfID, request.release());
 }
 
-void TIndexTabletActor::HandleForcedRangeOperation(
-    const TEvIndexTabletPrivate::TEvForcedRangeOperationRequest::TPtr& ev,
+void TIndexTabletActor::HandleForcedOperation(
+    const TEvIndexTabletPrivate::TEvForcedOperationRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedRangeOperation request for %lu ranges",
+        "%s ForcedOperation request for %lu ranges",
         LogTag.c_str(),
         msg->Ranges.size());
 
@@ -303,7 +303,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         }
 
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedRangeOperationResponse>(error);
+            TEvIndexTabletPrivate::TEvForcedOperationResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
@@ -319,12 +319,12 @@ void TIndexTabletActor::HandleForcedRangeOperation(
     requestInfo->StartedTs = ctx.Now();
 
     // will lose original request info in case of enqueueing external request
-    if (IsForcedRangeOperationRunning()) {
-        EnqueueForcedRangeOperation(msg->Mode, std::move(msg->Ranges));
+    if (IsForcedOperationRunning()) {
+        EnqueueForcedOperation(msg->Mode, std::move(msg->Ranges));
         return;
     }
 
-    StartForcedRangeOperation(
+    StartForcedOperation(
         msg->Mode,
         std::move(msg->Ranges),
         std::move(msg->OperationId));
@@ -332,29 +332,29 @@ void TIndexTabletActor::HandleForcedRangeOperation(
     std::unique_ptr<IActor> actor;
 
     switch (msg->Mode) {
-        case TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction:
+        case TEvIndexTabletPrivate::EForcedOperationMode::Compaction:
             actor = std::make_unique<TForcedCompactionActor>(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedRangeOperationState(),
+                *GetForcedOperationState(),
                 std::move(requestInfo));
             break;
 
-        case TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup:
+        case TEvIndexTabletPrivate::EForcedOperationMode::Cleanup:
             actor = std::make_unique<TForcedCleanupActor>(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedRangeOperationState(),
+                *GetForcedOperationState(),
                 std::move(requestInfo));
             break;
-        case TEvIndexTabletPrivate::EForcedRangeOperationMode::DeleteZeroCompactionRanges:
+        case TEvIndexTabletPrivate::EForcedOperationMode::DeleteZeroCompactionRanges:
             actor = std::make_unique<TDeleteRangesWithEmptyScoreActor>(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedRangeOperationState(),
+                *GetForcedOperationState(),
                 std::move(requestInfo));
             break;
 
@@ -366,31 +366,31 @@ void TIndexTabletActor::HandleForcedRangeOperation(
     WorkerActors.insert(actorId);
 }
 
-void TIndexTabletActor::HandleForcedRangeOperationCompleted(
-    const TEvIndexTabletPrivate::TEvForcedRangeOperationCompleted::TPtr& ev,
+void TIndexTabletActor::HandleForcedOperationCompleted(
+    const TEvIndexTabletPrivate::TEvForcedOperationCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedRangeOperation completed (%s)",
+        "%s ForcedOperation completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
-    TABLET_VERIFY(IsForcedRangeOperationRunning());
+    TABLET_VERIFY(IsForcedOperationRunning());
     WorkerActors.erase(ev->Sender);
 
-    CompleteForcedRangeOperation();
-    EnqueueForcedRangeOperationIfNeeded(ctx);
+    CompleteForcedOperation();
+    EnqueueForcedOperationIfNeeded(ctx);
 }
 
-void TIndexTabletActor::HandleForcedRangeOperationProgress(
-    const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
+void TIndexTabletActor::HandleForcedOperationProgress(
+    const TEvIndexTabletPrivate::TEvForcedOperationProgress::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ctx);
 
-    if (IsForcedRangeOperationRunning()) {
-        UpdateForcedRangeOperationProgress(ev->Get()->Current);
+    if (IsForcedOperationRunning()) {
+        UpdateForcedOperationProgress(ev->Get()->Current);
     }
 }
 

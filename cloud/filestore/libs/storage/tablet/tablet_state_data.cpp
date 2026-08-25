@@ -1449,64 +1449,64 @@ void TIndexTabletState::LoadCompactionMap(
     Impl->CompactionMap.Update(compactionMap);
 }
 
-TString TIndexTabletState::EnqueueForcedRangeOperation(
-    TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+TString TIndexTabletState::EnqueueForcedOperation(
+    TEvIndexTabletPrivate::EForcedOperationMode mode,
     TVector<ui32> ranges)
 {
     auto operationId = CreateGuidAsString();
-    PendingForcedRangeOperations.emplace_back(
+    PendingForcedOperations.emplace_back(
         mode,
         std::move(ranges),
         operationId);
     return operationId;
 }
 
-TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
-    DequeueForcedRangeOperation()
+TIndexTabletState::TPendingForcedOperation TIndexTabletState::
+    DequeueForcedOperation()
 {
-    if (PendingForcedRangeOperations.empty()) {
+    if (PendingForcedOperations.empty()) {
         return {};
     }
 
-    auto op = std::move(PendingForcedRangeOperations.back());
-    PendingForcedRangeOperations.pop_back();
+    auto op = std::move(PendingForcedOperations.back());
+    PendingForcedOperations.pop_back();
 
     return op;
 }
 
-void TIndexTabletState::StartForcedRangeOperation(
-    TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+void TIndexTabletState::StartForcedOperation(
+    TEvIndexTabletPrivate::EForcedOperationMode mode,
     TVector<ui32> ranges,
     TString operationId)
 {
-    TABLET_VERIFY(!ForcedRangeOperationState.Defined());
-    ForcedRangeOperationState.ConstructInPlace(
+    TABLET_VERIFY(!ForcedOperationState.Defined());
+    ForcedOperationState.ConstructInPlace(
         mode,
         std::move(ranges),
         std::move(operationId));
 }
 
-void TIndexTabletState::CompleteForcedRangeOperation()
+void TIndexTabletState::CompleteForcedOperation()
 {
-    Y_DEBUG_ABORT_UNLESS(ForcedRangeOperationState);
-    if (ForcedRangeOperationState && ForcedRangeOperationState->OperationId) {
-        ForcedRangeOperationState->Current =
-            ForcedRangeOperationState->RangesToCompact.size();
-        CompletedForcedRangeOperations.push_back(*ForcedRangeOperationState);
+    Y_DEBUG_ABORT_UNLESS(ForcedOperationState);
+    if (ForcedOperationState && ForcedOperationState->OperationId) {
+        ForcedOperationState->Current =
+            ForcedOperationState->RangesToCompact.size();
+        CompletedForcedOperations.push_back(*ForcedOperationState);
     }
-    ForcedRangeOperationState.Clear();
+    ForcedOperationState.Clear();
 }
 
-auto TIndexTabletState::FindForcedRangeOperation(
-    const TString& operationId) const -> const TForcedRangeOperationState*
+auto TIndexTabletState::FindForcedOperation(
+    const TString& operationId) const -> const TForcedOperationState*
 {
-    if (ForcedRangeOperationState
-            && ForcedRangeOperationState->OperationId == operationId)
+    if (ForcedOperationState
+            && ForcedOperationState->OperationId == operationId)
     {
-        return ForcedRangeOperationState.Get();
+        return ForcedOperationState.Get();
     }
 
-    for (const auto& op: CompletedForcedRangeOperations) {
+    for (const auto& op: CompletedForcedOperations) {
         if (op.OperationId == operationId) {
             return &op;
         }

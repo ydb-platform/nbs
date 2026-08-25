@@ -36,7 +36,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DumpCompactionRange,                    __VA_ARGS__)                   \
     xxx(Flush,                                  __VA_ARGS__)                   \
     xxx(FlushBytes,                             __VA_ARGS__)                   \
-    xxx(ForcedRangeOperation,                   __VA_ARGS__)                   \
+    xxx(ForcedOperation,                   __VA_ARGS__)                   \
     xxx(Truncate,                               __VA_ARGS__)                   \
     xxx(ReadBlob,                               __VA_ARGS__)                   \
     xxx(WriteBlob,                              __VA_ARGS__)                   \
@@ -595,25 +595,25 @@ struct TEvIndexTabletPrivate
     };
 
     //
-    // ForcedRangeOperation
+    // ForcedOperation
     //
 
-    enum EForcedRangeOperationMode
+    enum EForcedOperationMode
     {
         Compaction = 0,
         Cleanup = 1,
         DeleteZeroCompactionRanges = 2,
     };
 
-    struct TForcedRangeOperationRequest
+    struct TForcedOperationRequest
     {
         TVector<ui32> Ranges;
-        EForcedRangeOperationMode Mode;
+        EForcedOperationMode Mode;
         TString OperationId;
 
-        TForcedRangeOperationRequest(
+        TForcedOperationRequest(
                 TVector<ui32> ranges,
-                EForcedRangeOperationMode mode,
+                EForcedOperationMode mode,
                 TString operationId)
             : Ranges(std::move(ranges))
             , Mode(mode)
@@ -621,17 +621,17 @@ struct TEvIndexTabletPrivate
         {}
     };
 
-    struct TForcedRangeOperationResponse
+    struct TForcedOperationResponse
     {
     };
 
-    using TForcedRangeOperationCompleted = TEmpty;
+    using TForcedOperationCompleted = TEmpty;
 
-    struct TForcedRangeOperationProgress
+    struct TForcedOperationProgress
     {
         const ui32 Current;
 
-        explicit TForcedRangeOperationProgress(ui32 current)
+        explicit TForcedOperationProgress(ui32 current)
             : Current(current)
         {
         }
@@ -1230,7 +1230,7 @@ struct TEvIndexTabletPrivate
         EvReleaseCollectBarrier,
         EvCancelUnconfirmedData,
 
-        EvForcedRangeOperationProgress,
+        EvForcedOperationProgress,
 
         EvNodeCreatedInShard,
         EvNodeUnlinkedInShard,
@@ -1279,9 +1279,9 @@ struct TEvIndexTabletPrivate
     using TEvAddDataCompleted =
         TResponseEvent<TAddDataCompleted, EvAddDataCompleted>;
 
-    using TEvForcedRangeOperationProgress = TRequestEvent<
-        TForcedRangeOperationProgress,
-        EvForcedRangeOperationProgress>;
+    using TEvForcedOperationProgress = TRequestEvent<
+        TForcedOperationProgress,
+        EvForcedOperationProgress>;
 
     using TEvNodeCreatedInShard =
         TRequestEvent<TNodeCreatedInShard, EvNodeCreatedInShard>;

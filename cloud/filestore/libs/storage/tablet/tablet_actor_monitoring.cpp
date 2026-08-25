@@ -340,7 +340,7 @@ void DumpOperationState(
 
 void DumpCompactionInfo(
     IOutputStream& out,
-    const TIndexTabletState::TForcedRangeOperationState& state)
+    const TIndexTabletState::TForcedOperationState& state)
 {
     DumpProgress(out, state.Current, state.RangesToCompact.size());
 }
@@ -1255,14 +1255,14 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
 #undef DUMP_INFO_FIELD
 
         TAG(TH3) {
-            if (!IsForcedRangeOperationRunning()) {
+            if (!IsForcedOperationRunning()) {
                 BuildMenuButton(out, "compact-all");
             }
             out << "CompactionQueue";
         }
 
-        if (IsForcedRangeOperationRunning()) {
-            DumpCompactionInfo(out, *GetForcedRangeOperationState());
+        if (IsForcedOperationRunning()) {
+            DumpCompactionInfo(out, *GetForcedOperationState());
         } else {
             out << "<div class='collapse form-group' id='compact-all'>";
             BuildForceCompactionButton(out, TabletID());
@@ -1424,7 +1424,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    if (IsForcedRangeOperationRunning()) {
+    if (IsForcedOperationRunning()) {
         SendHttpResponse(
             ctx,
             TabletID(),
@@ -1434,13 +1434,13 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
         return;
     }
 
-    TEvIndexTabletPrivate::EForcedRangeOperationMode mode;
+    TEvIndexTabletPrivate::EForcedOperationMode mode;
     if (params.Get("mode") == "cleanup") {
-        mode = TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup;
+        mode = TEvIndexTabletPrivate::EForcedOperationMode::Cleanup;
     } else if (params.Get("mode") == "compaction") {
-        mode = TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
+        mode = TEvIndexTabletPrivate::EForcedOperationMode::Compaction;
     } else if (params.Get("mode") == "deleteZeroCompactionRanges") {
-        mode = TEvIndexTabletPrivate::EForcedRangeOperationMode
+        mode = TEvIndexTabletPrivate::EForcedOperationMode
             ::DeleteZeroCompactionRanges;
     } else {
         RejectHttpRequest(
@@ -1471,7 +1471,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
                 rangeIndex + rangesCount,
                 1));
     } else {
-        if (mode == TEvIndexTabletPrivate::EForcedRangeOperationMode
+        if (mode == TEvIndexTabletPrivate::EForcedOperationMode
                 ::DeleteZeroCompactionRanges)
         {
             ranges = GenerateForceDeleteZeroCompactionRanges();
@@ -1480,8 +1480,8 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
         }
     }
 
-    EnqueueForcedRangeOperation(mode, std::move(ranges));
-    EnqueueForcedRangeOperationIfNeeded(ctx);
+    EnqueueForcedOperation(mode, std::move(ranges));
+    EnqueueForcedOperationIfNeeded(ctx);
 
     SendHttpResponse(
         ctx,
