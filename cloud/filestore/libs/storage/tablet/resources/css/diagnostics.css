@@ -4,7 +4,6 @@
     gap: 12px;
 }
 
-.diagnostics-controls,
 .diagnostics-table-controls {
     display: flex;
     align-items: center;
@@ -14,11 +13,12 @@
 .diagnostics-table-heading {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
 }
 
 .diagnostics-table-heading h3 {
-    margin-top: 20px;
+    margin: 20px 0 10px;
 }
 
 .diagnostics-control {

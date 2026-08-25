@@ -68,15 +68,11 @@ function diagnosticsInit(tabletId) {
         topLoaded: '10',
         sortBy: 'load',
         topAccessed: '10',
-        batchSize: '10',
         slowestNodes: '10',
         slowestRequests: '10',
         slowestShards: '10'
     };
     var topOptions = [5, 10, 20, 50, 100, 500].map(function(value) {
-        return {value: String(value), label: String(value)};
-    });
-    var batchOptions = [1, 5, 10, 20, 50, 100].map(function(value) {
         return {value: String(value), label: String(value)};
     });
     var sortOptions = [
@@ -92,35 +88,7 @@ function diagnosticsInit(tabletId) {
         };
     }
 
-    function setBatchControl() {
-        var container = document.getElementById('diagnostics-controls');
-        if (!container) {
-            return;
-        }
-        container.textContent = '';
-        var label = document.createElement('label');
-        label.className = 'diagnostics-control';
-        label.textContent = 'Batch size: ';
-
-        var select = document.createElement('select');
-        select.className = 'form-control input-sm';
-        batchOptions.forEach(function(option) {
-            var optionElement = document.createElement('option');
-            optionElement.value = option.value;
-            optionElement.textContent = option.label;
-            optionElement.selected = option.value === settings.batchSize;
-            select.appendChild(optionElement);
-        });
-        select.addEventListener('change', function() {
-            settings.batchSize = select.value;
-            load();
-        });
-        label.appendChild(select);
-        container.appendChild(label);
-    }
-
     function load() {
-        setBatchControl();
         refresh.disabled = true;
         status.textContent = 'Loading...';
         var url = window.location.pathname + '?TabletID=' + encodeURIComponent(tabletId)
@@ -128,7 +96,6 @@ function diagnosticsInit(tabletId) {
             + '&topLoaded=' + encodeURIComponent(settings.topLoaded)
             + '&sortBy=' + encodeURIComponent(settings.sortBy)
             + '&topAccessed=' + encodeURIComponent(settings.topAccessed)
-            + '&batchSize=' + encodeURIComponent(settings.batchSize)
             + '&slowestNodes=' + encodeURIComponent(settings.slowestNodes)
             + '&slowestRequests=' + encodeURIComponent(settings.slowestRequests)
             + '&slowestShards=' + encodeURIComponent(settings.slowestShards);

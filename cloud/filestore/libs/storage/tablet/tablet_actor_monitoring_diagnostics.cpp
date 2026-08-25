@@ -25,11 +25,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 MaxTop = 1000;
-constexpr ui32 MaxBatchSize = 100;
 constexpr ui32 DefaultTopLoaded = 10;
 constexpr ui32 DefaultTopAccessed = 10;
-constexpr ui32 DefaultBatchSize = 10;
 constexpr ui32 DefaultSlowestNodes = 10;
 constexpr ui32 DefaultSlowestRequests = 10;
 constexpr ui32 DefaultSlowestShards = 10;
@@ -44,8 +41,6 @@ void DumpDiagnosticsPage(IOutputStream& out, ui64 tabletId)
          {"TABLET_ID", ToString(tabletId)}},
         out);
 }
-
-// is it not bad to double the same struct definitions here and in the client?
 
 struct TShardRow
 {
@@ -98,7 +93,6 @@ private:
     ui32 TopLoaded;
     TString SortBy;
     ui32 TopAccessed;
-    ui32 MaxConcurrentRequests;
     ui32 SlowestNodes;
     ui32 SlowestRequests;
     ui32 SlowestShards;
@@ -115,8 +109,7 @@ private:
     TVector<TString> Warnings;
 
     ui32 ShardIndex = 0;
-    ui32 ConcurrentRequests =
-        0;   // probably shouldn't call it that as processing them is sequential
+    ui32 InFlight = 0;
 
 public:
     TDiagnosticsActor(
@@ -125,7 +118,6 @@ public:
         ui32 topLoaded,
         TString sortBy,
         ui32 topAccessed,
-        ui32 batchSize,
         ui32 slowestNodes,
         ui32 slowestRequests,
         ui32 slowestShards)
@@ -134,7 +126,6 @@ public:
         , TopLoaded(topLoaded)
         , SortBy(std::move(sortBy))
         , TopAccessed(topAccessed)
-        , MaxConcurrentRequests(batchSize)
         , SlowestNodes(slowestNodes)
         , SlowestRequests(slowestRequests)
         , SlowestShards(slowestShards)
@@ -198,9 +189,7 @@ private:
 
     void SendDiagnosticRequests(const TActorContext& ctx)
     {
-        while (ConcurrentRequests < MaxConcurrentRequests &&
-               ShardIndex < ShardIds.size())
-        {
+        while (ShardIndex < ShardIds.size()) {
             auto request = std::make_unique<
                 TEvIndexTablet::TEvGetDiagnosticStatsRequest>();
             request->Record.SetFileSystemId(ShardIds[ShardIndex]);
@@ -212,10 +201,10 @@ private:
                 request.release(),
                 0,
                 ShardIndex++);
-            ++ConcurrentRequests;
+            ++InFlight;
         }
 
-        if (!ConcurrentRequests && ShardIndex == ShardIds.size()) {
+        if (!InFlight && ShardIndex == ShardIds.size()) {
             Reply(ctx);
         }
     }
@@ -225,7 +214,7 @@ private:
         const TActorContext& ctx)
     {
         const auto& response = ev->Get()->Record;
-        --ConcurrentRequests;
+        --InFlight;
         if (HasError(response.GetError())) {
             const TString shardId = ev->Cookie < ShardIds.size()
                                         ? ShardIds[ev->Cookie]
@@ -535,25 +524,16 @@ void TIndexTabletActor::HandleHttpInfo_Diagnostics(
         return;
     }
 
-    const auto parseTop = [&](TStringBuf name, ui32 defaultValue)
-    {
-        return Min<ui32>(
-            FromStringWithDefault(params.Get(name), defaultValue),
-            MaxTop);
-    };
-
-    const ui32 topLoaded = parseTop("topLoaded", DefaultTopLoaded);
-    const ui32 topAccessed = parseTop("topAccessed", DefaultTopAccessed);
-    const ui32 slowestNodes = parseTop("slowestNodes", DefaultSlowestNodes);
-    const ui32 slowestRequests =
-        parseTop("slowestRequests", DefaultSlowestRequests);
-    const ui32 slowestShards = parseTop("slowestShards", DefaultSlowestShards);
-    const ui32 batchSize = Min<ui32>(
-        Max<ui32>(
-            FromStringWithDefault(params.Get("batchSize"), DefaultBatchSize),
-            1),
-        MaxBatchSize);
-
+    const ui32 topLoaded =
+        FromStringWithDefault(params.Get("topLoaded"), DefaultTopLoaded);
+    const ui32 topAccessed =
+        FromStringWithDefault(params.Get("topAccessed"), DefaultTopAccessed);
+    const ui32 slowestNodes =
+        FromStringWithDefault(params.Get("slowestNodes"), DefaultSlowestNodes);
+    const ui32 slowestRequests = FromStringWithDefault(
+        params.Get("slowestRequests"),
+        DefaultSlowestRequests);
+    const ui32 slowestShards = FromStringWithDefault(params.Get("slowestShards"), DefaultSlowestShards);
     TString sortBy = params.Get("sortBy");
     if (sortBy != "load") {
         sortBy = TString(DefaultSortBy);
@@ -566,7 +546,6 @@ void TIndexTabletActor::HandleHttpInfo_Diagnostics(
         topLoaded,
         std::move(sortBy),
         topAccessed,
-        batchSize,
         slowestNodes,
         slowestRequests,
         slowestShards);
