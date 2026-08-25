@@ -3,6 +3,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/random/random.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -12,24 +13,35 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 {
 #define ASSERT_NO_SB_ERROR(fileSize, expectedShardId) {                        \
     TString shardId;                                                           \
-    const auto error = balancer.SelectShard(fileSize, &shardId);               \
+    const auto error = balancer.SelectShard(0, fileSize, &shardId);            \
     UNIT_ASSERT_VALUES_EQUAL_C(                                                \
         S_OK,                                                                  \
         error.GetCode(),                                                       \
         error.GetMessage());                                                   \
     UNIT_ASSERT_VALUES_EQUAL(expectedShardId, shardId);                        \
 }                                                                              \
-// ASSERT_NO_ERROR
+// ASSERT_NO_SB_ERROR
+
+#define ASSERT_NO_SB_ERROR_WITH_HINT(hint, fileSize, expectedShardId) {        \
+    TString shardId;                                                           \
+    const auto error = balancer.SelectShard(hint, fileSize, &shardId);         \
+    UNIT_ASSERT_VALUES_EQUAL_C(                                                \
+        S_OK,                                                                  \
+        error.GetCode(),                                                       \
+        error.GetMessage());                                                   \
+    UNIT_ASSERT_VALUES_EQUAL(expectedShardId, shardId);                        \
+}                                                                              \
+// ASSERT_NO_SB_ERROR_WITH_HINT
 
 #define ASSERT_SB_ERROR(fileSize, expectedCode) {                              \
     TString shardId;                                                           \
-    const auto error = balancer.SelectShard(fileSize, &shardId);               \
+    const auto error = balancer.SelectShard(0, fileSize, &shardId);            \
     UNIT_ASSERT_VALUES_EQUAL_C(                                                \
         expectedCode,                                                          \
         error.GetCode(),                                                       \
         error.GetMessage());                                                   \
 }                                                                              \
-// ASSERT_ERROR
+// ASSERT_SB_ERROR
 
 #define ASSERT_NO_ERROR(error)                                                 \
     UNIT_ASSERT_C(!HasError(error), FormatError(error));                       \
@@ -47,6 +59,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
             1_GB /* minFreeSpaceReserve */,
+            0 /* shardsPerDirectoryCount */,
             {"s1", "s2", "s3", "s4", "s5"});
         ASSERT_NO_SB_ERROR(0, "s1");
         ASSERT_NO_SB_ERROR(0, "s2");
@@ -198,6 +211,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             MaxFileBlocks,
             0 /* desiredFreeSpaceReserve */,
             0 /* minFreeSpaceReserve */,
+            0 /* shardsPerDirectoryCount */,
             {"s1", "s2", "s3", "s4"});
         ASSERT_NO_SB_ERROR(1_GB, "s1");
         ASSERT_NO_SB_ERROR(1_GB, "s2");
@@ -217,12 +231,13 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             MaxFileBlocks,
             0 /* desiredFreeSpaceReserve */,
             0 /* minFreeSpaceReserve */,
+            0 /* shardsPerDirectoryCount */,
             {"s1", "s2", "s3", "s4"});
 
         const ui64 iterations = 64;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_GB, &shardId);
+            const auto error = balancer.SelectShard(0, 1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -238,12 +253,13 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             MaxFileBlocks,
             0 /* desiredFreeSpaceReserve */,
             0 /* minFreeSpaceReserve */,
+            0 /* shardsPerDirectoryCount */,
             {"s1", "s2", "s3", "s4"});
 
         const ui64 iterations = 64;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_GB, &shardId);
+            const auto error = balancer.SelectShard(0, 1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -259,6 +275,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
             1_GB /* minFreeSpaceReserve */,
+            0 /* shardsPerDirectoryCount */,
             {"s1", "s2", "s3", "s4", "s5"});
 
         ASSERT_NO_ERROR(balancer.Update({
@@ -309,6 +326,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
             1_MB /* minFreeSpaceReserve */,
+            0 /* shardsPerDirectoryCount */,
             {"s1", "s2", "s3", "s4", "s5"});
         const ui64 shardCount = 5;
 
@@ -322,7 +340,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_GB, &shardId);
+            const auto error = balancer.SelectShard(0, 1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -352,7 +370,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         hitCount.clear();
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_TB, &shardId);
+            const auto error = balancer.SelectShard(0, 1_TB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -381,6 +399,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
             0 /* minFreeSpaceReserve */,
+            0 /* shardsPerDirectoryCount */,
             shardIds);
 
         // 1 TiB can fit in any shard
@@ -393,7 +412,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(1_GB, &shardId);
+            const auto error = balancer.SelectShard(0, 1_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -422,7 +441,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         hitCount.clear();
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(0, &shardId);
+            const auto error = balancer.SelectShard(0, 0, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -465,7 +484,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         }
 
         // For 500 GiB file though it should be possible to select any shard
-        const auto error = balancer.SelectShard(500_GB, &shardId);
+        const auto error = balancer.SelectShard(0, 500_GB, &shardId);
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
         // For a situation where in every shard there is less than 1 TiB left,
@@ -482,7 +501,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         hitCount.clear();
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(3_GB, &shardId);
+            const auto error = balancer.SelectShard(0, 3_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -510,7 +529,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // For 5 GiB file though it should be possible to select only s5
         shardId.clear();
         for (ui64 i = 0; i < iterations; ++i) {
-            const auto error = balancer.SelectShard(5_GB, &shardId);
+            const auto error = balancer.SelectShard(0, 5_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -520,7 +539,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // For 6 GiB file it should not be possible to select any shard
         for (ui64 i = 0; i < iterations; ++i) {
-            const auto error = balancer.SelectShard(6_GB, &shardId);
+            const auto error = balancer.SelectShard(0, 6_GB, &shardId);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_NOSPC,
                 error.GetCode(),
@@ -536,6 +555,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             MaxFileBlocks,
             1_TB /* desiredFreeSpaceReserve */,
             1_GB /* minFreeSpaceReserve */,
+            0 /* shardsPerDirectoryCount */,
             {"s1", "s2", "s3", "s4", "s5"});
 
         auto e = balancer.Update({
@@ -559,6 +579,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             MaxFileBlocks,
             0 /* desiredFreeSpaceReserve */,
             0 /* minFreeSpaceReserve */,
+            0 /* shardsPerDirectoryCount */,
             {"s1", "s2", "s3", "s4", "s5"});
 
         auto checkSelectedShard = [&] (const TVector<TString>& refShardIds) {
@@ -645,14 +666,6 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         checkSelectedShard(refShardIds);
         checkSelectedShard(refShardIds);
 
-        const TVector<TShardStats> sortedShardStats =
-            balancer.MakeOrderedShardList();
-        UNIT_ASSERT_EQUAL("s5", sortedShardStats[0].ShardId);
-        UNIT_ASSERT_EQUAL("s4", sortedShardStats[1].ShardId);
-        UNIT_ASSERT_EQUAL("s3", sortedShardStats[2].ShardId);
-        UNIT_ASSERT_EQUAL("s2", sortedShardStats[3].ShardId);
-        UNIT_ASSERT_EQUAL("s1", sortedShardStats[4].ShardId);
-
         ASSERT_NO_ERROR(balancer.Update({
             {"s1", 25_TB / 4_KB, 1_TB / 4_KB, 0, 0},
             {"s2", 25_TB / 4_KB, 2_TB / 4_KB, 0, 0},
@@ -685,6 +698,103 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             E_ARGUMENT,
             e.GetCode(),
             FormatError(e));
+    }
+
+    Y_UNIT_TEST(ShouldSelectCircularShardRangeForEachHint)
+    {
+        const TVector<TString> shards =
+            {"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"};
+
+        constexpr ui64 shardsPerDir = 4;
+        TString shardId;
+        {
+            // Test the balancer in its initial state.
+            TShardBalancerWeightedDeterministic balancer(
+                BlockSize,
+                PrecisionBytes,
+                MaxFileBlocks,
+                0 /* desiredFreeSpaceReserve */,
+                0 /* minFreeSpaceReserve */,
+                shardsPerDir /* shardsPerDirectoryCount */,
+                shards);
+
+            for (ui64 hint = 0; hint < shards.size(); ++hint) {
+                for (ui64 i = 0; i < shardsPerDir * 2; ++i) {
+                    ASSERT_NO_SB_ERROR_WITH_HINT(
+                        hint,
+                        0,
+                        shards
+                            [(hint + 1 + (i % shardsPerDir)) % shards.size()]);
+                }
+            }
+        }
+
+        {
+            TShardBalancerWeightedDeterministic balancer(
+                BlockSize,
+                PrecisionBytes,
+                MaxFileBlocks,
+                0 /* desiredFreeSpaceReserve */,
+                0 /* minFreeSpaceReserve */,
+                shardsPerDir /* shardsPerDirectoryCount */,
+                shards);
+
+            ASSERT_NO_ERROR(balancer.Update({
+                {"s1", 56_TB / 4_KB, 0_TB / 4_KB, 0, 0},
+                {"s2", 56_TB / 4_KB, 1_TB / 4_KB, 0, 0},
+                {"s3", 56_TB / 4_KB, 2_TB / 4_KB, 0, 0},
+                {"s4", 56_TB / 4_KB, 3_TB / 4_KB, 0, 0},
+                {"s5", 56_TB / 4_KB, 4_TB / 4_KB, 0, 0},
+                {"s6", 56_TB / 4_KB, 5_TB / 4_KB, 0, 0},
+                {"s7", 56_TB / 4_KB, 6_TB / 4_KB, 0, 0},
+                {"s8", 56_TB / 4_KB, 7_TB / 4_KB, 0, 0},
+            }));
+
+            ui64 hint = 2;
+            TVector<TString> refShardIds = {
+                "s4", "s5", "s6", "s7",
+                "s4", "s5", "s6", "s7",
+                "s4", "s5", "s6",
+                "s4", "s5",
+                "s4",
+                "s4", "s5", "s6", "s7"
+            };
+            for (const TString& refShardId: refShardIds) {
+                ASSERT_NO_SB_ERROR_WITH_HINT(hint, 0, refShardId);
+            }
+
+            hint = 6;
+            refShardIds = {
+                "s8", "s1", "s2", "s3",
+                "s1", "s2", "s3",
+                "s1", "s2", "s3",
+                "s1", "s2", "s3",
+                "s1", "s2", "s3",
+                "s1", "s2", "s3",
+                "s1", "s2",
+                "s1",
+                "s8", "s1", "s2", "s3"
+            };
+            for (const TString& refShardId: refShardIds) {
+                ASSERT_NO_SB_ERROR_WITH_HINT(hint, 0, refShardId);
+            }
+
+            hint = 7;
+            refShardIds = {
+                "s1", "s2", "s3", "s4",
+                "s1", "s2", "s3", "s4",
+                "s1", "s2", "s3", "s4",
+                "s1", "s2", "s3", "s4",
+                "s1", "s2", "s3", "s4",
+                "s1", "s2", "s3",
+                "s1", "s2",
+                "s1",
+                "s1", "s2", "s3", "s4"
+            };
+            for (const TString& refShardId: refShardIds) {
+                ASSERT_NO_SB_ERROR_WITH_HINT(hint, 0, refShardId);
+            }
+        }
     }
 }
 

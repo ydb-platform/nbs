@@ -1564,6 +1564,7 @@ TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
 
 NProto::TError TIndexTabletState::SelectShard(
     NProto::ENodeType nodeType,
+    ui64 parentNodeId,
     ui64 fileSize,
     TString* shardId)
 {
@@ -1572,7 +1573,8 @@ NProto::TError TIndexTabletState::SelectShard(
         balancer = Impl->FileShardBalancer.get();
     }
 
-    auto e = balancer->SelectShard(fileSize, shardId);
+    auto e =
+        balancer->SelectShard(ExtractShardNo(parentNodeId), fileSize, shardId);
     if (HasError(e)) {
         return e;
     }
@@ -1627,10 +1629,16 @@ NProto::TError TIndexTabletState::UpdateShardBalancer(
         minFreeSpaceReserve);
 }
 
-TVector<TShardStats>
-TIndexTabletState::MakeOrderedShardList() const
+TString TIndexTabletState::DescribeShardBalancers() const
 {
-    return Impl->ShardBalancer->MakeOrderedShardList();
+    TString ret = Impl->ShardBalancer->Describe();
+
+    if (Impl->FileShardBalancer) {
+        ret += " File shard balancer: ";
+        ret += Impl->FileShardBalancer->Describe();
+    }
+
+    return ret;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

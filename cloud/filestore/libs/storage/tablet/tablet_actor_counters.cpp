@@ -310,25 +310,6 @@ STFUNC(TAggregateStatsActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString DescribeShardList(const TVector<TShardStats>& shards)
-{
-    TStringBuilder sb;
-    for (ui32 i = 0; i < shards.size(); ++i) {
-        if (i) {
-            sb << ", ";
-        }
-
-        const auto& s = shards[i];
-        sb << "id=" << s.ShardId
-            << " blocks=" << s.UsedBlocksCount
-            << "/" << s.TotalBlocksCount
-            << " nodes=" << s.UsedNodesCount
-            << " load=" << s.CurrentLoad
-            << " suffer=" << s.Suffer;
-    }
-    return sb;
-}
-
 void FillShardStats(
     const NProtoPrivate::TStorageStats& storageStats,
     TVector<TShardStats>& shardStats)
@@ -1010,7 +991,7 @@ void TIndexTabletActor::HandleAggregateStatsCompleted(
                 TFileStoreComponents::TABLET,
                 "%s Updated shard balancer: %s",
                 LogTag.c_str(),
-                DescribeShardList(MakeOrderedShardList()).c_str());
+                DescribeShardBalancers().c_str());
         }
 
         Store(

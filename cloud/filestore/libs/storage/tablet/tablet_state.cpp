@@ -157,6 +157,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
             config.GetMaxFileBlocks(),
             config.GetShardBalancerDesiredFreeSpaceReserve(),
             config.GetShardBalancerMinFreeSpaceReserve(),
+            config.GetShardsPerDirectoryCount(),
             TVector<TString>(fileShardIds.begin(), fileShardIds.end()));
 
         THashSet<TString> fileShardIdSet(
@@ -178,6 +179,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
         config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),
+        config.GetShardsPerDirectoryCount(),
         std::move(balancerShardIds));
 }
 

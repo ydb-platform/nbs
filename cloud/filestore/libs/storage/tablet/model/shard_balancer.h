@@ -51,23 +51,17 @@ public:
         const TVector<TShardStats>& stats,
         std::optional<ui64> desiredFreeSpaceReserve,
         std::optional<ui64> minFreeSpaceReserve) = 0;
-    virtual NProto::TError SelectShard(ui64 fileSize, TString* shardId) = 0;
+    virtual NProto::TError SelectShard(
+        ui64 hint,
+        ui64 fileSize,
+        TString* shardId) = 0;
 
     NProto::TError Update(const TVector<TShardStats>& stats)
     {
         return Update(stats, {}, {});
     }
 
-    /**
-     * @brief Builds and returns the shard list ordered from best to worst.
-     *
-     * This method builds a new vector with TShardStats so it's not supposed to
-     * be used often because it's expensive. The main intended use case is
-     * introspection - log this info with debug loglevel or show it on monpages.
-     *
-     * @return The list of shard TShardStats.
-     */
-    [[nodiscard]] virtual TVector<TShardStats> MakeOrderedShardList() const = 0;
+    [[nodiscard]] virtual TString Describe() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -81,6 +75,7 @@ public:
         ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
+        ui32 shardsPerDirectoryCount,
         TVector<TString> shardIds);
 
 protected:
@@ -115,7 +110,7 @@ public:
         std::optional<ui64> desiredFreeSpaceReserve,
         std::optional<ui64> minFreeSpaceReserve) override;
 
-    [[nodiscard]] TVector<TShardStats> MakeOrderedShardList() const override;
+    [[nodiscard]] TString Describe() const override;
 };
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -127,7 +122,10 @@ private:
 
 public:
     using TShardBalancerBase::TShardBalancerBase;
-    NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
+    NProto::TError SelectShard(
+        ui64 hint,
+        ui64 fileSize,
+        TString* shardId) final;
 };
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -136,7 +134,10 @@ class TShardBalancerRandom: public TShardBalancerBase
 {
 public:
     using TShardBalancerBase::TShardBalancerBase;
-    NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
+    NProto::TError SelectShard(
+        ui64 hint,
+        ui64 fileSize,
+        TString* shardId) final;
 };
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -159,6 +160,7 @@ public:
         ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
+        ui32 shardsPerDirectoryCount,
         TVector<TString> shardIds);
 
 public:
@@ -169,16 +171,22 @@ public:
         std::optional<ui64> desiredFreeSpaceReserve,
         std::optional<ui64> minFreeSpaceReserve) final;
 
-    NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
+    NProto::TError SelectShard(
+        ui64 hint,
+        ui64 fileSize,
+        TString* shardId) final;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // Deterministically selects shards with frequencies proportional to their
 // scores. The balancer traverses score levels from lowest to highest. At each
-// level, it visits every shard whose score is at least that
-// level. Therefore, a shard with score N is selected N + 1 times during a
-// complete traversal.
+// level, it visits every shard whose score is at least that level. Therefore,
+// a shard with score N is selected N + 1 times during a complete traversal.
+//
+// For each hint, the traversal is limited to ShardsPerDirectoryCount shards
+// immediately following the hinted shard. The shard list is treated as
+// circular, and each normalized hint has an independent traversal state.
 //
 // For example, five shards with scores {0, 2, 4, 3, 1} are visited according
 // to the following table. Read it row by row from top to bottom, from left to
@@ -191,12 +199,49 @@ public:
 // x x 2 x x
 class TShardBalancerWeightedDeterministic: public TShardBalancerBase
 {
+public:
     static constexpr ui32 ScoreLevelsCount = 8;
     static constexpr ui32 MaxScore = ScoreLevelsCount - 1;
 
-    // Iterator state.
-    ui32 LastSelectedShard;
-    ui32 CurrentScore;
+    struct TIterator
+    {
+        ui32 LastSelectedShard = Max<ui32>();
+        ui32 CurrentScore = MaxScore;
+        ui32 Left = 0;
+        ui32 Right = 0;
+        ui32 ShardCount = 0;
+
+        ui32 PrevToLeft() const
+        {
+            if (Left > 0) {
+                return Left - 1;
+            } else {
+                return ShardCount - 1;
+            }
+        }
+
+        bool IsInside(const ui32 idx) const
+        {
+            if (Left <= Right) {
+                return idx >= Left && idx <= Right;
+            } else {
+                return (idx >= Left && idx < ShardCount) || idx <= Right;
+            }
+        }
+
+        ui64 Unwrap(ui64 coord)
+        {
+            if (coord >= Left) {
+                return coord;
+            } else {
+                return coord + ShardCount;
+            }
+        }
+    };
+
+    const ui64 ShardsPerDirectoryCount;
+
+    TVector<TIterator> Iterators;
 
     // Two-dimensional array of size:
     // Metas.size() * ScoreLevelsCount.
@@ -206,6 +251,9 @@ class TShardBalancerWeightedDeterministic: public TShardBalancerBase
     // Calculates scores in Metas, returns true if some score has changed.
     bool CalcScore(const TVector<TShardStats>& stats);
     void CalcNextShard();
+    void UpdateIterators();
+
+    void SelectShard(TIterator& it);
 
 public:
     TShardBalancerWeightedDeterministic(
@@ -214,6 +262,7 @@ public:
         ui32 maxFileBlocks,
         ui64 desiredFreeSpaceReserve,
         ui64 minFreeSpaceReserve,
+        ui32 shardsPerDirectoryCount,
         TVector<TString> shardIds);
 
     using IShardBalancer::Update;
@@ -223,9 +272,10 @@ public:
         std::optional<ui64> desiredFreeSpaceReserve,
         std::optional<ui64> minFreeSpaceReserve) final;
 
-    NProto::TError SelectShard(ui64 fileSize, TString* shardId) final;
-
-    TVector<TShardStats> MakeOrderedShardList() const final;
+    NProto::TError SelectShard(
+        ui64 hint,
+        ui64 fileSize,
+        TString* shardId) final;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -237,6 +287,7 @@ IShardBalancerPtr CreateShardBalancer(
     ui32 maxFileBlocks,
     ui64 desiredFreeSpaceReserve,
     ui64 minFreeSpaceReserve,
+    ui32 shardsPerDirectoryCount,
     TVector<TString> shardIds);
 
 }   // namespace NCloud::NFileStore::NStorage
