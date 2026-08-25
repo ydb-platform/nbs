@@ -37,6 +37,8 @@ THandleOpsQueue::EResult THandleOpsQueue::AddCreateRequest(
         return THandleOpsQueue::EResult::SerializationError;
     }
 
+    // TODO(#1751): Implement handling errors in
+    // https://github.com/ydb-platform/nbs/pull/6867
     if (!RequestsToProcess.PushBack(result).Pushed) {
         Stats->IncrementOverflowErrorCount();
         return THandleOpsQueue::EResult::QueueOverflow;
@@ -60,6 +62,8 @@ THandleOpsQueue::EResult THandleOpsQueue::AddDestroyRequest(
         return THandleOpsQueue::EResult::SerializationError;
     }
 
+    // TODO(#1751): Implement handling errors in
+    // https://github.com/ydb-platform/nbs/pull/6867
     if (!RequestsToProcess.PushBack(result).Pushed) {
         Stats->IncrementOverflowErrorCount();
         return THandleOpsQueue::EResult::QueueOverflow;
@@ -74,6 +78,9 @@ std::optional<NProto::TQueueEntry> THandleOpsQueue::Front()
     const auto req = RequestsToProcess.Front();
 
     NProto::TQueueEntry entry;
+
+    // TODO(#1751): Implement handling errors in
+    // https://github.com/ydb-platform/nbs/pull/6867
     if (!entry.ParseFromArray(req.Data.data(), req.Data.size())) {
         Stats->IncrementParseErrorCount();
         return std::nullopt;
@@ -89,7 +96,12 @@ bool THandleOpsQueue::Empty() const
 
 void THandleOpsQueue::PopFront()
 {
-    RequestsToProcess.PopFront();
+    auto popFrontResult = RequestsToProcess.PopFront();
+
+    // TODO(#1751): To be resolved in
+    // https://github.com/ydb-platform/nbs/pull/6666
+    Y_UNUSED(popFrontResult);
+
     Stats->SetEntryCount(RequestsToProcess.Size());
 }
 

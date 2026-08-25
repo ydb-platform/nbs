@@ -18,11 +18,11 @@ namespace NCloud {
         type const name;                                                       \
         NProto::TError const Error;                                            \
                                                                                \
-        T##fn##Result(type arg)                                                \
+        explicit T##fn##Result(type arg)                                       \
             : name(std::move(arg)), Error()                                    \
         {}                                                                     \
                                                                                \
-        T##fn##Result(NProto::TError error)                                    \
+        explicit T##fn##Result(NProto::TError error)                           \
             : name(), Error(std::move(error))                                  \
         {}                                                                     \
     };                                                                         \
@@ -82,14 +82,14 @@ public:
      * immediately.
      *
      * On failure, TPushBackResult::Pushed is false.
-     * Additionally, TAllocResult::Error is set if allocation has failed for any
-     * reason other than insufficient capacity, for example, buffer corruption
-     * or invalid argument.
+     * Additionally, TPushBackResult::Error is set if allocation has failed for
+     * any reason other than insufficient capacity, for example, buffer
+     * corruption or invalid argument.
      *
      * Note: only one allocation is possible at a time. Calling PushBack while
      * an allocation made by Alloc is not committed will return an error.
      */
-    TPushBackResult PushBack(TStringBuf data);
+    [[nodiscard]] TPushBackResult PushBack(TStringBuf data);
 
     /**
      * In-place allocation of a memory block of the given size in the buffer.
@@ -107,7 +107,7 @@ public:
      * Note: only one allocation is possible at a time. Repeated Alloc will
      * return an error.
      */
-    TAllocResult Alloc(size_t size);
+    [[nodiscard]] TAllocResult Alloc(size_t size);
 
     /**
      * Completes the previously made allocation by calculating checksum and
@@ -120,7 +120,7 @@ public:
      * An error is returned if there is no incomplete allocation or the buffer
      * is corrupted.
      */
-    NProto::TError Commit();
+    [[nodiscard]] NProto::TError Commit();
 
     /**
      * Frees a memory block that was previously allocated and committed.
@@ -132,14 +132,14 @@ public:
      * buffer, it is immediately freed. Otherwise, a FreeFlag is set for the
      * allocation and it will be freed when it reaches the front of the buffer.
      */
-    NProto::TError Free(const void* ptr);
+    [[nodiscard]] NProto::TError Free(const void* ptr);
 
     /**
      * Gets the maximum tag value supported by the buffer.
      * Version 5 and later support tags in the range [0-7].
      * Earlier versions do not support tags.
      */
-    ui32 GetMaxTag() const;
+    [[nodiscard]] ui32 GetMaxTag() const;
 
     /**
      * Gets the tag value associated with the allocation.
@@ -148,7 +148,7 @@ public:
      *
      * On failure, TGetTagResult::Error is set.
      */
-    TGetTagResult GetTag(const void* ptr) const;
+    [[nodiscard]] TGetTagResult GetTag(const void* ptr) const;
 
     /**
      * Sets the tag value associated with the allocation.
@@ -156,7 +156,7 @@ public:
      * Returns an error if the pointer is invalid, the tag value exceeds the
      * value returned by GetMaxTag() or if the buffer is corrupted.
      */
-    NProto::TError SetTag(const void* ptr, ui32 tag);
+    [[nodiscard]] NProto::TError SetTag(const void* ptr, ui32 tag);
 
     /**
      * Gets the front allocation of the buffer.
@@ -166,35 +166,35 @@ public:
      *
      * Additionally, TFrontResult::Error is set on corruption.
      */
-    TFrontResult Front();
+    [[nodiscard]] TFrontResult Front();
 
     /**
      * Frees the front allocation.
      *
-     * PopFrontResult::Removed is true if the front allocation has been
+     * TPopFrontResult::Removed is true if the front allocation has been
      * successfully freed or false if the buffer is empty or corrupted.
      *
      * Additionally, TFrontResult::Error is set on corruption.
      */
-    TPopFrontResult PopFront();
+    [[nodiscard]] TPopFrontResult PopFront();
 
     /**
      * Returns the number of visible allocations in the buffer.
      * The behavior is unspecified if the buffer is corrupted.
      */
-    ui64 Size() const;
+    [[nodiscard]] ui64 Size() const;
 
     /**
      * Checks if the buffer is empty.
      * The behavior is unspecified if the buffer is corrupted.
      */
-    bool Empty() const;
+    [[nodiscard]] bool Empty() const;
 
     /**
-     * Check data and structure integrity including data checksum validation.
-     * Set IsCorrupted flag if any issues are found and returns false.
-     * Return true if everything is valid.
-     * Fire a critical event and doesn't visit entries if a buffer is corrupted.
+     * Checks data and structure integrity including data checksum validation.
+     * Sets IsCorrupted flag if any issues are found and returns false.
+     * Returns true if everything is valid.
+     * Fires a critical event and stop visiting entries if a buffer is corrupted
      */
     bool Validate();
 
@@ -204,10 +204,10 @@ public:
      *
      * Stops visiting and returns an error if the buffer is corrupted.
      */
-    NProto::TError Visit(const TVisitor& visitor);
+    [[nodiscard]] NProto::TError Visit(const TVisitor& visitor);
 
-    // This method is thread safe
-    bool IsCorrupted() const;
+    // Reading corruption flag is thread-safe
+    [[nodiscard]] bool IsCorrupted() const;
 
     /**
      * Sets Corrupted flag and fires a critical event if the flag has not
@@ -219,10 +219,10 @@ public:
      */
     void SetCorrupted();
 
-    ui64 GetRawCapacity() const;
-    ui64 GetRawUsedBytesCount() const;
-    ui32 GetVersion() const;
-    ui64 GetMaxObservedEntryByteCount() const;
+    [[nodiscard]] ui64 GetRawCapacity() const;
+    [[nodiscard]] ui64 GetRawUsedBytesCount() const;
+    [[nodiscard]] ui32 GetVersion() const;
+    [[nodiscard]] ui64 GetMaxObservedEntryByteCount() const;
 
     /**
      * Returns the number of bytes that can be successfully allocated by
@@ -230,7 +230,7 @@ public:
      *
      * Returns zero if the buffer is full or corrupted.
      */
-    ui64 GetAvailableByteCount() const;
+    [[nodiscard]] ui64 GetAvailableByteCount() const;
 
     /**
      * Returns the number of bytes that can be successfully allocated by
@@ -242,7 +242,7 @@ public:
      * allocation of this size will eventually succeed. Allocations of higher
      * sizes will fail with an error.
      */
-    ui64 GetMaxSupportedAllocationByteCount() const;
+    [[nodiscard]] ui64 GetMaxSupportedAllocationByteCount() const;
 
     /**
      * Gets metadata
@@ -251,16 +251,16 @@ public:
      *
      * On failure, TGetMetadataResult::Error is set.
      */
-    TGetMetadataResult GetMetadata() const;
+    [[nodiscard]] TGetMetadataResult GetMetadata() const;
 
     /**
      * Sets metadata
      *
      * TSetMetadataResult::Updated is true if metadata has been set or false
-     * if is cannot be set due to its size or buffer corruption.
-     * Additionally, TFrontResult::Error is set on corruption.
+     * if it cannot be set due to its size or buffer corruption.
+     * Additionally, TSetMetadataResult::Error is set on corruption.
      */
-    TSetMetadataResult SetMetadata(TStringBuf data);
+    [[nodiscard]] TSetMetadataResult SetMetadata(TStringBuf data);
 };
 
 #undef FILE_RING_BUFFER_RESULT_STRUCT

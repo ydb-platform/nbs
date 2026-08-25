@@ -53,23 +53,36 @@ TString Dump(TFileRingBuffer& rb)
 {
     TVector<TString> entries;
 
-    rb.Visit([&](ui32, ui32, TStringBuf entry)
-             { entries.push_back(TString(entry)); });
+    auto error = rb.Visit([&](ui32, ui32, TStringBuf entry)
+                          { entries.push_back(TString(entry)); });
+
+    UNIT_ASSERT(!HasError(error));
 
     return Dump(entries);
+}
+
+TString Dump(const TTempFileHandle& fh)
+{
+    TFileMap m(fh.GetName(), TMemoryMapCommon::oRdWr);
+    m.Map(0, m.Length());
+    TString res(m.Length(), 0);
+    MemCopy(res.begin(), static_cast<const char*>(m.Ptr()), m.Length());
+    return res;
 }
 
 TStringBuf Find(TFileRingBuffer& rb, TStringBuf entry)
 {
     TStringBuf result;
 
-    rb.Visit(
+    auto error = rb.Visit(
         [&](ui32, ui32, TStringBuf e)
         {
             if (e == entry) {
                 result = e;
             }
         });
+
+    UNIT_ASSERT(!HasError(error));
 
     return result;
 }
@@ -84,7 +97,7 @@ TString PopAll(TFileRingBuffer& rb)
         }
 
         sb << rb.Front().Data;
-        rb.PopFront();
+        UNIT_ASSERT(rb.PopFront().Removed);
     }
 
     return sb;
@@ -112,7 +125,7 @@ struct TReferenceImplementation
     TFileRingBuffer::TPushBackResult PushBack(TStringBuf data)
     {
         if (data.empty() || data.size() > MaxWeight) {
-            return MakeError(E_ARGUMENT);
+            return TFileRingBuffer::TPushBackResult(MakeError(E_ARGUMENT));
         }
 
         ui32 sz = EntryOverhead + data.size();
@@ -121,7 +134,7 @@ struct TReferenceImplementation
         }
 
         if (sz > MaxWeight) {
-            return false;
+            return TFileRingBuffer::TPushBackResult(false);
         }
 
         if (!Empty()) {
@@ -130,7 +143,7 @@ struct TReferenceImplementation
                 if (avail < sz) {
                     if (ReadPos <= sz) {
                         // out of space
-                        return false;
+                        return TFileRingBuffer::TPushBackResult(false);
                     }
 
                     SlackSpace = avail;
@@ -140,29 +153,29 @@ struct TReferenceImplementation
                 const auto avail = ReadPos - WritePos;
                 if (avail <= sz) {
                     // out of space
-                    return false;
+                    return TFileRingBuffer::TPushBackResult(false);
                 }
             }
         }
 
         WritePos += sz;
         Q.emplace_back(data);
-        return true;
+        return TFileRingBuffer::TPushBackResult(true);
     }
 
     TFileRingBuffer::TFrontResult Front() const
     {
         if (!Q) {
-            return TStringBuf{};
+            return TFileRingBuffer::TFrontResult(TStringBuf{});
         }
 
-        return TStringBuf(Q.front());
+        return TFileRingBuffer::TFrontResult(TStringBuf(Q.front()));
     }
 
     TFileRingBuffer::TPopFrontResult PopFront()
     {
         if (!Q) {
-            return false;
+            return TFileRingBuffer::TPopFrontResult(false);
         }
 
         ui32 sz = Q.front().size() + EntryOverhead;
@@ -187,7 +200,7 @@ struct TReferenceImplementation
             WritePos = 0;
         }
 
-        return true;
+        return TFileRingBuffer::TPopFrontResult(true);
     }
 
     bool Empty() const
@@ -555,15 +568,6 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(2, data[267]);
             data[267] = newLength;
         }
-
-        TString Dump()
-        {
-            TFileMap m(FileHandle.GetName(), TMemoryMapCommon::oRdWr);
-            m.Map(0, m.Length());
-            TString res(m.Length(), 0);
-            MemCopy(res.begin(), static_cast<const char*>(m.Ptr()), m.Length());
-            return res;
-        }
     };
 
     Y_UNIT_TEST(ShouldSetIsCorruptedFlagWhenEntryLengthIsAltered)
@@ -622,13 +626,23 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
     FILE_RING_BUFFER_TEST(ForbidModificationOfCorruptedBuffer)
     {
-        TStateWithCorruptedEntryLength s(13);
-        TFileRingBuffer rb(s.FileHandle.GetName(), s.Len, 0, ver);
+        TTempFileHandle f;
+        TFileRingBuffer rb(f.GetName(), 36, 8, ver);
 
-        auto dump = s.Dump();
+        auto ptr = rb.Alloc(3).AllocationPtr;
+        UNIT_ASSERT(ptr != nullptr);
+        ptr[0] = 'a';
+        ptr[1] = 'b';
+        ptr[2] = 'c';
+        UNIT_ASSERT(!HasError(rb.Commit()));
+        UNIT_ASSERT(rb.SetMetadata("123").Updated);
+
+        rb.SetCorrupted();
+
+        auto dump = Dump(f);
 
         UNIT_ASSERT(HasError(rb.Front().Error));
-        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
 
         int visitCount = 0;
         auto visitor = [&visitCount](ui32, ui32, TStringBuf) {
@@ -636,34 +650,57 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         };
         UNIT_ASSERT(HasError(rb.Visit(visitor)));
         UNIT_ASSERT_VALUES_EQUAL(0, visitCount);
-        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
 
         UNIT_ASSERT(HasError(rb.PopFront().Error));
-        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
 
         UNIT_ASSERT(HasError(rb.PushBack("1").Error));
-        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
 
         UNIT_ASSERT(HasError(rb.Alloc(1).Error));
-        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
+
+        UNIT_ASSERT(HasError(rb.Free(ptr)));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
 
         UNIT_ASSERT(HasError(rb.Commit()));
-        UNIT_ASSERT_STRINGS_EQUAL(dump, s.Dump());
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
+
+        UNIT_ASSERT(HasError(rb.GetTag(ptr).Error));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
+
+        UNIT_ASSERT(HasError(rb.SetTag(ptr, 1)));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
+
+        UNIT_ASSERT(HasError(rb.GetMetadata().Error));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
+
+        UNIT_ASSERT(HasError(rb.SetMetadata("x").Error));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
     }
 
-    FILE_RING_BUFFER_TEST(ShouldDetectCorruptionOnPopFront)
+    struct TShouldDetectCorruptionOnPopFrontAndFreeBootstrap
     {
-        const auto f = TTempFileHandle();
-        const ui32 len = 42;
-        TFileRingBuffer rb(f.GetName(), len, 0, ver);
+        TTempFileHandle TempFileHandle;
+        TFileRingBuffer RingBuffer;
+        char* frontAllocationPtr = nullptr;
 
-        UNIT_ASSERT(rb.PushBack("abc").Pushed);
-        UNIT_ASSERT(rb.PushBack("def").Pushed);
-
+        TShouldDetectCorruptionOnPopFrontAndFreeBootstrap(EVersion ver)
+            : RingBuffer(TempFileHandle.GetName(), 42, 0, ver)
         {
+            frontAllocationPtr = RingBuffer.Alloc(3).AllocationPtr;
+            UNIT_ASSERT(frontAllocationPtr != nullptr);
+            frontAllocationPtr[0] = 'a';
+            frontAllocationPtr[1] = 'b';
+            frontAllocationPtr[2] = 'c';
+            UNIT_ASSERT(!HasError(RingBuffer.Commit()));
+
+            UNIT_ASSERT(RingBuffer.PushBack("def").Pushed);
+
             // Corrupt the buffer
             TFileMapFileRingBufferAccessor accessor(
-                f.GetName(),
+                TempFileHandle.GetName(),
                 EFileRingBufferAccessorValidationMode::Normal,
                 TMemoryMapCommon::EOpenModeFlag::oRdWr);
 
@@ -678,8 +715,19 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             eh.DataSize = 1000;
             accessor.GetDataProcessor()->WriteEntryHeader(0, eh);
         }
+    };
 
-        UNIT_ASSERT(HasError(rb.PopFront().Error));
+    FILE_RING_BUFFER_TEST(ShouldDetectCorruptionOnPopFrontAndFree)
+    {
+        {
+            TShouldDetectCorruptionOnPopFrontAndFreeBootstrap b(ver);
+            UNIT_ASSERT(HasError(b.RingBuffer.PopFront().Error));
+        }
+
+        {
+            TShouldDetectCorruptionOnPopFrontAndFreeBootstrap b(ver);
+            UNIT_ASSERT(HasError(b.RingBuffer.Free(b.frontAllocationPtr)));
+        }
     }
 
     FILE_RING_BUFFER_TEST(ShouldGetRawCapacity)
@@ -1182,12 +1230,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             auto* ptr1 = rb->Alloc(data1.size()).AllocationPtr;
             UNIT_ASSERT(ptr1 != nullptr);
             data1.copy(ptr1, data1.size());
-            rb->Commit();
+            UNIT_ASSERT(!HasError(rb->Commit()));
 
             auto* ptr2 = rb->Alloc(data2.size()).AllocationPtr;
             UNIT_ASSERT(ptr2 != nullptr);
             data2.copy(ptr2, data2.size());
-            rb->Commit();
+            UNIT_ASSERT(!HasError(rb->Commit()));
 
             UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr1).Tag);
             UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr2).Tag);
@@ -1220,7 +1268,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             auto* ptr5 = rb->Alloc(data1.size()).AllocationPtr;
             UNIT_ASSERT(ptr5 != nullptr);
             data1.copy(ptr5, data1.size());
-            rb->Commit();
+            UNIT_ASSERT(!HasError(rb->Commit()));
 
             UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr5).Tag);
         };
@@ -1245,7 +1293,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         auto ptr2 = rb.Alloc(1).AllocationPtr;
         UNIT_ASSERT(ptr2 != nullptr);
         ptr2[0] = 'c';
-        rb.Commit();
+        UNIT_ASSERT(!HasError(rb.Commit()));
 
         UNIT_ASSERT(AlignDown(ptr1, sizeof(ui64)) == ptr1);
         UNIT_ASSERT(AlignDown(ptr2, sizeof(ui64)) == ptr2);
@@ -1323,8 +1371,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         {
             TFileRingBuffer rb(f.GetName(), len, 0, EVersion::V5);
-            rb.PushBack("a");
-            rb.PopFront();
+            UNIT_ASSERT(rb.PushBack("a").Pushed);
+            UNIT_ASSERT(rb.PopFront().Removed);
         }
 
         {
