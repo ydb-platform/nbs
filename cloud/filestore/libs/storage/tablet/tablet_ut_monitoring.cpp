@@ -87,7 +87,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
             response->Html);
     }
 
-    Y_UNIT_TEST(ShouldRenderDiagnosticsPage)
+    Y_UNIT_TEST(ShouldHandleHttpInfo_Diagnostics)
     {
         TTestEnv env;
 
@@ -99,7 +99,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
 
         auto response = tablet.GetRemoteHttpInfo("action=diagnostics");
         UNIT_ASSERT(response->Html.Contains("diagnosticsInit"));
-        UNIT_ASSERT(response->Html.Contains("Diagnostic filesystem metrics"));
+        UNIT_ASSERT(response->Html.Contains("Diagnostic Metrics"));
     }
 }
 

@@ -1090,7 +1090,7 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
 
         TAG(TH3) {
             out << "<a href='?TabletID=" << TabletID()
-                << "&action=diagnostics'>Diagnostic filesystem metrics</a>";
+                << "&action=diagnostics'>Diagnostic Metrics</a>";
         }
 
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
