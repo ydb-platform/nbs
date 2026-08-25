@@ -1385,10 +1385,10 @@ void TIndexTabletActor::RenderHttpInfo_QuotasTab(IOutputStream& out)
                         }
                         TABLED() { out << (usage ? usage->UsedNodes : 0); }
                         TABLED() {
-                            out << (hasAggregate
-                                ? FormatByteSize(
-                                      aggregateIt->second.GetUsedBytes())
-                                : FormatByteSize(0));
+                            out << FormatByteSize(
+                                hasAggregate
+                                    ? aggregateIt->second.GetUsedBytes()
+                                    : 0);
                         }
                         TABLED() {
                             out << (hasAggregate
