@@ -32,6 +32,10 @@ private:
     TVector<TEvent> Events;
     IQueuedOperationsProcessor& Processor;
 
+    // Only the outermost Release call processes events to avoid a recursive
+    // call chain.
+    bool ProcessingEvents = false;
+
 public:
     explicit TQueuedOperations(IQueuedOperationsProcessor& processor);
     ~TQueuedOperations();

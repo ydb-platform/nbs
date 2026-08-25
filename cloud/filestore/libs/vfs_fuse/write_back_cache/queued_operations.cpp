@@ -118,10 +118,26 @@ void TQueuedOperations::Acquire()
 
 void TQueuedOperations::Release()
 {
-    auto events = std::exchange(Events, {});
-    Lock.Release();
-    for (auto& event: events) {
-        std::visit([](auto& ev) { ev.Invoke(); }, event);
+    if (ProcessingEvents) {
+        Lock.Release();
+        return;
+    }
+
+    ProcessingEvents = true;
+    while (true) {
+        auto events = std::exchange(Events, {});
+        Lock.Release();
+
+        for (auto& event: events) {
+            std::visit([](auto& ev) { ev.Invoke(); }, event);
+        }
+
+        Lock.Acquire();
+        if (Events.empty()) {
+            ProcessingEvents = false;
+            Lock.Release();
+            return;
+        }
     }
 }
 

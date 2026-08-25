@@ -11,6 +11,7 @@ SRCS(
     node_state_holder_ut.cpp
     overlapping_interval_set_ut.cpp
     persistent_storage_ut.cpp
+    queued_operations_ut.cpp
     read_response_builder_ut.cpp
     test/test_persistent_storage.cpp
     utils_ut.cpp
