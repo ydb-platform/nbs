@@ -3921,14 +3921,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         );
 
-        tablet.ForcedOperation(
+        tablet.ForcedOperationTask(
             ::xrange(0, 10, 1),
             TEvIndexTabletPrivate::EForcedOperationMode::Compaction);
         UNIT_ASSERT_VALUES_EQUAL(ranges.size(), 10);
         UNIT_ASSERT_VALUES_EQUAL(ranges.front(), 0);
         UNIT_ASSERT_VALUES_EQUAL(ranges.back(), 9);
 
-        tablet.AssertForcedOperationFailed(
+        tablet.AssertForcedOperationTaskFailed(
             TVector<ui32>{},
             TEvIndexTabletPrivate::EForcedOperationMode::Compaction);
     }
@@ -3978,7 +3978,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         );
 
-        tablet.ForcedOperation(
+        tablet.ForcedOperationTask(
             ::xrange(0, 2, 1),
             TEvIndexTabletPrivate::EForcedOperationMode::Compaction);
         UNIT_ASSERT_VALUES_EQUAL(ranges.size(), 3);
@@ -4022,13 +4022,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         );
 
-        tablet.SendForcedOperationRequest(
+        tablet.SendForcedOperationTaskRequest(
             ::xrange(0, 1, 1),
             TEvIndexTabletPrivate::EForcedOperationMode::Compaction);
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(request);
 
-        tablet.SendForcedOperationRequest(
+        tablet.SendForcedOperationTaskRequest(
             ::xrange(1, 2, 1),
             TEvIndexTabletPrivate::EForcedOperationMode::Compaction);
         env.GetRuntime().Send(request.Release(), 1 /* node index */);
@@ -4074,14 +4074,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        tablet.ForcedOperation(
+        tablet.ForcedOperationTask(
             ::xrange(0, 10, 1),
             TEvIndexTabletPrivate::EForcedOperationMode::Compaction);
         UNIT_ASSERT_VALUES_EQUAL(compactionRanges.size(), 10);
         UNIT_ASSERT_VALUES_EQUAL(compactionRanges.front(), 0);
         UNIT_ASSERT_VALUES_EQUAL(compactionRanges.back(), 9);
 
-        tablet.ForcedOperation(
+        tablet.ForcedOperationTask(
             ::xrange(5, 15, 1),
             TEvIndexTabletPrivate::EForcedOperationMode::Cleanup);
         UNIT_ASSERT_VALUES_EQUAL(cleanupRanges.size(), 10);
@@ -4177,7 +4177,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 rangesCount * 2 * BlockGroupSize);
         }
 
-        tablet.ForcedOperation(
+        tablet.ForcedOperationTask(
             rangesSubjectToCleanup,
             TEvIndexTabletPrivate::EForcedOperationMode::Cleanup);
 
@@ -4252,7 +4252,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
         }
 
-        tablet.ForcedOperation(
+        tablet.ForcedOperationTask(
             TVector<ui32>{rangeId},
             TEvIndexTabletPrivate::EForcedOperationMode::Compaction);
         {
@@ -4281,7 +4281,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
         }
 
-        tablet.ForcedOperation(
+        tablet.ForcedOperationTask(
             TVector<ui32>{rangeId},
             TEvIndexTabletPrivate::EForcedOperationMode::Compaction);
         {
@@ -4365,7 +4365,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         UNIT_ASSERT_VALUES_EQUAL(requests, 15);
         UNIT_ASSERT_VALUES_EQUAL(lastCompactionMapRangeId, 199);
-        tablet.AssertForcedOperationFailed(
+        tablet.AssertForcedOperationTaskFailed(
             TVector<ui32>{},
             TEvIndexTabletPrivate
                 ::EForcedOperationMode::DeleteZeroCompactionRanges);

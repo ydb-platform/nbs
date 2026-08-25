@@ -107,7 +107,20 @@ public:
 
             const auto processed = statusResponse.GetProcessedRangeCount();
             const auto total = statusResponse.GetRangeCount();
-            if (processed >= total) {
+            const auto status = statusResponse.GetStatus();
+            if (status == NProtoPrivate::TForcedOperationStatusResponse
+                    ::E_STATUS_FAILED)
+            {
+                statusResponse.MutableError()->CopyFrom(
+                    statusResponse.GetOperationError());
+                CheckResponse(statusResponse);
+            }
+
+            if (status == NProtoPrivate::TForcedOperationStatusResponse
+                    ::E_STATUS_COMPLETED ||
+                (status == NProtoPrivate::TForcedOperationStatusResponse
+                    ::E_STATUS_UNSPECIFIED && processed >= total))
+            {
                 // operation completed
                 Cout << "finished" << Endl;
                 break;

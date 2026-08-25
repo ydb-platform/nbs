@@ -1162,7 +1162,7 @@ void TIndexTabletActor::HandleForcedOperation(
     }
 
     if (e.GetCode() == S_OK && IsForcedOperationRunning()) {
-        const auto currentMode = GetForcedOperationState()->Mode;
+        const auto currentMode = GetForcedOperation()->State.Mode;
         if (currentMode == mode) {
             e = MakeError(S_ALREADY, "already launched");
         } else {
@@ -1207,11 +1207,44 @@ void TIndexTabletActor::HandleForcedOperationStatus(
     using TResponse = TEvIndexTablet::TEvForcedOperationStatusResponse;
     auto response = std::make_unique<TResponse>();
 
-    const auto* state = FindForcedOperation(request.GetOperationId());
-    if (state) {
-        response->Record.SetRangeCount(state->RangesToCompact.size());
-        response->Record.SetProcessedRangeCount(state->Current);
-        response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
+    const auto* operation = FindForcedOperation(request.GetOperationId());
+    if (operation) {
+        using EPhase = TIndexTabletState::TForcedOperationState::EPhase;
+
+        switch (operation->State.Phase) {
+            case EPhase::Running:
+                response->Record.SetStatus(
+                    NProtoPrivate::TForcedOperationStatusResponse
+                        ::E_STATUS_RUNNING);
+                break;
+            case EPhase::Completed:
+                response->Record.SetStatus(
+                    NProtoPrivate::TForcedOperationStatusResponse
+                        ::E_STATUS_COMPLETED);
+                break;
+            case EPhase::Failed:
+                response->Record.SetStatus(
+                    NProtoPrivate::TForcedOperationStatusResponse
+                        ::E_STATUS_FAILED);
+                response->Record.MutableOperationError()->CopyFrom(
+                    operation->State.Error);
+                break;
+        }
+
+        const auto* details =
+            std::get_if<TIndexTabletState::TForcedRangeOperationDetails>(
+                &operation->Details);
+        if (details) {
+            response->Record.SetRangeCount(details->RangeCount);
+            response->Record.SetProcessedRangeCount(
+                details->ProcessedRangeCount);
+            // Kept for compatibility: this field contains the next range to
+            // pass back as the inclusive MinRangeId when restarting.
+            if (details->RangeIdForRestart) {
+                response->Record.SetLastProcessedRangeId(
+                    *details->RangeIdForRestart);
+            }
+        }
     } else {
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,

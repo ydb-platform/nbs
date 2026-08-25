@@ -551,12 +551,12 @@ public:
         return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(rangeId, filter);
     }
 
-    auto CreateForcedOperationRequest(
+    auto CreateForcedOperationTaskRequest(
         TVector<ui32> ranges,
         TEvIndexTabletPrivate::EForcedOperationMode mode)
     {
         return std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedOperationRequest>(
+            TEvIndexTabletPrivate::TEvForcedOperationTaskRequest>(
             std::move(ranges),
             mode,
             CreateGuidAsString());

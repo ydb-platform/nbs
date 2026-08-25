@@ -36,7 +36,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DumpCompactionRange,                    __VA_ARGS__)                   \
     xxx(Flush,                                  __VA_ARGS__)                   \
     xxx(FlushBytes,                             __VA_ARGS__)                   \
-    xxx(ForcedOperation,                   __VA_ARGS__)                   \
+    xxx(ForcedOperationTask,                    __VA_ARGS__)                   \
     xxx(Truncate,                               __VA_ARGS__)                   \
     xxx(ReadBlob,                               __VA_ARGS__)                   \
     xxx(WriteBlob,                              __VA_ARGS__)                   \
@@ -595,7 +595,7 @@ struct TEvIndexTabletPrivate
     };
 
     //
-    // ForcedOperation
+    // ForcedOperationTask
     //
 
     enum EForcedOperationMode
@@ -605,36 +605,72 @@ struct TEvIndexTabletPrivate
         DeleteZeroCompactionRanges = 2,
     };
 
-    struct TForcedOperationRequest
+    struct TForcedRangeOperationArgs
     {
         TVector<ui32> Ranges;
+    };
+
+    struct TForcedOperationWithoutArgs
+    {
+    };
+
+    using TForcedOperationArgs = std::variant<
+        TForcedOperationWithoutArgs,
+        TForcedRangeOperationArgs>;
+
+    struct TForcedOperationTaskRequest
+    {
+        TForcedOperationArgs Args;
         EForcedOperationMode Mode;
         TString OperationId;
 
-        TForcedOperationRequest(
-                TVector<ui32> ranges,
+        TForcedOperationTaskRequest(
+                TForcedOperationArgs args,
                 EForcedOperationMode mode,
                 TString operationId)
-            : Ranges(std::move(ranges))
+            : Args(std::move(args))
             , Mode(mode)
             , OperationId(std::move(operationId))
         {}
+
+        TForcedOperationTaskRequest(
+                TVector<ui32> ranges,
+                EForcedOperationMode mode,
+                TString operationId)
+            : TForcedOperationTaskRequest(
+                TForcedRangeOperationArgs{std::move(ranges)},
+                mode,
+                std::move(operationId))
+        {}
     };
 
-    struct TForcedOperationResponse
+    struct TForcedOperationTaskResponse
     {
     };
 
-    using TForcedOperationCompleted = TEmpty;
+    struct TForcedOperationTaskCompleted
+    {
+        const TString OperationId;
+
+        explicit TForcedOperationTaskCompleted(TString operationId)
+            : OperationId(std::move(operationId))
+        {}
+    };
 
     struct TForcedOperationProgress
     {
-        const ui32 Current;
+        const TString OperationId;
+        const ui32 ProcessedRangeCount;
+        const ui32 RangeIdForRestart;
 
-        explicit TForcedOperationProgress(ui32 current)
-            : Current(current)
-        {
-        }
+        TForcedOperationProgress(
+                TString operationId,
+                ui32 processedRangeCount,
+                ui32 rangeIdForRestart)
+            : OperationId(std::move(operationId))
+            , ProcessedRangeCount(processedRangeCount)
+            , RangeIdForRestart(rangeIdForRestart)
+        {}
     };
 
     //

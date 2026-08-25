@@ -1435,6 +1435,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(2, response.GetProcessedRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProtoPrivate::TForcedOperationStatusResponse
+                    ::E_STATUS_RUNNING),
+                static_cast<int>(response.GetStatus()));
+            UNIT_ASSERT_VALUES_EQUAL(
                 1177944066,
                 response.GetLastProcessedRangeId());
         }
@@ -1469,6 +1473,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 jsonResponse->Record.GetOutput(), &response).ok());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetProcessedRangeCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProtoPrivate::TForcedOperationStatusResponse
+                    ::E_STATUS_COMPLETED),
+                static_cast<int>(response.GetStatus()));
         }
 
         env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());

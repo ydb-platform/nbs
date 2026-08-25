@@ -23,34 +23,37 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief An actor that performs various forced bookkeeping operations. It is
- * implemented as a template class to avoid code duplication.
+ * @brief An actor that performs a forced operation for a sequence of ranges.
+ * It is implemented as a template class to avoid code duplication.
  *
  * @tparam TRequestConstructor A functor that constructs a unique_ptr to a
  * request that is necessary to be performed to passed range.
  */
 template <typename TResponseType, typename TRequestConstructor>
-class TForcedOperationActor final
+class TForcedRangeOperationActor final
     : public TActorBootstrapped<
-          TForcedOperationActor<TResponseType, TRequestConstructor>>
+          TForcedRangeOperationActor<TResponseType, TRequestConstructor>>
 {
 private:
     using TBase = NActors::TActorBootstrapped<
-        TForcedOperationActor<TResponseType, TRequestConstructor>>;
+        TForcedRangeOperationActor<TResponseType, TRequestConstructor>>;
 
     const TActorId Tablet;
     const TString LogTag;
     const TDuration RetryTimeout;
 
-    TIndexTabletState::TForcedOperationState State;
+    const TString OperationId;
+    const TVector<ui32> Ranges;
+    ui32 CurrentRange = 0;
     const TRequestInfoPtr RequestInfo;
 
 public:
-    TForcedOperationActor(
+    TForcedRangeOperationActor(
         TActorId tablet,
         TString logTag,
         TDuration retry,
-        TIndexTabletState::TForcedOperationState state,
+        TString operationId,
+        TVector<ui32> ranges,
         TRequestInfoPtr requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
@@ -58,7 +61,7 @@ public:
 private:
     STFUNC(StateWork);
 
-    void SendRangeOperationRequest(const TActorContext& ctx);
+    void SendCurrentRangeRequest(const TActorContext& ctx);
 
     void HandleRangeOperationResponse(
         const TResponseType::TPtr& ev,
@@ -76,28 +79,32 @@ private:
         const TActorContext& ctx,
         const NProto::TError& error);
 
-    void ReportProgress(const TActorContext& ctx);
+    void ReportProgress(
+        const TActorContext& ctx,
+        ui32 rangeIdForRestart);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TResponseType, typename TRequestConstructor>
-TForcedOperationActor<TResponseType, TRequestConstructor>::
-    TForcedOperationActor(
+TForcedRangeOperationActor<TResponseType, TRequestConstructor>::
+    TForcedRangeOperationActor(
         TActorId tablet,
         TString logTag,
         TDuration retry,
-        TIndexTabletState::TForcedOperationState state,
+        TString operationId,
+        TVector<ui32> ranges,
         TRequestInfoPtr requestInfo)
     : Tablet(tablet)
     , LogTag(std::move(logTag))
     , RetryTimeout(retry)
-    , State(std::move(state))
+    , OperationId(std::move(operationId))
+    , Ranges(std::move(ranges))
     , RequestInfo(std::move(requestInfo))
 {}
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::Bootstrap(
+void TForcedRangeOperationActor<TResponseType, TRequestConstructor>::Bootstrap(
     const TActorContext& ctx)
 {
     TBase::Become(&TBase::TThis::StateWork);
@@ -107,21 +114,27 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::Bootstrap(
         RequestInfo->CallContext,
         "ForcedOperation");
 
-    SendRangeOperationRequest(ctx);
+    if (Ranges.empty()) {
+        ReplyAndDie(ctx, {});
+        return;
+    }
+
+    SendCurrentRangeRequest(ctx);
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::
-    SendRangeOperationRequest(const TActorContext& ctx)
+void TForcedRangeOperationActor<TResponseType, TRequestConstructor>::
+    SendCurrentRangeRequest(const TActorContext& ctx)
 {
-    auto request = TRequestConstructor()(State.GetCurrentRange());
+    TABLET_VERIFY(CurrentRange < Ranges.size());
+    auto request = TRequestConstructor()(Ranges[CurrentRange]);
 
     ctx.Send(Tablet, request.release());
 }
 
 template <typename TResponseType, typename TRequestConstructor>
 STFUNC(
-    (TForcedOperationActor<TResponseType, TRequestConstructor>::StateWork))
+    (TForcedRangeOperationActor<TResponseType, TRequestConstructor>::StateWork))
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeUp);
@@ -139,7 +152,7 @@ STFUNC(
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::
+void TForcedRangeOperationActor<TResponseType, TRequestConstructor>::
     HandleRangeOperationResponse(
         const TResponseType::TPtr& ev,
         const TActorContext& ctx)
@@ -155,24 +168,26 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
         return ReplyAndDie(ctx, msg->Error);
     }
 
-    if (!State.Progress()) {
+    ++CurrentRange;
+
+    if (CurrentRange == Ranges.size()) {
         return ReplyAndDie(ctx, {});
     }
 
-    ReportProgress(ctx);
-    SendRangeOperationRequest(ctx);
+    ReportProgress(ctx, Ranges[CurrentRange]);
+    SendCurrentRangeRequest(ctx);
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::
+void TForcedRangeOperationActor<TResponseType, TRequestConstructor>::
     HandleWakeUp(const TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    SendRangeOperationRequest(ctx);
+    SendCurrentRangeRequest(ctx);
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::
+void TForcedRangeOperationActor<TResponseType, TRequestConstructor>::
     HandlePoisonPill(
         const TEvents::TEvPoison::TPtr& ev,
         const TActorContext& ctx)
@@ -182,13 +197,15 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::
+void TForcedRangeOperationActor<TResponseType, TRequestConstructor>::
     ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
 {
     {
         // notify tablet
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedOperationCompleted>(error);
+            TEvIndexTabletPrivate::TEvForcedOperationTaskCompleted>(
+                error,
+                OperationId);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -200,7 +217,7 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedOperationResponse>(error);
+            TEvIndexTabletPrivate::TEvForcedOperationTaskResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -208,11 +225,19 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedOperationActor<TResponseType, TRequestConstructor>::
-    ReportProgress(const TActorContext& ctx)
+void TForcedRangeOperationActor<TResponseType, TRequestConstructor>::
+    ReportProgress(
+        const TActorContext& ctx,
+        ui32 rangeIdForRestart)
 {
     using TEvent = TEvIndexTabletPrivate::TEvForcedOperationProgress;
-    NCloud::Send(ctx, Tablet, std::make_unique<TEvent>(State.Current));
+    NCloud::Send(
+        ctx,
+        Tablet,
+        std::make_unique<TEvent>(
+            OperationId,
+            CurrentRange,
+            rangeIdForRestart));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -248,15 +273,15 @@ struct TDeleteZeroCompactionRangesRequestConstructor
     }
 };
 
-using TForcedCompactionActor = TForcedOperationActor<
+using TForcedCompactionActor = TForcedRangeOperationActor<
     TEvIndexTabletPrivate::TEvCompactionResponse,
     TCompactionRequestConstructor>;
 
-using TForcedCleanupActor = TForcedOperationActor<
+using TForcedCleanupActor = TForcedRangeOperationActor<
     TEvIndexTabletPrivate::TEvCleanupResponse,
     TCleanupRequestConstructor>;
 
-using TDeleteRangesWithEmptyScoreActor = TForcedOperationActor<
+using TDeleteRangesWithEmptyScoreActor = TForcedRangeOperationActor<
     TEvIndexTabletPrivate::TEvDeleteZeroCompactionRangesResponse,
     TDeleteZeroCompactionRangesRequestConstructor>;
 
@@ -272,28 +297,31 @@ void TIndexTabletActor::EnqueueForcedOperationIfNeeded(
     }
 
     auto pendingRequest = DequeueForcedOperation();
-    if (pendingRequest.Ranges.empty()) {
+    if (!pendingRequest) {
         return;
     }
 
     auto request =
-        std::make_unique<TEvIndexTabletPrivate::TEvForcedOperationRequest>(
-            std::move(pendingRequest.Ranges),
-            pendingRequest.Mode,
-            std::move(pendingRequest.OperationId));
+        std::make_unique<TEvIndexTabletPrivate::TEvForcedOperationTaskRequest>(
+            std::move(pendingRequest->Args),
+            pendingRequest->Mode,
+            std::move(pendingRequest->OperationId));
     ctx.Send(ctx.SelfID, request.release());
 }
 
-void TIndexTabletActor::HandleForcedOperation(
-    const TEvIndexTabletPrivate::TEvForcedOperationRequest::TPtr& ev,
+void TIndexTabletActor::HandleForcedOperationTask(
+    const TEvIndexTabletPrivate::TEvForcedOperationTaskRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    auto* rangeArgs =
+        std::get_if<TEvIndexTabletPrivate::TForcedRangeOperationArgs>(
+            &msg->Args);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s ForcedOperation request for %lu ranges",
         LogTag.c_str(),
-        msg->Ranges.size());
+        rangeArgs ? rangeArgs->Ranges.size() : 0);
 
     auto replyError = [&] (
         const NProto::TError& error)
@@ -303,11 +331,14 @@ void TIndexTabletActor::HandleForcedOperation(
         }
 
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedOperationResponse>(error);
+            TEvIndexTabletPrivate::TEvForcedOperationTaskResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (msg->Ranges.empty() || msg->Ranges.size() > Max<ui32>()) {
+    if (!rangeArgs ||
+        rangeArgs->Ranges.empty() ||
+        rangeArgs->Ranges.size() > Max<ui32>())
+    {
         replyError(ErrorInvalidArgument());
         return;
     }
@@ -320,14 +351,16 @@ void TIndexTabletActor::HandleForcedOperation(
 
     // will lose original request info in case of enqueueing external request
     if (IsForcedOperationRunning()) {
-        EnqueueForcedOperation(msg->Mode, std::move(msg->Ranges));
+        EnqueueForcedOperation(msg->Mode, std::move(msg->Args));
         return;
     }
 
+    const auto operationId = msg->OperationId;
+    auto ranges = std::move(rangeArgs->Ranges);
     StartForcedOperation(
         msg->Mode,
-        std::move(msg->Ranges),
-        std::move(msg->OperationId));
+        operationId,
+        TIndexTabletState::TForcedRangeOperationDetails(ranges.size()));
 
     std::unique_ptr<IActor> actor;
 
@@ -337,7 +370,8 @@ void TIndexTabletActor::HandleForcedOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedOperationState(),
+                operationId,
+                std::move(ranges),
                 std::move(requestInfo));
             break;
 
@@ -346,7 +380,8 @@ void TIndexTabletActor::HandleForcedOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedOperationState(),
+                operationId,
+                std::move(ranges),
                 std::move(requestInfo));
             break;
         case TEvIndexTabletPrivate::EForcedOperationMode::DeleteZeroCompactionRanges:
@@ -354,7 +389,8 @@ void TIndexTabletActor::HandleForcedOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedOperationState(),
+                operationId,
+                std::move(ranges),
                 std::move(requestInfo));
             break;
 
@@ -366,8 +402,8 @@ void TIndexTabletActor::HandleForcedOperation(
     WorkerActors.insert(actorId);
 }
 
-void TIndexTabletActor::HandleForcedOperationCompleted(
-    const TEvIndexTabletPrivate::TEvForcedOperationCompleted::TPtr& ev,
+void TIndexTabletActor::HandleForcedOperationTaskCompleted(
+    const TEvIndexTabletPrivate::TEvForcedOperationTaskCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -377,9 +413,10 @@ void TIndexTabletActor::HandleForcedOperationCompleted(
         FormatError(msg->GetError()).c_str());
 
     TABLET_VERIFY(IsForcedOperationRunning());
+    TABLET_VERIFY(GetForcedOperation()->State.OperationId == msg->OperationId);
     WorkerActors.erase(ev->Sender);
 
-    CompleteForcedOperation();
+    CompleteForcedOperation(msg->GetError());
     EnqueueForcedOperationIfNeeded(ctx);
 }
 
@@ -389,9 +426,11 @@ void TIndexTabletActor::HandleForcedOperationProgress(
 {
     Y_UNUSED(ctx);
 
-    if (IsForcedOperationRunning()) {
-        UpdateForcedOperationProgress(ev->Get()->Current);
-    }
+    const auto* msg = ev->Get();
+    UpdateForcedRangeOperationProgress(
+        msg->OperationId,
+        msg->ProcessedRangeCount,
+        msg->RangeIdForRestart);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

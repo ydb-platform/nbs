@@ -1453,19 +1453,28 @@ TString TIndexTabletState::EnqueueForcedOperation(
     TEvIndexTabletPrivate::EForcedOperationMode mode,
     TVector<ui32> ranges)
 {
+    return EnqueueForcedOperation(
+        mode,
+        TEvIndexTabletPrivate::TForcedRangeOperationArgs{std::move(ranges)});
+}
+
+TString TIndexTabletState::EnqueueForcedOperation(
+    TEvIndexTabletPrivate::EForcedOperationMode mode,
+    TEvIndexTabletPrivate::TForcedOperationArgs args)
+{
     auto operationId = CreateGuidAsString();
     PendingForcedOperations.emplace_back(
         mode,
-        std::move(ranges),
+        std::move(args),
         operationId);
     return operationId;
 }
 
-TIndexTabletState::TPendingForcedOperation TIndexTabletState::
+TMaybe<TIndexTabletState::TPendingForcedOperation> TIndexTabletState::
     DequeueForcedOperation()
 {
     if (PendingForcedOperations.empty()) {
-        return {};
+        return Nothing();
     }
 
     auto op = std::move(PendingForcedOperations.back());
@@ -1476,43 +1485,78 @@ TIndexTabletState::TPendingForcedOperation TIndexTabletState::
 
 void TIndexTabletState::StartForcedOperation(
     TEvIndexTabletPrivate::EForcedOperationMode mode,
-    TVector<ui32> ranges,
-    TString operationId)
+    TString operationId,
+    TForcedOperationDetails details)
 {
-    TABLET_VERIFY(!ForcedOperationState.Defined());
-    ForcedOperationState.ConstructInPlace(
-        mode,
-        std::move(ranges),
-        std::move(operationId));
+    TABLET_VERIFY(!ForcedOperation.Defined());
+    ForcedOperation.ConstructInPlace(
+        TForcedOperationState(mode, std::move(operationId)),
+        std::move(details));
 }
 
-void TIndexTabletState::CompleteForcedOperation()
+void TIndexTabletState::CompleteForcedOperation(const NProto::TError& error)
 {
-    Y_DEBUG_ABORT_UNLESS(ForcedOperationState);
-    if (ForcedOperationState && ForcedOperationState->OperationId) {
-        ForcedOperationState->Current =
-            ForcedOperationState->RangesToCompact.size();
-        CompletedForcedOperations.push_back(*ForcedOperationState);
+    Y_DEBUG_ABORT_UNLESS(ForcedOperation);
+    if (ForcedOperation) {
+        ForcedOperation->State.Error = error;
+        ForcedOperation->State.Phase = HasError(error)
+            ? TForcedOperationState::EPhase::Failed
+            : TForcedOperationState::EPhase::Completed;
+
+        if (!HasError(error)) {
+            if (auto* details =
+                    std::get_if<TForcedRangeOperationDetails>(
+                        &ForcedOperation->Details))
+            {
+                details->ProcessedRangeCount = details->RangeCount;
+                details->RangeIdForRestart.Clear();
+            }
+        }
+
+        if (ForcedOperation->State.OperationId) {
+            CompletedForcedOperations.push_back(*ForcedOperation);
+        }
     }
-    ForcedOperationState.Clear();
+    ForcedOperation.Clear();
 }
 
 auto TIndexTabletState::FindForcedOperation(
-    const TString& operationId) const -> const TForcedOperationState*
+    const TString& operationId) const -> const TForcedOperationRecord*
 {
-    if (ForcedOperationState
-            && ForcedOperationState->OperationId == operationId)
+    if (ForcedOperation
+            && ForcedOperation->State.OperationId == operationId)
     {
-        return ForcedOperationState.Get();
+        return ForcedOperation.Get();
     }
 
     for (const auto& op: CompletedForcedOperations) {
-        if (op.OperationId == operationId) {
+        if (op.State.OperationId == operationId) {
             return &op;
         }
     }
 
     return nullptr;
+}
+
+void TIndexTabletState::UpdateForcedRangeOperationProgress(
+    const TString& operationId,
+    ui32 processedRangeCount,
+    ui32 rangeIdForRestart)
+{
+    if (!ForcedOperation ||
+        ForcedOperation->State.OperationId != operationId)
+    {
+        return;
+    }
+
+    auto* details = std::get_if<TForcedRangeOperationDetails>(
+        &ForcedOperation->Details);
+    TABLET_VERIFY(details);
+
+    if (processedRangeCount > details->ProcessedRangeCount) {
+        details->ProcessedRangeCount = processedRangeCount;
+        details->RangeIdForRestart = rangeIdForRestart;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

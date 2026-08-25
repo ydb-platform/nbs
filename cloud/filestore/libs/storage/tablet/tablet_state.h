@@ -43,6 +43,7 @@
 #include <util/generic/vector.h>
 
 #include <functional>
+#include <variant>
 
 namespace NCloud::NFileStore::NProto {
 
@@ -1463,84 +1464,109 @@ public:
     void LoadCompactionMap(const TVector<TCompactionRangeInfo>& compactionMap);
 
     //
-    // Forced Compaction
+    // Forced operations
     //
 
 public:
     struct TForcedOperationState
     {
         const TEvIndexTabletPrivate::EForcedOperationMode Mode;
-        const TVector<ui32> RangesToCompact;
         const TString OperationId;
 
         TInstant StartTime = TInstant::Now();
-        ui32 Current = 0;
+
+        enum class EPhase
+        {
+            Running,
+            Completed,
+            Failed,
+        };
+
+        EPhase Phase = EPhase::Running;
+        NProto::TError Error;
 
         TForcedOperationState(
                 TEvIndexTabletPrivate::EForcedOperationMode mode,
-                TVector<ui32> ranges,
                 TString operationId)
             : Mode(mode)
-            , RangesToCompact(std::move(ranges))
             , OperationId(std::move(operationId))
         {}
 
         TForcedOperationState(const TForcedOperationState&) = default;
+    };
 
-        bool Progress()
-        {
-            return ++Current < RangesToCompact.size();
-        }
+    struct TForcedRangeOperationDetails
+    {
+        const ui32 RangeCount;
+        ui32 ProcessedRangeCount = 0;
+        TMaybe<ui32> RangeIdForRestart;
 
-        ui32 GetCurrentRange() const
-        {
-            return Current < RangesToCompact.size()
-                ? RangesToCompact[Current] : 0;
-        }
+        explicit TForcedRangeOperationDetails(ui32 rangeCount)
+            : RangeCount(rangeCount)
+        {}
+    };
+
+    using TForcedOperationDetails = std::variant<
+        std::monostate,
+        TForcedRangeOperationDetails>;
+
+    struct TForcedOperationRecord
+    {
+        TForcedOperationState State;
+        TForcedOperationDetails Details;
+
+        TForcedOperationRecord(
+                TForcedOperationState state,
+                TForcedOperationDetails details)
+            : State(std::move(state))
+            , Details(std::move(details))
+        {}
     };
 
 private:
     struct TPendingForcedOperation
     {
         TEvIndexTabletPrivate::EForcedOperationMode Mode;
-        TVector<ui32> Ranges;
+        TEvIndexTabletPrivate::TForcedOperationArgs Args;
         TString OperationId;
     };
 
     TVector<TPendingForcedOperation> PendingForcedOperations;
-    TMaybe<TForcedOperationState> ForcedOperationState;
-    TVector<TForcedOperationState> CompletedForcedOperations;
+    TMaybe<TForcedOperationRecord> ForcedOperation;
+    TVector<TForcedOperationRecord> CompletedForcedOperations;
 
 public:
     TString EnqueueForcedOperation(
         TEvIndexTabletPrivate::EForcedOperationMode mode,
         TVector<ui32> ranges);
-    TPendingForcedOperation DequeueForcedOperation();
+    TString EnqueueForcedOperation(
+        TEvIndexTabletPrivate::EForcedOperationMode mode,
+        TEvIndexTabletPrivate::TForcedOperationArgs args);
+    TMaybe<TPendingForcedOperation> DequeueForcedOperation();
 
     void StartForcedOperation(
         TEvIndexTabletPrivate::EForcedOperationMode mode,
-        TVector<ui32> ranges,
-        TString operationId);
+        TString operationId,
+        TForcedOperationDetails details);
 
-    void CompleteForcedOperation();
+    void CompleteForcedOperation(const NProto::TError& error);
 
-    const TForcedOperationState* GetForcedOperationState() const
+    const TForcedOperationRecord* GetForcedOperation() const
     {
-        return ForcedOperationState.Get();
+        return ForcedOperation.Get();
     }
 
-    const TForcedOperationState* FindForcedOperation(
+    const TForcedOperationRecord* FindForcedOperation(
         const TString& operationId) const;
 
-    void UpdateForcedOperationProgress(ui32 current)
-    {
-        ForcedOperationState->Current =
-            Max(ForcedOperationState->Current, current);
-    }
+    void UpdateForcedRangeOperationProgress(
+        const TString& operationId,
+        ui32 processedRangeCount,
+        ui32 rangeIdForRestart);
 
     bool IsForcedOperationRunning() const
     {
-        return ForcedOperationState.Defined();
+        return ForcedOperation.Defined();
     }
 
     //

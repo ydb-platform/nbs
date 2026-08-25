@@ -690,6 +690,14 @@ message TForcedOperationStatusRequest
 
 message TForcedOperationStatusResponse
 {
+    enum EForcedOperationStatus
+    {
+        E_STATUS_UNSPECIFIED = 0;
+        E_STATUS_RUNNING = 1;
+        E_STATUS_COMPLETED = 2;
+        E_STATUS_FAILED = 3;
+    };
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
@@ -699,9 +707,15 @@ message TForcedOperationStatusResponse
     // Processed range count.
     uint64 ProcessedRangeCount = 3;
 
-    // Last processed range id. Can be used to skip processed range ids upon
-    // operation restart via the MinRangeId parameter.
+    // Range id to pass as the inclusive MinRangeId upon operation restart.
+    // The field name is retained for compatibility.
     uint32 LastProcessedRangeId = 4;
+
+    // Generic forced operation lifecycle status.
+    EForcedOperationStatus Status = 5;
+
+    // Error produced by the forced operation itself, if it failed.
+    NCloud.NProto.TError OperationError = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -338,11 +338,19 @@ void DumpOperationState(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DumpCompactionInfo(
+void DumpForcedOperationInfo(
     IOutputStream& out,
-    const TIndexTabletState::TForcedOperationState& state)
+    const TIndexTabletState::TForcedOperationRecord& operation)
 {
-    DumpProgress(out, state.Current, state.RangesToCompact.size());
+    const auto* details =
+        std::get_if<TIndexTabletState::TForcedRangeOperationDetails>(
+            &operation.Details);
+    if (details) {
+        DumpProgress(
+            out,
+            details->ProcessedRangeCount,
+            details->RangeCount);
+    }
 }
 
 void DumpRangeId(IOutputStream& out, ui64 tabletId, ui32 rangeId)
@@ -1262,7 +1270,7 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
         }
 
         if (IsForcedOperationRunning()) {
-            DumpCompactionInfo(out, *GetForcedOperationState());
+            DumpForcedOperationInfo(out, *GetForcedOperation());
         } else {
             out << "<div class='collapse form-group' id='compact-all'>";
             BuildForceCompactionButton(out, TabletID());
