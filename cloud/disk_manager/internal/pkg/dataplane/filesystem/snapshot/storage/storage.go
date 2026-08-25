@@ -76,18 +76,19 @@ type Storage interface {
 		ctx context.Context,
 	) (storageSize uint64, err error)
 
-	// AcquireFilesystemSnapshotBarrier joins taskID to the snapshot's shared
-	// deletion barrier. Repeated calls with the same taskID are idempotent.
-	AcquireFilesystemSnapshotBarrier(
+	// LockFilesystemSnapshot prevents deletion while any lock remains. Multiple
+	// callers can lock the same snapshot successfully without waiting for existing
+	// locks to be released; repeated calls with the same taskID are idempotent.
+	LockFilesystemSnapshot(
 		ctx context.Context,
 		snapshotID string,
 		taskID string,
 	) error
 
-	// ReleaseFilesystemSnapshotBarrier removes taskID from the shared deletion
-	// barrier. It is idempotent, including for deleting or missing snapshots;
-	// deletion is unblocked after the last holder exits.
-	ReleaseFilesystemSnapshotBarrier(
+	// UnlockFilesystemSnapshot removes the lock owned by taskID. It is
+	// idempotent, including for deleting or missing snapshots; deletion is
+	// unblocked after the last lock is removed.
+	UnlockFilesystemSnapshot(
 		ctx context.Context,
 		snapshotID string,
 		taskID string,

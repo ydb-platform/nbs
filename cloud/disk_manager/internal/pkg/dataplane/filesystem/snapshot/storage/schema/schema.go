@@ -35,7 +35,7 @@ func Create(
 	err = db.CreateOrAlterTable(
 		ctx,
 		storageFolder,
-		"filesystem_snapshot_lock_holders",
+		"filesystem_snapshot_locks",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("lock_task_id", persistence.Optional(persistence.TypeUTF8)),
@@ -46,7 +46,7 @@ func Create(
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Created filesystem_snapshot_lock_holders table")
+	logging.Info(ctx, "Created filesystem_snapshot_locks table")
 
 	err = db.CreateOrAlterTable(
 		ctx,
@@ -192,11 +192,11 @@ func Drop(
 
 	logging.Info(ctx, "Dropping schema for dataplane filesystem snapshot storage in %v", db.AbsolutePath(storageFolder))
 
-	err := db.DropTable(ctx, storageFolder, "filesystem_snapshot_lock_holders")
+	err := db.DropTable(ctx, storageFolder, "filesystem_snapshot_locks")
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Dropped filesystem_snapshot_lock_holders table")
+	logging.Info(ctx, "Dropped filesystem_snapshot_locks table")
 
 	err = db.DropTable(ctx, storageFolder, "filesystem_snapshots")
 	if err != nil {

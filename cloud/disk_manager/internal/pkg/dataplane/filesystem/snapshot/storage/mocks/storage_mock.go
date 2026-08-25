@@ -98,7 +98,7 @@ func (s *StorageMock) GetTotalFilesystemSnapshotStorageSize(ctx context.Context)
 	return args.Get(0).(uint64), args.Error(1)
 }
 
-func (s *StorageMock) AcquireFilesystemSnapshotBarrier(
+func (s *StorageMock) LockFilesystemSnapshot(
 	ctx context.Context,
 	snapshotID string,
 	taskID string,
@@ -108,7 +108,7 @@ func (s *StorageMock) AcquireFilesystemSnapshotBarrier(
 	return args.Error(0)
 }
 
-func (s *StorageMock) ReleaseFilesystemSnapshotBarrier(
+func (s *StorageMock) UnlockFilesystemSnapshot(
 	ctx context.Context,
 	snapshotID string,
 	taskID string,

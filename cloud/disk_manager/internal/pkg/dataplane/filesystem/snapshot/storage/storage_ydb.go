@@ -58,7 +58,7 @@ func (s *storageYDB) fetchFilesystemSnapshotByID(
 	return scanFilesystemSnapshotStates(ctx, res)
 }
 
-func (s *storageYDB) upsertFilesystemSnapshotLockHolder(
+func (s *storageYDB) upsertFilesystemSnapshotLock(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	snapshotID string,
@@ -71,7 +71,7 @@ func (s *storageYDB) upsertFilesystemSnapshotLockHolder(
 		declare $snapshot_id as Utf8;
 		declare $lock_task_id as Utf8;
 
-		upsert into filesystem_snapshot_lock_holders (snapshot_id, lock_task_id)
+		upsert into filesystem_snapshot_locks (snapshot_id, lock_task_id)
 		values ($snapshot_id, $lock_task_id)
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
@@ -80,7 +80,7 @@ func (s *storageYDB) upsertFilesystemSnapshotLockHolder(
 	return err
 }
 
-func (s *storageYDB) deleteFilesystemSnapshotLockHolder(
+func (s *storageYDB) deleteFilesystemSnapshotLock(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	snapshotID string,
@@ -93,7 +93,7 @@ func (s *storageYDB) deleteFilesystemSnapshotLockHolder(
 		declare $snapshot_id as Utf8;
 		declare $lock_task_id as Utf8;
 
-		delete from filesystem_snapshot_lock_holders
+		delete from filesystem_snapshot_locks
 		where snapshot_id = $snapshot_id and lock_task_id = $lock_task_id
 	`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
@@ -102,7 +102,7 @@ func (s *storageYDB) deleteFilesystemSnapshotLockHolder(
 	return err
 }
 
-func (s *storageYDB) getAnyFilesystemSnapshotLockHolder(
+func (s *storageYDB) getAnyFilesystemSnapshotLock(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	snapshotID string,
@@ -114,7 +114,7 @@ func (s *storageYDB) getAnyFilesystemSnapshotLockHolder(
 		declare $snapshot_id as Utf8;
 
 		select lock_task_id
-		from filesystem_snapshot_lock_holders
+		from filesystem_snapshot_locks
 		where snapshot_id = $snapshot_id
 		limit 1
 	`, s.tablesPath),
@@ -293,7 +293,6 @@ func (s *storageYDB) deletingFilesystemSnapshot(
 ) (deleting *FilesystemSnapshotMeta, err error) {
 
 	deletingAt := time.Now()
-
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
 		return nil, err
@@ -377,12 +376,13 @@ func (s *storageYDB) deletingFilesystemSnapshot(
 	return state.toFilesystemSnapshotMeta(), tx.Commit(ctx)
 }
 
-func (s *storageYDB) acquireFilesystemSnapshotBarrier(
+func (s *storageYDB) lockFilesystemSnapshot(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
 	lockTaskID string,
 ) error {
+
 	if lockTaskID == "" {
 		return task_errors.NewNonRetriableErrorf(
 			"lock task ID should not be empty",
@@ -420,7 +420,7 @@ func (s *storageYDB) acquireFilesystemSnapshotBarrier(
 		}
 
 		return task_errors.NewNonRetriableErrorf(
-			"can't acquire barrier for filesystem snapshot with id %v and status %v",
+			"can't lock filesystem snapshot with id %v and status %v",
 			snapshotID,
 			filesystemSnapshotStatusToString(state.status),
 		)
@@ -432,7 +432,7 @@ func (s *storageYDB) acquireFilesystemSnapshotBarrier(
 			return tx.Commit(ctx)
 		}
 
-		err = s.upsertFilesystemSnapshotLockHolder(
+		err = s.upsertFilesystemSnapshotLock(
 			ctx,
 			tx,
 			snapshotID,
@@ -479,16 +479,17 @@ func (s *storageYDB) acquireFilesystemSnapshotBarrier(
 		return err
 	}
 
-	logging.Info(ctx, "Acquired barrier for filesystem snapshot with id %v", snapshotID)
+	logging.Info(ctx, "Locked filesystem snapshot with id %v", snapshotID)
 	return nil
 }
 
-func (s *storageYDB) releaseFilesystemSnapshotBarrier(
+func (s *storageYDB) unlockFilesystemSnapshot(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
 	lockTaskID string,
 ) error {
+
 	if lockTaskID == "" {
 		return task_errors.NewNonRetriableErrorf(
 			"lock task ID should not be empty",
@@ -513,13 +514,14 @@ func (s *storageYDB) releaseFilesystemSnapshotBarrier(
 
 	state := states[0]
 	if state.status >= filesystemSnapshotStatusDeleting {
-		// The snapshot no longer has a barrier to release.
+		// Unlike locking, unlocking a deleting snapshot is a successful no-op,
+		// so callers can safely retry cleanup after deletion has started.
 		return tx.Commit(ctx)
 	}
 
 	if state.lockTaskID != lockTaskID {
-		// Remove an additional lock holder, if present.
-		err = s.deleteFilesystemSnapshotLockHolder(
+		// Remove an additional lock, if present.
+		err = s.deleteFilesystemSnapshotLock(
 			ctx,
 			tx,
 			snapshotID,
@@ -532,7 +534,7 @@ func (s *storageYDB) releaseFilesystemSnapshotBarrier(
 		return tx.Commit(ctx)
 	}
 
-	nextLockHolderTaskID, err := s.getAnyFilesystemSnapshotLockHolder(
+	nextLockTaskID, err := s.getAnyFilesystemSnapshotLock(
 		ctx,
 		tx,
 		snapshotID,
@@ -541,13 +543,13 @@ func (s *storageYDB) releaseFilesystemSnapshotBarrier(
 		return err
 	}
 
-	state.lockTaskID = nextLockHolderTaskID
-	if nextLockHolderTaskID != "" {
-		err = s.deleteFilesystemSnapshotLockHolder(
+	state.lockTaskID = nextLockTaskID
+	if nextLockTaskID != "" {
+		err = s.deleteFilesystemSnapshotLock(
 			ctx,
 			tx,
 			snapshotID,
-			nextLockHolderTaskID,
+			nextLockTaskID,
 		)
 		if err != nil {
 			return err
@@ -574,15 +576,15 @@ func (s *storageYDB) releaseFilesystemSnapshotBarrier(
 		return err
 	}
 
-	if nextLockHolderTaskID == "" {
-		logging.Info(ctx, "Released barrier for filesystem snapshot with id %v", snapshotID)
+	if nextLockTaskID == "" {
+		logging.Info(ctx, "Unlocked filesystem snapshot with id %v", snapshotID)
 	} else {
 		logging.Info(
 			ctx,
-			"Transferred filesystem snapshot barrier with id %v from %v to %v",
+			"Transferred representative filesystem snapshot lock with id %v from %v to %v",
 			snapshotID,
 			lockTaskID,
-			nextLockHolderTaskID,
+			nextLockTaskID,
 		)
 	}
 	return nil
@@ -816,6 +818,10 @@ func (s *storageYDB) ClearDeletingFilesystemSnapshots(
 	keys []*protos.DeletingFilesystemSnapshotKey,
 ) error {
 
+	// Do not clean up filesystem_snapshot_locks here. Locks must be explicitly
+	// released before deletion starts. A leaked lock leaves deletion interrupted
+	// and requires manual intervention, which is safer than a cleanup bug
+	// accidentally unlocking and deleting a protected snapshot.
 	for _, key := range keys {
 		_, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 			--!syntax_v1
@@ -877,7 +883,7 @@ func (s *storageYDB) TablesEmpty(ctx context.Context) (bool, error) {
 	// Used by tests to verify collection cleanup.
 	for _, table := range []string{
 		"filesystem_snapshots",
-		"filesystem_snapshot_lock_holders",
+		"filesystem_snapshot_locks",
 		"deleting",
 		"node_refs",
 		"node_refs_by_shard",
@@ -953,7 +959,7 @@ func (s *storageYDB) CheckFilesystemSnapshotReady(
 	return nil
 }
 
-func (s *storageYDB) AcquireFilesystemSnapshotBarrier(
+func (s *storageYDB) LockFilesystemSnapshot(
 	ctx context.Context,
 	snapshotID string,
 	lockTaskID string,
@@ -962,7 +968,7 @@ func (s *storageYDB) AcquireFilesystemSnapshotBarrier(
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.acquireFilesystemSnapshotBarrier(
+			return s.lockFilesystemSnapshot(
 				ctx,
 				session,
 				snapshotID,
@@ -972,7 +978,7 @@ func (s *storageYDB) AcquireFilesystemSnapshotBarrier(
 	)
 }
 
-func (s *storageYDB) ReleaseFilesystemSnapshotBarrier(
+func (s *storageYDB) UnlockFilesystemSnapshot(
 	ctx context.Context,
 	snapshotID string,
 	lockTaskID string,
@@ -981,7 +987,7 @@ func (s *storageYDB) ReleaseFilesystemSnapshotBarrier(
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.releaseFilesystemSnapshotBarrier(
+			return s.unlockFilesystemSnapshot(
 				ctx,
 				session,
 				snapshotID,

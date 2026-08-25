@@ -409,7 +409,7 @@ func TestCheckFilesystemSnapshotReadyWithCancellationDoesNotReturnNonRetriableEr
 	}
 }
 
-func TestFilesystemSnapshotBarrier(t *testing.T) {
+func TestLockUnlockFilesystemSnapshot(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
@@ -427,25 +427,25 @@ func TestFilesystemSnapshotBarrier(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = f.storage.AcquireFilesystemSnapshotBarrier(f.ctx, snapshotID, "barrier1")
+	err = f.storage.LockFilesystemSnapshot(f.ctx, snapshotID, "lock1")
 	require.NoError(t, err)
 
-	err = f.storage.AcquireFilesystemSnapshotBarrier(f.ctx, snapshotID, "barrier2")
+	err = f.storage.LockFilesystemSnapshot(f.ctx, snapshotID, "lock2")
 	require.NoError(t, err)
 
 	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, snapshotID)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errors.NewEmptyRetriableError())
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(f.ctx, snapshotID, "barrier2")
+	err = f.storage.UnlockFilesystemSnapshot(f.ctx, snapshotID, "lock2")
 	require.NoError(t, err)
 
-	// Releasing one participant does not release the barrier.
+	// Unlocking one task does not remove the other task's lock.
 	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, snapshotID)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errors.NewEmptyRetriableError())
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(f.ctx, snapshotID, "barrier1")
+	err = f.storage.UnlockFilesystemSnapshot(f.ctx, snapshotID, "lock1")
 	require.NoError(t, err)
 
 	deleting, err := f.storage.DeletingFilesystemSnapshot(
@@ -455,19 +455,19 @@ func TestFilesystemSnapshotBarrier(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, deleting)
 
-	err = f.storage.AcquireFilesystemSnapshotBarrier(f.ctx, snapshotID, "barrier3")
+	err = f.storage.LockFilesystemSnapshot(f.ctx, snapshotID, "lock3")
 	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(f.ctx, snapshotID, "barrier3")
+	err = f.storage.UnlockFilesystemSnapshot(f.ctx, snapshotID, "lock3")
 	require.NoError(t, err)
 }
 
-func TestFilesystemSnapshotBarrierAcquireAndReleaseAreIdempotent(t *testing.T) {
+func TestLockUnlockFilesystemSnapshotAreIdempotent(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
 	snapshotID := t.Name()
-	const barrierTaskID = "barrier"
+	const lockTaskID = "lock"
 	_, err := f.storage.CreateFilesystemSnapshot(
 		f.ctx,
 		FilesystemSnapshotMeta{
@@ -481,47 +481,47 @@ func TestFilesystemSnapshotBarrierAcquireAndReleaseAreIdempotent(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = f.storage.AcquireFilesystemSnapshotBarrier(
+	err = f.storage.LockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		barrierTaskID,
+		lockTaskID,
 	)
 	require.NoError(t, err)
 
-	err = f.storage.AcquireFilesystemSnapshotBarrier(
+	err = f.storage.LockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		barrierTaskID,
+		lockTaskID,
 	)
 	require.NoError(t, err)
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(
+	err = f.storage.UnlockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		barrierTaskID,
+		lockTaskID,
 	)
 	require.NoError(t, err)
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(
+	err = f.storage.UnlockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		barrierTaskID,
+		lockTaskID,
 	)
 	require.NoError(t, err)
 
-	// Repeated acquisition creates one barrier participant, and repeated release
+	// Repeated locking by the same task creates one lock, and repeated unlocking
 	// is a no-op, so deletion is allowed.
 	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, snapshotID)
 	require.NoError(t, err)
 }
 
-func TestFilesystemSnapshotBarrierParticipantAcquireIsIdempotent(t *testing.T) {
+func TestFilesystemSnapshotAdditionalLockIsIdempotent(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
 	snapshotID := t.Name()
-	const firstBarrierTaskID = "barrier-1"
-	const secondBarrierTaskID = "barrier-2"
+	const firstLockTaskID = "lock-1"
+	const secondLockTaskID = "lock-2"
 	_, err := f.storage.CreateFilesystemSnapshot(
 		f.ctx,
 		FilesystemSnapshotMeta{
@@ -535,26 +535,26 @@ func TestFilesystemSnapshotBarrierParticipantAcquireIsIdempotent(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = f.storage.AcquireFilesystemSnapshotBarrier(
+	err = f.storage.LockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		firstBarrierTaskID,
+		firstLockTaskID,
 	)
 	require.NoError(t, err)
 
 	for i := 0; i < 2; i++ {
-		err = f.storage.AcquireFilesystemSnapshotBarrier(
+		err = f.storage.LockFilesystemSnapshot(
 			f.ctx,
 			snapshotID,
-			secondBarrierTaskID,
+			secondLockTaskID,
 		)
 		require.NoError(t, err)
 	}
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(
+	err = f.storage.UnlockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		firstBarrierTaskID,
+		firstLockTaskID,
 	)
 	require.NoError(t, err)
 
@@ -565,15 +565,15 @@ func TestFilesystemSnapshotBarrierParticipantAcquireIsIdempotent(t *testing.T) {
 	require.Nil(t, deleting)
 	require.ErrorIs(t, err, errors.NewEmptyRetriableError())
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(
+	err = f.storage.UnlockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		secondBarrierTaskID,
+		secondLockTaskID,
 	)
 	require.NoError(t, err)
 
-	// Repeated acquisition of the second participant must require only one
-	// release before the barrier is empty.
+	// Repeated locking by the second task must require only one unlock before
+	// the snapshot is unlocked.
 	deleting, err = f.storage.DeletingFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
@@ -582,7 +582,7 @@ func TestFilesystemSnapshotBarrierParticipantAcquireIsIdempotent(t *testing.T) {
 	require.NotNil(t, deleting)
 }
 
-func TestEmptyFilesystemSnapshotBarrierTaskIDIsRejected(t *testing.T) {
+func TestEmptyFilesystemSnapshotLockTaskIDIsRejected(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
@@ -600,18 +600,18 @@ func TestEmptyFilesystemSnapshotBarrierTaskIDIsRejected(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = f.storage.AcquireFilesystemSnapshotBarrier(f.ctx, snapshotID, "")
+	err = f.storage.LockFilesystemSnapshot(f.ctx, snapshotID, "")
 	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(f.ctx, snapshotID, "")
+	err = f.storage.UnlockFilesystemSnapshot(f.ctx, snapshotID, "")
 	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 
-	// Invalid barrier operations must not create a participant.
+	// Invalid lock operations must not create a lock.
 	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, snapshotID)
 	require.NoError(t, err)
 }
 
-func TestConcurrentFilesystemSnapshotBarrierPromotionAndIdempotentAcquire(
+func TestConcurrentFilesystemSnapshotLockPromotionAndIdempotentLock(
 	t *testing.T,
 ) {
 	f := createFixture(t)
@@ -620,8 +620,8 @@ func TestConcurrentFilesystemSnapshotBarrierPromotionAndIdempotentAcquire(
 	const attempts = 10
 	for i := 0; i < attempts; i++ {
 		snapshotID := fmt.Sprintf("%s-%d", t.Name(), i)
-		firstBarrierTaskID := fmt.Sprintf("barrier-1-%d", i)
-		secondBarrierTaskID := fmt.Sprintf("barrier-2-%d", i)
+		firstLockTaskID := fmt.Sprintf("lock-1-%d", i)
+		secondLockTaskID := fmt.Sprintf("lock-2-%d", i)
 
 		_, err := f.storage.CreateFilesystemSnapshot(
 			f.ctx,
@@ -636,44 +636,44 @@ func TestConcurrentFilesystemSnapshotBarrierPromotionAndIdempotentAcquire(
 		)
 		require.NoError(t, err, "attempt %v", i)
 
-		err = f.storage.AcquireFilesystemSnapshotBarrier(
+		err = f.storage.LockFilesystemSnapshot(
 			f.ctx,
 			snapshotID,
-			firstBarrierTaskID,
+			firstLockTaskID,
 		)
 		require.NoError(t, err, "attempt %v", i)
 
-		err = f.storage.AcquireFilesystemSnapshotBarrier(
+		err = f.storage.LockFilesystemSnapshot(
 			f.ctx,
 			snapshotID,
-			secondBarrierTaskID,
+			secondLockTaskID,
 		)
 		require.NoError(t, err, "attempt %v", i)
 
 		start := make(chan struct{})
-		releaseResultCh := make(chan error, 1)
-		acquireResultCh := make(chan error, 1)
+		unlockResultCh := make(chan error, 1)
+		lockResultCh := make(chan error, 1)
 
 		go func() {
 			<-start
-			releaseResultCh <- f.storage.ReleaseFilesystemSnapshotBarrier(
+			unlockResultCh <- f.storage.UnlockFilesystemSnapshot(
 				f.ctx,
 				snapshotID,
-				firstBarrierTaskID,
+				firstLockTaskID,
 			)
 		}()
 		go func() {
 			<-start
-			acquireResultCh <- f.storage.AcquireFilesystemSnapshotBarrier(
+			lockResultCh <- f.storage.LockFilesystemSnapshot(
 				f.ctx,
 				snapshotID,
-				secondBarrierTaskID,
+				secondLockTaskID,
 			)
 		}()
 
 		close(start)
-		require.NoError(t, <-releaseResultCh, "attempt %v", i)
-		require.NoError(t, <-acquireResultCh, "attempt %v", i)
+		require.NoError(t, <-unlockResultCh, "attempt %v", i)
+		require.NoError(t, <-lockResultCh, "attempt %v", i)
 
 		deleting, err := f.storage.DeletingFilesystemSnapshot(
 			f.ctx,
@@ -688,12 +688,12 @@ func TestConcurrentFilesystemSnapshotBarrierPromotionAndIdempotentAcquire(
 			i,
 		)
 
-		// A concurrent idempotent acquire must not duplicate the promoted
-		// participant. One release empties the barrier.
-		err = f.storage.ReleaseFilesystemSnapshotBarrier(
+		// A concurrent idempotent lock must not duplicate the promoted lock. One
+		// unlock removes it.
+		err = f.storage.UnlockFilesystemSnapshot(
 			f.ctx,
 			snapshotID,
-			secondBarrierTaskID,
+			secondLockTaskID,
 		)
 		require.NoError(t, err, "attempt %v", i)
 
@@ -706,13 +706,13 @@ func TestConcurrentFilesystemSnapshotBarrierPromotionAndIdempotentAcquire(
 	}
 }
 
-func TestDeleteFilesystemSnapshotAfterLastBarrierRelease(t *testing.T) {
+func TestDeleteFilesystemSnapshotAfterLastUnlock(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
 	snapshotID := t.Name()
-	const firstBarrierTaskID = "barrier-1"
-	const secondBarrierTaskID = "barrier-2"
+	const firstLockTaskID = "lock-1"
+	const secondLockTaskID = "lock-2"
 	_, err := f.storage.CreateFilesystemSnapshot(
 		f.ctx,
 		FilesystemSnapshotMeta{
@@ -726,28 +726,28 @@ func TestDeleteFilesystemSnapshotAfterLastBarrierRelease(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = f.storage.AcquireFilesystemSnapshotBarrier(
+	err = f.storage.LockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		firstBarrierTaskID,
+		firstLockTaskID,
 	)
 	require.NoError(t, err)
 
-	err = f.storage.AcquireFilesystemSnapshotBarrier(
+	err = f.storage.LockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		secondBarrierTaskID,
+		secondLockTaskID,
 	)
 	require.NoError(t, err)
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(
+	err = f.storage.UnlockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		firstBarrierTaskID,
+		firstLockTaskID,
 	)
 	require.NoError(t, err)
 
-	// Deletion remains blocked until every barrier participant releases.
+	// Deletion remains blocked until every task unlocks the snapshot.
 	deleting, err := f.storage.DeletingFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
@@ -755,10 +755,10 @@ func TestDeleteFilesystemSnapshotAfterLastBarrierRelease(t *testing.T) {
 	require.Nil(t, deleting)
 	require.ErrorIs(t, err, errors.NewEmptyRetriableError())
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(
+	err = f.storage.UnlockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		secondBarrierTaskID,
+		secondLockTaskID,
 	)
 	require.NoError(t, err)
 
@@ -770,7 +770,7 @@ func TestDeleteFilesystemSnapshotAfterLastBarrierRelease(t *testing.T) {
 	require.NotNil(t, deleting)
 }
 
-func TestConcurrentAcquireFilesystemSnapshotBarrierAndDelete(t *testing.T) {
+func TestConcurrentLockFilesystemSnapshotAndDelete(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
@@ -782,7 +782,7 @@ func TestConcurrentAcquireFilesystemSnapshotBarrierAndDelete(t *testing.T) {
 	const attempts = 10
 	for i := 0; i < attempts; i++ {
 		snapshotID := fmt.Sprintf("%s-%d", t.Name(), i)
-		barrierTaskID := fmt.Sprintf("barrier-%v", i)
+		lockTaskID := fmt.Sprintf("lock-%v", i)
 		_, err := f.storage.CreateFilesystemSnapshot(
 			f.ctx,
 			FilesystemSnapshotMeta{
@@ -797,15 +797,15 @@ func TestConcurrentAcquireFilesystemSnapshotBarrierAndDelete(t *testing.T) {
 		require.NoError(t, err, "attempt %v", i)
 
 		start := make(chan struct{})
-		acquireResultCh := make(chan error, 1)
+		lockResultCh := make(chan error, 1)
 		deleteResultCh := make(chan deleteResult, 1)
 
 		go func() {
 			<-start
-			acquireResultCh <- f.storage.AcquireFilesystemSnapshotBarrier(
+			lockResultCh <- f.storage.LockFilesystemSnapshot(
 				f.ctx,
 				snapshotID,
-				barrierTaskID,
+				lockTaskID,
 			)
 		}()
 		go func() {
@@ -818,32 +818,31 @@ func TestConcurrentAcquireFilesystemSnapshotBarrierAndDelete(t *testing.T) {
 		}()
 
 		close(start)
-		acquireErr := <-acquireResultCh
+		lockErr := <-lockResultCh
 		deleteResult := <-deleteResultCh
 
 		if deleteResult.err == nil {
-			// Deletion serialized first, so a barrier can no longer be acquired.
-			// Releasing it remains an idempotent no-op.
+			// Deletion serialized first, so the snapshot can no longer be locked.
+			// Unlocking it remains an idempotent no-op.
 			require.NotNil(t, deleteResult.meta, "attempt %v", i)
 			require.ErrorIs(
 				t,
-				acquireErr,
+				lockErr,
 				errors.NewEmptyNonRetriableError(),
 				"attempt %v",
 				i,
 			)
 
-			err = f.storage.ReleaseFilesystemSnapshotBarrier(
+			err = f.storage.UnlockFilesystemSnapshot(
 				f.ctx,
 				snapshotID,
-				barrierTaskID,
+				lockTaskID,
 			)
 			require.NoError(t, err, "attempt %v", i)
 			continue
 		}
 
-		// Acquisition serialized first, so deletion must wait for that barrier
-		// participant.
+		// Locking serialized first, so deletion must wait for that lock.
 		require.Nil(t, deleteResult.meta, "attempt %v", i)
 		require.ErrorIs(
 			t,
@@ -852,12 +851,12 @@ func TestConcurrentAcquireFilesystemSnapshotBarrierAndDelete(t *testing.T) {
 			"attempt %v",
 			i,
 		)
-		require.NoError(t, acquireErr, "attempt %v", i)
+		require.NoError(t, lockErr, "attempt %v", i)
 
-		err = f.storage.ReleaseFilesystemSnapshotBarrier(
+		err = f.storage.UnlockFilesystemSnapshot(
 			f.ctx,
 			snapshotID,
-			barrierTaskID,
+			lockTaskID,
 		)
 		require.NoError(t, err, "attempt %v", i)
 
@@ -870,7 +869,7 @@ func TestConcurrentAcquireFilesystemSnapshotBarrierAndDelete(t *testing.T) {
 	}
 }
 
-func TestConcurrentReleaseAndDeleteFilesystemSnapshotWithSecondBarrierParticipant(
+func TestConcurrentUnlockAndDeleteFilesystemSnapshotWithSecondLockHolder(
 	t *testing.T,
 ) {
 	f := createFixture(t)
@@ -879,8 +878,8 @@ func TestConcurrentReleaseAndDeleteFilesystemSnapshotWithSecondBarrierParticipan
 	const attempts = 10
 	for i := 0; i < attempts; i++ {
 		snapshotID := fmt.Sprintf("%s-%d", t.Name(), i)
-		firstBarrierTaskID := fmt.Sprintf("barrier-1-%v", i)
-		secondBarrierTaskID := fmt.Sprintf("barrier-2-%v", i)
+		firstLockTaskID := fmt.Sprintf("lock-1-%v", i)
+		secondLockTaskID := fmt.Sprintf("lock-2-%v", i)
 		_, err := f.storage.CreateFilesystemSnapshot(
 			f.ctx,
 			FilesystemSnapshotMeta{
@@ -894,30 +893,30 @@ func TestConcurrentReleaseAndDeleteFilesystemSnapshotWithSecondBarrierParticipan
 		)
 		require.NoError(t, err, "attempt %v", i)
 
-		err = f.storage.AcquireFilesystemSnapshotBarrier(
+		err = f.storage.LockFilesystemSnapshot(
 			f.ctx,
 			snapshotID,
-			firstBarrierTaskID,
+			firstLockTaskID,
 		)
 		require.NoError(t, err)
 
-		err = f.storage.AcquireFilesystemSnapshotBarrier(
+		err = f.storage.LockFilesystemSnapshot(
 			f.ctx,
 			snapshotID,
-			secondBarrierTaskID,
+			secondLockTaskID,
 		)
 		require.NoError(t, err, "attempt %v", i)
 
 		start := make(chan struct{})
-		releaseResultCh := make(chan error, 1)
+		unlockResultCh := make(chan error, 1)
 		deleteResultCh := make(chan error, 1)
 
 		go func() {
 			<-start
-			releaseResultCh <- f.storage.ReleaseFilesystemSnapshotBarrier(
+			unlockResultCh <- f.storage.UnlockFilesystemSnapshot(
 				f.ctx,
 				snapshotID,
-				firstBarrierTaskID,
+				firstLockTaskID,
 			)
 		}()
 		go func() {
@@ -930,7 +929,7 @@ func TestConcurrentReleaseAndDeleteFilesystemSnapshotWithSecondBarrierParticipan
 		}()
 
 		close(start)
-		require.NoError(t, <-releaseResultCh, "attempt %v", i)
+		require.NoError(t, <-unlockResultCh, "attempt %v", i)
 		require.ErrorIs(
 			t,
 			<-deleteResultCh,
@@ -939,10 +938,10 @@ func TestConcurrentReleaseAndDeleteFilesystemSnapshotWithSecondBarrierParticipan
 			i,
 		)
 
-		err = f.storage.ReleaseFilesystemSnapshotBarrier(
+		err = f.storage.UnlockFilesystemSnapshot(
 			f.ctx,
 			snapshotID,
-			secondBarrierTaskID,
+			secondLockTaskID,
 		)
 		require.NoError(t, err, "attempt %v", i)
 
@@ -955,23 +954,23 @@ func TestConcurrentReleaseAndDeleteFilesystemSnapshotWithSecondBarrierParticipan
 	}
 }
 
-func TestFilesystemSnapshotBarrierForNonexistingSnapshot(t *testing.T) {
+func TestLockUnlockNonexistingFilesystemSnapshot(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
 	snapshotID := t.Name()
 
-	err := f.storage.AcquireFilesystemSnapshotBarrier(
+	err := f.storage.LockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		"barrier",
+		"lock",
 	)
 	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 
-	err = f.storage.ReleaseFilesystemSnapshotBarrier(
+	err = f.storage.UnlockFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		"barrier",
+		"lock",
 	)
 	require.NoError(t, err)
 }
