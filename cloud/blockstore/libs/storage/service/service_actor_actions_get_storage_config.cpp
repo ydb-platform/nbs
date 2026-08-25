@@ -76,7 +76,7 @@ void TGetStorageConfigActor::Bootstrap(const TActorContext& ctx)
     }
 
     if (!proto.GetDiskId()) {
-        HandleSuccess(ctx, StorageConfig->GetStorageConfigProto());
+        HandleSuccess(ctx, StorageConfig->GetEffectiveStorageConfigProto());
         return;
     }
 

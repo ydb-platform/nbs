@@ -4,6 +4,7 @@ INCLUDE_TAGS(GO_PROTO)
 EXCLUDE_TAGS(JAVA_PROTO)
 
 SRCS(
+    blockstore.proto
     cells.proto
     client.proto
     diagnostics.proto

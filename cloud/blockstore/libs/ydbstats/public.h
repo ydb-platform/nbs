@@ -19,6 +19,7 @@ using IYdbVolumesStatsUploaderPtr = std::shared_ptr<IYdbVolumesStatsUploader>;
 
 class TYdbStatsConfig;
 using TYdbStatsConfigPtr = std::shared_ptr<TYdbStatsConfig>;
+using TYdbStatsConfigConstPtr = std::shared_ptr<const TYdbStatsConfig>;
 
 struct IYdbStorage;
 using IYdbStoragePtr = std::shared_ptr<IYdbStorage>;

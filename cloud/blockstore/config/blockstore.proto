@@ -1,0 +1,48 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+
+import "cloud/blockstore/config/cells.proto";
+import "cloud/blockstore/config/client.proto";
+import "cloud/blockstore/config/diagnostics.proto";
+import "cloud/blockstore/config/discovery.proto";
+import "cloud/blockstore/config/disk.proto";
+import "cloud/blockstore/config/grpc_client.proto";
+import "cloud/blockstore/config/local_nvme.proto";
+import "cloud/blockstore/config/logbroker.proto";
+import "cloud/blockstore/config/notify.proto";
+import "cloud/blockstore/config/rdma.proto";
+import "cloud/blockstore/config/root_kms.proto";
+import "cloud/blockstore/config/server.proto";
+import "cloud/blockstore/config/spdk.proto";
+import "cloud/blockstore/config/storage.proto";
+import "cloud/blockstore/config/ydbstats.proto";
+import "cloud/storage/core/config/features.proto";
+import "cloud/storage/core/config/iam.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TBlockstoreConfig
+{
+    optional TServerAppConfig Server = 1;
+    optional TStorageServiceConfig StorageService = 2;
+    optional .NCloud.NProto.TFeaturesConfig Features = 3;
+    optional TDiagnosticsConfig Diagnostics = 4;
+    optional TDiscoveryServiceConfig DiscoveryService = 5;
+    optional TClientAppConfig Endpoint = 6;
+    optional TDiskAgentConfig DiskAgent = 7;
+    optional TDiskRegistryProxyConfig DiskRegistryProxy = 8;
+    optional TSpdkEnvConfig SpdkEnv = 9;
+    optional TRdmaConfig Rdma = 10;
+    optional TYdbStatsConfig YdbStats = 11;
+    optional TLogbrokerConfig Logbroker = 12;
+    optional TNotifyConfig Notify = 13;
+    optional .NCloud.NProto.TIamClientConfig IamClient = 14;
+    optional TGrpcClientConfig KmsClient = 15;
+    optional TGrpcClientConfig ComputeClient = 16;
+    optional TRootKmsConfig RootKms = 17;
+    optional TCellsConfig Cells = 18;
+    optional TLocalNVMeConfig LocalNVMe = 19;
+}

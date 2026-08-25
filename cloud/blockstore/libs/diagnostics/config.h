@@ -131,6 +131,8 @@ private:
 public:
     TDiagnosticsConfig(NProto::TDiagnosticsConfig diagnosticsConfig = {});
 
+    [[nodiscard]] const NProto::TDiagnosticsConfig& GetConfigProto() const;
+
     NProto::EHostNameScheme GetHostNameScheme() const;
     TString GetBastionNameSuffix() const;
     TString GetViewerHostName() const;

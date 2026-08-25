@@ -1176,7 +1176,7 @@ bool TStorageConfigControls::RestoreDefault(TStringBuf name)
 struct TStorageConfig::TImpl
 {
     NProto::TStorageServiceConfig StorageServiceConfig;
-    NFeatures::TFeaturesConfigPtr FeaturesConfig;
+    NFeatures::TFeaturesConfigConstPtr FeaturesConfig;
 
     // Non-null ICB controls for all read-write storage fields. The
     // three-argument constructor can reuse a config-independent collection;
@@ -1186,7 +1186,7 @@ struct TStorageConfig::TImpl
 
     TImpl(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigPtr featuresConfig,
+        NFeatures::TFeaturesConfigConstPtr featuresConfig,
         TStorageConfigControlsPtr controls)
         : StorageServiceConfig(std::move(storageServiceConfig))
         , FeaturesConfig(std::move(featuresConfig))
@@ -1195,7 +1195,7 @@ struct TStorageConfig::TImpl
         Y_ABORT_UNLESS(Controls);
     }
 
-    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig)
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig)
     {
         FeaturesConfig = std::move(featuresConfig);
     }
@@ -1206,11 +1206,11 @@ struct TStorageConfig::TImpl
         StorageServiceConfig.SetVolumePreemptionType(volumePreemptionType);
     }
 
-    NProto::TStorageServiceConfig GetStorageConfigProto() const
+    NProto::TStorageServiceConfig GetEffectiveStorageConfigProto() const
     {
         NProto::TStorageServiceConfig proto = StorageServiceConfig;
 
-    // Overriding fields with values from ICB
+    // Apply current ICB overrides to the returned proto copy.
 #define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
     if (const auto value =                                                     \
             Controls->Impl->ReadOverride(Controls->Impl->Control##name))       \
@@ -1232,7 +1232,7 @@ struct TStorageConfig::TImpl
 
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
-    NFeatures::TFeaturesConfigPtr featuresConfig)
+    NFeatures::TFeaturesConfigConstPtr featuresConfig)
     : TStorageConfig(
           std::move(storageServiceConfig),
           std::move(featuresConfig),
@@ -1241,7 +1241,7 @@ TStorageConfig::TStorageConfig(
 
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
-    NFeatures::TFeaturesConfigPtr featuresConfig,
+    NFeatures::TFeaturesConfigConstPtr featuresConfig,
     TStorageConfigControlsPtr controls)
 {
     Y_ABORT_UNLESS(!controls || controls->Impl->ConfigIndependent);
@@ -1278,7 +1278,7 @@ TStorageConfig::GetStorageConfigControls() const
 }
 
 void TStorageConfig::SetFeaturesConfig(
-    NFeatures::TFeaturesConfigPtr featuresConfig)
+    NFeatures::TFeaturesConfigConstPtr featuresConfig)
 {
     Impl->SetFeaturesConfig(std::move(featuresConfig));
 }
@@ -1430,7 +1430,7 @@ TStorageConfigPtr TStorageConfig::Merge(
     auto controls = config->GetStorageConfigControls();
     const auto configProto = controls
                                  ? config->Impl->StorageServiceConfig
-                                 : config->GetStorageConfigProto();
+                                 : config->GetEffectiveStorageConfigProto();
     auto patchedConfigProto = configProto;
     patchedConfigProto.MergeFrom(patch);
     if (google::protobuf::util::MessageDifferencer::Equals(
@@ -1516,9 +1516,10 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     return {value};
 }
 
-NProto::TStorageServiceConfig TStorageConfig::GetStorageConfigProto() const
+NProto::TStorageServiceConfig
+TStorageConfig::GetEffectiveStorageConfigProto() const
 {
-    return Impl->GetStorageConfigProto();
+    return Impl->GetEffectiveStorageConfigProto();
 }
 
 void AdaptNodeRegistrationParams(

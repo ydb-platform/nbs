@@ -41,6 +41,8 @@ public:
     explicit TLocalNVMeConfig(NProto::TLocalNVMeConfig proto);
     ~TLocalNVMeConfig();
 
+    [[nodiscard]] const NProto::TLocalNVMeConfig& GetConfigProto() const;
+
     [[nodiscard]] TString GetDevicesSourceUri() const;
     [[nodiscard]] TString GetStateCacheFilePath() const;
     [[nodiscard]] TDuration GetUpdateDevicesInterval() const;

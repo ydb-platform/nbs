@@ -38,6 +38,11 @@ private:
 public:
     TServerAppConfig(NProto::TServerAppConfig appConfig = {});
 
+    [[nodiscard]] const NProto::TServerAppConfig& GetAppConfig() const
+    {
+        return AppConfig;
+    }
+
     const NProto::TServerConfig* GetServerConfig() const
     {
         return ServerConfig;
