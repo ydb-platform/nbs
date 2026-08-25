@@ -3,6 +3,8 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
 
+#include <util/generic/buffer.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
@@ -20,10 +22,10 @@ public:
     [[nodiscard]] virtual NProto::TError WritePage(
         ui64 lsn,
         ui64 pageNo,
-        TString page,
+        TBuffer page,
         TVector<TPageGroup>& logRecord) = 0;
     [[nodiscard]] virtual NProto::TError
-    ReadPage(ui64 lsn, ui64 pageNo, TString* page) const = 0;
+    ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
 };
 
 using IPageStorePtr = std::shared_ptr<IPageStore>;

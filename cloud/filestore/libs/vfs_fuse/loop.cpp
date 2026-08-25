@@ -1299,8 +1299,14 @@ private:
             features.GetAsyncDestroyReadOnlyHandleEnabled());
         config.SetAsyncCreateHandleEnabled(
             features.GetAsyncCreateHandleEnabled());
-        config.SetAsyncHandleOperationPeriod(
-            features.GetAsyncHandleOperationPeriod());
+        // If the idle period is not published by the server, fall back to the
+        // default period.
+        if (features.GetAsyncHandleOperationIdlePeriod()) {
+            config.SetAsyncHandleOperationIdlePeriod(
+                features.GetAsyncHandleOperationIdlePeriod());
+        }
+        config.SetAsyncHandleOperationDrainPeriod(
+            features.GetAsyncHandleOperationDrainPeriod());
 
         config.SetDirectIoEnabled(features.GetDirectIoEnabled());
         config.SetDirectIoAlign(features.GetDirectIoAlign());

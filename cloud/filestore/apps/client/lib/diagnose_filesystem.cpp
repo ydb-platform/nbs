@@ -57,26 +57,54 @@ private:
         }
     };
 
-    ui32 Top;
+    using TLatencyResult = NAggregation::TResult<TLatency>;
+
+    ui32 TopLoaded;
     TString SortBy;
-    ui32 TopNodes;
+    ui32 TopAccessed;
+    ui32 BatchSize;
+    ui32 SlowestNodes;
+    ui32 SlowestRequests;
+    ui32 SlowestShards;
 
 public:
     TDiagnoseFilesystemCommand()
     {
-        Opts.AddLongOption("top", "number of most loaded shards")
+        Opts.AddLongOption("top-loaded", "number of most loaded shards")
             .RequiredArgument("NUM")
             .DefaultValue(10)
-            .StoreResult(&Top);
+            .StoreResult(&TopLoaded);
         Opts.AddLongOption("sort-by", "way of sorting")
             .RequiredArgument("STR")
             .Choices({"load"})
             .DefaultValue("load")
             .StoreResult(&SortBy);
-        Opts.AddLongOption("top-nodes", "number of most accessed nodes")
+        Opts.AddLongOption("top-accessed", "number of most accessed nodes")
             .RequiredArgument("NUM")
             .DefaultValue(10)
-            .StoreResult(&TopNodes);
+            .StoreResult(&TopAccessed);
+        Opts.AddLongOption(
+                "slowest-nodes",
+                "number of slowest (node + request + shard) tuples")
+            .RequiredArgument("NUM")
+            .DefaultValue(10)
+            .StoreResult(&SlowestNodes);
+        Opts.AddLongOption(
+                "slowest-requests",
+                "number of slowest (request + shard) tuples")
+            .RequiredArgument("NUM")
+            .DefaultValue(10)
+            .StoreResult(&SlowestRequests);
+        Opts.AddLongOption("slowest-shards", "number of slowest shards")
+            .RequiredArgument("NUM")
+            .DefaultValue(10)
+            .StoreResult(&SlowestShards);
+        Opts.AddLongOption(
+                "batch-size",
+                "number of concurrent diagnostic requests")
+            .RequiredArgument("NUM")
+            .DefaultValue(10)
+            .StoreResult(&BatchSize);
     }
 
 private:
@@ -120,68 +148,175 @@ private:
         }
     }
 
-public:
-    bool Execute() override
+    void ProcessShardLoadStats(
+        const google::protobuf::RepeatedPtrField<
+            NCloud::NFileStore::NProtoPrivate::TShardStats>& shardStats,
+        TVector<TShardRow>& shardRows)
     {
-        NProtoPrivate::TGetStorageStatsRequest request;
-        request.SetFileSystemId(FileSystemId);
-        request.SetCacheTTL(0);   // disable caching
-        request.SetMode(NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
-        NProtoPrivate::TGetStorageStatsResponse response;
-        ExecuteAction("getstoragestats", request, &response);
-        CheckResponse(response);
-
-        TVector<TShardRow> rows;
-        TVector<NAggregation::TRow<TLatency>> latencyRows;
-        TVector<TNodeRow> nodeRows;
-
-        const auto& stats = response.GetStats();
-        rows.reserve(stats.ShardStatsSize());
-        latencyRows.reserve(stats.LatencyStatsSize());
-
-        for (const auto& shardStats: stats.GetShardStats()) {
-            TShardRow row;
-            row.ShardId = shardStats.GetShardId();
-            row.CurrentLoad = shardStats.GetCurrentLoad();
-            row.Suffer = shardStats.GetSuffer();
-            row.UsedBlocksCount = shardStats.GetUsedBlocksCount();
-            row.TotalBlocksCount = shardStats.GetTotalBlocksCount();
-            row.UsedNodesCount = shardStats.GetUsedNodesCount();
-            rows.push_back(std::move(row));
+        for (const auto& stats: shardStats) {
+            shardRows.push_back(
+                {stats.GetShardId(),
+                 stats.GetCurrentLoad(),
+                 stats.GetSuffer(),
+                 stats.GetUsedBlocksCount(),
+                 stats.GetTotalBlocksCount(),
+                 stats.GetUsedNodesCount()});
         }
-        for (const auto& nodeStats: stats.GetNodeStats()) {
-            nodeRows.push_back(
-                {nodeStats.GetShardId(),
-                 nodeStats.GetNodeId(),
-                 nodeStats.GetRequestCount(),
-                 nodeStats.GetAccessScore(),
-                 nodeStats.GetLastAccessedTimestampUs()});
+    }
+
+    void CollectAccessAndLatencyStats(
+        const google::protobuf::RepeatedPtrField<
+            NCloud::NFileStore::NProtoPrivate::TShardStats>& shardStats,
+        TVector<TNodeRow>& accessRows,
+        TVector<NAggregation::TRow<TLatency>>& latencyRows)
+    {
+        if (BatchSize == 0) {
+            STORAGE_THROW_SERVICE_ERROR(
+                MakeError(E_ARGUMENT, "batch-size must be greater than zero"));
+        }
+        size_t completed = 0;
+        size_t failed = 0;
+        for (int batchStart = 0; batchStart < shardStats.size();
+             batchStart += BatchSize)
+        {
+            TVector<NThreading::TFuture<NProto::TExecuteActionResponse>>
+                futures;
+            const auto batchEnd =
+                Min<size_t>(batchStart + BatchSize, shardStats.size());
+            futures.reserve(batchEnd - batchStart);
+
+            for (size_t i = batchStart; i < batchEnd; ++i) {
+                NProtoPrivate::TGetDiagnosticStatsRequest request;
+                request.SetFileSystemId(shardStats[i].GetShardId());
+                const ui32 latencyLimit =
+                    Max(SlowestNodes, Max(SlowestRequests, SlowestShards));
+
+                const ui32 requestLimit = Max(TopAccessed, latencyLimit);
+                request.SetLimit(requestLimit);
+                futures.push_back(SendAction("getdiagnosticstats", request));
+            }
+
+            for (auto& future: futures) {
+                auto result = WaitFor(std::move(future));
+                ++completed;
+                PrintProgress(completed, shardStats.size());
+
+                if (HasError(result)) {
+                    STORAGE_WARN(
+                        "Diagnostic stats request failed: "
+                        << FormatError(result.GetError()));
+                    ++failed;
+                    continue;
+                }
+
+                NProtoPrivate::TGetDiagnosticStatsResponse response;
+                if (!google::protobuf::util::JsonStringToMessage(
+                         result.GetOutput(),
+                         &response)
+                         .ok())
+                {
+                    STORAGE_WARN(
+                        "Failed to parse response json: "
+                        << FormatError(MakeError(
+                               E_BADMSG,
+                               TStringBuilder()
+                                   << "Failed to parse response json: "
+                                   << result.GetOutput())));
+                    ++failed;
+                    continue;
+                }
+                ProcessAccessStats(response.GetNodeStats(), accessRows);
+                ProcessLatencyStats(response.GetLatencyStats(), latencyRows);
+            }
+        }
+        if (failed) {
+            STORAGE_WARN(
+                "Failed to parse response json: " << FormatError(MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Failed to collect diagnostic stats for " << failed
+                        << " of " << shardStats.size() << " shards")));
+        }
+    }
+
+    template <typename TRequest>
+    NThreading::TFuture<NProto::TExecuteActionResponse> SendAction(
+        const TString& action,
+        const TRequest& requestProto)
+    {
+        TString input;
+        google::protobuf::util::MessageToJsonString(requestProto, &input);
+
+        STORAGE_DEBUG("Reading SendAction request");
+        auto request = std::make_shared<NProto::TExecuteActionRequest>();
+        request->SetAction(action);
+        request->SetInput(std::move(input));
+        return Client->ExecuteAction(
+            MakeIntrusive<TCallContext>(FileSystemId, GetRequestId(*request)),
+            std::move(request));
+    }
+
+    void PrintProgress(size_t completed, size_t total)
+    {
+        if (JsonOutput) {
+            return;
         }
 
-        for (const auto& latencyStats: stats.GetLatencyStats()) {
+        size_t width = 40;
+        size_t filled = total ? completed * width / total : width;
+
+        Cout << '\r' << "Collecting access and latency stats ["
+             << TString(filled, '#') << TString(width - filled, '_') << "] "
+             << completed << '/' << total << Flush;
+
+        if (completed == total) {
+            Cout << Endl;
+        }
+    }
+
+    void ProcessAccessStats(
+        const google::protobuf::RepeatedPtrField<
+            NCloud::NFileStore::NProtoPrivate::TNodeStats>& accessStats,
+        TVector<TNodeRow>& accessRows)
+    {
+        for (const auto& stats: accessStats) {
+            accessRows.push_back(
+                {stats.GetShardId(),
+                 stats.GetNodeId(),
+                 stats.GetRequestCount(),
+                 stats.GetAccessScore(),
+                 stats.GetLastAccessedTimestampUs()});
+        }
+    }
+
+    void ProcessLatencyStats(
+        const google::protobuf::RepeatedPtrField<
+            NCloud::NFileStore::NProtoPrivate::TNodeLatencyStats>& latencyStats,
+        TVector<NAggregation::TRow<TLatency>>& latencyRows)
+    {
+        for (const auto& stats: latencyStats) {
             NAggregation::TRow<TLatency> row;
             row.Labels = {
-                ToString(latencyStats.GetNodeId()),
-                latencyStats.GetShardId(),
-                latencyStats.GetRequestType()};
-            row.Data.RequestCount = latencyStats.GetRequestCount();
-            row.Data.TotalLatencyUs = latencyStats.GetTotalLatencyUs();
+                ToString(stats.GetNodeId()),
+                stats.GetShardId(),
+                stats.GetRequestType()};
+            row.Data.RequestCount = stats.GetRequestCount();
+            row.Data.TotalLatencyUs = stats.GetTotalLatencyUs();
             row.Data.TotalDecayedLatencyUs =
-                latencyStats.GetAverageLatencyDecayedUs() *
-                latencyStats.GetRequestCount();
+                stats.GetAverageLatencyDecayedUs() * stats.GetRequestCount();
             row.Data.LastAccessedTimestampUs =
-                latencyStats.GetLastAccessedTimestampUs();
+                stats.GetLastAccessedTimestampUs();
             latencyRows.push_back(std::move(row));
         }
+    }
 
-        auto latencyAggregates = NAggregation::Aggregate(latencyRows);
-
-        using TLatencyResult = NAggregation::TResult<TLatency>;
-        TVector<TLatencyResult> nodeLatencyRows;
-        TVector<TLatencyResult> requestLatencyRows;
-        TVector<TLatencyResult> shardLatencyRows;
-
-        for (auto& aggregate: latencyAggregates) {
+    void GroupLatencyCombinations(
+        const TVector<TLatencyResult>& latencyAggregates,
+        TVector<TLatencyResult>& nodeLatencyRows,
+        TVector<TLatencyResult>& requestLatencyRows,
+        TVector<TLatencyResult>& shardLatencyRows)
+    {
+        for (const auto& aggregate: latencyAggregates) {
             const bool hasNodeId = !aggregate.Labels[0].empty();
             const bool hasShardId = !aggregate.Labels[1].empty();
             const bool hasRequestType = !aggregate.Labels[2].empty();
@@ -194,178 +329,465 @@ public:
                 shardLatencyRows.push_back(std::move(aggregate));
             }
         }
+    }
 
-        Sort(
-            nodeLatencyRows,
-            [](const TLatencyResult& l, const TLatencyResult& r)
-            {
-                const auto lAverage =
-                    l.GroupAggregate.GetAverageDecayedLatencyUs();
-                const auto rAverage =
-                    r.GroupAggregate.GetAverageDecayedLatencyUs();
-                const auto lNodeId = FromString<ui64>(l.Labels[0]);
-                const auto rNodeId = FromString<ui64>(r.Labels[0]);
-                return std::tie(rAverage, lNodeId) <
-                       std::tie(lAverage, rNodeId);
-            });
+    static bool CompareShardRows(const TShardRow& lhs, const TShardRow& rhs)
+    {
+        // CurrentLoad DESC, Suffer DESC, ShardId ASC
+        return std::tie(rhs.CurrentLoad, rhs.Suffer, lhs.ShardId) <
+               std::tie(lhs.CurrentLoad, lhs.Suffer, rhs.ShardId);
+    }
 
-        Sort(
-            nodeRows,
-            [](const TNodeRow& l, const TNodeRow& r)
-            {
-                // AccessScore DESC, ShardId ASC, NodeId ASC
-                return std::tie(r.AccessScore, l.ShardId, l.NodeId) <
-                       std::tie(l.AccessScore, r.ShardId, r.NodeId);
-            });
+    static bool CompareAccessRows(const TNodeRow& lhs, const TNodeRow& rhs)
+    {
+        // AccessScore DESC, ShardId ASC, NodeId ASC
+        return std::tie(rhs.AccessScore, lhs.ShardId, lhs.NodeId) <
+               std::tie(lhs.AccessScore, rhs.ShardId, rhs.NodeId);
+    }
 
-        auto totalLatencyComparator =
-            [](const TLatencyResult& l, const TLatencyResult& r)
+    static bool CompareNodeLatencyRows(
+        const TLatencyResult& lhs,
+        const TLatencyResult& rhs)
+    {
+        const auto lhsLatency = lhs.GroupAggregate.GetAverageDecayedLatencyUs();
+        const auto rhsLatency = rhs.GroupAggregate.GetAverageDecayedLatencyUs();
+        const auto lhsNodeId = FromString<ui64>(lhs.Labels[0]);
+        const auto rhsNodeId = FromString<ui64>(rhs.Labels[0]);
+
+        // AverageLatencyDecayed DESC, NodeId ASC
+        if (lhsLatency != rhsLatency) {
+            return lhsLatency > rhsLatency;
+        }
+
+        return lhsNodeId < rhsNodeId;
+    }
+
+    static bool CompareTotalLatency(
+        const TLatencyResult& lhs,
+        const TLatencyResult& rhs)
+    {
+        const auto lhsLatency = lhs.GroupAggregate.TotalDecayedLatencyUs;
+        const auto rhsLatency = rhs.GroupAggregate.TotalDecayedLatencyUs;
+
+        // TotalLatencyDecayed DESC,  LastAccessedTimestamp DESC
+        return std::tie(
+                   rhsLatency,
+                   lhs.GroupAggregate.LastAccessedTimestampUs) <
+               std::tie(lhsLatency, rhs.GroupAggregate.LastAccessedTimestampUs);
+    }
+
+    static constexpr TStringBuf ConsoleMagenta = "\033[95m";
+    static constexpr TStringBuf ConsoleRed = "\033[91m";
+    static constexpr TStringBuf ConsoleEnd = "\033[0m";
+
+    using TTableRow = TVector<TString>;
+
+    static void PrintTable(
+        const TString& title,
+        const TVector<TString>& columns,
+        const TVector<TTableRow>& rows,
+        const TVector<bool>& highlightedRows = {})
+    {
+        TVector<size_t> widths(columns.size());
+        for (size_t i = 0; i < columns.size(); ++i) {
+            widths[i] = columns[i].size();
+        }
+
+        for (const auto& row: rows) {
+            Y_ABORT_UNLESS(row.size() == columns.size());
+            for (size_t i = 0; i < row.size(); ++i) {
+                widths[i] = Max(widths[i], row[i].size());
+            }
+        }
+
+        Cout << Endl << ConsoleMagenta << title << ConsoleEnd << Endl;
+
+        auto printRow = [&](const TTableRow& row, bool highlighted)
         {
-            return std::tie(
-                       r.GroupAggregate.TotalDecayedLatencyUs,
-                       r.GroupAggregate.LastAccessedTimestampUs) <
-                   std::tie(
-                       l.GroupAggregate.TotalDecayedLatencyUs,
-                       l.GroupAggregate.LastAccessedTimestampUs);
+            if (highlighted) {
+                Cout << ConsoleRed;
+            }
+
+            for (size_t i = 0; i < row.size(); ++i) {
+                if (i) {
+                    Cout << " | ";
+                }
+                Cout << row[i];
+                if (i + 1 != row.size()) {
+                    Cout << TString(widths[i] - row[i].size(), ' ');
+                }
+            }
+
+            if (highlighted) {
+                Cout << ConsoleEnd;
+            }
+            Cout << Endl;
         };
 
-        Sort(requestLatencyRows, totalLatencyComparator);
-        Sort(shardLatencyRows, totalLatencyComparator);
+        printRow(columns, false);
 
-        Sort(
-            rows,
-            [](const TShardRow& l, const TShardRow& r)
-            {
-                // CurrentLoad DESC, Suffer DESC, ShardId ASC
-                return std::tie(r.CurrentLoad, r.Suffer, l.ShardId) <
-                       std::tie(l.CurrentLoad, l.Suffer, r.ShardId);
-            });
+        size_t separatorSize = 3 * (columns.size() - 1);
+        for (const auto width: widths) {
+            separatorSize += width;
+        }
+        Cout << TString(separatorSize, '-') << Endl;
 
-        const size_t limit = Min<size_t>(Top, rows.size());
+        if (rows.empty()) {
+            Cout << "(no data)" << Endl;
+            return;
+        }
+
+        for (size_t i = 0; i < rows.size(); ++i) {
+            printRow(rows[i], i < highlightedRows.size() && highlightedRows[i]);
+        }
+    }
+
+    static TVector<bool> HighlightMaximums(const TVector<double>& values)
+    {
+        TVector<bool> result(values.size(), false);
+        if (values.empty()) {
+            return result;
+        }
+
+        const auto maxValue = *MaxElement(values.begin(), values.end());
+        for (size_t i = 0; i < values.size(); ++i) {
+            result[i] = values[i] == maxValue;
+        }
+        return result;
+    }
+
+    void PrintShardTable(const TVector<TShardRow>& rows, size_t limit) const
+    {
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
+        for (size_t i = 0; i < limit; ++i) {
+            const auto& row = rows[i];
+            tableRows.push_back(
+                {ToString(i + 1),
+                 row.ShardId,
+                 ToString(row.CurrentLoad),
+                 ToString(row.Suffer),
+                 ToString(row.UsedBlocksCount),
+                 ToString(row.TotalBlocksCount),
+                 ToString(row.UsedNodesCount)});
+            values.push_back(row.CurrentLoad);
+        }
+
+        PrintTable(
+            TStringBuilder() << "Shard stats (top " << limit << ")",
+            {"#",
+             "Shard",
+             "Load",
+             "Suffer",
+             "Used blocks",
+             "Total blocks",
+             "Nodes"},
+            tableRows,
+            HighlightMaximums(values));
+    }
+
+    void PrintAccessTable(const TVector<TNodeRow>& rows, size_t limit) const
+    {
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
+        for (size_t i = 0; i < limit; ++i) {
+            const auto& row = rows[i];
+            tableRows.push_back(
+                {ToString(i + 1),
+                 ToString(row.NodeId),
+                 row.ShardId,
+                 ToString(row.RequestCount),
+                 ToString(row.AccessScore),
+                 TInstant::MicroSeconds(row.LastAccessedTimestampUs)
+                     .ToStringUpToSeconds()});
+            values.push_back(row.AccessScore);
+        }
+
+        PrintTable(
+            TStringBuilder() << "Node access stats (top " << limit << ")",
+            {"#", "Node", "Shard", "Requests", "Access score", "Last accessed"},
+            tableRows,
+            HighlightMaximums(values));
+    }
+
+    void PrintNodeLatencyTable(
+        const TVector<TLatencyResult>& rows,
+        size_t limit) const
+    {
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
+        for (size_t i = 0; i < limit; ++i) {
+            const auto& row = rows[i];
+            const auto latency =
+                row.GroupAggregate.GetAverageDecayedLatencyUs();
+            tableRows.push_back(
+                {ToString(i + 1),
+                 row.Labels[0],
+                 row.Labels[1],
+                 row.Labels[2],
+                 ToString(latency),
+                 ToString(row.GroupAggregate.TotalLatencyUs),
+                 ToString(row.GroupAggregate.RequestCount)});
+            values.push_back(latency);
+        }
+
+        PrintTable(
+            TStringBuilder() << "Node latency stats (top " << limit << ")",
+            {"#",
+             "Node",
+             "Shard",
+             "Request type",
+             "Avg latency",
+             "Total latency",
+             "Requests"},
+            tableRows,
+            HighlightMaximums(values));
+    }
+
+    void PrintRequestLatencyTable(
+        const TVector<TLatencyResult>& rows,
+        size_t limit) const
+    {
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
+        for (size_t i = 0; i < limit; ++i) {
+            const auto& row = rows[i];
+            const auto latency = row.GroupAggregate.TotalDecayedLatencyUs;
+            tableRows.push_back(
+                {ToString(i + 1),
+                 row.Labels[1],
+                 row.Labels[2],
+                 ToString(row.GroupAggregate.GetAverageDecayedLatencyUs()),
+                 ToString(latency),
+                 ToString(row.GroupAggregate.RequestCount)});
+            values.push_back(latency);
+        }
+
+        PrintTable(
+            TStringBuilder() << "Request latency stats (top " << limit << ")",
+            {"#",
+             "Shard",
+             "Request type",
+             "Avg latency",
+             "Total latency",
+             "Requests"},
+            tableRows,
+            HighlightMaximums(values));
+    }
+
+    void PrintShardLatencyTable(
+        const TVector<TLatencyResult>& rows,
+        size_t limit) const
+    {
+        TVector<TTableRow> tableRows;
+        TVector<double> values;
+        for (size_t i = 0; i < limit; ++i) {
+            const auto& row = rows[i];
+            const auto latency = row.GroupAggregate.TotalDecayedLatencyUs;
+            tableRows.push_back(
+                {ToString(i + 1),
+                 row.Labels[1],
+                 ToString(row.GroupAggregate.GetAverageDecayedLatencyUs()),
+                 ToString(latency),
+                 ToString(row.GroupAggregate.RequestCount)});
+            values.push_back(latency);
+        }
+
+        PrintTable(
+            TStringBuilder() << "Shard latency stats (top " << limit << ")",
+            {"#", "Shard", "Avg latency", "Total latency", "Requests"},
+            tableRows,
+            HighlightMaximums(values));
+    }
+
+    static NJson::TJsonValue MakeShardJson(const TShardRow& row)
+    {
+        NJson::TJsonValue result(NJson::JSON_MAP);
+        result["shard_id"] = row.ShardId;
+        result["current_load"] = row.CurrentLoad;
+        result["suffer"] = row.Suffer;
+        result["used_blocks_count"] = row.UsedBlocksCount;
+        result["total_blocks_count"] = row.TotalBlocksCount;
+        result["used_nodes_count"] = row.UsedNodesCount;
+        return result;
+    }
+
+    static NJson::TJsonValue MakeNodeJson(const TNodeRow& row)
+    {
+        NJson::TJsonValue result(NJson::JSON_MAP);
+        result["shard_id"] = row.ShardId;
+        result["node_id"] = row.NodeId;
+        result["request_count"] = row.RequestCount;
+        result["access_score"] = row.AccessScore;
+        result["last_accessed_timestamp_us"] = row.LastAccessedTimestampUs;
+        result["last_accessed"] =
+            TInstant::MicroSeconds(row.LastAccessedTimestampUs)
+                .ToStringUpToSeconds();
+        return result;
+    }
+
+    static NJson::TJsonValue MakeNodeLatencyJson(const TLatencyResult& row)
+    {
+        NJson::TJsonValue result(NJson::JSON_MAP);
+        result["node_id"] = FromString<ui64>(row.Labels[0]);
+        result["shard_id"] = row.Labels[1];
+        result["request_type"] = row.Labels[2];
+        result["avg_latency_decayed"] =
+            row.GroupAggregate.GetAverageDecayedLatencyUs();
+        result["total_latency"] = row.GroupAggregate.TotalLatencyUs;
+        result["request_count"] = row.GroupAggregate.RequestCount;
+        result["last_timestamp_us"] =
+            row.GroupAggregate.LastAccessedTimestampUs;
+        return result;
+    }
+
+    static NJson::TJsonValue MakeRequestLatencyJson(const TLatencyResult& row)
+    {
+        NJson::TJsonValue result(NJson::JSON_MAP);
+        result["shard_id"] = row.Labels[1];
+        result["request_type"] = row.Labels[2];
+        result["avg_node_latency"] =
+            row.GroupAggregate.GetAverageDecayedLatencyUs();
+        result["total_node_latency"] = row.GroupAggregate.TotalDecayedLatencyUs;
+        result["request_count"] = row.GroupAggregate.RequestCount;
+        result["last_timestamp_us"] =
+            row.GroupAggregate.LastAccessedTimestampUs;
+        return result;
+    }
+
+    static NJson::TJsonValue MakeShardLatencyJson(const TLatencyResult& row)
+    {
+        NJson::TJsonValue result(NJson::JSON_MAP);
+        result["shard_id"] = row.Labels[1];
+        result["avg_node_latency"] =
+            row.GroupAggregate.GetAverageDecayedLatencyUs();
+        result["total_node_latency"] = row.GroupAggregate.TotalDecayedLatencyUs;
+        result["request_count"] = row.GroupAggregate.RequestCount;
+        result["last_timestamp_us"] =
+            row.GroupAggregate.LastAccessedTimestampUs;
+        return result;
+    }
+
+    template <typename TRow, typename TJsonFactory>
+    static NJson::TJsonValue MakeJsonArray(
+        const TVector<TRow>& rows,
+        size_t limit,
+        TJsonFactory jsonFactory)
+    {
+        NJson::TJsonValue result(NJson::JSON_ARRAY);
+        const auto count = Min(limit, rows.size());
+        for (size_t i = 0; i < count; ++i) {
+            result.AppendValue(jsonFactory(rows[i]));
+        }
+        return result;
+    }
+
+    NJson::TJsonValue MakeJsonResult(
+        const TVector<TShardRow>& rows,
+        const TVector<TNodeRow>& accessRows,
+        const TVector<TLatencyResult>& nodeLatencyRows,
+        const TVector<TLatencyResult>& requestLatencyRows,
+        const TVector<TLatencyResult>& shardLatencyRows,
+        size_t limit,
+        size_t nodeLimit,
+        size_t nodeLatencyLimit,
+        size_t requestLatencyLimit,
+        size_t shardLatencyLimit) const
+    {
+        NJson::TJsonValue result(NJson::JSON_MAP);
+        result["filesystem_id"] = FileSystemId;
+        result["shard_count"] = rows.size();
+        result["shards"] = MakeJsonArray(rows, limit, MakeShardJson);
+        result["nodes"] = MakeJsonArray(accessRows, nodeLimit, MakeNodeJson);
+        result["node_latency"] = MakeJsonArray(
+            nodeLatencyRows,
+            nodeLatencyLimit,
+            MakeNodeLatencyJson);
+        result["request_latency"] = MakeJsonArray(
+            requestLatencyRows,
+            requestLatencyLimit,
+            MakeRequestLatencyJson);
+        result["shard_latency"] = MakeJsonArray(
+            shardLatencyRows,
+            shardLatencyLimit,
+            MakeShardLatencyJson);
+        return result;
+    }
+
+public:
+    bool Execute() override
+    {
+        NProtoPrivate::TGetStorageStatsRequest request;
+        request.SetFileSystemId(FileSystemId);
+        request.SetCacheTTL(0);   // disable caching
+        request.SetMode(NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+        NProtoPrivate::TGetStorageStatsResponse response;
+        ExecuteAction("getstoragestats", request, &response);
+        CheckResponse(response);
+
+        TVector<TShardRow> rows;
+        TVector<TNodeRow> accessRows;
+        TVector<NAggregation::TRow<TLatency>> latencyRows;
+
+        const auto& stats = response.GetStats();
+        rows.reserve(stats.ShardStatsSize());
+        const auto& shardStats = stats.GetShardStats();
+
+        ProcessShardLoadStats(shardStats, rows);
+        CollectAccessAndLatencyStats(shardStats, accessRows, latencyRows);
+
+        auto latencyAggregates = NAggregation::Aggregate(latencyRows);
+
+        TVector<TLatencyResult> nodeLatencyRows;
+        TVector<TLatencyResult> requestLatencyRows;
+        TVector<TLatencyResult> shardLatencyRows;
+
+        GroupLatencyCombinations(
+            latencyAggregates,
+            nodeLatencyRows,
+            requestLatencyRows,
+            shardLatencyRows);
+
+        Sort(rows, CompareShardRows);
+        Sort(accessRows, CompareAccessRows);
+        Sort(nodeLatencyRows, CompareNodeLatencyRows);
+        Sort(requestLatencyRows, CompareTotalLatency);
+        Sort(shardLatencyRows, CompareTotalLatency);
+
+        const size_t limit = Min<size_t>(TopLoaded, rows.size());
+        const size_t nodeLimit = Min<size_t>(TopAccessed, accessRows.size());
         const size_t nodeLatencyLimit =
-            Min<size_t>(Top, nodeLatencyRows.size());
-        const size_t nodeLimit = Min<size_t>(TopNodes, nodeRows.size());
+            Min<size_t>(SlowestNodes, nodeLatencyRows.size());
+        const size_t requestLatencyLimit =
+            Min<size_t>(SlowestRequests, requestLatencyRows.size());
+        const size_t shardLatencyLimit =
+            Min<size_t>(SlowestShards, shardLatencyRows.size());
 
         if (JsonOutput) {
-            NJson::TJsonValue resultJson(NJson::JSON_MAP);
-            NJson::TJsonValue shardsJson(NJson::JSON_ARRAY);
-            NJson::TJsonValue nodesLatencyJson(NJson::JSON_ARRAY);
-            NJson::TJsonValue requestsLatencyJson(NJson::JSON_ARRAY);
-            NJson::TJsonValue shardsLatencyJson(NJson::JSON_ARRAY);
-
-            resultJson["filesystem_id"] = FileSystemId;
-            resultJson["shard_count"] = rows.size();
-
-            for (size_t i = 0; i < limit; ++i) {
-                const auto& row = rows[i];
-
-                NJson::TJsonValue shardJson(NJson::JSON_MAP);
-                shardJson["shard_id"] = row.ShardId;
-                shardJson["current_load"] = row.CurrentLoad;
-                shardJson["suffer"] = row.Suffer;
-                shardJson["used_blocks_count"] = row.UsedBlocksCount;
-                shardJson["total_blocks_count"] = row.TotalBlocksCount;
-                shardJson["used_nodes_count"] = row.UsedNodesCount;
-
-                shardsJson.AppendValue(std::move(shardJson));
-            }
-
-            resultJson["shards"] = std::move(shardsJson);
-
-            for (size_t i = 0; i < nodeLatencyLimit; ++i) {
-                const auto& nodeLatencyRow = nodeLatencyRows[i];
-                NJson::TJsonValue nodeLatencyJson(NJson::JSON_MAP);
-                nodeLatencyJson["node_id"] =
-                    FromString<ui64>(nodeLatencyRow.Labels[0]);
-                nodeLatencyJson["request_type"] = nodeLatencyRow.Labels[2];
-                nodeLatencyJson["avg_latency_decayed"] =
-                    nodeLatencyRow.GroupAggregate.GetAverageDecayedLatencyUs();
-                nodeLatencyJson["total_latency"] =
-                    nodeLatencyRow.GroupAggregate.TotalLatencyUs;
-                nodeLatencyJson["request_count"] =
-                    nodeLatencyRow.GroupAggregate.RequestCount;
-                nodeLatencyJson["last_timestamp_us"] =
-                    nodeLatencyRow.GroupAggregate.LastAccessedTimestampUs;
-                nodeLatencyJson["shard_id"] = nodeLatencyRow.Labels[1];
-
-                nodesLatencyJson.AppendValue(std::move(nodeLatencyJson));
-            }
-
-            resultJson["node_latency"] = std::move(nodesLatencyJson);
-
-            for (const auto& requestLatencyRow: requestLatencyRows) {
-                NJson::TJsonValue requestLatencyJson(NJson::JSON_MAP);
-                requestLatencyJson["request_type"] =
-                    requestLatencyRow.Labels[2];
-                requestLatencyJson["avg_node_latency"] =
-                    requestLatencyRow.GroupAggregate
-                        .GetAverageDecayedLatencyUs();
-                requestLatencyJson["total_node_latency"] =
-                    requestLatencyRow.GroupAggregate.TotalDecayedLatencyUs;
-                requestLatencyJson["request_count"] =
-                    requestLatencyRow.GroupAggregate.RequestCount;
-                requestLatencyJson["last_timestamp_us"] =
-                    requestLatencyRow.GroupAggregate.LastAccessedTimestampUs;
-                requestLatencyJson["shard_id"] = requestLatencyRow.Labels[1];
-
-                requestsLatencyJson.AppendValue(std::move(requestLatencyJson));
-            }
-
-            resultJson["request_latency"] = std::move(requestsLatencyJson);
-
-            for (const auto& shardLatencyRow: shardLatencyRows) {
-                NJson::TJsonValue shardLatencyJson(NJson::JSON_MAP);
-                shardLatencyJson["avg_node_latency"] =
-                    shardLatencyRow.GroupAggregate.GetAverageDecayedLatencyUs();
-                shardLatencyJson["shard_id"] = shardLatencyRow.Labels[1];
-                shardLatencyJson["last_timestamp_us"] =
-                    shardLatencyRow.GroupAggregate.LastAccessedTimestampUs;
-                shardLatencyJson["total_node_latency"] =
-                    shardLatencyRow.GroupAggregate.TotalDecayedLatencyUs;
-                shardLatencyJson["request_count"] =
-                    shardLatencyRow.GroupAggregate.RequestCount;
-
-                shardsLatencyJson.AppendValue(std::move(shardLatencyJson));
-            }
-
-            resultJson["shard_latency"] = std::move(shardsLatencyJson);
-
-            NJson::TJsonValue nodesJson(NJson::JSON_ARRAY);
-
-            for (size_t i = 0; i < nodeLimit; ++i) {
-                const auto& node = nodeRows[i];
-
-                NJson::TJsonValue nodeJson(NJson::JSON_MAP);
-                nodeJson["shard_id"] = node.ShardId;
-                nodeJson["node_id"] = node.NodeId;
-                nodeJson["request_count"] = node.RequestCount;
-                nodeJson["access_score"] = node.AccessScore;
-                nodeJson["last_accessed_timestamp_us"] =
-                    node.LastAccessedTimestampUs;
-                nodeJson["last_accessed"] =
-                    TInstant::MicroSeconds(node.LastAccessedTimestampUs)
-                        .ToStringUpToSeconds();
-                nodesJson.AppendValue(std::move(nodeJson));
-            }
-
-            resultJson["nodes"] = std::move(nodesJson);
+            auto resultJson = MakeJsonResult(
+                rows,
+                accessRows,
+                nodeLatencyRows,
+                requestLatencyRows,
+                shardLatencyRows,
+                limit,
+                nodeLimit,
+                nodeLatencyLimit,
+                requestLatencyLimit,
+                shardLatencyLimit);
             NJson::WriteJson(&Cout, &resultJson, false, true, true);
 
             return true;
         }
 
-        Cout << "Filesystem: " << FileSystemId << Endl;
-        Cout << "Shard count: " << rows.size() << Endl;
-        Cout << "Top loaded shards:" << Endl;
+        Cout << "Filesystem: " << FileSystemId << Endl
+             << "Shard count: " << rows.size() << Endl;
 
-        for (size_t i = 0; i < limit; ++i) {
-            const auto& row = rows[i];
-            Cout << i + 1 << ". " << row.ShardId << "  load=" << row.CurrentLoad
-                 << "  suffer=" << row.Suffer
-                 << "  blocks=" << row.UsedBlocksCount << "/"
-                 << row.TotalBlocksCount << "  nodes=" << row.UsedNodesCount
-                 << Endl;
-        }
+        PrintShardTable(rows, limit);
+        PrintAccessTable(accessRows, nodeLimit);
+        PrintNodeLatencyTable(nodeLatencyRows, nodeLatencyLimit);
+        PrintRequestLatencyTable(requestLatencyRows, requestLatencyLimit);
+        PrintShardLatencyTable(shardLatencyRows, shardLatencyLimit);
 
         return true;
     }

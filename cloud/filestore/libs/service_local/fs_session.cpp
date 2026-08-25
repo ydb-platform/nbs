@@ -43,8 +43,10 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             Config->GetAsyncDestroyHandleEnabled());
         features->SetAsyncDestroyReadOnlyHandleEnabled(
             Config->GetAsyncDestroyReadOnlyHandleEnabled());
-        features->SetAsyncHandleOperationPeriod(
-            Config->GetAsyncHandleOperationPeriod().MilliSeconds());
+        features->SetAsyncHandleOperationIdlePeriod(
+            Config->GetAsyncHandleOperationIdlePeriod().MilliSeconds());
+        features->SetAsyncHandleOperationDrainPeriod(
+            Config->GetAsyncHandleOperationDrainPeriod().MilliSeconds());
         // The local service publishes only the legacy ZeroCopyEnabled feature,
         // which the FUSE config translates into both ZeroCopyReadEnabled and
         // ZeroCopyWriteEnabled (see BuildFileSystemConfig in vfs_fuse/loop.cpp).

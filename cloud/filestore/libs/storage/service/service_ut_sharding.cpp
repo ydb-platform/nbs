@@ -702,6 +702,204 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST(ShouldAggregateQuotaUsageAcrossShards)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        {
+            NProtoPrivate::TSetQuotaRequest request;
+            request.SetFileSystemId(fsConfig.FsId);
+            request.SetQuotaId(42);
+            request.SetMaxBytes(1_GB);
+            request.SetMaxNodes(100);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setquota", buf);
+        }
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // attach the quota to a directory on main - files are regular nodes,
+        // so main auto-routes their creation into shards (round-robin) and
+        // forwards the inherited QuotaId along with each one; the directory
+        // itself stays on main and its own attach bumps main's own local
+        // usage by 1
+        auto dirId = service
+                         .CreateNode(
+                             headers,
+                             TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                         ->Record.GetNode()
+                         .GetId();
+        service.SetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            TSetNodeAttrArgs(dirId).SetQuotaId(42));
+
+        constexpr ui32 fileCount = 4;
+        constexpr ui64 fileSize = 100;
+        for (ui32 i = 0; i < fileCount; ++i) {
+            auto fileId =
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(dirId, "file" + ToString(i)))
+                    ->Record.GetNode()
+                    .GetId();
+            service.SetNodeAttr(
+                headers,
+                fsConfig.FsId,
+                TSetNodeAttrArgs(fileId).SetSize(fileSize));
+        }
+
+        // a second, distinct quota that only ever lands on one shard (a
+        // single file)
+        {
+            NProtoPrivate::TSetQuotaRequest request;
+            request.SetFileSystemId(fsConfig.FsId);
+            request.SetQuotaId(43);
+            request.SetMaxBytes(1_GB);
+            request.SetMaxNodes(100);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setquota", buf);
+        }
+
+        constexpr ui64 otherQuotaFileSize = 50;
+        auto otherQuotaDirId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "other_quota_dir"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            TSetNodeAttrArgs(otherQuotaDirId).SetQuotaId(43));
+        auto otherQuotaFileId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::File(otherQuotaDirId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            TSetNodeAttrArgs(otherQuotaFileId).SetSize(otherQuotaFileSize));
+
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            const auto stats = GetStorageStats(service, shardId);
+            const auto& usages = stats.GetStats().GetQuotaUsages();
+            UNIT_ASSERT_C(usages.contains(42), shardId);
+            const auto& usage = usages.at(42);
+            UNIT_ASSERT_C(usage.GetUsedNodes() > 0, shardId);
+            UNIT_ASSERT_C(usage.GetUsedBytes() > 0, shardId);
+        }
+
+        // forcing main to fan out and aggregate should sum main's own local
+        // usage (the directory attach points) and both shards' contributions
+        const auto aggregate = GetStorageStats(
+            service,
+            fsConfig.FsId,
+            0 /* cacheTTL */,
+            NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+        const auto& usages = aggregate.GetStats().GetQuotaUsages();
+        UNIT_ASSERT_VALUES_EQUAL(2, usages.size());
+
+        UNIT_ASSERT(usages.contains(42));
+        const auto& usage42 = usages.at(42);
+        UNIT_ASSERT_VALUES_EQUAL(1 + fileCount, usage42.GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(fileCount * fileSize, usage42.GetUsedBytes());
+
+        UNIT_ASSERT(usages.contains(43));
+        const auto& usage43 = usages.at(43);
+        UNIT_ASSERT_VALUES_EQUAL(2, usage43.GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(otherQuotaFileSize, usage43.GetUsedBytes());
+    }
+
+    SERVICE_TEST(ShouldAggregateQuotaUsageInBackground)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        {
+            NProtoPrivate::TSetQuotaRequest request;
+            request.SetFileSystemId(fsConfig.FsId);
+            request.SetQuotaId(42);
+            request.SetMaxBytes(1_GB);
+            request.SetMaxNodes(100);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setquota", buf);
+        }
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto dirId = service
+                         .CreateNode(
+                             headers,
+                             TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                         ->Record.GetNode()
+                         .GetId();
+        service.SetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            TSetNodeAttrArgs(dirId).SetQuotaId(42));
+
+        auto fileId =
+            service.CreateNode(headers, TCreateNodeArgs::File(dirId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle = service
+                          .CreateHandle(
+                              headers,
+                              fsConfig.FsId,
+                              fileId,
+                              "",
+                              TCreateHandleArgs::RDWR)
+                          ->Record.GetHandle();
+
+        auto data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsConfig.FsId, fileId, handle, 0, data);
+
+        // triggering background shard stats collection
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+
+        {
+            using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+
+            env.GetRuntime().Send(
+                new IEventHandle(
+                    fsInfo.MainTabletActorId,   // recipient
+                    TActorId(),                 // sender
+                    new TRequest(),
+                    0,   // flags
+                    0),
+                nodeIdx);
+        }
+
+        TDispatchOptions options;
+        options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvAggregateStatsCompleted)};
+        service.AccessRuntime().DispatchEvents(options);
+
+        const auto response =
+            GetStorageStats(service, fsConfig.FsId, Max<ui32>() /* cacheTTL */);
+        const auto& usages = response.GetStats().GetQuotaUsages();
+        UNIT_ASSERT_VALUES_EQUAL(1, usages.size());
+        UNIT_ASSERT(usages.contains(42));
+        const auto& usage = usages.at(42);
+        UNIT_ASSERT_VALUES_EQUAL(2, usage.GetUsedNodes());
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), usage.GetUsedBytes());
+    }
+
     SERVICE_TEST(ShouldCheckForShardsInAdapterModeUponSessionCreationInShards)
     {
         //

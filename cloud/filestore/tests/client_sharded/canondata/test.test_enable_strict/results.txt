@@ -12,7 +12,7 @@ FileStore {
   Features {
     ThreeStageWriteThreshold: 65536
     PreferredBlockSize: 4096
-    AsyncHandleOperationPeriod: 50
+    AsyncHandleOperationIdlePeriod: 50
     HasXAttrs: true
     MaxFuseLoopThreads: 1
     TabletDirectRdmaEnabled: false

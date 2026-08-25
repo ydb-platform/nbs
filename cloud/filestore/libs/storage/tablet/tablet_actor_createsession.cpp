@@ -52,8 +52,10 @@ void FillFeatures(
         config.GetAsyncDestroyReadOnlyHandleEnabled());
     features->SetAsyncCreateHandleEnabled(
         config.GetAsyncCreateHandleEnabled());
-    features->SetAsyncHandleOperationPeriod(
-        config.GetAsyncHandleOperationPeriod().MilliSeconds());
+    features->SetAsyncHandleOperationIdlePeriod(
+        config.GetAsyncHandleOperationIdlePeriod().MilliSeconds());
+    features->SetAsyncHandleOperationDrainPeriod(
+        config.GetAsyncHandleOperationDrainPeriod().MilliSeconds());
 
     features->SetGuestWriteBackCacheEnabled(
         config.GetGuestWriteBackCacheEnabled());

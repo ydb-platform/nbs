@@ -49,12 +49,13 @@ void Rollback(TVector<TPageGroup>& groups, IPageStore& pageStore)
 struct TFixture
 {
     const ui64 FirstPageNo = 10;
-    const ui64 PageCount = 2;
+    const ui64 MaxBits;
 
     IPageStorePtr PageStore = CreateMemPageStore(PageSize);
     std::unique_ptr<TPersistentBitmap> Bitmap;
 
-    TFixture()
+    TFixture(ui64 maxBits = 60000)
+        : MaxBits(maxBits)
     {
         Reload();
     }
@@ -63,7 +64,7 @@ struct TFixture
     {
         Bitmap = std::make_unique<TPersistentBitmap>(
             FirstPageNo,
-            PageCount,
+            MaxBits,
             PageSize,
             PageStore);
     }
@@ -140,14 +141,13 @@ TEST(PersistentBitmapTest, SetResetAllocate)
     ASSERT_TRUE(bit2 != bit3) << bit;
 }
 
-TEST(PersistentBitmapTest, OutOfSpace)
+void DoTestOutOfSpace(ui64 maxBits)
 {
-    TFixture fx;
+    TFixture fx(maxBits);
 
     TVector<TPageGroup> pageGroups;
 
-    const ui64 cap =
-        TPersistentBitmap::CalcBitsPerPage(PageSize) * fx.PageCount;
+    const ui64 cap = fx.MaxBits;
 
     THashSet<ui64> bitSet;
 
@@ -179,6 +179,16 @@ TEST(PersistentBitmapTest, OutOfSpace)
     ASSERT_EQ(1000ULL, bit);
 }
 
+TEST(PersistentBitmapTest, OutOfSpace1Page)
+{
+    DoTestOutOfSpace(30000);
+}
+
+TEST(PersistentBitmapTest, OutOfSpace2Pages)
+{
+    DoTestOutOfSpace(60000);
+}
+
 TEST(PersistentBitmapTest, SetResetAllocateRandomized)
 {
     TFixture fx;
@@ -188,8 +198,7 @@ TEST(PersistentBitmapTest, SetResetAllocateRandomized)
     const double setProb = 0.01;
     const double resetProb = 0.5;
     const double allocateProb = 0.6;
-    const ui64 cap =
-        TPersistentBitmap::CalcBitsPerPage(PageSize) * fx.PageCount;
+    const ui64 cap = fx.MaxBits;
 
     TDynBitMap refImpl;
     refImpl.Reserve(cap);

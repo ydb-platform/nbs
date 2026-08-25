@@ -395,7 +395,7 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
         EXPECT_EQ(0ULL, stats.UsedHandleCount);
         EXPECT_EQ(768ULL, stats.TotalHandleCount);
         EXPECT_EQ(0ULL, stats.UsedPageCount);
-        EXPECT_EQ(17680ULL, stats.TotalPageCount);
+        EXPECT_EQ(16384ULL, stats.TotalPageCount);
     }
 
     ui64 nodeId = 0;
@@ -460,7 +460,7 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
         EXPECT_EQ(1ULL, stats.UsedHandleCount);
         EXPECT_EQ(768ULL, stats.TotalHandleCount);
         EXPECT_EQ(8ULL, stats.UsedPageCount);
-        EXPECT_EQ(17680ULL, stats.TotalPageCount);
+        EXPECT_EQ(16384ULL, stats.TotalPageCount);
     }
 
     {
@@ -484,7 +484,7 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
         EXPECT_EQ(0ULL, stats.UsedHandleCount);
         EXPECT_EQ(768ULL, stats.TotalHandleCount);
         EXPECT_EQ(8ULL, stats.UsedPageCount);
-        EXPECT_EQ(17680ULL, stats.TotalPageCount);
+        EXPECT_EQ(16384ULL, stats.TotalPageCount);
     }
 }
 

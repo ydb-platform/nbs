@@ -51,7 +51,13 @@ struct TTempError
 
 struct TTestStorageGroup: IStorageGroup
 {
-    TVector<TString> Pages{PageCount};
+    //
+    // Deliberately not brace-initialized: TBuffer(size_t) is implicit, so
+    // {PageCount} would create a single buffer instead of PageCount empty
+    // pages.
+    //
+
+    TVector<TBuffer> Pages = TVector<TBuffer>(PageCount);
     TTempError ReadError;
     TTempError WriteError;
 
@@ -102,8 +108,8 @@ struct TTestStorageGroup: IStorageGroup
             pg.FirstPageNo = pgr.FirstPageNo;
             for (ui64 i = 0; i < pgr.PageCount; ++i) {
                 pg.Content.push_back(Pages[pgr.FirstPageNo + i]);
-                if (pg.Content.back().empty()) {
-                    pg.Content.back().resize(PageSize, 0);
+                if (pg.Content.back().Empty()) {
+                    pg.Content.back().Fill(0, PageSize);
                 }
             }
         }

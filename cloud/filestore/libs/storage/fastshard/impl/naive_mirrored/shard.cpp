@@ -22,6 +22,7 @@
 #include <library/cpp/resource/resource.h>
 
 #include <util/digest/city.h>
+#include <util/generic/buffer.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
@@ -729,6 +730,7 @@ private:
     std::unique_ptr<TPersistentBitmap> Bitmap;
     ui64 FirstStoragePageClusterId = 0;
     ui64 BitCount = 0;
+    ui64 BitmapSize = 0;
 
 public:
     ui64 Init(
@@ -737,20 +739,20 @@ public:
         IPageStorePtr pageStore)
     {
         const ui64 pageClusterCount = CalcPageClusterCount(config);
-        const ui64 bitsPerPage = TPersistentBitmap::CalcBitsPerPage(PageSize);
-        BitCount = RoundUp(pageClusterCount, bitsPerPage);
-        const ui64 bitmapPageCount = BitCount / bitsPerPage;
+        BitCount = pageClusterCount;
         Bitmap = std::make_unique<TPersistentBitmap>(
             firstPageNo,
-            bitmapPageCount,
+            BitCount,
             PageSize,
             std::move(pageStore));
-        firstPageNo += bitmapPageCount;
-        FirstStoragePageClusterId =
-            RoundUp(firstPageNo + bitmapPageCount, PageClusterPageCount) /
-            PageClusterPageCount;
+        BitmapSize = Bitmap->GetPageCount() * PageSize;
+        firstPageNo += Bitmap->GetPageCount();
+        FirstStoragePageClusterId = RoundUp(firstPageNo, PageClusterPageCount)
+            / PageClusterPageCount;
 
-        return bitmapPageCount + pageClusterCount * PageClusterPageCount;
+        return Bitmap->GetPageCount()
+            + (FirstStoragePageClusterId * PageClusterPageCount - firstPageNo)
+            + pageClusterCount * PageClusterPageCount;
     }
 
     [[nodiscard]] ui64 GetBitCount() const
@@ -760,8 +762,7 @@ public:
 
     [[nodiscard]] ui64 GetBitmapSize() const
     {
-        return PageSize
-            * (BitCount / TPersistentBitmap::CalcBitsPerPage(PageSize));
+        return BitmapSize;
     }
 
     [[nodiscard]] ui64 GetDataOffset() const
@@ -1905,7 +1906,7 @@ public:
                     break;
                 }
 
-                TString page;
+                TBuffer page;
                 if (isUnalignedHead || isUnalignedTail) {
                     error = PageStore->ReadPage(
                         writeContext.Lsn,
@@ -1920,7 +1921,7 @@ public:
                         break;
                     }
                 } else {
-                    page.ReserveAndResize(PageSize);
+                    page.Resize(PageSize);
                 }
 
                 const ui64 offsetInPage =
@@ -1930,7 +1931,7 @@ public:
                 const ui64 toCopy =
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
-                    page.begin() + offsetInPage,
+                    page.Data() + offsetInPage,
                     request.GetBuffer().data() + bufferOffset,
                     toCopy);
 
@@ -2127,7 +2128,7 @@ public:
                     break;
                 }
 
-                TString page;
+                TBuffer page;
                 error = PageStore->ReadPage(0 /* lsn */, storagePageNo, &page);
 
                 SILK_DEBUG(
@@ -2152,7 +2153,7 @@ public:
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
                     buffer.begin() + bufferOffset,
-                    page.begin() + offsetInPage,
+                    page.Data() + offsetInPage,
                     toCopy);
 
                 bufferOffset += toCopy;

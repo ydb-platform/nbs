@@ -1371,6 +1371,8 @@ public:
 
     void LoadQuotaUsages(const TVector<TQuotaUsage>& usages);
 
+    const TQuotaUsage* FindQuotaUsage(ui32 quotaId) const;
+
     TVector<TQuotaUsage> GetQuotaUsages() const;
 
     //

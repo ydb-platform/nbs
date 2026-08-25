@@ -176,6 +176,15 @@ message TStorageStats
     repeated TNodeStats NodeStats = 7001;
 
     repeated TNodeLatencyStats LatencyStats = 8001;
+
+    // per-quota usage
+    map<uint32, TQuotaUsageValue> QuotaUsages = 9001;
+}
+
+message TQuotaUsageValue
+{
+    uint64 UsedBytes = 1;
+    uint64 UsedNodes = 2;
 }
 
 enum EStatsRequestMode

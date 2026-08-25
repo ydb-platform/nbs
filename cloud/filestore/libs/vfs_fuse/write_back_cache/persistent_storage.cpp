@@ -77,12 +77,16 @@ public:
 
     void Visit(const TVisitor& visitor) override
     {
-        Storage.Visit(
+        auto visitResult = Storage.Visit(
             [&visitor](ui32 checksum, ui32 tag, TStringBuf entry)
             {
                 Y_UNUSED(checksum);
                 visitor(tag, {entry.data(), entry.size()});
             });
+
+        // TODO(#1751): To be resolved in
+        // https://github.com/ydb-platform/nbs/pull/6867
+        Y_UNUSED(visitResult);
 
         SetCounters();
     }
@@ -94,26 +98,39 @@ public:
 
     TResultOrError<char*> Alloc(size_t size) override
     {
-        return Storage.Alloc(size);
+        auto allocResult = Storage.Alloc(size);
+        if (HasError(allocResult.Error)) {
+            return allocResult.Error;
+        } else {
+            return allocResult.AllocationPtr;
+        }
     }
 
     void Commit() override
     {
-        bool success = Storage.Commit();
-        Y_ENSURE(success, "Failed to commit allocation");
+        auto res = Storage.Commit();
+        Y_ENSURE(
+            !HasError(res),
+            "Failed to commit allocation: " << FormatError(res));
         SetCounters();
     }
 
     void Free(const void* ptr) override
     {
-        bool success = Storage.Free(ptr);
-        Y_ENSURE(success, "Failed to free pointer " << ptr);
+        auto res = Storage.Free(ptr);
+        Y_ENSURE(
+            !HasError(res),
+            "Failed to free pointer " << ptr << ": " << FormatError(res));
         SetCounters();
     }
 
     void SetTag(const void* ptr, ui32 tag) override
     {
-        Storage.SetTag(ptr, tag);
+        auto setTagResult = Storage.SetTag(ptr, tag);
+
+        // TODO(#1751): To be resolved in
+        // https://github.com/ydb-platform/nbs/pull/6867
+        Y_UNUSED(setTagResult);
     }
 
     void UpdateStats() const override

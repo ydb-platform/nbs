@@ -107,7 +107,8 @@ public:
 
     bool GetAsyncDestroyHandleEnabled() const;
     bool GetAsyncDestroyReadOnlyHandleEnabled() const;
-    TDuration GetAsyncHandleOperationPeriod() const;
+    TDuration GetAsyncHandleOperationIdlePeriod() const;
+    TDuration GetAsyncHandleOperationDrainPeriod() const;
 
     bool GetOpenNodeByHandleEnabled() const;
 

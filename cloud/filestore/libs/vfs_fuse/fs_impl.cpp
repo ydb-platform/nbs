@@ -88,7 +88,8 @@ TFileSystem::~TFileSystem()
 void TFileSystem::Init()
 {
     STORAGE_INFO("scheduling handle ops queue processing");
-    ScheduleProcessHandleOpsQueue();
+    ScheduleProcessHandleOpsQueue(
+        Config->GetAsyncHandleOperationDrainPeriod());
 }
 
 void TFileSystem::Reset()
@@ -97,11 +98,11 @@ void TFileSystem::Reset()
     DirectoryHandleCache->Reset();
 }
 
-void TFileSystem::ScheduleProcessHandleOpsQueue()
+void TFileSystem::ScheduleProcessHandleOpsQueue(TDuration delay)
 {
     if (HandleOpsQueue) {
         Scheduler->Schedule(
-            Timer->Now() + Config->GetAsyncHandleOperationPeriod(),
+            Timer->Now() + delay,
             [=, ptr = weak_from_this()]()
             {
                 if (auto self = ptr.lock()) {
@@ -415,7 +416,8 @@ void TFileSystem::CompleteHandleOpsQueueEntry()
         HandleOpsQueue->PopFront();
     }
     ProcessDelayedRelease();
-    ScheduleProcessHandleOpsQueue();
+    ScheduleProcessHandleOpsQueue(
+        Config->GetAsyncHandleOperationDrainPeriod());
 }
 
 void TFileSystem::ProcessDelayedRelease()
@@ -440,7 +442,8 @@ void TFileSystem::ProcessHandleOpsQueue()
 {
     TGuard g{HandleOpsQueueLock};
     if (HandleOpsQueue->Empty()) {
-        ScheduleProcessHandleOpsQueue();
+        ScheduleProcessHandleOpsQueue(
+            Config->GetAsyncHandleOperationIdlePeriod());
         return;
     }
 
@@ -451,7 +454,8 @@ void TFileSystem::ProcessHandleOpsQueue()
             << "Failed to get TQueueEntry from queue, filesystem: "
             << Config->GetFileSystemId());
         HandleOpsQueue->PopFront();
-        ScheduleProcessHandleOpsQueue();
+        ScheduleProcessHandleOpsQueue(
+            Config->GetAsyncHandleOperationIdlePeriod());
         return;
     }
 
@@ -513,7 +517,8 @@ void TFileSystem::ProcessHandleOpsQueue()
             TStringBuilder() << "Unexpected TQueueEntry in queue, filesystem: "
                              << Config->GetFileSystemId());
         HandleOpsQueue->PopFront();
-        ScheduleProcessHandleOpsQueue();
+        ScheduleProcessHandleOpsQueue(
+            Config->GetAsyncHandleOperationIdlePeriod());
         return;
     }
 
