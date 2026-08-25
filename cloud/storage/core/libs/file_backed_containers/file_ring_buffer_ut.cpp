@@ -685,6 +685,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TTempFileHandle TempFileHandle;
         TFileRingBuffer RingBuffer;
         char* frontAllocationPtr = nullptr;
+        char* secondAllocationPtr = nullptr;
 
         TShouldDetectCorruptionOnPopFrontAndFreeBootstrap(EVersion ver)
             : RingBuffer(TempFileHandle.GetName(), 42, 0, ver)
@@ -696,9 +697,16 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             frontAllocationPtr[2] = 'c';
             UNIT_ASSERT(!HasError(RingBuffer.Commit()));
 
-            UNIT_ASSERT(RingBuffer.PushBack("def").Pushed);
+            secondAllocationPtr = RingBuffer.Alloc(3).AllocationPtr;
+            UNIT_ASSERT(secondAllocationPtr != nullptr);
+            secondAllocationPtr[0] = 'd';
+            secondAllocationPtr[1] = 'e';
+            secondAllocationPtr[2] = 'f';
+            UNIT_ASSERT(!HasError(RingBuffer.Commit()));
+        }
 
-            // Corrupt the buffer
+        void Corrupt(ui64 ofs)
+        {
             TFileMapFileRingBufferAccessor accessor(
                 TempFileHandle.GetName(),
                 EFileRingBufferAccessorValidationMode::Normal,
@@ -710,10 +718,20 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 EFileRingBufferAccessorValidationStatus::Success,
                 accessor.ValidateAndInitialize());
 
-            auto eh = accessor.GetDataProcessor()->ReadEntryHeader(0);
+            auto eh = accessor.GetDataProcessor()->ReadEntryHeader(ofs);
             UNIT_ASSERT_VALUES_EQUAL(3, eh.DataSize);
             eh.DataSize = 1000;
-            accessor.GetDataProcessor()->WriteEntryHeader(0, eh);
+            accessor.GetDataProcessor()->WriteEntryHeader(ofs, eh);
+        }
+
+        void CorruptFront()
+        {
+            Corrupt(0);
+        }
+
+        void CorruptSecond()
+        {
+            Corrupt(secondAllocationPtr - frontAllocationPtr);
         }
     };
 
@@ -721,11 +739,25 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         {
             TShouldDetectCorruptionOnPopFrontAndFreeBootstrap b(ver);
+            b.CorruptFront();
             UNIT_ASSERT(HasError(b.RingBuffer.PopFront().Error));
         }
 
         {
             TShouldDetectCorruptionOnPopFrontAndFreeBootstrap b(ver);
+            b.CorruptSecond();
+            UNIT_ASSERT(HasError(b.RingBuffer.PopFront().Error));
+        }
+
+        {
+            TShouldDetectCorruptionOnPopFrontAndFreeBootstrap b(ver);
+            b.CorruptFront();
+            UNIT_ASSERT(HasError(b.RingBuffer.Free(b.frontAllocationPtr)));
+        }
+
+        {
+            TShouldDetectCorruptionOnPopFrontAndFreeBootstrap b(ver);
+            b.CorruptSecond();
             UNIT_ASSERT(HasError(b.RingBuffer.Free(b.frontAllocationPtr)));
         }
     }
@@ -1243,10 +1275,20 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT(!HasError(rb->SetTag(ptr1, 1)));
             UNIT_ASSERT(!HasError(rb->SetTag(ptr2, 2)));
 
+            // Tag value exceeds MaxTag
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, rb->SetTag(ptr1, 8).GetCode());
+
+            // Invalid tag pointer
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                rb->SetTag(ptr1 + 1, 0).GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(1, rb->GetTag(ptr1).Tag);
             UNIT_ASSERT_VALUES_EQUAL(2, rb->GetTag(ptr2).Tag);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                rb->GetTag(ptr1 + 1).Error.GetCode());
 
             // Recreate cache - old pointers become invalid
             rb =

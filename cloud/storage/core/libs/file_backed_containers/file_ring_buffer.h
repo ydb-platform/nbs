@@ -37,13 +37,13 @@ public:
     using TVisitor =
         std::function<void(ui32 checksum, ui32 tag, TStringBuf entry)>;
 
-    FILE_RING_BUFFER_RESULT_STRUCT(Alloc, char*, AllocationPtr);
-    FILE_RING_BUFFER_RESULT_STRUCT(GetMetadata, TStringBuf, Metadata);
-    FILE_RING_BUFFER_RESULT_STRUCT(GetTag, ui32, Tag);
-    FILE_RING_BUFFER_RESULT_STRUCT(Front, TStringBuf, Data);
-    FILE_RING_BUFFER_RESULT_STRUCT(PopFront, bool, Removed);
-    FILE_RING_BUFFER_RESULT_STRUCT(PushBack, bool, Pushed);
-    FILE_RING_BUFFER_RESULT_STRUCT(SetMetadata, bool, Updated);
+    FILE_RING_BUFFER_RESULT_STRUCT(Alloc, char*, AllocationPtr)
+    FILE_RING_BUFFER_RESULT_STRUCT(GetMetadata, TStringBuf, Metadata)
+    FILE_RING_BUFFER_RESULT_STRUCT(GetTag, ui32, Tag)
+    FILE_RING_BUFFER_RESULT_STRUCT(Front, TStringBuf, Data)
+    FILE_RING_BUFFER_RESULT_STRUCT(PopFront, bool, Removed)
+    FILE_RING_BUFFER_RESULT_STRUCT(PushBack, bool, Pushed)
+    FILE_RING_BUFFER_RESULT_STRUCT(SetMetadata, bool, Updated)
 
 private:
     class TImpl;
