@@ -23,7 +23,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief An actor that performs forced compaction or forced cleanup. It is
+ * @brief An actor that performs various forced bookkeeping operations. It is
  * implemented as a template class to avoid code duplication.
  *
  * @tparam TRequestConstructor A functor that constructs a unique_ptr to a
