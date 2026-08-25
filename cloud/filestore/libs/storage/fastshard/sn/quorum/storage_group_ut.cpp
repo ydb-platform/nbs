@@ -128,7 +128,8 @@ TEST(NaiveGroupTest, MirrorsWrites)
 
                 auto error = fx.Group->WriteLogRecord(
                     defaultHeaders,
-                    std::move(pageGroups));
+                    std::move(pageGroups),
+                    1234 /* lsn */);
                 EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
             }
 
@@ -137,6 +138,7 @@ TEST(NaiveGroupTest, MirrorsWrites)
                 EXPECT_EQ(1U, sn->WriteCalls.size());
                 EXPECT_EQ(fx.DeviceUUIDs[i], sn->WriteCalls[0].GetDeviceUUID());
                 EXPECT_EQ(1U, sn->WriteCalls[0].PageGroupsSize());
+                EXPECT_EQ(1234U, sn->WriteCalls[0].GetLogSequenceNumber());
                 const auto& pg = sn->WriteCalls[0].GetPageGroups(0);
                 EXPECT_EQ(111U, pg.GetFirstPageNo());
                 EXPECT_EQ(2U, pg.ContentSize());

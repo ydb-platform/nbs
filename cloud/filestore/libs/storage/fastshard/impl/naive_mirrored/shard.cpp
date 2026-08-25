@@ -1290,7 +1290,8 @@ public:
         auto pages = CollectPages(writeContext);
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1397,7 +1398,8 @@ public:
         auto pages = CollectPages(writeContext);
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1521,7 +1523,8 @@ public:
         auto pages = CollectPages(writeContext);
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1660,7 +1663,8 @@ public:
         auto pages = CollectPages(writeContext);
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1724,7 +1728,8 @@ public:
         auto pages = CollectPages(writeContext);
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -2014,7 +2019,8 @@ public:
         auto pages = CollectPages(writeContext);
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),

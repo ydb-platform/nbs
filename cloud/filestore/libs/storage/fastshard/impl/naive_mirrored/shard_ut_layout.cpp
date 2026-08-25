@@ -42,9 +42,10 @@ struct TNullStorageGroup: IStorageGroup
 
     NCloud::NProto::TError WriteLogRecord(
         NCloud::NProto::TDeviceRequestHeaders headers,
-        TVector<TPageGroup> pageGroups) override
+        TVector<TPageGroup> pageGroups,
+        ui64 lsn) override
     {
-        Y_UNUSED(headers, pageGroups);
+        Y_UNUSED(headers, pageGroups, lsn);
 
         return {};
     }

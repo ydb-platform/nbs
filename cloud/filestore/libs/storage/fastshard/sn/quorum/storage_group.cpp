@@ -95,7 +95,8 @@ public:
 
     NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
-        TVector<TPageGroup> pageGroups) override
+        TVector<TPageGroup> pageGroups,
+        ui64 lsn) override
     {
         NProto::TWriteLogRecordRequest request;
         *request.MutableHeaders() = std::move(headers);
@@ -110,6 +111,7 @@ public:
                 w->AddContent()->assign(c.Data(), c.Size());
             }
         }
+        request.SetLogSequenceNumber(lsn);
         SILK_DEBUG("sg write: %s", DebugMessage(request).c_str());
 
         return MirrorRequest<
