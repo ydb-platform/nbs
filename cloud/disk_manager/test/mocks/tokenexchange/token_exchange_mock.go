@@ -2,6 +2,7 @@ package tokenexchange
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 )
@@ -34,6 +35,42 @@ func New(accessToken string) *Mock {
 	return &Mock{accessToken: accessToken}
 }
 
+func validateRequest(request Request) error {
+	if request.GrantType != TokenExchangeGrantType {
+		return fmt.Errorf(
+			"unexpected grant_type %q, expected %q",
+			request.GrantType,
+			TokenExchangeGrantType,
+		)
+	}
+
+	if request.RequestedTokenType != AccessTokenType {
+		return fmt.Errorf(
+			"unexpected requested_token_type %q, expected %q",
+			request.RequestedTokenType,
+			AccessTokenType,
+		)
+	}
+
+	if request.SubjectToken == "" {
+		return fmt.Errorf("subject_token is missing")
+	}
+
+	if request.SubjectTokenType == "" {
+		return fmt.Errorf("subject_token_type is missing")
+	}
+
+	if request.ActorToken == "" && request.ActorTokenType != "" {
+		return fmt.Errorf("actor_token is missing")
+	}
+
+	if request.ActorToken != "" && request.ActorTokenType == "" {
+		return fmt.Errorf("actor_token_type is missing")
+	}
+
+	return nil
+}
+
 func (m *Mock) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
 		http.Error(writer, "only POST is supported", http.StatusMethodNotAllowed)
@@ -55,14 +92,8 @@ func (m *Mock) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		Audience:           request.Form.Get("audience"),
 	}
 
-	if tokenExchangeRequest.GrantType != TokenExchangeGrantType ||
-		tokenExchangeRequest.RequestedTokenType != AccessTokenType ||
-		tokenExchangeRequest.SubjectToken == "" ||
-		tokenExchangeRequest.SubjectTokenType == "" ||
-		(tokenExchangeRequest.ActorToken == "") !=
-			(tokenExchangeRequest.ActorTokenType == "") {
-
-		http.Error(writer, "invalid token exchange request", http.StatusBadRequest)
+	if err := validateRequest(tokenExchangeRequest); err != nil {
+		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
 	}
 
