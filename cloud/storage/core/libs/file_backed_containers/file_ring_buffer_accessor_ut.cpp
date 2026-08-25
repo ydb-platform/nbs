@@ -2,6 +2,8 @@
 
 #include "file_ring_buffer_accessor.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/stream/output.h>
@@ -506,9 +508,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                UNIT_ASSERT(rb.PushBack("ABC"));
-                UNIT_ASSERT(rb.PushBack("123"));
-                UNIT_ASSERT(rb.SetMetadata("meta"));
+                UNIT_ASSERT(rb.PushBack("ABC").Pushed);
+                UNIT_ASSERT(rb.PushBack("123").Pushed);
+                UNIT_ASSERT(rb.SetMetadata("meta").Updated);
             },
             ver);
 
@@ -523,14 +525,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                while (rb.PushBack("ABCD")) {
+                while (rb.PushBack("ABCD").Pushed) {
                     // Add elements until the buffer is full
                 }
 
-                rb.PopFront();
-                rb.PopFront();
+                UNIT_ASSERT(rb.PopFront().Removed);
+                UNIT_ASSERT(rb.PopFront().Removed);
 
-                UNIT_ASSERT(rb.PushBack("wrap"));
+                UNIT_ASSERT(rb.PushBack("wrap").Pushed);
             },
             ver);
 
@@ -543,14 +545,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                while (rb.PushBack("ABCD")) {
+                while (rb.PushBack("ABCD").Pushed) {
                     // Add elements until the buffer is full
                 }
 
-                rb.PopFront();
-                rb.PopFront();
+                UNIT_ASSERT(rb.PopFront().Removed);
+                UNIT_ASSERT(rb.PopFront().Removed);
 
-                rb.Alloc(4);
+                UNIT_ASSERT(rb.Alloc(4).AllocationPtr != nullptr);
             },
             ver);
 
@@ -586,7 +588,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
     {
         TBootstrap b;
         b.Execute(
-            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC")); },
+            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC").Pushed); },
             ver);
 
         b.AssertValidateSuccess();
@@ -602,7 +604,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
     {
         TBootstrap b;
         b.Execute(
-            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC")); },
+            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC").Pushed); },
             ver);
 
         b.AssertValidateSuccess();
@@ -618,7 +620,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
     {
         TBootstrap b;
         b.Execute(
-            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC")); },
+            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC").Pushed); },
             ver);
 
         b.AssertValidateSuccess();
@@ -632,7 +634,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
     {
         TBootstrap b;
         b.Execute(
-            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC")); },
+            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC").Pushed); },
             ver);
 
         b.AssertValidateSuccess();
@@ -656,8 +658,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                UNIT_ASSERT(rb.PushBack("01234567"));
-                UNIT_ASSERT(rb.PushBack("ABC"));
+                UNIT_ASSERT(rb.PushBack("01234567").Pushed);
+                UNIT_ASSERT(rb.PushBack("ABC").Pushed);
             },
             ver);
 
@@ -703,8 +705,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                UNIT_ASSERT(rb.PushBack("ABC"));
-                UNIT_ASSERT(rb.SetMetadata("123"));
+                UNIT_ASSERT(rb.PushBack("ABC").Pushed);
+                UNIT_ASSERT(rb.SetMetadata("123").Updated);
             },
             ver);
 
