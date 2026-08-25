@@ -1122,13 +1122,17 @@ private:
 
     // Returns whether 'deviceId' is retained until the volume acknowledges a
     // finished migration.
-    bool IsFinishedMigrationDevice(
+    bool IsDeviceRetainedForMigrationAck(
+        const TDiskState& disk,
+        const TDeviceId& deviceId) const;
+
+    bool IsActiveMigrationTarget(
         const TDiskState& disk,
         const TDeviceId& deviceId) const;
 
     // Restarts an active migration targeting 'targetId' by rescheduling its
-    // source. Returns whether 'targetId' was an active migration target.
-    bool RestartDeviceMigration(
+    // source. Does nothing if 'targetId' is not an active migration target.
+    void TryRestartDeviceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,

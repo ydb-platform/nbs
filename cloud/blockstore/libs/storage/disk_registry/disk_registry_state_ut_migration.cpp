@@ -191,8 +191,7 @@ void DoTestMirroredMigrationDevice(
         deviceKind == EMigrationDeviceKind::CompletedSource;
     const bool expectedIsCanceled = isActive || isCanceled || reloadState;
     UNIT_ASSERT(
-        !isActive ||
-        action == EMigrationDeviceAction::RegisterBrokenDevice);
+        !isActive || action != EMigrationDeviceAction::StartMigration);
     const TString finishedDeviceId =
         isCompleted ? sourceId : target.GetDeviceUUID();
     const TString diskDeviceId =
@@ -2022,6 +2021,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "uuid-1.1",
             pendingMigrations[0].SourceDeviceId);
+    }
+
+    Y_UNIT_TEST(ShouldRestartActiveMigrationOnTargetAgentFailure)
+    {
+        DoTestMirroredMigrationDevice(
+            EMigrationDeviceKind::ActiveTarget,
+            EMigrationDeviceAction::FailAgent);
+    }
+
+    Y_UNIT_TEST(ShouldRestartActiveMigrationOnTargetDeviceFailure)
+    {
+        DoTestMirroredMigrationDevice(
+            EMigrationDeviceKind::ActiveTarget,
+            EMigrationDeviceAction::FailDevice);
     }
 
     Y_UNIT_TEST(ShouldRestartActiveMigrationOnAgentRegistrationWithBrokenTarget)
