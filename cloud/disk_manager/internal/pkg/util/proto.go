@@ -39,8 +39,8 @@ func ParseProto(
 	return nil
 }
 
-// Keep in sync with "internal/pkg/types/types.proto : enum DiskKind"
-func GetAllDiskKinds() []types.DiskKind {
+// Disk kinds of the blockstore backend. Used by the cell selector.
+func GetBlockstoreDiskKinds() []types.DiskKind {
 	return []types.DiskKind{
 		types.DiskKind_DISK_KIND_SSD,
 		types.DiskKind_DISK_KIND_HDD,

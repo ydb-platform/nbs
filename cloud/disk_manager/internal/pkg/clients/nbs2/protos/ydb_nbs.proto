@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package Ydb.Nbs;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2/protos;nbs2_protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Minimal YDB Operation subset. Field numbers match Ydb.Operations so that
+// this client stays wire-compatible with Ydb.Nbs.V1.NbsService.
+
+message OperationParams {
+    enum OperationMode {
+        OPERATION_MODE_UNSPECIFIED = 0;
+        SYNC = 1;
+        ASYNC = 2;
+    }
+
+    OperationMode operation_mode = 1;
+}
+
+message Operation {
+    string id = 1;
+    bool ready = 2;
+    // Ydb.StatusIds.StatusCode. SUCCESS = 400000.
+    int32 status = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum StorageMediaKind {
+    STORAGE_MEDIA_DEFAULT = 0;
+    STORAGE_MEDIA_SSD = 1;
+    STORAGE_MEDIA_MEMORY = 2;
+}
+
+message CreatePartitionRequest {
+    OperationParams operation_params = 1;
+    string StoragePoolName = 2;
+    uint32 BlockSize = 3;
+    uint64 BlocksCount = 4;
+    StorageMediaKind StorageMedia = 5;
+    string DiskId = 6;
+}
+
+message CreatePartitionResponse {
+    Operation operation = 1;
+}
+
+message DeletePartitionRequest {
+    OperationParams operation_params = 1;
+    string DiskId = 2;
+}
+
+message DeletePartitionResponse {
+    Operation operation = 1;
+}

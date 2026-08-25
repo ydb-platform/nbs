@@ -58,6 +58,16 @@ func (t *createImageFromDiskTask) run(
 
 	selfTaskID := execCtx.GetTaskID()
 
+	diskMeta, err := t.storage.GetDiskMeta(ctx, disk.DiskId)
+	if err != nil {
+		return "", err
+	}
+	if diskMeta != nil && internal_common.IsNbs2DiskKindString(diskMeta.Kind) {
+		return "", errors.NewNonCancellableErrorf(
+			"image creation from ssd-nbs2 disk is forbidden",
+		)
+	}
+
 	diskParams, err := nbsClient.Describe(ctx, disk.DiskId)
 	if err != nil {
 		return "", err
@@ -66,6 +76,12 @@ func (t *createImageFromDiskTask) run(
 	if internal_common.IsLocalDiskKind(diskParams.Kind) {
 		return "", errors.NewNonCancellableErrorf(
 			"image creation from local disk is forbidden",
+		)
+	}
+
+	if internal_common.IsNbs2DiskKind(diskParams.Kind) {
+		return "", errors.NewNonCancellableErrorf(
+			"image creation from ssd-nbs2 disk is forbidden",
 		)
 	}
 
