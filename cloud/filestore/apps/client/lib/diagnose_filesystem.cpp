@@ -1,6 +1,6 @@
-#include "aggregate.h"
 #include "command.h"
 
+#include <cloud/filestore/libs/diagnostics/aggregate.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <library/cpp/json/json_writer.h>

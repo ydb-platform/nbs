@@ -4,6 +4,33 @@
     gap: 12px;
 }
 
+.diagnostics-controls,
+.diagnostics-table-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.diagnostics-table-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.diagnostics-table-heading h3 {
+    margin-top: 20px;
+}
+
+.diagnostics-control {
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+.diagnostics-control select {
+    display: inline-block;
+    width: auto;
+}
+
 .diagnostics-table {
     white-space: nowrap;
 }

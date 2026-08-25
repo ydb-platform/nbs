@@ -1,7 +1,9 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/aggregate.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+
 #include <cloud/storage/core/libs/common/simple_template.h>
 
 #include <library/cpp/json/writer/json.h>
@@ -24,15 +26,26 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 MaxTop = 1000;
-constexpr ui32 MaxInFlight = 10;
+constexpr ui32 MaxBatchSize = 100;
+constexpr ui32 DefaultTopLoaded = 10;
+constexpr ui32 DefaultTopAccessed = 10;
+constexpr ui32 DefaultBatchSize = 10;
+constexpr ui32 DefaultSlowestNodes = 10;
+constexpr ui32 DefaultSlowestRequests = 10;
+constexpr ui32 DefaultSlowestShards = 10;
+constexpr TStringBuf DefaultSortBy = "load";
 
 void DumpDiagnosticsPage(IOutputStream& out, ui64 tabletId)
 {
-    OutputTemplate(NResource::Find("html/diagnostics-main.html"), {
-        {"STYLE", NResource::Find("css/diagnostics.css")},
-        {"JS", NResource::Find("js/diagnostics.js")},
-        {"TABLET_ID", ToString(tabletId)}}, out);
+    OutputTemplate(
+        NResource::Find("html/diagnostics-main.html"),
+        {{"STYLE", NResource::Find("css/diagnostics.css")},
+         {"JS", NResource::Find("js/diagnostics.js")},
+         {"TABLET_ID", ToString(tabletId)}},
+        out);
 }
+
+// is it not bad to double the same struct definitions here and in the client?
 
 struct TShardRow
 {
@@ -53,105 +66,86 @@ struct TNodeRow
     ui64 LastAccessedUs = 0;
 };
 
-struct TLatencyRow
+struct TLatency
 {
-    TString ShardId;
-    TString RequestType;
-    TString NodeId;
-    ui64 Requests = 0;
+    ui64 RequestCount = 0;
     ui64 TotalLatencyUs = 0;
     double TotalDecayedLatencyUs = 0;
-    ui64 LastAccessedUs = 0;
+    ui64 LastAccessedTimestampUs = 0;
 
-    double AverageDecayedLatencyUs() const
+    void Add(const TLatency& other)
     {
-        return Requests ? TotalDecayedLatencyUs / Requests : 0;
+        RequestCount += other.RequestCount;
+        TotalLatencyUs += other.TotalLatencyUs;
+        TotalDecayedLatencyUs += other.TotalDecayedLatencyUs;
+        LastAccessedTimestampUs =
+            Max(LastAccessedTimestampUs, other.LastAccessedTimestampUs);
+    }
+
+    double GetAverageDecayedLatencyUs() const
+    {
+        return RequestCount ? TotalDecayedLatencyUs / RequestCount : 0;
     }
 };
 
-TLatencyRow* FindLatencyRow(
-    TVector<TLatencyRow>& rows,
-    const TString& shardId,
-    const TString& requestType,
-    const TString& nodeId)
-{
-    for (auto& row: rows) {
-        if (row.ShardId == shardId && row.RequestType == requestType &&
-            row.NodeId == nodeId)
-        {
-            return &row;
-        }
-    }
-
-    rows.push_back({shardId, requestType, nodeId});
-    return &rows.back();
-}
-
-TLatencyRow* FindRequestLatencyRow(
-    TVector<TLatencyRow>& rows,
-    const TString& shardId,
-    const TString& requestType)
-{
-    return FindLatencyRow(rows, shardId, requestType, {});
-}
-
-TLatencyRow* FindShardLatencyRow(
-    TVector<TLatencyRow>& rows,
-    const TString& shardId)
-{
-    return FindLatencyRow(rows, shardId, {}, {});
-}
-
-void AddLatency(
-    TLatencyRow& row,
-    const NProtoPrivate::TNodeLatencyStats& stats)
-{
-    row.Requests += stats.GetRequestCount();
-    row.TotalLatencyUs += stats.GetTotalLatencyUs();
-    row.TotalDecayedLatencyUs +=
-        stats.GetAverageLatencyDecayedUs() * stats.GetRequestCount();
-    row.LastAccessedUs = Max(row.LastAccessedUs, stats.GetLastAccessedTimestampUs());
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiagnosticsActor final
-    : public TActorBootstrapped<TDiagnosticsActor>
+class TDiagnosticsActor final: public TActorBootstrapped<TDiagnosticsActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
-    const ui32 Top;
-    const ui32 TopNodes;
+    ui32 TopLoaded;
+    TString SortBy;
+    ui32 TopAccessed;
+    ui32 MaxConcurrentRequests;
+    ui32 SlowestNodes;
+    ui32 SlowestRequests;
+    ui32 SlowestShards;
+
+    using TLatencyResult = NAggregation::TResult<TLatency>;
 
     TVector<TShardRow> Shards;
-    TVector<TNodeRow> Nodes;
-    TVector<TLatencyRow> NodeLatency;
-    TVector<TLatencyRow> RequestLatency;
-    TVector<TLatencyRow> ShardLatency;
-    TVector<TString> Warnings;
     TVector<TString> ShardIds;
+    TVector<TNodeRow> Nodes;
+    TVector<NAggregation::TRow<TLatency>> Latency;
+    TVector<TLatencyResult> NodeLatency;
+    TVector<TLatencyResult> RequestLatency;
+    TVector<TLatencyResult> ShardLatency;
+    TVector<TString> Warnings;
 
-    ui32 NextShard = 0;
-    ui32 InFlight = 0;
+    ui32 ShardIndex = 0;
+    ui32 ConcurrentRequests =
+        0;   // probably shouldn't call it that as processing them is sequential
 
 public:
     TDiagnosticsActor(
         TRequestInfoPtr requestInfo,
         TString fileSystemId,
-        ui32 top,
-        ui32 topNodes)
+        ui32 topLoaded,
+        TString sortBy,
+        ui32 topAccessed,
+        ui32 batchSize,
+        ui32 slowestNodes,
+        ui32 slowestRequests,
+        ui32 slowestShards)
         : RequestInfo(std::move(requestInfo))
         , FileSystemId(std::move(fileSystemId))
-        , Top(top)
-        , TopNodes(topNodes)
+        , TopLoaded(topLoaded)
+        , SortBy(std::move(sortBy))
+        , TopAccessed(topAccessed)
+        , MaxConcurrentRequests(batchSize)
+        , SlowestNodes(slowestNodes)
+        , SlowestRequests(slowestRequests)
+        , SlowestShards(slowestShards)
     {}
 
     void Bootstrap(const TActorContext& ctx)
     {
-        auto request = std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
         request->Record.SetFileSystemId(FileSystemId);
-        request->Record.SetCacheTTL(1000);
+        request->Record.SetCacheTTL(0);
         request->Record.SetMode(
             NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -162,10 +156,12 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvIndexTablet::TEvGetStorageStatsResponse,
+            HFunc(
+                TEvIndexTablet::TEvGetStorageStatsResponse,
                 HandleStorageStats);
-            HFunc(TEvIndexTablet::TEvGetNodeLatencyStatsResponse,
-                HandleNodeLatencyStats);
+            HFunc(
+                TEvIndexTablet::TEvGetDiagnosticStatsResponse,
+                HandleDiagnosticStats);
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
             default:
                 HandleUnexpectedEvent(
@@ -187,124 +183,198 @@ private:
         }
 
         for (const auto& stats: response.GetStats().GetShardStats()) {
-            Shards.push_back({
-                stats.GetShardId(),
-                stats.GetCurrentLoad(),
-                stats.GetSuffer(),
-                stats.GetUsedBlocksCount(),
-                stats.GetTotalBlocksCount(),
-                stats.GetUsedNodesCount()});
+            Shards.push_back(
+                {stats.GetShardId(),
+                 stats.GetCurrentLoad(),
+                 stats.GetSuffer(),
+                 stats.GetUsedBlocksCount(),
+                 stats.GetTotalBlocksCount(),
+                 stats.GetUsedNodesCount()});
             ShardIds.push_back(stats.GetShardId());
         }
 
-        for (const auto& stats: response.GetStats().GetNodeStats()) {
-            Nodes.push_back({
-                stats.GetShardId(),
-                stats.GetNodeId(),
-                stats.GetRequestCount(),
-                stats.GetAccessScore(),
-                stats.GetLastAccessedTimestampUs()});
-        }
-
-        SendMoreLatencyRequests(ctx);
+        SendDiagnosticRequests(ctx);
     }
 
-    void SendMoreLatencyRequests(const TActorContext& ctx)
+    void SendDiagnosticRequests(const TActorContext& ctx)
     {
-        while (InFlight < MaxInFlight && NextShard < ShardIds.size()) {
-            auto request =
-                std::make_unique<TEvIndexTablet::TEvGetNodeLatencyStatsRequest>();
-            request->Record.SetFileSystemId(ShardIds[NextShard]);
-            request->Record.SetLimit(TopNodes);
+        while (ConcurrentRequests < MaxConcurrentRequests &&
+               ShardIndex < ShardIds.size())
+        {
+            auto request = std::make_unique<
+                TEvIndexTablet::TEvGetDiagnosticStatsRequest>();
+            request->Record.SetFileSystemId(ShardIds[ShardIndex]);
+            request->Record.SetLimit(
+                Max(TopAccessed,
+                    Max(SlowestNodes, Max(SlowestRequests, SlowestShards))));
             ctx.Send(
                 MakeIndexTabletProxyServiceId(),
                 request.release(),
                 0,
-                NextShard++);
-            ++InFlight;
+                ShardIndex++);
+            ++ConcurrentRequests;
         }
 
-        if (!InFlight && NextShard == ShardIds.size()) {
+        if (!ConcurrentRequests && ShardIndex == ShardIds.size()) {
             Reply(ctx);
         }
     }
 
-    void HandleNodeLatencyStats(
-        const TEvIndexTablet::TEvGetNodeLatencyStatsResponse::TPtr& ev,
+    void HandleDiagnosticStats(
+        const TEvIndexTablet::TEvGetDiagnosticStatsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
         const auto& response = ev->Get()->Record;
-        --InFlight;
+        --ConcurrentRequests;
         if (HasError(response.GetError())) {
             const TString shardId = ev->Cookie < ShardIds.size()
-                ? ShardIds[ev->Cookie]
-                : TString("unknown");
-            Warnings.push_back(TStringBuilder()
-                << "Failed to read latency stats for shard "
-                << shardId
+                                        ? ShardIds[ev->Cookie]
+                                        : TString("unknown");
+            Warnings.push_back(
+                TStringBuilder()
+                << "Failed to read diagnostic stats for shard " << shardId
                 << ": " << FormatError(response.GetError()));
         } else {
-            for (const auto& stats: response.GetLatencyStats()) {
-                const auto shardId = stats.GetShardId();
-                const auto requestType = stats.GetRequestType();
-                const auto nodeId = ToString(stats.GetNodeId());
-                AddLatency(*FindLatencyRow(
-                    NodeLatency, shardId, requestType, nodeId), stats);
-                AddLatency(*FindRequestLatencyRow(
-                    RequestLatency, shardId, requestType), stats);
-                AddLatency(*FindShardLatencyRow(ShardLatency, shardId), stats);
-            }
+            ProcessAccessStats(response.GetNodeStats(), Nodes);
+            ProcessLatencyStats(response.GetLatencyStats(), Latency);
         }
 
-        SendMoreLatencyRequests(ctx);
+        SendDiagnosticRequests(ctx);
     }
 
-    static void SortRows(
-        TVector<TShardRow>& rows,
-        TVector<TNodeRow>& nodes,
-        TVector<TLatencyRow>& nodeLatency,
-        TVector<TLatencyRow>& requestLatency,
-        TVector<TLatencyRow>& shardLatency)
+    void ProcessAccessStats(
+        const google::protobuf::RepeatedPtrField<
+            NCloud::NFileStore::NProtoPrivate::TNodeStats>& accessStats,
+        TVector<TNodeRow>& accessRows)
     {
-        Sort(rows, [] (const auto& l, const auto& r) {
-            return std::tie(r.Load, r.Suffer, l.ShardId) <
-                   std::tie(l.Load, l.Suffer, r.ShardId);
-        });
-        Sort(nodes, [] (const auto& l, const auto& r) {
-            return std::tie(r.AccessScore, l.ShardId, l.NodeId) <
-                   std::tie(l.AccessScore, r.ShardId, r.NodeId);
-        });
-        Sort(nodeLatency, [] (const auto& l, const auto& r) {
-            const auto lAverage = l.AverageDecayedLatencyUs();
-            const auto rAverage = r.AverageDecayedLatencyUs();
-            return std::tie(rAverage, l.NodeId) <
-                   std::tie(lAverage, r.NodeId);
-        });
-        auto total = [] (const auto& l, const auto& r) {
-            return std::tie(r.TotalDecayedLatencyUs, r.LastAccessedUs) <
-                   std::tie(l.TotalDecayedLatencyUs, l.LastAccessedUs);
-        };
-        Sort(requestLatency, total);
-        Sort(shardLatency, total);
+        for (const auto& stats: accessStats) {
+            accessRows.push_back(
+                {stats.GetShardId(),
+                 stats.GetNodeId(),
+                 stats.GetRequestCount(),
+                 stats.GetAccessScore(),
+                 stats.GetLastAccessedTimestampUs()});
+        }
+    }
+
+    void ProcessLatencyStats(
+        const google::protobuf::RepeatedPtrField<
+            NCloud::NFileStore::NProtoPrivate::TNodeLatencyStats>& latencyStats,
+        TVector<NAggregation::TRow<TLatency>>& latencyRows)
+    {
+        for (const auto& stats: latencyStats) {
+            NAggregation::TRow<TLatency> row;
+            row.Labels = {
+                ToString(stats.GetNodeId()),
+                stats.GetShardId(),
+                stats.GetRequestType()};
+            row.Data.RequestCount = stats.GetRequestCount();
+            row.Data.TotalLatencyUs = stats.GetTotalLatencyUs();
+            row.Data.TotalDecayedLatencyUs =
+                stats.GetAverageLatencyDecayedUs() * stats.GetRequestCount();
+            row.Data.LastAccessedTimestampUs =
+                stats.GetLastAccessedTimestampUs();
+            latencyRows.push_back(std::move(row));
+        }
+    }
+
+    void GroupLatencyCombinations(
+        const TVector<TLatencyResult>& latencyAggregates,
+        TVector<TLatencyResult>& nodeLatencyRows,
+        TVector<TLatencyResult>& requestLatencyRows,
+        TVector<TLatencyResult>& shardLatencyRows)
+    {
+        for (const auto& aggregate: latencyAggregates) {
+            const bool hasNodeId = !aggregate.Labels[0].empty();
+            const bool hasShardId = !aggregate.Labels[1].empty();
+            const bool hasRequestType = !aggregate.Labels[2].empty();
+
+            if (hasNodeId && hasShardId && hasRequestType) {
+                nodeLatencyRows.push_back(std::move(aggregate));
+            } else if (!hasNodeId && hasShardId && hasRequestType) {
+                requestLatencyRows.push_back(std::move(aggregate));
+            } else if (!hasNodeId && hasShardId && !hasRequestType) {
+                shardLatencyRows.push_back(std::move(aggregate));
+            }
+        }
+    }
+
+    static bool CompareShardRows(const TShardRow& lhs, const TShardRow& rhs)
+    {
+        // CurrentLoad DESC, Suffer DESC, ShardId ASC
+        return std::tie(rhs.Load, rhs.Suffer, lhs.ShardId) <
+               std::tie(lhs.Load, lhs.Suffer, rhs.ShardId);
+    }
+
+    static bool CompareAccessRows(const TNodeRow& lhs, const TNodeRow& rhs)
+    {
+        // AccessScore DESC, ShardId ASC, NodeId ASC
+        return std::tie(rhs.AccessScore, lhs.ShardId, lhs.NodeId) <
+               std::tie(lhs.AccessScore, rhs.ShardId, rhs.NodeId);
+    }
+
+    static bool CompareNodeLatencyRows(
+        const TLatencyResult& lhs,
+        const TLatencyResult& rhs)
+    {
+        const auto lhsLatency = lhs.GroupAggregate.GetAverageDecayedLatencyUs();
+        const auto rhsLatency = rhs.GroupAggregate.GetAverageDecayedLatencyUs();
+        const auto lhsNodeId = FromString<ui64>(lhs.Labels[0]);
+        const auto rhsNodeId = FromString<ui64>(rhs.Labels[0]);
+
+        // AverageLatencyDecayed DESC, NodeId ASC
+        if (lhsLatency != rhsLatency) {
+            return lhsLatency > rhsLatency;
+        }
+
+        return lhsNodeId < rhsNodeId;
+    }
+
+    static bool CompareTotalLatency(
+        const TLatencyResult& lhs,
+        const TLatencyResult& rhs)
+    {
+        const auto lhsLatency = lhs.GroupAggregate.TotalDecayedLatencyUs;
+        const auto rhsLatency = rhs.GroupAggregate.TotalDecayedLatencyUs;
+
+        // TotalLatencyDecayed DESC,  LastAccessedTimestamp DESC
+        return std::tie(
+                   rhsLatency,
+                   lhs.GroupAggregate.LastAccessedTimestampUs) <
+               std::tie(lhsLatency, rhs.GroupAggregate.LastAccessedTimestampUs);
     }
 
     template <typename T>
-    static void WriteTimestamp(
-        NJsonWriter::TBuf& writer,
-        const T& row)
+    static void WriteTimestamp(NJsonWriter::TBuf& writer, const T& row)
     {
         writer.WriteKey("last_accessed_us");
-        writer.WriteString(ToString(row.LastAccessedUs));
+        writer.WriteString(
+            ToString(row.GroupAggregate.LastAccessedTimestampUs));
         writer.WriteKey("last_accessed");
         writer.WriteString(
-            row.LastAccessedUs
-                ? TInstant::MicroSeconds(row.LastAccessedUs).ToStringUpToSeconds()
+            row.GroupAggregate.LastAccessedTimestampUs
+                ? TInstant::MicroSeconds(
+                      row.GroupAggregate.LastAccessedTimestampUs)
+                      .ToStringUpToSeconds()
                 : "-");
     }
 
     void Reply(const TActorContext& ctx)
     {
-        SortRows(Shards, Nodes, NodeLatency, RequestLatency, ShardLatency);
+        auto latencyAggregates = NAggregation::Aggregate(Latency);
+        GroupLatencyCombinations(
+            latencyAggregates,
+            NodeLatency,
+            RequestLatency,
+            ShardLatency);
+
+        if (SortBy == "load") {
+            Sort(Shards, CompareShardRows);
+        }
+        Sort(Nodes, CompareAccessRows);
+        Sort(NodeLatency, CompareNodeLatencyRows);
+        Sort(RequestLatency, CompareTotalLatency);
+        Sort(ShardLatency, CompareTotalLatency);
 
         TStringStream out;
         NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
@@ -316,48 +386,72 @@ private:
 
         writer.WriteKey("shards");
         writer.BeginList();
-        for (ui32 i = 0; i < Min<size_t>(Top, Shards.size()); ++i) {
+        for (ui32 i = 0; i < Min<size_t>(TopLoaded, Shards.size()); ++i) {
             const auto& row = Shards[i];
             writer.BeginObject();
-            writer.WriteKey("rank"); writer.WriteULongLong(i + 1);
-            writer.WriteKey("shard_id"); writer.WriteString(row.ShardId);
-            writer.WriteKey("load"); writer.WriteULongLong(row.Load);
-            writer.WriteKey("suffer"); writer.WriteULongLong(row.Suffer);
-            writer.WriteKey("used_blocks"); writer.WriteULongLong(row.UsedBlocks);
-            writer.WriteKey("total_blocks"); writer.WriteULongLong(row.TotalBlocks);
-            writer.WriteKey("nodes"); writer.WriteULongLong(row.Nodes);
+            writer.WriteKey("rank");
+            writer.WriteULongLong(i + 1);
+            writer.WriteKey("shard_id");
+            writer.WriteString(row.ShardId);
+            writer.WriteKey("load");
+            writer.WriteULongLong(row.Load);
+            writer.WriteKey("suffer");
+            writer.WriteULongLong(row.Suffer);
+            writer.WriteKey("used_blocks");
+            writer.WriteULongLong(row.UsedBlocks);
+            writer.WriteKey("total_blocks");
+            writer.WriteULongLong(row.TotalBlocks);
+            writer.WriteKey("nodes");
+            writer.WriteULongLong(row.Nodes);
             writer.EndObject();
         }
         writer.EndList();
 
         writer.WriteKey("node_access");
         writer.BeginList();
-        for (ui32 i = 0; i < Min<size_t>(TopNodes, Nodes.size()); ++i) {
+        for (ui32 i = 0; i < Min<size_t>(TopAccessed, Nodes.size()); ++i) {
             const auto& row = Nodes[i];
             writer.BeginObject();
-            writer.WriteKey("rank"); writer.WriteULongLong(i + 1);
-            writer.WriteKey("shard_id"); writer.WriteString(row.ShardId);
-            writer.WriteKey("node_id"); writer.WriteString(ToString(row.NodeId));
-            writer.WriteKey("requests"); writer.WriteULongLong(row.Requests);
-            writer.WriteKey("access_score"); writer.WriteDouble(row.AccessScore);
-            writer.WriteKey("last_accessed_us"); writer.WriteString(ToString(row.LastAccessedUs));
-            writer.WriteKey("last_accessed"); writer.WriteString(
-                row.LastAccessedUs ? TInstant::MicroSeconds(row.LastAccessedUs).ToStringUpToSeconds() : "-");
+            writer.WriteKey("rank");
+            writer.WriteULongLong(i + 1);
+            writer.WriteKey("shard_id");
+            writer.WriteString(row.ShardId);
+            writer.WriteKey("node_id");
+            writer.WriteString(ToString(row.NodeId));
+            writer.WriteKey("requests");
+            writer.WriteULongLong(row.Requests);
+            writer.WriteKey("access_score");
+            writer.WriteDouble(row.AccessScore);
+            writer.WriteKey("last_accessed_us");
+            writer.WriteString(ToString(row.LastAccessedUs));
+            writer.WriteKey("last_accessed");
+            writer.WriteString(
+                row.LastAccessedUs ? TInstant::MicroSeconds(row.LastAccessedUs)
+                                         .ToStringUpToSeconds()
+                                   : "-");
             writer.EndObject();
         }
         writer.EndList();
 
-        WriteLatencyList(writer, "node_latency", NodeLatency, Top);
-        WriteLatencyList(writer, "request_latency", RequestLatency, MaxTop);
-        WriteLatencyList(writer, "shard_latency", ShardLatency, MaxTop);
+        WriteLatencyList(writer, "node_latency", NodeLatency, SlowestNodes);
+        WriteLatencyList(
+            writer,
+            "request_latency",
+            RequestLatency,
+            SlowestRequests);
+        WriteLatencyList(writer, "shard_latency", ShardLatency, SlowestShards);
 
         writer.WriteKey("warnings");
         writer.BeginList();
-        for (const auto& warning: Warnings) writer.WriteString(warning);
+        for (const auto& warning: Warnings) {
+            writer.WriteString(warning);
+        }
         writer.EndList();
         writer.EndObject();
 
-        NCloud::Reply(ctx, *RequestInfo,
+        NCloud::Reply(
+            ctx,
+            *RequestInfo,
             std::make_unique<TEvRemoteJsonInfoRes>(std::move(out.Str())));
         Die(ctx);
     }
@@ -365,7 +459,7 @@ private:
     static void WriteLatencyList(
         NJsonWriter::TBuf& writer,
         TStringBuf name,
-        const TVector<TLatencyRow>& rows,
+        const TVector<TLatencyResult>& rows,
         ui32 limit)
     {
         writer.WriteKey(name);
@@ -373,18 +467,26 @@ private:
         for (ui32 i = 0; i < Min<size_t>(limit, rows.size()); ++i) {
             const auto& row = rows[i];
             writer.BeginObject();
-            writer.WriteKey("rank"); writer.WriteULongLong(i + 1);
-            writer.WriteKey("shard_id"); writer.WriteString(row.ShardId);
-            if (row.NodeId) {
-                writer.WriteKey("node_id"); writer.WriteString(row.NodeId);
+            writer.WriteKey("rank");
+            writer.WriteULongLong(i + 1);
+            writer.WriteKey("shard_id");
+            writer.WriteString(row.Labels[1]);
+            if (row.Labels[0]) {
+                writer.WriteKey("node_id");
+                writer.WriteString(row.Labels[0]);
             }
-            if (row.RequestType) {
-                writer.WriteKey("request_type"); writer.WriteString(row.RequestType);
+            if (row.Labels[2]) {
+                writer.WriteKey("request_type");
+                writer.WriteString(row.Labels[2]);
             }
-            writer.WriteKey("requests"); writer.WriteULongLong(row.Requests);
-            writer.WriteKey("avg_decayed_us"); writer.WriteDouble(row.AverageDecayedLatencyUs());
-            writer.WriteKey("total_decayed_us"); writer.WriteDouble(row.TotalDecayedLatencyUs);
-            writer.WriteKey("total_us"); writer.WriteULongLong(row.TotalLatencyUs);
+            writer.WriteKey("requests");
+            writer.WriteULongLong(row.GroupAggregate.RequestCount);
+            writer.WriteKey("avg_decayed_us");
+            writer.WriteDouble(row.GroupAggregate.GetAverageDecayedLatencyUs());
+            writer.WriteKey("total_decayed_us");
+            writer.WriteDouble(row.GroupAggregate.TotalDecayedLatencyUs);
+            writer.WriteKey("total_us");
+            writer.WriteULongLong(row.GroupAggregate.TotalLatencyUs);
             WriteTimestamp(writer, row);
             writer.EndObject();
         }
@@ -399,7 +501,9 @@ private:
         writer.WriteKey("error");
         writer.WriteString(FormatError(error));
         writer.EndObject();
-        NCloud::Reply(ctx, *RequestInfo,
+        NCloud::Reply(
+            ctx,
+            *RequestInfo,
             std::make_unique<TEvRemoteJsonInfoRes>(std::move(out.Str())));
         Die(ctx);
     }
@@ -412,7 +516,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -424,22 +528,48 @@ void TIndexTabletActor::HandleHttpInfo_Diagnostics(
     if (params.Get("getContent") != "1") {
         TStringStream out;
         DumpDiagnosticsPage(out, TabletID());
-        NCloud::Reply(ctx, *requestInfo,
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
             std::make_unique<TEvRemoteHttpInfoRes>(std::move(out.Str())));
         return;
     }
 
-    const ui32 top = Min<ui32>(
-        FromStringWithDefault(params.Get("top"), 5), MaxTop);
-    const ui32 topNodes = Min<ui32>(
-        FromStringWithDefault(params.Get("topNodes"), 10), MaxTop);
+    const auto parseTop = [&](TStringBuf name, ui32 defaultValue)
+    {
+        return Min<ui32>(
+            FromStringWithDefault(params.Get(name), defaultValue),
+            MaxTop);
+    };
+
+    const ui32 topLoaded = parseTop("topLoaded", DefaultTopLoaded);
+    const ui32 topAccessed = parseTop("topAccessed", DefaultTopAccessed);
+    const ui32 slowestNodes = parseTop("slowestNodes", DefaultSlowestNodes);
+    const ui32 slowestRequests =
+        parseTop("slowestRequests", DefaultSlowestRequests);
+    const ui32 slowestShards = parseTop("slowestShards", DefaultSlowestShards);
+    const ui32 batchSize = Min<ui32>(
+        Max<ui32>(
+            FromStringWithDefault(params.Get("batchSize"), DefaultBatchSize),
+            1),
+        MaxBatchSize);
+
+    TString sortBy = params.Get("sortBy");
+    if (sortBy != "load") {
+        sortBy = TString(DefaultSortBy);
+    }
 
     NCloud::Register<TDiagnosticsActor>(
         ctx,
         std::move(requestInfo),
         GetFileSystemId(),
-        top,
-        topNodes);
+        topLoaded,
+        std::move(sortBy),
+        topAccessed,
+        batchSize,
+        slowestNodes,
+        slowestRequests,
+        slowestShards);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
