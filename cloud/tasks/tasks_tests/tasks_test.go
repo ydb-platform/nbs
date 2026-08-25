@@ -861,6 +861,53 @@ func (t *regularTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type blockingRegularTask struct {
+	started chan<- string
+}
+
+func (t *blockingRegularTask) Load(_, _ []byte) error {
+	return nil
+}
+
+func (t *blockingRegularTask) Save() ([]byte, error) {
+	return nil, nil
+}
+
+func (t *blockingRegularTask) Run(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	select {
+	case t.started <- execCtx.GetTaskID():
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (t *blockingRegularTask) Cancel(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	return nil
+}
+
+func (t *blockingRegularTask) GetMetadata(
+	ctx context.Context,
+) (proto.Message, error) {
+
+	return &empty.Empty{}, nil
+}
+
+func (t *blockingRegularTask) GetResponse() proto.Message {
+	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 var defaultTimeout = 10 * time.Minute
 
 func waitTaskWithTimeout(
@@ -1569,6 +1616,62 @@ func TestTasksRunningRegularTasks(t *testing.T) {
 
 		regularTaskMutex.Unlock()
 	}
+}
+
+func TestTasksForceFinishLongRunningRegularTask(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	s := createServices(t, ctx, db, 3)
+
+	const taskType = "forceFinishRegular"
+	started := make(chan string, 2)
+	err := s.registry.RegisterForExecution(taskType, func() tasks.Task {
+		return &blockingRegularTask{started: started}
+	})
+	require.NoError(t, err)
+
+	err = s.startRunners(ctx)
+	require.NoError(t, err)
+
+	s.scheduler.ScheduleRegularTasks(
+		ctx,
+		taskType,
+		tasks.TaskSchedule{
+			ScheduleInterval: time.Millisecond,
+			MaxTasksInflight: 1,
+		},
+	)
+
+	var firstTaskID string
+	select {
+	case firstTaskID = <-started:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "regular task was not started")
+	}
+
+	firstTask, err := s.storage.GetTask(ctx, firstTaskID)
+	require.NoError(t, err)
+	require.True(t, firstTask.Regular)
+	require.Equal(t, tasks_storage.TaskStatusRunning, firstTask.Status)
+
+	err = s.storage.ForceFinishTask(ctx, firstTaskID)
+	require.NoError(t, err)
+
+	firstTask, err = s.storage.GetTask(ctx, firstTaskID)
+	require.NoError(t, err)
+	require.Equal(t, tasks_storage.TaskStatusFinished, firstTask.Status)
+
+	var secondTaskID string
+	select {
+	case secondTaskID = <-started:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "next regular task was not started")
+	}
+	require.NotEqual(t, firstTaskID, secondTaskID)
 }
 
 func newHangingTaskTestConfig() *tasks_config.TasksConfig {
