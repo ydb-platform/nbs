@@ -96,9 +96,6 @@ TTabletMetrics::~TTabletMetrics()
     MaxUsedQuota.Unregister(MaxUsedQuotaKey);
     ReadDataPostponed.Unregister(ReadDataPostponedKey);
     WriteDataPostponed.Unregister(WriteDataPostponedKey);
-
-    AggregatableFsRegistry.reset();
-    FsRegistry.reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
