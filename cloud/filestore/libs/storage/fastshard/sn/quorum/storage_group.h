@@ -41,7 +41,8 @@ struct IStorageGroup
     virtual NProto::TError ReleaseDevices() = 0;
     virtual NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
-        TVector<TPageGroup> pageGroups) = 0;
+        TVector<TPageGroup> pageGroups,
+        ui64 lsn) = 0;
     virtual NProto::TError ReadPages(
         NProto::TDeviceRequestHeaders headers,
         const TVector<TPageGroupRef>& pageGroupRefs,

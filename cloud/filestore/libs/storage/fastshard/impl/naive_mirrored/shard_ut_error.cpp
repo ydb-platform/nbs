@@ -73,9 +73,10 @@ struct TTestStorageGroup: IStorageGroup
 
     NCloud::NProto::TError WriteLogRecord(
         NCloud::NProto::TDeviceRequestHeaders headers,
-        TVector<TPageGroup> pageGroups) override
+        TVector<TPageGroup> pageGroups,
+        ui64 lsn) override
     {
-        Y_UNUSED(headers);
+        Y_UNUSED(headers, lsn);
 
         auto e = WriteError.Get();
         if (HasError(e)) {
