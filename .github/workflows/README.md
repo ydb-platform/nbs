@@ -74,6 +74,7 @@ act pull_request --bind \
   --pull=false
 ```
 
+`LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS` must be a JSON array of exact label names.
 The allowed-label case should run `check-running-allowed`:
 
 ```bash
@@ -111,7 +112,7 @@ act pull_request --bind \
   -e /tmp/act-pr-event-large-tests.json \
   -P self-hosted=ghcr.io/catthehacker/ubuntu:act-latest \
   -P runner_light=ghcr.io/catthehacker/ubuntu:act-latest \
-  --var LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS="['large-tests']" \
+  --var LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS='["large-tests"]' \
   --pull=false
 ```
 
@@ -152,6 +153,6 @@ act pull_request --bind \
   -e /tmp/act-pr-event-doc-label.json \
   -P self-hosted=ghcr.io/catthehacker/ubuntu:act-latest \
   -P runner_light=ghcr.io/catthehacker/ubuntu:act-latest \
-  --var LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS="['large-tests']" \
+  --var LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS='["large-tests"]' \
   --pull=false
 ```
