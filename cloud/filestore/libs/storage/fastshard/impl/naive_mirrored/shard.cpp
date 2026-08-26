@@ -1282,7 +1282,7 @@ public:
             lc.NodeId = request.GetNodeId();
 
             NProto::TNodeAttr attr;
-            auto error = GetNodeAttr(request.GetNodeId(), name, &attr);
+            auto error = GetNodeAttr(lc, request.GetNodeId(), name, &attr);
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
@@ -1300,8 +1300,11 @@ public:
         return response;
     }
 
-    NProto::TError
-    GetNodeAttr(ui64 nodeId, const TString& name, NProto::TNodeAttr* attr)
+    NProto::TError GetNodeAttr(
+        TLoggingContext& lc,
+        ui64 nodeId,
+        const TString& name,
+        NProto::TNodeAttr* attr)
     {
         std::lock_guard g(Mutex);
 
@@ -1312,7 +1315,8 @@ public:
             }
         }
 
-        SILK_DEBUG("GetNodeAttr name=%s ino=%lu", name.c_str(), nodeId);
+        lc.NodeId = nodeId;
+        SILK_DEBUG("[%s] GetNodeAttr", lc.Describe().c_str());
 
         return Nodes.GetNode(nodeId, attr);
     }
@@ -1335,7 +1339,8 @@ public:
         lc.NodeId = request.GetNodeId();
 
         NProto::TNodeAttr attr;
-        auto error = GetNodeAttr(request.GetNodeId(), request.GetName(), &attr);
+        auto error =
+            GetNodeAttr(lc, request.GetNodeId(), request.GetName(), &attr);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1633,6 +1638,7 @@ public:
                 }
 
                 storagePageClusterIds.push_back(slot.StoragePageClusterId);
+                lc.StoragePageClusterIds.push_back(slot.StoragePageClusterId);
             }
 
             error = PageAllocator.Deallocate(
