@@ -5,7 +5,9 @@
 #include <contrib/ydb/core/base/appdata.h>
 
 #include <library/cpp/protobuf/json/json2proto.h>
+#include <library/cpp/protobuf/json/util.h>
 
+#include <contrib/ydb/core/config/protos/marker.pb.h>
 #include <contrib/ydb/core/protos/netclassifier.pb.h>
 
 namespace NKikimr::NYamlConfig {
