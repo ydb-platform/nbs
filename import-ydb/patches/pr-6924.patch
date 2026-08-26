@@ -1,0 +1,350 @@
+diff --git a/contrib/ydb/core/cms/console/configs_dispatcher.cpp b/contrib/ydb/core/cms/console/configs_dispatcher.cpp
+index ad38a27ca5ffefc0ea852c86b61e6767da8da8e2..887576a28da5871a24b180739354c82ce6c9a8a8 100644
+--- a/contrib/ydb/core/cms/console/configs_dispatcher.cpp
++++ b/contrib/ydb/core/cms/console/configs_dispatcher.cpp
+@@ -176,9 +176,9 @@ public:
+     void UpdateCandidateStartupConfig(TEvConsole::TEvConfigSubscriptionNotification::TPtr &ev);
+ 
+     struct TParsedOpaqueConfig {
+-        // Raw JSON section text used for cheap equality between updates.
++        // Raw YAML section text used for cheap equality between updates.
+         // !empty() (empty strings aka "section present but empty" treated as absent config and not stored)
+-        TString RawJson;
++        TString RawYaml;
+         // May be null in the cache (parser produced nothing), but null
+         // never placed into an outgoing event — see PopulateWithOpaqueConfigs.
+         std::shared_ptr<const ::google::protobuf::Message> Parsed;
+@@ -957,47 +957,59 @@ catch (...) {
+ THashMap<ui32, TConfigsDispatcher::TParsedOpaqueConfig> TConfigsDispatcher::ParseOpaqueConfigs() const
+ {
+     THashMap<ui32, TParsedOpaqueConfig> result;
+-    if (!YamlConfigEnabled || OpaqueConfigParsers.empty() || ResolvedJsonConfig.empty()) {
++    if (!YamlConfigEnabled || OpaqueConfigParsers.empty() || ResolvedYamlConfig.empty()) {
+         return result;
+     }
+-    // The opaque carrier proto is empty by design — its content lives in the
+-    // resolved YAML. Pull each kind's section out and pass it to the end-node
+-    // parser that owns the real schema.
+-    NJson::TJsonValue resolved;
+-    if (!NJson::ReadJsonTree(ResolvedJsonConfig, &resolved)) {
+-        return result;
+-    }
+-    const NJson::TJsonValue* configSection = &resolved;
+-    if (const NJson::TJsonValue* c = nullptr; resolved.GetValuePointer("config", &c)) {
+-        configSection = c;
+-    }
+-    const auto* desc = NKikimrConfig::TAppConfig::descriptor();
+-    for (const auto& [kind, parser] : OpaqueConfigParsers) {
+-        const auto* field = desc->FindFieldByNumber(kind);
+-        if (!field) {
+-            continue;
+-        }
+-        TString name = field->name();
+-        NProtobufJson::ToSnakeCaseDense(&name);
+-        const NJson::TJsonValue* section = nullptr;
+-        if (!configSection->GetValuePointer(name, &section)) {
+-            continue;   // section absent — no config
+-        }
+-        TParsedOpaqueConfig entry;
+-        entry.RawJson = NJson::WriteJson(section, /*formatOutput=*/ false);
+-        if (entry.RawJson.empty()) {
+-            continue;   // empty section — treated as "no config"
+-        }
+-        try {
+-            entry.Parsed = parser(entry.RawJson);
+-        }
+-        catch (const std::exception& e) {
+-            BLOG_ERROR("Error parsing opaque config [#" << kind << ":" << name << "]: " << e.what());
++
++    try {
++        // The opaque carrier proto is empty by design — its content lives in the
++        // resolved YAML. Pull each kind's section out and pass it to the end-node
++        // parser that owns the real schema.
++
++        NFyaml::TDocument yamlDoc = NFyaml::TDocument::Parse(ResolvedYamlConfig);
++
++        // ResolvedYamlConfig is the emitted 'config:' sub-tree (see
++        // NYamlConfig::Resolve) — its root IS the config content.
++        auto configSection = yamlDoc.Root();
++        if (configSection.Empty() || configSection.Type() != NFyaml::ENodeType::Mapping) {
++            return result;
+         }
+-        catch (...) {
+-            BLOG_ERROR("Error parsing opaque config [#" << kind << ":" << name << "]: unknown exception");
++
++        auto configMap = configSection.Map();
++        const auto* desc = NKikimrConfig::TAppConfig::descriptor();
++
++        for (const auto& [kind, parser] : OpaqueConfigParsers) {
++
++            const auto* field = desc->FindFieldByNumber(kind);
++            if (!field) {
++                continue;
++            }
++
++            TString name = field->name();
++            NProtobufJson::ToSnakeCaseDense(&name);
++            if (!configMap.Has(name)) {
++                continue;   // section absent — no config
++            }
++
++            TStringStream sectionStream;
++            sectionStream << configMap.at(name);
++            TString sectionYaml = sectionStream.Str();
++
++            TParsedOpaqueConfig entry;
++            entry.RawYaml = std::move(sectionYaml);
++            try {
++                entry.Parsed = parser(entry.RawYaml);
++                result.emplace(kind, std::move(entry));
++            }
++            catch (const std::exception& e) {
++                BLOG_ERROR("Error parsing opaque config [#" << kind << ":" << name << "]: " << e.what());
++            }
++            catch (...) {
++                BLOG_ERROR("Error parsing opaque config [#" << kind << ":" << name << "]: unknown exception");
++            }
+         }
+-        result.emplace(kind, std::move(entry));
++    } catch (const std::exception& e) {
++        BLOG_ERROR("Error parsing resolved YAML config: " << e.what());
+     }
+     return result;
+ }
+@@ -1088,7 +1100,7 @@ void TConfigsDispatcher::Handle(TEvConsole::TEvConfigSubscriptionNotification::T
+         auto newOpaqueConfigs = ParseOpaqueConfigs();
+         for (const auto& [kind, parsed] : newOpaqueConfigs) {
+             auto it = CurrentOpaqueConfigs.find(kind);
+-            if (it == CurrentOpaqueConfigs.end() || it->second.RawJson != parsed.RawJson) {
++            if (it == CurrentOpaqueConfigs.end() || it->second.RawYaml != parsed.RawYaml) {
+                 // config was added or changed
+                 affectedOpaqueKinds.insert(kind);
+             }
+@@ -1111,6 +1123,7 @@ void TConfigsDispatcher::Handle(TEvConsole::TEvConfigSubscriptionNotification::T
+             Y_FOR_EACH_BIT(kind, FilterKinds(kinds)) {
+                 if (affectedOpaqueKinds.contains(kind)) {
+                     hasAffectedKinds = true;
++                    break;
+                 }
+             }
+             if (!isYamlChanged && !yamlConfigTurnedOff && CurrentStateFunc() != &TThis::StateInit) {
+@@ -1125,6 +1138,7 @@ void TConfigsDispatcher::Handle(TEvConsole::TEvConfigSubscriptionNotification::T
+             Y_FOR_EACH_BIT(kind, FilterKinds(kinds)) {
+                 if (affectedKinds.contains(kind)) {
+                     hasAffectedKinds = true;
++                    break;
+                 }
+             }
+             // we try resend all configs if yaml config was turned off
+diff --git a/contrib/ydb/core/cms/console/console__alter_tenant.cpp b/contrib/ydb/core/cms/console/console__alter_tenant.cpp
+index 3addb9325bfc61b9ab2c5af88eed1ccc168081c6..942ed9073398b66f616adc8157bdc3f576cacc5f 100644
+--- a/contrib/ydb/core/cms/console/console__alter_tenant.cpp
++++ b/contrib/ydb/core/cms/console/console__alter_tenant.cpp
+@@ -256,14 +256,14 @@ public:
+ 
+             if (key.size() > NSchemeShard::TUserAttributesLimits::MaxNameLen) {
+                 return Error(Ydb::StatusIds::BAD_REQUEST,
+-                    Sprintf("Key '%s' is too long, max: " PRIu32 ", actual: " PRIu32,
++                    Sprintf("Key '%s' is too long, max: " PRIu32 ", actual: %zu",
+                         key.data(), NSchemeShard::TUserAttributesLimits::MaxNameLen, key.size()),
+                     ctx);
+             }
+ 
+             if (value.size() > NSchemeShard::TUserAttributesLimits::MaxValueLen) {
+                 return Error(Ydb::StatusIds::BAD_REQUEST,
+-                    Sprintf("Value for key '%s' is too long, max: " PRIu32 ", actual: " PRIu32,
++                    Sprintf("Value for key '%s' is too long, max: " PRIu32 ", actual: %zu",
+                         key.data(), NSchemeShard::TUserAttributesLimits::MaxValueLen, value.size()),
+                     ctx);
+             }
+@@ -275,12 +275,34 @@ public:
+             attrNames.insert(key);
+         }
+ 
+-        THashMap<TString, ui64> attributeMap;
++        THashMap<TString, ui64> existingAttributesIndexes;
++        THashMap<TString, TString> allAttributes;
+         for (ui64 i = 0 ; i < Tenant->Attributes.UserAttributesSize(); i++) {
+-            bool res = attributeMap.emplace(Tenant->Attributes.GetUserAttributes(i).GetKey(), i).second;
++            const auto& attr = Tenant->Attributes.GetUserAttributes(i);
++            bool res = existingAttributesIndexes.emplace(attr.GetKey(), i).second;
+             if (!res)
+                 return Error(Ydb::StatusIds::INTERNAL_ERROR,
+                              "Unexpected duplicate attribute found in CMS local db", ctx);
++            allAttributes[attr.GetKey()] = attr.GetValue();
++        }
++
++        // Check new total attributes size
++        for (const auto& [key, value] : rec.alter_attributes()) {
++            allAttributes[key] = value;
++        }
++        ui64 totalBytes = 0;
++        for (const auto& [key, value] : allAttributes) {
++            if (value.empty()) {
++                continue;
++            }
++            totalBytes += key.size();
++            totalBytes += value.size();
++        }
++        if (totalBytes > NSchemeShard::TUserAttributesLimits::MaxBytes) {
++            return Error(Ydb::StatusIds::BAD_REQUEST,
++                Sprintf("Total attributes size is too big: %" PRIu64 " bytes (maximum allowed is %" PRIu32 " bytes)",
++                    totalBytes, NSchemeShard::TUserAttributesLimits::MaxBytes),
++                ctx);
+         }
+ 
+         // Apply computational units changes.
+@@ -345,6 +367,8 @@ public:
+             Self->DbUpdateTenantAlterIdempotencyKey(Tenant, Tenant->AlterIdempotencyKey, txc, ctx);
+         }
+ 
++        // Apply attributes changes.
++
+         // Attributes with empty values are kept forever as tombstones
+         // to self-heal divergence with subdomain if subdomain AlterUserAttributes
+         // request didn't reach SchemeShard (due to Console restart
+@@ -352,8 +376,8 @@ public:
+         // but before sending request into subdomain, etc)
+         if (!rec.alter_attributes().empty()) {
+             for (const auto& [key, value] : rec.alter_attributes()) {
+-                const auto it = attributeMap.find(key);
+-                if (it != attributeMap.end()) {
++                const auto it = existingAttributesIndexes.find(key);
++                if (it != existingAttributesIndexes.end()) {
+                     if (value) {
+                         Tenant->Attributes.MutableUserAttributes(it->second)->SetValue(value);
+                     } else {
+diff --git a/contrib/ydb/core/grpc_services/rpc_config.cpp b/contrib/ydb/core/grpc_services/rpc_config.cpp
+index 5d3f814607c764f9a0b7d90e7c3f3738fb628d2e..d8ee12644868ab9f9f2fe653e2a57a94fa6e8c32 100644
+--- a/contrib/ydb/core/grpc_services/rpc_config.cpp
++++ b/contrib/ydb/core/grpc_services/rpc_config.cpp
+@@ -55,7 +55,7 @@ bool ConvertGetConfigToFetchConfigResult(
+     if (identityCount < configCount) {
+         TStringBuilder descr;
+         descr << (configCount - identityCount)
+-              << " extra 'config' field with no corresponding 'identity' field";
++              << " extra 'config' field(s) with no corresponding 'identity' field(s)";
+         error = descr;
+         return false;
+     }
+@@ -122,7 +122,7 @@ bool ConvertGetConfigToFetchConfigResult(
+                 // TYPE_NOT_SET is rejected with error by pre-validation above
+                 break;
+             default:
+-                // Any other value comes from a newer Console is skipped with a warning
++                // Any other value that comes from a newer Console is skipped with a warning
+                 // so we don't fail on forward-compatible additions
+                 ALOG_NOTICE(NKikimrServices::GRPC_SERVER,
+                     "Convert Ydb::DynamicConfig::ConfigIdentity to Ydb::Config::FetchConfigResult: "
+diff --git a/contrib/ydb/library/yaml_config/public/yaml_config.cpp b/contrib/ydb/library/yaml_config/public/yaml_config.cpp
+index 8833505b6743f6a3f1e7f1fb8e70c2efd478c873..c915a3e90e48e8316b3267e980a12323ad56bb78 100644
+--- a/contrib/ydb/library/yaml_config/public/yaml_config.cpp
++++ b/contrib/ydb/library/yaml_config/public/yaml_config.cpp
+@@ -262,7 +262,7 @@ void Inherit(NFyaml::TMapping& toMap, const NFyaml::TMapping& fromMap) {
+                 toMap.Append(it->Key().Copy().Ref(), it->Value().Copy().Ref());
+             }
+         } else {
+-            toMap.Append(it->Key().Copy().Ref(),  it->Value().Copy().Ref());
++            toMap.Append(it->Key().Copy().Ref(), it->Value().Copy().Ref());
+         }
+     }
+ }
+@@ -476,9 +476,11 @@ void RestoreNodesTags(NFyaml::TNodeRef rootNode, const TElementsTags& tags) {
+         }
+ 
+         // Restore tag
+-        auto tag = tags.find(node.Path());
+-        if (tag != tags.end()) {
+-            node.SetTag(tag->second);
++        {
++            auto tag = tags.find(node.Path());
++            if (tag != tags.end()) {
++                node.SetTag(tag->second);
++            }
+         }
+ 
+         // Go deep
+@@ -791,6 +793,25 @@ void ResolveDatabaseConfig(NFyaml::TDocument& doc, const TSet<TNamedLabel>& labe
+         return;
+     }
+ 
++    auto removeSelectorsAndAllowedLabels =
++        [&]() {
++            if (hasSelectors) {
++                if (auto pair = rootMap.pair_at_opt("selector_config"); pair) {
++                    rootMap.Remove(pair);
++                }
++            }
++            if (hasAllowedLabels) {
++                if (auto pair = rootMap.pair_at_opt("allowed_labels"); pair) {
++                    rootMap.Remove(pair);
++                }
++            }
++        };
++
++    if (!rootMap.Has("config")) {
++        // No config section - just remove selectors and allowed_labels
++        removeSelectorsAndAllowedLabels();
++        return;
++    }
+     auto configNode = rootMap.at("config");
+ 
+     // Save existing nodes tags to restore them later
+@@ -804,16 +825,7 @@ void ResolveDatabaseConfig(NFyaml::TDocument& doc, const TSet<TNamedLabel>& labe
+     RemoveTags(doc);
+ 
+     // Remove selectors and allowed_labels
+-    if (hasSelectors) {
+-        if (auto pair = rootMap.pair_at_opt("selector_config"); pair) {
+-            rootMap.Remove(pair);
+-        }
+-    }
+-    if (hasAllowedLabels) {
+-        if (auto pair = rootMap.pair_at_opt("allowed_labels"); pair) {
+-            rootMap.Remove(pair);
+-        }
+-    }
++    removeSelectorsAndAllowedLabels();
+ 
+     // Restore existed nodes tags
+     RestoreNodesTags(configNode, savedTags);
+diff --git a/contrib/ydb/library/yaml_config/public/yaml_config_impl.h b/contrib/ydb/library/yaml_config/public/yaml_config_impl.h
+index be75557a0e78db38bf63136640df5cbe8d89451d..330ba0c4c5773611f90397b2e20ebaa79d90cf1a 100644
+--- a/contrib/ydb/library/yaml_config/public/yaml_config_impl.h
++++ b/contrib/ydb/library/yaml_config/public/yaml_config_impl.h
+@@ -51,6 +51,7 @@ TSelector ParseSelector(const NFyaml::TNodeRef& selectors);
+  *
+  *  - existing 'config' nodes tags are preserved (if any) at all nested levels
+  *  - tags (if any) of added nodes at any nested level are propagated from selectors into 'config'
++ *  - input document anchors/aliases are resolved even when there are no selectors to apply
+  */
+ void ApplySelectors(NFyaml::TDocument& doc, const TSet<TNamedLabel>& labels);
+ 
+diff --git a/contrib/ydb/library/yaml_config/yaml_config_helpers.h b/contrib/ydb/library/yaml_config/yaml_config_helpers.h
+index 9ae5602a484f0f2e4665d7b9d23c82ee2a6d2c69..1c19a82c66e6b1ca3b6ef0073604a009544f9225 100644
+--- a/contrib/ydb/library/yaml_config/yaml_config_helpers.h
++++ b/contrib/ydb/library/yaml_config/yaml_config_helpers.h
+@@ -51,8 +51,8 @@ ui64 GetConfigHash(const TString& config);
+ // @param allowUnknownFields - silently ignore unknown fields (for specified Proto)
+ //
+ // @return
+-//  nullptr - on empty imput YAML
+-//  parsed Proto message - on successfull parsing
++//  nullptr - on empty input YAML
++//  parsed Proto message - on successful parsing
+ //
+ // @throw
+ //  std::exception - on underlying parser errors / unknown fields present (without allowUnknownFields)
+diff --git a/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.cpp b/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.cpp
+index 51abec1f824a15de2527021787018bbd47288f76..b8d9469f3a39939c9136551fccf2214734f61ac3 100644
+--- a/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.cpp
++++ b/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.cpp
+@@ -71,7 +71,7 @@ void TCommandDatabaseAttributeSet::Parse(TConfig& config) {
+ 
+         if (value.empty()) {
+             throw TMisuseException()
+-                << "Bad attribure '" + attr + "'. Attribute value cannot be empty";
++                << "Bad attribute '" + attr + "'. Attribute value cannot be empty";
+         }
+ 
+         Attributes[items.at(0)] = value;
