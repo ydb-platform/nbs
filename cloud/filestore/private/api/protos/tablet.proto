@@ -702,6 +702,15 @@ message TForcedOperationStatusResponse
     // Last processed range id. Can be used to skip processed range ids upon
     // operation restart via the MinRangeId parameter.
     uint32 LastProcessedRangeId = 4;
+
+    // Provides status both range and non-range operations.
+    enum EStatus
+    {
+        E_UNKNOWN = 0;
+        E_RUNNING = 1;
+        E_COMPLETED = 2;
+    }
+    EStatus Status = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1161,14 +1161,17 @@ void TIndexTabletActor::HandleForcedOperation(
         }
     }
 
-    if (e.GetCode() == S_OK && IsForcedRangeOperationRunning()) {
-        const auto currentMode = GetForcedRangeOperationState()->Mode;
-        if (currentMode == mode) {
-            e = MakeError(S_ALREADY, "already launched");
-        } else {
-            e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
-                << static_cast<int>(mode)
-                << " != " << static_cast<int>(currentMode));
+    if (e.GetCode() == S_OK && IsForcedOperationRunning()) {
+        const auto* rangeState = std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
+        if (rangeState) {
+            const auto currentMode = rangeState->Mode;
+            if (currentMode == mode) {
+                e = MakeError(S_ALREADY, "already launched");
+            } else {
+                e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
+                    << static_cast<int>(mode)
+                    << " != " << static_cast<int>(currentMode));
+            }
         }
     }
 
@@ -1192,7 +1195,7 @@ void TIndexTabletActor::HandleForcedOperation(
         response->Record.SetRangeCount(ranges.size());
         auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
         response->Record.SetOperationId(std::move(operationId));
-        EnqueueForcedRangeOperationIfNeeded(ctx);
+        EnqueueForcedOperationIfNeeded(ctx);
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));
@@ -1205,14 +1208,28 @@ void TIndexTabletActor::HandleForcedOperationStatus(
     const auto& request = ev->Get()->Record;
 
     using TResponse = TEvIndexTablet::TEvForcedOperationStatusResponse;
+    using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
     auto response = std::make_unique<TResponse>();
 
-    const auto* state = FindForcedRangeOperation(request.GetOperationId());
+    const auto* state = FindForcedOperation(request.GetOperationId());
     if (state) {
-        response->Record.SetRangeCount(state->RangesToCompact.size());
-        response->Record.SetProcessedRangeCount(state->Current);
-        response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
+        const auto* rangeState = std::get_if<TForcedRangeOperationState>(state);
+        if (rangeState) {
+            response->Record.SetRangeCount(rangeState->RangesToCompact.size());
+            response->Record.SetProcessedRangeCount(rangeState->Current);
+            response->Record.SetLastProcessedRangeId(rangeState->GetCurrentRange());
+            response->Record.SetStatus(
+                rangeState->Current < rangeState->RangesToCompact.size()
+                    ? TStatus::E_RUNNING
+                    : TStatus::E_COMPLETED);
+        } else {
+            response->Record.SetStatus(
+                state == GetForcedOperationState()
+                    ? TStatus::E_RUNNING
+                    : TStatus::E_COMPLETED);
+        }
     } else {
+        response->Record.SetStatus(TStatus::E_UNKNOWN);
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,
             TStringBuilder() << "forced operation with id "
