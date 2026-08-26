@@ -296,7 +296,7 @@ private:
         IncrementBlobCounters(
             blob.BlobId,
             EChannelDataKind::Mixed,
-            IsDeletionMarker(blob.BlobId) ? 0 : blob.Blocks.size());
+            blob.Blocks.size());
     }
 
     void ProcessNewBlob(
@@ -359,8 +359,7 @@ private:
         IncrementBlobCounters(
             blob.BlobId,
             EChannelDataKind::Merged,
-            IsDeletionMarker(blob.BlobId) ? 0
-                                          : blob.BlockRange.Size() - skipped);
+            blob.BlockRange.Size() - skipped);
 
         State.ConfirmedBlobsAdded(db, Args.CommitId);
     }
@@ -464,7 +463,7 @@ private:
         IncrementBlobCounters(
             blob.BlobId,
             EChannelDataKind::Mixed,
-            IsDeletionMarker(blob.BlobId) ? 0 : blob.Blocks.size());
+            blob.Blocks.size());
     }
 
     void ProcessOverwrittenBlocks(const TAddFreshBlob& blob)

@@ -421,6 +421,8 @@ void ExecuteCleanupTransaction(
             continue;
         }
 
+        EChannelDataKind indexKind = EChannelDataKind::Max;
+        ui64 blockCountInBlob = 0;
         if (blobMeta.HasMixedBlocks()) {
             const auto& mixedBlocks = blobMeta.GetMixedBlocks();
 
@@ -441,24 +443,20 @@ void ExecuteCleanupTransaction(
                 }
             }
 
-            ui64 blockCountInBlob = 0;
-            if (!IsDeletionMarker(item.BlobId)) {
-                if (args.UseRecreatedBlobMeta) {
-                    STORAGE_VERIFY_C(
-                        state.GetBlockSize() > 0 &&
-                            item.BlobId.BlobSize() % state.GetBlockSize() == 0,
-                        TWellKnownEntityTypes::TABLET,
-                        state.GetConfig().GetDiskId(),
-                        "Blob size is not divisible by block size, blob: "
-                            << ToString(MakeBlobId(tabletId, item.BlobId)));
-                    blockCountInBlob =
-                        item.BlobId.BlobSize() / state.GetBlockSize();
-                } else {
-                    blockCountInBlob = mixedBlocks.BlocksSize();
-                }
+            if (args.UseRecreatedBlobMeta) {
+                STORAGE_VERIFY_C(
+                    state.GetBlockSize() > 0 &&
+                        item.BlobId.BlobSize() % state.GetBlockSize() == 0,
+                    TWellKnownEntityTypes::TABLET,
+                    state.GetConfig().GetDiskId(),
+                    "Blob size is not divisible by block size, blob: "
+                        << ToString(MakeBlobId(tabletId, item.BlobId)));
+                blockCountInBlob =
+                    item.BlobId.BlobSize() / state.GetBlockSize();
+            } else {
+                blockCountInBlob = mixedBlocks.BlocksSize();
             }
-            DecrementBlobCounters(
-                state, item.BlobId, EChannelDataKind::Mixed, blockCountInBlob);
+            indexKind = EChannelDataKind::Mixed;
         } else if (blobMeta.HasMergedBlocks()) {
             const auto& mergedBlocks = blobMeta.GetMergedBlocks();
 
@@ -467,13 +465,11 @@ void ExecuteCleanupTransaction(
                 mergedBlocks.GetEnd());
             db.DeleteMergedBlocks(item.BlobId, blockRange);
 
-            ui64 blocksCount = 0;
-            if (!IsDeletionMarker(item.BlobId)) {
-                blocksCount = blockRange.Size() - mergedBlocks.GetSkipped();
-            }
-            DecrementBlobCounters(
-                state, item.BlobId, EChannelDataKind::Merged, blocksCount);
+            indexKind = EChannelDataKind::Merged;
+            blockCountInBlob = blockRange.Size() - mergedBlocks.GetSkipped();
         }
+
+        DecrementBlobCounters(state, item.BlobId, indexKind, blockCountInBlob);
 
         LOG_DEBUG(
             *actorSystem,

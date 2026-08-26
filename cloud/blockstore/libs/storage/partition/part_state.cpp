@@ -141,9 +141,10 @@ TPartitionState::TPartitionState(
         stats.SetMergedBlobsCount(stats.GetMergedIndexBlobsCount());
         stats.SetMixedBlocksCount(stats.GetMixedIndexBlocksCount());
         stats.SetMergedBlocksCount(stats.GetMergedIndexBlocksCount());
-    } else if (GetChannelsByKind([](EChannelDataKind kind)
-                                 { return kind == EChannelDataKind::Mixed; })
-                   .empty())
+    } else if (
+        GetChannelsByKind([](EChannelDataKind kind)
+                          { return kind == EChannelDataKind::Mixed; })
+            .empty())
     {
         // If there are no channels with kind mixed, all blobs from mixed index
         // table were written to merged channel.
