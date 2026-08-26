@@ -976,7 +976,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldDisableExactDiskIdMatchOnAlterVolume)
+    Y_UNIT_TEST(ShouldDisableExactDiskIdMatchOnAlterVolumeRequests)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -993,7 +993,9 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             "test_cloud");
 
         bool describeRequestObserved = false;
+        bool statRequestObserved = false;
         bool describeExactDiskIdMatch = true;
+        bool statExactDiskIdMatch = true;
 
         runtime.SetEventFilter(
             [&](auto& runtime, TAutoPtr<IEventHandle>& event)
@@ -1007,6 +1009,14 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                         describeExactDiskIdMatch = msg.ExactDiskIdMatch;
                         break;
                     }
+                    case TEvService::EvStatVolumeRequest: {
+                        const auto& msg =
+                            *event->Get<TEvService::TEvStatVolumeRequest>();
+                        statRequestObserved = true;
+                        statExactDiskIdMatch =
+                            msg.Record.GetHeaders().GetExactDiskIdMatch();
+                        break;
+                    }
                 }
 
                 return false;
@@ -1016,6 +1026,8 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         UNIT_ASSERT_VALUES_EQUAL(true, describeRequestObserved);
         UNIT_ASSERT_VALUES_EQUAL(false, describeExactDiskIdMatch);
+        UNIT_ASSERT_VALUES_EQUAL(true, statRequestObserved);
+        UNIT_ASSERT_VALUES_EQUAL(false, statExactDiskIdMatch);
     }
 
     Y_UNIT_TEST(ShouldAlterAndResizeSecondaryDiskUsingPrimaryDiskId)

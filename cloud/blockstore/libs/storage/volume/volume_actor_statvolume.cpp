@@ -249,6 +249,7 @@ void TVolumeActor::HandleStatVolume(
     }
 
     NProto::TStatVolumeResponse record;
+    record.SetIsVolumeOperationRestricted(State->IsVolumeOperationRestricted());
     auto& protoFieldsToValues = *record.MutableStorageConfigFieldsToValues();
 
     for (const auto& field: msg->Record.GetStorageConfigFields()) {

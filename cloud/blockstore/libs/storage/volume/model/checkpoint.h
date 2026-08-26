@@ -189,6 +189,7 @@ public:
 
     [[nodiscard]] bool IsRequestInProgress() const;
     [[nodiscard]] bool IsCheckpointBeingCreated() const;
+    [[nodiscard]] bool HasCheckpointCreationRequest() const;
     [[nodiscard]] bool DoesCheckpointBlockingWritesExist() const;
 
     [[nodiscard]] bool IsCheckpointDeleted(const TString& checkpointId) const;

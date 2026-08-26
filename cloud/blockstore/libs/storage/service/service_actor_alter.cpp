@@ -42,6 +42,11 @@ private:
     const ui64 NewBlocksCount = 0;
     const TString DiskId;
     ui32 ConfigVersion = 0;
+    const bool CheckVolumeOperationRestriction = false;
+
+    TString Path;
+    ui64 PathId = 0;
+    ui64 PathVersion = 0;
 
     NPrivateProto::TVolumeChannelsToPoolsKinds VolumeChannelsToPoolsKinds;
     bool SetupChannelsRequested = false;
@@ -122,6 +127,8 @@ private:
 
     void DescribeVolume(const TActorContext& ctx);
 
+    void StatVolume(const TActorContext& ctx);
+
     void AlterVolume(
         const TActorContext& ctx,
         TString path,
@@ -134,11 +141,16 @@ private:
 
 private:
     STFUNC(StateDescribeVolume);
+    STFUNC(StateStatVolume);
     STFUNC(StateAlterVolume);
     STFUNC(StateWaitReady);
 
     void HandleDescribeVolumeResponse(
         const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleStatVolumeResponse(
+        const TEvService::TEvStatVolumeResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleAlterVolumeResponse(
@@ -165,6 +177,7 @@ TAlterVolumeActor::TAlterVolumeActor(
     , NewBlocksCount(request.GetBlocksCount())
     , DiskId(request.GetDiskId())
     , ConfigVersion(request.GetConfigVersion())
+    , CheckVolumeOperationRestriction(true)
 {}
 
 TAlterVolumeActor::TAlterVolumeActor(
@@ -177,6 +190,7 @@ TAlterVolumeActor::TAlterVolumeActor(
     , Config(std::move(config))
     , DiskId(request.GetDiskId())
     , ConfigVersion(request.GetConfigVersion())
+    , CheckVolumeOperationRestriction(true)
 {
     VolumeConfig.SetProjectId(request.GetProjectId());
     VolumeConfig.SetFolderId(request.GetFolderId());
@@ -226,6 +240,18 @@ void TAlterVolumeActor::DescribeVolume(const TActorContext& ctx)
             /*exactDiskIdMatch=*/false));
 }
 
+void TAlterVolumeActor::StatVolume(const TActorContext& ctx)
+{
+    Become(&TThis::StateStatVolume);
+
+    auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(false);
+    request->Record.SetDiskId(DiskId);
+    request->Record.SetNoPartition(true);
+
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+}
+
 void TAlterVolumeActor::AlterVolume(
     const TActorContext& ctx,
     TString path,
@@ -237,6 +263,8 @@ void TAlterVolumeActor::AlterVolume(
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Sending alter request for %s",
         path.Quote().c_str());
+
+    VolumeConfig.SetAlterTs(ctx.Now().MicroSeconds());
 
     auto request = CreateModifySchemeRequestForAlterVolume(
         path, pathId, version, VolumeConfig);
@@ -443,13 +471,44 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
         VolumeConfig.SetVersion(ConfigVersion);
     }
 
-    VolumeConfig.SetAlterTs(ctx.Now().MicroSeconds());
+    if (CheckVolumeOperationRestriction) {
+        Path = path;
+        PathId = pathDescription.GetSelf().GetPathId();
+        PathVersion = pathDescription.GetSelf().GetPathVersion();
+        StatVolume(ctx);
+    } else {
+        AlterVolume(
+            ctx,
+            path,
+            pathDescription.GetSelf().GetPathId(),
+            pathDescription.GetSelf().GetPathVersion());
+    }
+}
 
-    AlterVolume(
-        ctx,
-        path,
-        pathDescription.GetSelf().GetPathId(),
-        pathDescription.GetSelf().GetPathVersion());
+void TAlterVolumeActor::HandleStatVolumeResponse(
+    const TEvService::TEvStatVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        Error = msg->GetError();
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    if (msg->Record.GetIsVolumeOperationRestricted()) {
+        Error = MakeError(
+            E_TRY_AGAIN,
+            TStringBuilder()
+                << GetOperationString()
+                << "Volume is not allowed while another exclusive volume "
+                   "operation is in progress");
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    AlterVolume(ctx, std::move(Path), PathId, PathVersion);
 }
 
 void TAlterVolumeActor::HandleAlterVolumeResponse(
@@ -508,6 +567,20 @@ STFUNC(TAlterVolumeActor::StateDescribeVolume)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TAlterVolumeActor::StateStatVolume)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvService::TEvStatVolumeResponse, HandleStatVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
