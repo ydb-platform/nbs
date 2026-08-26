@@ -194,6 +194,11 @@ TFuture<NProto::TError> TServer::StartEndpoint(
     TVector<IVhostQueuePtr> queues;
 
     with_lock (Lock) {
+        // Check again under the lock to avoid races with Stop().
+        if (ShouldStop.test()) {
+            return MakeFuture(MakeError(E_FAIL, "Vhost server is stopped"));
+        }
+
         auto it = Endpoints.find(socketPath);
         if (it != Endpoints.end()) {
             NProto::TError error;
@@ -287,7 +292,7 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
         stopFuture = endpoint->Stop(true);
         StoppingEndpoints.emplace(
             socketPath,
-            TStoppingEndpoint{endpoint, stopFuture});
+            TStoppingEndpoint{std::move(endpoint), stopFuture});
     }
 
     auto ptr = shared_from_this();

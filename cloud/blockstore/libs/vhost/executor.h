@@ -41,7 +41,7 @@ private:
     TAffinity Affinity;
 
     // Number of vhost queues currently assigned to this executor. Maintained
-    // by TEndpoint's ctor/dtor and used for load-balanced executor selection.
+    // by TEndpoint and used for load-balanced executor selection.
     std::atomic<ui32> AssignedVhostQueuesCount = 0;
 
 public:
@@ -50,6 +50,8 @@ public:
         IServerStats& serverStats,
         IVhostQueuePtr vhostQueue,
         TAffinity affinity);
+
+    ~TExecutor() override;
 
     void Shutdown();
 

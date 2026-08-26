@@ -71,6 +71,7 @@ private:
     TAdaptiveLock RequestsLock;
 
     std::atomic_flag Stopped = false;
+    std::atomic_flag ExecutorAssignmentsReleased = false;
 
 public:
     TEndpoint(
@@ -109,6 +110,8 @@ private:
     void CompleteRequest(TRequest& request, const NProto::TError& error);
 
     void UnregisterRequest(TRequest& request);
+
+    void ReleaseExecutorAssignments();
 
     TVhostRequest::EResult GetResult(NProto::TError& error);
 };

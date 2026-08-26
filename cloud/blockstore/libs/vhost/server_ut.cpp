@@ -922,6 +922,101 @@ Y_UNIT_TEST_SUITE(TServerTest)
         stopThread->Join();
     }
 
+    Y_UNIT_TEST(ShouldReleaseExecutorAssignmentsBeforeRequestCallbackReturns)
+    {
+        const TString unixSocketPath = CreateGuidAsString() + ".sock";
+
+        TManualEvent requestStarted;
+        TManualEvent completionPaused;
+        TManualEvent resumeCompletion;
+        auto storagePromise = NewPromise<void>();
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            requestStarted.Signal();
+            return storagePromise.GetFuture().Apply(
+                [](const auto&) { return NProto::TReadBlocksLocalResponse(); });
+        };
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        queueFactory->RequestCompletionHandler = [&]
+        {
+            completionPaused.Signal();
+            resumeCompletion.Wait();
+        };
+
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            CreateServerStatsStub(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+
+        server->Start();
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = 4096;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = 1;
+
+        const auto startError =
+            server->StartEndpoint(unixSocketPath, storage, options)
+                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(startError), startError);
+
+        auto device = queueFactory->Queues.at(0)->GetDevices().at(0);
+        TVector<TString> blocks;
+        auto sgList = ResizeBlocks(blocks, 1, TString(options.BlockSize, 'f'));
+        auto requestFuture = device->SendTestRequest(
+            EBlockStoreRequest::ReadBlocks,
+            0,
+            options.BlockSize,
+            sgList);
+        Y_DEFER
+        {
+            resumeCompletion.Signal();
+            storagePromise.TrySetValue();
+        };
+
+        UNIT_ASSERT(requestStarted.WaitT(TDuration::Seconds(5)));
+
+        auto completionThread =
+            SystemThreadFactory()->Run([&] { storagePromise.SetValue(); });
+        Y_DEFER
+        {
+            resumeCompletion.Signal();
+            completionThread->Join();
+        };
+
+        UNIT_ASSERT(completionPaused.WaitT(TDuration::Seconds(5)));
+        UNIT_ASSERT(requestFuture.HasValue());
+
+        const auto stopError = server->StopEndpoint(unixSocketPath)
+                                   .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(stopError), stopError);
+
+        // The request continuation still owns the endpoint and is paused
+        // before UnregisterRequest(). Executor shutdown must not depend on
+        // that endpoint being destroyed.
+        server->Stop();
+        server.reset();
+    }
+
     Y_UNIT_TEST(ShouldPassCorrectMetrics)
     {
         TString testDiskId = "testDiskId";

@@ -21,17 +21,20 @@ class TTestVhostRequest final
 {
 private:
     TPromise<EResult> Promise;
+    const std::function<void()> CompletionHandler;
 
 public:
     TTestVhostRequest(
-            TPromise<EResult> promise,
-            EBlockStoreRequest type,
-            ui64 from,
-            ui64 length,
-            TSgList sgList,
-            void* cookie,
-            bool isDiscardRequest)
+        TPromise<EResult> promise,
+        EBlockStoreRequest type,
+        ui64 from,
+        ui64 length,
+        TSgList sgList,
+        void* cookie,
+        bool isDiscardRequest,
+        std::function<void()> completionHandler)
         : Promise(std::move(promise))
+        , CompletionHandler(std::move(completionHandler))
     {
         Type = type;
         From = from;
@@ -44,6 +47,9 @@ public:
     void Complete(EResult result) override
     {
         Promise.SetValue(result);
+        if (CompletionHandler) {
+            CompletionHandler();
+        }
     }
 };
 
@@ -57,6 +63,7 @@ private:
     const TString SocketPath;
     void* const Cookie;
     const ui32 OptimalIoSize;
+    const std::function<void()> RequestCompletionHandler;
 
     TLockFreeQueue<TVhostRequest*> Requests;
 
@@ -68,10 +75,15 @@ private:
     TPromise<void> Autostop;
 
 public:
-    TTestVhostDevice(TString socketPath, void* cookie, ui32 optimalIoSize)
+    TTestVhostDevice(
+        TString socketPath,
+        void* cookie,
+        ui32 optimalIoSize,
+        std::function<void()> requestCompletionHandler)
         : SocketPath(std::move(socketPath))
         , Cookie(cookie)
         , OptimalIoSize(optimalIoSize)
+        , RequestCompletionHandler(std::move(requestCompletionHandler))
     {
         Autostop = NewPromise<void>();
         Autostop.SetValue();
@@ -140,7 +152,8 @@ public:
             length,
             std::move(sgList),
             Cookie,
-            isDiscardRequest);
+            isDiscardRequest,
+            RequestCompletionHandler);
         Requests.Enqueue(request.release());
         return future;
     }
@@ -299,7 +312,8 @@ IVhostDevicePtr TTestVhostQueueFactory::CreateDevice(
     auto vhostDevice = std::make_shared<TTestVhostDevice>(
         std::move(socketPath),
         cookie,
-        optimalIoSize);
+        optimalIoSize,
+        RequestCompletionHandler);
 
     for (const auto& queue: queues) {
         static_cast<TTestVhostQueue*>(queue.get())->AddDevice(vhostDevice);

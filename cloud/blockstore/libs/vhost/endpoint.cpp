@@ -103,6 +103,15 @@ TEndpoint::TEndpoint(
 
 TEndpoint::~TEndpoint()
 {
+    ReleaseExecutorAssignments();
+}
+
+void TEndpoint::ReleaseExecutorAssignments()
+{
+    if (ExecutorAssignmentsReleased.test_and_set()) {
+        return;
+    }
+
     // Both counts are normally powers of two. Round up just in case.
     const ui32 queuesPerExecutor = std::ceil(
         static_cast<double>(Options.VhostQueuesCount) / Executors.size());
@@ -183,7 +192,18 @@ TFuture<NProto::TError> TEndpoint::Stop(bool deleteSocket)
             });
     }
 
-    return future;
+    // Request continuations may keep the endpoint alive after device stop.
+    // Release queue assignments as part of stop completion instead of
+    // waiting for the endpoint destructor.
+    auto weakPtr = weak_from_this();
+    return future.Apply(
+        [weakPtr = std::move(weakPtr)](const auto& f)
+        {
+            if (auto p = weakPtr.lock()) {
+                p->ReleaseExecutorAssignments();
+            }
+            return f.GetValue();
+        });
 }
 
 void TEndpoint::Update(ui64 blocksCount)

@@ -6,6 +6,8 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <functional>
+
 namespace NCloud::NBlockStore::NVhost {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,6 +50,7 @@ struct TTestVhostQueueFactory final
 {
     TManualEvent FailedEvent;
     TVector<std::shared_ptr<ITestVhostQueue>> Queues;
+    std::function<void()> RequestCompletionHandler;
 
     IVhostQueuePtr CreateQueue() override;
 
