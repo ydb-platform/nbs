@@ -73,11 +73,11 @@ struct IVhostQueueFactory
     //
     // Note that |queuesCount| and |queues| are different things:
     // |queuesCount| is the number of virtqueues the guest may set up, while
-    // |queues| are the backend queues (one per executor thread) the requests
-    // are dispatched to. The guest's virtqueues are spread over |queues|
-    // round-robin by vring index, so a single device may be served by several
-    // executor threads simultaneously. |queues| must be non-empty and must
-    // not be larger than |queuesCount|.
+    // |queues| contains the backend queue selected for each round-robin slot.
+    // A backend queue may occur more than once so that an uneven number of
+    // virtqueues can be distributed exactly across the requested executor
+    // threads. |queues| must be non-empty and must not be larger than
+    // |queuesCount|.
     //
     // |cookie| is placed into TVhostRequest::Cookie of every request dequeued
     // from any of the device's queues, so that the executor can route the

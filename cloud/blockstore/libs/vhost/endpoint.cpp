@@ -91,11 +91,13 @@ TEndpoint::TEndpoint(
     Y_ABORT_UNLESS(Options.VhostQueuesCount > 0);
 
     const ui32 executorsCount = Executors.size();
-    Y_ABORT_UNLESS(executorsCount <= Options.VhostQueuesCount);
+    Y_ABORT_UNLESS(
+        Options.VhostQueuesCount % executorsCount == 0,
+        "Vhost queues count '%u' must be divisible by executors count '%u'",
+        Options.VhostQueuesCount,
+        executorsCount);
 
-    // Both counts are normally powers of two. Round up just in case.
-    const ui32 queuesPerExecutor = std::ceil(
-        static_cast<double>(Options.VhostQueuesCount) / executorsCount);
+    const ui32 queuesPerExecutor = Options.VhostQueuesCount / executorsCount;
     for (auto* executor: Executors) {
         executor->OnVhostQueuesAssigned(queuesPerExecutor);
     }
@@ -112,9 +114,7 @@ void TEndpoint::ReleaseExecutorAssignments()
         return;
     }
 
-    // Both counts are normally powers of two. Round up just in case.
-    const ui32 queuesPerExecutor = std::ceil(
-        static_cast<double>(Options.VhostQueuesCount) / Executors.size());
+    const ui32 queuesPerExecutor = Options.VhostQueuesCount / Executors.size();
     for (auto* executor: Executors) {
         executor->OnVhostQueuesReleased(queuesPerExecutor);
     }

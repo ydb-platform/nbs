@@ -13,11 +13,14 @@
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <cloud/contrib/vhost/include/vhost/server.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/string/builder.h>
 #include <util/system/tempfile.h>
 #include <util/thread/factory.h>
 #include <util/thread/lfqueue.h>
@@ -316,7 +319,7 @@ ui32 StartEndpointAndCountExecutors(
 
     ui32 executorsCount = 0;
     for (const auto& queue: queueFactory->Queues) {
-        executorsCount += queue->GetDevices().size();
+        executorsCount += !queue->GetDevices().empty();
     }
     return executorsCount;
 }
@@ -1735,23 +1738,82 @@ Y_UNIT_TEST_SUITE(TServerTest)
         };
 
         // The first contributes four queues to executor 0. The second endpoint
-        // contributes three queues to executor 1 and three to executor 2.
+        // contributes three queues to executor 1 and two to executor 2.
         startEndpoint(4, 1);
         startEndpoint(5, 2);
 
-        // Executor 1 is now the least loaded one (three queues), so it must get
-        // the last endpoint.
+        // Executor 2 is now the least loaded one (two queues), so it must get
+        // the last endpoint. All executors end up with their exact number of
+        // assigned virtqueues rather than a rounded-up approximation.
         startEndpoint(1, 1);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            4,
             queueFactory->Queues[0]->GetDevices().size());
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            3,
             queueFactory->Queues[1]->GetDevices().size());
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            3,
             queueFactory->Queues[2]->GetDevices().size());
+    }
+
+    Y_UNIT_TEST(ShouldValidateVhostQueuesCount)
+    {
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            std::make_shared<TTestServerStats>(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+
+        server->Start();
+        Y_DEFER {
+            server->Stop();
+        };
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        auto startEndpoint = [&] (ui32 vhostQueuesCount) {
+            TStorageOptions options;
+            options.DiskId = "testDiskId";
+            options.BlockSize = 4096;
+            options.BlocksCount = 256;
+            options.VhostQueuesCount = vhostQueuesCount;
+
+            return server->StartEndpoint(
+                "testSocket",
+                std::make_shared<TTestStorage>(),
+                options).GetValue(TDuration::Seconds(5));
+        };
+
+        for (ui32 invalidCount: {0, VHD_MAX_REQUEST_QUEUES + 1}) {
+            const auto error = startEndpoint(invalidCount);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TStringBuilder()
+                    << "Vhost queues count must be in range [1, "
+                    << VHD_MAX_REQUEST_QUEUES << "]",
+                error.GetMessage());
+        }
+
+        const auto error = startEndpoint(VHD_MAX_REQUEST_QUEUES);
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(
+            VHD_MAX_REQUEST_QUEUES,
+            queueFactory->Queues.at(0)->GetDevices().size());
+
+        const auto stopError =
+            server->StopEndpoint("testSocket").GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(stopError), stopError);
     }
 
     Y_UNIT_TEST(ShouldUseRequestedThreadCount)

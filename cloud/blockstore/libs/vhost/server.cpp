@@ -12,6 +12,8 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <cloud/contrib/vhost/include/vhost/server.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
 #include <util/generic/utility.h>
@@ -24,6 +26,20 @@ namespace NCloud::NBlockStore::NVhost {
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<TExecutor*> NormalizeExecutors(
+    const TVector<TExecutor*>& executors,
+    ui32 vhostQueuesCount)
+{
+    TVector<TExecutor*> normalized;
+    normalized.reserve(vhostQueuesCount);
+    for (ui32 i = 0; i < vhostQueuesCount; ++i) {
+        normalized.push_back(executors[i % executors.size()]);
+    }
+    return normalized;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -164,9 +180,14 @@ TFuture<NProto::TError> TServer::StartEndpoint(
     IStoragePtr storage,
     const TStorageOptions& options)
 {
-    if (options.VhostQueuesCount == 0) {
-        return MakeFuture(
-            MakeError(E_ARGUMENT, "Vhost queues count must be greater than 0"));
+    if (options.VhostQueuesCount == 0 ||
+        options.VhostQueuesCount > VHD_MAX_REQUEST_QUEUES)
+    {
+        return MakeFuture(MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "Vhost queues count must be in range [1, "
+                << VHD_MAX_REQUEST_QUEUES << "]"));
     }
 
     if (ShouldStop.test()) {
@@ -183,9 +204,9 @@ TFuture<NProto::TError> TServer::StartEndpoint(
     if (options.ThreadCount > maxExecutorsCount) {
         STORAGE_WARN(
             "Endpoint " << socketPath.Quote() << " requested "
-                        << options.ThreadCount << " threads"
-                        << ", but only " << maxExecutorsCount << " can be used"
-                        << " (vhost queues: " << options.VhostQueuesCount
+                        << options.ThreadCount << " threads, but only "
+                        << maxExecutorsCount << " can be used (vhost queues: "
+                        << options.VhostQueuesCount
                         << ", thread pool size: " << Executors.size() << ")");
     }
 
@@ -209,8 +230,11 @@ TFuture<NProto::TError> TServer::StartEndpoint(
             return MakeFuture(error);
         }
 
-        auto executors = PickExecutors(executorsCount);
+        TVector<TExecutor*> executors = PickExecutors(executorsCount);
         Y_ABORT_UNLESS(executors.size() == executorsCount);
+
+        executors = NormalizeExecutors(executors, options.VhostQueuesCount);
+        Y_ABORT_UNLESS(executors.size() == options.VhostQueuesCount);
 
         queues.reserve(executors.size());
         for (auto* executor: executors) {
