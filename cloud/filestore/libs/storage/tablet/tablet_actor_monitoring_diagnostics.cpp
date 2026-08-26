@@ -495,16 +495,7 @@ private:
 
     void ReplyError(const TActorContext& ctx, const NProto::TError& error)
     {
-        TStringStream out;
-        NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
-        writer.BeginObject();
-        writer.WriteKey("error");
-        writer.WriteString(FormatError(error));
-        writer.EndObject();
-        NCloud::Reply(
-            ctx,
-            *RequestInfo,
-            std::make_unique<TEvRemoteJsonInfoRes>(std::move(out.Str())));
+        ReplyDiagnosticsError(ctx, RequestInfo, FormatError(error));
         Die(ctx);
     }
 
