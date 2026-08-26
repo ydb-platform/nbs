@@ -186,16 +186,17 @@ void TStorageServiceActor::HandleStatFileStore(
     const auto* msg = ev->Get();
 
     const auto& headers = msg->Record.GetHeaders();
+    const ui64 seqNo = headers.GetSessionSeqNo();
     const auto* session =
-        State->FindSession(headers.GetSessionId(), headers.GetSessionSeqNo());
+        State->FindSession(headers.GetSessionId(), seqNo);
     if (!session || session->ClientId != headers.GetClientId() ||
-        !session->SessionActor)
+        !session->GetSessionActor(seqNo))
     {
         auto response = std::make_unique<TEvService::TEvStatFileStoreResponse>(
             ErrorInvalidSession(
                 headers.GetClientId(),
                 headers.GetSessionId(),
-                headers.GetSessionSeqNo()));
+                seqNo));
         NCloud::Reply(ctx, *ev, std::move(response));
 
         return;
