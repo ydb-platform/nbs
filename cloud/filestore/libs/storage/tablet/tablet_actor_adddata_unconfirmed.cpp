@@ -35,6 +35,7 @@ bool TIndexTabletActor::PrepareTx_AddDataUnconfirmed(
     }
 
     if (DeletionQueue.contains(args.CommitId)) {
+        args.RejectedByDeletion = true;
         args.Error = MakeError(E_REJECTED, "Already deleted");
         LOG_WARN(
             ctx,
@@ -83,7 +84,8 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
     TABLET_VERIFY(inProgressIt != UnconfirmedDataInProgress.end());
 
     const ui64 requestBytes = inProgressIt->second.Data.GetLength();
-    const bool deletionInProgress = DeletionQueue.contains(args.CommitId);
+    const bool deletionInProgress =
+        args.RejectedByDeletion || DeletionQueue.contains(args.CommitId);
 
     Y_DEFER
     {
