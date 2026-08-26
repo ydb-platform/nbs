@@ -25,13 +25,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 DefaultTopLoaded = 10;
-constexpr ui32 DefaultTopAccessed = 10;
-constexpr ui32 DefaultSlowestNodes = 10;
-constexpr ui32 DefaultSlowestRequests = 10;
-constexpr ui32 DefaultSlowestShards = 10;
-constexpr TStringBuf DefaultSortBy = "load";
-
 void DumpDiagnosticsPage(IOutputStream& out, ui64 tabletId)
 {
     OutputTemplate(
@@ -40,6 +33,24 @@ void DumpDiagnosticsPage(IOutputStream& out, ui64 tabletId)
          {"JS", NResource::Find("js/diagnostics.js")},
          {"TABLET_ID", ToString(tabletId)}},
         out);
+}
+
+void ReplyDiagnosticsError(
+    const TActorContext& ctx,
+    const TRequestInfoPtr& requestInfo,
+    TString message)
+{
+    TStringStream out;
+    NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
+    writer.BeginObject();
+    writer.WriteKey("error");
+    writer.WriteString(message);
+    writer.EndObject();
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<TEvRemoteJsonInfoRes>(std::move(out.Str())));
 }
 
 struct TShardRow
@@ -524,20 +535,41 @@ void TIndexTabletActor::HandleHttpInfo_Diagnostics(
         return;
     }
 
-    const ui32 topLoaded =
-        FromStringWithDefault(params.Get("topLoaded"), DefaultTopLoaded);
-    const ui32 topAccessed =
-        FromStringWithDefault(params.Get("topAccessed"), DefaultTopAccessed);
-    const ui32 slowestNodes =
-        FromStringWithDefault(params.Get("slowestNodes"), DefaultSlowestNodes);
-    const ui32 slowestRequests = FromStringWithDefault(
-        params.Get("slowestRequests"),
-        DefaultSlowestRequests);
-    const ui32 slowestShards = FromStringWithDefault(params.Get("slowestShards"), DefaultSlowestShards);
-    TString sortBy = params.Get("sortBy");
-    if (sortBy != "load") {
-        sortBy = TString(DefaultSortBy);
+    const auto parseParams = [&](TStringBuf name, ui32& value)
+    {
+        if (!params.Has(name) || !TryFromString(params.Get(name), value)) {
+            ReplyDiagnosticsError(
+                ctx,
+                requestInfo,
+                TStringBuilder() << "Missing or invalid parameter: " << name);
+            return false;
+        }
+        return true;
+    };
+
+    ui32 topLoaded;
+    ui32 topAccessed;
+    ui32 slowestNodes;
+    ui32 slowestRequests;
+    ui32 slowestShards;
+
+    if (!parseParams("topLoaded", topLoaded) ||
+        !parseParams("topAccessed", topAccessed) ||
+        !parseParams("slowestNodes", slowestNodes) ||
+        !parseParams("slowestRequests", slowestRequests) ||
+        !parseParams("slowestShards", slowestShards))
+    {
+        return;
     }
+
+    if (!params.Has("sortBy") || params.Get("sortBy") != "load") {
+        ReplyDiagnosticsError(
+            ctx,
+            requestInfo,
+            "Missing or invalid parameter: sortBy");
+        return;
+    }
+    TString sortBy = params.Get("sortBy");
 
     NCloud::Register<TDiagnosticsActor>(
         ctx,
