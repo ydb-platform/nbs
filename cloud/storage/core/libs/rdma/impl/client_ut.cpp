@@ -1566,6 +1566,18 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
         ASSERT_GE(6, bound);
         ASSERT_EQ(2, invalidated);
         ASSERT_EQ(4, destroyed);
+
+        // validate relevant counters
+        auto counters = GetClientCounters(monitoring);
+
+        while (counters->GetCounter("ActiveBinds")->Val() != 0 ||
+               counters->GetCounter("QueuedInvalidations")->Val() != 0 ||
+               counters->GetCounter("ActiveInvalidations")->Val() != 0 ||
+               counters->GetCounter("MemoryWindows")->Val() != 0 ||
+               counters->GetCounter("MaxMemoryWindows")->Val() != 2)
+        {
+            SpinLockPause();
+        }
 }
 
 }   // namespace NCloud::NStorage::NRdma

@@ -1,6 +1,6 @@
 #include "memory_window.h"
 
-#include <cloud/storage/common/libs/common/error.h>
+#include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NStorage::NRdma {
 
@@ -23,9 +23,10 @@ NVerbs::TMemoryWindowPtr TMemoryWindowsPool::Acquire()
         Pool.pop_front();
         return window;
     }
-    if (Verbs && ProtectionDomain) {
-        return Verbs->CreateMemoryWindow(ProtectionDomain);
+    if (!Verbs || !ProtectionDomain) {
+        STORAGE_THROW_SERVICE_ERROR(E_INVALID_STATE) << "not initialized";
     }
+    return Verbs->CreateMemoryWindow(ProtectionDomain);
 }
 
 void TMemoryWindowsPool::Release(NVerbs::TMemoryWindowPtr window)
