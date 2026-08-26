@@ -46,13 +46,18 @@ void DecrementBlobCounters(
             Y_ABORT("Unexpected index kind: %u", static_cast<ui32>(indexKind));
     }
 
-    // Deletion markers do not have a data channel, so classify them by their
-    // index kind even when channel-based counters are enabled.
-    const auto countersKind =
-        state.ShouldUseBlobChannelDataKindForCounters() &&
-                !IsDeletionMarker(blobId)
-            ? state.GetChannelDataKind(blobId.Channel())
-            : indexKind;
+    // Deletion markers do not have a data channel.
+    if (IsDeletionMarker(blobId) &&
+        state.ShouldUseBlobChannelDataKindForCounters())
+    {
+        return;
+    }
+
+    // If channel-based counters are enabled, use the channel data kind
+    // otherwise use the index kind
+    const auto countersKind = state.ShouldUseBlobChannelDataKindForCounters()
+                                  ? state.GetChannelDataKind(blobId.Channel())
+                                  : indexKind;
     switch (countersKind) {
         case EChannelDataKind::Mixed:
             state.DecrementMixedBlobsCount(

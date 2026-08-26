@@ -1965,7 +1965,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         const auto& stats = response->Record.GetStats();
 
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
-        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
 
@@ -9505,7 +9505,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             event->Get<TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse>();
                         UNIT_ASSERT_VALUES_UNEQUAL(
                             0,
-                            msg->RebuildState.MixedBlocks + msg->RebuildState.MergedBlocks);
+                            msg->RebuildState.MixedIndexBlocks +
+                                msg->RebuildState.MergedIndexBlocks);
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);

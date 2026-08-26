@@ -209,11 +209,17 @@ private:
                     "Unexpected index kind: %u", static_cast<ui32>(indexKind));
         }
 
-        // Deletion markers do not have a data channel, so classify them by
-        // their index kind even when channel-based counters are enabled.
+        // Deletion markers do not have a data channel.
+        if (IsDeletionMarker(blobId) &&
+            State.ShouldUseBlobChannelDataKindForCounters())
+        {
+            return;
+        }
+
+        // If channel-based counters are enabled, use the channel data kind
+        // otherwise use the index kind
         const auto countersKind =
-            State.ShouldUseBlobChannelDataKindForCounters() &&
-                    !IsDeletionMarker(blobId)
+            State.ShouldUseBlobChannelDataKindForCounters()
                 ? State.GetChannelDataKind(blobId.Channel())
                 : indexKind;
         switch (countersKind) {

@@ -576,8 +576,8 @@ struct TTxPartition
 
         ui32 ReadCount = 0;
 
-        ui64 MixedBlockCount = 0;
-        ui64 MergedBlockCount = 0;
+        ui64 MixedIndexBlockCount = 0;
+        ui64 MergedIndexBlockCount = 0;
         ui64 MixedChannelBlockCount = 0;
         ui64 MergedChannelBlockCount = 0;
 
@@ -601,8 +601,8 @@ struct TTxPartition
         void Clear()
         {
             ReadCount = 0;
-            MixedBlockCount = 0;
-            MergedBlockCount = 0;
+            MixedIndexBlockCount = 0;
+            MergedIndexBlockCount = 0;
             MixedChannelBlockCount = 0;
             MergedChannelBlockCount = 0;
             LastReadBlobId = {};

@@ -94,12 +94,12 @@ private:
         ui64 blocksCount = 0;
         if (blobMeta.HasMixedBlocks()) {
             blocksCount = blobMeta.GetMixedBlocks().BlocksSize();
-            Args.MixedBlockCount += blocksCount;
+            Args.MixedIndexBlockCount += blocksCount;
         } else {
             const auto& mergedBlocks = blobMeta.GetMergedBlocks();
             blocksCount = mergedBlocks.GetEnd() - mergedBlocks.GetStart() + 1;
             blocksCount -= mergedBlocks.GetSkipped();
-            Args.MergedBlockCount += blocksCount;
+            Args.MergedIndexBlockCount += blocksCount;
         }
 
         const auto channelDataKind =
@@ -403,40 +403,40 @@ void TPartitionActor::ExecuteMetadataRebuildBlockCount(
     Y_UNUSED(ctx);
 
     State->UpdateRebuildMetadataProgress(args.ReadCount);
-    args.RebuildState.MixedIndexBlocks += args.MixedBlockCount;
-    args.RebuildState.MergedIndexBlocks += args.MergedBlockCount;
+    args.RebuildState.MixedIndexBlocks += args.MixedIndexBlockCount;
+    args.RebuildState.MergedIndexBlocks += args.MergedIndexBlockCount;
     args.RebuildState.MixedChannelBlocks += args.MixedChannelBlockCount;
     args.RebuildState.MergedChannelBlocks += args.MergedChannelBlockCount;
 
     if (args.LastReadBlobId == args.FinalBlobId) {
         TPartitionDatabase db(tx.DB);
 
-        auto mixed = State->GetMixedIndexBlocksCount() -
-                     args.RebuildState.InitialMixedBlocks +
-                     args.RebuildState.MixedBlocks;
+        auto mixedIndexBlocks = State->GetMixedIndexBlocksCount() -
+                     args.RebuildState.InitialMixedIndexBlocks +
+                     args.RebuildState.MixedIndexBlocks;
 
-        auto merged = State->GetMergedIndexBlocksCount() -
-                      args.RebuildState.InitialMergedBlocks +
-                      args.RebuildState.MergedBlocks;
+        auto mergedIndexBlocks = State->GetMergedIndexBlocksCount() -
+                      args.RebuildState.InitialMergedIndexBlocks +
+                      args.RebuildState.MergedIndexBlocks;
 
-        auto mixedChannel = State->GetMixedBlocksCount() -
+        auto mixedChannelBlocks = State->GetMixedBlocksCount() -
                             args.RebuildState.InitialMixedChannelBlocks +
                             args.RebuildState.MixedChannelBlocks;
 
-        auto mergedChannel = State->GetMergedBlocksCount() -
+        auto mergedChannelBlocks = State->GetMergedBlocksCount() -
                              args.RebuildState.InitialMergedChannelBlocks +
                              args.RebuildState.MergedChannelBlocks;
 
         if (!State->ShouldUseBlobChannelDataKindForCounters()) {
-            mixedChannel = mixed;
-            mergedChannel = merged;
+            mixedChannelBlocks = mixedIndexBlocks;
+            mergedChannelBlocks = mergedIndexBlocks;
         }
 
         State->UpdateBlocksCountersAfterMetadataRebuild(
-            mixed,
-            merged,
-            mixedChannel,
-            mergedChannel);
+            mixedIndexBlocks,
+            mergedIndexBlocks,
+            mixedChannelBlocks,
+            mergedChannelBlocks);
 
         db.WriteMeta(State->GetMeta());
     }
