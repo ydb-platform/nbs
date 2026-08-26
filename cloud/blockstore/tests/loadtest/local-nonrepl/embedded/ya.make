@@ -6,6 +6,7 @@ SRCDIR(${ARCADIA_ROOT}/cloud/blockstore/tests/loadtest/local-nonrepl)
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/loadtest/local-nonrepl/ya.make.inc)
 
 ENV(DEDICATED_DISK_AGENT="false")
+ENV(NBS_LOCAL_NONREPL_BACKEND="aio")
 
 DEPENDS(
     cloud/blockstore/apps/server

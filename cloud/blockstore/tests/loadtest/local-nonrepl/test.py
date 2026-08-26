@@ -1,5 +1,7 @@
 import logging
 import os
+import re
+
 import pytest
 
 from cloud.blockstore.config.client_pb2 import TClientConfig
@@ -32,6 +34,17 @@ import yatest.common as yatest_common
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_DEVICE_COUNT = 8
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262186  # 262144 + 42
+
+
+def kernel_version():
+    match = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", os.uname().release)
+    return tuple(int(value or 0) for value in match.groups())
+
+
+requires_disabled_ring = pytest.mark.skipif(
+    kernel_version() < (5, 10, 0),
+    reason="IORING_SETUP_R_DISABLED requires Linux >= 5.10",
+)
 
 
 def enable_lwtrace(kikimr, query_file):
@@ -365,14 +378,25 @@ def __run_test(test_case, backend, use_rdma):
     return ret
 
 
-BACKENDS = {
-    'aio': DISK_AGENT_BACKEND_AIO,
-    'io_uring': DISK_AGENT_BACKEND_IO_URING,
-}
+BACKENDS = [
+    pytest.param(
+        DISK_AGENT_BACKEND_AIO,
+        id="aio",
+    ),
+    pytest.param(
+        DISK_AGENT_BACKEND_IO_URING,
+        id="io_uring",
+        marks=requires_disabled_ring,
+    ),
+]
+
+SELECTED_BACKEND = os.getenv('NBS_LOCAL_NONREPL_BACKEND')
+if SELECTED_BACKEND:
+    BACKENDS = [backend for backend in BACKENDS if backend.id == SELECTED_BACKEND]
 
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-@pytest.mark.parametrize("backend", BACKENDS.values(), ids=BACKENDS.keys())
+@pytest.mark.parametrize("backend", BACKENDS)
 def test_load(test_case, backend):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
     if test_case.lwtrace_query_path:
@@ -381,10 +405,12 @@ def test_load(test_case, backend):
     return __run_test(test_case, backend, use_rdma=False)
 
 
+@pytest.mark.skipif(SELECTED_BACKEND == 'io_uring', reason='RDMA supported only in AIO backend')
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
-def test_load_rdma(test_case):
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_load_rdma(test_case, backend):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
     if test_case.lwtrace_query_path:
         test_case.lwtrace_query_path = yatest_common.source_path(test_case.lwtrace_query_path)
 
-    return __run_test(test_case, backend=DISK_AGENT_BACKEND_AIO, use_rdma=True)
+    return __run_test(test_case, backend, use_rdma=True)
