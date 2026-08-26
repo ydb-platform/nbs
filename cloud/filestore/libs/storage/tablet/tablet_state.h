@@ -1463,7 +1463,7 @@ public:
     void LoadCompactionMap(const TVector<TCompactionRangeInfo>& compactionMap);
 
     //
-    // Forced Compaction
+    // Forced operations
     //
 
 public:
@@ -1499,7 +1499,24 @@ public:
         }
     };
 
-private:
+    struct TForcedTabletOperationState
+    {
+        const TEvIndexTabletPrivate::EForcedTabletOperationMode Mode;
+        const TString OperationId;
+        TInstant StartTime = TInstant::Now();
+
+        TForcedTabletOperationState(
+                TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
+                const TString& operationId)
+            : Mode(mode)
+            , OperationId(operationId)
+        {}
+    };
+
+    using TForcedOperationState =
+        std::variant<TForcedRangeOperationState, TForcedTabletOperationState>;
+
+protected:
     struct TPendingForcedRangeOperation
     {
         TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
@@ -1507,46 +1524,68 @@ private:
         TString OperationId;
     };
 
-    TVector<TPendingForcedRangeOperation> PendingForcedRangeOperations;
-    TMaybe<TForcedRangeOperationState> ForcedRangeOperationState;
-    TVector<TForcedRangeOperationState> CompletedForcedRangeOperations;
+    struct TPendingForcedTabletOperation
+    {
+        TEvIndexTabletPrivate::EForcedTabletOperationMode Mode;
+        TString OperationId;
+    };
+
+    using TPendingForcedOperation = std::
+        variant<TPendingForcedRangeOperation, TPendingForcedTabletOperation>;
+
+private:
+    TVector<TPendingForcedOperation> PendingForcedOperations;
+    TMaybe<TForcedOperationState> ForcedOperationState;
+    TVector<TForcedOperationState> CompletedForcedOperations;
 
 public:
     TString EnqueueForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges,
         TString operationId = {});
-    TMaybe<TPendingForcedRangeOperation> DequeueForcedRangeOperation();
+    TString EnqueueForcedTabletOperation(
+        TEvIndexTabletPrivate::EForcedTabletOperationMode mode);
+    TMaybe<TPendingForcedOperation> DequeueForcedOperation();
 
     void StartForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges,
+        TString operationId);
+    void StartForcedTabletOperation(
+        TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
         TString operationId);
 
     void AbortForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges,
         TString operationId);
+    void AbortForcedTabletOperation(
+        TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
+        TString operationId);
 
     void CompleteForcedRangeOperation();
+    void CompleteForcedTabletOperation();
 
-    const TForcedRangeOperationState* GetForcedRangeOperationState() const
+    const TForcedOperationState* GetForcedOperationState() const
     {
-        return ForcedRangeOperationState.Get();
+        return ForcedOperationState.Get();
     }
 
-    const TForcedRangeOperationState* FindForcedRangeOperation(
+    // TODO: FindForcedOperation does not perform lookup in pending
+    // requests queue
+    const TForcedOperationState* FindForcedOperation(
         const TString& operationId) const;
 
     void UpdateForcedRangeOperationProgress(ui32 current)
     {
-        ForcedRangeOperationState->Current =
-            Max(ForcedRangeOperationState->Current, current);
+        auto* state = std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
+        TABLET_VERIFY(state);
+        state->Current = Max(state->Current, current);
     }
 
-    bool IsForcedRangeOperationRunning() const
+    bool IsForcedOperationRunning() const
     {
-        return ForcedRangeOperationState.Defined();
+        return ForcedOperationState.Defined();
     }
 
     bool IsForcedRangeOperationPending(const TString& operationId) const;

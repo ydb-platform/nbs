@@ -264,24 +264,37 @@ using TDeleteRangesWithEmptyScoreActor = TForcedOperationActor<
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::EnqueueForcedRangeOperationIfNeeded(
-    const TActorContext& ctx)
+void TIndexTabletActor::EnqueueForcedOperationIfNeeded(const TActorContext& ctx)
 {
-    if (IsForcedRangeOperationRunning()) {
+    if (IsForcedOperationRunning()) {
         return;
     }
 
-    auto pendingRequest = DequeueForcedRangeOperation();
+    auto pendingRequest = DequeueForcedOperation();
     if (!pendingRequest) {
         return;
     }
 
-    auto request =
-        std::make_unique<TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
-            std::move(pendingRequest->Ranges),
-            pendingRequest->Mode,
-            std::move(pendingRequest->OperationId));
-    ctx.Send(ctx.SelfID, request.release());
+    std::visit(
+        TOverloaded{
+            [&](TPendingForcedRangeOperation& state)
+            {
+                auto request = std::make_unique<
+                    TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
+                    std::move(state.Ranges),
+                    state.Mode,
+                    std::move(state.OperationId));
+                ctx.Send(ctx.SelfID, request.release());
+            },
+            [&](TPendingForcedTabletOperation& state)
+            {
+                auto request = std::make_unique<
+                    TEvIndexTabletPrivate::TEvForcedTabletOperationRequest>(
+                    state.Mode,
+                    std::move(state.OperationId));
+                ctx.Send(ctx.SelfID, request.release());
+            }},
+        *pendingRequest.Get());
 }
 
 void TIndexTabletActor::HandleForcedRangeOperation(
@@ -322,7 +335,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    if (IsForcedRangeOperationRunning()) {
+    if (IsForcedOperationRunning()) {
         EnqueueForcedRangeOperation(
             msg->Mode,
             std::move(msg->Ranges),
@@ -335,6 +348,10 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         std::move(msg->Ranges),
         std::move(msg->OperationId));
 
+
+    const auto* state = std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
+    TABLET_VERIFY(state);
+
     std::unique_ptr<IActor> actor;
 
     switch (msg->Mode) {
@@ -343,7 +360,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedRangeOperationState(),
+                *state,
                 std::move(requestInfo));
             break;
 
@@ -352,7 +369,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedRangeOperationState(),
+                *state,
                 std::move(requestInfo));
             break;
         case TEvIndexTabletPrivate::EForcedRangeOperationMode::DeleteZeroCompactionRanges:
@@ -360,12 +377,55 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedRangeOperationState(),
+                *state,
                 std::move(requestInfo));
             break;
 
         default:
             TABLET_VERIFY_C(false, "unexpected forced compaction mode");
+    }
+
+    auto actorId = ctx.Register(actor.release());
+    WorkerActors.insert(actorId);
+}
+
+void TIndexTabletActor::HandleForcedTabletOperation(
+    const TEvIndexTabletPrivate::TEvForcedTabletOperationRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s ForcedTabletOperation request",
+        LogTag.c_str());
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
+
+    // will lose original request info in case of enqueueing external request
+    if (IsForcedOperationRunning()) {
+        EnqueueForcedTabletOperation(msg->Mode);
+        return;
+    }
+
+    StartForcedTabletOperation(
+        msg->Mode,
+        std::move(msg->OperationId));
+
+    std::unique_ptr<IActor> actor;
+
+    switch (msg->Mode) {
+        case TEvIndexTabletPrivate::EForcedTabletOperationMode::Flush:
+            break;
+        case TEvIndexTabletPrivate::EForcedTabletOperationMode::FlushBytes:
+            break;
+        case TEvIndexTabletPrivate::EForcedTabletOperationMode::CollectGarbage:
+            break;
+        default:
+            TABLET_VERIFY_C(false, "unexpected forced tablet operation mode");
     }
 
     auto actorId = ctx.Register(actor.release());
@@ -382,11 +442,11 @@ void TIndexTabletActor::HandleForcedRangeOperationCompleted(
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
-    TABLET_VERIFY(IsForcedRangeOperationRunning());
+    TABLET_VERIFY(IsForcedOperationRunning());
     WorkerActors.erase(ev->Sender);
 
     CompleteForcedRangeOperation();
-    EnqueueForcedRangeOperationIfNeeded(ctx);
+    EnqueueForcedOperationIfNeeded(ctx);
 }
 
 void TIndexTabletActor::HandleForcedRangeOperationProgress(
@@ -395,9 +455,26 @@ void TIndexTabletActor::HandleForcedRangeOperationProgress(
 {
     Y_UNUSED(ctx);
 
-    if (IsForcedRangeOperationRunning()) {
+    if (IsForcedOperationRunning()) {
         UpdateForcedRangeOperationProgress(ev->Get()->Current);
     }
+}
+
+void TIndexTabletActor::HandleForcedTabletOperationCompleted(
+    const TEvIndexTabletPrivate::TEvForcedTabletOperationCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s ForcedTabletOperation completed (%s)",
+        LogTag.c_str(),
+        FormatError(msg->GetError()).c_str());
+
+    TABLET_VERIFY(IsForcedOperationRunning());
+    WorkerActors.erase(ev->Sender);
+
+    CompleteForcedTabletOperation();
+    EnqueueForcedOperationIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
