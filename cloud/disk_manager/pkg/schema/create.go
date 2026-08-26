@@ -79,7 +79,10 @@ func create(
 
 	logging.Info(ctx, "Initiliazing schema")
 
-	creds := auth.NewCredentials(ctx, config.GetAuthConfig())
+	creds, err := auth.NewCredentials(ctx, config.GetAuthConfig())
+	if err != nil {
+		return err
+	}
 
 	db, err := persistence.NewYDBClient(
 		ctx,
