@@ -63,6 +63,7 @@ type snapshotState struct {
 	deleteTaskID      string
 	deletingAt        time.Time
 	deletedAt         time.Time
+	useDataplaneTasks bool
 	size              uint64
 	storageSize       uint64
 	encryptionMode    uint32
@@ -82,13 +83,14 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 			ZoneId: s.zoneID,
 			DiskId: s.diskID,
 		},
-		CheckpointID: s.checkpointID,
-		CreateTaskID: s.createTaskID,
-		CreatingAt:   s.creatingAt,
-		CreatedBy:    s.createdBy,
-		DeleteTaskID: s.deleteTaskID,
-		Size:         s.size,
-		StorageSize:  s.storageSize,
+		CheckpointID:      s.checkpointID,
+		CreateTaskID:      s.createTaskID,
+		CreatingAt:        s.creatingAt,
+		CreatedBy:         s.createdBy,
+		DeleteTaskID:      s.deleteTaskID,
+		UseDataplaneTasks: s.useDataplaneTasks,
+		Size:              s.size,
+		StorageSize:       s.storageSize,
 		Encryption: &types.EncryptionDesc{
 			Mode: types.EncryptionMode(s.encryptionMode),
 			Key: &types.EncryptionDesc_KeyHash{
@@ -115,6 +117,7 @@ func (s *snapshotState) structValue() persistence.Value {
 		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
 		persistence.StructFieldValue("incremental", persistence.BoolValue(true)), // deprecated
+		persistence.StructFieldValue("use_dataplane_tasks", persistence.BoolValue(true)), // legacy
 		persistence.StructFieldValue("size", persistence.Uint64Value(s.size)),
 		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
 		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
@@ -138,6 +141,7 @@ func scanSnapshotState(res persistence.Result) (state snapshotState, err error) 
 		persistence.OptionalWithDefault("delete_task_id", &state.deleteTaskID),
 		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
+		persistence.OptionalWithDefault("use_dataplane_tasks", &state.useDataplaneTasks),
 		persistence.OptionalWithDefault("size", &state.size),
 		persistence.OptionalWithDefault("storage_size", &state.storageSize),
 		persistence.OptionalWithDefault("encryption_mode", &state.encryptionMode),
@@ -183,6 +187,7 @@ func snapshotStateStructTypeString() string {
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
 		incremental: Bool, /* deprecated */
+		use_dataplane_tasks: Bool, /* legacy */
 		size: Uint64,
 		storage_size: Uint64,
 		encryption_mode: Uint32,
@@ -206,6 +211,7 @@ func snapshotStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("incremental", persistence.Optional(persistence.TypeBool)), // deprecated
+		persistence.WithColumn("use_dataplane_tasks", persistence.Optional(persistence.TypeBool)), // legacy
 		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
@@ -379,14 +385,15 @@ func (s *storageYDB) createSnapshot(
 	}
 
 	state := snapshotState{
-		id:            snapshot.ID,
-		folderID:      snapshot.FolderID,
-		zoneID:        snapshot.Disk.ZoneId,
-		diskID:        snapshot.Disk.DiskId,
-		createRequest: createRequest,
-		createTaskID:  snapshot.CreateTaskID,
-		creatingAt:    snapshot.CreatingAt,
-		createdBy:     snapshot.CreatedBy,
+		id:                snapshot.ID,
+		folderID:          snapshot.FolderID,
+		zoneID:            snapshot.Disk.ZoneId,
+		diskID:            snapshot.Disk.DiskId,
+		createRequest:     createRequest,
+		createTaskID:      snapshot.CreateTaskID,
+		creatingAt:        snapshot.CreatingAt,
+		createdBy:         snapshot.CreatedBy,
+		useDataplaneTasks: true,
 
 		status: snapshotStatusCreating,
 	}
