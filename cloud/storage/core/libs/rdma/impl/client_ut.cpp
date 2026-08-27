@@ -5,6 +5,7 @@
 
 #include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 #include <cloud/storage/core/libs/rdma/iface/protocol.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -133,6 +134,27 @@ TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
     ASSERT_EQ(42, testContext->ToS);
 }
 
+TEST(TRdmaClientTest, ShouldDeriveQueueSizesFromQueueSizeAtValidate)
+{
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+    auto log = logging->CreateLog("TEST");
+
+    // QueueSize is assigned after construction (the usual pattern); the
+    // send/recv queues must still pick it up.
+    TClientConfig clientConfig;
+    clientConfig.QueueSize = 256;
+    clientConfig.Validate(log);
+    EXPECT_EQ(256u, clientConfig.SendQueueSize);
+    EXPECT_EQ(256u, clientConfig.RecvQueueSize);
+
+    TServerConfig serverConfig;
+    serverConfig.QueueSize = 512;
+    serverConfig.Validate(log);
+    EXPECT_EQ(512u, serverConfig.SendQueueSize);
+    EXPECT_EQ(512u, serverConfig.RecvQueueSize);
+}
+
 TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
 {
     auto testContext = MakeIntrusive<NVerbs::TTestContext>();
@@ -156,6 +178,7 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
     std::atomic<int> connectRnrRetryCount = -1;
 
     std::atomic<bool> modifyCalled = false;
+    std::atomic<bool> ackTimeoutCalled = false;
 
     testContext->HandleResolveAddress =
         [&](rdma_cm_id* id, sockaddr* srcAddr, sockaddr* dstAddr, TDuration t)
@@ -180,13 +203,23 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
     {
         Y_UNUSED(qp);
 
-        const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
-
-        EXPECT_EQ(expectedMask, mask);
-        EXPECT_EQ(clientConfig->QpTimeout, attr->timeout);
+        // The ACK timeout travels via RDMA_OPTION_ID_ACK_TIMEOUT (the QP is
+        // in RTS by the time SetupQP runs); only min_rnr_timer is modified.
+        EXPECT_EQ(IBV_QP_MIN_RNR_TIMER, mask);
         EXPECT_EQ(clientConfig->QpMinRnrTimer, attr->min_rnr_timer);
 
         modifyCalled.store(true);
+    };
+
+    testContext->SetAckTimeout = [&](rdma_cm_id* id, ui8 timeout)
+    {
+        Y_UNUSED(id);
+
+        EXPECT_EQ(clientConfig->QpTimeout, timeout);
+        // The CM applies the option during connect; it must be set before.
+        EXPECT_FALSE(connectCalled.load());
+
+        ackTimeoutCalled.store(true);
     };
 
     testContext->HandleConnect = [&](rdma_cm_id* id, rdma_conn_param* param)
@@ -233,6 +266,7 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
     ASSERT_EQ(clientConfig->QpRnrRetryCount, connectRnrRetryCount.load());
 
     ASSERT_TRUE(modifyCalled.load());
+    ASSERT_TRUE(ackTimeoutCalled.load());
 }
 
 TEST(TRdmaClientTest, ShouldDetachFromPoller)

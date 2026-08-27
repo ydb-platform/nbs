@@ -109,6 +109,11 @@ public:
         (override));
     MOCK_METHOD(
         void,
+        SetAckTimeout,
+        (rdma_cm_id * id, ui8 timeout),
+        (override));
+    MOCK_METHOD(
+        void,
         ResolveAddress,
         (rdma_cm_id * id, sockaddr* src, sockaddr* dst, TDuration timeout),
         (override));

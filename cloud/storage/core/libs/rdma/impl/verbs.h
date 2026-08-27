@@ -108,6 +108,11 @@ struct IVerbs
         rdma_port_space ps,
         ui8 tos) = 0;
 
+    // Sets the CM-applied ACK timeout (RDMA_OPTION_ID_ACK_TIMEOUT). Must be
+    // called before connect/accept: the CM installs it during its RTR->RTS
+    // transition, and IBV_QP_TIMEOUT is not modifiable once the QP is in RTS.
+    virtual void SetAckTimeout(rdma_cm_id* id, ui8 timeout) = 0;
+
     virtual void BindAddress(rdma_cm_id* id, sockaddr* addr) = 0;
     virtual void ResolveAddress(
         rdma_cm_id* id,

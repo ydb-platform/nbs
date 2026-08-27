@@ -520,12 +520,11 @@ TServerSession::~TServerSession()
 
 void TServerSession::SetupQP()
 {
+    // The ACK timeout is applied via RDMA_OPTION_ID_ACK_TIMEOUT before
+    // rdma_accept; the QP is already in RTS here and IBV_QP_TIMEOUT is not
+    // modifiable in this state.
     ibv_qp_attr qpAttr{};
     int mask = 0;
-    if (Config->QpTimeout > 0) {
-        qpAttr.timeout = Config->QpTimeout;
-        mask |= IBV_QP_TIMEOUT;
-    }
     if (Config->QpMinRnrTimer > 0) {
         qpAttr.min_rnr_timer = Config->QpMinRnrTimer;
         mask |= IBV_QP_MIN_RNR_TIMER;
@@ -1981,6 +1980,10 @@ void TServer::Accept(
             .retry_count = Config->QpRetryCount,
             .rnr_retry_count = Config->QpRnrRetryCount,
         };
+
+        if (Config->QpTimeout > 0) {
+            Verbs->SetAckTimeout(event->id, Config->QpTimeout);
+        }
 
         RDMA_DEBUG("accept " << Verbs->GetPeer(event->id));
         Verbs->Accept(event->id, &acceptParams);

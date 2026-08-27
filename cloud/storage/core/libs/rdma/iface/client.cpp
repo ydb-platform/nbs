@@ -6,19 +6,21 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TClientConfig::TClientConfig()
+TClientConfig::TClientConfig() = default;
+
+void TClientConfig::Validate(TLog& log)
 {
-    // Compatibility with the old config.
+    // Compatibility with the old config. Derived here rather than in the
+    // constructor: QueueSize is assigned after construction, so a ctor-time
+    // derivation would freeze the queues at the default (10) regardless of
+    // the configured value.
     if (SendQueueSize == 0 && QueueSize > 0) {
         SendQueueSize = QueueSize;
     }
     if (RecvQueueSize == 0 && QueueSize > 0) {
         RecvQueueSize = QueueSize;
     }
-}
 
-void TClientConfig::Validate(TLog& log)
-{
     BufferPool.Validate(log);
     constexpr ui8 ThreeBitsMax = 7;
     constexpr ui8 FiveBitsMax = 31;
