@@ -266,6 +266,12 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
 
     std::atomic<i64> OrphanNodesCount{0};
 
+    // Deferred node destruction stats
+    std::atomic<i64> DeferredNodeDestructionCount{0};
+    std::atomic<i64> DeferredNodeDestructionsCompleted{0};
+    std::atomic<i64> DeferredNodeDestructionsCancelled{0};
+    std::atomic<i64> NodeDestructionsDeferralSkipped{0};
+
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
 
     using TLatHistogram =

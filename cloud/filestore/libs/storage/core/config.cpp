@@ -270,6 +270,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                        TDuration,  TDuration::Zero()          )\
     xxx(UnconfirmedCreateHandleGraceTimeout,                                   \
                                        TDuration,  TDuration::Minutes(2)      )\
+    xxx(MaxDeferredNodeDestructionCount,                ui64,       100'000   )\
+    xxx(MaxDeferredNodeDestructionsPerTx,               ui32,       1'000     )\
                                                                                \
     xxx(NodeRegistrationMaxAttempts,         ui32,      10                    )\
     xxx(NodeRegistrationTimeout,             TDuration, TDuration::Seconds(5) )\

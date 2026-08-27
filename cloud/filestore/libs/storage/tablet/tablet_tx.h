@@ -118,6 +118,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
     xxx(CommitRenameNodeInSource,           __VA_ARGS__)                       \
     xxx(DeleteResponseLogEntries,           __VA_ARGS__)                       \
+    xxx(DestroyDeferredNodes,               __VA_ARGS__)                       \
     xxx(GetResponseLogEntry,                __VA_ARGS__)                       \
     xxx(WriteResponseLogEntry,              __VA_ARGS__)                       \
                                                                                \
@@ -371,6 +372,7 @@ struct TTxIndexTablet
         TVector<NProtoPrivate::TResponseLogEntry> ResponseLog;
         TVector<TDeletionMarker> LargeDeletionMarkers;
         TVector<ui64> OrphanNodeIds;
+        TVector<ui64> DeferredNodeDestructionIds;
         TVector<TIndexTabletDatabase::TUnconfirmedDataEntry> UnconfirmedData;
 
         void Clear() override
@@ -399,6 +401,7 @@ struct TTxIndexTablet
             ResponseLog.clear();
             LargeDeletionMarkers.clear();
             OrphanNodeIds.clear();
+            DeferredNodeDestructionIds.clear();
             UnconfirmedData.clear();
         }
     };
@@ -1394,6 +1397,40 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+        }
+    };
+
+    //
+    // DestroyDeferredNodes
+    //
+
+    struct TDestroyDeferredNodes
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TIndexStateNodeUpdates
+    {
+        // actually unused, needed in tablet_tx.h to avoid sophisticated
+        // template tricks
+        const TRequestInfoPtr RequestInfo;
+
+        const TVector<ui64> NodeIds;
+
+        TVector<TMaybe<INodeIndexTabletDatabase::TNode>> Nodes;
+        ui64 DestroyedNodeCount = 0;
+        ui64 CancelledNodeCount = 0;
+
+        explicit TDestroyDeferredNodes(TVector<ui64> nodeIds)
+            : NodeIds(std::move(nodeIds))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+
+            Nodes.clear();
+            DestroyedNodeCount = 0;
+            CancelledNodeCount = 0;
         }
     };
 

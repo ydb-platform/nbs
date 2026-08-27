@@ -37,6 +37,7 @@ SRCS(
     tablet_actor_deletecheckpoint.cpp
     tablet_actor_deletegarbage.cpp
     tablet_actor_destroycheckpoint.cpp
+    tablet_actor_destroydeferrednodes.cpp
     tablet_actor_destroyhandle.cpp
     tablet_actor_destroysession.cpp
     tablet_actor_dumprange.cpp

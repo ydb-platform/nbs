@@ -333,6 +333,19 @@ void TTabletMetrics::Register(
 
     REGISTER_AGGREGATABLE_SUM(OrphanNodesCount, EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(
+        DeferredNodeDestructionCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        DeferredNodeDestructionsCompleted,
+        EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        DeferredNodeDestructionsCancelled,
+        EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        NodeDestructionsDeferralSkipped,
+        EMetricType::MT_DERIVATIVE);
+
     // Throttling
     REGISTER_LOCAL(MaxReadBandwidth, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxWriteBandwidth, EMetricType::MT_ABSOLUTE);

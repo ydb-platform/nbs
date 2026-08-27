@@ -154,6 +154,7 @@ struct TNodeToSessionCounters
 struct TMiscNodeStats
 {
     i64 OrphanNodesCount{0};
+    i64 DeferredNodeDestructionCount{0};
 };
 
 struct THandlesStats
@@ -294,6 +295,7 @@ public:
         const NCloud::NProto::TTabletStorageInfo& tabletStorageInfo,
         const TVector<TDeletionMarker>& largeDeletionMarkers,
         const TVector<ui64>& orphanNodeIds,
+        const TVector<ui64>& deferredNodeDestructionIds,
         const TVector<NProto::TOpLogEntry>& opLog,
         const TVector<NProtoPrivate::TResponseLogEntry>& responseLog,
         const TThrottlerConfig& throttlerConfig);
@@ -575,6 +577,13 @@ public:
         ui64 minCommitId,
         ui64 maxCommitId);
 
+    // True if unlinking this node destroys it, i.e. it has no other links and
+    // no open handles.
+    bool UnlinkDestroysNode(const INodeIndexTabletDatabase::TNode& node) const;
+
+    // If deferDestruction is set, a node that loses its last reference is kept
+    // in the index and registered for a deferred destruction instead of being
+    // removed right away.
     [[nodiscard]] NProto::TError UnlinkNode(
         IIndexTabletDatabase& db,
         ui64 parentNodeId,
@@ -582,7 +591,8 @@ public:
         const INodeIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId,
-        bool removeNodeRef);
+        bool removeNodeRef,
+        bool deferDestruction);
 
     void UnlinkExternalNode(
         IIndexTabletDatabase& db,
@@ -610,6 +620,16 @@ public:
         IIndexTabletDatabase& db,
         const TString& message,
         ui64 nodeId);
+
+    //
+    // DeferredNodeDestruction
+    //
+
+    void AddDeferredNodeDestruction(IIndexTabletDatabase& db, ui64 nodeId);
+    void RemoveDeferredNodeDestruction(IIndexTabletDatabase& db, ui64 nodeId);
+    bool HasDeferredNodeDestruction(ui64 nodeId) const;
+    ui64 GetDeferredNodeDestructionCount() const;
+    TVector<ui64> GetDeferredNodeDestructionIds(ui64 maxCount) const;
 
     bool HasPendingNodeCreateInShard(const TString& nodeName) const;
 

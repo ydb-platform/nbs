@@ -187,6 +187,9 @@ private:
     TInstant ReassignRequestSentTs;
 
     TInstant TabletStartTs;
+    // The largest node id that existed when this tablet incarnation started.
+    // A handle lost by the restart can only refer to this or an earlier node.
+    ui64 MaxNodeIdAtTabletStart = 0;
 
     TThrottlerLogger ThrottlerLogger;
     ITabletThrottlerPtr Throttler;
@@ -326,6 +329,7 @@ private:
     void CalculateActorCPUUsage(const NActors::TActorContext& ctx);
 
     void DeleteOldResponseLogEntries(const NActors::TActorContext& ctx);
+    void DestroyDeferredNodes(const NActors::TActorContext& ctx);
     void RunRegularTasks(const NActors::TActorContext& ctx);
 
     void ScheduleSyncSessions(const NActors::TActorContext& ctx);
@@ -606,6 +610,26 @@ private:
         bool validateHandle);
 
     NProto::TError IsDataOperationAllowed() const;
+    bool IsInUnconfirmedCreateHandleGracePeriod(
+        const NActors::TActorContext& ctx) const;
+    bool NeedsNodeDestructionDeferral(
+        const NActors::TActorContext& ctx,
+        const INodeIndexTabletDatabase::TNode& node) const;
+    // True if unlinking this node should keep it in the index until the grace
+    // period is over. Reports a critical event if the node needs the deferral
+    // but the limit leaves no room for it.
+    bool ShouldDeferNodeDestruction(
+        const NActors::TActorContext& ctx,
+        const INodeIndexTabletDatabase::TNode& node,
+        TStringBuf operation);
+    // Returns true if the node was actually removed, false if its destruction
+    // was deferred or failed (in the latter case an orphan node is written).
+    bool DeferNodeDestructionOrRemoveNode(
+        IIndexTabletDatabase& db,
+        const NActors::TActorContext& ctx,
+        const INodeIndexTabletDatabase::TNode& node,
+        ui64 commitId,
+        const TString& operation);
     NProto::TError ErrorHandleNotFound(
         const NActors::TActorContext& ctx,
         ui64 handle) const;

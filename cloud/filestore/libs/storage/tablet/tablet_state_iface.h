@@ -533,6 +533,14 @@ public:
     virtual bool ReadOrphanNodes(TVector<ui64>& nodeIds) = 0;
 
     //
+    // DeferredNodeDestruction
+    //
+
+    virtual void WriteDeferredNodeDestruction(ui64 nodeId) = 0;
+    virtual void DeleteDeferredNodeDestruction(ui64 nodeId) = 0;
+    virtual bool ReadDeferredNodeDestructions(TVector<ui64>& nodeIds) = 0;
+
+    //
     // NewBlobs
     //
 
