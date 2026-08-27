@@ -164,6 +164,8 @@ struct TRequest
     NVerbs::TMemoryWindowPtr InMemoryWindow = NVerbs::NullPtr;
     NVerbs::TMemoryWindowPtr OutMemoryWindow = NVerbs::NullPtr;
 
+    ui64 BufferPoolGeneration = 0;
+
     ERequestState State = ERequestState::Init;
 
     TRequest(
@@ -597,6 +599,7 @@ private:
 
     TBufferPool SendBuffers;
     TBufferPool RecvBuffers;
+    std::atomic<ui64> BufferPoolGeneration = 0;
     TMutex AllocationLock;
 
     TPooledBuffer SendBuffer {};
@@ -800,6 +803,8 @@ void TClientEndpoint::ChangeState(
 
 void TClientEndpoint::CreateQP()
 {
+    ++BufferPoolGeneration;
+
     CompletionChannel = Verbs->CreateCompletionChannel(Connection->verbs);
     SetNonBlock(CompletionChannel->fd, true);
 
@@ -987,6 +992,7 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
         shared_from_this(),
         std::move(handler),
         std::move(context));
+    req->BufferPoolGeneration = BufferPoolGeneration.load();
 
     try {
         with_lock (AllocationLock) {
@@ -1033,6 +1039,15 @@ ui64 TClientEndpoint::SendRequest(
 
     auto clientReqId = GetNewReqId();
     req->ClientReqId = clientReqId;
+
+    if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
+        // Endpoint reconnected between AllocateRequest() and SendRequest():
+        // req->OutBuffer/OutMemoryWindow may belong to an already torn down
+        // pool generation/PD.
+        auto* handler = req->Handler.get();
+        handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, 0);
+        return clientReqId;
+    }
 
     if (!CheckState(EEndpointState::Connected)) {
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
@@ -1957,6 +1972,19 @@ bool TClientEndpoint::FlushHanging() const
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
 {
     with_lock (AllocationLock) {
+        const bool sameBufferPoolGeneration =
+            req->BufferPoolGeneration == BufferPoolGeneration.load();
+
+        if (!sameBufferPoolGeneration) {
+            // Late request destruction after reconnect: buffers/windows
+            // belong to an older pool generation and cannot be safely
+            // released via the current pool/PD, so just drop them without
+            // touching SendBuffers/RecvBuffers or calling ibv_dealloc_mw.
+            req->InMemoryWindow.release();
+            req->OutMemoryWindow.release();
+            return;
+        }
+
         // destroy memory windows that haven't been properly invalidated
         if (req->InMemoryWindow) {
             req->InMemoryWindow.reset();
