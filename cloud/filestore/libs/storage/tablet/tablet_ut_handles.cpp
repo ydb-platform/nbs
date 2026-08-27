@@ -1391,6 +1391,70 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             response->Record.GetError().GetMessage());
     }
 
+    Y_UNIT_TEST(ShouldDestroyDeferredNodeWithAnotherTransactionInFlight)
+    {
+        TTestEnv env({}, DeferredNodeDestructionConfig());
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        CreateAndLoseAsyncHandle(env, tablet, id, 100500);
+
+        tablet.UnlinkNode(
+            RootNodeId,
+            "test",
+            false /* unlinkDirectory */);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+
+        TVector<TAutoPtr<IEventHandle>> heldCommits;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == NKikimr::TEvTablet::EvCommit &&
+                    event->Get<NKikimr::TEvTablet::TEvCommit>()->TabletID ==
+                        tabletId)
+                {
+                    heldCommits.push_back(std::move(event));
+                    return true;
+                }
+
+                return false;
+            });
+
+        // Keep an unrelated transaction in flight while the regular task
+        // starts the deferred node destruction transaction.
+        tablet.SendRequest(tablet.CreateCreateNodeRequest(
+            TCreateNodeArgs::File(RootNodeId, "blocker")));
+        env.GetRuntime().DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]() { return !heldCommits.empty(); }});
+
+        tablet.AdvanceTime(TDuration::Seconds(10));
+        env.GetRuntime().DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]() { return heldCommits.size() >= 2; }});
+
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto& event: heldCommits) {
+            env.GetRuntime().Send(event.Release(), nodeIdx);
+        }
+
+        auto response = tablet.RecvCreateNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->Record.GetError().GetCode(),
+            response->Record.GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, GetUsedNodesCount(tablet));
+        tablet.AssertAccessNodeFailed(id);
+    }
+
     Y_UNIT_TEST(ShouldDestroyDeferredNodeAfterTabletRestart)
     {
         TTestEnv env({}, DeferredNodeDestructionConfig());

@@ -60,9 +60,8 @@ void TIndexTabletActor::ExecuteTx_DestroyDeferredNodes(
 
     const ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return ScheduleRebootTabletOnCommitIdOverflow(
-            ctx,
-            "DestroyDeferredNodes");
+        args.OnCommitIdOverflow();
+        return;
     }
 
     for (ui32 i = 0; i < args.NodeIds.size(); ++i) {

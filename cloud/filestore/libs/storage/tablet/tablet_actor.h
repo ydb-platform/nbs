@@ -189,7 +189,7 @@ private:
     TInstant TabletStartTs;
     // The largest node id that existed when this tablet incarnation started.
     // A handle lost by the restart can only refer to this or an earlier node.
-    ui64 MaxNodeIdAtStart = 0;
+    ui64 MaxNodeIdAtTabletStart = 0;
 
     TThrottlerLogger ThrottlerLogger;
     ITabletThrottlerPtr Throttler;

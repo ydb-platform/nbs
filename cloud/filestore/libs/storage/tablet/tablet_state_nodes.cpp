@@ -120,11 +120,6 @@ NProto::TError TIndexTabletState::RemoveNode(
     ui64 minCommitId,
     ui64 maxCommitId)
 {
-    // the node is gone - nothing to destroy later, no matter how this call ends
-    if (HasDeferredNodeDestruction(node.NodeId)) {
-        RemoveDeferredNodeDestruction(db, node.NodeId);
-    }
-
     // SymLinks have size (equal to TargetPath) but store no real data so there
     // is no need to write deletion markers upon SymLink removal
     if (!node.Attrs.GetSymLink()) {

@@ -423,7 +423,8 @@ void TIndexTabletActor::CompleteTx_LoadState(
         config);
     UpdateLogTag();
 
-    MaxNodeIdAtStart = ShardedId(GetLastNodeId(), GetFileSystem().GetShardNo());
+    MaxNodeIdAtTabletStart =
+        ShardedId(GetLastNodeId(), GetFileSystem().GetShardNo());
 
     NMetrics::Store(Metrics->OpLogEntryCount, GetOpLogEntryCount());
     NMetrics::Store(Metrics->ResponseLogEntryCount, GetResponseLogEntryCount());

@@ -674,7 +674,7 @@ bool TIndexTabletActor::NeedsNodeDestructionDeferral(
         && IsInUnconfirmedCreateHandleGracePeriod(ctx)
         && !GetFileSystem().GetIsFastShard()
         && node.Attrs.GetType() == NProto::E_REGULAR_NODE
-        && node.NodeId <= MaxNodeIdAtStart;
+        && node.NodeId <= MaxNodeIdAtTabletStart;
 }
 
 bool TIndexTabletActor::ShouldDeferNodeDestruction(

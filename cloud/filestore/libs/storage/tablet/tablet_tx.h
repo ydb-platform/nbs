@@ -1406,6 +1406,7 @@ struct TTxIndexTablet
 
     struct TDestroyDeferredNodes
         : TTxIndexTabletBase
+        , TErrorAware
         , TIndexStateNodeUpdates
     {
         // actually unused, needed in tablet_tx.h to avoid sophisticated
@@ -1424,6 +1425,7 @@ struct TTxIndexTablet
 
         void Clear() override
         {
+            TErrorAware::Clear();
             TIndexStateNodeUpdates::Clear();
 
             Nodes.clear();
