@@ -110,6 +110,7 @@ enum class ERequestState
 {
     Init,
     Enqueued,
+    Started,
     BindInBuffer,
     BindOutBuffer,
     SendRequest,
@@ -125,6 +126,7 @@ inline IOutputStream& operator<<(IOutputStream& out, ERequestState state)
     static const char* string[] = {
         "Init",
         "Enqueued",
+        "Started",
         "BindInBuffer",
         "BindOutBuffer",
         "SendRequest",
@@ -1284,12 +1286,12 @@ void TClientEndpoint::AbortRequest(
             Counters->RequestAborted();
             break;
 
+        case ERequestState::Started:
         case ERequestState::SendRequest:
             Counters->RequestAborted();
             break;
 
         case ERequestState::InvalidateBuffers:
-            Counters->RequestDequeued();
             Counters->InvalidationDequeued();
             Counters->RequestAborted();
             break;
@@ -1487,12 +1489,12 @@ void TClientEndpoint::StartRequest(TRequestPtr request, TSendWr* send) noexcept
 
     auto* msg = send->Message();
     Zero(*msg);
-
     InitMessageHeader(msg, NegotiatedProtocolVersion);
     msg->ReqId = req->ReqId;
     msg->In = req->InBuffer;
     msg->Out = req->OutBuffer;
 
+    req->State = ERequestState::Started;
     Counters->RequestStarted();
 
     if (Config.UseMemoryWindows) {
