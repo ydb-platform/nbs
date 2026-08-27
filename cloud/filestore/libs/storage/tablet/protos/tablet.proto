@@ -122,6 +122,8 @@ message TNode
     uint64 DevId = 11;
 
     bool IsPreparedForUnlink = 12;
+
+    uint32 QuotaId = 13;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

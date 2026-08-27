@@ -71,6 +71,9 @@ message TNodeAttr
     bytes ShardNodeName = 12;
 
     uint64 DevId = 13;
+
+    // Id of the quota this node (a directory) is attached to, or 0 if none.
+    uint32 QuotaId = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -204,6 +207,10 @@ message TCreateNodeRequest
     // on retry.
     // TODO(#2667): remove once hardlinks are created on the tablet side
     TNodeAttr ShardNodeAttr = 19;
+
+    // The QuotaId this new node should inherit, resolved by whichever tablet
+    // owns the real parent and carried along for the cross-shard operation.
+    uint32 QuotaId = 20;
 }
 
 message TCreateNodeResponse
@@ -420,6 +427,10 @@ message TSetNodeAttrRequest
         F_SET_ATTR_ATIME = 5;
         F_SET_ATTR_MTIME = 6;
         F_SET_ATTR_CTIME = 7;
+
+        // Attach the node (must be an empty directory) to the quota identified
+        // by TUpdate.QuotaId.
+        F_SET_ATTR_QUOTA_ID = 8;
     }
 
     message TUpdate
@@ -431,6 +442,7 @@ message TSetNodeAttrRequest
         uint64 ATime = 5;
         uint64 MTime = 6;
         uint64 CTime = 7;
+        uint32 QuotaId = 8;
     }
 
     // Optional request headers.

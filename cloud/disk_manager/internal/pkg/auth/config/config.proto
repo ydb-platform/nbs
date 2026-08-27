@@ -15,6 +15,21 @@ message ServiceAccount {
     required string TokenSigningCertFile = 4;
 }
 
+message TypedToken {
+    required string TokenType = 1;
+
+    oneof Source {
+        string Value = 2;
+        string File = 3;
+    }
+}
+
+message FederatedCredentials {
+    required string TokenExchangeEndpoint = 1;
+    required TypedToken SubjectToken = 2;
+    optional TypedToken ActorToken = 3;
+}
+
 message AuthConfig {
     optional bool DisableAuthorization = 1;
     optional string MetadataUrl = 2;
@@ -28,4 +43,5 @@ message AuthConfig {
     optional string FolderId = 10;
     optional string AuthorizationCacheLifetime = 11 [default = "15s"];
     optional ServiceAccount ServiceAccount = 12;
+    optional FederatedCredentials FederatedCredentials = 13;
 }

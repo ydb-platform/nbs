@@ -9,6 +9,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
+#include <util/stream/str.h>
 
 #include <sys/stat.h>
 
@@ -22,6 +23,22 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
     // Tablet ut test suite contains tests with memshard w/o
     // CreateNodeUponAccess flag.
     //
+
+    Y_UNIT_TEST(ShouldDumpEmptyLayout)
+    {
+        constexpr ui32 ShardNo = 77;
+
+        NProtoPrivate::TMemFastShardConfig config;
+        auto s = CreateMemFileSystemShard(ShardNo, config);
+
+        TStringStream html;
+        s->DumpLayoutHtml(html);
+        UNIT_ASSERT_VALUES_EQUAL("", html.Str());
+
+        TStringStream json;
+        s->DumpLayoutJson(json);
+        UNIT_ASSERT_VALUES_EQUAL("{}", json.Str());
+    }
 
     Y_UNIT_TEST(ShouldCreateNodeUponAccess)
     {
@@ -101,6 +118,7 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
                 response.GetResponses(0).GetNode().GetId());
         }
 
+        ui64 handle = 0;
         {
             //
             // Create upon access
@@ -137,6 +155,8 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
             request.ClearName();
             response = s->CreateHandle(request).GetValue();
             UNIT_ASSERT_VALUES_EQUAL(nodeId, response.GetNodeAttr().GetId());
+
+            handle = response.GetHandle();
         }
 
         {
@@ -201,6 +221,25 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
                 response.GetError().GetCode(),
                 response.GetError().GetMessage());
         }
+
+        {
+            NProto::TWriteDataRequest request;
+            request.SetHandle(handle);
+            request.SetBuffer(TString(5_KB, 'x'));
+            auto response = s->WriteData(request).GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        TFileSystemShardStats stats;
+        auto e = s->CollectStats(&stats).GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, e.GetCode(), e.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.UsedNodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.UsedNameCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.UsedHandleCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.UsedPageCount);
     }
 }
 

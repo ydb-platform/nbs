@@ -207,6 +207,60 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             client.GetVolumeClientInfo().GetMountFlags());
     }
 
+    Y_UNIT_TEST(ShouldPreserveStateOwnedTimestampsOnClientInfoUpdate)
+    {
+        constexpr ui64 disconnectTimestamp = 123;
+        constexpr ui64 lastActivityTimestamp = 456;
+
+        auto info = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        info.SetDisconnectTimestamp(disconnectTimestamp);
+        info.SetLastActivityTimestamp(lastActivityTimestamp);
+
+        TVolumeClientState client{info};
+
+        auto updatedInfo = info;
+        updatedInfo.SetHost("new-host");
+        updatedInfo.SetMountSeqNumber(42);
+        updatedInfo.SetDisconnectTimestamp(0);
+        updatedInfo.SetLastActivityTimestamp(0);
+
+        client.UpdateClientInfo(updatedInfo);
+
+        const auto& result = client.GetVolumeClientInfo();
+        UNIT_ASSERT_VALUES_EQUAL("new-host", result.GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(42, result.GetMountSeqNumber());
+        UNIT_ASSERT_VALUES_EQUAL(
+            disconnectTimestamp,
+            result.GetDisconnectTimestamp());
+        UNIT_ASSERT_VALUES_EQUAL(
+            lastActivityTimestamp,
+            result.GetLastActivityTimestamp());
+
+        auto addResult = client.AddPipe(
+            CreateActor(1, 1),
+            CreateActor(1, 1).NodeId(),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        UNIT_ASSERT_C(
+            !HasError(addResult.Error),
+            FormatError(addResult.Error));
+
+        client.UpdateClientInfo(updatedInfo);
+
+        // AddPipe owns the transition back to the connected state. Preserve
+        // its zero value instead of restoring the stale disconnect timestamp.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            client.GetVolumeClientInfo().GetDisconnectTimestamp());
+        UNIT_ASSERT_VALUES_EQUAL(
+            lastActivityTimestamp,
+            client.GetVolumeClientInfo().GetLastActivityTimestamp());
+    }
+
     Y_UNIT_TEST(ShouldHandlePipeActivationDeactivation)
     {
         auto initialMountMode = NProto::VOLUME_MOUNT_REMOTE;
@@ -396,6 +450,111 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
         UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
         ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
         UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
+    }
+
+    Y_UNIT_TEST(ShouldApplyLocalPriorityToForwardedPipes)
+    {
+        auto info = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0);
+
+        TVolumeClientState client{info};
+
+        const auto remotePipe1 = CreateActor(1, 1);
+        const auto localPipe1 = CreateActor(2, 2);
+        const auto remotePipe2 = CreateActor(3, 3);
+        const auto localPipe2 = CreateActor(4, 4);
+
+        UNIT_ASSERT(!HasError(client.AddPipe(
+            remotePipe1,
+            remotePipe1.NodeId(),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0).Error));
+
+        UNIT_ASSERT(!HasError(client.AddPipe(
+            localPipe1,
+            localPipe1.NodeId(),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0).Error));
+
+        auto error = client.CheckPipeRequest(remotePipe1, true, "", "");
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        // A logically local mounter can preempt a remote mounter even though
+        // both requests are delivered through tablet pipes.
+        error = client.CheckPipeRequest(localPipe1, true, "", "");
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVolumeClientState::EPipeState::DEACTIVATED,
+            client.GetPipeInfo(remotePipe1)->State);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVolumeClientState::EPipeState::ACTIVE,
+            client.GetPipeInfo(localPipe1)->State);
+
+        UNIT_ASSERT(!HasError(client.AddPipe(
+            remotePipe2,
+            remotePipe2.NodeId(),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0).Error));
+
+        // A fresh remote pipe must not steal the session back.
+        error = client.CheckPipeRequest(remotePipe2, true, "", "");
+        UNIT_ASSERT_VALUES_EQUAL_C(E_REJECTED, error.GetCode(), error);
+
+        UNIT_ASSERT(!HasError(client.AddPipe(
+            localPipe2,
+            localPipe2.NodeId(),
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0).Error));
+
+        // A new primary pipe may replace an old primary after a cell-host
+        // switch or reconnect.
+        error = client.CheckPipeRequest(localPipe2, true, "", "");
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVolumeClientState::EPipeState::DEACTIVATED,
+            client.GetPipeInfo(localPipe1)->State);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVolumeClientState::EPipeState::ACTIVE,
+            client.GetPipeInfo(localPipe2)->State);
+    }
+
+    Y_UNIT_TEST(ShouldAllowRemoteMountPipeOnLocalDataPath)
+    {
+        auto info = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0);
+
+        TVolumeClientState client{info};
+        const auto pipe = CreateActor(1, 1);
+
+        auto addResult = client.AddPipe(
+            pipe,
+            pipe.NodeId(),
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0);
+        UNIT_ASSERT_C(
+            !HasError(addResult.Error),
+            FormatError(addResult.Error));
+
+        // MountMode describes blue-green priority. A REMOTE mount can still
+        // use the local data path when the volume is physically bound to the
+        // same service node.
+        auto error = client.CheckLocalRequest(pipe.NodeId(), false, "", "");
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        const auto pipeInfo = client.GetPipeInfo(pipe);
+        UNIT_ASSERT(pipeInfo);
+        UNIT_ASSERT(pipeInfo->IsLocal);
+        UNIT_ASSERT_VALUES_EQUAL(NProto::VOLUME_MOUNT_REMOTE, pipeInfo->MountMode);
     }
 
     Y_UNIT_TEST(ShouldSelectNewActiveLocalPipeOnReconnect)

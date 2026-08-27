@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 
@@ -46,6 +47,26 @@ void CheckDescribe(auto endpoint, TString cellId, ui32 errorCode)
 
 Y_UNIT_TEST_SUITE(TServerTest)
 {
+    Y_UNIT_TEST(ShouldPrepareRequestHeaders)
+    {
+        NProto::THeaders headers;
+
+        NImpl::PrepareRequestHeaders(
+            NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL,
+            "ipv6:%5Bfe80::1%2542%5D:12345",
+            "test-auth-token",
+            headers);
+
+        const auto& internal = headers.GetInternal();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL),
+            static_cast<ui32>(internal.GetRequestSource()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "ipv6:[fe80::1%42]:12345",
+            internal.GetPeer());
+        UNIT_ASSERT_VALUES_EQUAL("test-auth-token", internal.GetAuthToken());
+    }
+
     Y_UNIT_TEST(ShouldHandleRequests)
     {
         TPortManager portManager;

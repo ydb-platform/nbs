@@ -1,3 +1,5 @@
+import os
+
 from cloud.tasks.test.common.processes import register_process, kill_processes
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
@@ -15,7 +17,7 @@ class YDBLauncher:
             dict(name="dynamic_storage_pool:4", kind="ssdencrypted", pdisk_user_kind=0),
         ]
         self.__configurator = KikimrConfigGenerator(
-            binary_path=ydb_binary_path,
+            binary_paths=[ydb_binary_path],
             erasure=None,
             static_pdisk_size=64 * 2**30,
             dynamic_storage_pools=dynamic_storage_pools,
@@ -26,6 +28,9 @@ class YDBLauncher:
         self.__dynamic_storage_pools = dynamic_storage_pools
 
     def start(self):
+        # Make ydbd use the harness-allocated PGWire port; otherwise its default
+        # port 5432 may collide with a dynamically allocated monitoring port.
+        os.environ["YDB_ALLOCATE_PGWIRE_PORT"] = "true"
         self.__cluster.start()
         for kimimr_node in list(self.__cluster.nodes.values()):
             register_process(SERVICE_NAME, kimimr_node.pid)

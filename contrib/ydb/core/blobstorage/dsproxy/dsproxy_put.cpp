@@ -28,7 +28,7 @@ struct TEvAccelerate : public TEventLocal<TEvAccelerate, TEvBlobStorage::EvAccel
 // PUT request
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobStorageGroupPutRequest> {
+class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor {
     TPutImpl PutImpl;
     TRootCause RootCauseTrack;
 
@@ -73,8 +73,6 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
     ui32 AccelerateRequestsSent = 0;
     bool IsAccelerateScheduled = false;
 
-    const bool IsMultiPutMode;
-
     bool Done = false;
 
     NLWTrace::TOrbit Orbit;
@@ -99,7 +97,7 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
             << " sent over MaxSaneRequests# " << MaxSaneRequests
             << " requests, internal state# " << PutImpl.DumpFullState();
         ErrorReason = err.Str();
-        R_LOG_CRIT_S("BPG21", ErrorReason);
+        DSP_LOG_CRIT_S("BPG21", ErrorReason);
         ReplyAndDie(NKikimrProto::ERROR);
     }
 
@@ -124,7 +122,20 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
 
         // Count them properly.
         UpdatePengingVDiskResponseCount(events);
-        CountPuts(events);
+        for (const auto& ev : events) {
+            CountPut(std::visit([](const auto& item) { return item->GetBufferBytes(); }, ev));
+        }
+
+        // Update metrics for acceleration.
+        if (accelerate) {
+            for (const auto& ev : events) {
+                auto getCounter = TOverloaded{
+                    [&](const std::unique_ptr<TEvBlobStorage::TEvVPut>&) { return Mon->NodeMon->AccelerateEvVPutCount; },
+                    [&](const std::unique_ptr<TEvBlobStorage::TEvVMultiPut>&) { return Mon->NodeMon->AccelerateEvVMultiPutCount; }
+                };
+                std::visit(getCounter, ev)->Inc();
+            }
+        }
 
         // Send to VDisks.
         for (auto& ev : events) {
@@ -162,7 +173,6 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
         PutImpl.History.AddAcceleration(true);
         ++AccelerateRequestsSent;
         Action(true);
-//        *(IsMultiPutMode ? Mon->NodeMon->AccelerateEvVMultiPutCount : Mon->NodeMon->AccelerateEvVPutCount) += v.size();
         TryToScheduleNextAcceleration();
     }
 
@@ -210,7 +220,7 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
             }
 
             const TVDiskID vdiskId = Info->GetVDiskId(i);
-            A_LOG_INFO_S("BPP15", "sending TEvVStatus VDiskId# " << vdiskId);
+            DSP_LOG_INFO_S("BPP15", "sending TEvVStatus VDiskId# " << vdiskId);
             SendToQueue(std::make_unique<TEvBlobStorage::TEvVStatus>(vdiskId), i);
             ++StatusMsgsSent;
             record.StatusIssueTimestamp = now;
@@ -220,9 +230,9 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
     }
 
     void Handle(TEvBlobStorage::TEvVStatusResult::TPtr& ev) {
-        A_LOG_INFO_S("BPP16", "received TEvVStatusResult " << ev->Get()->ToString());
+        DSP_LOG_INFO_S("BPP16", "received TEvVStatusResult " << ev->Get()->ToString());
 
-        ProcessReplyFromQueue(ev);
+        ProcessReplyFromQueue(ev->Get());
         ++StatusResultMsgsReceived;
 
         auto& record = ev->Get()->Record;
@@ -249,10 +259,10 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
     }
 
     void Handle(TEvBlobStorage::TEvVPutResult::TPtr &ev) {
-        A_LOG_LOG_S(false, ev->Get()->Record.GetStatus() == NKikimrProto::OK ? NLog::PRI_DEBUG : NLog::PRI_INFO,
+        DSP_LOG_LOG_S(ev->Get()->Record.GetStatus() == NKikimrProto::OK ? NLog::PRI_DEBUG : NLog::PRI_INFO,
             "BPP01", "received " << ev->Get()->ToString() << " from# " << VDiskIDFromVDiskID(ev->Get()->Record.GetVDiskID()));
 
-        ProcessReplyFromQueue(ev);
+        ProcessReplyFromQueue(ev->Get());
         ResponsesReceived++;
         if (!AccelerateRequestsSent) {
             Y_DEBUG_ABORT_UNLESS(RequestsPendingBeforeAcceleration > 0);
@@ -315,7 +325,7 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
     }
 
     void Handle(TEvBlobStorage::TEvVMultiPutResult::TPtr &ev) {
-        ProcessReplyFromQueue(ev);
+        ProcessReplyFromQueue(ev->Get());
         ResponsesReceived++;
         if (!AccelerateRequestsSent) {
             Y_DEBUG_ABORT_UNLESS(RequestsPendingBeforeAcceleration > 0);
@@ -350,7 +360,7 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
                 }
             }
         }
-        A_LOG_LOG_S(false, prio, "BPP02", "received " << ev->Get()->ToString() << " from# " << vdiskId);
+        DSP_LOG_LOG_S(prio, "BPP02", "received " << ev->Get()->ToString() << " from# " << vdiskId);
 
         Y_ABORT_UNLESS(vdisk < WaitingVDiskResponseCount.size(), " vdisk# %" PRIu32, vdisk);
         if (WaitingVDiskResponseCount[vdisk] == 1) {
@@ -417,7 +427,6 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
                     timeToAccelerateUs *= 2;
                 }
                 TDuration timeToAccelerate = TDuration::MicroSeconds(timeToAccelerateUs);
-
                 TMonotonic now = TActivationContext::Monotonic();
                 TMonotonic nextAcceleration = RequestStartTime + timeToAccelerate;
                 LWTRACK(DSProxyScheduleAccelerate, Orbit,  nextAcceleration > now ? (nextAcceleration - now).MicroSeconds() / 1000.0 : 0.0, "Put");
@@ -432,9 +441,7 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
         }
     }
 
-    friend class TBlobStorageGroupRequestActor<TBlobStorageGroupPutRequest>;
-
-    void ReplyAndDie(NKikimrProto::EReplyStatus status) {
+    void ReplyAndDie(NKikimrProto::EReplyStatus status) override {
         TPutImpl::TPutResultVec putResults;
         PutImpl.PrepareReply(status, LogCtx, ErrorReason, putResults);
         const bool done = ReplyAndDieWithLastResponse(putResults);
@@ -447,22 +454,22 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
             SendReply(std::move(result), blobIdx);
         }
 
-        if ((TActivationContext::Monotonic() - RequestStartTime >= LongRequestThreshold) && AllowToReport(HandleClass)) {
-            STLOG(PRI_WARN, BS_PROXY_PUT, BPP71, "Long TEvPut request detected",          \
-                    (LongRequestThreshold, LongRequestThreshold),                         \
-                    (GroupId, Info->GroupID),                                             \
-                    (HandleClass, NKikimrBlobStorage::EPutHandleClass_Name(HandleClass)), \
-                    (Tactic, TEvBlobStorage::TEvPut::TacticName(Tactic)),                 \
-                    (RestartCounter, RestartCounter),                                     \
+        if ((TActivationContext::Monotonic() - RequestStartTime >= LongRequestThreshold) && PopAllowToken(HandleClass)) {
+            STLOG(PRI_WARN, BS_PROXY_PUT, BPP71, "Long TEvPut request detected",
+                    (LongRequestThreshold, LongRequestThreshold),
+                    (GroupId, Info->GroupID),
+                    (HandleClass, NKikimrBlobStorage::EPutHandleClass_Name(HandleClass)),
+                    (Tactic, TEvBlobStorage::TEvPut::TacticName(Tactic)),
+                    (RestartCounter, RestartCounter),
                     (History, PutImpl.PrintHistory()));
         }
 
-        if (ResponsesSent == PutImpl.Blobs.size()) {
-            STLOG(PutImpl.WasNotOkResponses() && AllowToReport(HandleClass) ? PRI_NOTICE : PRI_DEBUG, \
-                    BS_PROXY_PUT, BPP72, "Query history",                                             \
-                    (GroupId, Info->GroupID),                                                         \
-                    (HandleClass, NKikimrBlobStorage::EPutHandleClass_Name(HandleClass)),             \
-                    (Tactic, TEvBlobStorage::TEvPut::TacticName(Tactic)),                             \
+        if (ResponsesSent == PutImpl.Blobs.size() && IS_LOG_PRIORITY_ENABLED(PutImpl.ResultPriority, LogCtx.LogComponent) && PopAllowToken(HandleClass)) {
+            STLOG(PutImpl.ResultPriority,
+                    BS_PROXY_PUT, BPP72, "Query history",
+                    (GroupId, Info->GroupID),
+                    (HandleClass, NKikimrBlobStorage::EPutHandleClass_Name(HandleClass)),
+                    (Tactic, TEvBlobStorage::TEvPut::TacticName(Tactic)),
                     (History, PutImpl.PrintHistory()));
         }
 
@@ -476,7 +483,7 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
 
     void SendReply(std::unique_ptr<TEvBlobStorage::TEvPutResult> putResult, size_t blobIdx) {
         NKikimrProto::EReplyStatus status = putResult->Status;
-        A_LOG_LOG_S(false, status == NKikimrProto::OK ? NLog::PRI_INFO : NLog::PRI_NOTICE, "BPP21",
+        DSP_LOG_LOG_S(status == NKikimrProto::OK ? NLog::PRI_INFO : NLog::PRI_NOTICE, "BPP21",
             "SendReply putResult# " << putResult->ToString() << " ResponsesSent# " << ResponsesSent
             << " PutImpl.Blobs.size# " << PutImpl.Blobs.size()
             << " Last# " << (ResponsesSent + 1 == PutImpl.Blobs.size() ? "true" : "false"));
@@ -530,7 +537,7 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
         return blobIdsStr << ']';
     }
 
-    std::unique_ptr<IEventBase> RestartQuery(ui32 counter) {
+    std::unique_ptr<IEventBase> RestartQuery(ui32 counter) override {
         ++*Mon->NodeMon->RestartPut;
         auto ev = std::make_unique<TEvBlobStorage::TEvBunchOfEvents>();
         for (auto& item : PutImpl.Blobs) {
@@ -544,7 +551,8 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
             ev->Bunch.emplace_back(new IEventHandle(
                 TActorId() /*recipient*/,
                 item.Recipient,
-                put = new TEvBlobStorage::TEvPut(item.BlobId, TRcBuf(item.Buffer), item.Deadline, HandleClass, Tactic),
+                put = new TEvBlobStorage::TEvPut(item.BlobId, TRcBuf(item.Buffer), item.Deadline, HandleClass, Tactic,
+                    item.WriteSource),
                 0 /*flags*/,
                 item.Cookie,
                 nullptr /*forwardOnNondelivery*/,
@@ -557,15 +565,11 @@ class TBlobStorageGroupPutRequest : public TBlobStorageGroupRequestActor<TBlobSt
     }
 
 public:
-    static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
-        return NKikimrServices::TActivity::BS_PROXY_PUT_ACTOR;
+    ::NMonitoring::TDynamicCounters::TCounterPtr& GetActiveCounter() const override {
+        return Mon->ActivePut;
     }
 
-    static const auto& ActiveCounter(const TIntrusivePtr<TBlobStorageGroupProxyMon>& mon) {
-        return mon->ActivePut;
-    }
-
-    static constexpr ERequestType RequestType() {
+    ERequestType GetRequestType() const override {
         return ERequestType::Put;
     }
 
@@ -581,7 +585,6 @@ public:
         , Tactic(params.Common.Event->Tactic)
         , Stats(std::move(params.Stats))
         , AccelerationParams(params.AccelerationParams)
-        , IsMultiPutMode(false)
         , IncarnationRecords(Info->GetTotalVDisksNum())
         , ExpiredVDiskSet(&Info->GetTopology())
         , LongRequestThreshold(params.LongRequestThreshold)
@@ -608,7 +611,6 @@ public:
         , Tactic(params.Tactic)
         , Stats(std::move(params.Stats))
         , AccelerationParams(params.AccelerationParams)
-        , IsMultiPutMode(true)
         , IncarnationRecords(Info->GetTotalVDisksNum())
         , ExpiredVDiskSet(&Info->GetTopology())
         , LongRequestThreshold(params.LongRequestThreshold)
@@ -636,8 +638,8 @@ public:
         ReportedBytes += bytes;
     }
 
-    void Bootstrap() {
-        A_LOG_INFO_S("BPP13", "bootstrap"
+    void Bootstrap() override {
+        DSP_LOG_INFO_S("BPP13", "bootstrap"
             << " ActorId# " << SelfId()
             << " Group# " << Info->GroupID
             << " BlobCount# " << PutImpl.Blobs.size()
@@ -660,13 +662,14 @@ public:
         LWTRACK(
             DSProxyPutRequest, Orbit,
             Info->GroupID.GetRawId(),
+            DeviceTypeStr(Info->GetDeviceType(), true),
             NKikimrBlobStorage::EPutHandleClass_Name(HandleClass),
             TEvBlobStorage::TEvPut::TacticName(Tactic),
             PutImpl.Blobs.size(),
             getTotalSize()
         );
 
-        Become(&TThis::StateWait, TDuration::MilliSeconds(DsPutWakeupMs), new TKikimrEvents::TEvWakeup);
+        Become(&TBlobStorageGroupPutRequest::StateWait, TDuration::MilliSeconds(DsPutWakeupMs), new TKikimrEvents::TEvWakeup);
 
         PartSets.resize(PutImpl.Blobs.size());
         for (auto& partSet : PartSets) {
@@ -682,6 +685,7 @@ public:
     bool EncodeQuantum() {
         const ui64 endTime = GetCycleCountFast() + DurationToCycles(MaxQuantumDuration);
         bool firstIteration = true;
+        IRcBufAllocator* const allocator = TlsActivationContext->ActorSystem()->GetRcBufAllocator();
         while (Min(BlobsEncrypted, BlobsSplit) < PutImpl.Blobs.size()) {
             if (!firstIteration && endTime <= GetCycleCountFast()) {
                 return false;
@@ -700,7 +704,8 @@ public:
             } else { // BlobsSplit < BlobsEncrypted -- then we split it
                 auto& blob = PutImpl.Blobs[BlobsSplit];
                 const auto crcMode = static_cast<TErasureType::ECrcMode>(blob.BlobId.CrcMode());
-                if (ErasureSplit(crcMode, Info->Type, blob.Buffer, PartSets[BlobsSplit], &ErasureSplitContext)) {
+                if (ErasureSplit(crcMode, Info->Type, blob.Buffer, PartSets[BlobsSplit],
+                        &ErasureSplitContext, allocator)) {
                     ++BlobsSplit;
                     ErasureSplitContext = TErasureSplitContext::Init(MaxBytesToSplitAtOnce);
                 }
@@ -711,7 +716,7 @@ public:
     }
 
     void HandleWakeup() {
-        A_LOG_WARN_S("BPP14", "Wakeup "
+        DSP_LOG_WARN_S("BPP14", "Wakeup "
             << " ActorId# " << SelfId()
             << " Group# " << Info->GroupID
             << " BlobIDs# " << BlobIdSequenceToString()
@@ -815,12 +820,7 @@ public:
     }
 };
 
-IActor* CreateBlobStorageGroupPutRequest(TBlobStorageGroupPutParameters params, NWilson::TTraceId traceId) {
-    NWilson::TSpan span(TWilson::BlobStorage, std::move(traceId), "DSProxy.Put");
-    if (span) {
-        span.Attribute("event", params.Common.Event->ToString());
-    }
-    params.Common.Span = std::move(span);
+IActor* CreateBlobStorageGroupPutRequest(TBlobStorageGroupPutParameters params) {
     return new TBlobStorageGroupPutRequest(params);
 }
 

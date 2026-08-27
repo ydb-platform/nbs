@@ -6,7 +6,6 @@ SRCS(
     consts.go
     create_dr_based_disk_checkpoint_task.go
     create_snapshot_from_disk_task.go
-    create_snapshot_from_legacy_snapshot_task.go
     create_snapshot_from_snapshot_task.go
     create_snapshot_from_url_task.go
     delete_disk_from_incremental.go

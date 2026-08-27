@@ -49,6 +49,10 @@ enum EShardBalancerPolicy
     // selecting a shard is proportional to the amount of free space
     // available on the shard.
     SBP_WEIGHTED_RANDOM = 2;
+
+    // Shard balancer prefers shards with more free space
+    // and operates deterministically.
+    SBP_WEIGHTED_DETERMINISTIC = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -396,8 +400,8 @@ message TStorageConfig
     // Async processing of destroy handle requests.
     optional bool AsyncDestroyHandleEnabled = 379;
 
-    // Period of processing create/destroy handle requests.
-    optional uint32 AsyncHandleOperationPeriod = 380;
+    // Polling period when the async handle operations queue is empty, in ms.
+    optional uint32 AsyncHandleOperationIdlePeriod = 380;
 
     // Dynamic node registration params.
     optional uint32 NodeRegistrationMaxAttempts = 381;
@@ -864,4 +868,42 @@ message TStorageConfig
     // or DestroySession transaction. Sessions with more handles are cleaned
     // up by a chain of transactions. 0 means no limit.
     optional uint32 MaxDeleteSessionHandlesPerTx = 530;
+
+    // Enables various self diagnostics/validation.
+    optional bool FastShardExtendedVerificationEnabled = 531;
+
+    // Async processing of read-only create handle requests.
+    optional bool AsyncCreateHandleEnabled = 532;
+
+    // Allow to create load actor.
+    optional bool EnableLoadActor = 533;
+
+    // Limits the number of entries when tracking the most accessed nodes per tablet.
+    optional uint32 MaxNodeDiagnosticEntries = 534;
+
+    // Sets the time after which access count will decrease by half.
+    optional uint32 NodeAccessCountHalfLife = 535; // measured in ms
+
+    // Time after a tablet start during which an operation on an unknown handle
+    // returns a retriable error instead of E_FS_BADHANDLE, so that a client can
+    // recover a handle lost by a tablet restart via its queued
+    // ConfirmCreateHandle. 0 disables the grace window. In ms.
+    optional uint32 UnconfirmedCreateHandleGraceTimeout = 536;
+
+    // Limits the number of entries when tracking
+    // the slowest nodes + request tuples per tablet.
+    optional uint32 MaxSlowestRequestsEntries = 537;
+
+    // Sets the time after which latency of a node + request tuple will decrease by half.
+    optional uint32 NodeLatencyHalfLife = 538; // measured in ms
+
+    // Enables the per-client filesystem availability tracking on the guest.
+    optional bool AvailabilityTrackingEnabled = 539;
+
+    // Availability interval duration (in ms); 0 means the default.
+    optional uint32 AvailabilityTrackingInterval = 540;
+
+    // Delay between processing entries in the async handle operations queue,
+    // in ms.
+    optional uint32 AsyncHandleOperationDrainPeriod = 541;
 }

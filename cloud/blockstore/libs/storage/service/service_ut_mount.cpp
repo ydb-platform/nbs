@@ -597,6 +597,134 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service1.UnmountVolume(DefaultDiskId, sessionId);
     }
 
+    Y_UNIT_TEST(ShouldPreserveBlueGreenHandoffThroughRemoteBindings)
+    {
+        TTestEnv env(1, 2);
+        ui32 nodeIdx1 = SetupTestEnv(env);
+        ui32 nodeIdx2 = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        bool volumePipeResetSeen = false;
+        ui32 addClientSeen = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvServicePrivate::EvVolumePipeReset)
+            {
+                volumePipeResetSeen = true;
+            } else if (event->GetTypeRewrite() ==
+                       TEvVolume::EvAddClientRequest)
+            {
+                ++addClientSeen;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        TServiceClient temporaryService(runtime, nodeIdx1);
+        TServiceClient primaryService(runtime, nodeIdx2);
+
+        const TString clientId = "blue-green-client";
+        temporaryService.SetClientId(clientId);
+        primaryService.SetClientId(clientId);
+
+        temporaryService.CreateVolume();
+        temporaryService.AssignVolume(DefaultDiskId, "foo", "bar");
+
+        auto mount = [] (
+            TServiceClient& service,
+            NProto::EVolumeMountMode mountMode)
+        {
+            auto request = service.CreateMountVolumeRequest(
+                DefaultDiskId,
+                "foo",
+                "bar",
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                mountMode);
+            request->Record.SetForceRemoteBinding(true);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            return service.RecvMountVolumeResponse();
+        };
+
+        auto temporaryMount =
+            mount(temporaryService, NProto::VOLUME_MOUNT_REMOTE);
+        UNIT_ASSERT_C(
+            !HasError(temporaryMount->GetError()),
+            temporaryMount->GetError());
+        auto temporarySessionId = temporaryMount->Record.GetSessionId();
+        temporaryService.WaitForVolume();
+
+        temporaryService.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            temporarySessionId);
+
+        auto primaryMount =
+            mount(primaryService, NProto::VOLUME_MOUNT_LOCAL);
+        UNIT_ASSERT_C(
+            !HasError(primaryMount->GetError()),
+            primaryMount->GetError());
+        auto primarySessionId = primaryMount->Record.GetSessionId();
+        primaryService.WaitForVolume();
+
+        // Both services use remote tablet bindings. The logical LOCAL pipe
+        // must nevertheless preempt the temporary REMOTE pipe.
+        primaryService.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            primarySessionId);
+
+        temporaryService.SendWriteBlocksRequest(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            temporarySessionId);
+        auto response = temporaryService.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_BS_INVALID_SESSION,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        // The service state must be invalidated before E_BS_INVALID_SESSION is
+        // returned, so an immediate remount cannot take the stale S_ALREADY
+        // path.
+        UNIT_ASSERT(volumePipeResetSeen);
+
+        addClientSeen = 0;
+
+        temporaryMount =
+            mount(temporaryService, NProto::VOLUME_MOUNT_REMOTE);
+        UNIT_ASSERT_C(
+            !HasError(temporaryMount->GetError()),
+            temporaryMount->GetError());
+        UNIT_ASSERT_C(addClientSeen > 0, addClientSeen);
+        temporarySessionId = temporaryMount->Record.GetSessionId();
+        temporaryService.WaitForVolume();
+
+        // The fresh REMOTE pipe must not steal the session back from LOCAL.
+        temporaryService.SendWriteBlocksRequest(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            temporarySessionId);
+        response = temporaryService.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        // Stopping the temporary service removes only its pipe. It must not
+        // clear the ownership persisted for the primary pipe with the same
+        // client id.
+        temporaryService.UnmountVolume(
+            DefaultDiskId,
+            temporarySessionId);
+
+        // The primary path remains writable after the temporary pipe is gone.
+        primaryService.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            primarySessionId);
+    }
+
     Y_UNIT_TEST(ShouldDisallowMountByAnotherClient)
     {
         static constexpr TDuration mountVolumeTimeout = TDuration::Seconds(3);
@@ -2841,6 +2969,51 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.MountVolume();
 
         UNIT_ASSERT_VALUES_EQUAL(0, localStartSeen);
+    }
+
+    Y_UNIT_TEST(ShouldKeepLogicalLocalModeWithForcedRemoteBinding)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+        service.AssignVolume();
+
+        ui32 localStartSeen = 0;
+        ui32 addClientSeen = 0;
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvServicePrivate::EvStartVolumeResponse: {
+                    ++localStartSeen;
+                    break;
+                }
+                case TEvVolume::EvAddClientRequest: {
+                    const auto* request =
+                        event->Get<TEvVolume::TEvAddClientRequest>();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        static_cast<int>(NProto::VOLUME_MOUNT_LOCAL),
+                        static_cast<int>(
+                            request->Record.GetVolumeMountMode()));
+                    ++addClientSeen;
+                    break;
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        auto request = service.CreateMountVolumeRequest();
+        request->Record.SetForceRemoteBinding(true);
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+        auto response = service.RecvMountVolumeResponse();
+        UNIT_ASSERT_C(!HasError(response->GetError()), response->GetError());
+        UNIT_ASSERT_VALUES_EQUAL(0, localStartSeen);
+        UNIT_ASSERT_C(addClientSeen > 0, addClientSeen);
     }
 
     Y_UNIT_TEST(ShouldExtendAddClientTimeoutForVolumesPreviouslyMountedLocal)

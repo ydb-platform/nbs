@@ -531,11 +531,36 @@ struct TTestEnv
             .TabletBootInfoBackupFilePath = tabletBootInfoBackupFilePath,
             .FallbackMode = fallbackMode,
             .TenantHiveTabletId = tenantHive,
+            .GoldenTabletBootInfoBackupFilePath = {},
+            .FallbackModeProvider = {},
         };
         HiveProxyActorId = Runtime.Register(
-            CreateHiveProxy(
-                std::move(config),
-                Runtime.GetAppData(0).Counters).release());
+            CreateHiveProxy(std::move(config), Runtime.GetAppData(0).Counters)
+                .release());
+        Runtime.EnableScheduleForActor(HiveProxyActorId);
+        Runtime.RegisterService(MakeHiveProxyServiceId(), HiveProxyActorId);
+    }
+
+    void SetupHiveProxyWithRuntimeFallback(
+        TString tabletBootInfoBackupFilePath,
+        std::function<bool()> fallbackModeProvider,
+        ui64 tenantHive = 0,
+        TString goldenTabletBootInfoBackupFilePath = {})
+    {
+        THiveProxyConfig config{
+            .PipeClientRetryCount = 4,
+            .PipeClientMinRetryTime = TDuration::Seconds(1),
+            .HiveLockExpireTimeout = TDuration::Seconds(30),
+            .LogComponent = 0,
+            .TabletBootInfoBackupFilePath = tabletBootInfoBackupFilePath,
+            .TenantHiveTabletId = tenantHive,
+            .GoldenTabletBootInfoBackupFilePath =
+                std::move(goldenTabletBootInfoBackupFilePath),
+            .FallbackModeProvider = std::move(fallbackModeProvider),
+        };
+        HiveProxyActorId = Runtime.Register(
+            CreateHiveProxy(std::move(config), Runtime.GetAppData(0).Counters)
+                .release());
         Runtime.EnableScheduleForActor(HiveProxyActorId);
         Runtime.RegisterService(MakeHiveProxyServiceId(), HiveProxyActorId);
     }
@@ -1173,6 +1198,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
     {
         TString backupFilePath =
             "BackupTabletBootInfosReturnCode.tablet_boot_info_backup.txt";
+        TFsPath(backupFilePath).DeleteIfExists();
 
         TTestBasicRuntime runtime;
         TTestEnv env(runtime, backupFilePath, /*fallbackMode=*/false);
@@ -1948,6 +1974,451 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         auto result = env.SendGetTabletBootInfos(sender, E_PRECONDITION_FAILED);
         UNIT_ASSERT(result.TabletBootInfos.empty());
+    }
+
+    Y_UNIT_TEST(RuntimeFallbackShouldSwitchFromNormalToFallback)
+    {
+        TString backupFilePath =
+            "RuntimeFallbackSwitch.tablet_boot_info_backup.txt";
+
+        bool fallbackMode = false;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        env.SetupHiveProxyWithRuntimeFallback(
+            backupFilePath,
+            [&] { return fallbackMode; });
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        // Boot in normal mode to populate backup.
+        auto result1 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        UNIT_ASSERT(result1.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(1u, result1.SuggestedGeneration);
+
+        // Switch to fallback mode.
+        env.SendBackupTabletBootInfos(sender, S_OK);
+        fallbackMode = true;
+
+        // Wait for the proxy to detect the change (check interval is 60s).
+        runtime.AdvanceCurrentTime(TDuration::Seconds(120));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // Boot from backup in fallback mode.
+        auto result2 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        UNIT_ASSERT(result2.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, result2.StorageInfo->TabletID);
+
+        // Mutating operations should return E_NOT_IMPLEMENTED.
+        env.SendReassignTabletRequest(
+            sender,
+            FakeTablet2,
+            {1},
+            E_NOT_IMPLEMENTED);
+
+        // Runtime fallback is latched until the service is restarted.
+        fallbackMode = false;
+        runtime.AdvanceCurrentTime(TDuration::Seconds(120));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.SendReassignTabletRequest(
+            sender,
+            FakeTablet2,
+            {1},
+            E_NOT_IMPLEMENTED);
+    }
+
+    Y_UNIT_TEST(RuntimeFallbackShouldPreferValidGoldenBackup)
+    {
+        const TString backupFilePath =
+            "RuntimeFallbackRegular.tablet_boot_info_backup.txt";
+        const TString goldenBackupFilePath =
+            "RuntimeFallbackGolden.tablet_boot_info_backup.txt";
+        bool fallbackMode = false;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        env.SetupHiveProxyWithRuntimeFallback(
+            backupFilePath,
+            [&] { return fallbackMode; },
+            0,
+            goldenBackupFilePath);
+
+        TTabletStorageInfoPtr regularStorageInfo = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = regularStorageInfo;
+
+        auto sender = runtime.AllocateEdgeActor();
+        env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        env.SendBackupTabletBootInfos(sender, S_OK);
+
+        TTabletStorageInfoPtr goldenStorageInfo = CreateTestTabletInfo(
+            FakeTablet3,
+            TTabletTypes::BlockStorePartition);
+        NHiveProxy::NProto::TTabletBootInfoBackup goldenBackup;
+        auto& goldenBootInfo = (*goldenBackup.MutableData())[FakeTablet3];
+        TabletStorageInfoToProto(
+            *goldenStorageInfo,
+            goldenBootInfo.MutableStorageInfo());
+        goldenBootInfo.SetSuggestedGeneration(17);
+        {
+            TFileOutput output(goldenBackupFilePath);
+            SerializeToTextFormat(goldenBackup, output);
+        }
+
+        fallbackMode = true;
+        runtime.AdvanceCurrentTime(TDuration::Seconds(120));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        auto result = env.SendBootExternalRequest(sender, FakeTablet3, S_OK);
+        UNIT_ASSERT(result.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(FakeTablet3, result.StorageInfo->TabletID);
+        UNIT_ASSERT_VALUES_EQUAL(17, result.SuggestedGeneration);
+
+        env.SendBootExternalRequest(sender, FakeTablet2, E_REJECTED);
+    }
+
+    Y_UNIT_TEST(RuntimeFallbackShouldUseRegularBackupWhenGoldenIsUnavailable)
+    {
+        auto runTest = [](const TString& suffix, bool createCorruptedGolden)
+        {
+            const TString backupFilePath = TStringBuilder()
+                                           << "RuntimeFallbackRegular" << suffix
+                                           << ".tablet_boot_info_backup.txt";
+            const TString goldenBackupFilePath =
+                TStringBuilder() << "RuntimeFallbackGolden" << suffix
+                                 << ".tablet_boot_info_backup.txt";
+            TFsPath(goldenBackupFilePath).DeleteIfExists();
+
+            bool fallbackMode = false;
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime);
+            env.SetupHiveProxyWithRuntimeFallback(
+                backupFilePath,
+                [&] { return fallbackMode; },
+                0,
+                goldenBackupFilePath);
+
+            TTabletStorageInfoPtr storageInfo = CreateTestTabletInfo(
+                FakeTablet2,
+                TTabletTypes::BlockStorePartition);
+            env.HiveState->StorageInfos[FakeTablet2] = storageInfo;
+
+            auto sender = runtime.AllocateEdgeActor();
+            env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            env.SendBackupTabletBootInfos(sender, S_OK);
+
+            if (createCorruptedGolden) {
+                TFileOutput output(goldenBackupFilePath);
+                output << "not a valid protobuf";
+            }
+
+            fallbackMode = true;
+            runtime.AdvanceCurrentTime(TDuration::Seconds(120));
+            runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+            auto result =
+                env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            UNIT_ASSERT(result.StorageInfo);
+            UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, result.StorageInfo->TabletID);
+        };
+
+        runTest("Missing", false);
+        runTest("Corrupted", true);
+    }
+
+    Y_UNIT_TEST(RuntimeFallbackShouldNotifyLockLostWhenSwitching)
+    {
+        bool fallbackMode = false;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        env.SetupHiveProxyWithRuntimeFallback("", [&] { return fallbackMode; });
+
+        auto sender = runtime.AllocateEdgeActor();
+        env.SendLockRequest(sender, FakeTablet2);
+        UNIT_ASSERT(env.HiveState->LockedTablets[FakeTablet2]);
+
+        fallbackMode = true;
+        runtime.AdvanceCurrentTime(TDuration::Seconds(120));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        auto lockLost =
+            runtime.GrabEdgeEvent<TEvHiveProxy::TEvTabletLockLost>(sender);
+        UNIT_ASSERT(lockLost);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, lockLost->Get()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, lockLost->Get()->TabletId);
+
+        env.SendReassignTabletRequest(
+            sender,
+            FakeTablet2,
+            {1},
+            E_NOT_IMPLEMENTED);
+    }
+
+    Y_UNIT_TEST(RuntimeFallbackShouldNotWaitForHivePipeToClose)
+    {
+        bool fallbackMode = false;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        env.SetupHiveProxyWithRuntimeFallback("", [&] { return fallbackMode; });
+
+        auto sender = runtime.AllocateEdgeActor();
+        env.SendLockRequest(sender, FakeTablet2);
+
+        TAutoPtr<IEventHandle> delayedPipePoisonPill;
+        auto previousFilter = runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() == TEvents::TEvPoisonPill::EventType &&
+                    ev->GetRecipientRewrite() != env.HiveProxyActorId)
+                {
+                    delayedPipePoisonPill = ev.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        fallbackMode = true;
+        runtime.AdvanceCurrentTime(TDuration::Seconds(120));
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]
+                { return !!delayedPipePoisonPill; }});
+
+        // Fallback starts even though the old Hive pipe has not processed its
+        // poison pill yet.
+        env.SendReassignTabletRequest(
+            sender,
+            FakeTablet2,
+            {1},
+            E_NOT_IMPLEMENTED);
+
+        runtime.SetEventFilter(std::move(previousFilter));
+        runtime.Send(delayedPipePoisonPill.Release());
+    }
+
+    Y_UNIT_TEST(RuntimeFallbackShouldNotWaitForInflightRequest)
+    {
+        bool fallbackMode = false;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, EExternalBootOptions::IGNORE);
+        env.SetupHiveProxyWithRuntimeFallback("", [&] { return fallbackMode; });
+
+        auto sender = runtime.AllocateEdgeActor();
+        bool bootStarted = false;
+
+        auto previousFilter = runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvHive::TEvInitiateTabletExternalBoot::EventType)
+                {
+                    bootStarted = true;
+                }
+                return false;
+            });
+
+        runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvBootExternalRequest(FakeTablet2)));
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&] { return bootStarted; }});
+        runtime.SetEventFilter(std::move(previousFilter));
+
+        fallbackMode = true;
+        runtime.AdvanceCurrentTime(TDuration::Seconds(120));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        env.SendReassignTabletRequest(
+            sender,
+            FakeTablet2,
+            {1},
+            E_NOT_IMPLEMENTED);
+    }
+
+    Y_UNIT_TEST(RuntimeFallbackShouldRejectPendingRequestsWhenSwitching)
+    {
+        bool fallbackMode = false;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        env.SetupHiveProxyWithRuntimeFallback("", [&] { return fallbackMode; });
+
+        auto sender = runtime.AllocateEdgeActor();
+        bool getInfoStarted = false;
+        bool lockStarted = false;
+        bool createStarted = false;
+        bool lookupStarted = false;
+
+        auto previousFilter = runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvHive::TEvGetTabletStorageInfo::EventType)
+                {
+                    getInfoStarted = true;
+                    return true;
+                }
+                if (ev->GetTypeRewrite() ==
+                    TEvHive::TEvLockTabletExecution::EventType)
+                {
+                    lockStarted = true;
+                    return true;
+                }
+                if (ev->GetTypeRewrite() == TEvHive::EvCreateTablet) {
+                    createStarted = true;
+                    return true;
+                }
+                if (ev->GetTypeRewrite() == TEvHive::EvLookupTablet) {
+                    lookupStarted = true;
+                    return true;
+                }
+                return false;
+            });
+
+        runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvGetStorageInfoRequest(FakeTablet2)));
+        runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvLockTabletRequest(FakeTablet3)));
+
+        NKikimrHive::TEvCreateTablet createRequest;
+        createRequest.SetOwner(0);
+        createRequest.SetOwnerIdx(1);
+        createRequest.SetTabletType(TTabletTypes::BlockStoreDiskRegistry);
+        env.SendCreateTabletRequestAsync(
+            sender,
+            FakeHiveTablet,
+            std::move(createRequest));
+        env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 2);
+
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return getInfoStarted && lockStarted && createStarted &&
+                           lookupStarted;
+                }});
+        runtime.SetEventFilter(std::move(previousFilter));
+
+        fallbackMode = true;
+        runtime.AdvanceCurrentTime(TDuration::Seconds(120));
+
+        auto response =
+            runtime.GrabEdgeEvent<TEvHiveProxy::TEvGetStorageInfoResponse>(
+                sender);
+        UNIT_ASSERT(response);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->Get()->GetStatus());
+
+        auto lockResponse =
+            runtime.GrabEdgeEvent<TEvHiveProxy::TEvLockTabletResponse>(sender);
+        UNIT_ASSERT(lockResponse);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, lockResponse->Get()->GetStatus());
+
+        auto createResponse =
+            runtime.GrabEdgeEvent<TEvHiveProxy::TEvCreateTabletResponse>(
+                sender);
+        UNIT_ASSERT(createResponse);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            createResponse->Get()->GetStatus());
+
+        auto lookupResponse =
+            runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
+                sender);
+        UNIT_ASSERT(lookupResponse);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            lookupResponse->Get()->GetStatus());
+
+        env.SendReassignTabletRequest(
+            sender,
+            FakeTablet2,
+            {1},
+            E_NOT_IMPLEMENTED);
+    }
+
+    Y_UNIT_TEST(RuntimeFallbackShouldStartInFallbackWhenFlagInitiallySet)
+    {
+        TString backupFilePath =
+            "RuntimeFallbackLatched.tablet_boot_info_backup.txt";
+
+        {
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, false);
+
+            TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+                FakeTablet2,
+                TTabletTypes::BlockStorePartition);
+            env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+            auto sender = runtime.AllocateEdgeActor();
+            env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            env.SendBackupTabletBootInfos(sender, S_OK);
+        }
+
+        bool fallbackMode = true;
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        env.SetupHiveProxyWithRuntimeFallback(
+            backupFilePath,
+            [&] { return fallbackMode; });
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        {
+            auto result =
+                env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+            UNIT_ASSERT(result.StorageInfo);
+        }
+
+        env.SendReassignTabletRequest(
+            sender,
+            FakeTablet2,
+            {1},
+            E_NOT_IMPLEMENTED);
+    }
+
+    Y_UNIT_TEST(RuntimeFallbackShouldNotSwitchWhenFlagIsUnchanged)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        bool fallbackMode = false;
+        env.SetupHiveProxyWithRuntimeFallback("", [&] { return fallbackMode; });
+
+        TTabletStorageInfoPtr expected = CreateTestTabletInfo(
+            FakeTablet2,
+            TTabletTypes::BlockStorePartition);
+        env.HiveState->StorageInfos[FakeTablet2] = expected;
+
+        auto sender = runtime.AllocateEdgeActor();
+
+        auto result1 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        UNIT_ASSERT(result1.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(1u, result1.SuggestedGeneration);
+
+        // Multiple check intervals pass without mode change.
+        runtime.AdvanceCurrentTime(TDuration::Seconds(180));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // Proxy should still work in normal mode with its state preserved.
+        auto result2 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        UNIT_ASSERT(result2.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(2u, result2.SuggestedGeneration);
     }
 }
 

@@ -31,7 +31,9 @@ namespace {
                                                                                \
     xxx(AsyncDestroyHandleEnabled,          bool,       false                 )\
     xxx(AsyncDestroyReadOnlyHandleEnabled,  bool,       false                 )\
-    xxx(AsyncHandleOperationPeriod, TDuration,  TDuration::MilliSeconds(50)   )\
+    xxx(AsyncCreateHandleEnabled,           bool,       false                 )\
+    xxx(AsyncHandleOperationIdlePeriod, TDuration, TDuration::MilliSeconds(50))\
+    xxx(AsyncHandleOperationDrainPeriod, TDuration, TDuration::Zero()         )\
                                                                                \
     xxx(DirectIoEnabled,            bool,       false                         )\
     xxx(DirectIoAlign,              ui32,       4_KB                          )\
@@ -58,6 +60,8 @@ namespace {
     xxx(GuestHandleKillPrivV2Enabled, bool,     false                         )\
     xxx(GuestPosixAclEnabled,         bool,     false                         )\
     xxx(ZeroCopyReadEnabled,          bool,     false                         )\
+    xxx(AvailabilityTrackingEnabled,  bool,     false                         )\
+    xxx(AvailabilityTrackingInterval, TDuration,  TDuration::Minutes(2)      )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \
@@ -110,6 +114,27 @@ FILESTORE_FILESYSTEM_CONFIG(FILESTORE_FS_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 #undef FILESTORE_FS_GETTER
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsAsyncDestroyEnabled(const TFileSystemConfig& config)
+{
+    return config.GetAsyncDestroyHandleEnabled() ||
+        config.GetAsyncDestroyReadOnlyHandleEnabled();
+}
+
+bool IsAsyncCreateEnabled(const TFileSystemConfig& config)
+{
+    // Async create is safe only when close uses the same queue. Otherwise a
+    // sync DestroyHandle can run before the queued ConfirmCreateHandle.
+    return config.GetAsyncCreateHandleEnabled() &&
+        IsAsyncDestroyEnabled(config);
+}
+
+bool ShouldCreateHandleOpsQueue(const TFileSystemConfig& config)
+{
+    return IsAsyncDestroyEnabled(config) || IsAsyncCreateEnabled(config);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

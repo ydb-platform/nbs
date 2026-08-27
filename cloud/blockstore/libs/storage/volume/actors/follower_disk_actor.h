@@ -15,12 +15,13 @@ struct TFollowerDiskActorParams
     const NProto::EStorageMediaKind LeaderMediaKind =
         NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
     const TString LeaderDiskId;
+    const TString LeaderCloudId;
+    const TString LeaderFolderId;
     const ui64 LeaderBlockCount = 0;
     const ui32 LeaderBlockSize = 0;
 
     NActors::TActorId LeaderVolumeActorId;
     NActors::TActorId LeaderPartitionActorId;
-    bool TakePartitionOwnership = false;
     TString ClientId;
 
     TFollowerDiskInfo FollowerDiskInfo;
@@ -72,7 +73,6 @@ private:
     const ui32 LeaderBlockSize = 0;
     const NActors::TActorId LeaderVolumeActorId;
     const NActors::TActorId LeaderPartitionActorId;
-    const bool TakePartitionOwnership = false;
 
     TString ClientId;
 

@@ -169,6 +169,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
+    TCounter MixedBlocksFilterMemSize{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
     TCounter CheckpointBytes{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
@@ -269,6 +273,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::IORequestsQueued>(),
         MakeMeta<&TSimpleDiskCounters::UsedBlocksMapMemSize>(),
         MakeMeta<&TSimpleDiskCounters::MixedIndexCacheMemSize>(),
+        MakeMeta<&TSimpleDiskCounters::MixedBlocksFilterMemSize>(),
         MakeMeta<&TSimpleDiskCounters::CheckpointBytes>(),
         MakeMeta<&TSimpleDiskCounters::AlmostFullChannelCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBlocksInFlight>(),
@@ -332,6 +337,14 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter MixedBlocksFilterFalsePositives{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MixedBlocksFilterTruePositives{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter UncompressedBytesWritten{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
@@ -392,6 +405,10 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter CleanupBlobsSkipped{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter ScrubbingThroughput{
@@ -407,6 +424,8 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::RealSysBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::RealSysBytesRead>(),
         MakeMeta<&TCumulativeDiskCounters::BatchCount>(),
+        MakeMeta<&TCumulativeDiskCounters::MixedBlocksFilterFalsePositives>(),
+        MakeMeta<&TCumulativeDiskCounters::MixedBlocksFilterTruePositives>(),
         MakeMeta<&TCumulativeDiskCounters::UncompressedBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::CompressedBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByReadStats>(),
@@ -422,6 +441,7 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionAddBlobsTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionExecutionTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionTotalTime>(),
+        MakeMeta<&TCumulativeDiskCounters::CleanupBlobsSkipped>(),
 
         MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };

@@ -277,12 +277,12 @@ public:
             char* ptr,
             size_t size,
             size_t nitems,
-            TResponseInfo* responseInfo)
+            void* responseInfo)
         {
             TString line(ptr, size * nitems);
             if (!line.StartsWith("HTTP/") && line != "\r\n") {
                 THttpInputHeader h(line);
-                responseInfo->Headers.AddHeader(h);
+                static_cast<TResponseInfo*>(responseInfo)->Headers.AddHeader(h);
             }
             return size * nitems;
         }
@@ -486,13 +486,13 @@ public:
         CURL* easyHandle,
         curl_socket_t sock,
         int what,
-        TUserData* userp,
-        TEvent* socketp);
+        void* userp,
+        void* socketp);
 
     static int TimerFunction(
         CURLM* multi,
         long timeoutMs,
-        TInstant* userp);
+        void* userp);
 
     void InitMultiHolder();
 
@@ -786,12 +786,14 @@ int THttpsClient::TImpl::SocketFunction(
     CURL* easyHandle,
     curl_socket_t sock,
     int what,
-    TUserData* userp,
-    TEvent* e)
+    void* userp,
+    void* socketp)
 {
     Y_UNUSED(easyHandle);
 
-    auto* impl = userp->Impl;
+    TEvent* e = static_cast<TEvent*>(socketp);
+
+    auto* impl = static_cast<TUserData*>(userp)->Impl;
 
     if (what == CURL_POLL_REMOVE) {
         delete e;
@@ -807,19 +809,20 @@ int THttpsClient::TImpl::SocketFunction(
     return CURLM_OK;
 }
 
-int THttpsClient::TImpl::TimerFunction(CURLM*, long timeoutMs, TInstant* userp)
+int THttpsClient::TImpl::TimerFunction(CURLM*, long timeoutMs, void* userp)
 {
     Y_DEBUG_ABORT_UNLESS(userp != nullptr);
 
     switch (timeoutMs) {
         case -1:
-            *userp = TInstant::Max();
+            *static_cast<TInstant*>(userp) = TInstant::Max();
             break;
         case 0:
-            *userp = TInstant::Zero();
+            *static_cast<TInstant*>(userp) = TInstant::Zero();
             break;
         default:
-            *userp = TDuration::MilliSeconds(timeoutMs).ToDeadLine();
+            *static_cast<TInstant*>(userp) =
+                TDuration::MilliSeconds(timeoutMs).ToDeadLine();
             break;
     }
 

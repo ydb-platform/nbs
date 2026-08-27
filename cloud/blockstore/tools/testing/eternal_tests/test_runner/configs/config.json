@@ -2,6 +2,7 @@
   "IoDepth":$ioDepth,
   "FileSize":$fileSize,
   "WriteRate":$writeRate,
+  "ZeroRate":$zeroRate,
   "BlockSize":$blockSize,
   "FilePath":"$filePath",
   "Ranges":

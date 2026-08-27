@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="620" viewBox="0 0 1000 620">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#495057" stroke-width="1.6" stroke-linecap="round"/></marker></defs>
+<rect x="0" y="0" width="1000" height="620" fill="#ffffff"/>
+<rect x="60" y="60" width="320" height="310" rx="12" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.3"/>
+<text x="74" y="84" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#495057">Shard operation</text>
+<rect x="540" y="60" width="380" height="210" rx="12" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.3"/>
+<text x="554" y="84" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#495057">IPageStore</text>
+<line x1="350.0" y1="130.0" x2="570.0" y2="140.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="460" y="123.0">WritePage(lsn, pageNo, &amp;logRecord)</tspan></text>
+<line x1="350.0" y1="165.0" x2="570.0" y2="180.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="460" y="159.5">ReadPage(lsn, pageNo)</tspan></text>
+<line x1="350.0" y1="200.0" x2="570.0" y2="220.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="460" y="224.0">CommitPages / RollbackPages</tspan></text>
+<line x1="220.0" y1="214.0" x2="220.0" y2="256.0" stroke="#495057" stroke-width="1.6"/>
+<line x1="731.9" y1="244.0" x2="738.8" y2="476.0" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="739.3731343283582" y="344.0">cache miss: ReadPages</tspan></text>
+<line x1="335.1" y1="351.5" x2="649.6" y2="478.5" stroke="#495057" stroke-width="1.6" marker-end="url(#arr)"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#495057" stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"><tspan x="492.3809523809524" y="450.9">WriteLogRecord(lsn) - atomic,</tspan><tspan x="492.3809523809524" y="467.1">sent by the shard operation</tspan></text>
+<rect x="90" y="110" width="260" height="100" rx="9" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="220" y="141.1" font-weight="600">allocate Lsn</tspan><tspan x="220" y="160.0">stage writes</tspan><tspan x="220" y="178.9">commit / rollback</tspan></text>
+<rect x="90" y="260" width="260" height="90" rx="9" fill="#e9ecef" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="220" y="286.1" font-weight="600">log record</tspan><tspan x="220" y="305.0">TPageGroups accumulated</tspan><tspan x="220" y="323.9">by WritePage</tspan></text>
+<rect x="570" y="120" width="320" height="120" rx="9" fill="#ffec99" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="730" y="161.1" font-weight="600">page cache</tspan><tspan x="730" y="180.0">pageNo -&gt; content,</tspan><tspan x="730" y="198.9">Lsn, dirty flag</tspan></text>
+<rect x="620" y="480" width="240" height="70" rx="9" fill="#d0bfff" stroke="#1e1e1e" stroke-width="1.4"/>
+<text text-anchor="middle" dominant-baseline="middle" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1e1e1e"><tspan x="740" y="515.0">IStorageGroup</tspan></text>
+</svg>

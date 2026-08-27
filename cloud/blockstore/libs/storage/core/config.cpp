@@ -123,7 +123,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CommonOverlayPrefixPoolKind,   TString,      "overlay"                )\
     xxx(NonReplicatedHDDPoolName,      TString,      "rot"                    )\
                                                                                \
+    xxx(EnableHiveProxyRuntimeFallback,              bool,         false      )\
     xxx(TabletBootInfoBackupFilePath,                TString,      ""         )\
+    xxx(GoldenTabletBootInfoBackupFilePath,          TString,      ""         )\
     xxx(PathDescriptionBackupFilePath,               TString,      ""         )\
     xxx(UseBinaryFormatForPathDescriptionBackup,     bool,         false      )\
     xxx(UseBinaryFormatForTabletBootInfoBackup,      bool,         false      )\
@@ -724,6 +726,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(UseRecreatedBlobMetasOnCleanup,             bool,       false         )\
                                                                                \
     xxx(AllowGentlePreemptionForRebindVolumesAction,    bool,   false         )\
+                                                                               \
+    xxx(MixedBlocksFilterEnabled,                   bool,       false         )\
+    xxx(WaitForFreshWritesBeforeFlushEnabled,       bool,       false         )\
+    xxx(MixedBlocksFilterRangesToLoadPerTx,         ui64,       100           )\
+    xxx(MixedBlocksFilterAllowedCpuTimePerSecond,   TDuration,  MSeconds(10)  )\
+    xxx(CheckpointAwareCleanupEnabled,              bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -764,8 +772,10 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(ReadBlockMaskOnCompactionOptimization)                                 \
     xxx(SplitCompactionTx)                                                     \
     xxx(VerifyRecreatedBlobMetasOnCleanup)                                     \
-    xxx(UseRecreatedBlobMetasOnCleanup)                                       \
+    xxx(UseRecreatedBlobMetasOnCleanup)                                        \
     xxx(DynamicGarbageCompactionThrottling)                                    \
+    xxx(MixedBlocksFilter)                                                     \
+    xxx(CheckpointAwareCleanup)                                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 

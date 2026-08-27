@@ -50,8 +50,12 @@ void FillFeatures(
         config.GetAsyncDestroyHandleEnabled());
     features->SetAsyncDestroyReadOnlyHandleEnabled(
         config.GetAsyncDestroyReadOnlyHandleEnabled());
-    features->SetAsyncHandleOperationPeriod(
-        config.GetAsyncHandleOperationPeriod().MilliSeconds());
+    features->SetAsyncCreateHandleEnabled(
+        config.GetAsyncCreateHandleEnabled());
+    features->SetAsyncHandleOperationIdlePeriod(
+        config.GetAsyncHandleOperationIdlePeriod().MilliSeconds());
+    features->SetAsyncHandleOperationDrainPeriod(
+        config.GetAsyncHandleOperationDrainPeriod().MilliSeconds());
 
     features->SetGuestWriteBackCacheEnabled(
         config.GetGuestWriteBackCacheEnabled());
@@ -120,6 +124,11 @@ void FillFeatures(
 
     features->SetUseCustomReadDataResponseParser(
         config.GetUseCustomReadDataResponseParser());
+
+    features->SetAvailabilityTrackingEnabled(
+        config.GetAvailabilityTrackingEnabled());
+    features->SetAvailabilityTrackingInterval(
+        config.GetAvailabilityTrackingInterval().MilliSeconds());
 
     features->SetStatFileStoreCacheTTL(
         config.GetStatFileStoreCacheTTL().MilliSeconds());

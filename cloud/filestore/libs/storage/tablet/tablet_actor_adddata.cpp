@@ -285,6 +285,7 @@ void TIndexTabletActor::CompleteTx_AddData(
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
+        args.NodeId,
         std::move(blobs),
         std::move(args.UnalignedDataParts),
         TWriteRange{args.NodeId, args.ByteRange.End()},
@@ -688,6 +689,17 @@ void TIndexTabletActor::HandleAddDataCompleted(
             FormatError(msg->Error).Quote().c_str());
     } else {
         Metrics->AddData.Update(msg->Count, msg->Size, msg->Time);
+
+        if (!UpdateAccessStats(msg->NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
+                msg->NodeId,
+                EFileStoreRequest::AddData,
+                ctx.Now(),
+                msg->Time))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
+
         if (msg->IsOverloaded) {
             Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
         }

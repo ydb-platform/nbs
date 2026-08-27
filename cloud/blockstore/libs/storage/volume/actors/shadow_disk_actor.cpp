@@ -562,6 +562,8 @@ TShadowDiskActor::TShadowDiskActor(
           config,
           std::move(diagnosticConfig),
           srcConfig->GetName(),
+          srcConfig->GetCloudId(),
+          srcConfig->GetFolderId(),
           srcConfig->GetBlockCount(),
           srcConfig->GetBlockSize(),
           std::move(profileLog),
@@ -822,7 +824,9 @@ void TShadowDiskActor::CreateShadowDiskConfig()
         .CreationTs = TInstant(),
         .MediaKind =
             GetCheckpointShadowDiskType(SrcConfig->GetVolumeInfo().MediaKind),
-        .EncryptionMode = SrcConfig->GetVolumeInfo().EncryptionMode};
+        .EncryptionMode = SrcConfig->GetVolumeInfo().EncryptionMode,
+        .CloudId = SrcConfig->GetVolumeInfo().CloudId,
+        .FolderId = SrcConfig->GetVolumeInfo().FolderId};
 
     TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
         params{

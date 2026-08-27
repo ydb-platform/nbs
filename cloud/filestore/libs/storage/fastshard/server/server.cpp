@@ -45,6 +45,27 @@ constexpr ui64 MaxMessageSize = 64_MB;
 constexpr int SocketBacklog = 128;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+int BindAndListen(int fd, const sockaddr* addr, socklen_t addrLen)
+{
+    int one = 1;
+    ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+
+    if (::bind(fd, addr, addrLen) < 0) {
+        SILK_ERROR("bind: %s", ::strerror(errno));
+        ::close(fd);
+        return -1;
+    }
+
+    if (::listen(fd, SocketBacklog) < 0) {
+        SILK_ERROR("listen: %s", ::strerror(errno));
+        ::close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Handler bookkeeping.
 //
 // Every accepted connection is represented by a THandler which owns the
@@ -426,6 +447,32 @@ int AcceptFiberMain(TAcceptParams* params) noexcept
         if (which == 1) {
             acceptFuture.cancel();
             acceptFuture.wait();
+
+            //
+            // Drain connections whose handshake has already completed:
+            // their clients saw connect() succeed, so they must go
+            // through the regular handler shutdown (FIN via
+            // THandlerRegistry::Stop) instead of being reset when the
+            // listening socket is closed. Stop() waits for this fiber
+            // before stopping the registry, so every handler
+            // registered here is shut down and waited for.
+            //
+
+            for (;;) {
+                int cfd = ::accept4(
+                    lfd,
+                    nullptr /* addr */,
+                    nullptr /* addrlen */,
+                    SOCK_NONBLOCK | SOCK_CLOEXEC);
+                if (cfd >= 0) {
+                    RegisterHandler(cfd, *handlers, registry);
+                    continue;
+                }
+                if (errno == EINTR || errno == ECONNABORTED) {
+                    continue;
+                }
+                break;
+            }
             return 0;
         }
 
@@ -530,33 +577,70 @@ public:
 private:
     int MakeListenSocket()
     {
+        //
+        // Dual-stack listener: an AF_INET6 socket with IPV6_V6ONLY
+        // cleared accepts IPv6 connections directly and IPv4 ones as
+        // v4-mapped addresses. The clients connect to the FQDN published
+        // by the tablet, which resolves to AAAA records in IPv6-only
+        // networks - an AF_INET listener is unreachable there.
+        //
+
         int fd =
-            ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+            ::socket(AF_INET6, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+        if (fd >= 0) {
+            //
+            // The IPV6_V6ONLY default depends on net.ipv6.bindv6only, so
+            // clear it explicitly.
+            //
+
+            int zero = 0;
+            int r = ::setsockopt(
+                fd,
+                IPPROTO_IPV6,
+                IPV6_V6ONLY,
+                &zero,
+                sizeof(zero));
+            if (r < 0) {
+                SILK_WARN(
+                    "clear IPV6_V6ONLY: %s - IPv4 clients will be rejected",
+                    ::strerror(errno));
+            }
+
+            sockaddr_in6 addr{};
+            addr.sin6_family = AF_INET6;
+            addr.sin6_port = htons(Port);
+            addr.sin6_addr = in6addr_any;
+
+            return BindAndListen(
+                fd,
+                reinterpret_cast<sockaddr*>(&addr),
+                sizeof(addr));
+        }
+
+        //
+        // Hosts with IPv6 disabled fail socket(AF_INET6) with
+        // EAFNOSUPPORT - fall back to an IPv4-only listener.
+        //
+
+        SILK_WARN(
+            "socket(AF_INET6): %s - falling back to IPv4",
+            ::strerror(errno));
+
+        fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
         if (fd < 0) {
             SILK_ERROR("socket: %s", ::strerror(errno));
             return -1;
         }
-
-        int one = 1;
-        ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_port = htons(Port);
         addr.sin_addr.s_addr = INADDR_ANY;
 
-        if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-            SILK_ERROR("bind: %s", ::strerror(errno));
-            ::close(fd);
-            return -1;
-        }
-
-        if (::listen(fd, SocketBacklog) < 0) {
-            SILK_ERROR("listen: %s", ::strerror(errno));
-            ::close(fd);
-            return -1;
-        }
-        return fd;
+        return BindAndListen(
+            fd,
+            reinterpret_cast<sockaddr*>(&addr),
+            sizeof(addr));
     }
 
     ui16 Port;

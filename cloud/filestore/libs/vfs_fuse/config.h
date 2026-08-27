@@ -40,7 +40,9 @@ public:
 
     bool GetAsyncDestroyHandleEnabled() const;
     bool GetAsyncDestroyReadOnlyHandleEnabled() const;
-    TDuration GetAsyncHandleOperationPeriod() const;
+    bool GetAsyncCreateHandleEnabled() const;
+    TDuration GetAsyncHandleOperationIdlePeriod() const;
+    TDuration GetAsyncHandleOperationDrainPeriod() const;
 
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;
@@ -75,8 +77,15 @@ public:
 
     bool GetGuestPosixAclEnabled() const;
 
+    bool GetAvailabilityTrackingEnabled() const;
+    TDuration GetAvailabilityTrackingInterval() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
+
+bool IsAsyncDestroyEnabled(const TFileSystemConfig& config);
+bool IsAsyncCreateEnabled(const TFileSystemConfig& config);
+bool ShouldCreateHandleOpsQueue(const TFileSystemConfig& config);
 
 }   // namespace NCloud::NFileStore::NFuse

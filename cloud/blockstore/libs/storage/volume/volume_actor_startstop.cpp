@@ -158,6 +158,8 @@ void TVolumeActor::OnPartitionStateChanged(
                     LogTitle.GetChild(GetCycleCount()),
                     TraceSerializer,
                     GetDiskId(),
+                    State->GetMeta().GetVolumeConfig().GetCloudId(),
+                    State->GetMeta().GetVolumeConfig().GetFolderId(),
                     State->GetMeta().GetVolumeConfig().GetBlockSize(),
                     State->GetMeta().GetVolumeConfig().GetBlocksPerStripe(),
                     Config->GetRequestSplitterPolicy(),
@@ -165,7 +167,7 @@ void TVolumeActor::OnPartitionStateChanged(
                 TActorsStack::EActorPurpose::MultiPartitionWrapper);
 
             actorStack =
-                WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), true);
+                WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
 
             State->SetMultiPartitionWrapperActor(std::move(actorStack));
         }
@@ -246,7 +248,9 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                 .CreationTs = State->GetCreationTs(),
                 .MediaKind = mediaKind,
                 .EncryptionMode = static_cast<NProto::EEncryptionMode>(
-                    volumeConfig.GetEncryptionDesc().GetMode())},
+                    volumeConfig.GetEncryptionDesc().GetMode()),
+                .CloudId = volumeConfig.GetCloudId(),
+                .FolderId = volumeConfig.GetFolderId()},
             State->GetDiskId(),
             State->GetMeta().GetConfig().GetBlockSize(),
             SelfId(),
@@ -355,7 +359,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         ctx,
         std::move(actorStack),
         nonreplicatedConfig);
-    actorStack = WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), false);
+    actorStack = WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
 
     State->SetDiskRegistryBasedPartitionActor(
         std::move(actorStack),
@@ -403,8 +407,7 @@ TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
 
 TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
     const TActorContext& ctx,
-    TActorsStack actors,
-    bool takePartitionOwnership)
+    TActorsStack actors)
 {
     for (const auto& follower: State->GetAllFollowers()) {
         switch (follower.State) {
@@ -441,11 +444,14 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                     TFollowerDiskActorParams{
                         .LeaderMediaKind = State->GetStorageMediaKind(),
                         .LeaderDiskId = State->GetDiskId(),
+                        .LeaderCloudId =
+                            State->GetConfig().GetCloudId(),
+                        .LeaderFolderId =
+                            State->GetConfig().GetFolderId(),
                         .LeaderBlockCount = State->GetBlocksCount(),
                         .LeaderBlockSize = State->GetBlockSize(),
                         .LeaderVolumeActorId = SelfId(),
                         .LeaderPartitionActorId = actors.GetTop(),
-                        .TakePartitionOwnership = takePartitionOwnership,
                         .ClientId = State->GetReadWriteAccessClientId(),
                         .FollowerDiskInfo = follower});
                 actors.Push(
@@ -944,10 +950,8 @@ void TVolumeActor::HandleTabletStatus(
             }
 
             if (State->GetPartitions().size() == 1) {
-                actorStack = WrapWithFollowerActorIfNeeded(
-                    ctx,
-                    std::move(actorStack),
-                    true);
+                actorStack =
+                    WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
             }
             partition->SetStarted(std::move(actorStack));
 

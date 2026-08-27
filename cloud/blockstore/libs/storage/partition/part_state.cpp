@@ -63,7 +63,11 @@ TPartitionState::TPartitionState(
         ui32 maxBlobsPerUnit,
         ui32 maxBlobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState)
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui64 tabletId,
+        const std::optional<TMixedBlocksFilterConfig>
+            mixedBlocksFilterConfig,
+        bool checkpointAwareCleanupEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -74,6 +78,7 @@ TPartitionState::TPartitionState(
           reassignSystemChannelsImmediately,
           channelCount)
     , TCommitIdsState()
+    , TPartitionFreshBlobState(tabletId)
     , TPartitionTrimFreshLogState()
     , TPartitionFreshBlocksState(*this, *this, threadSafeState)
     , Meta(std::move(meta))
@@ -95,7 +100,23 @@ TPartitionState::TPartitionState(
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
+    , CheckpointAwareCleanupEnabled(checkpointAwareCleanupEnabled)
 {
+    if (mixedBlocksFilterConfig) {
+        MixedBlocksFilter.emplace(
+            tabletId,
+            GetMaxBlocksInBlob(),
+            Config.GetBlocksCount());
+
+        if (mixedBlocksFilterConfig->MixedBlocksFilterRangesToLoadPerTx) {
+            MixedBlocksFilterLoadState.emplace(
+                *MixedBlocksFilter,
+                CeilDiv<ui64>(Config.GetBlocksCount(), GetMaxBlocksInBlob()),
+                mixedBlocksFilterConfig->MixedBlocksFilterRangesToLoadPerTx,
+                mixedBlocksFilterConfig
+                    ->MixedBlocksFilterAllowedCpuTimePerSecond);
+        }
+    }
     InitChannels();
 }
 
@@ -114,7 +135,9 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
     const auto& cleanupFeature = BPConfig.CleanupQueueBytesFeatureConfig;
 
     const auto freshByteCount =
-        GetUntrimmedFreshBlobByteCount() + GetUnflushedFreshBlobByteCount() +
+        Max<ui64>(
+            GetUntrimmedFreshBlobByteCount(),
+            GetUnflushedFreshBlobByteCount()) +
         GetStats().GetFreshBlocksCount() * GetBlockSize();
 
     return {
@@ -129,20 +152,110 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
     };
 }
 
+ui64 TPartitionState::GetMaxCheckpointCommitId() const
+{
+    return Max(
+        GetCheckpoints().GetMaxCommitId(),
+        GetCheckpointsInFlight()->GetMaxCommitId());
+}
+
+ui64 TPartitionState::GetMinCheckpointCommitId() const
+{
+    return Min(
+        GetCheckpoints().GetMinCommitId(),
+        GetCheckpointsInFlight()->GetMinCommitId());
+}
+
 ui64 TPartitionState::GetCleanupCommitId() const
 {
     ui64 commitId = GetLastCommitId();
 
-    // should not cleanup after any barrier
+    // Should not cleanup after any barrier.
     commitId = Min(commitId, CleanupQueue.GetMinCommitId() - 1);
 
-    // should not cleanup after any checkpoint
-    commitId =
-        Min(commitId, GetCheckpoints().GetMinCommitId() - 1);
-
-    commitId = Min(commitId, GetCheckpointsInFlight()->GetMinCommitId() - 1);
+    if (!CheckpointAwareCleanupEnabled) {
+        // Should not cleanup after any checkpoint.
+        commitId = Min(commitId, GetMinCheckpointCommitId() - 1);
+    }
 
     return commitId;
+}
+
+bool TPartitionState::HasBlobCountToCleanupReachedThreshold(
+    ui64 cleanupCommitId,
+    ui32 threshold) const
+{
+    const ui64 milestoneCommitId = GetCleanupMilestoneCommitId();
+    const TPartialBlobId milestoneBlobId = GetCleanupMilestoneBlobId();
+    auto& estimate = BlobCountToCleanupEstimate;
+
+    const bool milestoneNotAdvanced =
+        std::forward_as_tuple(milestoneCommitId, milestoneBlobId) <=
+        std::forward_as_tuple(
+            estimate.MilestoneCommitId,
+            estimate.MilestoneBlobId);
+
+    if (estimate.BlobCount >= threshold &&
+        cleanupCommitId >= estimate.CleanupCommitId && milestoneNotAdvanced)
+    {
+        // No need to recalculate the blob count: it is definitely greater
+        // than or equal to the threshold.
+        return true;
+    }
+
+    estimate = TBlobCountToCleanupEstimate(
+        CleanupQueue
+            .GetCount(milestoneCommitId, milestoneBlobId, cleanupCommitId),
+        cleanupCommitId,
+        milestoneCommitId,
+        milestoneBlobId);
+
+    return estimate.BlobCount >= threshold;
+}
+
+void TPartitionState::UpdateOrResetCleanupMilestone(
+    ui64 newCommitId,
+    TPartialBlobId newBlobId,
+    ui64 minCheckpointCommitId,
+    ui64 maxCheckpointCommitId)
+{
+    const auto& milestone = Meta.GetCleanupMilestone();
+
+    if (minCheckpointCommitId != milestone.GetMinCheckpointCommitId() ||
+        maxCheckpointCommitId != milestone.GetMaxCheckpointCommitId())
+    {
+        // Checkpoints changed, need to reset milestone.
+        newCommitId = 0;
+        newBlobId = {};
+    }
+
+    auto& updated = *Meta.MutableCleanupMilestone();
+    updated.SetCommitId(newCommitId);
+    updated.SetBlobCommitId(newBlobId.CommitId());
+    updated.SetBlobUniqueId(newBlobId.UniqueId());
+    updated.SetMinCheckpointCommitId(minCheckpointCommitId);
+    updated.SetMaxCheckpointCommitId(maxCheckpointCommitId);
+}
+
+void TPartitionState::UpdateCleanupMilestoneIfNeeded(
+    ui64 newCommitId,
+    TPartialBlobId newBlobId,
+    ui64 minCheckpointCommitId,
+    ui64 maxCheckpointCommitId)
+{
+    const auto& milestone = Meta.GetCleanupMilestone();
+    if (minCheckpointCommitId != milestone.GetMinCheckpointCommitId() ||
+        maxCheckpointCommitId != milestone.GetMaxCheckpointCommitId())
+    {
+        // Checkpoint bounds are stale, should not update the milestone.
+        return;
+    }
+
+    UpdateOrResetCleanupMilestone(
+        newCommitId,
+        newBlobId,
+        minCheckpointCommitId,
+        maxCheckpointCommitId);
 }
 
 ui64 TPartitionState::CalculateCheckpointBytes() const
@@ -345,10 +458,10 @@ BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
 #undef BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER
 
-void TPartitionState::AddFreshBlob(TFreshBlobMeta freshBlobMeta)
+void TPartitionState::AddFreshBlob(ui64 commitId, ui64 blobSize)
 {
-    Y_ABORT_UNLESS(freshBlobMeta.CommitId > GetLastTrimFreshLogToCommitId());
-    TPartitionFreshBlobState::AddFreshBlob(freshBlobMeta);
+    Y_ABORT_UNLESS(commitId > GetLastTrimFreshLogToCommitId());
+    TPartitionFreshBlobState::AddFreshBlob(commitId, blobSize);
 }
 
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)
@@ -413,13 +526,18 @@ void TPartitionState::DeleteFreshBlockFromDb(
 ////////////////////////////////////////////////////////////////////////////////
 // Mixed blocks
 
-void TPartitionState::WriteMixedBlock(
-    TPartitionDatabase& db,
-    TMixedBlock block)
+void TPartitionState::WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block)
 {
     const ui32 rangeIdx = CompactionMap.GetRangeIndex(block.BlockIndex);
     MixedIndexCache.InsertBlockIfHot(rangeIdx, block);
+
     db.WriteMixedBlock(block);
+
+    if (MixedBlocksFilter) {
+        MixedBlocksFilter->BlocksAddedToMixedIndex(
+            block.BlockIndex,
+            block.CommitId);
+    }
 }
 
 void TPartitionState::WriteMixedBlocks(
@@ -435,15 +553,18 @@ void TPartitionState::WriteMixedBlocks(
         const ui32 rangeIdx = CompactionMap.GetRangeIndex(blockIndex);
         MixedIndexCache.InsertBlockIfHot(
             rangeIdx,
-            {blobId,
-             commitId,
-             blockIndex,
-             blobOffset,
-             compactionRangeCount});
+            {blobId, commitId, blockIndex, blobOffset, compactionRangeCount});
+
         ++blobOffset;
     }
 
     db.WriteMixedBlocks(blobId, blockIndices, compactionRangeCount);
+
+    if (MixedBlocksFilter) {
+        for (const ui32 blockIndex: blockIndices) {
+            MixedBlocksFilter->BlocksAddedToMixedIndex(blockIndex, commitId);
+        }
+    }
 }
 
 void TPartitionState::DeleteMixedBlock(
@@ -720,7 +841,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 TABLER() {
                     TABLED() { out << "Flush"; }
                     TABLED () {
-                        DumpOperationState(out, GetFlushState());
+                        DumpOperationState(
+                            out,
+                            GetFlushState().GetOperationState());
                     }
                 }                TABLER() {
                     TABLED() { out << "Compaction"; }
@@ -761,7 +884,7 @@ TJsonValue TPartitionState::AsJson() const
         state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
         state["FreshBlocksQueued"] = GetFreshBlocksQueued();
         state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
-        state["FlushState"] = ToJson(GetFlushState());
+        state["FlushState"] = ToJson(GetFlushState().GetOperationState());
         state["Compaction"] = ToJson(CompactionState);
         state["Cleanup"] = ToJson(CleanupState);
         state["CollectGarbage"] = ToJson(CollectGarbageState);

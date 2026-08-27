@@ -28,6 +28,7 @@ struct TEvStateStorage {
         EvListStateStorage,
         EvBoardInfoUpdate,
         EvPublishActorGone,
+        EvListBoard,
 
         // replies (local, from proxy)
         EvInfo = EvLookup + 512,
@@ -37,6 +38,7 @@ struct TEvStateStorage {
         EvDeleteResult,
         EvListSchemeBoardResult,
         EvListStateStorageResult,
+        EvListBoardResult,
 
         // replicas interface
         EvReplicaLookup = EvLock + 2 * 512,
@@ -61,11 +63,6 @@ struct TEvStateStorage {
         EvReplicaBoardPublishAck = EvLock + 5 * 512,
         EvReplicaBoardInfo,
         EvReplicaBoardInfoUpdate,
-
-        EvReplicaProbeSubscribe = EvLock + 6 * 512,
-        EvReplicaProbeUnsubscribe,
-        EvReplicaProbeConnected,
-        EvReplicaProbeDisconnected,
 
         EvEnd
     };
@@ -385,10 +382,8 @@ struct TEvStateStorage {
     struct TEvListStateStorageResult;
     struct TEvPublishActorGone;
     struct TEvUpdateGroupConfig;
-    struct TEvReplicaProbeSubscribe;
-    struct TEvReplicaProbeUnsubscribe;
-    struct TEvReplicaProbeConnected;
-    struct TEvReplicaProbeDisconnected;
+    struct TEvListBoard;
+    struct TEvListBoardResult;
 
     struct TEvReplicaShutdown : public TEventPB<TEvStateStorage::TEvReplicaShutdown, NKikimrStateStorage::TEvReplicaShutdown, TEvStateStorage::EvReplicaShutdown> {
     };
@@ -479,6 +474,7 @@ struct TStateStorageInfo : public TThrRefBase {
             StatusOk,
             StatusNoInfo,
             StatusOutdated,
+            StatusUnavailable,
         };
 
         ui32 Sz;

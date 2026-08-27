@@ -264,6 +264,62 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
         ValidateTestResult(Supplier, emptyJson);
     }
 
+    Y_UNIT_TEST_F(ShouldReportAvailabilityCounters, TEnv)
+    {
+        const TString fsId = "test_fs";
+        const TString clientId = "test_client";
+        const TString cloudId = "test_cloud";
+        const TString folderId = "test_folder";
+
+        Registry->GetFileSystemStats(fsId, clientId, cloudId, folderId);
+        Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
+
+        auto counters = Counters->GetSubgroup("component", METRIC_FS_COMPONENT)
+                            ->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("filesystem", fsId)
+                            ->GetSubgroup("client", clientId)
+                            ->GetSubgroup("cloud", cloudId)
+                            ->GetSubgroup("folder", folderId);
+
+        // The user stats registration pre-creates the availability
+        // counters (the availability tracker registers them lazily), so
+        // setting them here reuses the very counters the user metrics are
+        // bound to - the same way the tracker does.
+        counters->GetCounter("Availability_TotalIntervals", true)->Set(30);
+        counters->GetCounter("Availability_AvailableIntervals", true)
+            ->Set(29);
+        counters->GetCounter("Availability_UnavailableIntervals", true)
+            ->Set(1);
+
+        const TString testResult = R"--({
+            "sensors": [
+                {
+                    "labels":
+                        {"name": "filestore.availability_total_intervals"},
+                    "value": 30
+                },
+                {
+                    "labels":
+                        {"name": "filestore.availability_available_intervals"},
+                    "value": 29
+                },
+                {
+                    "labels":
+                        {"name":
+                            "filestore.availability_unavailable_intervals"},
+                    "value": 1
+                }
+            ]
+        })--";
+        auto expectedJson = NJson::ReadJsonFastTree(testResult, true);
+        ValidateTestResult(Supplier, expectedJson);
+
+        // unregistration removes the availability user metrics as well
+        Registry->Unregister(fsId, clientId);
+        auto emptyJson = NJson::ReadJsonFastTree("{}", true);
+        ValidateTestResult(Supplier, emptyJson);
+    }
+
     Y_UNIT_TEST_F(ShouldReportUserStatsIsSourceMetricsChanged, TEnv)
     {
         const TString fsId = "test_fs";

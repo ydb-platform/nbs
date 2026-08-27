@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client.h>
 #include <contrib/ydb/public/lib/deprecated/client/grpc_client.h>
 #include <contrib/ydb/core/util/pb.h>

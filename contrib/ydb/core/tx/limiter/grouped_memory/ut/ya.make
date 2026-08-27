@@ -1,11 +1,11 @@
-UNITTEST_FOR(contrib/ydb/core/formats/arrow)
+UNITTEST_FOR(contrib/ydb/core/tx/limiter/grouped_memory)
 
 SIZE(SMALL)
 
 PEERDIR(
     contrib/ydb/core/tx/limiter/grouped_memory/usage
-    contrib/ydb/library/yql/public/udf/service/stub
-    contrib/ydb/library/yql/parser/pg_wrapper
+    yql/essentials/public/udf/service/stub
+    yql/essentials/parser/pg_wrapper
 )
 
 SRCS(

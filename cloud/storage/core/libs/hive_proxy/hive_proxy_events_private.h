@@ -126,6 +126,8 @@ struct TEvHiveProxyPrivate
         EvReadTabletBootInfoBackupResponse,
         EvUpdateTabletBootInfoBackupRequest,
 
+        EvCheckFallbackMode,
+
         EvEnd
     };
 
@@ -143,6 +145,8 @@ struct TEvHiveProxyPrivate
         TReadTabletBootInfoBackupResponse, EvReadTabletBootInfoBackupResponse>;
     using TEvUpdateTabletBootInfoBackupRequest = TRequestEvent<
         TUpdateTabletBootInfoBackupRequest, EvUpdateTabletBootInfoBackupRequest>;
+
+    using TEvCheckFallbackMode = TRequestEvent<TEmpty, EvCheckFallbackMode>;
 };
 
 }   // namespace NCloud::NStorage

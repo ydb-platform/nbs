@@ -139,7 +139,8 @@ using TEndpointPoolPtr = TIntrusivePtr<TEndpointPool>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileSystemTCPSideChannel: public TThrRefBase
+class TFileSystemTCPSideChannel final
+    : public std::enable_shared_from_this<TFileSystemTCPSideChannel>
 {
 private:
     TAdaptiveLock Lock;
@@ -169,20 +170,8 @@ public:
         const ui32 port = backendInfo.GetFastShardPort();
         const TString& host = backendInfo.GetFastShardHost();
 
-        ui32 generation = 0;
-        with_lock (Lock) {
-            if (Host != host || Port != port) {
-                generation = EndpointPool->AddressChanged();
-                STORAGE_INFO("updated side channel connection params"
-                    << ": host=" << host
-                    << ", port=" << port
-                    << ", fileSystemId=" << backendInfo.GetActualFileSystemId()
-                    << ", generation=" << generation);
-            }
-
-            Host = host;
-            Port = port;
-        }
+        const ui32 generation =
+            DoUpdate(backendInfo.GetActualFileSystemId(), host, port);
 
         auto connection = TryConnect();
         if (!connection.Initialized()) {
@@ -279,11 +268,13 @@ public:
             return false;
         }
 
+        auto weakPtr = weak_from_this();
         connection.Subscribe([
             req = std::move(req),
             complete = std::move(complete),
             ep = EndpointPool,
-            generation
+            generation,
+            weakPtr
         ] (const TFuture<IAsyncEndpointPtr>& f) mutable {
             // Copy instead of UnsafeExtractValue: this is a secondary
             // subscriber (TryConnect attached a logging subscriber to the
@@ -293,6 +284,27 @@ public:
             IAsyncEndpointPtr e = f.GetValue();
 
             if (!e) {
+                if (auto self = weakPtr.lock()) {
+                    //
+                    // Failed connection attempt means that something might be
+                    // wrong with the address. Resetting the address here -
+                    // waiting for an update after one of the next requests gets
+                    // processed by the main channel.
+                    //
+                    // Connection pool generation could be used here to avoid
+                    // unneeded resets that may happen due to multiple
+                    // concurrent failures and reconnect attempts but those are
+                    // not a big issue - it will just slightly increase the
+                    // percentage of the requests that go through the main
+                    // channel if the number of connection attempts is high.
+                    //
+
+                    self->DoUpdate(
+                        self->ActualFileSystemId,
+                        {} /* host */,
+                        0 /* port */);
+                }
+
                 TResponse errorResponse;
                 errorResponse.MutableError()->SetCode(E_UNAVAILABLE);
                 complete(nullptr, 0, std::move(errorResponse));
@@ -358,9 +370,32 @@ private:
 
         return TStringBuilder() << "[" << host << "]:" << port;
     }
+
+    ui32 DoUpdate(
+        const TString& actualFileSystemId,
+        const TString& host,
+        ui32 port)
+    {
+        ui32 generation = 0;
+        with_lock (Lock) {
+            if (Host != host || Port != port) {
+                generation = EndpointPool->AddressChanged();
+                STORAGE_INFO("updated side channel connection params"
+                    << ": host=" << host
+                    << ", port=" << port
+                    << ", fileSystemId=" << actualFileSystemId
+                    << ", generation=" << generation);
+            }
+
+            Host = host;
+            Port = port;
+        }
+
+        return generation;
+    }
 };
 
-using TFileSystemTCPSideChannelPtr = TIntrusivePtr<TFileSystemTCPSideChannel>;
+using TFileSystemTCPSideChannelPtr = std::shared_ptr<TFileSystemTCPSideChannel>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -486,7 +521,7 @@ private:
             if (!channel) {
                 STORAGE_INFO("initializing channel for fileSystemId="
                     << actualFileSystemId);
-                channel = MakeIntrusive<TFileSystemTCPSideChannel>(
+                channel = std::make_shared<TFileSystemTCPSideChannel>(
                     actualFileSystemId,
                     Log,
                     Client);

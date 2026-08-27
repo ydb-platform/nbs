@@ -4,8 +4,6 @@ SRCS(
     common.go
     factory.go
     storage.go
-    storage_legacy.go
-    storage_legacy_impl.go
     storage_ydb.go
     storage_ydb_impl.go
     storage_ydb_metrics.go

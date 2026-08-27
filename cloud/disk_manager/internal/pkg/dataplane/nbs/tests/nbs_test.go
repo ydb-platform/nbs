@@ -62,6 +62,7 @@ func newFactory(t *testing.T, ctx context.Context) nbs_client.Factory {
 		},
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
+		nil, // tlsProvider
 	)
 	require.NoError(t, err)
 

@@ -53,6 +53,7 @@ class LocalLoadTest:
             access_service_type=AccessService,
             load_configs_from_cms=True,
             log_config=None,
+            bs_failure_probability=None,
     ):
 
         self.__endpoint = endpoint
@@ -62,7 +63,7 @@ class LocalLoadTest:
 
         self.configurator = KikimrConfigGenerator(
             erasure=None,
-            binary_path=kikimr_binary_path,
+            binary_paths=[kikimr_binary_path],
             use_in_memory_pdisks=use_in_memory_pdisks,
             dynamic_pdisks=dynamic_pdisks,
             dynamic_storage_pools=dynamic_storage_pools,
@@ -117,6 +118,7 @@ class LocalLoadTest:
             rack=rack,
             access_service_type=access_service_type,
             log_config=log_config,
+            bs_failure_probability=bs_failure_probability,
         )
 
         if run_kikimr:

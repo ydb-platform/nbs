@@ -30,15 +30,14 @@ constexpr TDuration BackupInterval = TDuration::Seconds(10);
 ////////////////////////////////////////////////////////////////////////////////
 
 TTabletBootInfoBackup::TTabletBootInfoBackup(
-        int logComponent,
-        TString backupFilePath,
-        bool useBinaryFormat,
-        bool readOnlyMode)
+    int logComponent,
+    TVector<TString> backupFilePaths,
+    bool useBinaryFormat,
+    bool readOnlyMode)
     : LogComponent(logComponent)
-    , BackupFilePath(std::move(backupFilePath))
+    , InitialBackupFilePaths(std::move(backupFilePaths))
     , UseBinaryFormat(useBinaryFormat)
     , ReadOnlyMode(readOnlyMode)
-    , TmpBackupFilePath(BackupFilePath.GetPath() + ".tmp")
 {}
 
 void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
@@ -48,14 +47,37 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
     InitialBackupProto.emplace();
 
     // Load backup even if in read-only mode to warm up BS group connections.
-    if (!LoadFromBinaryFormat(ctx, *InitialBackupProto) &&
-        !LoadFromTextFormat(ctx, *InitialBackupProto))
+    const auto loadBackup = [&](const TFsPath& backupFilePath)
     {
+        return LoadFromBinaryFormat(ctx, backupFilePath, *InitialBackupProto) ||
+               LoadFromTextFormat(ctx, backupFilePath, *InitialBackupProto);
+    };
+
+    bool backupLoaded = false;
+
+    for (auto& backupFilePath: InitialBackupFilePaths) {
+        if (backupFilePath.empty()) {
+            continue;
+        }
+        BackupFilePath = std::move(backupFilePath);
+        backupLoaded = loadBackup(BackupFilePath);
+        if (backupLoaded) {
+            LOG_INFO_S(
+                ctx,
+                LogComponent,
+                "TabletBootInfoBackup: using backup file: "
+                    << BackupFilePath.GetPath().Quote());
+            break;
+        }
         LOG_WARN_S(
             ctx,
             LogComponent,
             "TabletBootInfoBackup: can't load backup file: "
                 << BackupFilePath.GetPath().Quote());
+    }
+    InitialBackupFilePaths.clear();
+
+    if (!backupLoaded) {
         InitialBackupProto.reset();
     }
 
@@ -65,6 +87,7 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
             InitialBackupProto.reset();
         }
     } else {
+        TmpBackupFilePath = BackupFilePath.GetPath() + ".tmp";
         ScheduleBackup(ctx);
     }
 
@@ -146,16 +169,17 @@ NProto::TError TTabletBootInfoBackup::Backup(const TActorContext& ctx)
 
 bool TTabletBootInfoBackup::LoadFromTextFormat(
     const TActorContext& ctx,
+    const TFsPath& backupFilePath,
     NHiveProxy::NProto::TTabletBootInfoBackup& backupProto)
 {
     LOG_INFO_S(
         ctx,
         LogComponent,
         "TabletBootInfoBackup: loading from text format: "
-            << BackupFilePath.GetPath().Quote());
+            << backupFilePath.GetPath().Quote());
     try {
         TInstant start = TInstant::Now();
-        MergeFromTextFormat(BackupFilePath, backupProto);
+        MergeFromTextFormat(backupFilePath, backupProto);
 
         LOG_INFO_S(
             ctx,
@@ -176,16 +200,17 @@ bool TTabletBootInfoBackup::LoadFromTextFormat(
 
 bool TTabletBootInfoBackup::LoadFromBinaryFormat(
     const TActorContext& ctx,
+    const TFsPath& backupFilePath,
     NHiveProxy::NProto::TTabletBootInfoBackup& backupProto)
 {
     LOG_INFO_S(
         ctx,
         LogComponent,
         "TabletBootInfoBackup: loading from binary format: "
-            << BackupFilePath.GetPath().Quote());
+            << backupFilePath.GetPath().Quote());
     try {
         TInstant start = TInstant::Now();
-        TFile file(BackupFilePath, OpenExisting | RdOnly | Seq);
+        TFile file(backupFilePath, OpenExisting | RdOnly | Seq);
         TUnbufferedFileInput input(file);
         const bool success = backupProto.MergeFromString(input.ReadAll());
 

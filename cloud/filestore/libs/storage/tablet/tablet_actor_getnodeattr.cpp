@@ -200,6 +200,16 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
             1,
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
+
+        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
+                args.NodeId,
+                EFileStoreRequest::GetNodeAttr,
+                ctx.Now(),
+                ctx.Now() - args.RequestInfo->StartedTs))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
     }
 
     CompleteResponse<TEvService::TGetNodeAttrMethod>(

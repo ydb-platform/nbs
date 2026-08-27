@@ -193,6 +193,9 @@ public:
 
     [[nodiscard]] bool GetEnableDurableVolumeInfo() const;
 
+    [[nodiscard]] NProto::EVolumeCriticalEventsReportingMode
+    GetVolumeCriticalEventsReportingMode() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

@@ -1,0 +1,51 @@
+From 412c073cd001891070312dcf6187033cdee5dc90 Mon Sep 17 00:00:00 2001
+From: Ruslan Garashchuk <ruslan.g@nebius.com>
+Date: Mon, 17 Nov 2025 16:40:41 +0100
+Subject: [PATCH] Add logging to TLeaderTabletInfo::FindFreeAllocationUnit,
+ TStoragePoolInfo::FindFreeAllocationUnit
+
+---
+ contrib/ydb/core/mind/hive/leader_tablet_info.cpp | 5 +++++
+ contrib/ydb/core/mind/hive/storage_pool_info.cpp  | 6 ++++++
+ 2 files changed, 11 insertions(+)
+
+diff --git a/contrib/ydb/core/mind/hive/leader_tablet_info.cpp b/contrib/ydb/core/mind/hive/leader_tablet_info.cpp
+index e4f151ad7cb..b539a8e0941 100644
+--- a/contrib/ydb/core/mind/hive/leader_tablet_info.cpp
++++ b/contrib/ydb/core/mind/hive/leader_tablet_info.cpp
+@@ -333,6 +333,11 @@ const NKikimrBlobStorage::TEvControllerSelectGroupsResult::TGroupParameters* TLe
+             }
+         }
+     }
++
++    BLOG_I(
++        "TLeaderTabletInfo::FindFreeAllocationUnit, Storage pool is not found "
++        "for channel "
++        << channelId);
+     return nullptr;
+ }
+
+diff --git a/contrib/ydb/core/mind/hive/storage_pool_info.cpp b/contrib/ydb/core/mind/hive/storage_pool_info.cpp
+index fe6731d01b7..a1fbab982a4 100644
+--- a/contrib/ydb/core/mind/hive/storage_pool_info.cpp
++++ b/contrib/ydb/core/mind/hive/storage_pool_info.cpp
+@@ -103,6 +103,9 @@ size_t TStoragePoolInfo::SelectGroup<NKikimrConfig::THiveConfig::HIVE_STORAGE_SE
+ const TEvControllerSelectGroupsResult::TGroupParameters* TStoragePoolInfo::FindFreeAllocationUnit(std::function<bool(const TStorageGroupInfo&)> filter,
+                                                                                                   std::function<double(const TStorageGroupInfo*)> calculateUsage) {
+     if (Groups.empty()) {
++        BLOG_I(
++            "TStoragePoolInfo::FindFreeAllocationUnit, Storage pool "
++            << Name << " has empty Groups");
+         return nullptr;
+     }
+     TVector<const TStorageGroupInfo*> groupCandidates;
+@@ -113,6 +116,9 @@ const TEvControllerSelectGroupsResult::TGroupParameters* TStoragePoolInfo::FindF
+         }
+     }
+     if (groupCandidates.empty()) {
++        BLOG_I(
++            "TStoragePoolInfo::FindFreeAllocationUnit, Storage pool "
++            << Name << ". There are no groups that satisfy the filter.");
+         return nullptr;
+     }
+     TVector<double> groupCandidateUsages;

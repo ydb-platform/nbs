@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/libs/common/volume_labels.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
@@ -36,6 +37,7 @@ class TFreshBlocksWriterActor final
 private:
     const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
+    const TVolumeLabelsConstPtr VolumeLabels;
     const EStorageAccessMode StorageAccessMode;
     const ui64 PartitionTabletID;
     const NActors::TActorId PartitionActorId;
@@ -219,6 +221,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ScanDisk,                 TEvVolume)
     BLOCKSTORE_IMPLEMENT_REQUEST(GetScanDiskStatus,        TEvVolume)
     BLOCKSTORE_IMPLEMENT_REQUEST(CheckRange,               TEvVolume)
+    BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlob,             TEvVolume)
 
     BLOCKSTORE_IMPLEMENT_REQUEST(GetPartCounters, TEvPartitionCommonPrivate)
 

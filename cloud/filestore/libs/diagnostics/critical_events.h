@@ -20,6 +20,9 @@ namespace NCloud::NFileStore{
     xxx(NodeNotFoundInShard)                                                   \
     xxx(NotEnoughResultsInGetNodeAttrBatchResponses)                           \
     xxx(AsyncDestroyHandleFailed)                                              \
+    xxx(UnexpectedAsyncCreateHandleResponse)                                   \
+    xxx(ConfirmCreateHandleFailed)                                             \
+    xxx(AsyncCreateHandleCleanupFailed)                                        \
     xxx(HandleOpsQueueProcessError)                                            \
     xxx(HandleOpsQueueCreatingOrDeletingError)                                 \
     xxx(DuplicateRequestId)                                                    \
@@ -63,6 +66,9 @@ namespace NCloud::NFileStore{
     xxx(BadValueInFeatureConfig)                                               \
     xxx(ResetSessionInterrupted)                                               \
     xxx(DestroySessionInterrupted)                                             \
+    xxx(IncompatibleFeatures)                                                  \
+    xxx(AvailabilityCountersUnavailableInterval)                               \
+    xxx(AvailabilityCountersMissingIntervals)                                  \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
@@ -99,6 +105,8 @@ namespace NCloud::NFileStore{
     xxx(ListNodesInternalFailedToAddNodeRef)                                   \
     xxx(InMemoryIndexStateNotInitialized)                                      \
     xxx(WriteDataRequestWithBufferAndPayload)                                  \
+    xxx(DiagnosticStatsInsertFailed)                                           \
+    xxx(AvailabilityCountersDoubleRegistration)                                \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

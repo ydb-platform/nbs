@@ -366,6 +366,28 @@ private:
         return request;
     }
 
+    static std::shared_ptr<NProto::TConfirmCreateHandleRequest>
+    CreateConfirmCreateHandleRequest(
+        const NProto::TCreateHandleRequest& createRequest,
+        ui64 nodeId,
+        ui64 handle,
+        ui64 originalRequestId);
+
+    void ConfirmCreateHandleAndReplyOpen(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        const NProto::TCreateHandleRequest& createRequest,
+        ui64 nodeId,
+        ui64 handle,
+        fuse_file_info fi);
+
+    void CleanupFailedCreateHandle(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        ui64 nodeId,
+        ui64 handle,
+        NProto::TError confirmError);
+
     template <typename T>
     void SetUserNGroup(T& request, const fuse_ctx* ctx)
     {
@@ -462,6 +484,12 @@ private:
         const NProto::TNodeAttr& attrs,
         ui64 version);
 
+    void ProcessAsyncCreateHandleResponse(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        const NProto::TCreateHandleRequest& originalRequest,
+        const NProto::TCreateHandleResponse& asyncResponse);
     bool ProcessAsyncRelease(
         TCallContextPtr callContext,
         fuse_req_t req,
@@ -478,10 +506,15 @@ private:
     void CompleteAsyncDestroyHandle(
         TCallContext& callContext,
         const NProto::TDestroyHandleResponse& response);
+    void CompleteAsyncCreateHandle(
+        TCallContext& callContext,
+        const NProto::TConfirmCreateHandleResponse& response);
+    void CompleteHandleOpsQueueEntry();
+    void ProcessDelayedRelease();
 
     void ClearDirectoryCache();
 
-    void ScheduleProcessHandleOpsQueue();
+    void ScheduleProcessHandleOpsQueue(TDuration delay);
     void ProcessHandleOpsQueue();
 
     void DoWrite(

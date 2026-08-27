@@ -97,7 +97,8 @@ void TFileSystem::ReadDir(
             c.Data(),
             c.Size(),
             [&] (ui64 nodeId) {
-                return fs.NodeCache.GetNodeVersion(nodeId) >
+                return content.CacheVersion == 0 || // loaded from persistent storage
+                       fs.NodeCache.GetNodeVersion(nodeId) >
                        content.CacheVersion;
             },
             [&] (TStringBuf name) {
@@ -188,12 +189,12 @@ void TFileSystem::ReadDir(
                     builder.Add(
                         req,
                         ".",
-                        {.attr = {.st_ino = MissingNodeId}},
+                        {.attr = {.st_ino = MissingNodeId, .st_mode = S_IFDIR}},
                         offset);
                     builder.Add(
                         req,
                         "..",
-                        {.attr = {.st_ino = MissingNodeId}},
+                        {.attr = {.st_ino = MissingNodeId, .st_mode = S_IFDIR}},
                         offset);
                 }
 

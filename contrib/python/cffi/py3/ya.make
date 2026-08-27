@@ -2,9 +2,15 @@
 
 PY3_LIBRARY()
 
-VERSION(1.16.0)
+VERSION(1.17.1)
 
 LICENSE(MIT)
+
+IF (SANITIZER_TYPE == "undefined")
+    SUPPRESSIONS(
+        ubsan.supp
+    )
+ENDIF()
 
 PEERDIR(
     contrib/python/pycparser

@@ -22,6 +22,7 @@
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 
+#include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -73,6 +74,15 @@ void TBootstrapServer::StartComponents()
             || Configs->StorageConfig->GetFastShardRuntimeEnabled())
     {
         NStorage::NFastShard::Init();
+        if (Configs->StorageConfig->GetFastShardExtendedVerificationEnabled())
+        {
+            // TODO(#5895): properly integrate fastshard with log settings.
+            // FastShardExtendedVerificationEnabled flag is supposed to trigger
+            // some internal consistency checks inside fastshard code, fastshard
+            // loglevel should be configured in the same way as for the other
+            // components.
+            NStorage::NFastShard::EnableDebugLogging();
+        }
     }
     FILESTORE_LOG_START_COMPONENT(FastShardServer);
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
@@ -108,6 +118,18 @@ TConfigInitializerCommonPtr TBootstrapServer::InitConfigs(int argc, char** argv)
 void TBootstrapServer::InitActorSystemPrerequisites()
 {
     InitConfigs();
+
+    //
+    // The first FQDNHostName() call blocks in DNS and throws on
+    // failure - which must not happen on an actor thread or a silk
+    // fiber (e.g. BuildBackendInfo calls it on the response paths).
+    // Warm the cache here, with retries; failure fails the daemon.
+    //
+
+    GetFqdnHostNameWithRetries(
+        [this] (const yexception& e) {
+            STORAGE_WARN("FQDNHostName failed: " << e.what());
+        });
 
     const ui32 port = Configs->StorageConfig->GetFastShardServerPort();
     if (port) {

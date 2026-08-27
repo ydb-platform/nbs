@@ -1,6 +1,5 @@
 #pragma once
 #include "object.h"
-#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard__operation_part.h>
 

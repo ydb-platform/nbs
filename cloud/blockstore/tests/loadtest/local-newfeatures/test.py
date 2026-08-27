@@ -182,6 +182,16 @@ def storage_config_with_ignoring_zeroed_compaction_enabled():
     return storage
 
 
+def storage_config_with_mixed_blocks_filter_enabled():
+    storage = ordinary_prod_storage_config()
+    storage.MixedBlocksFilterEnabled = True
+
+    storage.MixedBlocksFilterRangesToLoadPerTx = 1
+    storage.MixedBlocksFilterAllowedCpuTimePerSecond = 1000
+
+    return storage
+
+
 def storage_config_with_new_features_enabled():
     storage = ordinary_prod_storage_config()
     storage.ReadBlockMaskOnCompactionOptimizationEnabled = True
@@ -190,12 +200,25 @@ def storage_config_with_new_features_enabled():
     storage.FreshBlocksWriterEnabled = True
     storage.IgnoringZeroedCompactionEnabled = True
 
+    storage.MixedBlocksFilterEnabled = True
+    storage.WaitForFreshWritesBeforeFlushEnabled = True
+
+    storage.MixedBlocksFilterRangesToLoadPerTx = 1
+    storage.MixedBlocksFilterAllowedCpuTimePerSecond = 1000
+
     return storage
 
 
 def storage_config_with_use_recreated_blob_metas_on_cleanup_enabled():
     storage = ordinary_prod_storage_config()
     storage.UseRecreatedBlobMetasOnCleanup = True
+
+    return storage
+
+
+def storage_config_with_checkpoint_aware_cleanup_enabled(max_partitions):
+    storage = storage_config_with_multiple_partitions(max_partitions)
+    storage.CheckpointAwareCleanupEnabled = True
 
     return storage
 
@@ -211,6 +234,7 @@ class TestCase(object):
         restart_interval=get_restart_interval(),
         check_disk_size=False,
         disk_id="",
+        bs_failure_probability=None,
     ):
         self.name = name
         self.config_path = config_path
@@ -219,6 +243,7 @@ class TestCase(object):
         self.restart_interval = restart_interval
         self.check_disk_size = check_disk_size
         self.disk_id = disk_id
+        self.bs_failure_probability = bs_failure_probability
 
 
 TESTS = [
@@ -237,6 +262,16 @@ TESTS = [
         [
             storage_config_with_multiple_partitions(2),
             storage_config_with_multiple_partitions(1),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-two-partitions-and-checkpoints-with-checkpoint-aware-cleanup",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-two-partitions-and-checkpoints.txt",
+        [
+            storage_config_with_checkpoint_aware_cleanup_enabled(2),
+            default_storage_config(),
+            storage_config_with_checkpoint_aware_cleanup_enabled(1),
         ],
         None,
     ),
@@ -339,6 +374,7 @@ TESTS = [
             default_storage_config(),
         ],
         None,
+        bs_failure_probability=0.0001,
     ),
     TestCase(
         "version1-compaction-to-mixed-channel",
@@ -376,6 +412,22 @@ TESTS = [
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-ignoring-zeroed-compaction.txt",
         [
             storage_config_with_ignoring_zeroed_compaction_enabled(),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-mixed-blocks-filter",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
+        [
+            storage_config_with_mixed_blocks_filter_enabled(),
+        ],
+        None,
+    ),
+    TestCase(
+        "version1-with-new-features",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
+        [
+            storage_config_with_new_features_enabled(),
         ],
         None,
     ),
@@ -552,6 +604,7 @@ def __run_test(test_case):
         use_in_memory_pdisks=True,
         features_config_patch=test_case.features_config_patch,
         restart_interval=test_case.restart_interval,
+        bs_failure_probability=test_case.bs_failure_probability,
     )
 
     client = TClientConfig()

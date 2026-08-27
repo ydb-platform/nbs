@@ -61,6 +61,7 @@ private:
     const TString DiskId;
     const ui64 DeletionCommitId;
     const ui32 MaxBlocksInBlob;
+    const bool UseFlushCommitIdAsTrimFreshLogToCommitId;
     TChildLogTitle LogTitle;
 
     struct TRangeInfo
@@ -82,6 +83,7 @@ public:
             TString diskId,
             ui64 deletionCommitId,
             ui32 maxBlocksInBlob,
+            bool useFlushCommitIdAsTrimFreshLogToCommitId,
             TChildLogTitle logTitle)
         : State(state)
         , Args(args)
@@ -89,6 +91,8 @@ public:
         , DiskId(std::move(diskId))
         , DeletionCommitId(deletionCommitId)
         , MaxBlocksInBlob(maxBlocksInBlob)
+        , UseFlushCommitIdAsTrimFreshLogToCommitId(
+              useFlushCommitIdAsTrimFreshLogToCommitId)
         , LogTitle(std::move(logTitle))
     {}
 
@@ -162,7 +166,23 @@ public:
         }
 
         UpdateCompactionMap(db);
-        State.UpdateTrimFreshLogToCommitIdInMeta();
+
+        if (UseFlushCommitIdAsTrimFreshLogToCommitId &&
+            Args.Mode == ADD_FLUSH_RESULT)
+        {
+            // Persist the flush commit id to avoid reloading and flushing the
+            // same fresh blobs again after a restart (see
+            // ShouldNotReloadFlushedFreshBlobsAfterRestartBeforeTrim). Trim
+            // barriers are released later, after this transaction commits:
+            // trimming before AddBlobs commits could cause data loss if the
+            // transaction fails.
+            const ui64 trimFreshLogToCommitId =
+                Max(State.GetTrimFreshLogToCommitId(), Args.CommitId);
+            State.AccessMeta().SetTrimFreshLogToCommitId(
+                trimFreshLogToCommitId);
+        } else {
+            State.UpdateTrimFreshLogToCommitIdInMeta();
+        }
 
         db.WriteMeta(State.GetMeta());
     }
@@ -780,8 +800,9 @@ void TPartitionActor::ExecuteAddBlobs(
         PartitionConfig.GetDiskId(),
         args.DeletionCommitId,
         State->GetMaxBlocksInBlob(),
-        LogTitle.GetChild(GetCycleCount())
-    );
+        Config
+            ->GetWaitForFreshWritesBeforeFlushEnabled(),   // useFlushCommitIdAsTrimFreshLogToCommitId
+        LogTitle.GetChild(GetCycleCount()));
     executor.Execute(ctx, db);
 }
 

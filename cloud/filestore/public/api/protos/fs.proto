@@ -21,7 +21,7 @@ message TFileStoreFeatures
     uint32 ThreeStageWriteThreshold = 6;
     uint32 PreferredBlockSize = 7;
     bool AsyncDestroyHandleEnabled = 8;
-    uint32 AsyncHandleOperationPeriod = 9;
+    uint32 AsyncHandleOperationIdlePeriod = 9;
     bool DirectIoEnabled = 10;
     uint32 DirectIoAlign = 11;
     bool TwoStageReadDisabledForHDD = 12;
@@ -63,6 +63,13 @@ message TFileStoreFeatures
     bool XAttrCacheInvalidateOnCreateEnabled = 48;
     bool AsyncDestroyReadOnlyHandleEnabled = 49;
     bool ExternalWriteDataPayloadEnabled = 50;
+    bool AsyncCreateHandleEnabled = 51;
+
+    // Enables the per-client filesystem availability tracking on the guest.
+    bool AvailabilityTrackingEnabled = 52;
+    // Availability interval duration (in ms), 0 means the default.
+    uint32 AvailabilityTrackingInterval = 53;
+    uint32 AsyncHandleOperationDrainPeriod = 54;
 }
 
 message TFileStore

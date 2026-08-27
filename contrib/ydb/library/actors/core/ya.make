@@ -14,6 +14,7 @@ IF (ALLOCATOR == "B" OR ALLOCATOR == "BS" OR ALLOCATOR == "C")
 ENDIF()
 
 SRCS(
+    activity_guard.cpp
     actor_bootstrapped.cpp
     actor_coroutine.cpp
     actor_coroutine.h
@@ -32,9 +33,9 @@ SRCS(
     callstack.cpp
     callstack.h
     config.h
+    coro_stack_pool.cpp
     cpu_manager.cpp
     cpu_manager.h
-    cpu_state.h
     defs.h
     event.cpp
     event.h
@@ -46,6 +47,7 @@ SRCS(
     events.h
     events_undelivered.cpp
     executelater.h
+    execution_stats.cpp
     executor_pool_base.cpp
     executor_pool_base.h
     executor_pool_basic.cpp
@@ -54,10 +56,9 @@ SRCS(
     executor_pool_io.h
     executor_pool_shared.cpp
     executor_pool_shared.h
+    executor_thread_ctx.cpp
     executor_thread.cpp
     executor_thread.h
-    harmonizer.cpp
-    harmonizer.h
     hfunc.h
     interconnect.cpp
     interconnect.h
@@ -74,8 +75,8 @@ SRCS(
     log_metrics.h
     mailbox.cpp
     mailbox.h
-    mailbox_queue_revolving.h
-    mailbox_queue_simple.h
+    mailbox_lockfree.cpp
+    mailbox_lockfree.h
     mon.cpp
     mon.h
     mon_stats.cpp
@@ -84,8 +85,7 @@ SRCS(
     monotonic.h
     monotonic_provider.cpp
     monotonic_provider.h
-    worker_context.cpp
-    worker_context.h
+    thread_context.cpp
     probes.cpp
     probes.h
     process_stats.cpp
@@ -106,6 +106,8 @@ GENERATE_ENUM_SERIALIZATION(log_iface.h)
 
 PEERDIR(
     contrib/ydb/library/actors/actor_type
+    contrib/ydb/library/actors/interconnect/rdma
+    contrib/ydb/library/actors/core/harmonizer
     contrib/ydb/library/actors/memory_log
     contrib/ydb/library/actors/prof
     contrib/ydb/library/actors/protos
@@ -119,6 +121,7 @@ PEERDIR(
     library/cpp/svnversion
     library/cpp/time_provider
     library/cpp/threading/future
+    library/cpp/threading/queue
 )
 
 IF (SANITIZER_TYPE == "thread")
@@ -129,7 +132,12 @@ ENDIF()
 
 END()
 
+RECURSE(
+    harmonizer
+)
+
 RECURSE_FOR_TESTS(
     ut
     ut_fat
+    ut_mprotect
 )

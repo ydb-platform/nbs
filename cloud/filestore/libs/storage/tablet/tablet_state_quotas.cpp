@@ -52,7 +52,46 @@ const NProto::TQuota& TIndexTabletState::SetQuota(
 void TIndexTabletState::DeleteQuota(IIndexTabletDatabase& db, ui32 quotaId)
 {
     db.DeleteQuota(quotaId);
+    db.DeleteQuotaUsage(quotaId);
     Impl->Quotas.RemoveQuota(quotaId);
+}
+
+void TIndexTabletState::LoadQuotaUsages(const TVector<TQuotaUsage>& usages)
+{
+    for (const auto& usage: usages) {
+        Impl->Quotas.LoadUsage(usage);
+    }
+}
+
+const TQuotaUsage* TIndexTabletState::FindQuotaUsage(ui32 quotaId) const
+{
+    return Impl->Quotas.FindUsage(quotaId);
+}
+
+TVector<TQuotaUsage> TIndexTabletState::GetQuotaUsages() const
+{
+    return Impl->Quotas.GetUsages();
+}
+
+void TIndexTabletState::UpdateQuotaUsage(
+    IIndexTabletDatabase& db,
+    ui32 quotaId,
+    i64 bytesDelta,
+    i64 nodesDelta)
+{
+    if (quotaId == 0 || (bytesDelta == 0 && nodesDelta == 0)) {
+        return;
+    }
+
+    if (!Impl->Quotas.FindQuota(quotaId)) {
+        return;
+    }
+
+    const auto* usage =
+        Impl->Quotas.UpdateUsage(quotaId, bytesDelta, nodesDelta);
+    if (usage) {
+        db.WriteQuotaUsage(quotaId, usage->UsedBytes, usage->UsedNodes);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -1114,6 +1114,57 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         UNIT_ASSERT_EQUAL(expectedContent, actualContent);
     }
 
+    Y_UNIT_TEST(ShouldWaitForFreshWritesBeforeFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetWaitForFreshWritesBeforeFlushEnabled(true);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(0, '0');
+
+        std::unique_ptr<IEventHandle> addFreshBlocksRequest;
+        bool interceptAddFreshBlocksRequest = true;
+        bool flushCompleted = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvAddFreshBlocksRequest &&
+                    interceptAddFreshBlocksRequest)
+                {
+                    addFreshBlocksRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                flushCompleted |= event->GetTypeRewrite() ==
+                                  TEvPartitionPrivate::EvFlushCompleted;
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        fbwClient.WriteBlocks(1, '1');
+        UNIT_ASSERT(addFreshBlocksRequest);
+        interceptAddFreshBlocksRequest = false;
+
+        partition.SendFlushRequest();
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT(!flushCompleted);
+
+        runtime.SendAsync(addFreshBlocksRequest.release());
+        partition.RecvFlushResponse();
+        UNIT_ASSERT(flushCompleted);
+    }
+
     Y_UNIT_TEST(ShouldNotLoseInFlightWritesOnReboot)
     {
         TMyTestEnv testEnv;

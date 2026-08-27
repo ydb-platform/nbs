@@ -13,7 +13,7 @@
 #include <contrib/ydb/core/tx/data_events/events.h>
 #include <contrib/ydb/core/tx/data_events/payload_helper.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
+#include <ydb-cpp-sdk/client/result/result.h>
 
 namespace NKikimr {
 
@@ -218,7 +218,9 @@ Y_UNIT_TEST_SUITE(ReadIteratorExternalBlobs) {
 
         {
             Cerr << "... waiting for stats after compaction" << Endl;
-            auto stats = WaitTableStats(runtime, shard1, 1, 0);
+            auto stats = WaitTableStats(runtime, shard1, [](const NKikimrTableStats::TTableStats& stats) {
+                return stats.GetPartCount() >= 1;
+            });
             UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), 10);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetPartCount(), 1);
@@ -607,7 +609,9 @@ Y_UNIT_TEST_SUITE(ReadIteratorExternalBlobs) {
 
         {
             Cerr << "... waiting for stats after compaction" << Endl;
-            auto stats = WaitTableStats(runtime, shard1, 1, 0);
+            auto stats = WaitTableStats(runtime, shard1, [](const NKikimrTableStats::TTableStats& stats) {
+                return stats.GetPartCount() >= 1;
+            });
             UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), 10);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetPartCount(), 1);
@@ -676,7 +680,9 @@ Y_UNIT_TEST_SUITE(ReadIteratorExternalBlobs) {
 
             {
                 Cerr << "... waiting for stats after compaction" << Endl;
-                auto stats = WaitTableStats(runtime, shard1, 1, 0);
+                auto stats = WaitTableStats(runtime, shard1, [](const NKikimrTableStats::TTableStats& stats) {
+                    return stats.GetPartCount() >= 1;
+                });
                 UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
                 UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), compactedPart);
                 UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetPartCount(), 1);
@@ -768,7 +774,9 @@ Y_UNIT_TEST_SUITE(ReadIteratorExternalBlobs) {
 
         {
             Cerr << "... waiting for stats after compaction" << Endl;
-            auto stats = WaitTableStats(runtime, shard1, 1, 0);
+            auto stats = WaitTableStats(runtime, shard1, [](const NKikimrTableStats::TTableStats& stats) {
+                return stats.GetPartCount() >= 1;
+            });
             UNIT_ASSERT_VALUES_EQUAL(stats.GetDatashardId(), shard1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetRowCount(), 10);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetTableStats().GetPartCount(), 1);

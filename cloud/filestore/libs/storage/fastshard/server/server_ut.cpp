@@ -16,6 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 using namespace NCloud::NFileStore::NStorage::NFastShard;
 using namespace NCloud::NFileStore::NStorage::NFastShard::NProtoSrv;
 using silk::FiberFuture;
@@ -29,6 +33,25 @@ constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
 [[maybe_unused]] auto* const gEnv =
     ::testing::AddGlobalTestEnvironment(MakeSilkTestEnv());
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool Ipv6LoopbackAvailable()
+{
+    int fd = ::socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) {
+        return false;
+    }
+
+    sockaddr_in6 addr{};
+    addr.sin6_family = AF_INET6;
+    addr.sin6_addr = in6addr_loopback;
+
+    const bool bound =
+        ::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
+    ::close(fd);
+    return bound;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Test fixture that runs the server in a fiber.
@@ -76,6 +99,45 @@ struct TServerFixture
         ServerFuture.wait();
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+// Connects to the server via the given loopback address and performs one
+// request round trip. Shared by the IPv4/IPv6 listener tests.
+
+struct THostParam
+{
+    const char* Host;
+};
+
+static_assert(sizeof(THostParam) <= silk::FIBER_PARAMETERS_SIZE);
+
+int LoopbackConnectFiber(THostParam* p) noexcept
+{
+    NCloud::NFileStore::NProtoPrivate::TMemFastShardConfig cfg;
+    cfg.SetCreateNodeUponAccess(true);
+    auto shard = CreateMemFileSystemShard(1, cfg);
+
+    TServerFixture fixture;
+    fixture.StartServer(shard);
+
+    TClient client;
+    auto endpoint = client.Connect(p->Host, fixture.Port);
+    EXPECT_NE(endpoint, nullptr) << "connect to " << p->Host;
+
+    if (endpoint) {
+        TRequest req;
+        req.SetFileSystemId("test-fs");
+        auto* body = req.MutableCreateNode();
+        body->SetNodeId(1);
+        body->MutableFile()->SetMode(0644);
+        body->SetName("loopback.txt");
+        auto resp = endpoint->Send(req);
+        EXPECT_TRUE(resp.HasCreateNode());
+    }
+
+    fixture.StopServer();
+    return 0;
+}
 
 }   // namespace
 
@@ -157,6 +219,26 @@ TEST(ServerTest, UnknownShardReturnsEmptyResponse)
         },
         0);
 
+    EXPECT_EQ(result, 0);
+}
+
+TEST(ServerTest, ListensOnIpv4Loopback)
+{
+    int result = FiberScheduler::run(
+        LoopbackConnectFiber,
+        THostParam{"127.0.0.1"});
+    EXPECT_EQ(result, 0);
+}
+
+TEST(ServerTest, ListensOnIpv6Loopback)
+{
+    if (!Ipv6LoopbackAvailable()) {
+        GTEST_SKIP() << "IPv6 loopback is not available on this host";
+    }
+
+    int result = FiberScheduler::run(
+        LoopbackConnectFiber,
+        THostParam{"::1"});
     EXPECT_EQ(result, 0);
 }
 

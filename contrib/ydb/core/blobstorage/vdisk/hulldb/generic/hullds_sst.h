@@ -40,7 +40,7 @@ namespace NKikimr {
             }
 
             TString ToString() const {
-                return Sprintf("[%u %lu (%s-%s)]", Level, SstPtr->GetFirstLsn(), SstPtr->FirstKey().ToString().data(), SstPtr->LastKey().ToString().data());
+                return Sprintf("[%u %u (%s-%s)]", Level, SstPtr->GetFirstLsn(), SstPtr->FirstKey().ToString().data(), SstPtr->LastKey().ToString().data());
             }
 
         private:

@@ -95,7 +95,8 @@ public:
 
     NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
-        TVector<TPageGroup> pageGroups) override
+        TVector<TPageGroup> pageGroups,
+        ui64 lsn) override
     {
         NProto::TWriteLogRecordRequest request;
         *request.MutableHeaders() = std::move(headers);
@@ -104,10 +105,13 @@ public:
             auto* w = request.AddPageGroups();
             w->SetFirstPageNo(pg.FirstPageNo);
             w->MutableContent()->Reserve(pg.Content.size());
-            for (auto& c: pg.Content) {
-                *w->AddContent() = std::move(c);
+            for (const auto& c: pg.Content) {
+                // proto content is TString - the copy stays until the
+                // protocol itself switches away from TString
+                w->AddContent()->assign(c.Data(), c.Size());
             }
         }
+        request.SetLogSequenceNumber(lsn);
         SILK_DEBUG("sg write: %s", DebugMessage(request).c_str());
 
         return MirrorRequest<
@@ -124,6 +128,10 @@ public:
         pageGroups->clear();
 
         NProto::TReadPagesRequest request;
+        // TODO(#5895): use proper client-id
+        const TString clientId = "fastshard-prototype-client";
+        headers.SetClientId(clientId);
+
         const ui32 i =
             Selector.fetch_add(1, std::memory_order_relaxed) % Devices.size();
         request.SetDeviceUUID(Devices[i].DeviceUUID);
@@ -142,8 +150,8 @@ public:
                 auto& r = pageGroups->emplace_back();
                 r.FirstPageNo = pg.GetFirstPageNo();
                 r.Content.reserve(pg.ContentSize());
-                for (auto& c: *pg.MutableContent()) {
-                    r.Content.emplace_back(std::move(c));
+                for (const auto& c: pg.GetContent()) {
+                    r.Content.emplace_back(c.data(), c.size());
                 }
             }
         }
@@ -158,7 +166,7 @@ private:
         *r.MutableHeaders() = w.GetHeaders();
         for (const auto& pg: w.GetPageGroups()) {
             auto* rpg = r.AddPageGroupRefs();
-            rpg->SetPageSize(pg.ContentSize() ? pg.GetContent(0).Size() : 0);
+            rpg->SetPageSize(pg.ContentSize() ? pg.GetContent(0).size() : 0);
             rpg->SetPageCount(pg.ContentSize());
             rpg->SetFirstPageNo(pg.GetFirstPageNo());
         }
@@ -172,6 +180,11 @@ private:
         typename TFiberMain>
     NProto::TError MirrorRequest(TFiberMain fiberMain, TRequest request)
     {
+        auto& headers = *request.MutableHeaders();
+        // TODO(#5895): use proper client-id
+        const TString clientId = "fastshard-prototype-client";
+        headers.SetClientId(clientId);
+
         TVector<silk::FiberFuture> futures(Devices.size());
         TVector<TResponse> responses(Devices.size());
         for (ui32 i = 0; i < Devices.size(); ++i) {

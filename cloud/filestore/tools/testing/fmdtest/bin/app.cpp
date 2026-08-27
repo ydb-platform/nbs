@@ -264,7 +264,10 @@ public:
 
                 TString content = TFileInput(filePath).ReadAll();
                 if (content != file.Content) {
-                    STORAGE_ERROR("Content mismatch for " << filePath);
+                    STORAGE_ERROR("Content mismatch for " << filePath
+                        << " (ino=" << file.Ino << ")");
+                    STORAGE_ERROR("E:\t" << file.Content);
+                    STORAGE_ERROR("A:\t" << content);
                     ++errors;
                 }
 
@@ -290,10 +293,19 @@ private:
     void CreateFile()
     {
         TString fileName = TStringBuilder() << "file_" << FileNo;
-        ++FileNo;
         TFsPath filePath = DirPath / fileName;
 
-        TString content(Options.FileSize, 'a' + (ThreadId % ('z' - 'a' + 1)));
+        TString content;
+        TStringOutput builder(content);
+        builder << "F=" << FileNo << ";T=" << ThreadId << ";Data=";
+        content.reserve(Options.FileSize);
+        for (ui64 i = content.size(); i < Options.FileSize; ++i) {
+            const char c = 'a' + ThreadId % ('z' - 'a' + 1);
+            content.push_back(c);
+        }
+
+        ++FileNo;
+
         static constexpr EOpenMode OpenMode = CreateAlways | WrOnly | Seq;
         THPTimer timer;
 
@@ -513,7 +525,10 @@ private:
 
             TString content = TFileInput(filePath).ReadAll();
             if (content != file.Content) {
-                STORAGE_ERROR("Content mismatch for stolen file " << filePath);
+                STORAGE_ERROR("Content mismatch for stolen file " << filePath
+                    << " (ino=" << file.Ino << ")");
+                STORAGE_ERROR("E:\t" << file.Content);
+                STORAGE_ERROR("A:\t" << content);
                 ++errors;
             }
         }

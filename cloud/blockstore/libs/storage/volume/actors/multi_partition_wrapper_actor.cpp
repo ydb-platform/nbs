@@ -38,12 +38,16 @@ TMultiPartitionWrapperActor::TMultiPartitionWrapperActor(
     TChildLogTitle logTitle,
     ITraceSerializerPtr traceSerializer,
     const TString& diskId,
+    const TString& cloudId,
+    const TString& folderId,
     ui32 blockSize,
     ui32 blocksPerStripe,
     NProto::ERequestSplitterPolicy splitterPolicy,
     const TVector<NActors::TActorId>& partitionActors)
     : LogTitle(std::move(logTitle))
     , TraceSerializer(std::move(traceSerializer))
+    , CloudId(cloudId)
+    , FolderId(folderId)
     , BlockSize(blockSize)
     , BlocksPerStripe(blocksPerStripe)
     , SplitterPolicy(splitterPolicy)
@@ -187,7 +191,10 @@ void TMultiPartitionWrapperActor::HandleRequest(
             isCrossPartitionRequest)
         {
             ReportCrossPartitionRequestDetected(
-                {{"disk", Partitions.front().DiskId}, {"range", blockRange}});
+                Partitions.front().DiskId,
+                CloudId,
+                FolderId,
+                {{"range", blockRange}});
         }
     }
 

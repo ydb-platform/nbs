@@ -24,6 +24,7 @@ PEERDIR(
 
     library/cpp/deprecated/atomic
     library/cpp/lwtrace
+    library/cpp/string_utils/quote
 
     contrib/libs/grpc
 )

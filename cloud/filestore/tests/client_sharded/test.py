@@ -174,7 +174,7 @@ def test_enable_strict():
         "getfilesystemtopology", {"FileSystemId": "fs0_s2"})
     out += client.execute_action(
         "getfilesystemtopology", {"FileSystemId": "fs0_s3"})
-    out += client.destroy_session("fs0", "session0", "client0")
+    client.destroy_session("fs0", "session0", "client0")
 
     out += client.destroy("fs0")
     out += client.destroy("fs0_s1")
@@ -211,7 +211,7 @@ def test_enable_directory_creation_in_shards():
         "getfilesystemtopology", {"FileSystemId": "fs0_s2"})
     out += client.execute_action(
         "getfilesystemtopology", {"FileSystemId": "fs0_s3"})
-    out += client.destroy_session("fs0", "session0", "client0")
+    client.destroy_session("fs0", "session0", "client0")
 
     out += client.destroy("fs0")
     out += client.destroy("fs0_s1")

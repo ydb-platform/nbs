@@ -3,6 +3,7 @@
 #include "profile_log.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/locks.pb.h>
@@ -104,6 +105,36 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT(!nodeInfo.HasNewParentNodeId());
         UNIT_ASSERT(!nodeInfo.HasNewNodeName());
         UNIT_ASSERT(!nodeInfo.HasFlags());
+        UNIT_ASSERT(!nodeInfo.HasMode());
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, nodeInfo.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(handle, nodeInfo.GetHandle());
+        UNIT_ASSERT(!nodeInfo.HasSize());
+    }
+
+    Y_UNIT_TEST(ShouldConfirmCreateHandleRequestInitializeFieldsCorrectly)
+    {
+        const auto nodeId = 12;
+        const auto handle = 34;
+        const auto flags = 56;
+
+        NProto::TConfirmCreateHandleRequest req;
+        req.SetNodeId(nodeId);
+        req.SetHandle(handle);
+        req.SetFlags(flags);
+
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        InitProfileLogRequestInfo(profileLogRequest, req);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, profileLogRequest.RangesSize());
+        UNIT_ASSERT(profileLogRequest.HasNodeInfo());
+        UNIT_ASSERT(!profileLogRequest.HasLockInfo());
+
+        const auto& nodeInfo = profileLogRequest.GetNodeInfo();
+        UNIT_ASSERT(!nodeInfo.HasParentNodeId());
+        UNIT_ASSERT(!nodeInfo.HasNodeName());
+        UNIT_ASSERT(!nodeInfo.HasNewParentNodeId());
+        UNIT_ASSERT(!nodeInfo.HasNewNodeName());
+        UNIT_ASSERT_VALUES_EQUAL(flags, nodeInfo.GetFlags());
         UNIT_ASSERT(!nodeInfo.HasMode());
         UNIT_ASSERT_VALUES_EQUAL(nodeId, nodeInfo.GetNodeId());
         UNIT_ASSERT_VALUES_EQUAL(handle, nodeInfo.GetHandle());
@@ -1071,32 +1102,16 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             profileLogRequest.GetRanges(0).GetActualBytes());
     }
 
-    Y_UNIT_TEST(ShouldGetCorrectFuseRequestName)
-    {
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Unknown",
-            GetFileStoreFuseRequestName(NFuse::EFileStoreFuseRequest::MIN));
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Flush",
-            GetFileStoreFuseRequestName(NFuse::EFileStoreFuseRequest::Flush));
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Fsync",
-            GetFileStoreFuseRequestName(NFuse::EFileStoreFuseRequest::Fsync));
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Unknown",
-            GetFileStoreFuseRequestName(NFuse::EFileStoreFuseRequest::MAX));
-    }
-
     Y_UNIT_TEST(ShouldCorrectlyInitProfileLogRequest)
     {
         const auto timestamp = TInstant::MilliSeconds(12);
-        const auto requestType = NFuse::EFileStoreFuseRequest::Flush;
+        const auto requestType = EFileStoreRequest::FuseFlush;
 
         NProto::TProfileLogRequestInfo profileLogRequest;
-        InitProfileLogRequestInfo(profileLogRequest, requestType, timestamp);
+        NFuse::InitProfileLogRequestInfo(
+            profileLogRequest,
+            requestType,
+            timestamp);
 
         UNIT_ASSERT_VALUES_EQUAL(
             timestamp.MicroSeconds(),

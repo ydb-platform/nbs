@@ -115,6 +115,23 @@ struct TTestNvmeManager
 
         return {};
     }
+
+    TResultOrError<NNvme::TLockdownState> GetLockdownState(
+        const TString& ctrlPath) final
+    {
+        Y_UNUSED(ctrlPath);
+
+        return NNvme::TLockdownState{};
+    }
+
+    NProto::TError EnsureLockdown(
+        const TString& ctrlPath,
+        const NNvme::TLockdownConfig& config) final
+    {
+        Y_UNUSED(ctrlPath, config);
+
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

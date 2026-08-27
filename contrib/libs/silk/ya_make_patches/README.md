@@ -37,7 +37,8 @@ ya_make_patches/
 │   ├── 01-gitignore.patch
 │   ├── 02-fiber-uring24-compat.patch
 │   ├── 03-rseq-register-per-thread.patch
-│   └── 04-fiber-cxa-get-globals-arcadia-libcxxrt.patch
+│   ├── 04-fiber-cxa-get-globals-arcadia-libcxxrt.patch
+│   └── 05-fiber-uring24-sqes-sz.patch
 └── overlay/                          # Files copied verbatim into silk tree
     ├── ya.make
     ├── include/sys/rseq.h            # Stub for ya include checker
@@ -78,9 +79,15 @@ ya_make_patches/
   declares that symbol in `<cxxabi.h>` without `noexcept` and marks the
   fact with `Y_CXA_EH_GLOBALS_COMPLETE`; silk's `noexcept`-tagged
   redeclaration then clashes on the exception specification.
+- **05-fiber-uring24-sqes-sz**: replaces `ring.sq.sqes_sz` in
+  `accountRingMemoryMappings` with `ring_entries * sizeof(io_uring_sqe)`.
+  Silk targets liburing 2.9 where `sqes_sz` records the length of the sqes
+  mapping; the repo has 2.4 without that field. The computed expression is
+  exactly the length 2.4 itself mmaps and munmaps for the sqes array.
 
 If a future silk version is built against a newer liburing or librseq, the
-corresponding patch can be dropped. Patch 03 can be dropped only once every
+corresponding patch can be dropped. Patches 02 and 05 can be dropped
+together once the repo's liburing reaches 2.6+. Patch 03 can be dropped only once every
 target machine ships glibc 2.35+ (or silk itself learns to register rseq
 per thread upstream). Patch 04 can be dropped once silk upstream either
 drops the redeclaration or gates it on Arcadia's macro.

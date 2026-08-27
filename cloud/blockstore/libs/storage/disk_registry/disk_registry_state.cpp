@@ -1387,6 +1387,23 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
     return {};
 }
 
+const TDiskRegistryState::TDiskState&
+TDiskRegistryState::GetMirroredDiskLabelsSource(
+    const TDiskId& masterDiskId,
+    const TDiskId& replicaDiskId) const
+{
+    if (const auto* masterDisk = Disks.FindPtr(masterDiskId)) {
+        return *masterDisk;
+    }
+
+    if (const auto* replicaDisk = Disks.FindPtr(replicaDiskId)) {
+        return *replicaDisk;
+    }
+
+    static const TDiskState emptyDisk;
+    return emptyDisk;
+}
+
 void TDiskRegistryState::TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
     TDiskRegistryDatabase& db,
     TDiskState& disk,
@@ -1398,6 +1415,7 @@ void TDiskRegistryState::TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
     if (!CheckIfDeviceReplacementIsAllowed(
             timestamp,
             disk.MasterDiskId,
+            diskId,
             deviceId))
     {
         return;
@@ -1416,7 +1434,14 @@ void TDiskRegistryState::TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
         false);   // manual
 
     if (HasError(error)) {
-        ReportMirroredDiskDeviceReplacementFailure(FormatError(error));
+        const auto& labelsSource =
+            GetMirroredDiskLabelsSource(disk.MasterDiskId, diskId);
+        ReportMirroredDiskDeviceReplacementFailure(
+            disk.MasterDiskId ? disk.MasterDiskId : diskId,
+            labelsSource.CloudId,
+            labelsSource.FolderId,
+            FormatError(error),
+            {{"replica", diskId}, {"device", deviceId}});
     }
 }
 
@@ -2620,7 +2645,9 @@ void TDiskRegistryState::CleanupMirroredDisk(
 
     if (affectedDisks.size()) {
         ReportMirroredDiskAllocationPlacementGroupCleanupFailure(
-            {{"disk", diskId}});
+            diskId,
+            params.CloudId,
+            params.FolderId);
     }
 
     AddToBrokenDisks(now, db, diskId);
@@ -2745,7 +2772,9 @@ NProto::TError TDiskRegistryState::AllocateMirroredDisk(
             // TODO (NBS-3419):
             // support automatic cleanup after a failed resize
             ReportMirroredDiskAllocationCleanupFailure(
-                {{"disk", params.DiskId}});
+                params.DiskId,
+                params.CloudId,
+                params.FolderId);
         }
 
         onError();
@@ -3072,7 +3101,10 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     }
 
     if (!IsReadyForCleanup(diskId)) {
-        auto message = ReportNrdDestructionError({{"disk", diskId}});
+        auto message = ReportNrdDestructionError(
+            diskId,
+            disk->CloudId,
+            disk->FolderId);
 
         return MakeError(E_INVALID_STATE, std::move(message));
     }
@@ -7951,6 +7983,7 @@ void TDiskRegistryState::DeleteAutomaticallyReplacedDevice(
 bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
     TInstant now,
     const TDiskId& masterDiskId,
+    const TDiskId& replicaDiskId,
     const TDeviceId& deviceId)
 {
     while (AutomaticReplacementTimestamps) {
@@ -7965,10 +7998,15 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
 
     const auto rateLimit =
         StorageConfig->GetMaxAutomaticDeviceReplacementsPerHour();
-    if (rateLimit
-            && rateLimit <= AutomaticReplacementTimestamps.size()) {
+
+    if (rateLimit && rateLimit <= AutomaticReplacementTimestamps.size()) {
+        const auto& labelsSource =
+            GetMirroredDiskLabelsSource(masterDiskId, replicaDiskId);
         ReportMirroredDiskDeviceReplacementRateLimitExceeded(
-            {{"disk", masterDiskId}, {"device", deviceId}});
+            masterDiskId,
+            labelsSource.CloudId,
+            labelsSource.FolderId,
+            {{"replica", replicaDiskId}, {"device", deviceId}});
         return false;
     }
 
@@ -7977,8 +8015,13 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
         deviceId);
 
     if (!canReplaceDevice) {
+        const auto& labelsSource =
+            GetMirroredDiskLabelsSource(masterDiskId, replicaDiskId);
         ReportMirroredDiskDeviceReplacementForbidden(
-            {{"disk", masterDiskId}, {"device", deviceId}});
+            masterDiskId,
+            labelsSource.CloudId,
+            labelsSource.FolderId,
+            {{"replica", replicaDiskId}, {"device", deviceId}});
         return false;
     }
 
@@ -7986,10 +8029,11 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
         ReplicaTable.IsRecentlyReplacedDevice(masterDiskId, deviceId))
     {
         STORAGE_WARN(
-            "DiskId=%s, DeviceId=%s, automatic device replacement is postponed "
+            "DiskId=%s, ReplicaId=%s, DeviceId=%s, automatic device replacement is postponed "
             "due to replacements in "
             "other replicas.",
             masterDiskId.c_str(),
+            replicaDiskId.c_str(),
             deviceId.c_str());
         return false;
     }

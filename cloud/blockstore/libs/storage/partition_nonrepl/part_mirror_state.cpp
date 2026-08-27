@@ -143,7 +143,10 @@ bool TMirrorPartitionState::PrepareMigrationConfigForWarningDevices()
     }
 
     ReportMigrationSourceNotFound(
-        {{"disk", PartConfig->GetName()}, {"RWClientId", RWClientId}});
+        PartConfig->GetName(),
+        PartConfig->GetCloudId(),
+        PartConfig->GetFolderId(),
+        TCritEventParams{{"RWClientId", RWClientId}});
 
     // TODO: log details
     return false;
@@ -198,11 +201,14 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
     }
 
     ReportMigrationSourceNotFound(
+        PartConfig->GetName(),
+        PartConfig->GetCloudId(),
+        PartConfig->GetFolderId(),
         "PrepareMigrationConfigForFreshDevices failed: no suitable source "
         "device found for fresh device",
-        {{"disk", PartConfig->GetName()},
-         {"index", deviceIdx},
-         {"total_replicas", ReplicaInfos.size()}});
+        TCritEventParams{
+            {"index", deviceIdx},
+            {"total_replicas", ReplicaInfos.size()}});
     return false;
 }
 

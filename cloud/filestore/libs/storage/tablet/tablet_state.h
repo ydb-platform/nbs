@@ -17,6 +17,8 @@
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_access_stats.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_latency_stats.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_ref.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_session_stat.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
@@ -306,6 +308,10 @@ public:
         StateLoaded = true;
     }
 
+    bool UpdateAccessStats(ui64 nodeId, TInstant now);
+
+    TVector<TNodeAccessStats> GetNodeAccessStats(TInstant now, ui32 n) const;
+
     void UpdateConfig(
         IIndexTabletDatabase& db,
         const TStorageConfig& config,
@@ -425,6 +431,14 @@ public:
     {
         return NodeToSessionCounters;
     }
+
+    bool UpdateLatencyStats(
+        ui64 nodeId,
+        EFileStoreRequest requestType,
+        TInstant now,
+        TDuration latency);
+
+    TVector<TNodeLatencyStats> GetLatencyStats(TInstant now, ui32 n) const;
 
     TMiscNodeStats GetMiscNodeStats() const;
     THandlesStats GetHandlesStats() const;
@@ -608,6 +622,14 @@ private:
         IIndexTabletDatabase& db,
         ui64 currentSize,
         ui64 prevSize);
+
+    // Applies a signed usage delta to quotaId's counters, both in-memory and
+    // persisted. A no-op for quotaId == 0 or a zero delta.
+    void UpdateQuotaUsage(
+        IIndexTabletDatabase& db,
+        ui32 quotaId,
+        i64 bytesDelta,
+        i64 nodesDelta);
 
     //
     // NodeAttrs
@@ -840,6 +862,17 @@ public:
         ui64 commitId,
         ui32 flags);
 
+    // Registers a handle with an explicitly specified id. Registration is
+    // idempotent if the handle already belongs to the given session and node.
+    // Returns an error on a collision or if the handle cannot be created.
+    [[nodiscard]] NProto::TError RegisterHandle(
+        IIndexTabletDatabase& db,
+        TSession* session,
+        ui64 handleId,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 flags);
+
     TSessionHandle* UnsafeCreateHandle(
         IIndexTabletDatabase& db,
         TSession* session,
@@ -854,10 +887,24 @@ public:
 
     TSessionHandle* FindHandle(ui64 handle) const;
 
+    bool HasPendingCreateHandleCommit(ui64 handle) const;
+
+    void StartCreateHandleCommit(ui64 handle);
+
+    void EndCreateHandleCommit(ui64 handle);
+
     bool HasOpenHandles(ui64 nodeId) const;
 
 private:
     ui64 GenerateHandle() const;
+
+    TSessionHandle* CreateHandle(
+        IIndexTabletDatabase& db,
+        TSession* session,
+        ui64 handleId,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 flags);
 
     TSessionHandle* CreateHandle(
         TSession* session,
@@ -1320,6 +1367,12 @@ public:
         TInstant now);
 
     void DeleteQuota(IIndexTabletDatabase& db, ui32 quotaId);
+
+    void LoadQuotaUsages(const TVector<TQuotaUsage>& usages);
+
+    const TQuotaUsage* FindQuotaUsage(ui32 quotaId) const;
+
+    TVector<TQuotaUsage> GetQuotaUsages() const;
 
     //
     // Background operations

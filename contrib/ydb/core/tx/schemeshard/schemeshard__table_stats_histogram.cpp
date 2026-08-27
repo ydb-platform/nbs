@@ -1,6 +1,7 @@
 #include "schemeshard_impl.h"
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
+#include <contrib/ydb/core/protos/table_stats.pb.h>
 
 namespace NKikimr {
 namespace NSchemeShard {
@@ -44,7 +45,7 @@ TSerializedCellVec ChooseSplitKeyByHistogram(const NKikimrTableStats::THistogram
         for (const auto& point : histogram.GetBuckets()) {
             ui64 leftSize = Min(point.GetValue(), total);
             ui64 rightSize = total - leftSize;
-            
+
             // search for a median point at which abs(leftSize - rightSize) is minimum
             ui64 sizesDiff = Max(leftSize, rightSize) - Min(leftSize, rightSize);
             if (idxMedDiff > sizesDiff) {
@@ -94,6 +95,7 @@ TSerializedCellVec ChooseSplitKeyByHistogram(const NKikimrTableStats::THistogram
                 // For integer types we can add 1 to med
                 ui64 val = 0;
                 size_t sz =  keyMed.GetCells()[i].Size();
+                Y_ABORT_UNLESS(sz <= sizeof(ui64));
                 memcpy(&val, keyMed.GetCells()[i].Data(), sz);
                 val++;
                 splitKey[i] = TCell((const char*)&val, sz);
@@ -138,17 +140,29 @@ TSerializedCellVec DoFindSplitKey(const TVector<std::pair<TSerializedCellVec, ui
     auto loIt = std::upper_bound(keysHist.begin(), keysHist.end(), total*0.1, fnValueLess);
     auto hiIt = std::upper_bound(keysHist.begin(), keysHist.end(), total*0.9, fnValueLess);
 
-    auto fnCmp = [&keyColumnTypes, prefixSize] (const auto& bucket1, const auto& bucket2) {
-        return CompareTypedCellVectors(bucket1.first.GetCells().data(), bucket2.first.GetCells().data(),
-                                       keyColumnTypes.data(),
-                                       std::min(bucket1.first.GetCells().size(), prefixSize), std::min(bucket2.first.GetCells().size(), prefixSize));
+    // compare histogram entries by key prefixes
+    auto comparePrefix = [&keyColumnTypes] (const auto& entry1, const auto& entry2, const size_t prefixSize) {
+        const auto& key1cells = entry1.first.GetCells();
+        const auto clampedSize1 = std::min(key1cells.size(), prefixSize);
+
+        const auto& key2cells = entry2.first.GetCells();
+        const auto clampedSize2 = std::min(key2cells.size(), prefixSize);
+
+        int cmp = CompareTypedCellVectors(key1cells.data(), key2cells.data(), keyColumnTypes.data(), std::min(clampedSize1, clampedSize2));
+        if (cmp == 0 && clampedSize1 != clampedSize2) {
+            // smaller key prefix is filled with +inf => always bigger
+            cmp = (clampedSize1 < clampedSize2) ? +1 : -1;
+        }
+        return cmp;
     };
 
     // Check if half key is no equal to low and high keys
-    if (fnCmp(*halfIt, *loIt) == 0)
+    if (comparePrefix(*halfIt, *loIt, prefixSize) == 0) {
         return TSerializedCellVec();
-    if (fnCmp(*halfIt, *hiIt) == 0)
+    }
+    if (comparePrefix(*halfIt, *hiIt, prefixSize) == 0) {
         return TSerializedCellVec();
+    }
 
     // Build split key by leaving the prefix and extending it with NULLs
     TVector<TCell> splitKey(halfIt->first.GetCells().begin(), halfIt->first.GetCells().end());
@@ -168,10 +182,17 @@ TSerializedCellVec ChooseSplitKeyByKeySample(const NKikimrTableStats::THistogram
         keysHist.emplace_back(std::make_pair(TSerializedCellVec(bucket.GetKey()), bucket.GetValue()));
     }
 
-    auto fnCmp = [&keyColumnTypes] (const auto& key1, const auto& key2) {
-        return CompareTypedCellVectors(key1.first.GetCells().data(), key2.first.GetCells().data(),
-                                       keyColumnTypes.data(),
-                                       key1.first.GetCells().size(), key2.first.GetCells().size());
+    // compare histogram entries by keys
+    auto fnCmp = [&keyColumnTypes] (const auto& entry1, const auto& entry2) {
+        const auto& key1cells = entry1.first.GetCells();
+        const auto& key2cells = entry2.first.GetCells();
+        const auto minKeySize = std::min(key1cells.size(), key2cells.size());
+        int cmp = CompareTypedCellVectors(key1cells.data(), key2cells.data(), keyColumnTypes.data(), minKeySize);
+        if (cmp == 0 && key1cells.size() != key2cells.size()) {
+            // smaller key is filled with +inf => always bigger
+            cmp = (key1cells.size() < key2cells.size()) ? +1 : -1;
+        }
+        return cmp;
     };
 
     Sort(keysHist, [&fnCmp] (const auto& key1, const auto& key2) { return fnCmp(key1, key2) < 0; });
@@ -325,6 +346,22 @@ bool TTxPartitionHistogram::Execute(TTransactionContext& txc, const TActorContex
     ui64 dataSize = rec.GetTableStats().GetDataSize();
     ui64 rowCount = rec.GetTableStats().GetRowCount();
 
+    // Save CPU resources when potential split will certainly be immediately rejected by Self->IgniteOperation()
+    TString inflightLimitErrStr;
+    if (!Self->CheckInFlightLimit(TTxState::ETxType::TxSplitTablePartition, inflightLimitErrStr)) {
+        LOG_DEBUG_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+            "TTxPartitionHistogram Do not process detailed partition statistics: " << inflightLimitErrStr
+            << " at tablet " << Self->SelfTabletId()
+            << " from datashard " << datashardId
+            << " for pathId " << tableId
+                    << " state '" << DatashardStateName(rec.GetShardState()).data() << "'"
+                    << " dataSize " << dataSize
+                    << " rowCount " << rowCount
+                    << " dataSizeHistogram buckets " << rec.GetTableStats().GetDataSizeHistogram().BucketsSize()
+        );
+        return true;
+    }
+
     LOG_INFO_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                 "TTxPartitionHistogram::Execute partition histogram"
                     << " at tablet " << Self->SelfTabletId()
@@ -339,6 +376,7 @@ bool TTxPartitionHistogram::Execute(TTransactionContext& txc, const TActorContex
         return true;
 
     TTableInfo::TPtr table = Self->Tables[tableId];
+    auto path = TPath::Init(tableId, Self);
 
     if (!Self->TabletIdToShardIdx.contains(datashardId))
         return true;
@@ -346,6 +384,12 @@ bool TTxPartitionHistogram::Execute(TTransactionContext& txc, const TActorContex
     // Don't split/merge backup tables
     if (table->IsBackup)
         return true;
+
+    if (path.IsLocked()) {
+        LOG_DEBUG_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+            "TTxPartitionHistogram Skip locked table tablet " << datashardId << " by " << path.LockedBy());
+        return true;
+    }
 
     auto shardIdx = Self->TabletIdToShardIdx[datashardId];
     const auto forceShardSplitSettings = Self->SplitSettings.GetForceShardSplitSettings();

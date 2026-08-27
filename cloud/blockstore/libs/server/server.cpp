@@ -40,6 +40,8 @@
 
 #include <contrib/ydb/library/actors/prof/tag.h>
 
+#include <library/cpp/string_utils/quote/quote.h>
+
 #include <util/datetime/cputimer.h>
 #include <util/folder/path.h>
 #include <util/generic/hash_set.h>
@@ -57,6 +59,31 @@ namespace NCloud::NBlockStore::NServer {
 
 using namespace NMonitoring;
 using namespace NThreading;
+
+namespace NImpl {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void PrepareRequestHeaders(
+    NCloud::NProto::ERequestSource source,
+    TStringBuf peer,
+    TStringBuf authToken,
+    NProto::THeaders& headers)
+{
+    auto& internal = *headers.MutableInternal();
+
+    internal.Clear();
+    internal.SetRequestSource(source);
+    internal.SetPeer(UrlUnescapeRet(peer));
+
+    if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
+        internal.SetAuthToken(TString(authToken));
+    }
+}
+
+}   // namespace NImpl
+
+////////////////////////////////////////////////////////////////////////////////
 
 namespace {
 
@@ -696,15 +723,16 @@ private:
                 << GetBlockStoreRequestName(TMethod::Request).Quote();
         }
 
-        auto& internal = *Request->MutableHeaders()->MutableInternal();
-        internal.Clear();
-        internal.SetRequestSource(*source);
-        internal.SetPeer(TString(Context->peer()));
-
-        // we will only get token from secure control channel
-        if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
-            internal.SetAuthToken(GetAuthToken(Context->client_metadata()));
+        TString authToken;
+        if (*source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
+            authToken = GetAuthToken(Context->client_metadata());
         }
+
+        NImpl::PrepareRequestHeaders(
+            *source,
+            Context->peer(),
+            authToken,
+            *Request->MutableHeaders());
 
         if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
             const auto& cellId = Request->GetHeaders().GetCellId();
@@ -712,7 +740,9 @@ private:
                 const auto* msg = "DescribeVolume response cell id mismatch";
                 ReportWrongCellIdInDescribeVolume(
                     msg,
-                    {{"expected", AppCtx.CellId}, {"actual", cellId}});
+                    {{"disk", Request->GetDiskId()},
+                     {"expected", AppCtx.CellId},
+                     {"actual", cellId}});
 
                 STORAGE_THROW_SERVICE_ERROR(E_REJECTED) << msg;
             }
@@ -737,7 +767,7 @@ private:
             message = TStringBuilder() << *Request;
         }
 
-        MetricRequest.Peer = TString(Context->peer());
+        MetricRequest.Peer = UrlUnescapeRet(Context->peer());
 
         AppCtx.ServerStats->RequestStarted(
             AppCtx.Log,

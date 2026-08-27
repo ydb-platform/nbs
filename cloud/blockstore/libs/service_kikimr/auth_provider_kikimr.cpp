@@ -14,8 +14,6 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <library/cpp/string_utils/quote/quote.h>
-
 namespace NCloud::NBlockStore::NServer {
 
 namespace {
@@ -165,7 +163,7 @@ private:
         if (FAILED(msg->GetStatus())) {
             LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
                 TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-                << " unauthorized request, peer: " << UrlUnescapeRet(Peer));
+                << " unauthorized request, peer: " << Peer);
         }
 
         CompleteRequest(ctx, msg->Error);
@@ -179,7 +177,7 @@ private:
 
         LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(RequestType, CallContext->RequestId, DiskId)
-            << " request timed out, peer: " << UrlUnescapeRet(Peer));
+            << " request timed out, peer: " << Peer);
 
         NProto::TError error;
         error.SetCode(E_REJECTED);  // TODO: E_TIMEOUT

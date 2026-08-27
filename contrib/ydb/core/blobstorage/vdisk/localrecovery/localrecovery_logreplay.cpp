@@ -229,6 +229,9 @@ namespace NKikimr {
                 TLogoBlobID genId(id, 0);
                 LocRecCtx->HullDbRecovery->ReplayAddHugeLogoBlobCmd(ctx, genId, ingress, diskAddr, lsn,
                         THullDbRecovery::RECOVERY);
+                if (diskAddr.ChunkIdx && diskAddr.Size) {
+                    LocRecCtx->RepairedHuge->RegisterBlob(diskAddr);
+                }
             }
 
             // skip records that already in synclog
@@ -569,6 +572,7 @@ namespace NKikimr {
                 LocRecCtx->SyncerData->PutFromRecoveryLog(LocalSyncDataMsg.VDiskID, LocalSyncDataMsg.SyncState);
             }
 
+            LocRecCtx->RecovInfo->SetRecoveredLocalSyncDataLsn(record.Lsn);
             return EDispatchStatus::Success;
         }
 

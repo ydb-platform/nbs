@@ -33,6 +33,18 @@ type FilesystemModel struct {
 	PerformanceProfile FilesystemPerformanceProfile
 }
 
+type FilesystemTopology struct {
+	ShardFileSystemIDs                     []string
+	ShardNo                                uint32
+	DirectoryCreationInShardsEnabled       bool
+	StrictFileSystemSizeEnforcementEnabled bool
+	MaxShardCount                          uint32
+	ForceDirectoryCreationInShards         bool
+	FileShardFileSystemIDs                 []string
+	CompressNodeRef                        bool
+	MainFileSystemID                       string
+}
+
 type ConfigureAsShardParams struct {
 	ShardNo                                uint32
 	ShardFileSystemIDs                     []string
@@ -125,6 +137,11 @@ type Client interface {
 		filesystemID string,
 		shardCount uint32,
 	) error
+
+	GetFileSystemTopology(
+		ctx context.Context,
+		filesystemID string,
+	) (FilesystemTopology, error)
 
 	DescribeModel(
 		ctx context.Context,

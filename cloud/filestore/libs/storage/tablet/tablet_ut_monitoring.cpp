@@ -31,6 +31,60 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
         auto response = tablet.GetRemoteHttpInfo();
         // check that it was served by user part of the tablet
         UNIT_ASSERT(response->Html.Contains("Filesystem Id:"));
+
+        //
+        // A regular tablet neither shows the fast shard layout link nor
+        // serves the page.
+        //
+
+        UNIT_ASSERT(!response->Html.Contains("action=fastShardLayout"));
+
+        response = tablet.GetRemoteHttpInfo("action=fastShardLayout");
+        UNIT_ASSERT_C(
+            response->Html.Contains("not a fast shard"),
+            response->Html);
+    }
+
+    Y_UNIT_TEST(ShouldHandleHttpInfo_FastShardLayout)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            false /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            NProtoPrivate::TFastShardConfig(),
+            true /* isFastShard */);
+
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+
+        auto response = tablet.GetRemoteHttpInfo();
+        UNIT_ASSERT_C(
+            response->Html.Contains("action=fastShardLayout"),
+            response->Html);
+
+        //
+        // The tablet is configured with the mem shard, whose layout
+        // dump is empty by design - the page contents are covered by
+        // the naive mirrored shard's own tests. Here we only check
+        // that the action is served and not rejected.
+        //
+
+        response = tablet.GetRemoteHttpInfo("action=fastShardLayout");
+        UNIT_ASSERT_C(
+            !response->Html.Contains("not a fast shard"),
+            response->Html);
+        UNIT_ASSERT_C(
+            !response->Html.Contains("alert-danger"),
+            response->Html);
     }
 }
 

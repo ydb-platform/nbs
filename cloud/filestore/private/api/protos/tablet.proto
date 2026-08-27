@@ -171,6 +171,20 @@ message TStorageStats
 
     // shard stats
     repeated TShardStats ShardStats = 6001;
+
+    // recent node request stats
+    repeated TNodeStats NodeStats = 7001;
+
+    repeated TNodeLatencyStats LatencyStats = 8001;
+
+    // per-quota usage
+    map<uint32, TQuotaUsageValue> QuotaUsages = 9001;
+}
+
+message TQuotaUsageValue
+{
+    uint64 UsedBytes = 1;
+    uint64 UsedNodes = 2;
 }
 
 enum EStatsRequestMode
@@ -226,6 +240,51 @@ message TGetStorageStatsResponse
     // Time since tablet start.
     uint64 TabletUptimeMs = 4;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// GetDiagnosticStats request/response.
+
+message TNodeStats
+{
+    string ShardId = 1;
+    uint64 NodeId = 2;
+    uint64 RequestCount = 3;
+    double AccessScore = 4;
+    uint64 LastAccessedTimestampUs = 5;
+}
+
+message TNodeLatencyStats
+{
+    string ShardId = 1;
+    string RequestType = 2;
+    uint64 NodeId = 3;
+    uint64 RequestCount = 4;
+    uint64 TotalLatencyUs = 5;
+    double AverageLatencyDecayedUs = 6;
+    uint64 LastAccessedTimestampUs = 7;
+}
+
+message TGetDiagnosticStatsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    uint32 Limit = 3;
+}
+
+message TGetDiagnosticStatsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    repeated TNodeLatencyStats LatencyStats = 2;
+
+    repeated TNodeStats NodeStats = 3;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // GetFileSystemConfig request/response.
@@ -850,43 +909,6 @@ message TUnsafeCreateHandleResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// GetFileSystemTopology request/response.
-
-message TGetFileSystemTopologyRequest
-{
-    // Optional request headers.
-    NProto.THeaders Headers = 1;
-
-    // FileSystem identifier to query its topology.
-    string FileSystemId = 2;
-}
-
-message TGetFileSystemTopologyResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Shard FileSystem identifiers.
-    repeated string ShardFileSystemIds = 2;
-
-    // Shard no (if this fs is a shard itself).
-    uint32 ShardNo = 3;
-
-    bool DirectoryCreationInShardsEnabled = 4;
-
-    bool StrictFileSystemSizeEnforcementEnabled = 5;
-
-    uint32 MaxShardCount = 6;
-
-    bool ForceDirectoryCreationInShards = 7;
-
-    // Shard FileSystem identifiers for regular files.
-    repeated string FileShardFileSystemIds = 8;
-
-    bool CompressNodeRef = 9;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // RestartTablet request/response.
 
 message TRestartTabletRequest
@@ -1291,6 +1313,18 @@ message TListQuotasRequest
     string FileSystemId = 2;
 }
 
+message TQuotaUsage
+{
+    // Quota identifier.
+    uint32 QuotaId = 1;
+
+    // Bytes currently used under this quota.
+    uint64 UsedBytes = 2;
+
+    // Nodes currently used under this quota.
+    uint64 UsedNodes = 3;
+}
+
 message TListQuotasResponse
 {
     // Optional error, set only if error happened.
@@ -1298,4 +1332,7 @@ message TListQuotasResponse
 
     // All quotas defined on this filesystem.
     repeated NProto.TQuota Quotas = 2;
+
+    // Usage of each quota that has any recorded usage on this filesystem.
+    repeated TQuotaUsage Usages = 3;
 }

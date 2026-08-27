@@ -69,6 +69,10 @@ TPartitionActor::TPartitionActor(
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
+    , VolumeLabels(MakeVolumeLabels(
+          PartitionConfig.GetDiskId(),
+          PartitionConfig.GetCloudId(),
+          PartitionConfig.GetFolderId()))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -341,9 +345,9 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
         std::move(channels));
 
     ReportReassignTablet(
-        {{"disk", PartitionConfig.GetDiskId()},
-         {"tablet_id", TabletID()},
-         {"channels", sb}});
+        VolumeLabels,
+        "Reassign request sent",
+        TCritEventParams{{"tablet_id", TabletID()}, {"channels", sb}});
     ReassignRequestSentTs = ctx.Now();
 }
 
@@ -380,7 +384,7 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
     ctx.Schedule(BackpressureReportSendInterval,
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 
-    if (!Executor()->GetStats().IsFollower) {
+    if (!Executor()->GetStats().IsFollower()) {
         ExecuteTx(ctx, CreateTx<TInitSchema>(PartitionConfig.GetBlocksCount()));
     }
 }
@@ -1086,6 +1090,24 @@ bool TPartitionActor::IsDynamicGarbageCompactionThrottlingEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+bool TPartitionActor::IsMixedBlocksFilterEnabled() const
+{
+    return Config->GetMixedBlocksFilterEnabled() ||
+           Config->IsMixedBlocksFilterFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
+bool TPartitionActor::IsCheckpointAwareCleanupEnabled() const
+{
+    return Config->GetCheckpointAwareCleanupEnabled() ||
+           Config->IsCheckpointAwareCleanupFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -1145,6 +1167,7 @@ STFUNC(TPartitionActor::StateInit)
             TEvPartitionPrivate::TEvConfirmBlobsCompleted,
             HandleConfirmBlobsCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
+        HFunc(TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest, HandleLoadMixedBlocksFilterChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
 
@@ -1225,6 +1248,7 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted, HandleAddConfirmedBlobsCompleted);
         HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
+        HFunc(TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest, HandleLoadMixedBlocksFilterChunk);
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
             HandleGetPartCountersRequest);
@@ -1242,6 +1266,8 @@ STFUNC(TPartitionActor::StateWork)
         HFunc(
             TEvPartitionCommonPrivate::TEvReassignChannelsIfNeeded,
             HandleReassignChannelsIfNeeded);
+
+        HFunc(TEvPartitionPrivate::TEvResumeFlush, HandleResumeFlush);
 
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
@@ -1313,6 +1339,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest);
+        IgnoreFunc(TEvPartitionPrivate::TEvLoadMixedBlocksFilterChunkRequest);
 
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
@@ -1332,6 +1359,8 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
         IgnoreFunc(TEvPartitionCommonPrivate::TEvExecuteTransactions);
+
+        IgnoreFunc(TEvPartitionPrivate::TEvResumeFlush);
 
         // Wakeup function should handle wakeup event taking into account that
         // there is wakeup event scheduled during boot stage with
@@ -1390,7 +1419,9 @@ NProto::TError VerifyBlockChecksum(
     const ui64 blockIndex,
     const ui16 blobOffset,
     const ui32 expectedChecksum,
-    const TString& diskId)
+    const TString& diskId,
+    const TString& cloudId,
+    const TString& folderId)
 {
     if (expectedChecksum == 0) {
         // 0 is a special case - block digest calculation can be
@@ -1404,8 +1435,10 @@ NProto::TError VerifyBlockChecksum(
 
     if (actualChecksum != expectedChecksum) {
         ReportBlockDigestMismatchInBlob(
-            {{"disk", diskId},
-             {"BlockIndex", blockIndex},
+            diskId,
+            cloudId,
+            folderId,
+            {{"BlockIndex", blockIndex},
              {"blobOffset", blobOffset},
              {"blob", blobID.ToString()}});
         // we might read proper data upon retry - let's give it a chance
@@ -1419,6 +1452,25 @@ NProto::TError VerifyBlockChecksum(
     }
 
     return {};
+}
+
+NProto::TError VerifyBlockChecksum(
+    const ui32 actualChecksum,
+    const NKikimr::TLogoBlobID& blobID,
+    const ui64 blockIndex,
+    const ui16 blobOffset,
+    const ui32 expectedChecksum,
+    const TVolumeLabelsConstPtr& volumeLabels)
+{
+    return VerifyBlockChecksum(
+        actualChecksum,
+        blobID,
+        blockIndex,
+        blobOffset,
+        expectedChecksum,
+        volumeLabels->DiskId,
+        volumeLabels->CloudId,
+        volumeLabels->FolderId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

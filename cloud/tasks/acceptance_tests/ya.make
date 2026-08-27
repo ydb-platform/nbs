@@ -1,5 +1,7 @@
 GO_TEST()
 
+ENV(YDB_ALLOCATE_PGWIRE_PORT=true)
+
 INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/tasks/acceptance_tests/recipe/recipe.inc)

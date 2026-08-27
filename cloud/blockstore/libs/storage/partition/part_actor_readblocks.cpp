@@ -264,7 +264,7 @@ public:
     };
 
 private:
-    const TString DiskId;
+    const TVolumeLabelsConstPtr VolumeLabels;
 
     const TRequestInfoPtr RequestInfo;
 
@@ -297,7 +297,7 @@ private:
 
 public:
     TReadBlocksActor(
-        TString diskId,
+        TVolumeLabelsConstPtr volumeLabels,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -361,7 +361,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlocksActor::TReadBlocksActor(
-        TString diskId,
+        TVolumeLabelsConstPtr volumeLabels,
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
@@ -376,7 +376,7 @@ TReadBlocksActor::TReadBlocksActor(
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         bool waitBaseDiskRequests)
-    : DiskId(std::move(diskId))
+    : VolumeLabels(std::move(volumeLabels))
     , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
     , BlockSize(blockSize)
@@ -578,7 +578,7 @@ bool TReadBlocksActor::VerifyChecksums(
             batch.Requests[i],
             batch.BlobOffsets[i],
             batch.Checksums[i],
-            DiskId);
+            VolumeLabels);
 
         if (HasError(error)) {
             HandleError(ctx, error);
@@ -737,6 +737,7 @@ private:
     const ui32 BlockSize;
     TTabletStorageInfo& TabletInfo;
     TTxPartition::TReadBlocks& Args;
+    bool MixedBlocksVisited = false;
 
 public:
     TReadBlocksVisitor(
@@ -822,7 +823,18 @@ public:
     {
         Y_UNUSED(compactionRangeCount);
 
+        if (Args.Interrupted) {
+            return false;
+        }
+
+        MixedBlocksVisited = true;
+
         return Visit(blockIndex, commitId, blobId, blobOffset);
+    }
+
+    [[nodiscard]] bool HasVisitedMixedBlocks() const
+    {
+        return MixedBlocksVisited;
     }
 };
 
@@ -1082,11 +1094,30 @@ bool TPartitionActor::PrepareReadBlocks(
         args
     );
     State->FindFreshBlocks(visitor, args.ReadRange, commitId);
-    auto ready = db.FindMixedBlocks(
-        visitor,
-        args.ReadRange,
-        false,   // precharge
-        commitId);
+
+    bool ready = true;
+
+    const auto* filter = State->GetMixedBlocksFilter();
+    using EFilterResult = TTxPartition::TReadBlocks::EMixedBlocksFilterResult;
+    const bool mayHaveMixedBlocks =
+        !filter || filter->MayHaveBlocksInMixedIndex(args.ReadRange, commitId);
+
+    if (mayHaveMixedBlocks) {
+        const bool mixedBlocksReady = db.FindMixedBlocks(
+            visitor,
+            args.ReadRange,
+            false,   // precharge
+            commitId);
+
+        if (mixedBlocksReady && filter) {
+            args.MixedBlocksFilterResult = visitor.HasVisitedMixedBlocks()
+                                               ? EFilterResult::TruePositive
+                                               : EFilterResult::FalsePositive;
+        }
+
+        ready &= mixedBlocksReady;
+    }
+
     ready &= db.FindMergedBlocks(
         visitor,
         args.ReadRange,
@@ -1143,6 +1174,19 @@ void TPartitionActor::CompleteReadBlocks(
     TTxPartition::TReadBlocks& args)
 {
     TRequestScope timer(*args.RequestInfo);
+
+    auto& counters = PartCounters->Cumulative;
+    using EResult = TTxPartition::TReadBlocks::EMixedBlocksFilterResult;
+    if (args.MixedBlocksFilterResult) {
+        switch (*args.MixedBlocksFilterResult) {
+            case EResult::FalsePositive:
+                counters.MixedBlocksFilterFalsePositives.Increment(1);
+                break;
+            case EResult::TruePositive:
+                counters.MixedBlocksFilterTruePositives.Increment(1);
+                break;
+        }
+    }
 
     RemoveTransaction(*args.RequestInfo);
 
@@ -1218,7 +1262,7 @@ void TPartitionActor::CompleteReadBlocks(
     if (describeBlocksRange.Defined() || requests) {
         const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
             ctx,
-            PartitionConfig.diskid(),
+            VolumeLabels,
             args.RequestInfo,
             BlockDigestGenerator,
             State->GetBlockSize(),

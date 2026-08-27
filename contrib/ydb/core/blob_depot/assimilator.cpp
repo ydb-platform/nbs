@@ -297,9 +297,10 @@ namespace NKikimr::NBlobDepot {
             return;
         }
 
-        THPTimer timer;
+        const ui64 endTime = GetCycleCountFast() + DurationToCycles(TDuration::MilliSeconds(10));
         ui32 numItems = 0;
         bool timeout = false;
+        bool invalidate = false;
 
         if (!LastPlanScannedKey) {
             ++Self->AsStats.CopyIteration;
@@ -311,21 +312,24 @@ namespace NKikimr::NBlobDepot {
             LastPlanScannedKey ? TData::TKey(*LastPlanScannedKey) : TData::TKey::Min(),
             TData::TKey::Max(),
         };
+
         Self->Data->ScanRange(range, nullptr, nullptr, [&](const TData::TKey& key, const TData::TValue& value) {
-            if (++numItems == 1000) {
-                numItems = 0;
-                if (TDuration::Seconds(timer.Passed()) >= TDuration::MilliSeconds(1)) {
-                    timeout = true;
-                    return false;
-                }
-            }
             if (value.GoingToAssimilate) {
                 Self->AsStats.BytesToCopy += key.GetBlobId().BlobSize();
-                Self->JsonHandler.Invalidate();
+                invalidate = true;
             }
             LastPlanScannedKey.emplace(key.GetBlobId());
-            return true;
+            if (++numItems % 1024 == 0 && endTime <= GetCycleCountFast()) {
+                timeout = true;
+                return false;
+            } else {
+                return true;
+            }
         });
+
+        if (invalidate) {
+            Self->JsonHandler.Invalidate();
+        }
 
         if (timeout) {
             ResumeScanDataForPlanningInFlight = true;
@@ -447,7 +451,9 @@ namespace NKikimr::NBlobDepot {
                     const auto blobSeqId = TBlobSeqId::FromSequentalNumber(channel.Index, Self->Executor()->Generation(), value);
                     const TLogoBlobID id = blobSeqId.MakeBlobId(Self->TabletID(), EBlobType::VG_DATA_BLOB, 0, resp.Id.BlobSize());
                     const ui64 putId = NextPutId++;
-                    SendToBSProxy(SelfId(), channel.GroupId, new TEvBlobStorage::TEvPut(id, TRcBuf(resp.Buffer), TInstant::Max()), putId);
+                    SendToBSProxy(SelfId(), channel.GroupId, new TEvBlobStorage::TEvPut(
+                        id, TRcBuf(resp.Buffer), TInstant::Max(), NKikimrBlobStorage::TabletLog,
+                        TEvBlobStorage::TEvPut::TacticDefault, TWriteSource::BlobDepotPut), putId);
                     const bool inserted = channel.AssimilatedBlobsInFlight.insert(value).second; // prevent from barrier advancing
                     Y_ABORT_UNLESS(inserted);
                     const bool inserted1 = PutIdToKey.try_emplace(putId, TData::TKey(resp.Id), it->first).second;

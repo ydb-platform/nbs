@@ -44,7 +44,8 @@ def run_test(cluster, test_case, command, expected_result):
     'eternal-relocation-network-ssd',
     'eternal-1023gb-nonrepl',
     'eternal-big-hdd-nonrepl-diff-size-reqs-1',
-    'eternal-640gb-verify-checkpoint'])
+    'eternal-640gb-verify-checkpoint',
+    'eternal-512gb-different-size-requests-with-zero'])
 @pytest.mark.parametrize('command', [
     'setup-test',
     'stop-load',

@@ -33,6 +33,7 @@
 #include <contrib/ydb/core/filestore/core/filestore.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
@@ -184,6 +185,8 @@ private:
     TIntrusiveList<TRequestInfo> ActiveRequests;
 
     TInstant ReassignRequestSentTs;
+
+    TInstant TabletStartTs;
 
     TThrottlerLogger ThrottlerLogger;
     ITabletThrottlerPtr Throttler;
@@ -603,6 +606,9 @@ private:
         bool validateHandle);
 
     NProto::TError IsDataOperationAllowed() const;
+    NProto::TError ErrorHandleNotFound(
+        const NActors::TActorContext& ctx,
+        ui64 handle) const;
     bool CanUseUnconfirmedData() const;
     bool IsTabletConsideredOverloaded() const;
 
@@ -675,6 +681,10 @@ private:
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
     void HandleHttpInfo_Locks(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+    void HandleHttpInfo_FastShardLayout(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

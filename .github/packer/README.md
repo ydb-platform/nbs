@@ -7,7 +7,7 @@ export GITHUB_TOKEN=$(gh auth token)
 3. Set environmental variables:
 ```
 export ORG=ydb-platform
-export TEAM=nbs
+export TEAM=nbs_nebius
 export PARENT_ID="project-e02gfsnkpr00d7kw1dw8jw"
 export SUBNET_ID="vpcsubnet-e02dsth0aw7vwxzn77"
 export VM_USER_PASSWD=$(openssl passwd -6 -salt xyz  yourpass)

@@ -51,6 +51,8 @@ enum nvme_admin_opcode {
 
     NVME_OPC_DOORBELL_BUFFER_CONFIG = 0x7c,
 
+    NVME_OPS_ADMIN_LOCKDOWN = 0x24,
+
     NVME_OPC_FORMAT_NVM = 0x80,
     NVME_OPC_SECURITY_SEND = 0x81,
     NVME_OPC_SECURITY_RECEIVE = 0x82,
@@ -307,7 +309,10 @@ struct __attribute__((packed)) __attribute__((aligned)) nvme_ctrlr_data {
         /** Supports NVME_OPC_GET_LBA_STATUS */
         uint16_t get_lba_status : 1;
 
-        uint16_t oacs_rsvd : 6;
+        /** Command and Feature Lockdown Supported */
+        uint16_t lockdown : 1;
+
+        uint16_t oacs_rsvd : 5;
     } oacs;
 
     /** abort command limit */
@@ -827,6 +832,45 @@ enum nvme_sanitize_status
     NVME_SANITIZE_SSTAT_COMPLETED = 0x01,
     NVME_SANITIZE_SSTAT_IN_PROGRESS = 0x02,
     NVME_SANITIZE_SSTAT_FAILED = 0x03,
+};
+
+struct nvme_lockdown_log
+{
+    uint8_t cfila;
+    uint8_t rsvd1[2];
+    uint8_t lngth;
+    uint8_t cfil[508];
+};
+
+static_assert(sizeof(nvme_lockdown_log) == 512);
+
+enum nvme_cmd_get_log_lid
+{
+    NVME_LOG_LID_CMD_AND_FEAT_LOCKDOWN = 0x14,
+    NVME_LOG_LID_SANITIZE = 0x81,
+};
+
+enum nvme_lockdown_log_contents
+{
+    NVME_LOCKDOWN_SUPPORTED_CMD = 0x0,
+    NVME_LOCKDOWN_PROHIBITED_CMD = 0x1,
+    NVME_LOCKDOWN_PROHIBITED_OUTOFBAND_CMD = 0x2,
+};
+
+enum nvme_lockdown_log_scope
+{
+    NVME_LOCKDOWN_ADMIN_CMD = 0x0,
+    NVME_LOCKDOWN_FEATURE_ID = 0x2,
+    NVME_LOCKDOWN_MI_CMD_SET = 0x3,
+    NVME_LOCKDOWN_PCI_CMD_SET = 0x4,
+};
+
+enum nvme_lockdown_scope_contents
+{
+    NVME_LOCKDOWN_SS_SHIFT = 0,
+    NVME_LOCKDOWN_SS_MASK = 0xf,
+    NVME_LOCKDOWN_CS_SHIFT = 4,
+    NVME_LOCKDOWN_CS_MASK = 0x3,
 };
 
 }   // namespace NCloud::NBlockStore::NNvme

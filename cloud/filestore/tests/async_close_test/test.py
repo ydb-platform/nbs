@@ -16,7 +16,7 @@ from cloud.storage.core.tools.testing.qemu.lib.common import (
 RETRY_COUNT = 3
 WAIT_TIMEOUT_MS = 1000  # 1sec
 OPEN_HANDLE_COUNT = 10000
-MAX_WAIT_SECONDS = 600
+MAX_WAIT_SECONDS = 900
 MAX_NO_PROGRESS_SECONDS = 30
 
 

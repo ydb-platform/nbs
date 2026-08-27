@@ -13,6 +13,7 @@ import (
 	internal_auth "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
@@ -130,7 +131,11 @@ func run(
 		defer shutdown(ctx)
 	}
 
-	creds := internal_auth.NewCredentials(ctx, config.GetAuthConfig())
+	creds, err := internal_auth.NewCredentials(ctx, config.GetAuthConfig())
+	if err != nil {
+		logging.Error(ctx, "Failed to create credentials: %v", err)
+		return err
+	}
 
 	logging.Info(ctx, "Initializing YDB client")
 	ydbClientRegistry := mon.NewRegistry("ydb_client")
@@ -175,15 +180,41 @@ func run(
 
 	nbsClientMetricsRegistry := mon.NewRegistry("nbs_client")
 	nbsSessionMetricsRegistry := mon.NewRegistry("nbs_session")
+	nbsConfig := config.GetNbsConfig()
+	nbsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		nbsConfig.GetInsecure(),
+		common.GrpcClientTlsProviderConfig{
+			RootCertsFile: nbsConfig.GetRootCertsFile(),
+		},
+		nbsClientMetricsRegistry,
+	)
+	if err != nil {
+		return err
+	}
+
 	nbsFactory, err := nbs.NewFactoryWithCreds(
 		ctx,
-		config.NbsConfig,
+		nbsConfig,
 		creds,
 		nbsClientMetricsRegistry,
 		nbsSessionMetricsRegistry,
+		nbsTlsProvider,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to create nbs factory: %v", err)
+		return err
+	}
+
+	nfsConfig := config.GetNfsConfig()
+	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
+	nfsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		nfsConfig.GetInsecure(),
+		common.GrpcClientTlsProviderConfig{
+			RootCertsFile: nfsConfig.GetRootCertsFile(),
+		},
+		nfsClientMetricsRegistry,
+	)
+	if err != nil {
 		return err
 	}
 
@@ -251,11 +282,13 @@ func run(
 				availabilityMonitoringStorage,
 				availabilityMonitoringMetricsRegistry,
 			)
+			defer availabilityMonitoring.Close()
 
 			s3, err = persistence.NewS3ClientFromConfig(
 				s3Config,
 				s3MetricsRegistry,
 				availabilityMonitoring,
+				creds,
 			)
 			if err != nil {
 				return err
@@ -285,6 +318,7 @@ func run(
 					migrationDstS3Config,
 					registry,
 					nil, // availabilityMonitoring
+					creds,
 				)
 				if err != nil {
 					return err
@@ -319,14 +353,17 @@ func run(
 				return err
 			}
 			logging.Info(ctx, "Initializing filesystem dataplane")
-			nfsClientMetricsRegistry := mon.NewRegistry("nfs_client_dataplane")
+			nfsDataplaneClientMetricsRegistry := mon.NewRegistry(
+				"nfs_client_dataplane",
+			)
 			nfsSessionMetricsRegistry := mon.NewRegistry("nfs_session_dataplane")
 			nfsFactory := nfs.NewFactoryWithCreds(
 				ctx,
 				config.GetNfsConfig(),
 				creds,
-				nfsClientMetricsRegistry,
+				nfsDataplaneClientMetricsRegistry,
 				nfsSessionMetricsRegistry,
+				nfsTlsProvider,
 			)
 
 			filesystemDB, err := persistence.NewYDBClient(
@@ -371,6 +408,8 @@ func run(
 			taskRegistry,
 			taskScheduler,
 			nbsFactory,
+			nfsClientMetricsRegistry,
+			nfsTlsProvider,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize GRPC services: %v", err)

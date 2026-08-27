@@ -1,6 +1,6 @@
 #include "scheme_decimal_type.h"
 
-#include <contrib/ydb/library/yql/public/decimal/yql_decimal.h>
+#include <yql/essentials/public/decimal/yql_decimal.h>
 #include <contrib/ydb/public/lib/scheme_types/scheme_type_id.h>
 
 #include <util/string/cast.h>

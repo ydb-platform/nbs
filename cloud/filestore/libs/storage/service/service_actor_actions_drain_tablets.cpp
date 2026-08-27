@@ -34,6 +34,13 @@ struct TDrainTabletsActionActor final
             ReplyWithError(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
             return;
         }
+
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "Draining tablets started, KeepDown=%d",
+            request.GetKeepDown());
+
         DrainTablets(ctx, request.GetKeepDown());
         Become(&TThis::StateWork);
     }
@@ -68,9 +75,19 @@ struct TDrainTabletsActionActor final
         const TActorContext& ctx)
     {
         if (const auto& error = ev->Get()->GetError(); FAILED(error.GetCode())) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Draining tablets failed: %s",
+                FormatError(error).Quote().c_str());
             ReplyWithError(ctx, error);
             return;
         }
+
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "Draining tablets finished");
         ReplyWithSuccess(ctx);
     }
 

@@ -4,6 +4,7 @@ PEERDIR(
     contrib/ydb/library/actors/wilson
     library/cpp/deprecated/atomic
     library/cpp/lwtrace
+    contrib/ydb/core/base
     contrib/ydb/core/protos
 )
 
@@ -12,6 +13,7 @@ SRCS(
     blobstorage_events.cpp
     blobstorage_events.h
     blobstorage_oos_defs.h
+    infer_pdisk_slot_count_settings.h
     blobstorage_vdiskid.cpp
     blobstorage_vdiskid.h
     blobstorage_syncstate.cpp
@@ -19,6 +21,7 @@ SRCS(
     defs.h
     html.cpp
     html.h
+    pdisk_config_validation.h
     ptr.h
     vdisk_lsn.h
     vdisk_sync_common.h

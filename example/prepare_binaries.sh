@@ -1,4 +1,9 @@
+# For build via 'cloud/blockstore/buildall'
 BUILD_ROOT="../cloud/blockstore/buildall"
+
+# For direct targets build
+#BUILD_ROOT="../."
+
 YDBD_BIN="$BUILD_ROOT/contrib/ydb/apps/ydbd/ydbd"
 YDB_BIN="$BUILD_ROOT/contrib/ydb/apps/ydb/ydb"
 NBSD_BIN="$BUILD_ROOT/cloud/blockstore/apps/server/nbsd"

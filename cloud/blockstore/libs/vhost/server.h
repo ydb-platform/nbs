@@ -23,6 +23,8 @@ struct TStorageOptions
 {
     TString DeviceName;
     TString DiskId;
+    TString CloudId;
+    TString FolderId;
     TString ClientId;
     ui32 BlockSize = 0;
     ui64 BlocksCount = 0;
@@ -34,6 +36,7 @@ struct TStorageOptions
     bool DropDiscardRequests = false;
     ui32 MaxZeroBlocksSubRequestSize = 0;
     ui32 OptimalIoSize = 0;
+    bool ReadOnly = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,7 +70,7 @@ struct TServerConfig
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerPtr CreateServer(
-    ILoggingServicePtr logging,
+    const ILoggingServicePtr& logging,
     IServerStatsPtr serverStats,
     IVhostQueueFactoryPtr vhostQueueFactory,
     IDeviceHandlerFactoryPtr deviceHandlerFactory,

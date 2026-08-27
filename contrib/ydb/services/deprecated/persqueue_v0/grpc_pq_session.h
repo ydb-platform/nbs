@@ -2,6 +2,7 @@
 
 #include "contrib/ydb/core/client/server/grpc_base.h"
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
+#include <contrib/ydb/public/api/protos/draft/persqueue_error_codes.pb.h>
 #include <library/cpp/string_utils/quote/quote.h>
 #include <util/generic/queue.h>
 
@@ -117,14 +118,18 @@ protected:
                 Session->HaveWriteInflight = false;
                 if (Session->NeedFinish) {
                     lock.Release();
-                    Session->Stream.Finish(Status::OK, new TFinishDone(Session));
+                    if (!NYdbGrpc::GrpcDead) {
+                        Session->Stream.Finish(Status::OK, new TFinishDone(Session));
+                    }
                 }
             } else {
                 auto resp = std::move(Session->Responses.front());
                 Session->Responses.pop();
                 lock.Release();
                 ui64 sz = resp.ByteSize();
-                Session->Stream.Write(resp, new TWriteDone(Session, sz));
+                if (!NYdbGrpc::GrpcDead) {
+                    Session->Stream.Write(resp, new TWriteDone(Session, sz));
+                }
             }
 
             return false;
@@ -270,7 +275,9 @@ protected:
             HaveWriteInflight = true;
         }
 
-        Stream.Finish(Status::OK, new TFinishDone(this));
+        if (!NYdbGrpc::GrpcDead) {
+            Stream.Finish(Status::OK, new TFinishDone(this));
+        }
     }
 
     /// Send reply to client.
@@ -288,7 +295,9 @@ protected:
         }
 
         ui64 size = resp.ByteSize();
-        Stream.Write(resp, new TWriteDone(this, size));
+        if (!NYdbGrpc::GrpcDead) {
+            Stream.Write(resp, new TWriteDone(this, size));
+        }
     }
 
     void ReadyForNextRead() override {
@@ -300,7 +309,9 @@ protected:
         }
 
         auto read = new TReadDone(this);
-        Stream.Read(&read->Request, read);
+        if (!NYdbGrpc::GrpcDead) {
+            Stream.Read(&read->Request, read);
+        }
     }
 
 protected:

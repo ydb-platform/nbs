@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -508,7 +509,11 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
                                 ->GetSubgroup("volume", diskId)
                                 ->GetSubgroup("instance", clientId)
                                 ->GetSubgroup("cloud", cloudId)
-                                ->GetSubgroup("folder", folderId);
+                                ->GetSubgroup("folder", folderId)
+                                ->GetSubgroup(
+                                    "type",
+                                    MediaKindToString(
+                                        NProto::STORAGE_MEDIA_DEFAULT));
 
         auto postponedCount = diskCounters->GetSubgroup("request", "ReadBlocks")
                                  ->FindCounter("PostponedCount")
@@ -720,11 +725,14 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             };
 
         TVector<NProto::EVolumeMountMode> mountModes;
+        TVector<bool> forceRemoteBindings;
 
         auto cellService = std::make_shared<TTestService>();
         cellService->MountVolumeHandler =
             [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
                 mountModes.push_back(request->GetVolumeMountMode());
+                forceRemoteBindings.push_back(
+                    request->GetForceRemoteBinding());
 
                 NProto::TMountVolumeResponse response;
                 response.MutableVolume()->SetDiskId(request->GetDiskId());
@@ -806,6 +814,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(expectedMountMode),
             static_cast<int>(mountModes.back()));
+        UNIT_ASSERT_VALUES_EQUAL(1, forceRemoteBindings.size());
+        UNIT_ASSERT(forceRemoteBindings.back());
 
         {
             auto future = sessionManager->AlterSession(
@@ -824,6 +834,8 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(expectedMountMode),
             static_cast<int>(mountModes.back()));
+        UNIT_ASSERT_VALUES_EQUAL(2, forceRemoteBindings.size());
+        UNIT_ASSERT(forceRemoteBindings.back());
     }
 
     Y_UNIT_TEST(ShouldForceRemoteMountModeForCellEndpointsWhenTemporaryServer)

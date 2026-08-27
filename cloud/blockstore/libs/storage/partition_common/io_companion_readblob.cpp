@@ -182,11 +182,13 @@ void TIOCompanion::HandleReadBlobCompleted(
         if (++ReadBlobErrorCount >= Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
+                PartitionConfig.GetDiskId(),
+                PartitionConfig.GetCloudId(),
+                PartitionConfig.GetFolderId(),
                 TStringBuilder()
                     << "Stop tablet because of too many ReadBlob errors"
                     << FormatError(msg->GetError()),
-                {{"disk", PartitionConfig.GetDiskId()},
-                 {"actor", ev->Sender.ToString()},
+                {{"actor", ev->Sender.ToString()},
                  {"group", groupId}});
             Client.Poison(ctx);
             return;

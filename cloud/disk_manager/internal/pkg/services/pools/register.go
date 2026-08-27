@@ -79,6 +79,13 @@ func RegisterForExecution(
 		return err
 	}
 
+	baseDiskIdleTTL, err := time.ParseDuration(
+		config.GetBaseDiskIdleTTL(),
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("pools.AcquireBaseDisk", func() tasks.Task {
 		return &acquireBaseDiskTask{
 			scheduler: taskScheduler,
@@ -94,10 +101,9 @@ func RegisterForExecution(
 			cloudID:  config.GetCloudId(),
 			folderID: config.GetFolderId(),
 
-			scheduler:       taskScheduler,
-			storage:         storage,
-			nbsFactory:      nbsFactory,
-			resourceStorage: resourceStorage,
+			scheduler:  taskScheduler,
+			storage:    storage,
+			nbsFactory: nbsFactory,
 		}
 	})
 	if err != nil {
@@ -189,6 +195,8 @@ func RegisterForExecution(
 			convertToImageSizedBaseDisksThreshold:   config.GetConvertToImageSizedBaseDiskThreshold(),
 			convertToDefaultSizedBaseDisksThreshold: config.GetConvertToDefaultSizedBaseDiskThreshold(),
 			minPoolAge:                              minOptimizedPoolAge,
+			baseDiskIdleTTL:                         baseDiskIdleTTL,
+			cleanupIdleBaseDisksLimit:               config.GetCleanupIdleBaseDisksLimit(),
 		}
 	})
 	if err != nil {

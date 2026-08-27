@@ -177,6 +177,8 @@ private:
     const TRequestInfoPtr RequestInfo;
     const ui64 RequestId;
     const TString DiskId;
+    const TString CloudId;
+    const TString FolderId;
     const TString CheckpointId;
     const ui64 VolumeTabletId;
     const TActorId VolumeActorId;
@@ -203,6 +205,8 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 requestId,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         TString checkpointId,
         ui64 volumeTabletId,
         TActorId volumeActorId,
@@ -297,6 +301,8 @@ TCheckpointActor<TMethod>::TCheckpointActor(
         TRequestInfoPtr requestInfo,
         ui64 requestId,
         TString diskId,
+        TString cloudId,
+        TString folderId,
         TString checkpointId,
         ui64 volumeTabletId,
         TActorId volumeActorId,
@@ -311,6 +317,8 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     : RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
     , DiskId(std::move(diskId))
+    , CloudId(std::move(cloudId))
+    , FolderId(std::move(folderId))
     , CheckpointId(std::move(checkpointId))
     , VolumeTabletId(volumeTabletId)
     , VolumeActorId(volumeActorId)
@@ -779,6 +787,9 @@ void TCheckpointActor<TMethod>::HandleReleaseDiskResponse(
         }
 
         ReportReleaseShadowDiskError(
+            DiskId,
+            CloudId,
+            FolderId,
             FormatError(record.GetError()),
             {{"ShadowDiskId", ShadowDiskId}});
     }
@@ -1555,6 +1566,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     requestInfo->RequestInfo,
                     request.RequestId,
                     State->GetDiskId(),
+                    State->GetMeta().GetVolumeConfig().GetCloudId(),
+                    State->GetMeta().GetVolumeConfig().GetFolderId(),
                     request.CheckpointId,
                     TabletID(),
                     SelfId(),
@@ -1586,6 +1599,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     requestInfo->RequestInfo,
                     request.RequestId,
                     State->GetDiskId(),
+                    State->GetMeta().GetVolumeConfig().GetCloudId(),
+                    State->GetMeta().GetVolumeConfig().GetFolderId(),
                     request.CheckpointId,
                     TabletID(),
                     SelfId(),
@@ -1611,6 +1626,8 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
                     requestInfo->RequestInfo,
                     request.RequestId,
                     State->GetDiskId(),
+                    State->GetMeta().GetVolumeConfig().GetCloudId(),
+                    State->GetMeta().GetVolumeConfig().GetFolderId(),
                     request.CheckpointId,
                     TabletID(),
                     SelfId(),

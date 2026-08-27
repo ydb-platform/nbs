@@ -18,7 +18,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/tablet_flat
     library/cpp/deprecated/atomic
-    contrib/ydb/library/yql/parser/pg_wrapper/interface
+    yql/essentials/parser/pg_wrapper/interface
 )
 
 END()

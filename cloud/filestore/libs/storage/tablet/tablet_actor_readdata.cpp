@@ -344,6 +344,7 @@ private:
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
     const ui64 CommitId;
+    const ui64 NodeId;
     const TByteRange OriginByteRange;
     const TByteRange ActualRange;
     const ui64 TotalSize;
@@ -366,6 +367,7 @@ public:
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
+        ui64 nodeId,
         TByteRange originByteRange,
         TByteRange actualRange,
         ui64 totalSize,
@@ -408,6 +410,7 @@ TReadDataActor::TReadDataActor(
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
+        ui64 nodeId,
         TByteRange originByteRange,
         TByteRange actualRange,
         ui64 totalSize,
@@ -427,6 +430,7 @@ TReadDataActor::TReadDataActor(
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
+    , NodeId(nodeId)
     , OriginByteRange(originByteRange)
     , ActualRange(actualRange)
     , TotalSize(totalSize)
@@ -518,6 +522,7 @@ void TReadDataActor::ReplyAndDie(
             error,
             std::move(MixedBlocksRanges),
             CommitId,
+            NodeId,
             1,
             OriginByteRange.Length,
             ctx.Now() - RequestInfo->StartedTs,
@@ -697,7 +702,7 @@ void TIndexTabletActor::HandleReadData(
 
 void TIndexTabletActor::HandleReadDataCompleted(
     const TEvIndexTabletPrivate::TEvReadDataCompleted::TPtr& ev,
-    const TActorContext&)
+    const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
 
@@ -706,6 +711,15 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
+    if (!UpdateAccessStats(msg->NodeId, ctx.Now()) ||
+        !UpdateLatencyStats(
+            msg->NodeId,
+            EFileStoreRequest::ReadData,
+            ctx.Now(),
+            msg->Time))
+    {
+        ReportDiagnosticStatsInsertFailed();
+    }
     if (msg->IsOverloaded) {
         Metrics->OverloadedCount.fetch_add(1, std::memory_order_relaxed);
     }
@@ -799,6 +813,16 @@ void TIndexTabletActor::HandleDescribeData(
             requestInfo->CallContext,
             ctx);
 
+        if (!UpdateAccessStats(nodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
+                nodeId,
+                EFileStoreRequest::DescribeData,
+                ctx.Now(),
+                ctx.Now() - requestInfo->StartedTs))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
+
         NCloud::Reply(ctx, *requestInfo, std::move(response));
 
         Metrics->ReadAheadCacheHitCount.fetch_add(1, std::memory_order_relaxed);
@@ -860,7 +884,11 @@ bool TIndexTabletActor::ValidateTx_ReadData(
         args.CommitId = GetCurrentCommitId();
     } else {
         auto* handle = FindHandle(args.Handle);
-        if (!handle || handle->Session != session) {
+        if (!handle) {
+            args.Error = ErrorHandleNotFound(ctx, args.Handle);
+            return false;
+        }
+        if (handle->Session != session) {
             args.Error = ErrorInvalidHandle(args.Handle);
             return false;
         }
@@ -1060,6 +1088,16 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
+        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
+                args.NodeId,
+                EFileStoreRequest::DescribeData,
+                ctx.Now(),
+                ctx.Now() - args.RequestInfo->StartedTs))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
+
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),
             ctx.Now(),
@@ -1144,6 +1182,16 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
+        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+            !UpdateLatencyStats(
+                args.NodeId,
+                EFileStoreRequest::ReadData,
+                ctx.Now(),
+                ctx.Now() - args.RequestInfo->StartedTs))
+        {
+            ReportDiagnosticStatsInsertFailed();
+        }
+
         return;
     }
 
@@ -1166,6 +1214,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
+        args.NodeId,
         args.OriginByteRange,
         args.ActualRange(),
         args.Node->Attrs.GetSize(),

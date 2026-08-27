@@ -2,6 +2,7 @@
 
 #include "config.h"
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -156,13 +157,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto getCounters = [&] (auto volume, auto instance) {
-            return counters
-                ->GetSubgroup("host", "cluster")
+        auto getCounters = [&](auto volume, auto instance, auto mediaKind)
+        {
+            return counters->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
                 ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId);
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", MediaKindToString(mediaKind));
         };
 
         auto writeData = [](auto volume, auto type){
@@ -224,7 +226,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto volume2 = volumeStats->GetVolumeInfo("test2", "client2");
         auto volume3 = volumeStats->GetVolumeInfo("test2", "client3");
 
-        auto volume1Counters = getCounters("test1", "instance1");
+        auto volume1Counters = getCounters(
+            "test1",
+            "instance1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
         auto volume1WriteCount = volume1Counters
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("Count");
@@ -232,12 +237,19 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ->GetSubgroup("request", "ReadBlocks")
             ->GetCounter("Count");
 
-        auto volume2Counters = getCounters("test2", "instance1");
+        auto volume2Counters =
+            getCounters(
+                "test2",
+                "instance1",
+                NCloud::NProto::STORAGE_MEDIA_HDD);
         auto volume2WriteCount = volume2Counters
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("Count");
 
-        auto volume3Counters = getCounters("test2", "instance2");
+        auto volume3Counters = getCounters(
+            "test2",
+            "instance2",
+            NCloud::NProto::STORAGE_MEDIA_HDD);
         auto volume3WriteCount = volume3Counters
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("Count");
@@ -276,6 +288,65 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_EQUAL(volume1ReadCount->Val(), 2);
         UNIT_ASSERT_EQUAL(volume2WriteCount->Val(), 1);
         UNIT_ASSERT_EQUAL(volume3WriteCount->Val(), 1);
+    }
+
+    Y_UNIT_TEST(ShouldRefreshMediaKindLabelOnRemount)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume");
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto findType = [&] (const TString& instance, const TString& type) {
+            return counters
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test")
+                ->GetSubgroup("instance", instance)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->FindSubgroup("type", type);
+        };
+
+        Mount(
+            volumeStats,
+            "test",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+
+        UNIT_ASSERT(findType("instance-1", "hdd"));
+        UNIT_ASSERT(!findType("instance-1", "hybrid"));
+
+        Mount(
+            volumeStats,
+            "test",
+            "client-2",
+            "instance-2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        UNIT_ASSERT(!findType("instance-1", "hdd"));
+        UNIT_ASSERT(findType("instance-1", "ssd"));
+        UNIT_ASSERT(!findType("instance-2", "hdd"));
+        UNIT_ASSERT(findType("instance-2", "ssd"));
+
+        Mount(
+            volumeStats,
+            "test",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+
+        UNIT_ASSERT(findType("instance-1", "hdd"));
+        UNIT_ASSERT(!findType("instance-1", "ssd"));
+        UNIT_ASSERT(findType("instance-2", "hdd"));
+        UNIT_ASSERT(!findType("instance-2", "ssd"));
     }
 
     Y_UNIT_TEST(ShouldRegisterAndUnregisterCountersPerVolume)
@@ -451,13 +522,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto getCounters = [&] (auto volume, auto instance) {
+        auto getCounters = [&] (auto volume, auto instance, auto mediaKind) {
             auto volumeCounters = counters
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", MediaKindToString(mediaKind))
                 ->GetSubgroup("request", "WriteBlocks");
 
             return std::make_pair(
@@ -500,8 +572,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto volume1 = volumeStats->GetVolumeInfo("test1", "client1");
         auto volume2 = volumeStats->GetVolumeInfo("test2", "client2");
 
-        auto [volume1Errors, volume1Silent] = getCounters("test1", "instance1");
-        auto [volume2Errors, volume2Silent] = getCounters("test2", "instance2");
+        auto [volume1Errors, volume1Silent] = getCounters(
+            "test1",
+            "instance1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto [volume2Errors, volume2Silent] = getCounters(
+            "test2",
+            "instance2",
+            NCloud::NProto::STORAGE_MEDIA_HDD);
 
         UNIT_ASSERT_VALUES_EQUAL(0, volume1Errors->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, volume1Silent->Val());
@@ -551,13 +629,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto getCounters = [&] (auto volume, auto instance) {
+        auto getCounters = [&] (auto volume, auto instance, auto mediaKind) {
             auto volumeCounters = counters
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", volume)
                 ->GetSubgroup("instance", instance)
                 ->GetSubgroup("cloud", DefaultCloudId)
-                ->GetSubgroup("folder", DefaultFolderId);
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", MediaKindToString(mediaKind));
 
             return std::make_tuple(
                 volumeCounters
@@ -600,7 +679,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 mediaKind);
 
             auto stats = volumeStats->GetVolumeInfo(name, client);
-            auto [errors, hwProblems] = getCounters(name, instance);
+            auto [errors, hwProblems] =
+                getCounters(name, instance, mediaKind);
 
             return std::make_tuple(
                 std::move(stats),
@@ -611,9 +691,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto [localStats, localErrors, localHwProblems] =
             mount("local", NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
         auto [nonreplStats, nonreplErrors, nonreplHwProblems] =
-            mount("nonrepl", NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            mount(
+                "nonrepl",
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
         auto [hddNonreplStats, hddNonreplErrors, hddNonreplHwProblems] =
-            mount("hdd_nonrepl", NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
+            mount(
+                "hdd_nonrepl",
+                NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
         auto [ssdStats, ssdErrors, ssdHwProblems] =
             mount("ssd", NCloud::NProto::STORAGE_MEDIA_SSD);
 
@@ -1075,6 +1159,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         TString client {"client1"};
         TString volume {"test1"};
+        const auto mediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
         IVolumeInfoPtr volumeInfo;
 
         Mount(
@@ -1082,7 +1167,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             volume,
             client,
             "instance",
-            NCloud::NProto::STORAGE_MEDIA_SSD);
+            mediaKind);
         volumeInfo = volumeStats->GetVolumeInfo(volume, client);
 
         timer->AdvanceTime(TDuration::Seconds(15));
@@ -1103,7 +1188,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("DownDisks")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            counters->GetSubgroup("type", "ssd")
+            counters->GetSubgroup("type", MediaKindToString(mediaKind))
                 ->GetCounter("DownDisks")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -1115,6 +1200,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("instance", "instance")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", MediaKindToString(mediaKind))
                 ->GetCounter("HasDowntime")
                 ->Val());
 
@@ -1122,7 +1208,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("DownDisks")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            counters->GetSubgroup("type", "ssd")
+            counters->GetSubgroup("type", MediaKindToString(mediaKind))
                 ->GetCounter("DownDisks")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
@@ -1134,6 +1220,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->GetSubgroup("instance", "instance")
                 ->GetSubgroup("cloud", DefaultCloudId)
                 ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", MediaKindToString(mediaKind))
                 ->GetCounter("HasDowntime")
                 ->Val());
     }

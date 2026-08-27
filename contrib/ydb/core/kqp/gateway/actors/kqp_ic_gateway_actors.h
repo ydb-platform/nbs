@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/appdata.h>
-#include <contrib/ydb/library/yql/providers/common/gateway/yql_provider_gateway.h>
+#include <yql/essentials/providers/common/gateway/yql_provider_gateway.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>

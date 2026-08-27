@@ -61,86 +61,49 @@ func (t *createImageFromImageTask) Run(
 	}
 
 	_, err = t.storage.CreateImage(ctx, resources.ImageMeta{
-		ID:                t.request.DstImageId,
-		FolderID:          t.request.FolderId,
-		SrcImageID:        t.request.SrcImageId,
-		CreateRequest:     t.request,
-		CreateTaskID:      selfTaskID,
-		CreatingAt:        time.Now(),
-		CreatedBy:         "",   // TODO: extract CreatedBy from execCtx.
-		UseDataplaneTasks: true, // TODO: remove it.
-		Encryption:        srcImageEncryption,
+		ID:            t.request.DstImageId,
+		FolderID:      t.request.FolderId,
+		SrcImageID:    t.request.SrcImageId,
+		CreateRequest: t.request,
+		CreateTaskID:  selfTaskID,
+		CreatingAt:    time.Now(),
+		CreatedBy:     "", // TODO: extract CreatedBy from execCtx.
+		Encryption:    srcImageEncryption,
 	})
 	if err != nil {
 		return err
 	}
 
-	srcIsDataplane := srcImageMeta != nil && srcImageMeta.UseDataplaneTasks
-
-	if srcIsDataplane {
-		taskID, err := t.scheduler.ScheduleTask(
-			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
-			"dataplane.CreateSnapshotFromSnapshot",
-			"",
-			&dataplane_protos.CreateSnapshotFromSnapshotRequest{
-				SrcSnapshotId: t.request.SrcImageId,
-				DstSnapshotId: t.request.DstImageId,
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-		t.state.DataplaneTaskID = taskID
-
-		response, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
-		if err != nil {
-			return err
-		}
-
-		typedResponse, ok := response.(*dataplane_protos.CreateSnapshotFromSnapshotResponse)
-		if !ok {
-			return errors.NewNonRetriableErrorf(
-				"invalid dataplane.CreateSnapshotFromSnapshot response type %T",
-				response,
-			)
-		}
-
-		t.state.ImageSize = int64(typedResponse.SnapshotSize)
-		t.state.ImageStorageSize = int64(typedResponse.SnapshotStorageSize)
-	} else {
-		taskID, err := t.scheduler.ScheduleTask(
-			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
-			"dataplane.CreateSnapshotFromLegacySnapshot",
-			"",
-			&dataplane_protos.CreateSnapshotFromLegacySnapshotRequest{
-				SrcSnapshotId: t.request.SrcImageId,
-				DstSnapshotId: t.request.DstImageId,
-				UseS3:         t.request.UseS3,
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-		t.state.DataplaneTaskID = taskID
-
-		response, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
-		if err != nil {
-			return err
-		}
-
-		typedResponse, ok := response.(*dataplane_protos.CreateSnapshotFromLegacySnapshotResponse)
-		if !ok {
-			return errors.NewNonRetriableErrorf(
-				"invalid dataplane.CreateSnapshotFromLegacySnapshot response type %T",
-				response,
-			)
-		}
-
-		t.state.ImageSize = int64(typedResponse.SnapshotSize)
-		t.state.ImageStorageSize = int64(typedResponse.SnapshotStorageSize)
+	taskID, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_run"),
+		"dataplane.CreateSnapshotFromSnapshot",
+		"",
+		&dataplane_protos.CreateSnapshotFromSnapshotRequest{
+			SrcSnapshotId: t.request.SrcImageId,
+			DstSnapshotId: t.request.DstImageId,
+		},
+	)
+	if err != nil {
+		return err
 	}
+
+	t.state.DataplaneTaskID = taskID
+
+	response, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return err
+	}
+
+	typedResponse, ok := response.(*dataplane_protos.CreateSnapshotFromSnapshotResponse)
+	if !ok {
+		return errors.NewNonRetriableErrorf(
+			"invalid dataplane.CreateSnapshotFromSnapshot response type %T",
+			response,
+		)
+	}
+
+	t.state.ImageSize = int64(typedResponse.SnapshotSize)
+	t.state.ImageStorageSize = int64(typedResponse.SnapshotStorageSize)
 
 	err = t.storage.ImageCreated(
 		ctx,
@@ -198,11 +161,6 @@ func (t *createImageFromImageTask) GetMetadata(
 		createMetadata, ok := message.(*dataplane_protos.CreateSnapshotFromSnapshotMetadata)
 		if ok {
 			metadata.Progress = createMetadata.Progress
-		} else {
-			createMetadata, ok := message.(*dataplane_protos.CreateSnapshotFromLegacySnapshotMetadata)
-			if ok {
-				metadata.Progress = createMetadata.Progress
-			}
 		}
 	} else {
 		metadata.Progress = t.state.Progress

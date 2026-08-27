@@ -29,6 +29,8 @@ func NewStorage(
 			config.GetS3Bucket(),
 			config.GetChunkBlobsS3KeyPrefix(),
 			tablesPath,
+			config.GetChunkBlobsTableName(),
+			config.GetChunkBlobsShadowTableName(),
 			metrics.New(metricsRegistry, "s3"),
 			probeCompressionPercentage,
 		)
@@ -46,30 +48,11 @@ func NewStorage(
 		chunkStorageYDB: chunks.NewStorageYDB(
 			db,
 			tablesPath,
+			config.GetChunkBlobsTableName(),
+			config.GetChunkBlobsShadowTableName(),
 			ydbMetrics,
 			probeCompressionPercentage,
 		),
 		chunkStorageS3: chunkStorageS3,
 	}, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func NewLegacyStorage(
-	config *snapshot_config.SnapshotConfig,
-	metricsRegistry common_metrics.Registry,
-	db *persistence.YDBClient,
-) Storage {
-
-	var tablesPath string
-	storageFolder := config.GetLegacyStorageFolder()
-	if len(storageFolder) != 0 {
-		tablesPath = db.AbsolutePath(storageFolder)
-	}
-
-	return &legacyStorage{
-		db:         db,
-		tablesPath: tablesPath,
-		metrics:    metrics.New(metricsRegistry, "legacy"),
-	}
 }

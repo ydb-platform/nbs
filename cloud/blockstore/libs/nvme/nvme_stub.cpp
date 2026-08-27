@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNvmeManagerStub final
-    : public INvmeManager
+class TNvmeManagerStub final: public INvmeManager
 {
 private:
     bool IsDeviceSsd;
@@ -17,8 +16,8 @@ private:
 
 public:
     TNvmeManagerStub(
-            bool isDeviceSsd,
-            TNvmeDeallocateHistoryPtr deallocateHistory)
+        bool isDeviceSsd,
+        TNvmeDeallocateHistoryPtr deallocateHistory)
         : IsDeviceSsd(isDeviceSsd)
         , DeallocateHistory(std::move(deallocateHistory))
     {}
@@ -39,10 +38,8 @@ public:
         return MakeFuture(MakeError(S_OK));
     }
 
-    TFuture<NProto::TError> Deallocate(
-        const TString& path,
-        ui64 offsetBytes,
-        ui64 sizeBytes) override
+    TFuture<NProto::TError>
+    Deallocate(const TString& path, ui64 offsetBytes, ui64 sizeBytes) override
     {
         Y_UNUSED(path);
 
@@ -57,7 +54,7 @@ public:
     {
         Y_UNUSED(path);
 
-        return TString {};
+        return TString{};
     }
 
     TResultOrError<TString> GetDeviceModel(const TString& path) override
@@ -92,6 +89,23 @@ public:
     NProto::TError ResetToSingleNamespace(const TString& ctrlPath) final
     {
         Y_UNUSED(ctrlPath);
+
+        return {};
+    }
+
+    TResultOrError<TLockdownState> GetLockdownState(
+        const TString& ctrlPath) final
+    {
+        Y_UNUSED(ctrlPath);
+
+        return TLockdownState{};
+    }
+
+    NProto::TError EnsureLockdown(
+        const TString& ctrlPath,
+        const TLockdownConfig& config) final
+    {
+        Y_UNUSED(ctrlPath, config);
 
         return {};
     }

@@ -9,7 +9,7 @@
 #include <contrib/ydb/library/actors/core/scheduler_basic.h>
 #include <contrib/ydb/library/actors/core/process_stats.h>
 #include <contrib/ydb/library/actors/protos/services_common.pb.h>
-#include <contrib/ydb/library/actors/interconnect/poller_actor.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_actor.h>
 #include "pgwire.h"
 #include "log_impl.h"
 #include "pg_ydb_proxy.h"

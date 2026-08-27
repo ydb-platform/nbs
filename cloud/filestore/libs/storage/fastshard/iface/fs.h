@@ -9,6 +9,8 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/stream/fwd.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,6 +40,18 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 // FAST_SHARD_PUBLIC_METHODS
 
+struct TFileSystemShardStats
+{
+    ui64 UsedNodeCount = 0;
+    ui64 TotalNodeCount = 0;
+    ui64 UsedNameCount = 0;
+    ui64 TotalNameCount = 0;
+    ui64 UsedHandleCount = 0;
+    ui64 TotalHandleCount = 0;
+    ui64 UsedPageCount = 0;
+    ui64 TotalPageCount = 0;
+};
+
 struct IFileSystemShard
 {
     virtual ~IFileSystemShard() = default;
@@ -51,6 +65,25 @@ struct IFileSystemShard
     FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DECLARE_METHOD, NProto)
 
 #undef FAST_SHARD_DECLARE_METHOD
+
+    [[nodiscard]] virtual NThreading::TFuture<NCloud::NProto::TError>
+    CollectStats(TFileSystemShardStats* stats) const = 0;
+
+    /**
+     * Writes an html page describing the layout of the shard's
+     * persistent data structures.
+     *
+     * @param out - Stream the page is written to.
+     */
+    virtual void DumpLayoutHtml(IOutputStream& out) const = 0;
+
+    /**
+     * Writes a json document with the same layout data items as
+     * DumpLayoutHtml.
+     *
+     * @param out - Stream the document is written to.
+     */
+    virtual void DumpLayoutJson(IOutputStream& out) const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

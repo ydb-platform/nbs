@@ -193,7 +193,6 @@ TSessionInfo* TStorageServiceState::CreateSession(
         session->SessionState = std::move(sessionState);
         session->MediaKind = mediaKind,
         session->RequestStats = std::move(requestStats);
-        session->SessionActor = sessionActor;
         session->TabletId = tabletId;
 
         Sessions.PushBack(session.get());
@@ -206,7 +205,11 @@ TSessionInfo* TStorageServiceState::CreateSession(
         sessionInfo = it->second;
     }
 
-    sessionInfo->AddSubSession(seqNo, readOnly, ownerGeneration);
+    sessionInfo->AddSubSession(
+        seqNo,
+        readOnly,
+        sessionActor,
+        ownerGeneration);
 
     return sessionInfo;
 }
@@ -233,7 +236,7 @@ TSessionInfo* TStorageServiceState::FindSession(const TString& sessionId) const
     return nullptr;
 }
 
-bool TStorageServiceState::RemoveSession(
+bool TStorageServiceState::RemoveSubSession(
     const TString& sessionId,
     ui64 seqNo)
 {
@@ -248,17 +251,6 @@ bool TStorageServiceState::RemoveSession(
         }
     }
     return true;
-}
-
-void TStorageServiceState::RemoveSession(const TString& sessionId)
-{
-    auto it = SessionById.find(sessionId);
-    if (it != SessionById.end()) {
-        auto* session = it->second;
-        std::unique_ptr<TSessionInfo> holder(session);
-        SessionById.erase(session->SessionId);
-        session->Unlink();
-    }
 }
 
 bool TStorageServiceState::IsLastSubSession(

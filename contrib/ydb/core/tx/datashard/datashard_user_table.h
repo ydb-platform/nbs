@@ -1,9 +1,12 @@
 #pragma once
 
 #include <contrib/ydb/core/base/storage_pools.h>
+#include <contrib/ydb/core/base/table_vector_index.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 #include <contrib/ydb/core/tablet_flat/flat_database.h>
 #include <contrib/ydb/core/tablet_flat/flat_stat_table.h>
+
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 
 #include <util/generic/ptr.h>
 #include <util/generic/hash.h>
@@ -254,7 +257,6 @@ struct TUserTable : public TThrRefBase {
         using EType = NKikimrSchemeOp::EIndexType;
         using EState = NKikimrSchemeOp::EIndexState;
 
-        TString Name;
         EType Type;
         EState State;
         TVector<ui32> KeyColumnIds;
@@ -263,10 +265,12 @@ struct TUserTable : public TThrRefBase {
         TTableIndex() = default;
 
         TTableIndex(const NKikimrSchemeOp::TIndexDescription& indexDesc, const TMap<ui32, TUserColumn>& columns)
-            : Name(indexDesc.GetName())
-            , Type(indexDesc.GetType())
+            : Type(indexDesc.GetType())
             , State(indexDesc.GetState())
         {
+            if (Type != EType::EIndexTypeGlobalAsync) {
+                return;
+            }
             THashMap<TStringBuf, ui32> nameToId;
             for (const auto& [id, column] : columns) {
                 Y_DEBUG_ABORT_UNLESS(!nameToId.contains(column.Name));
@@ -284,6 +288,10 @@ struct TUserTable : public TThrRefBase {
 
             fillColumnIds(indexDesc.GetKeyColumnNames(),  KeyColumnIds);
             fillColumnIds(indexDesc.GetDataColumnNames(), DataColumnIds);
+        }
+
+        static void Rename(NKikimrSchemeOp::TIndexDescription& indexDesc, const TString& newName) {
+            indexDesc.SetName(newName);
         }
     };
 
@@ -318,29 +326,59 @@ struct TUserTable : public TThrRefBase {
 
     struct TReplicationConfig {
         NKikimrSchemeOp::TTableReplicationConfig::EReplicationMode Mode;
-        NKikimrSchemeOp::TTableReplicationConfig::EConsistency Consistency;
+        NKikimrSchemeOp::TTableReplicationConfig::EConsistencyLevel ConsistencyLevel;
 
         TReplicationConfig()
             : Mode(NKikimrSchemeOp::TTableReplicationConfig::REPLICATION_MODE_NONE)
-            , Consistency(NKikimrSchemeOp::TTableReplicationConfig::CONSISTENCY_UNKNOWN)
+            , ConsistencyLevel(NKikimrSchemeOp::TTableReplicationConfig::CONSISTENCY_LEVEL_UNKNOWN)
         {
         }
 
         TReplicationConfig(const NKikimrSchemeOp::TTableReplicationConfig& config)
+            : Mode(config.GetMode())
+            , ConsistencyLevel(config.GetConsistencyLevel())
+        {
+        }
+
+        bool HasRowConsistency() const {
+            return ConsistencyLevel == NKikimrSchemeOp::TTableReplicationConfig::CONSISTENCY_LEVEL_ROW;
+        }
+
+        bool HasGlobalConsistency() const {
+            return ConsistencyLevel == NKikimrSchemeOp::TTableReplicationConfig::CONSISTENCY_LEVEL_GLOBAL;
+        }
+
+        void Serialize(NKikimrSchemeOp::TTableReplicationConfig& proto) const {
+            proto.SetMode(Mode);
+            proto.SetConsistencyLevel(ConsistencyLevel);
+        }
+    };
+
+    struct TIncrementalBackupConfig {
+        NKikimrSchemeOp::TTableIncrementalBackupConfig::ERestoreMode Mode;
+        NKikimrSchemeOp::TTableIncrementalBackupConfig::EConsistency Consistency;
+
+        TIncrementalBackupConfig()
+            : Mode(NKikimrSchemeOp::TTableIncrementalBackupConfig::RESTORE_MODE_NONE)
+            , Consistency(NKikimrSchemeOp::TTableIncrementalBackupConfig::CONSISTENCY_UNKNOWN)
+        {
+        }
+
+        TIncrementalBackupConfig(const NKikimrSchemeOp::TTableIncrementalBackupConfig& config)
             : Mode(config.GetMode())
             , Consistency(config.GetConsistency())
         {
         }
 
         bool HasWeakConsistency() const {
-            return Consistency == NKikimrSchemeOp::TTableReplicationConfig::CONSISTENCY_WEAK;
+            return Consistency == NKikimrSchemeOp::TTableIncrementalBackupConfig::CONSISTENCY_WEAK;
         }
 
         bool HasStrongConsistency() const {
-            return Consistency == NKikimrSchemeOp::TTableReplicationConfig::CONSISTENCY_STRONG;
+            return Consistency == NKikimrSchemeOp::TTableIncrementalBackupConfig::CONSISTENCY_STRONG;
         }
 
-        void Serialize(NKikimrSchemeOp::TTableReplicationConfig& proto) const {
+        void Serialize(NKikimrSchemeOp::TTableIncrementalBackupConfig& proto) const {
             proto.SetMode(Mode);
             proto.SetConsistency(Consistency);
         }
@@ -348,7 +386,6 @@ struct TUserTable : public TThrRefBase {
 
     struct TStats {
         NTable::TStats DataStats;
-        ui64 IndexSize = 0;
         ui64 MemRowCount = 0;
         ui64 MemDataSize = 0;
         TInstant AccessTime;
@@ -366,14 +403,6 @@ struct TUserTable : public TThrRefBase {
         ui64 BackgroundCompactionCount = 0;
         ui64 CompactBorrowedCount = 0;
         NTable::TKeyAccessSample AccessStats;
-
-        void Update(NTable::TStats&& dataStats, ui64 indexSize, THashSet<ui64>&& partOwners, ui64 partCount, TInstant statsUpdateTime) {
-            DataStats = dataStats;
-            IndexSize = indexSize;
-            PartOwners = partOwners;
-            PartCount = partCount;
-            StatsUpdateTime = statsUpdateTime;
-        }
     };
 
     struct TSpecialUpdate {
@@ -399,6 +428,7 @@ struct TUserTable : public TThrRefBase {
     TVector<ui32> KeyColumnIds;
     TSerializedTableRange Range;
     TReplicationConfig ReplicationConfig;
+    TIncrementalBackupConfig IncrementalBackupConfig;
     bool IsBackup = false;
 
     TMap<TPathId, TTableIndex> Indexes;
@@ -487,6 +517,7 @@ struct TUserTable : public TThrRefBase {
     bool NeedSchemaSnapshots() const;
 
     bool IsReplicated() const;
+    bool IsIncrementalRestore() const;
 
 private:
     void DoApplyCreate(NTabletFlatExecutor::TTransactionContext& txc, const TString& tableName, bool shadow,

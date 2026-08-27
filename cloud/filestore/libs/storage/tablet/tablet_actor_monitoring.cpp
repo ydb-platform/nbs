@@ -992,6 +992,7 @@ void TIndexTabletActor::HandleHttpInfo(
         {"dumpRange",       &TIndexTabletActor::HandleHttpInfo_DumpCompactionRange },
         {"dirViewer",       &TIndexTabletActor::HandleHttpInfo_DirViewer },
         {"locks",           &TIndexTabletActor::HandleHttpInfo_Locks },
+        {"fastShardLayout", &TIndexTabletActor::HandleHttpInfo_FastShardLayout },
     }};
 
     const auto* msg = ev->Get();
@@ -1077,6 +1078,13 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
         TAG(TH3) {
             out << "<a href='?TabletID=" << TabletID()
                 << "&action=locks'>Locks</a>";
+        }
+
+        if (GetFileSystem().GetIsFastShard()) {
+            TAG(TH3) {
+                out << "<a href='?TabletID=" << TabletID()
+                    << "&action=fastShardLayout'>Fast Shard Layout</a>";
+            }
         }
 
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
@@ -1348,15 +1356,45 @@ void TIndexTabletActor::RenderHttpInfo_QuotasTab(IOutputStream& out)
                         TABLEH() { out << "QuotaId"; }
                         TABLEH() { out << "MaxBytes"; }
                         TABLEH() { out << "MaxNodes"; }
+                        TABLEH() { out << "TabletUsedBytes"; }
+                        TABLEH() { out << "TabletUsedNodes"; }
+                        TABLEH() { out << "FilesystemUsedBytes"; }
+                        TABLEH() { out << "FilesystemUsedNodes"; }
                         TABLEH() { out << "CreatedAt"; }
                     }
                 }
 
+                const auto& aggregateUsages =
+                    CachedAggregateStats.GetQuotaUsages();
+
                 for (const auto& quota: quotas) {
+                    const auto* usage = FindQuotaUsage(quota.GetQuotaId());
+                    const auto aggregateIt =
+                        aggregateUsages.find(quota.GetQuotaId());
+                    const bool hasAggregate =
+                        aggregateIt != aggregateUsages.end();
+
                     TABLER() {
                         TABLED() { out << quota.GetQuotaId(); }
                         TABLED() { out << FormatByteSize(quota.GetMaxBytes()); }
                         TABLED() { out << quota.GetMaxNodes(); }
+                        TABLED() {
+                            out << (usage
+                                ? FormatByteSize(usage->UsedBytes)
+                                : FormatByteSize(0));
+                        }
+                        TABLED() { out << (usage ? usage->UsedNodes : 0); }
+                        TABLED() {
+                            out << FormatByteSize(
+                                hasAggregate
+                                    ? aggregateIt->second.GetUsedBytes()
+                                    : 0);
+                        }
+                        TABLED() {
+                            out << (hasAggregate
+                                ? aggregateIt->second.GetUsedNodes()
+                                : 0);
+                        }
                         TABLED() {
                             out << TInstant::MicroSeconds(
                                 quota.GetCreationTimestampUs());

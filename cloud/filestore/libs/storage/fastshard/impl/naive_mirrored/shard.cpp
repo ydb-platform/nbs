@@ -13,13 +13,19 @@
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/simple_template.h>
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/mutex.h>
 
+#include <library/cpp/json/writer/json.h>
+#include <library/cpp/resource/resource.h>
+
 #include <util/digest/city.h>
+#include <util/generic/buffer.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
+#include <util/string/cast.h>
 
 #include <sys/stat.h>
 
@@ -58,8 +64,8 @@ static_assert(NodeSlotSize % alignof(TNodeTableSlot) == 0);
 ////////////////////////////////////////////////////////////////////////////////
 // name table layout
 
-constexpr ui64 NameSlotSize = 32;
-constexpr ui32 NameCapacity = 20;
+constexpr ui64 NameSlotSize = 48;
+constexpr ui32 NameCapacity = 36;
 
 struct TNameTableSlot
 {
@@ -196,7 +202,6 @@ public:
         : Context(context)
         , Store(store)
     {
-        Context.Lsn = Store.AllocateLsn();
     }
 
     ~TWriteContextGuard()
@@ -207,6 +212,13 @@ public:
         }
 
         // TODO(#5895) - notify storage that this Lsn was skipped
+    }
+
+    // Must be called after shard mutex is taken. Otherwise concurrent shard ops
+    // can race and cause PageStore updates which are not Lsn-ordered.
+    void Init()
+    {
+        Context.Lsn = Store.AllocateLsn();
     }
 };
 
@@ -249,6 +261,11 @@ public:
             });
 
         return pageCount;
+    }
+
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
     }
 
     NProto::TError AllocateNodeId(ui64* nodeId)
@@ -348,11 +365,13 @@ public:
         return Slots->Put(writeContext.Lsn, slot, writeContext.PageGroups);
     }
 
-    NProto::TError DeleteNode(ui64 nodeId, TWriteContext& writeContext)
+    NProto::TError DeleteNode(
+        ui64 nodeId,
+        TWriteContext& writeContext,
+        TNodeTableSlot* slot)
     {
-        TNodeTableSlot slot{};
         return Slots
-            ->Delete(writeContext.Lsn, nodeId, &slot, writeContext.PageGroups);
+            ->Delete(writeContext.Lsn, nodeId, slot, writeContext.PageGroups);
     }
 
     NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
@@ -367,6 +386,20 @@ public:
         *attr = Convert(slot);
         return {};
     }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        TPersistentHashTableStats slotStats;
+        auto e = Slots->CollectStats(&slotStats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        stats->TotalNodeCount = slotStats.SlotCount;
+        stats->UsedNodeCount = slotStats.ValueCount;
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -374,7 +407,7 @@ public:
 class TNameTable
 {
 private:
-    static constexpr ui64 SlotsPerPage = 128;
+    static constexpr ui64 SlotsPerPage = PageSize / NameSlotSize;
     static_assert(SlotsPerPage * NameSlotSize <= PageSize);
 
     using THt = TPersistentHashTable<TStringBuf, TNameTableSlot>;
@@ -409,6 +442,11 @@ public:
         return pageCount;
     }
 
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
+    }
+
     NProto::TError
     Put(const TString& name, ui64 nodeId, TWriteContext& writeContext)
     {
@@ -440,6 +478,20 @@ public:
         }
 
         *nodeId = slot.NodeId;
+        return {};
+    }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        TPersistentHashTableStats slotStats;
+        auto e = Slots->CollectStats(&slotStats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        stats->TotalNameCount = slotStats.SlotCount;
+        stats->UsedNameCount = slotStats.ValueCount;
         return {};
     }
 };
@@ -484,6 +536,11 @@ public:
             });
 
         return pageCount;
+    }
+
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
     }
 
     NProto::TError AllocateHandle(ui64* handle)
@@ -544,6 +601,20 @@ public:
         *nodeId = slot.NodeId;
         return {};
     }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        TPersistentHashTableStats slotStats;
+        auto e = Slots->CollectStats(&slotStats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        stats->TotalHandleCount = slotStats.SlotCount;
+        stats->UsedHandleCount = slotStats.ValueCount;
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -596,6 +667,11 @@ public:
         return indexPageCount;
     }
 
+    [[nodiscard]] ui64 GetSlotCount() const
+    {
+        return Slots->GetSlotCount();
+    }
+
     NProto::TError Put(TNodePageClusterSlot v, TWriteContext& writeContext)
     {
         return Slots->Put(writeContext.Lsn, v, writeContext.PageGroups);
@@ -603,11 +679,11 @@ public:
 
     NProto::TError Delete(
         const TNodePageClusterKey& k,
-        TWriteContext& writeContext)
+        TWriteContext& writeContext,
+        TNodePageClusterSlot* slot)
     {
-        TNodePageClusterSlot slot{};
         return Slots
-            ->Delete(writeContext.Lsn, k, &slot, writeContext.PageGroups);
+            ->Delete(writeContext.Lsn, k, slot, writeContext.PageGroups);
     }
 
     NProto::TError Get(
@@ -624,6 +700,26 @@ public:
         *storagePageClusterId = slot.StoragePageClusterId;
         return {};
     }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        TPersistentHashTableStats slotStats;
+        auto e = Slots->CollectStats(&slotStats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        const ui64 totalPages = slotStats.SlotCount * PageClusterPageCount;
+        const ui64 usedPages = slotStats.ValueCount * PageClusterPageCount;
+        if (stats->TotalPageCount) {
+            stats->TotalPageCount = Min(stats->TotalPageCount, totalPages);
+        } else {
+            stats->TotalPageCount = totalPages;
+        }
+        stats->UsedPageCount = Max(stats->UsedPageCount, usedPages);
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -633,6 +729,8 @@ class TPageAllocator
 private:
     std::unique_ptr<TPersistentBitmap> Bitmap;
     ui64 FirstStoragePageClusterId = 0;
+    ui64 BitCount = 0;
+    ui64 BitmapSize = 0;
 
 public:
     ui64 Init(
@@ -641,20 +739,40 @@ public:
         IPageStorePtr pageStore)
     {
         const ui64 pageClusterCount = CalcPageClusterCount(config);
-        const ui64 bitsPerPage = TPersistentBitmap::CalcBitsPerPage(PageSize);
-        const ui64 bitmapPageCount =
-            RoundUp(pageClusterCount, bitsPerPage) / bitsPerPage;
+        BitCount = pageClusterCount;
         Bitmap = std::make_unique<TPersistentBitmap>(
             firstPageNo,
-            bitmapPageCount,
+            BitCount,
             PageSize,
             std::move(pageStore));
-        firstPageNo += bitmapPageCount;
-        FirstStoragePageClusterId =
-            RoundUp(firstPageNo + bitmapPageCount, PageClusterPageCount) /
-            PageClusterPageCount;
+        BitmapSize = Bitmap->GetPageCount() * PageSize;
+        firstPageNo += Bitmap->GetPageCount();
+        FirstStoragePageClusterId = RoundUp(firstPageNo, PageClusterPageCount)
+            / PageClusterPageCount;
 
-        return bitmapPageCount + pageClusterCount * PageClusterPageCount;
+        return Bitmap->GetPageCount()
+            + (FirstStoragePageClusterId * PageClusterPageCount - firstPageNo)
+            + pageClusterCount * PageClusterPageCount;
+    }
+
+    [[nodiscard]] ui64 GetBitCount() const
+    {
+        return BitCount;
+    }
+
+    [[nodiscard]] ui64 GetBitmapSize() const
+    {
+        return BitmapSize;
+    }
+
+    [[nodiscard]] ui64 GetDataOffset() const
+    {
+        return FirstStoragePageClusterId * PageClusterSize;
+    }
+
+    [[nodiscard]] ui64 GetDataSize() const
+    {
+        return BitCount * PageClusterSize;
     }
 
     NProto::TError Allocate(
@@ -745,6 +863,26 @@ public:
             Y_ABORT_UNLESS(!HasError(error));
         }
     }
+
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        ui64 bits = 0;
+        auto e = Bitmap->CountBits(&bits);
+        if (HasError(e)) {
+            return e;
+        }
+
+        const ui64 totalPages = BitCount * PageClusterPageCount;
+        const ui64 usedPages = bits * PageClusterPageCount;
+        if (stats->TotalPageCount) {
+            stats->TotalPageCount = Min(stats->TotalPageCount, totalPages);
+        } else {
+            stats->TotalPageCount = totalPages;
+        }
+        stats->UsedPageCount = Max(stats->UsedPageCount, usedPages);
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -769,77 +907,276 @@ auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+silk::LogLevel LogLevel(const NProto::TError& e)
+{
+    switch (e.GetCode()) {
+        case E_FS_EXIST:
+        case E_FS_NOENT: return silk::LogLevel::DEBUG;
+        case E_REJECTED: return silk::LogLevel::WARN;
+        default: break;
+    }
+
+    return silk::LogLevel::ERROR;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 //
 // TODO(#5895) - implement layout dump
 //
+
+struct TComponentLayout
+{
+    // Component tag; the upcoming per-component statistics method will
+    // accept these tags, so they must stay stable.
+    TString Name;
+
+    ui64 OffsetBytes = 0;
+    ui64 SizeBytes = 0;
+
+    // Slot size and count in the component's own units: hash table
+    // slots for the tables, page clusters for the data region. Zero
+    // when not applicable (the allocator bitmap counts bits).
+    ui64 SlotSize = 0;
+    ui64 SlotCount = 0;
+};
+
+void DumpLayoutComponentsJson(
+    IOutputStream& out,
+    const TVector<TComponentLayout>& components,
+    const NProtoPrivate::TPersistentFastShardConfig& config)
+{
+    NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &out);
+
+    writer.BeginObject();
+    writer.WriteKey("components");
+    writer.BeginList();
+    for (const auto& c: components) {
+        writer.BeginObject();
+        writer.WriteKey("name");
+        writer.WriteString(c.Name);
+        writer.WriteKey("offsetBytes");
+        writer.WriteULongLong(c.OffsetBytes);
+        writer.WriteKey("sizeBytes");
+        writer.WriteULongLong(c.SizeBytes);
+        writer.WriteKey("slotSize");
+        writer.WriteULongLong(c.SlotSize);
+        writer.WriteKey("slotCount");
+        writer.WriteULongLong(c.SlotCount);
+        writer.EndObject();
+    }
+    writer.EndList();
+
+    writer.WriteKey("storageGroups");
+    writer.BeginList();
+    for (const auto& group: config.GetStorageGroups()) {
+        writer.BeginObject();
+        writer.WriteKey("type");
+        writer.WriteString(
+            NProtoPrivate::TStorageGroup::EStorageGroupType_Name(
+                group.GetType()));
+        writer.WriteKey("devices");
+        writer.BeginList();
+        for (const auto& device: group.GetDevices()) {
+            writer.BeginObject();
+            writer.WriteKey("host");
+            writer.WriteString(device.GetHost());
+            writer.WriteKey("port");
+            writer.WriteULongLong(device.GetPort());
+            writer.WriteKey("deviceId");
+            writer.WriteString(device.GetDeviceId());
+            writer.EndObject();
+        }
+        writer.EndList();
+        writer.EndObject();
+    }
+    writer.EndList();
+    writer.EndObject();
+}
+
+void DumpLayoutComponentsHtml(
+    IOutputStream& out,
+    const TVector<TComponentLayout>& components,
+    const NProtoPrivate::TPersistentFastShardConfig& config)
+{
+    TVector<TTemplateVars> componentRows;
+    componentRows.reserve(components.size());
+    for (const auto& c: components) {
+        componentRows.push_back({
+            {"NAME", c.Name},
+            {"OFFSET_BYTES", ToString(c.OffsetBytes)},
+            {"SIZE_BYTES", ToString(c.SizeBytes)},
+            {"SLOT_SIZE", ToString(c.SlotSize)},
+            {"SLOT_COUNT", ToString(c.SlotCount)},
+        });
+    }
+
+    //
+    // The template engine's loop arrays are flat, so the group/device
+    // hierarchy is flattened into one row per device with its group's
+    // number and type repeated.
+    //
+
+    TVector<TTemplateVars> deviceRows;
+    for (size_t groupNo = 0; groupNo < config.StorageGroupsSize(); ++groupNo) {
+        const auto& group = config.GetStorageGroups(groupNo);
+        for (const auto& device: group.GetDevices()) {
+            deviceRows.push_back({
+                {"GROUP_NO", ToString(groupNo)},
+                {"GROUP_TYPE",
+                 NProtoPrivate::TStorageGroup::EStorageGroupType_Name(
+                     group.GetType())},
+                {"HOST", device.GetHost()},
+                {"PORT", ToString(device.GetPort())},
+                {"DEVICE_ID", device.GetDeviceId()},
+            });
+        }
+    }
+
+    OutputTemplate(
+        NResource::Find("fastshard/html/layout.html"),
+        {{"STYLE", NResource::Find("fastshard/css/layout.css")}},
+        {
+            {"COMPONENTS", std::move(componentRows)},
+            {"DEVICES", std::move(deviceRows)},
+        },
+        out);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TFiberShardImpl
 {
 private:
     const ui32 ShardNo;
+    const IStorageGroupFactoryPtr StorageGroupFactory;
     const NProtoPrivate::TPersistentFastShardConfig Config;
 
     IStorageGroupPtr Storage;
+    std::atomic<bool> Acquired = false;
     IPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
     THandleTable Handles;
     TPageIndex PageIndex;
     TPageAllocator PageAllocator;
+
+    // Filled once in the ctor, immutable afterwards - safe to read
+    // without Mutex from any thread.
+    TVector<TComponentLayout> Layout;
+
     mutable silk::FiberMutex Mutex;
 
 public:
     TFiberShardImpl(
         ui32 shardNo,
+        IStorageGroupFactoryPtr storageGroupFactory,
         NProtoPrivate::TPersistentFastShardConfig config)
         : ShardNo(shardNo)
+        , StorageGroupFactory(std::move(storageGroupFactory))
         , Config(std::move(config))
     {
-        //
-        // Overall it's better to pass the group into this code via dependency
-        // injection but for now it's not necessary.
         //
         // Using only one storage group for now.
         //
 
-        TVector<TStorageDevice> devices;
-        const auto& sg = Config.GetStorageGroups(0);
-        for (const auto& d: sg.GetDevices()) {
-            devices.push_back({
-                .Node = CreateStorageNodeClient(d.GetHost(), d.GetPort()),
-                .DeviceUUID = d.GetDeviceId(),
-            });
-        }
-        Storage = CreateNaiveMirroredStorageGroup(std::move(devices));
+        Storage = StorageGroupFactory->MakeStorageGroup(Config);
         PageStore = CreatePageStore(Storage, PageSize);
 
         ui64 firstPageNo = 0;
-        SILK_INFO("node table offset=%lu", firstPageNo * PageSize);
+        const ui64 nodeTableOffset = firstPageNo * PageSize;
+        SILK_INFO("node table offset=%lu", nodeTableOffset);
         const ui64 nodeTablePageCount =
             Nodes.Init(Config, firstPageNo, PageStore);
         firstPageNo += nodeTablePageCount;
 
-        SILK_INFO("name table offset=%lu", firstPageNo * PageSize);
+        const ui64 nameTableOffset = firstPageNo * PageSize;
+        SILK_INFO("name table offset=%lu", nameTableOffset);
         const ui64 nameTablePageCount =
             Names.Init(Config, firstPageNo, PageStore);
         firstPageNo += nameTablePageCount;
 
-        SILK_INFO("handle table offset=%lu", firstPageNo * PageSize);
+        const ui64 handleTableOffset = firstPageNo * PageSize;
+        SILK_INFO("handle table offset=%lu", handleTableOffset);
         const ui64 handleTablePageCount =
             Handles.Init(Config, firstPageNo, PageStore);
         firstPageNo += handleTablePageCount;
 
-        SILK_INFO("page index offset=%lu", firstPageNo * PageSize);
+        const ui64 pageIndexOffset = firstPageNo * PageSize;
+        SILK_INFO("page index offset=%lu", pageIndexOffset);
         const ui64 pageIndexPageCount =
             PageIndex.Init(Config, firstPageNo, PageStore);
         firstPageNo += pageIndexPageCount;
 
-        SILK_INFO("page allocator offset=%lu", firstPageNo * PageSize);
+        const ui64 pageAllocatorOffset = firstPageNo * PageSize;
+        SILK_INFO("page allocator offset=%lu", pageAllocatorOffset);
         const ui64 pageAllocatorPageCount =
             PageAllocator.Init(Config, firstPageNo, PageStore);
         firstPageNo += pageAllocatorPageCount;
 
         SILK_INFO("slack space offset=%lu", firstPageNo * PageSize);
+
+        SILK_INFO("node table slots=%lu", Nodes.GetSlotCount());
+        SILK_INFO("name table slots=%lu", Names.GetSlotCount());
+        SILK_INFO("handle table slots=%lu", Handles.GetSlotCount());
+        SILK_INFO("page index table slots=%lu", PageIndex.GetSlotCount());
+        SILK_INFO("page allocator bits=%lu", PageAllocator.GetBitCount());
+
+        Layout = {
+            {
+                .Name = "NodeTable",
+                .OffsetBytes = nodeTableOffset,
+                .SizeBytes = nodeTablePageCount * PageSize,
+                .SlotSize = NodeSlotSize,
+                .SlotCount = Nodes.GetSlotCount(),
+            },
+            {
+                .Name = "NameTable",
+                .OffsetBytes = nameTableOffset,
+                .SizeBytes = nameTablePageCount * PageSize,
+                .SlotSize = NameSlotSize,
+                .SlotCount = Names.GetSlotCount(),
+            },
+            {
+                .Name = "HandleTable",
+                .OffsetBytes = handleTableOffset,
+                .SizeBytes = handleTablePageCount * PageSize,
+                .SlotSize = HandleSlotSize,
+                .SlotCount = Handles.GetSlotCount(),
+            },
+            {
+                .Name = "PageIndex",
+                .OffsetBytes = pageIndexOffset,
+                .SizeBytes = pageIndexPageCount * PageSize,
+                .SlotSize = NodePageClusterSlotSize,
+                .SlotCount = PageIndex.GetSlotCount(),
+            },
+            {
+                .Name = "PageAllocatorBitmap",
+                .OffsetBytes = pageAllocatorOffset,
+                .SizeBytes = PageAllocator.GetBitmapSize(),
+                .SlotSize = 0,
+                .SlotCount = PageAllocator.GetBitCount(),
+            },
+            {
+                .Name = "DataPages",
+                .OffsetBytes = PageAllocator.GetDataOffset(),
+                .SizeBytes = PageAllocator.GetDataSize(),
+                .SlotSize = PageClusterSize,
+                .SlotCount = PageAllocator.GetBitCount(),
+            },
+        };
+    }
+
+public:
+    void DumpLayoutHtml(IOutputStream& out) const
+    {
+        DumpLayoutComponentsHtml(out, Layout, Config);
+    }
+
+    void DumpLayoutJson(IOutputStream& out) const
+    {
+        DumpLayoutComponentsJson(out, Layout, Config);
     }
 
 public:
@@ -847,6 +1184,10 @@ public:
         NProtoPrivate::TGetNodeAttrBatchRequest request)
     {
         NProtoPrivate::TGetNodeAttrBatchResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -856,6 +1197,10 @@ public:
             NProto::TNodeAttr attr;
             auto error = GetNodeAttr(request.GetNodeId(), name, &attr);
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "GetNodeAttrBatch::GetNodeAttr error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
@@ -879,6 +1224,8 @@ public:
             }
         }
 
+        SILK_DEBUG("GetNodeAttr name=%s ino=%lu", name.c_str(), nodeId);
+
         return Nodes.GetNode(nodeId, attr);
     }
 
@@ -886,6 +1233,10 @@ public:
         NProto::TGetNodeAttrRequest request)
     {
         NProto::TGetNodeAttrResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -894,6 +1245,10 @@ public:
         NProto::TNodeAttr attr;
         auto error = GetNodeAttr(request.GetNodeId(), request.GetName(), &attr);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "GetNodeAttr::GetNodeAttr error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
         } else {
             *response.MutableNode() = std::move(attr);
@@ -906,12 +1261,16 @@ public:
         NProto::TSetNodeAttrRequest request)
     {
         NProto::TSetNodeAttrResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
 
         {
             std::lock_guard g(Mutex);
+            wcg.Init();
 
             auto error = Nodes.UpdateNode(
                 request.GetNodeId(),
@@ -920,6 +1279,10 @@ public:
                 response.MutableNode(),
                 writeContext);
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "SetNodeAttr::Nodes.UpdateNode error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
             }
         }
@@ -927,13 +1290,23 @@ public:
         auto pages = CollectPages(writeContext);
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "SetNodeAttr::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
         } else {
             PageStore->CommitPages(pages);
         }
+
+        SILK_DEBUG(
+            "SetNodeAttr ino=%lu update=%s",
+            request.GetNodeId(),
+            request.GetUpdate().ShortUtf8DebugString().Quote().c_str());
 
         return response;
     }
@@ -949,6 +1322,10 @@ public:
         ui64 nodeId = 0;
         auto error = Nodes.AllocateNodeId(&nodeId);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "CreateNodeImpl::Nodes.AllocateNodeId error=%s",
+                FormatError(error).c_str());
             return error;
         }
 
@@ -961,8 +1338,14 @@ public:
 
         error = Nodes.PutNode(*attr, writeContext);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "CreateNodeImpl::Nodes.PutNode error=%s",
+                FormatError(error).c_str());
             return error;
         }
+
+        SILK_DEBUG("CreateNodeImpl name=%s ino=%lu", name.c_str(), nodeId);
 
         return Names.Put(name, attr->GetId(), writeContext);
     }
@@ -970,6 +1353,10 @@ public:
     NProto::TCreateNodeResponse CreateNode(NProto::TCreateNodeRequest request)
     {
         NProto::TCreateNodeResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -989,6 +1376,7 @@ public:
         NProto::TError error;
         {
             std::lock_guard g(Mutex);
+            wcg.Init();
             error = CreateNodeImpl(
                 request.GetName(),
                 request.GetFile().GetMode(),
@@ -999,6 +1387,10 @@ public:
         }
 
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "CreateNode::CreateNodeImpl error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1006,12 +1398,22 @@ public:
         auto pages = CollectPages(writeContext);
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "CreateNode::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
             return response;
         }
+
+        SILK_DEBUG(
+            "CreateNode name=%s ino=%lu",
+            request.GetName().c_str(),
+            attr.GetId());
 
         PageStore->CommitPages(pages);
         *response.MutableNode() = std::move(attr);
@@ -1021,6 +1423,10 @@ public:
     NProto::TUnlinkNodeResponse UnlinkNode(NProto::TUnlinkNodeRequest request)
     {
         NProto::TUnlinkNodeResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -1033,42 +1439,106 @@ public:
         // TODO(#5894): take Links into account.
         //
 
+        ui64 nodeId = 0;
         {
             std::lock_guard g(Mutex);
+            wcg.Init();
 
-            ui64 nodeId = 0;
             auto error = Names.Get(request.GetName(), &nodeId);
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "UnlinkNode::Names.Get error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
 
             error = Names.Delete(request.GetName(), writeContext);
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "UnlinkNode::Names.Delete error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
 
-            error = Nodes.DeleteNode(nodeId, writeContext);
+            TNodeTableSlot slot{};
+            error = Nodes.DeleteNode(nodeId, writeContext, &slot);
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "UnlinkNode::Nodes.DeleteNode error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
 
-            //
-            // TODO(#5894): deallocate pages and delete them from page index.
-            //
+            TVector<ui64> storagePageClusterIds;
+            for (ui64 offset = 0; offset < slot.Size;
+                    offset += PageClusterSize)
+            {
+                TNodePageClusterSlot slot{};
+                error = PageIndex.Delete(
+                    {
+                        .NodeId = nodeId,
+                        .PageClusterId = offset / PageClusterSize
+                    },
+                    writeContext,
+                    &slot);
+
+                if (error.GetCode() == E_FS_NOENT) {
+                    //
+                    // This page cluster is not allocated.
+                    //
+
+                    continue;
+                }
+
+                if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "UnlinkNode::PageIndex.Delete error=%s",
+                        FormatError(error).c_str());
+                    *response.MutableError() = std::move(error);
+                    return response;
+                }
+
+                storagePageClusterIds.push_back(slot.StoragePageClusterId);
+            }
+
+            error =
+                PageAllocator.Deallocate(storagePageClusterIds, writeContext);
+            if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "UnlinkNode::PageAllocator.Deallocate error=%s",
+                    FormatError(error).c_str());
+                *response.MutableError() = std::move(error);
+                return response;
+            }
         }
 
         auto pages = CollectPages(writeContext);
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "UnlinkNode::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
             return response;
         }
+
+        SILK_DEBUG(
+            "UnlinkNode name=%s ino=%lu",
+            request.GetName().c_str(),
+            nodeId);
 
         PageStore->CommitPages(pages);
         return response;
@@ -1078,6 +1548,10 @@ public:
         NProto::TCreateHandleRequest request)
     {
         NProto::TCreateHandleResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
+
         if (request.GetNodeId() != RootNodeId && !request.GetName().empty()) {
             *response.MutableError() = ErrorInvalidParent(request.GetNodeId());
             return response;
@@ -1091,12 +1565,17 @@ public:
         TWriteContextGuard wcg(writeContext, *PageStore);
 
         std::unique_lock l(Mutex);
+        wcg.Init();
 
         ui64 nodeId = request.GetNodeId();
         NProto::TNodeAttr attr;
         if (request.GetName().empty()) {
             auto error = Nodes.GetNode(nodeId, &attr);
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "CreateHandle::Nodes.GetNode error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
             }
         } else {
@@ -1111,6 +1590,10 @@ public:
                         writeContext,
                         &attr);
                     if (HasError(error)) {
+                        SILK_LOG(
+                            LogLevel(error),
+                            "CreateHandle::CreateNodeImpl error=%s",
+                            FormatError(error).c_str());
                         *response.MutableError() = std::move(error);
                     }
 
@@ -1120,6 +1603,12 @@ public:
                         request.GetNodeId(),
                         request.GetName());
                 }
+            } else if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "CreateHandle::Names.Get error=%s",
+                    FormatError(error).c_str());
+                *response.MutableError() = std::move(error);
             } else {
                 if (HasFlag(flags, createFlag) && HasFlag(flags, exclFlag)) {
                     *response.MutableError() =
@@ -1128,12 +1617,20 @@ public:
 
                 auto error = Nodes.GetNode(nodeId, &attr);
                 if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "CreateHandle::Nodes.GetNode error=%s",
+                        FormatError(error).c_str());
                     *response.MutableError() = std::move(error);
                 }
             }
         }
 
         if (HasError(response.GetError())) {
+            SILK_LOG(
+                LogLevel(response.GetError()),
+                "CreateHandle error=%s",
+                FormatError(response.GetError()).c_str());
             return response;
         }
 
@@ -1141,6 +1638,10 @@ public:
         ui64 handle = 0;
         auto error = Handles.AllocateHandle(&handle);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "CreateHandle::Handles.AllocateHandle error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1149,6 +1650,10 @@ public:
 
         error = Handles.Put({.Handle = handle, .NodeId = nodeId}, writeContext);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "CreateHandle::Handles.Put error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1158,12 +1663,23 @@ public:
         auto pages = CollectPages(writeContext);
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "CreateHandle::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
             return response;
         }
+
+        SILK_DEBUG(
+            "CreateHandle name=%s ino=%lu handle=%lu",
+            request.GetName().c_str(),
+            nodeId,
+            handle);
 
         PageStore->CommitPages(pages);
 
@@ -1176,15 +1692,23 @@ public:
         NProto::TDestroyHandleRequest request)
     {
         NProto::TDestroyHandleResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
 
         {
             std::lock_guard g(Mutex);
+            wcg.Init();
 
             auto error = Handles.Delete(request.GetHandle(), writeContext);
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "DestroyHandle::Handles.Delete error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
             }
 
@@ -1194,18 +1718,29 @@ public:
         }
 
         if (HasError(response.GetError())) {
+            SILK_LOG(
+                LogLevel(response.GetError()),
+                "DestroyHandle error=%s",
+                FormatError(response.GetError()).c_str());
             return response;
         }
 
         auto pages = CollectPages(writeContext);
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "DestroyHandle::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             PageStore->RollbackPages(pages);
             return response;
         }
+
+        SILK_DEBUG("DestroyHandle handle=%lu", request.GetHandle());
 
         PageStore->CommitPages(pages);
 
@@ -1215,12 +1750,19 @@ public:
     NProto::TWriteDataResponse WriteData(NProto::TWriteDataRequest request)
     {
         NProto::TWriteDataResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         std::unique_lock l(Mutex);
 
         ui64 nodeId = 0;
         auto error = Handles.Get(request.GetHandle(), &nodeId);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "WriteData::Handles.Get error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1248,6 +1790,10 @@ public:
                     InvalidStoragePageClusterId);
                 error = {};
             } else if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "WriteData::PageIndex.Get error=%s",
+                    FormatError(error).c_str());
                 break;
             } else {
                 storagePageClusterIdsToWrite.push_back(storagePageClusterId);
@@ -1259,12 +1805,17 @@ public:
         }
 
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "WriteData error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
 
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
+        wcg.Init();
 
         //
         // The allocation of all page clusters should happen as a single call.
@@ -1279,6 +1830,10 @@ public:
                 &newStoragePageClusterIds,
                 writeContext);
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "WriteData::PageAllocator.Allocate error=%s",
+                    FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
                 return response;
             }
@@ -1323,6 +1878,10 @@ public:
                 slot.StoragePageClusterId = *storagePageClusterIdIt;
                 error = PageIndex.Put(slot, writeContext);
                 if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "WriteData::PageIndex.Put error=%s",
+                        FormatError(error).c_str());
                     break;
                 }
             }
@@ -1352,7 +1911,7 @@ public:
                     break;
                 }
 
-                TString page;
+                TBuffer page;
                 if (isUnalignedHead || isUnalignedTail) {
                     error = PageStore->ReadPage(
                         writeContext.Lsn,
@@ -1360,10 +1919,14 @@ public:
                         &page);
 
                     if (HasError(error)) {
+                        SILK_LOG(
+                            LogLevel(error),
+                            "WriteData::PageStore.ReadPage error=%s",
+                            FormatError(error).c_str());
                         break;
                     }
                 } else {
-                    page.ReserveAndResize(PageSize);
+                    page.Resize(PageSize);
                 }
 
                 const ui64 offsetInPage =
@@ -1373,7 +1936,7 @@ public:
                 const ui64 toCopy =
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
-                    page.begin() + offsetInPage,
+                    page.Data() + offsetInPage,
                     request.GetBuffer().data() + bufferOffset,
                     toCopy);
 
@@ -1383,7 +1946,17 @@ public:
                     std::move(page),
                     writeContext.PageGroups);
 
+                SILK_DEBUG(
+                    "WriteData ino=%lu handle=%lu storagePage=%lu",
+                    nodeId,
+                    request.GetHandle(),
+                    storagePageNo);
+
                 if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "WriteData::PageStore.WritePage error=%s",
+                        FormatError(error).c_str());
                     break;
                 }
 
@@ -1392,6 +1965,10 @@ public:
             }
 
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "WriteData error=%s",
+                    FormatError(error).c_str());
                 break;
             }
 
@@ -1399,6 +1976,11 @@ public:
         }
 
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "WriteData error=%s",
+                FormatError(error).c_str());
+
             PageAllocator.RollbackAllocation(
                 newStoragePageClusterIds,
                 writeContext);
@@ -1415,6 +1997,11 @@ public:
         error = Nodes.ResizeNode(nodeId, endOffset, writeContext);
 
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "WriteData::Nodes.ResizeNode error=%s",
+                FormatError(error).c_str());
+
             PageAllocator.RollbackAllocation(
                 newStoragePageClusterIds,
                 writeContext);
@@ -1432,8 +2019,13 @@ public:
         auto pages = CollectPages(writeContext);
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups));
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "WriteData::WriteLogRecord error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
 
             //
@@ -1453,6 +2045,8 @@ public:
             return response;
         }
 
+        SILK_DEBUG("WriteData ino=%lu handle=%lu", nodeId, request.GetHandle());
+
         PageStore->CommitPages(pages);
 
         return response;
@@ -1461,12 +2055,19 @@ public:
     NProto::TReadDataResponse ReadData(NProto::TReadDataRequest request)
     {
         NProto::TReadDataResponse response;
+        if (!AcquireIfNeeded(response)) {
+            return response;
+        }
 
         std::lock_guard l(Mutex);
 
         ui64 nodeId = 0;
         auto error = Handles.Get(request.GetHandle(), &nodeId);
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "ReadData::Handles.Get error=%s",
+                FormatError(error).c_str());
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -1506,6 +2107,10 @@ public:
             }
 
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "ReadData::PageIndex.Get error=%s",
+                    FormatError(error).c_str());
                 break;
             }
 
@@ -1529,10 +2134,20 @@ public:
                     break;
                 }
 
-                TString page;
+                TBuffer page;
                 error = PageStore->ReadPage(0 /* lsn */, storagePageNo, &page);
 
+                SILK_DEBUG(
+                    "ReadData ino=%lu handle=%lu storagePage=%lu",
+                    nodeId,
+                    request.GetHandle(),
+                    storagePageNo);
+
                 if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "ReadData::PageStore.ReadPage error=%s",
+                        FormatError(error).c_str());
                     break;
                 }
 
@@ -1544,7 +2159,7 @@ public:
                     Min(pageEnd, endOffset) - (pageStart + offsetInPage);
                 memcpy(
                     buffer.begin() + bufferOffset,
-                    page.begin() + offsetInPage,
+                    page.Data() + offsetInPage,
                     toCopy);
 
                 bufferOffset += toCopy;
@@ -1552,14 +2167,24 @@ public:
             }
 
             if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "ReadData error=%s",
+                    FormatError(error).c_str());
                 break;
             }
         }
 
         if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "ReadData error=%s",
+                FormatError(error).c_str());
             buffer.clear();
             *response.MutableError() = std::move(error);
         }
+
+        SILK_DEBUG("ReadData ino=%lu handle=%lu", nodeId, request.GetHandle());
 
         return response;
     }
@@ -1630,6 +2255,39 @@ public:
         return NotImplemented<NProto::TListNodeXAttrResponse>(request);
     }
 
+    [[nodiscard]] NProto::TError CollectStats(
+        TFileSystemShardStats* stats) const
+    {
+        *stats = {};
+
+        auto e = Nodes.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = Names.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = Handles.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = PageIndex.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = PageAllocator.CollectStats(stats);
+        if (HasError(e)) {
+            return e;
+        }
+
+        return {};
+    }
+
 private:
     template <typename TResponse, typename TRequest>
     TResponse NotImplemented(TRequest request)
@@ -1637,19 +2295,47 @@ private:
         Y_UNUSED(request);
 
         TResponse response;
-        *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);
+        *response.MutableError() = MakeError(E_FS_NOTSUPP);
         return response;
+    }
+
+    template <typename TResponse>
+    bool AcquireIfNeeded(TResponse& response)
+    {
+        if (Acquired) {
+            return true;
+        }
+
+        std::lock_guard g(Mutex);
+        if (Acquired) {
+            return true;
+        }
+
+        auto error = Storage->AcquireDevices();
+        if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "AcquireIfNeeded::Storage.AcquireDevices error=%s",
+                FormatError(error).c_str());
+            *response.MutableError() = std::move(error);
+            return false;
+        }
+
+        Acquired = true;
+        return true;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+using namespace NThreading;
 
 #define FAST_SHARD_DEFINE_METHOD(name, ns, ...)                                \
     struct TFiberShard##name##Params                                           \
     {                                                                          \
         std::shared_ptr<TFiberShardImpl> FiberShard;                           \
         std::shared_ptr<ns::T##name##Request> Request;                         \
-        NThreading::TPromise<ns::T##name##Response> Promise;                   \
+        TPromise<ns::T##name##Response> Promise;                               \
     };                                                                         \
                                                                                \
     int name##FiberMain(TFiberShard##name##Params* params) noexcept            \
@@ -1665,11 +2351,50 @@ FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
 
 #undef FAST_SHARD_DEFINE_METHOD
 
+struct TFiberShardCollectStatsParams
+{
+    std::shared_ptr<TFiberShardImpl> FiberShard;
+    TFileSystemShardStats* Stats;
+    TPromise<NProto::TError> Promise;
+};
+
+int CollectStatsFiberMain(TFiberShardCollectStatsParams* params) noexcept
+{
+    auto e = params->FiberShard->CollectStats(params->Stats);
+    params->Promise.SetValue(std::move(e));
+    return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TNaiveMirroredStorageGroupFactory: IStorageGroupFactory
+{
+    IStorageGroupPtr MakeStorageGroup(
+        const NProtoPrivate::TPersistentFastShardConfig& config)
+    {
+        TVector<TStorageDevice> devices;
+        const auto& sg = config.GetStorageGroups(0);
+        for (const auto& d: sg.GetDevices()) {
+            devices.push_back({
+                .Node = CreateStorageNodeClient(d.GetHost(), d.GetPort()),
+                .DeviceUUID = d.GetDeviceId(),
+            });
+        }
+
+        return CreateNaiveMirroredStorageGroup(std::move(devices));
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using namespace NThreading;
+IStorageGroupFactoryPtr CreateNaiveMirroredStorageGroupFactory()
+{
+    return std::make_shared<TNaiveMirroredStorageGroupFactory>();
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TNaiveMirroredFileSystemShard: public IFileSystemShard
 {
@@ -1679,17 +2404,20 @@ private:
 public:
     TNaiveMirroredFileSystemShard(
         ui32 shardNo,
+        IStorageGroupFactoryPtr storageGroupFactory,
         NProtoPrivate::TPersistentFastShardConfig config)
         : FiberShard(
-              std::make_shared<TFiberShardImpl>(shardNo, std::move(config)))
+              std::make_shared<TFiberShardImpl>(
+                  shardNo,
+                  std::move(storageGroupFactory),
+                  std::move(config)))
     {}
 
 public:
 #define FAST_SHARD_DEFINE_METHOD(name, ns, ...)                                \
-    NThreading::TFuture<ns::T##name##Response> name(                           \
-        ns::T##name##Request request) override                                 \
+    TFuture<ns::T##name##Response> name(ns::T##name##Request request) override \
     {                                                                          \
-        auto promise = NThreading::NewPromise<ns::T##name##Response>();        \
+        auto promise = NewPromise<ns::T##name##Response>();                    \
         auto future = promise.GetFuture();                                     \
                                                                                \
         int r = silk::FiberScheduler::run(                                     \
@@ -1718,15 +2446,68 @@ public:
     FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
 
 #undef FAST_SHARD_DEFINE_METHOD
+
+    [[nodiscard]] TFuture<NProto::TError> CollectStats(
+        TFileSystemShardStats* stats) const override
+    {
+        auto promise = NewPromise<NProto::TError>();
+        auto future = promise.GetFuture();
+
+        int r = silk::FiberScheduler::run(
+            CollectStatsFiberMain,
+            TFiberShardCollectStatsParams{
+                .FiberShard = FiberShard,
+                .Stats = stats,
+                .Promise = promise,
+            },
+            nullptr /* future */);
+        if (r) {
+            promise.SetValue(MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "failed to spawn fiber: " << ::strerror(r)));
+        }
+
+        return future;
+    }
+
+    //
+    // The layout is immutable after construction and its dump does no
+    // page IO, so no fiber is needed here.
+    //
+
+    void DumpLayoutHtml(IOutputStream& out) const override
+    {
+        FiberShard->DumpLayoutHtml(out);
+    }
+
+    void DumpLayoutJson(IOutputStream& out) const override
+    {
+        FiberShard->DumpLayoutJson(out);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
     ui32 shardNo,
+    IStorageGroupFactoryPtr storageGroupFactory,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
-    return std::make_shared<TNaiveMirroredFileSystemShard>(shardNo, config);
+    return std::make_shared<TNaiveMirroredFileSystemShard>(
+        shardNo,
+        std::move(storageGroupFactory),
+        config);
+}
+
+IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+    ui32 shardNo,
+    const NProtoPrivate::TPersistentFastShardConfig& config)
+{
+    return std::make_shared<TNaiveMirroredFileSystemShard>(
+        shardNo,
+        CreateNaiveMirroredStorageGroupFactory(),
+        config);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

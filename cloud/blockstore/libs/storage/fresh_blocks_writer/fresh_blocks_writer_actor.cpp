@@ -58,6 +58,7 @@ ui32 GetMaxIORequestsInFlight(
     xxx(ScanDisk,                    __VA_ARGS__)                              \
     xxx(GetScanDiskStatus,           __VA_ARGS__)                              \
     xxx(CheckRange,                  __VA_ARGS__)                              \
+    xxx(DescribeBlob,                __VA_ARGS__)                              \
 // BLOCKSTORE_VOLUME_FWD_TO_PARTITION_REQUESTS
 
 }   // namespace
@@ -78,6 +79,10 @@ TFreshBlocksWriterActor::TFreshBlocksWriterActor(
         IProfileLogPtr profileLog)
     : Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
+    , VolumeLabels(MakeVolumeLabels(
+          PartitionConfig.GetDiskId(),
+          PartitionConfig.GetCloudId(),
+          PartitionConfig.GetFolderId()))
     , StorageAccessMode(storageAccessMode)
     , PartitionTabletID(partitionTabletId)
     , PartitionActorId(partitionActorId)

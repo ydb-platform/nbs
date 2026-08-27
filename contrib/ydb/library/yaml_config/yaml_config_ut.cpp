@@ -1473,6 +1473,147 @@ Y_UNIT_TEST_SUITE(YamlConfig) {
         stream << cfg;
     }
 
+    void AppendDatabaseConfigBase(
+        const TString mainConfig,
+        const TString databaseConfig)
+    {
+        auto treeOriginal = NFyaml::TDocument::Parse(mainConfig);
+        auto tree = NFyaml::TDocument::Parse(mainConfig);
+        auto dbTree = NFyaml::TDocument::Parse(databaseConfig);
+
+        const size_t selectorsCountBefore =
+            tree.Root().Map().Has("selector_config")
+                ? tree.Root().Map().at("selector_config").Sequence().size()
+                : 0;
+
+        // Add empty selector_config nodes to avoid processing missing YAML
+        // nodes
+        if (!tree.Root().Map().Has("selector_config")) {
+            tree.Root().Map().Append(
+                tree.Buildf("selector_config"),
+                tree.Buildf("[]"));
+        }
+        if (!treeOriginal.Root().Map().Has("selector_config")) {
+            treeOriginal.Root().Map().Append(
+                treeOriginal.Buildf("selector_config"),
+                treeOriginal.Buildf("[]"));
+        }
+
+        UNIT_ASSERT_NO_EXCEPTION(
+            NKikimr::NYamlConfig::AppendDatabaseConfig(tree, dbTree));
+
+        auto selectors = tree.Root().Map().at("selector_config").Sequence();
+        UNIT_ASSERT_VALUES_EQUAL(selectors.size(), selectorsCountBefore + 1);
+
+        auto lastSelector = selectors.at(selectors.size() - 1).Map();
+        UNIT_ASSERT(lastSelector.Has("config"));
+
+        // Check that main config selectors have not changed
+        auto selectorsOriginal =
+            treeOriginal.Root().Map().at("selector_config").Sequence();
+
+        for (size_t i = 0; i < selectorsCountBefore; i++) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                selectors.at(i).Map().size(),
+                selectorsOriginal.at(i).Map().size());
+
+            // Сheck all map elements (description, selector, config)
+            for (auto field = selectors.at(i).Map().begin(),
+                      fieldOrig = selectorsOriginal.at(i).Map().begin();
+                 field != selectors.at(i).Map().end();
+                 field++, fieldOrig++)
+            {
+                TStringStream fieldStr;
+                fieldStr << field->Key() << ": " << field->Value();
+
+                TStringStream fieldOriginalStr;
+                fieldOriginalStr << fieldOrig->Key() << ": "
+                                 << fieldOrig->Value();
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    fieldStr.Str(),
+                    fieldOriginalStr.Str());
+            }
+        }
+
+        // Check that the db config selector is appended to the end of the main
+        // config selectors
+        TStringStream actualLastConfig;
+        actualLastConfig << lastSelector.at("config");
+
+        TStringStream expectedConfig;
+        expectedConfig << dbTree.Root().Map().at("config");
+
+        UNIT_ASSERT_VALUES_EQUAL(actualLastConfig.Str(), expectedConfig.Str());
+    }
+
+    Y_UNIT_TEST(AppendDatabaseConfigAsTheOnlySelector)
+    {
+        const TString mainConfig = R"(
+---
+metadata:
+  kind: MainConfig
+  cluster: ""
+  version: 0
+config:
+  feature_flags:
+    some_param_1: true
+)";
+
+        const TString databaseConfig = R"(
+---
+metadata:
+  kind: DatabaseConfig
+  database: "/dc/tenant"
+  version: 0
+config:
+  feature_flags: !inherit
+    some_param_1: false
+)";
+
+        AppendDatabaseConfigBase(mainConfig, databaseConfig);
+    }
+
+    Y_UNIT_TEST(AppendDatabaseConfigAfterExistingSelectors)
+    {
+        const TString mainConfig = R"(
+---
+metadata:
+  kind: MainConfig
+  cluster: ""
+  version: 0
+config:
+  feature_flags:
+    some_param_1: true
+selector_config:
+- description: pre-existing selector 1 with config
+  selector:
+    tenant: dynamic
+  config:
+    feature_flags: !inherit
+      some_param_2: true
+- description: pre-existing selector 2 with config
+  selector:
+    tenant: dynamic
+  config:
+    feature_flags: !inherit
+      some_param_3: true
+)";
+
+        const TString databaseConfig = R"(
+---
+metadata:
+  kind: DatabaseConfig
+  database: "/dc/tenant"
+  version: 0
+config:
+  feature_flags: !inherit
+    some_param_1: false
+)";
+
+        AppendDatabaseConfigBase(mainConfig, databaseConfig);
+    }
+
     Y_UNIT_TEST(GetMetadata) {
         {
             TString str = R"(
@@ -1480,7 +1621,7 @@ metadata:
   version: 10
   cluster: foo
 )";
-            auto metadata = NYamlConfig::GetMetadata(str);
+            auto metadata = NYamlConfig::GetMainMetadata(str);
             UNIT_ASSERT_VALUES_EQUAL(*metadata.Version, 10);
             UNIT_ASSERT_VALUES_EQUAL(*metadata.Cluster, "foo");
         }
@@ -1490,7 +1631,7 @@ metadata:
 metadata:
   version: 10
 )";
-            auto metadata = NYamlConfig::GetMetadata(str);
+            auto metadata = NYamlConfig::GetMainMetadata(str);
             UNIT_ASSERT_VALUES_EQUAL(*metadata.Version, 10);
             UNIT_ASSERT(!metadata.Cluster);
         }
@@ -1500,7 +1641,7 @@ metadata:
 metadata:
   cluster: foo
 )";
-            auto metadata = NYamlConfig::GetMetadata(str);
+            auto metadata = NYamlConfig::GetMainMetadata(str);
             UNIT_ASSERT(!metadata.Version);
             UNIT_ASSERT_VALUES_EQUAL(*metadata.Cluster, "foo");
         }
@@ -1509,21 +1650,21 @@ metadata:
             TString str = R"(
 metadata: {}
 )";
-            auto metadata = NYamlConfig::GetMetadata(str);
+            auto metadata = NYamlConfig::GetMainMetadata(str);
             UNIT_ASSERT(!metadata.Version);
             UNIT_ASSERT(!metadata.Cluster);
         }
 
         {
             TString str = "foo: bar";
-            auto metadata = NYamlConfig::GetMetadata(str);
+            auto metadata = NYamlConfig::GetMainMetadata(str);
             UNIT_ASSERT(!metadata.Version);
             UNIT_ASSERT(!metadata.Cluster);
         }
     }
 
     Y_UNIT_TEST(ReplaceMetadata) {
-        NYamlConfig::TMetadata metadata;
+        NYamlConfig::TMainMetadata metadata;
         metadata.Version = 1;
         metadata.Cluster = "test";
 
@@ -1727,6 +1868,36 @@ metadata:
   cluster: "test"
   version: 1
 # comment1
+value: 1
+array: [{test: "1"}]
+obj: {value: 2} # comment2
+# comment3
+)";
+
+            TString res = NYamlConfig::ReplaceMetadata(str, metadata);
+
+            UNIT_ASSERT_VALUES_EQUAL(res, exp);
+        }
+
+        {
+            TString str = R"(
+---
+metadata:
+  kind: MainConfig
+  version: 0
+  cluster: "test"
+value: 1
+array: [{test: "1"}]
+obj: {value: 2} # comment2
+# comment3
+)";
+
+            TString exp = R"(
+---
+metadata:
+  kind: MainConfig
+  cluster: "test"
+  version: 1
 value: 1
 array: [{test: "1"}]
 obj: {value: 2} # comment2

@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 PEERDIR(
     cloud/blockstore/tools/analytics/libs/event-log
+    cloud/blockstore/libs/common
     cloud/storage/core/libs/common
 
     library/cpp/eventlog/dumper
@@ -13,6 +14,7 @@ PEERDIR(
 SRCS(
     config_ut.cpp
     block_digest_ut.cpp
+    critical_events_ut.cpp
     fault_injection_ut.cpp
     hostname_ut.cpp
     profile_log_ut.cpp

@@ -7,11 +7,28 @@
 #include <util/datetime/base.h>
 #include <util/generic/fwd.h>
 
-#include <variant>
+#include <optional>
 
 class IOutputStream;
 
 namespace NCloud::NBlockStore {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TNVMeLockdownConfig
+{
+private:
+    const NProto::TLocalNVMeConfig::TLockdownConfig Proto;
+
+public:
+    explicit TNVMeLockdownConfig(
+        const NProto::TLocalNVMeConfig::TLockdownConfig& proto);
+    ~TNVMeLockdownConfig();
+
+    [[nodiscard]] TVector<ui8> GetAllowedAdminOpcodes() const;
+    [[nodiscard]] TVector<ui8> GetAllowedSetFeatureIds() const;
+    [[nodiscard]] bool GetBlockLockdownCommand() const;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -28,6 +45,7 @@ public:
     [[nodiscard]] TString GetStateCacheFilePath() const;
     [[nodiscard]] TDuration GetUpdateDevicesInterval() const;
     [[nodiscard]] TDuration GetUpdateCountersInterval() const;
+    [[nodiscard]] std::optional<TNVMeLockdownConfig> GetLockdownConfig() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

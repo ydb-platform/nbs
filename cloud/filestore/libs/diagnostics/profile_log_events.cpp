@@ -141,32 +141,9 @@ namespace NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_MATERIALIZE_REQUEST(name, ...) #name,
-
-static const TString FuseRequestNames[] = {
-    FILESTORE_FUSE_REQUESTS(FILESTORE_MATERIALIZE_REQUEST)
-};
-
-#undef FILESTORE_MATERIALIZE_REQUEST
-
-const TString& GetFileStoreFuseRequestName(EFileStoreFuseRequest requestType)
-{
-    const auto index = static_cast<size_t>(requestType);
-    if (index >= FileStoreFuseRequestStart &&
-            index < FileStoreFuseRequestStart + FileStoreFuseRequestCount)
-    {
-        return FuseRequestNames[index - FileStoreFuseRequestStart];
-    }
-
-    static const TString unknown = "Unknown";
-    return unknown;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
-    EFileStoreFuseRequest requestType,
+    EFileStoreRequest requestType,
     TInstant currentTs)
 {
     profileLogRequest.SetRequestType(static_cast<ui32>(requestType));
@@ -253,6 +230,17 @@ void InitProfileLogRequestInfo(
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();
     nodeInfo->SetNodeId(request.GetNodeId());
     nodeInfo->SetHandle(request.GetHandle());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProto::TConfirmCreateHandleRequest& request)
+{
+    auto* nodeInfo = profileLogRequest.MutableNodeInfo();
+    nodeInfo->SetNodeId(request.GetNodeId());
+    nodeInfo->SetHandle(request.GetHandle());
+    nodeInfo->SetFlags(request.GetFlags());
 }
 
 template <>
@@ -666,6 +654,7 @@ void UpdateRangeNodeIds(
     IMPLEMENT_DEFAULT_METHOD(AccessNode, NProto)
     IMPLEMENT_DEFAULT_METHOD(ReadLink, NProto)
     IMPLEMENT_DEFAULT_METHOD(RemoveNodeXAttr, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ConfirmCreateHandle, NProto)
     IMPLEMENT_DEFAULT_METHOD(DestroyHandle, NProto)
     IMPLEMENT_DEFAULT_METHOD(AcquireLock, NProto)
     IMPLEMENT_DEFAULT_METHOD(ReleaseLock, NProto)

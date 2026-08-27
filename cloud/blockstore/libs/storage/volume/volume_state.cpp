@@ -791,6 +791,15 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
         return pipeRes.Error;
     }
 
+    clientInfoIt->second.UpdateClientInfo(info);
+
+    if (LocalMountClientId == clientId &&
+        clientInfoIt->second.GetVolumeClientInfo().GetVolumeMountMode() !=
+            NProto::VOLUME_MOUNT_LOCAL)
+    {
+        LocalMountClientId.clear();
+    }
+
     if (info.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_REPAIR) {
         StorageAccessMode = EStorageAccessMode::Repair;
     }
@@ -913,25 +922,26 @@ NProto::TError TVolumeState::RemoveClient(
 
     auto& clientInfo = it->second;
 
-    const auto accessMode = clientInfo.GetVolumeClientInfo().GetVolumeAccessMode();
-    if (accessMode == NProto::VOLUME_ACCESS_REPAIR) {
-        StorageAccessMode = EStorageAccessMode::Default;
-    }
-
     UnmapClientFromPipeServerId(pipeServerActorId, clientId);
-
-    if (ReadWriteAccessClientId == clientId) {
-        ReadWriteAccessClientId.clear();
-        MountSeqNumber = 0;
-    }
-
-    if (LocalMountClientId == clientId) {
-        LocalMountClientId.clear();
-    }
 
     clientInfo.RemovePipe(pipeServerActorId, TInstant());
 
     if (!clientInfo.AnyPipeAlive()) {
+        const auto accessMode =
+            clientInfo.GetVolumeClientInfo().GetVolumeAccessMode();
+        if (accessMode == NProto::VOLUME_ACCESS_REPAIR) {
+            StorageAccessMode = EStorageAccessMode::Default;
+        }
+
+        if (ReadWriteAccessClientId == clientId) {
+            ReadWriteAccessClientId.clear();
+            MountSeqNumber = 0;
+        }
+
+        if (LocalMountClientId == clientId) {
+            LocalMountClientId.clear();
+        }
+
         // Drop any residual ClientIdsByPipeServerId entries (e.g. pointing to
         // DEACTIVATED pipes of the same client) to keep the invariant that
         // every clientId in ClientIdsByPipeServerId exists in
@@ -939,6 +949,11 @@ NProto::TError TVolumeState::RemoveClient(
         UnmapClientFromPipeServerId({}, clientId);
 
         ClientInfosByClientId.erase(it);
+    } else if (LocalMountClientId == clientId &&
+               clientInfo.GetVolumeClientInfo().GetVolumeMountMode() !=
+                   NProto::VOLUME_MOUNT_LOCAL)
+    {
+        LocalMountClientId.clear();
     }
 
     return {};

@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/fault_injection.h>
 #include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -53,9 +54,9 @@
 #include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
-#include <cloud/storage/core/libs/version/version.h>
 #include <cloud/storage/core/libs/rdma/iface/probes.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
+#include <cloud/storage/core/libs/version/version.h>
 
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/protos/config.pb.h>
@@ -305,6 +306,8 @@ void TBootstrap::Init()
         ->GetSubgroup("counters", "blockstore");
 
     auto serverGroup = rootGroup->GetSubgroup("component", "server");
+    auto volumeCriticalEventsGroup =
+        rootGroup->GetSubgroup("component", "critical_events");
     auto revisionGroup = serverGroup->GetSubgroup("revision", GetFullVersionString());
 
     auto versionCounter = revisionGroup->GetCounter(
@@ -312,7 +315,19 @@ void TBootstrap::Init()
         false);
     *versionCounter = 1;
 
+    InitVolumeCriticalEventsReportingMode(
+        Configs->DiagnosticsConfig->GetVolumeCriticalEventsReportingMode());
     InitCriticalEventsCounter(serverGroup);
+    InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
+
+    STORAGE_INFO("CriticalEvents counters initialized");
+
+    CriticalEventsStatsUpdater = CreateStatsUpdater(
+        Timer,
+        Scheduler,
+        CreateCriticalEventsStatsHandler());
+
+    STORAGE_INFO("CriticalEventsStatsUpdater initialized");
 
     for (auto& event: PostponedCriticalEvents) {
         ReportCriticalEvent(
@@ -673,6 +688,7 @@ void TBootstrap::Start()
     START_COMPONENT(FileIOServiceProvider);
     START_COMPONENT(LocalNVMeService);
     START_COMPONENT(ActorSystem);
+    START_COMPONENT(CriticalEventsStatsUpdater);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -708,6 +724,7 @@ void TBootstrap::Stop()
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMPONENT(Scheduler);
+    STOP_COMPONENT(CriticalEventsStatsUpdater);
 
     STOP_COMPONENT(ActorSystem);
     // stop FileIOServiceProvider after ActorSystem to ensure that there are no

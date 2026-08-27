@@ -48,8 +48,7 @@ TResultOrError<void> PrivateKeyAndCertificateMatch(
     TStringBuf privateKey,
     TStringBuf certChain);
 
-TResultOrError<void> ValidateIdentityCertificateWithRoot(
-    TStringBuf rootCertPem,
+TResultOrError<void> ValidateIdentityCertificateValidity(
     TStringBuf certChainPem);
 
 TResultOrError<ui64> GetCertificateNotAfterTimestampSec(

@@ -274,9 +274,12 @@ public:
 
     bool GetAsyncDestroyHandleEnabled() const;
     bool GetAsyncDestroyReadOnlyHandleEnabled() const;
+    bool GetAsyncCreateHandleEnabled() const;
     bool GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled() const;
     bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
-    TDuration GetAsyncHandleOperationPeriod() const;
+    TDuration GetAsyncHandleOperationIdlePeriod() const;
+    TDuration GetAsyncHandleOperationDrainPeriod() const;
+    TDuration GetUnconfirmedCreateHandleGraceTimeout() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
@@ -351,6 +354,8 @@ public:
     bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
+    bool GetAvailabilityTrackingEnabled() const;
+    TDuration GetAvailabilityTrackingInterval() const;
     NProto::EGuestCachingType GetGuestCachingType() const;
     ui64 GetSessionHandleOffloadedStatsCapacity() const;
 
@@ -422,6 +427,7 @@ public:
 
     [[nodiscard]] ui32 GetFastShardServerPort() const;
     [[nodiscard]] bool GetFastShardRuntimeEnabled() const;
+    [[nodiscard]] bool GetFastShardExtendedVerificationEnabled() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 
@@ -446,6 +452,16 @@ public:
     [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
 
     [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
+
+    [[nodiscard]] bool GetEnableLoadActor() const;
+
+    ui32 GetMaxNodeDiagnosticEntries() const;
+
+    TDuration GetNodeAccessCountHalfLife() const;
+
+    ui32 GetMaxSlowestRequestsEntries() const;
+
+    TDuration GetNodeLatencyHalfLife() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

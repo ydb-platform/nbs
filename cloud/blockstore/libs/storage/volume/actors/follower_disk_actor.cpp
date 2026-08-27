@@ -50,6 +50,8 @@ TFollowerDiskActor::TFollowerDiskActor(
           config,
           std::move(diagnosticConfig),
           params.LeaderDiskId,
+          params.LeaderCloudId,
+          params.LeaderFolderId,
           params.LeaderBlockCount,
           params.LeaderBlockSize,
           std::move(profileLog),
@@ -73,7 +75,6 @@ TFollowerDiskActor::TFollowerDiskActor(
     , LeaderBlockSize(params.LeaderBlockSize)
     , LeaderVolumeActorId(params.LeaderVolumeActorId)
     , LeaderPartitionActorId(params.LeaderPartitionActorId)
-    , TakePartitionOwnership(params.TakePartitionOwnership)
     , ClientId(params.ClientId)
     , FollowerDiskInfo(params.FollowerDiskInfo)
 {
@@ -93,6 +94,8 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
         LogTitle.GetWithTime().c_str(),
         ToString(FollowerDiskInfo.State).Quote().c_str());
 
+    PoisonPillHelper.TakeOwnership(ctx, LeaderPartitionActorId);
+
     if (!ApplyLinkState(ctx)) {
         return;
     }
@@ -101,7 +104,8 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
         ctx,
         LogTitle,
         LeaderBlockSize,
-        FollowerDiskInfo.Link.FollowerDiskId);
+        FollowerDiskInfo.Link.FollowerDiskId,
+        GetConfig()->GetDestroyVolumeTimeout());
 
     InitWork(
         ctx,
@@ -109,7 +113,7 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
             .MigrationSrcActorId = LeaderPartitionActorId,
             .SrcActorId = LeaderPartitionActorId,
             .DstActorId = FollowerPartitionActorId,
-            .TakeOwnershipOverSrcActor = TakePartitionOwnership,
+            .TakeOwnershipOverSrcActor = false, // already taken in the line 95
             .TakeOwnershipOverDstActor = true,
             .SendWritesToSrc = true,
             .TimeoutCalculator = std::make_unique<TMigrationTimeoutCalculator>(

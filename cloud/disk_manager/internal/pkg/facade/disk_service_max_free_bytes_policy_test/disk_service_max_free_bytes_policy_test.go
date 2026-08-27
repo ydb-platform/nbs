@@ -28,6 +28,7 @@ func TestCreateEmptyDiskWithMaxFreeBytesPolicy(t *testing.T) {
 	deleteOlderThan := time.Now()
 
 	err := testcommon.UpdateClusterCapacities(
+		t,
 		ctx,
 		[]cells_storage.ClusterCapacity{
 			{
@@ -79,7 +80,7 @@ func TestCreateEmptyDiskWithMaxFreeBytesPolicy(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+	diskMeta, err := testcommon.GetDiskMeta(t, ctx, diskID)
 	require.NoError(t, err)
 	require.Equal(t, cellID2, diskMeta.ZoneID)
 
@@ -115,7 +116,7 @@ func TestCreateEmptyDiskWithMaxFreeBytesPolicyFallback(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	diskMeta, err := testcommon.GetDiskMeta(ctx, diskID)
+	diskMeta, err := testcommon.GetDiskMeta(t, ctx, diskID)
 	require.NoError(t, err)
 	// Should fallback to the first cell in config, which is cellID1 for shardedZoneID.
 	require.Equal(t, cellID1, diskMeta.ZoneID)

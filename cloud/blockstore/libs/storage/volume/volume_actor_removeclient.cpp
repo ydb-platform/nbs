@@ -258,7 +258,12 @@ void TVolumeActor::ExecuteRemoveClient(
         return;
     }
 
-    db.RemoveClient(args.ClientId);
+    if (const auto* clientInfo = State->GetClient(args.ClientId)) {
+        db.WriteClient(*clientInfo);
+    } else {
+        db.RemoveClient(args.ClientId);
+        args.ClientRemoved = true;
+    }
 }
 
 void TVolumeActor::CompleteRemoveClient(
@@ -269,6 +274,7 @@ void TVolumeActor::CompleteRemoveClient(
         State->IsDiskRegistryMediaKind() &&
         Config->GetAcquireNonReplicatedDevices() &&
         Config->GetNonReplicatedVolumeAcquireDiskAfterAddClientEnabled() &&
+        args.ClientRemoved &&
         !HasError(args.Error);
 
     Y_DEFER

@@ -208,6 +208,18 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&WriteRate)
         .DefaultValue(0);
 
+    opts.AddLongOption(
+            "zero-rate",
+            "percentage of zero (discard) requests;\n"
+            "only supported for sync engine;\n"
+            "only supported for aligned scenario;\n"
+            "only supported for block devices (not supported for regular\n"
+            "files); moreover, the block device must actually zero-fill the \n"
+            "range on discard requests")
+        .RequiredArgument("NUM")
+        .StoreResult(&ZeroRate)
+        .DefaultValue(0);
+
     opts.AddLongOption("write-parts", "number of parts to split one write")
         .RequiredArgument("NUM")
         .StoreResult(&WriteParts)

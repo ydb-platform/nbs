@@ -5,14 +5,13 @@
 #include <yt/cpp/mapreduce/interface/config.h>
 #include <yt/cpp/mapreduce/interface/error_codes.h>
 #include <yt/cpp/mapreduce/interface/logging/yt_log.h>
+#include <yt/cpp/mapreduce/interface/tvm.h>
 
 #include <yt/cpp/mapreduce/common/wait_proxy.h>
 #include <yt/cpp/mapreduce/common/retry_lib.h>
 
 #include <yt/cpp/mapreduce/http/requests.h>
 #include <yt/cpp/mapreduce/http/retry_request.h>
-
-#include <yt/cpp/mapreduce/raw_client/raw_requests.h>
 
 #include <yt/yt/core/concurrency/periodic_executor.h>
 #include <yt/yt/core/concurrency/poller.h>
@@ -41,25 +40,23 @@ namespace {
 
 void CheckError(const TString& requestId, NHttp::IResponsePtr response)
 {
-    TErrorResponse errorResponse(static_cast<int>(response->GetStatusCode()), requestId);
-
     if (const auto* ytError = response->GetHeaders()->Find("X-YT-Error")) {
-        errorResponse.ParseFromJsonError(*ytError);
-    }
-    if (errorResponse.IsOk()) {
-        return;
-    }
+        TYtError error;
+        error.ParseFrom(*ytError);
 
-    YT_LOG_ERROR("RSP %v - HTTP %v - %v",
+        TErrorResponse errorResponse(std::move(error), requestId);
+        if (errorResponse.IsOk()) {
+            return;
+        }
+
+        YT_LOG_ERROR("RSP %v - HTTP %v - %v",
             requestId,
             response->GetStatusCode(),
             errorResponse.AsStrBuf());
 
-    ythrow errorResponse;
-
-////////////////////////////////////////////////////////////////////////////////
-
-} // namespace
+        ythrow errorResponse;
+    }
+}
 
 void PingTx(NHttp::IClientPtr httpClient, const TPingableTransaction& tx)
 {
@@ -70,8 +67,10 @@ void PingTx(NHttp::IClientPtr httpClient, const TPingableTransaction& tx)
     headers->Add("Host", url);
     headers->Add("User-Agent", TProcessState::Get()->ClientVersion);
 
-    const auto& token = tx.GetContext().Token;
-    if (!token.empty()) {
+    if (const auto& serviceTicketAuth = tx.GetContext().ServiceTicketAuth) {
+        const auto serviceTicket = serviceTicketAuth->Ptr->IssueServiceTicket();
+        headers->Add("X-Ya-Service-Ticket", serviceTicket);
+    } else if (const auto& token = tx.GetContext().Token; !token.empty()) {
         headers->Add("Authorization", "OAuth " + token);
     }
 
@@ -225,7 +224,7 @@ public:
         PingableTx_ = &pingableTx;
         Running_ = true;
 
-        PingerThread_ = MakeHolder<TThread>(
+        PingerThread_ = std::make_unique<TThread>(
             TThread::TParams{Pinger, this}.SetName("pingable_tx"));
         PingerThread_->Start();
     }
@@ -258,8 +257,7 @@ private:
         while (Running_) {
             TDuration waitTime = minPingInterval + (maxPingInterval - minPingInterval) * RandomNumber<float>();
             try {
-                auto noRetryPolicy = MakeIntrusive<TAttemptLimitedRetryPolicy>(1u, PingableTx_->GetContext().Config);
-                NDetail::NRawClient::PingTx(noRetryPolicy, PingableTx_->GetContext(), PingableTx_->GetId());
+                PingableTx_->Ping();
             } catch (const std::exception& e) {
                 if (auto* errorResponse = dynamic_cast<const TErrorResponse*>(&e)) {
                     if (errorResponse->GetError().ContainsErrorCode(NYT::NClusterErrorCodes::NTransactionClient::NoSuchTransaction)) {
@@ -282,28 +280,24 @@ private:
     const TPingableTransaction* PingableTx_ = nullptr;
 
     std::atomic<bool> Running_ = false;
-    THolder<TThread> PingerThread_;
+    std::unique_ptr<TThread> PingerThread_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 ITransactionPingerPtr CreateTransactionPinger(const TConfigPtr& config)
 {
-    if (config->UseAsyncTxPinger) {
-        YT_LOG_DEBUG("Using async transaction pinger");
-        auto httpClientConfig = NYT::New<NHttp::TClientConfig>();
-        httpClientConfig->MaxIdleConnections = 16;
-        auto httpPoller = NConcurrency::CreateThreadPoolPoller(
-            config->AsyncHttpClientThreads,
-            "tx_http_client_poller");
-        auto httpClient = NHttp::CreateClient(std::move(httpClientConfig), std::move(httpPoller));
+    YT_LOG_DEBUG("Using async transaction pinger");
+    auto httpClientConfig = NYT::New<NHttp::TClientConfig>();
+    httpClientConfig->MaxIdleConnections = 16;
+    auto httpPoller = NConcurrency::CreateThreadPoolPoller(
+        config->AsyncHttpClientThreads,
+        "tx_http_client_poller");
+    auto httpClient = NHttp::CreateClient(std::move(httpClientConfig), std::move(httpPoller));
 
-        return MakeIntrusive<TSharedTransactionPinger>(
-            std::move(httpClient),
-            config->AsyncTxPingerPoolThreads);
-    } else {
-        return MakeIntrusive<TThreadPerTransactionPinger>();
-    }
+    return MakeIntrusive<TSharedTransactionPinger>(
+        std::move(httpClient),
+        config->AsyncTxPingerPoolThreads);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

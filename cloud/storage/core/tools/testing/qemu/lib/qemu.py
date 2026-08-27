@@ -263,7 +263,7 @@ class Qemu:
             "-device", "virtio-rng-pci",
             "-serial", "file:{}".format(qemu_serial_log),
             "-nographic",
-            "-drive", "format=qcow2,file={},id=hdd0,if=none,aio=native,cache=none".format(self.new_root_fs_image),
+            "-drive", "format=qcow2,file={},id=hdd0,if=none,aio=native,cache=none,file.locking=off".format(self.new_root_fs_image),
             "-device", "virtio-blk-pci,id=vblk0,drive=hdd0,num-queues={},bootindex=1".format(self.proc),
             "-L", self.qemu_firmware,
             "-qmp", "unix:{},server,nowait".format(self.qmp_socket),

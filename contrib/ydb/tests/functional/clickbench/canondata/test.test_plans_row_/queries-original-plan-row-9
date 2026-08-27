@@ -35,22 +35,32 @@
                                         "PlanNodeType": "Connection",
                                         "Plans": [
                                             {
-                                                "Node Type": "TopSort",
+                                                "Node Type": "TopSort-Aggregate",
                                                 "Operators": [
+                                                    {
+                                                        "Inputs": [
+                                                            {
+                                                                "InternalOperatorId": 1
+                                                            }
+                                                        ],
+                                                        "Limit": "10",
+                                                        "Name": "TopSort",
+                                                        "TopSortBy": "argument.Count0"
+                                                    },
                                                     {
                                                         "Inputs": [
                                                             {
                                                                 "ExternalPlanNodeId": 8
                                                             }
                                                         ],
-                                                        "Limit": "10",
-                                                        "Name": "TopSort",
-                                                        "TopSortBy": "argument.Count0"
+                                                        "Name": "Aggregate",
+                                                        "Phase": "Final"
                                                     }
                                                 ],
                                                 "PlanNodeId": 9,
                                                 "Plans": [
                                                     {
+                                                        "HashFunc": "HashV1",
                                                         "KeyColumns": [
                                                             "RegionID"
                                                         ],
@@ -84,18 +94,20 @@
                                                                                 "Node Type": "Aggregate-TableFullScan",
                                                                                 "Operators": [
                                                                                     {
-                                                                                        "Aggregation": "{_yql_agg_1: SUM(state._yql_agg_1,1),_yql_agg_3: SUM(item.AdvEngineID,state._yql_agg_3)}",
+                                                                                        "Aggregation": "{[SUM(item.ResolutionWidth),Inc()],SUM(1),SUM(item.AdvEngineID)}",
                                                                                         "GroupBy": "item.RegionID",
                                                                                         "Inputs": [
                                                                                             {
                                                                                                 "InternalOperatorId": 1
                                                                                             }
                                                                                         ],
-                                                                                        "Name": "Aggregate"
+                                                                                        "Name": "Aggregate",
+                                                                                        "Phase": "Intermediate"
                                                                                     },
                                                                                     {
                                                                                         "Inputs": [],
                                                                                         "Name": "TableFullScan",
+                                                                                        "Path": "/local/clickbench/plans/row/hits",
                                                                                         "ReadColumns": [
                                                                                             "AdvEngineID",
                                                                                             "RegionID",
@@ -126,22 +138,33 @@
                                                                         "PlanNodeType": "Connection",
                                                                         "Plans": [
                                                                             {
-                                                                                "Node Type": "Aggregate",
+                                                                                "Node Type": "Aggregate-Aggregate",
                                                                                 "Operators": [
                                                                                     {
-                                                                                        "Aggregation": "{_yql_agg_2: COUNT(item.UserID,state._yql_agg_2)}",
+                                                                                        "Aggregation": "{COUNT(item.UserID)}",
                                                                                         "GroupBy": "item.RegionID",
+                                                                                        "Inputs": [
+                                                                                            {
+                                                                                                "InternalOperatorId": 1
+                                                                                            }
+                                                                                        ],
+                                                                                        "Name": "Aggregate",
+                                                                                        "Phase": "Intermediate"
+                                                                                    },
+                                                                                    {
                                                                                         "Inputs": [
                                                                                             {
                                                                                                 "ExternalPlanNodeId": 2
                                                                                             }
                                                                                         ],
-                                                                                        "Name": "Aggregate"
+                                                                                        "Name": "Aggregate",
+                                                                                        "Phase": "Final"
                                                                                     }
                                                                                 ],
                                                                                 "PlanNodeId": 3,
                                                                                 "Plans": [
                                                                                     {
+                                                                                        "HashFunc": "HashV1",
                                                                                         "KeyColumns": [
                                                                                             "RegionID",
                                                                                             "UserID"
@@ -155,17 +178,19 @@
                                                                                                 "Operators": [
                                                                                                     {
                                                                                                         "Aggregation": "state",
-                                                                                                        "GroupBy": "",
+                                                                                                        "GroupBy": "[item.RegionID,item.UserID]",
                                                                                                         "Inputs": [
                                                                                                             {
                                                                                                                 "InternalOperatorId": 1
                                                                                                             }
                                                                                                         ],
-                                                                                                        "Name": "Aggregate"
+                                                                                                        "Name": "Aggregate",
+                                                                                                        "Phase": "Intermediate"
                                                                                                     },
                                                                                                     {
                                                                                                         "Inputs": [],
                                                                                                         "Name": "TableFullScan",
+                                                                                                        "Path": "/local/clickbench/plans/row/hits",
                                                                                                         "ReadColumns": [
                                                                                                             "AdvEngineID",
                                                                                                             "RegionID",
@@ -209,7 +234,10 @@
                             }
                         ]
                     }
-                ]
+                ],
+                "Stats": {
+                    "ResourcePoolId": "default"
+                }
             },
             "tables": [
                 {

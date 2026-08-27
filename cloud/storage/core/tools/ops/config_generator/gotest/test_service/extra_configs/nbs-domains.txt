@@ -1,0 +1,15 @@
+Domain {
+  DomainId: 1
+  SchemeRoot: 1
+  SSId: 1
+  HiveUid: 1
+  PlanResolution: 10
+  Name: "example_global"
+}
+StateStorage {
+  SSId: 1
+  Ring {
+    NToSelect: 1
+    Node: 1
+  }
+}

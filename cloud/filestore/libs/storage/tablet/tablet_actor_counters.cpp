@@ -18,6 +18,19 @@ using namespace NMetrics;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void MergeQuotaUsages(
+    NProtoPrivate::TStorageStats& dst,
+    const NProtoPrivate::TStorageStats& src)
+{
+    for (const auto& [quotaId, srcUsage]: src.GetQuotaUsages()) {
+        auto& dstUsage = (*dst.MutableQuotaUsages())[quotaId];
+        dstUsage.SetUsedBytes(dstUsage.GetUsedBytes() + srcUsage.GetUsedBytes());
+        dstUsage.SetUsedNodes(dstUsage.GetUsedNodes() + srcUsage.GetUsedNodes());
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // TAggregateStatsActor always replies with
 // TAggregateStatsCompleted to a TIndexTabletActor that created the actor.
 // 1. IsBackgroundRequest. It means the actor was created in
@@ -229,6 +242,8 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
 
     dst.SetSevenBytesHandlesCount(
         dst.GetSevenBytesHandlesCount() + src.GetSevenBytesHandlesCount());
+
+    MergeQuotaUsages(dst, src);
 
     LOG_DEBUG(
         ctx,
@@ -810,6 +825,12 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetUnconfirmedDataCount(
         UnconfirmedData.size() + UnconfirmedDataInProgress.size());
     stats->SetConfirmedDataCount(ConfirmedData.size());
+
+    for (const auto& usage: GetQuotaUsages()) {
+        auto& proto = (*stats->MutableQuotaUsages())[usage.QuotaId];
+        proto.SetUsedBytes(usage.UsedBytes);
+        proto.SetUsedNodes(usage.UsedNodes);
+    }
 }
 
 void TIndexTabletActor::HandleGetStorageStats(
@@ -917,6 +938,42 @@ void TIndexTabletActor::HandleGetStorageStats(
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
+}
+
+void TIndexTabletActor::HandleGetDiagnosticStats(
+    const TEvIndexTablet::TEvGetDiagnosticStatsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetDiagnosticStatsResponse>();
+
+    for (const auto& accessStats:
+         GetNodeAccessStats(ctx.Now(), ev->Get()->Record.GetLimit()))
+    {
+        auto* out = response->Record.AddNodeStats();
+        out->SetShardId(GetFileSystemId());
+        out->SetNodeId(accessStats.NodeId);
+        out->SetRequestCount(accessStats.RequestCount);
+        out->SetAccessScore(accessStats.AccessScore);
+        out->SetLastAccessedTimestampUs(
+            accessStats.LastAccessed.MicroSeconds());
+    }
+
+    for (const auto& latencyStats:
+         GetLatencyStats(ctx.Now(), ev->Get()->Record.GetLimit()))
+    {
+        auto* out = response->Record.AddLatencyStats();
+        out->SetShardId(GetFileSystemId());
+        out->SetNodeId(latencyStats.NodeId);
+        out->SetRequestType(GetFileStoreRequestName(latencyStats.RequestType));
+        out->SetRequestCount(latencyStats.RequestCount);
+        out->SetTotalLatencyUs(latencyStats.TotalLatencyUs);
+        out->SetAverageLatencyDecayedUs(latencyStats.AverageLatencyDecayedUs);
+        out->SetLastAccessedTimestampUs(
+            latencyStats.LastAccessed.MicroSeconds());
+    }
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -7,6 +7,7 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/core/base/path.h>
+#include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 

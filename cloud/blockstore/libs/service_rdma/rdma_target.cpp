@@ -569,6 +569,8 @@ private:
 
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
+        request->SetForceRemoteBinding(true);
+
         auto req =
             std::make_shared<NProto::TMountVolumeRequest>(std::move(*request));
 

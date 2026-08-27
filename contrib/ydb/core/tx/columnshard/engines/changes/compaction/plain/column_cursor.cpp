@@ -1,5 +1,5 @@
 #include "column_cursor.h"
-#include <contrib/ydb/library/formats/arrow/common/validation.h>
+#include <contrib/ydb/library/formats/arrow/validation/validation.h>
 
 namespace NKikimr::NOlap::NCompaction {
 

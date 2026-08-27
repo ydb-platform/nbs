@@ -80,6 +80,7 @@ public:
 
     void SetLastActivityTimestamp(TInstant ts);
     void SetDisconnectTimestamp(TInstant ts);
+    void UpdateClientInfo(const NProto::TVolumeClientInfo& info);
 
     void RemovePipe(NActors::TActorId serverId, TInstant ts);
 
@@ -116,6 +117,7 @@ public:
 
 private:
     bool IsLocalPipeActive() const;
+    bool IsLocalMountPipeActive() const;
 
     void UpdateState();
 

@@ -6,13 +6,19 @@
 
 #include <library/cpp/logger/log.h>
 
+#include <util/generic/singleton.h>
+
 namespace NCloud::NFileStore::NVhost {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TLog VhostLog;
+TLog& GetVhostLog()
+{
+    // Destroy the log before the global log backend registry.
+    return *Singleton<TLog>();
+}
 
 ELogPriority GetLogPriority(LogLevel level)
 {
@@ -29,9 +35,10 @@ void vhd_log(LogLevel level, const char* format, ...)
     va_list params;
     va_start(params, format);
 
+    auto& log = GetVhostLog();
     ELogPriority priority = GetLogPriority(level);
-    if (priority <= VhostLog.FiltrationLevel()) {
-        Printf(VhostLog << priority << ": ", format, params);
+    if (priority <= log.FiltrationLevel()) {
+        Printf(log << priority << ": ", format, params);
     }
 
     va_end(params);
@@ -43,7 +50,7 @@ void vhd_log(LogLevel level, const char* format, ...)
 
 void InitLog(ILoggingServicePtr logging)
 {
-    VhostLog = logging->CreateLog("NFS_VHOST");
+    GetVhostLog() = logging->CreateLog("NFS_VHOST");
 }
 
 void StartServer()

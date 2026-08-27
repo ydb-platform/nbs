@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
+#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
@@ -17,13 +18,14 @@
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter.h>
+#include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter_load_state.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
@@ -281,6 +283,14 @@ struct TBackpressureFeaturesConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TMixedBlocksFilterConfig
+{
+    ui64 MixedBlocksFilterRangesToLoadPerTx = 0;
+    TDuration MixedBlocksFilterAllowedCpuTimePerSecond;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TPartitionState
     : public TPartitionChannelsState
     , public TCommitIdsState
@@ -316,7 +326,10 @@ public:
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState);
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui64 tabletId,
+        const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
+        bool checkpointAwareCleanupEnabled);
 
 private:
     bool LoadStateFinished = false;
@@ -341,6 +354,11 @@ private:
 
 public:
     const NProto::TPartitionMeta& GetMeta() const
+    {
+        return Meta;
+    }
+
+    NProto::TPartitionMeta& AccessMeta()
     {
         return Meta;
     }
@@ -422,7 +440,7 @@ public:
     //
 
 public:
-    void AddFreshBlob(TFreshBlobMeta freshBlobMeta);
+    void AddFreshBlob(ui64 commitId, ui64 blobSize);
 
     //
     // Fresh Blocks
@@ -557,6 +575,9 @@ public:
 private:
     TProfilingAllocator MixedIndexCacheAllocator;
     TMixedIndexCache MixedIndexCache;
+    std::optional<TMixedBlocksFilter> MixedBlocksFilter;
+    std::optional<TMixedBlocksFilterLoadState>
+        MixedBlocksFilterLoadState;
 
 public:
     void WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block);
@@ -579,6 +600,27 @@ public:
     void RaiseRangeTemperature(ui32 rangeIndex);
 
     ui64 GetMixedIndexCacheMemSize() const;
+
+    const TMixedBlocksFilter* GetMixedBlocksFilter() const
+    {
+        return MixedBlocksFilter ? &*MixedBlocksFilter : nullptr;
+    }
+
+    TMixedBlocksFilter* AccessMixedBlocksFilter()
+    {
+        return MixedBlocksFilter ? &*MixedBlocksFilter : nullptr;
+    }
+
+    TMixedBlocksFilterLoadState* AccessMixedBlocksFilterLoadState()
+    {
+        return MixedBlocksFilterLoadState ? &*MixedBlocksFilterLoadState
+                                          : nullptr;
+    }
+
+    void MixedBlocksFilterLoaded()
+    {
+        MixedBlocksFilterLoadState = std::nullopt;
+    }
 
     //
     // Compaction
@@ -896,16 +938,43 @@ public:
     //
 
 private:
+    struct TBlobCountToCleanupEstimate
+    {
+        ui32 BlobCount = 0;
+        ui64 CleanupCommitId = 0;
+        ui64 MilestoneCommitId = 0;
+        TPartialBlobId MilestoneBlobId;
+
+        TBlobCountToCleanupEstimate() = default;
+
+        TBlobCountToCleanupEstimate(
+            ui32 blobCount,
+            ui64 cleanupCommitId,
+            ui64 milestoneCommitId,
+            const TPartialBlobId& milestoneBlobId)
+            : BlobCount(blobCount)
+            , CleanupCommitId(cleanupCommitId)
+            , MilestoneCommitId(milestoneCommitId)
+            , MilestoneBlobId(milestoneBlobId)
+        {}
+    };
+
     TOperationState CleanupState;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
+    const bool CheckpointAwareCleanupEnabled;
 
-    mutable ui32 BlobCountToCleanup = 0;
-    mutable ui64 BlobCountToCleanupCommitId = 0;
+    mutable TBlobCountToCleanupEstimate BlobCountToCleanupEstimate;
 
     TDuration LastCleanupExecTime;
     TInstant LastCleanupFinishTs;
     TDuration CleanupDelay;
+
+    void UpdateOrResetCleanupMilestone(
+        ui64 newCommitId,
+        TPartialBlobId newBlobId,
+        ui64 minCheckpointCommitId,
+        ui64 maxCheckpointCommitId);
 
 public:
     TOperationState& GetCleanupState()
@@ -923,27 +992,64 @@ public:
         return CleanupQueue;
     }
 
-    ui32 GetBlobCountToCleanup(ui64 commitId, ui32 maxBlobs) const
+    bool IsCheckpointAwareCleanupEnabled() const
     {
-        if (commitId < BlobCountToCleanupCommitId
-                || BlobCountToCleanup < maxBlobs)
-        {
-            BlobCountToCleanup = CleanupQueue.GetCount(commitId);
-            BlobCountToCleanupCommitId = commitId;
+        return CheckpointAwareCleanupEnabled;
+    }
+
+    bool HasBlobCountToCleanupReachedThreshold(
+        ui64 cleanupCommitId,
+        ui32 threshold) const;
+
+    ui64 GetCleanupMilestoneCommitId() const
+    {
+        if (!CheckpointAwareCleanupEnabled) {
+            return 0;
         }
 
-        return BlobCountToCleanup;
+        return Meta.GetCleanupMilestone().GetCommitId();
     }
+
+    TPartialBlobId GetCleanupMilestoneBlobId() const
+    {
+        if (!CheckpointAwareCleanupEnabled) {
+            return {};
+        }
+
+        const auto& milestone = Meta.GetCleanupMilestone();
+        return MakePartialBlobId(
+            milestone.GetBlobCommitId(),
+            milestone.GetBlobUniqueId());
+    }
+
+    void ResetCleanupMilestoneIfNeeded()
+    {
+        if (!CheckpointAwareCleanupEnabled) {
+            return;
+        }
+
+        UpdateOrResetCleanupMilestone(
+            GetCleanupMilestoneCommitId(),
+            GetCleanupMilestoneBlobId(),
+            GetMinCheckpointCommitId(),
+            GetMaxCheckpointCommitId());
+    }
+
+    void UpdateCleanupMilestoneIfNeeded(
+        ui64 newCommitId,
+        TPartialBlobId newBlobId,
+        ui64 minCheckpointCommitId,
+        ui64 maxCheckpointCommitId);
 
     void RemoveCleanupQueueItem(const TCleanupQueueItem& item)
     {
         bool removed = CleanupQueue.Remove(item);
         Y_ABORT_UNLESS(removed);
 
-        // BlobCountToCleanup is not perfectly synchronized with CleanupQueue:
-        // it can actually be smaller
-        if (BlobCountToCleanup) {
-            --BlobCountToCleanup;
+        // BlobCountToCleanupEstimate is not perfectly synchronized with
+        // CleanupQueue: it can actually be smaller.
+        if (BlobCountToCleanupEstimate.BlobCount) {
+            --BlobCountToCleanupEstimate.BlobCount;
         }
     }
 
@@ -989,6 +1095,10 @@ public:
     {
         return ThreadSafeState->AccessCheckpointsInFlight();
     }
+
+    ui64 GetMaxCheckpointCommitId() const;
+
+    ui64 GetMinCheckpointCommitId() const;
 
     ui64 GetCleanupCommitId() const;
 
@@ -1071,10 +1181,11 @@ public:
     //
 
 public:
-
     void UpdateTrimFreshLogToCommitIdInMeta()
     {
-        Meta.SetTrimFreshLogToCommitId(GetTrimFreshLogToCommitId());
+        ui64 commitId =
+            Max(GetTrimFreshLogToCommitId(), Meta.GetTrimFreshLogToCommitId());
+        Meta.SetTrimFreshLogToCommitId(commitId);
     }
 
     //

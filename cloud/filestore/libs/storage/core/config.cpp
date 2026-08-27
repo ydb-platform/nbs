@@ -87,7 +87,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(LargeDeletionMarkersEnabled,                    bool,   false         )\
     xxx(LargeDeletionMarkerBlocks,                      ui64,   1_GB / 4_KB   )\
     xxx(LargeDeletionMarkersThreshold,                  ui64,   128_GB / 4_KB )\
-    xxx(LargeDeletionMarkersCleanupThreshold,           ui64,   1_TB / 4_KB   )\
+    xxx(LargeDeletionMarkersCleanupThreshold,           ui64,   256_GB / 4_KB )\
     xxx(LargeDeletionMarkersThresholdForBackpressure,   ui64,   10_TB / 4_KB  )\
                                                                                \
     xxx(CompactionRetryTimeout,             TDuration, TDuration::Seconds(1)  )\
@@ -261,9 +261,15 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(AsyncDestroyHandleEnabled,                      bool,       false     )\
     xxx(AsyncDestroyReadOnlyHandleEnabled,              bool,       false     )\
+    xxx(AsyncCreateHandleEnabled,                       bool,       false     )\
     xxx(TabletUnsafeAsyncReadOnlyCreateHandleEnabled,   bool,       false     )\
     xxx(TabletUnsafeAsyncDestroyHandleEnabled,          bool,       false     )\
-    xxx(AsyncHandleOperationPeriod,    TDuration,  TDuration::MilliSeconds(50))\
+    xxx(AsyncHandleOperationIdlePeriod,                                        \
+                                       TDuration,  TDuration::MilliSeconds(50))\
+    xxx(AsyncHandleOperationDrainPeriod,                                       \
+                                       TDuration,  TDuration::Zero()          )\
+    xxx(UnconfirmedCreateHandleGraceTimeout,                                   \
+                                       TDuration,  TDuration::Minutes(2)      )\
                                                                                \
     xxx(NodeRegistrationMaxAttempts,         ui32,      10                    )\
     xxx(NodeRegistrationTimeout,             TDuration, TDuration::Seconds(5) )\
@@ -290,6 +296,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
+    xxx(AvailabilityTrackingEnabled,   bool,       false                      )\
+    xxx(AvailabilityTrackingInterval,  TDuration,  TDuration::Zero()          )\
     xxx(GuestCachingType,                                                      \
         NProto::EGuestCachingType,                                             \
         NProto::GCT_NONE                                                      )\
@@ -365,6 +373,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(FastShardServerPort,                    ui32,   0                     )\
     xxx(FastShardRuntimeEnabled,                bool,   false                 )\
+    xxx(FastShardExtendedVerificationEnabled,   bool,   false                 )\
                                                                                \
     xxx(EnableNodeRefCompression,               bool,   false                 )\
                                                                                \
@@ -389,6 +398,12 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FakeTxPageFaultsProbability,                   double,   0            )\
                                                                                \
     xxx(FanoutStatsCollectionInShardsDisabled,         bool,    false         )\
+                                                                               \
+    xxx(EnableLoadActor,                               bool,    false         )\
+    xxx(MaxNodeDiagnosticEntries,                      ui32,    0             )\
+    xxx(NodeAccessCountHalfLife,                  TDuration,   {}             )\
+    xxx(MaxSlowestRequestsEntries,                     ui32,    0             )\
+    xxx(NodeLatencyHalfLife,                      TDuration,   {}             )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

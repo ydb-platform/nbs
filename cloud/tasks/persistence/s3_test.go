@@ -2,17 +2,47 @@ package persistence
 
 import (
 	"context"
+	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
+	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 const maxRetriableErrorCount = 3
+
+////////////////////////////////////////////////////////////////////////////////
+
+type testS3TokenProvider struct {
+	token string
+}
+
+func (p *testS3TokenProvider) Token(ctx context.Context) (string, error) {
+	return p.token, nil
+}
+
+type testRoundTripper struct {
+	request *http.Request
+}
+
+func (t *testRoundTripper) RoundTrip(
+	request *http.Request,
+) (*http.Response, error) {
+
+	t.request = request
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       http.NoBody,
+	}, nil
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -30,7 +60,145 @@ func newS3Client(
 		metricsRegistry,
 		maxRetriableErrorCount,
 		nil, // availabilityMonitoring
+		nil, // tokenProvider
 	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestNewS3CredentialsFromConfig(t *testing.T) {
+	credentialsFilePath := filepath.Join(t.TempDir(), "credentials.json")
+	err := os.WriteFile(
+		credentialsFilePath,
+		[]byte(`{"id":"file-id","secret":"file-secret"}`),
+		0600,
+	)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name                    string
+		config                  *persistence_config.S3Config
+		expectedCredentials     S3Credentials
+		expectNonRetriableError bool
+	}{
+		{
+			name: "IAM token",
+			config: &persistence_config.S3Config{
+				UseIamToken: proto.Bool(true),
+			},
+			expectedCredentials: NewS3Credentials("iam-token", "iam-token"),
+		},
+		{
+			name: "credentials file",
+			config: &persistence_config.S3Config{
+				CredentialsFilePath: proto.String(credentialsFilePath),
+			},
+			expectedCredentials: NewS3Credentials("file-id", "file-secret"),
+		},
+		{
+			name: "IAM token and credentials file",
+			config: &persistence_config.S3Config{
+				UseIamToken:         proto.Bool(true),
+				CredentialsFilePath: proto.String(credentialsFilePath),
+			},
+			expectNonRetriableError: true,
+		},
+		{
+			name:                    "neither IAM token nor credentials file",
+			config:                  &persistence_config.S3Config{},
+			expectNonRetriableError: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			credentials, err := newS3CredentialsFromConfig(test.config)
+			if test.expectNonRetriableError {
+				require.Error(t, err)
+				require.True(
+					t,
+					errors.Is(err, errors.NewEmptyNonRetriableError()),
+				)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, test.expectedCredentials, credentials)
+		})
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func roundTripS3TokenAuthRequest(
+	t *testing.T,
+	requestURL string,
+	token string,
+) string {
+
+	inner := &testRoundTripper{}
+	tokenProvider := &testS3TokenProvider{token: token}
+	transport := &s3TokenAuthTransport{
+		inner:         inner,
+		host:          "s3.example.com",
+		tokenProvider: tokenProvider,
+	}
+
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		requestURL,
+		nil,
+	)
+	require.NoError(t, err)
+
+	_, err = transport.RoundTrip(request)
+	require.NoError(t, err)
+
+	return inner.request.Header.Get("Authorization")
+}
+
+func TestS3TokenAuthTransportShouldSetAuthorizationHeader(t *testing.T) {
+	authorization := roundTripS3TokenAuthRequest(
+		t,
+		"https://s3.example.com",
+		"test-token",
+	)
+
+	require.Equal(t, "Bearer test-token", authorization)
+}
+
+func TestS3TokenAuthTransportShouldNotDuplicateAuthorizationPrefix(t *testing.T) {
+	authorization := roundTripS3TokenAuthRequest(
+		t,
+		"https://s3.example.com",
+		"Bearer test-token",
+	)
+
+	require.Equal(t, "Bearer test-token", authorization)
+}
+
+func TestS3TokenAuthTransportShouldNotSetAuthorizationHeaderForAnotherHost(
+	t *testing.T,
+) {
+
+	authorization := roundTripS3TokenAuthRequest(
+		t,
+		"https://another.example.com",
+		"test-token",
+	)
+
+	require.Empty(t, authorization)
+}
+
+func TestS3TokenAuthTransportShouldNotSetAuthorizationHeaderForHTTP(t *testing.T) {
+	authorization := roundTripS3TokenAuthRequest(
+		t,
+		"http://s3.example.com",
+		"test-token",
+	)
+
+	require.Empty(t, authorization)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

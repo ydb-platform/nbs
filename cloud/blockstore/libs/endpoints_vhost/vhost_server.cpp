@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/vhost/server.h>
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -52,6 +53,8 @@ public:
         NVhost::TStorageOptions options;
         options.DeviceName = request.GetDeviceName();
         options.DiskId = request.GetDiskId();
+        options.CloudId = volume.GetCloudId();
+        options.FolderId = volume.GetFolderId();
         options.ClientId = request.GetClientId();
         options.BlockSize = volume.GetBlockSize();
         options.BlocksCount = volume.GetBlocksCount();
@@ -66,6 +69,7 @@ public:
             ShouldDropDiscardRequestsForVolume(DropDiscardRequests, volume);
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
         options.OptimalIoSize = OptimalIoSize;
+        options.ReadOnly = !IsReadWriteMode(request.GetVolumeAccessMode());
 
         return Server->StartEndpoint(
             request.GetUnixSocketPath(),

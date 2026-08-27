@@ -1,7 +1,7 @@
 #pragma once
 
 #include <contrib/ydb/core/formats/arrow/arrow_helpers.h>
-#include <contrib/ydb/library/formats/arrow/common/validation.h>
+#include <contrib/ydb/library/formats/arrow/validation/validation.h>
 #include <contrib/ydb/core/kqp/common/kqp.h>
 #include <contrib/ydb/core/protos/tx_datashard.pb.h>
 #include <contrib/ydb/core/protos/data_events.pb.h>
@@ -53,8 +53,10 @@ struct TEvScanData: public NActors::TEventLocal<TEvScanData, TKqpComputeEvents::
     std::vector<std::vector<ui32>> SplittedBatches;
 
     TOwnedCellVec LastKey;
+    NKikimrKqp::TEvKqpScanCursor LastCursorProto;
     TDuration CpuTime;
     TDuration WaitTime;
+    ui64 RawBytes = 0;
     ui32 PageFaults = 0; // number of page faults occurred when filling in this message
     bool RequestedBytesLimitReached = false;
     bool Finished = false;
@@ -120,6 +122,7 @@ struct TEvScanData: public NActors::TEventLocal<TEvScanData, TKqpComputeEvents::
         ev->Finished = pbEv->Record.GetFinished();
         ev->RequestedBytesLimitReached = pbEv->Record.GetRequestedBytesLimitReached();
         ev->LastKey = TOwnedCellVec(TSerializedCellVec(pbEv->Record.GetLastKey()).GetCells());
+        ev->LastCursorProto = pbEv->Record.GetLastCursor();
         if (pbEv->Record.HasAvailablePacks()) {
             ev->AvailablePacks = pbEv->Record.GetAvailablePacks();
         }
@@ -153,6 +156,7 @@ private:
             Remote->Record.SetPageFaults(PageFaults);
             Remote->Record.SetPageFault(PageFault);
             Remote->Record.SetLastKey(TSerializedCellVec::Serialize(LastKey));
+            *Remote->Record.MutableLastCursor() = LastCursorProto;
             if (AvailablePacks) {
                 Remote->Record.SetAvailablePacks(*AvailablePacks);
             }
@@ -170,7 +174,7 @@ private:
                     Y_DEBUG_ABORT_UNLESS(ArrowBatch != nullptr);
                     auto* protoArrowBatch = Remote->Record.MutableArrowBatch();
                     protoArrowBatch->SetSchema(NArrow::SerializeSchema(*ArrowBatch->schema()));
-                    protoArrowBatch->SetBatch(NArrow::SerializeBatchNoCompression(NArrow::ToBatch(ArrowBatch, true)));
+                    protoArrowBatch->SetBatch(NArrow::SerializeBatchNoCompression(NArrow::ToBatch(ArrowBatch)));
                     break;
                 }
             }
@@ -247,16 +251,22 @@ struct TEvKqpCompute {
         }
     };
 
+    struct TEvScanPing : public NActors::TEventPB<TEvScanPing, NKikimrKqp::TEvScanPing,
+        TKqpComputeEvents::EvScanPing>
+    {
+    };
+
     struct TEvScanInitActor : public NActors::TEventPB<TEvScanInitActor, NKikimrKqp::TEvScanInitActor,
         TKqpComputeEvents::EvScanInitActor>
     {
         TEvScanInitActor() = default;
 
-        TEvScanInitActor(ui64 scanId, const NActors::TActorId& scanActor, ui32 generation, const ui64 tabletId) {
+        TEvScanInitActor(ui64 scanId, const NActors::TActorId& scanActor, ui32 generation, const ui64 tabletId, bool allowPings = false) {
             Record.SetScanId(scanId);
             ActorIdToProto(scanActor, Record.MutableScanActorId());
             Record.SetGeneration(generation);
             Record.SetTabletId(tabletId);
+            Record.SetAllowPings(allowPings);
         }
     };
 

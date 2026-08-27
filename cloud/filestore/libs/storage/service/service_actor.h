@@ -190,13 +190,9 @@ private:
 
     TInFlightRequest* FindInFlightRequest(ui64 cookie);
 
-    bool RemoveSession(
+    bool RemoveSubSession(
         const TString& sessionId,
         ui64 seqNo,
-        const NActors::TActorContext& ctx);
-
-    void RemoveSession(
-        const TString& sessionId,
         const NActors::TActorContext& ctx);
 
     static ui32 ExtractShardNoSafe(
@@ -300,6 +296,10 @@ private:
         TString input);
 
     NActors::IActorPtr CreateGetStorageStatsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateGetDiagnosticStatsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

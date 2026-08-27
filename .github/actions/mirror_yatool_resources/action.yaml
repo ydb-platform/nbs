@@ -1,0 +1,76 @@
+name: Mirror yatool resources
+description: Mirror yatool resources to S3 and generate localization patch.
+
+inputs:
+  mapping:
+    description: Path to mapping.conf.json in the working directory.
+    required: false
+    default: build/mapping.conf.json
+  bootstrap_script:
+    description: Path to the ya bootstrap script in the working directory.
+    required: false
+    default: ya
+  base_mapping:
+    description: Optional trusted base mapping path for patch generation.
+    required: false
+    default: ""
+  bucket:
+    description: S3 bucket where mirrored resources are stored.
+    required: true
+  endpoint_url:
+    description: S3 endpoint URL.
+    required: false
+    default: ""
+  local_base_url:
+    description: Public base URL for mirrored resources.
+    required: true
+  output_dir:
+    description: Directory for generated patch and summary files.
+    required: true
+  skip_upload:
+    description: Whether to skip S3 uploads.
+    required: false
+    default: "true"
+  working_directory:
+    description: Directory where the mapping path is resolved.
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - name: set up dependencies
+      shell: bash
+      run: |
+        python3 -m pip install -r "$GITHUB_WORKSPACE/.github/scripts/requirements.txt"
+
+    - name: Mirror resources and generate patch
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        BASE_MAPPING: ${{ inputs.base_mapping }}
+        BOOTSTRAP_SCRIPT: ${{ inputs.bootstrap_script }}
+        BUCKET: ${{ inputs.bucket }}
+        LOCAL_BASE_URL: ${{ inputs.local_base_url }}
+        MAPPING: ${{ inputs.mapping }}
+        OUTPUT_DIR: ${{ inputs.output_dir }}
+        S3_ENDPOINT_URL: ${{ inputs.endpoint_url }}
+        SKIP_UPLOAD: ${{ inputs.skip_upload }}
+      run: |
+        mkdir -p "$OUTPUT_DIR"
+        args=(
+            --mapping "$MAPPING"
+            --bootstrap-script "$BOOTSTRAP_SCRIPT"
+            --bucket "$BUCKET"
+            --endpoint-url "$S3_ENDPOINT_URL"
+            --local-base-url "$LOCAL_BASE_URL"
+            --patch-out "$OUTPUT_DIR/localize-yatool-resources.patch"
+            --summary-out "$OUTPUT_DIR/summary.md"
+        )
+        if [ -n "$BASE_MAPPING" ] && [ -s "$BASE_MAPPING" ]; then
+            args+=(--base-mapping "$BASE_MAPPING")
+        fi
+        if [ "$SKIP_UPLOAD" = "true" ]; then
+            args+=(--skip-upload)
+        fi
+        python3 "$GITHUB_WORKSPACE/.github/scripts/mirror_yatool_resources.py" "${args[@]}"

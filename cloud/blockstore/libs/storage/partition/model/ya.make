@@ -21,7 +21,8 @@ SRCS(
     fresh_blob.cpp
     garbage_queue.cpp
     group_downtimes.cpp
-    mixed_index_blocks_filter.cpp
+    mixed_blocks_filter.cpp
+    mixed_blocks_filter_load_state.cpp
     mixed_index_cache.cpp
     operation_status.cpp
     part_counters_wrapper.cpp

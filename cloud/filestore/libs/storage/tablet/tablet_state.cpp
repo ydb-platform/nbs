@@ -132,6 +132,19 @@ void TIndexTabletState::InitInMemoryIndexState(const TStorageConfig& config)
 
 void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
 {
+    // When a filesystem is just created, GetBlockSize() is zero.
+    // It's a protection from division by zero in a shard balancer.
+    const ui32 blockSize = GetBlockSize() ? GetBlockSize() : DefaultBlockSize;
+
+    if (config.GetShardBalancerPolicy() == NProto::SBP_WEIGHTED_DETERMINISTIC &&
+        !config.GetStrictFileSystemSizeEnforcementEnabled())
+    {
+        ReportIncompatibleFeatures(
+            TStringBuilder()
+            << "Weighted deterministic balancer is incompatible with a "
+               "filesystem without strict file system size enforcement.");
+    }
+
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     TVector<TString> balancerShardIds;
 
@@ -139,7 +152,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
     if (fileShardIds.size()) {
         Impl->FileShardBalancer = CreateShardBalancer(
             config.GetShardBalancerPolicy(),
-            GetBlockSize(),
+            blockSize,
             config.GetShardBalancerPrecisionBytes(),
             config.GetMaxFileBlocks(),
             config.GetShardBalancerDesiredFreeSpaceReserve(),
@@ -160,7 +173,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
 
     Impl->ShardBalancer = CreateShardBalancer(
         config.GetShardBalancerPolicy(),
-        GetBlockSize(),
+        blockSize,
         config.GetShardBalancerPrecisionBytes(),
         config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
@@ -237,6 +250,12 @@ void TIndexTabletState::LoadState(
     Impl->InMemoryIndexState->UpdateLogTag(LogTag);
 
     Impl->MixedBlocks.Reset(config.GetMixedBlocksOffloadedRangesCapacity());
+    Impl->AccessTracker.Reset(
+        config.GetMaxNodeDiagnosticEntries(),
+        config.GetNodeAccessCountHalfLife());
+    Impl->LatencyTracker.Reset(
+        config.GetMaxSlowestRequestsEntries(),
+        config.GetNodeLatencyHalfLife());
 
     for (const auto& deletionMarker: largeDeletionMarkers) {
         Impl->LargeBlocks.AddDeletionMarker(deletionMarker);
@@ -253,6 +272,34 @@ void TIndexTabletState::LoadState(
     }
 
     InitShardBalancer(config);
+}
+
+bool TIndexTabletState::UpdateAccessStats(ui64 nodeId, TInstant now)
+{
+    return Impl->AccessTracker.UpdateAccessStats(nodeId, now);
+}
+
+TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
+    TInstant now, ui32 n) const
+{
+    return Impl->AccessTracker.GetStats(now, n);
+}
+
+bool TIndexTabletState::UpdateLatencyStats(
+    ui64 nodeId,
+    EFileStoreRequest requestType,
+    TInstant now,
+    TDuration latency)
+{
+    return Impl->LatencyTracker
+        .UpdateLatencyStats(nodeId, requestType, now, latency);
+}
+
+TVector<TNodeLatencyStats> TIndexTabletState::GetLatencyStats(
+    TInstant now,
+    ui32 n) const
+{
+    return Impl->LatencyTracker.GetLatencyStats(now, n);
 }
 
 void TIndexTabletState::UpdateConfig(

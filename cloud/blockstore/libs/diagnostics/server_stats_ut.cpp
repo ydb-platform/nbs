@@ -8,6 +8,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -37,12 +38,12 @@ struct TTestDumpable
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 auto UpdateStatsWithRequestResultedInRetriableError(
     IServerStatsPtr serverStats,
     IMonitoringServicePtr monitoring,
     bool silenceRetriableErrors,
-    bool isHwProblem)
+    bool isHwProblem,
+    NProto::EStorageMediaKind mediaKind)
 {
     TLog log;
 
@@ -76,7 +77,8 @@ auto UpdateStatsWithRequestResultedInRetriableError(
         ->GetSubgroup("volume", "volume")
         ->GetSubgroup("instance", "instance")
         ->GetSubgroup("cloud", "cloud")
-        ->GetSubgroup("folder", "folder");
+        ->GetSubgroup("folder", "folder")
+        ->GetSubgroup("type", MediaKindToString(mediaKind));
 }
 
 void CheckRetriableError(
@@ -90,7 +92,8 @@ void CheckRetriableError(
             serverStats,
             monitoring,
             silenceRetriableErrors,
-            false /*not a hw problem*/);
+            false /*not a hw problem*/,
+            NProto::STORAGE_MEDIA_DEFAULT);
 
     UNIT_ASSERT_VALUES_EQUAL(
         expected,
@@ -104,6 +107,7 @@ void CheckHwProblems(
     IMonitoringServicePtr monitoring,
     bool silenceRetriableErrors,
     bool isHwProblem,
+    NProto::EStorageMediaKind mediaKind,
     ui64 expected)
 {
     auto instanceCounters =
@@ -111,7 +115,8 @@ void CheckHwProblems(
             serverStats,
             monitoring,
             silenceRetriableErrors,
-            isHwProblem);
+            isHwProblem,
+            mediaKind);
 
     UNIT_ASSERT_VALUES_EQUAL(
         expected,
@@ -194,6 +199,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "cloud")
             ->GetSubgroup("folder", "folder")
+            ->GetSubgroup(
+                "type",
+                MediaKindToString(volume.GetStorageMediaKind()))
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("MaxTime")->Val());
     }
@@ -319,6 +327,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "cloud")
             ->GetSubgroup("folder", "folder")
+            ->GetSubgroup(
+                "type",
+                MediaKindToString(volume.GetStorageMediaKind()))
             ->GetSubgroup("request", "WriteBlocks")
             ->GetCounter("MaxTime")->Val());
     }
@@ -359,10 +370,10 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         volume.SetStorageMediaKind(mediaKind);
         serverStats->MountVolume(volume, "client", "instance");
 
-        CheckHwProblems(serverStats, monitoring, false, false, 0);
-        CheckHwProblems(serverStats, monitoring, true, false, 0);
-        CheckHwProblems(serverStats, monitoring, false, true, 1);
-        CheckHwProblems(serverStats, monitoring, true, true, 2);
+        CheckHwProblems(serverStats, monitoring, false, false, mediaKind, 0);
+        CheckHwProblems(serverStats, monitoring, true, false, mediaKind, 0);
+        CheckHwProblems(serverStats, monitoring, false, true, mediaKind, 1);
+        CheckHwProblems(serverStats, monitoring, true, true, mediaKind, 2);
     }
 
     Y_UNIT_TEST(ShouldCountHwProblemsSSD)

@@ -19,7 +19,6 @@
 #include <library/cpp/monlib/service/pages/html_mon_page.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
 #include <library/cpp/monlib/service/pages/templates.h>
-#include <library/cpp/string_utils/quote/quote.h>
 
 namespace NCloud::NBlockStore {
 
@@ -317,7 +316,7 @@ void TServerStats::RequestStarted(
             req.ClientId,
             RequestInstanceId)
         << " REQUEST " << message
-        << ", peer: " << UrlUnescapeRet(req.Peer));
+        << ", peer: " << req.Peer);
 
     LWTRACK(
         RequestStarted,
@@ -570,7 +569,7 @@ void TServerStats::RequestCompleted(
         << ", unaligned: " << req.Unaligned
         << maxTimeSuppressedMessage
         << ", error: " << FormatError(error)
-        << ", peer: " << UrlUnescapeRet(req.Peer)
+        << ", peer: " << req.Peer
         << ")");
 }
 

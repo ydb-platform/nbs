@@ -143,7 +143,18 @@ void TDeviceIntegrityCheckActor::Bootstrap(const TActorContext& ctx)
 
 void TDeviceIntegrityCheckActor::CheckSymlinks()
 {
+    THashSet<TString> brokenPaths;
+    for (size_t i = 0; i != Devices.size(); ++i) {
+        if (DevicesHealth[i] == EDeviceHealthStatus::Broken) {
+            brokenPaths.insert(Devices[i].GetDeviceName());
+        }
+    }
+
     for (const auto& [configPath, expected]: SymlinkSnapshot) {
+        if (brokenPaths.contains(configPath)) {
+            continue;
+        }
+
         TString current;
         TFsPath path(configPath);
         if (path.IsSymlink()) {

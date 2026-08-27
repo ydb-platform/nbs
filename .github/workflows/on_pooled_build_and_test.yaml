@@ -77,6 +77,15 @@ on:
         description: "Per ya make test attempt timeout in minutes"
   workflow_call:
     inputs:
+      actions_checkout_ref:
+        type: string
+        default: ""
+      code_checkout_ref:
+        type: string
+        default: ""
+      code_rebase_ref:
+        type: string
+        default: ""
       component:
         type: string
         default: ""
@@ -154,6 +163,9 @@ jobs:
     name: Build and test NBS [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     uses: ./.github/workflows/on_pooled_build_and_test_ya.yaml
     with:
+      actions_checkout_ref: ${{ inputs.actions_checkout_ref }}
+      code_checkout_ref: ${{ inputs.code_checkout_ref }}
+      code_rebase_ref: ${{ inputs.code_rebase_ref }}
       runner_kind: self-hosted
       runner_flavor: "heavy"
       component: ${{ inputs.component }}

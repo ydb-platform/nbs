@@ -23,11 +23,14 @@ import (
 type factory struct {
 	config                 *nbs_config.ClientConfig
 	credentials            auth.Credentials
+	tlsProvider            TlsConfigProvider
 	sessionMetricsRegistry metrics.Registry
 	metrics                client_metrics.Metrics
 	clients                map[string]client
 	multiZoneClients       map[[2]string]multiZoneClient
 }
+
+type TlsConfigProvider = nbs_client.TlsConfigProvider
 
 func (f *factory) initClients(
 	ctx context.Context,
@@ -119,6 +122,7 @@ func (f *factory) initClients(
 	for zoneID, zone := range f.config.GetZones() {
 		clientCreds := &nbs_client.ClientCredentials{
 			RootCertsFile: f.config.GetRootCertsFile(),
+			TlsProvider:   f.tlsProvider,
 			IAMClient:     f.credentials,
 		}
 
@@ -294,6 +298,7 @@ func newFactoryWithCreds(
 	creds auth.Credentials,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
+	tlsProvider TlsConfigProvider,
 ) (*factory, error) {
 
 	if config.GetDisableAuthentication() {
@@ -303,6 +308,7 @@ func newFactoryWithCreds(
 	f := &factory{
 		config:                 config,
 		credentials:            creds,
+		tlsProvider:            tlsProvider,
 		sessionMetricsRegistry: sessionMetricsRegistry,
 		metrics:                client_metrics.NewClientMetrics(clientMetricsRegistry),
 	}
@@ -320,6 +326,7 @@ func NewFactoryWithCreds(
 	creds auth.Credentials,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
+	tlsProvider TlsConfigProvider,
 ) (Factory, error) {
 
 	return newFactoryWithCreds(
@@ -328,6 +335,7 @@ func NewFactoryWithCreds(
 		creds,
 		clientMetricsRegistry,
 		sessionMetricsRegistry,
+		tlsProvider,
 	)
 }
 
@@ -336,6 +344,7 @@ func NewFactory(
 	config *nbs_config.ClientConfig,
 	clientMetricsRegistry metrics.Registry,
 	sessionMetricsRegistry metrics.Registry,
+	tlsProvider TlsConfigProvider,
 ) (Factory, error) {
 
 	return NewFactoryWithCreds(
@@ -344,5 +353,6 @@ func NewFactory(
 		nil,
 		clientMetricsRegistry,
 		sessionMetricsRegistry,
+		tlsProvider,
 	)
 }

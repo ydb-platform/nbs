@@ -1,6 +1,10 @@
 PY3TEST()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/fio-qemu-medium.inc)
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
+    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
+ELSE()
+    INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/fio-qemu-medium.inc)
+ENDIF()
 
 DEPENDS(
     cloud/storage/core/tools/testing/fio/bin
@@ -23,8 +27,15 @@ SET(
 )
 SET(NFS_BS_FAILURE_PROBABILITY 0.0001)
 
+SET(NFS_FORCE_VERBOSE 1)
+
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)
+
+SET(FILESTORE_STATS_COLLECTOR_PERIOD 5)
+SET(FILESTORE_STATS_COLLECTOR_ENDPOINT 'http://localhost:$NFS_VHOST_MON_PORT/counters')
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/stats-collector.inc)
+
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
 

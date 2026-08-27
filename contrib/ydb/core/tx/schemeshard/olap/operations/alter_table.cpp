@@ -1,5 +1,6 @@
 #include "alter/abstract/object.h"
 #include "alter/abstract/update.h"
+#include <contrib/ydb/core/tx/schemeshard/olap/operations/checks.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard__operation_part.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard__operation_common.h>
 #include <contrib/ydb/core/tx/schemeshard/schemeshard_impl.h>
@@ -16,7 +17,7 @@ private:
     TOperationId OperationId;
 
     TString DebugHint() const override {
-        return TStringBuilder() << "TAlterColumnTable TConfigureParts operationId#" << OperationId;
+        return TStringBuilder() << "TAlterColumnTable TConfigureParts operationId# " << OperationId;
     }
 
 public:
@@ -63,7 +64,9 @@ public:
                 context.Ctx.SelfID,
                 ui64(OperationId.GetTxId()),
                 txShardString, seqNo,
-                context.SS->SelectProcessingParams(txState->TargetPathId));
+                context.SS->SelectProcessingParams(txState->TargetPathId),
+                0,
+                0);
 
             context.OnComplete.BindMsgToPipe(OperationId, tabletId, shard.Idx, event.release());
 
@@ -85,7 +88,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TAlterColumnTable TPropose"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -106,7 +109,7 @@ public:
                      << " at tablet: " << ssId
                      << ", stepId: " << step);
 
-        TTxState* txState = context.SS->FindTxSafe(OperationId, TTxState::TxAlterColumnTable); 
+        TTxState* txState = context.SS->FindTxSafe(OperationId, TTxState::TxAlterColumnTable);
 
         TPathId pathId = txState->TargetPathId;
         TPathElement::TPtr path = context.SS->PathsById.at(pathId);
@@ -145,7 +148,7 @@ public:
                      DebugHint() << " HandleReply ProgressState"
                      << " at tablet: " << ssId);
 
-        TTxState* txState = context.SS->FindTxSafe(OperationId, TTxState::TxAlterColumnTable); 
+        TTxState* txState = context.SS->FindTxSafe(OperationId, TTxState::TxAlterColumnTable);
 
         TSet<TTabletId> shardSet;
         for (const auto& shard : txState->Shards) {
@@ -166,7 +169,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TAlterColumnTable TProposedWaitParts"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -271,13 +274,6 @@ public:
             return result;
         }
 
-        const bool hasTiering = Transaction.HasAlterColumnTable() && Transaction.GetAlterColumnTable().HasAlterTtlSettings() &&
-                                Transaction.GetAlterColumnTable().GetAlterTtlSettings().HasUseTiering();
-        if (hasTiering && HasAppData() && !AppDataVerified().FeatureFlags.GetEnableTieringInColumnShard()) {
-            result->SetError(NKikimrScheme::StatusPreconditionFailed, "Tiering functionality is disabled for OLAP tables");
-            return result;
-        }
-
         const TString& parentPathStr = Transaction.GetWorkingDir();
         const TString& name = Transaction.HasAlterColumnTable() ? Transaction.GetAlterColumnTable().GetName() : Transaction.GetAlterTable().GetName();
         LOG_NOTICE_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
@@ -285,6 +281,13 @@ public:
                          << ", path: " << parentPathStr << "/" << name
                          << ", opId: " << OperationId
                          << ", at schemeshard: " << ssId);
+
+        if (Transaction.HasAlterColumnTable() && Transaction.GetAlterColumnTable().HasAlterSchema()) {
+            if (auto checkResult = CheckColumns(Transaction.GetAlterColumnTable().GetAlterSchema().GetAddColumns(), AppData()); !checkResult) {
+                result->SetError(NKikimrScheme::StatusInvalidParameter, checkResult.error());
+                return result;
+            }
+        }
 
         TPath path = TPath::Resolve(parentPathStr, context.SS).Dive(name);
         {

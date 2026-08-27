@@ -293,6 +293,7 @@ struct TTxVolume
         const bool IsMonRequest;
 
         NProto::TError Error;
+        bool ClientRemoved = false;
 
         TRemoveClient(
                 TRequestInfoPtr requestInfo,
@@ -310,6 +311,7 @@ struct TTxVolume
         void Clear()
         {
             Error.Clear();
+            ClientRemoved = false;
         }
     };
 

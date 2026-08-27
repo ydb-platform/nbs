@@ -141,10 +141,60 @@ ui64 CalculateByteCount<NProto::TReadDataResponse>(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DECLARE_REQUEST(name, ...) #name,
-
 static const TString RequestNames[] = {
-    FILESTORE_REQUESTS(FILESTORE_DECLARE_REQUEST)
+    "Ping",
+    "PingSession",
+    "CreateFileStore",
+    "DestroyFileStore",
+    "AlterFileStore",
+    "ResizeFileStore",
+    "DescribeFileStoreModel",
+    "GetFileStoreInfo",
+    "ListFileStores",
+    "CreateSession",
+    "DestroySession",
+    "AddClusterNode",
+    "RemoveClusterNode",
+    "ListClusterNodes",
+    "AddClusterClients",
+    "RemoveClusterClients",
+    "ListClusterClients",
+    "UpdateCluster",
+    "CreateCheckpoint",
+    "DestroyCheckpoint",
+    "ExecuteAction",
+    "StatFileStore",
+    "SubscribeSession",
+    "GetSessionEvents",
+    "ResetSession",
+    "ResolvePath",
+    "CreateNode",
+    "UnlinkNode",
+    "RenameNode",
+    "AccessNode",
+    "ListNodes",
+    "ReadLink",
+    "SetNodeAttr",
+    "GetNodeAttr",
+    "SetNodeXAttr",
+    "GetNodeXAttr",
+    "ListNodeXAttr",
+    "RemoveNodeXAttr",
+    "CreateHandle",
+    "DestroyHandle",
+    "AcquireLock",
+    "ReleaseLock",
+    "TestLock",
+    "ReadData",
+    "WriteData",
+    "AllocateData",
+    "Fsync",
+    "FsyncDir",
+    "GetSessionEventsStream",
+    "StartEndpoint",
+    "StopEndpoint",
+    "ListEndpoints",
+    "KickEndpoint",
     "DescribeData",
     "GenerateBlobIds",
     "AddData",
@@ -152,13 +202,19 @@ static const TString RequestNames[] = {
     "WriteBlob",
     "ConfirmAddData",
     "CancelAddData",
+    "ConfirmCreateHandle",
+    "Forget",
+    "ForgetMulti",
+    "OpenDir",
+    "ReleaseDir",
+    "FuseFlush",
+    "FuseFsync",
+    "FuseFsyncDir",
 };
 
 static_assert(
     sizeof(RequestNames) / sizeof(RequestNames[0]) == FileStoreRequestCount,
     "RequestNames size mismatch");
-
-#undef FILESTORE_DECLARE_REQUEST
 
 const TString& GetFileStoreRequestName(EFileStoreRequest requestType)
 {

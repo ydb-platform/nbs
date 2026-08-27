@@ -49,7 +49,7 @@ type ImageMeta struct {
 	CreatingAt        time.Time             `json:"creating_at"`
 	CreatedBy         string                `json:"created_by"`
 	DeleteTaskID      string                `json:"delete_task_id"`
-	UseDataplaneTasks bool                  `json:"use_dataplane_tasks"`
+	UseDataplaneTasks bool                  `json:"use_dataplane_tasks"` // legacy
 	Size              uint64                `json:"size"`
 	StorageSize       uint64                `json:"storage_size"`
 	Encryption        *types.EncryptionDesc `json:"encryption"`
@@ -66,7 +66,7 @@ type SnapshotMeta struct {
 	CreatingAt        time.Time             `json:"creating_at"`
 	CreatedBy         string                `json:"created_by"`
 	DeleteTaskID      string                `json:"delete_task_id"`
-	UseDataplaneTasks bool                  `json:"use_dataplane_tasks"`
+	UseDataplaneTasks bool                  `json:"use_dataplane_tasks"` // legacy
 	Size              uint64                `json:"size"`
 	StorageSize       uint64                `json:"storage_size"`
 	Encryption        *types.EncryptionDesc `json:"encryption"`

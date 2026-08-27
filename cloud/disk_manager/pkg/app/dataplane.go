@@ -68,11 +68,6 @@ func initDataplane(
 		return err
 	}
 
-	snapshotLegacyStorage := snapshot_storage.NewLegacyStorage(
-		snapshotConfig,
-		snapshotMetricsRegistry,
-		snapshotDB,
-	)
 	migrationDstSnapshotConfig := dataplaneConfig.GetMigrationDstSnapshotConfig()
 	var migrationDstStorage snapshot_storage.Storage
 	var useS3InSnapshotMigration bool
@@ -99,7 +94,6 @@ func initDataplane(
 		taskScheduler,
 		nbsFactory,
 		snapshotStorage,
-		snapshotLegacyStorage,
 		snapshotMetricsRegistry,
 		snapshotStorageQuotaReporter,
 		urlMetricsRegistry,

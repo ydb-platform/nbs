@@ -447,6 +447,16 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsMixedBlocksFilterFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsCheckpointAwareCleanupFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -589,7 +599,9 @@ public:
     ui32 GetMaxDevicesToErasePerDeviceNameForGlobalPoolKind() const;
 
     TString GetTabletBootInfoBackupFilePath() const;
+    [[nodiscard]] TString GetGoldenTabletBootInfoBackupFilePath() const;
     bool GetHiveProxyFallbackMode() const;
+    [[nodiscard]] bool GetEnableHiveProxyRuntimeFallback() const;
     TString GetPathDescriptionBackupFilePath() const;
     bool GetUseBinaryFormatForPathDescriptionBackup() const;
     bool GetUseBinaryFormatForTabletBootInfoBackup() const;
@@ -865,6 +877,16 @@ public:
     [[nodiscard]] bool GetUseRecreatedBlobMetasOnCleanup() const;
 
     [[nodiscard]] bool GetAllowGentlePreemptionForRebindVolumesAction() const;
+
+    [[nodiscard]] bool GetMixedBlocksFilterEnabled() const;
+
+    [[nodiscard]] bool GetWaitForFreshWritesBeforeFlushEnabled() const;
+
+    [[nodiscard]] ui64 GetMixedBlocksFilterRangesToLoadPerTx() const;
+
+    [[nodiscard]] TDuration GetMixedBlocksFilterAllowedCpuTimePerSecond() const;
+
+    [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
 };
 
 ui64 GetAllocationUnit(

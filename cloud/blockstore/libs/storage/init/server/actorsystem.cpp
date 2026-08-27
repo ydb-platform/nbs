@@ -140,25 +140,39 @@ public:
         // HiveProxy
         //
 
-        auto hiveProxy = CreateHiveProxy(
+        THiveProxyConfig hiveProxyConfig{
+            .PipeClientRetryCount =
+                Args.StorageConfig->GetPipeClientRetryCount(),
+            .PipeClientMinRetryTime =
+                Args.StorageConfig->GetPipeClientMinRetryTime(),
+            .HiveLockExpireTimeout =
+                Args.StorageConfig->GetHiveLockExpireTimeout(),
+            .LogComponent = TBlockStoreComponents::HIVE_PROXY,
+            .TabletBootInfoBackupFilePath =
+                Args.TemporaryServer
+                    ? ""
+                    : Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+            .UseBinaryFormatForTabletBootInfoBackup =
+                Args.StorageConfig->GetUseBinaryFormatForTabletBootInfoBackup(),
+            .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
+            .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
+            .GoldenTabletBootInfoBackupFilePath =
+                Args.TemporaryServer
+                    ? ""
+                    : Args.StorageConfig
+                          ->GetGoldenTabletBootInfoBackupFilePath(),
+        };
+
+        if (Args.StorageConfig->GetEnableHiveProxyRuntimeFallback()) {
+            auto storageConfig = Args.StorageConfig;
+            hiveProxyConfig.FallbackModeProvider = [storageConfig]
             {
-                .PipeClientRetryCount =
-                    Args.StorageConfig->GetPipeClientRetryCount(),
-                .PipeClientMinRetryTime =
-                    Args.StorageConfig->GetPipeClientMinRetryTime(),
-                .HiveLockExpireTimeout =
-                    Args.StorageConfig->GetHiveLockExpireTimeout(),
-                .LogComponent = TBlockStoreComponents::HIVE_PROXY,
-                .TabletBootInfoBackupFilePath =
-                    Args.TemporaryServer
-                        ? ""
-                        : Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
-                .UseBinaryFormatForTabletBootInfoBackup =
-                    Args.StorageConfig->GetUseBinaryFormatForTabletBootInfoBackup(),
-                .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
-                .TenantHiveTabletId =
-                    Args.StorageConfig->GetTenantHiveTabletId(),
-            },
+                return storageConfig->GetHiveProxyFallbackMode();
+            };
+        }
+
+        auto hiveProxy = CreateHiveProxy(
+            std::move(hiveProxyConfig),
             appData->Counters->GetSubgroup("counters", "blockstore")
                 ->GetSubgroup("component", "service"));
 
@@ -621,6 +635,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
         storageConfig->GetConfigsDispatcherServiceEnabled();
     servicesMask.EnableViewerService =
         storageConfig->GetYdbViewerServiceEnabled();
+    servicesMask.EnableLoadService = storageConfig->GetEnableLoadActor();
 
     auto nodeId = sArgs.NodeId;
     auto onStart = [=] (IActorSystem& actorSystem) {

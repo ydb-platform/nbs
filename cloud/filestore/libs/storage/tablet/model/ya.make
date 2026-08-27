@@ -28,6 +28,8 @@ SRCS(
     layer.cpp
     metadata_cache.cpp
     mixed_blocks.cpp
+    node_access_stats.cpp
+    node_latency_stats.cpp
     node_ref.cpp
     node_session_stat.cpp
     operation.cpp
@@ -37,7 +39,6 @@ SRCS(
     read_ahead.cpp
     request_metrics.cpp
     shard_balancer.cpp
-    simple_template.cpp
     sparse_segment.cpp
     split_range.cpp
     throttler_logger.cpp

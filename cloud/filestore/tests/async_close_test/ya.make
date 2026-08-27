@@ -25,6 +25,7 @@ SET(QEMU_INSTANCE_COUNT 1)
 SET(FILESTORE_VHOST_ENDPOINT_COUNT 1)
 SET(VIRTIOFS_SERVER_COUNT 1)
 SET(QEMU_INVOKE_TEST NO)
+SET(VHOST_RESTART_INTERVAL 5)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)

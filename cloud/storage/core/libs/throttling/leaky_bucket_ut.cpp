@@ -103,6 +103,27 @@ Y_UNIT_TEST_SUITE(TLeakyBucketTest)
             lb.Register(now + SecondsToDuration(delay), 42.0));
     }
 
+    Y_UNIT_TEST(ShouldCalculatePostponeTimeWithoutChangingState)
+    {
+        TLeakyBucket lb(0.5, 0.5, 0);
+
+        const auto now = TInstant::Seconds(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, lb.Register(now, 0));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0.5,
+            lb.CalculatePostponeTime(now, 0.25));
+        UNIT_ASSERT_VALUES_EQUAL(0, lb.Budget());
+        UNIT_ASSERT_VALUES_EQUAL(0, lb.TimePassed());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0.5,
+            lb.CalculatePostponeTime(now, 0.25));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            lb.Register(now + TDuration::MilliSeconds(500), 0.25));
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyCalculateBoostedTimeBucket)
     {
         TBoostedTimeBucket lb(

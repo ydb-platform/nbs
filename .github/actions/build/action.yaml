@@ -84,7 +84,7 @@ runs:
             rm -rf /home/github/.ya/
         fi
     - name: Setup cache password file
-      shell: bash --noprofile --norc -eo pipefail -x {0}
+      shell: bash --noprofile --norc -eo pipefail {0}
       env:
         BAZEL_REMOTE_PASSWORD: ${{ inputs.bazel_remote_password }}
       run: |
@@ -333,7 +333,7 @@ runs:
       if: always()
       shell: bash
       run: df -h
-    
+
     - name: clean up
       if: always()
       shell: bash

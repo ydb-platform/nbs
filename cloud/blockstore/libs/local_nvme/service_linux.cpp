@@ -20,6 +20,7 @@
 #include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/scope.h>
+#include <util/stream/format.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
 #include <util/system/fs.h>
@@ -64,6 +65,42 @@ TString Join(TStringBuf delim, const R& range)
     }
 
     return ss.Str();
+}
+
+TString FormatLockdownIds(const TVector<ui8>& ids)
+{
+    TStringBuilder out;
+    out << "[";
+
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if (i) {
+            out << ", ";
+        }
+        out << Hex(ids[i], HF_ADDX);
+    }
+
+    out << "]";
+    return out;
+}
+
+TString FormatLockdownScopeState(const NNvme::TLockdownScopeState& state)
+{
+    return TStringBuilder()
+           << "{supported: " << FormatLockdownIds(state.Supported)
+           << ", prohibited: " << FormatLockdownIds(state.Prohibited) << "}";
+}
+
+TString FormatLockdownState(const NNvme::TLockdownState& state)
+{
+    if (!state.Supported) {
+        return "{supported: false}";
+    }
+
+    return TStringBuilder()
+           << "{supported: true"
+           << ", adminCmd: " << FormatLockdownScopeState(state.AdminCmd)
+           << ", featureId: " << FormatLockdownScopeState(state.FeatureId)
+           << "}";
 }
 
 // // xx:xx.x -> 0000:xx:xx.x
@@ -233,6 +270,12 @@ private:
         -> TResultOrError<TString>;
     auto GetDevice(const TSerialNumber& serialNumber)
         -> std::optional<NProto::TNVMeDevice>;
+
+    auto EnsureLockdown(const NProto::TNVMeDevice& device) const
+        -> NProto::TError;
+
+    auto GetLockdownState(const NProto::TNVMeDevice& device) const
+        -> TResultOrError<NNvme::TLockdownState>;
 
     auto StopImpl() -> TFuture<void>;
 
@@ -935,6 +978,13 @@ auto TLocalNVMeService::AcquireDeviceImpl(const TSerialNumber& serialNumber)
 
     UpdateStateCache();
 
+    if (auto error = EnsureLockdown(*device); HasError(error)) {
+        STORAGE_ERROR(
+            "Failed to ensure lockdown on NVMe device "
+            << serialNumber.Quote() << ": " << FormatError(error))
+        return error;
+    }
+
     if (auto error = BindDeviceToDriver(*device, "vfio-pci"); HasError(error)) {
         return error;
     }
@@ -1111,6 +1161,98 @@ auto TLocalNVMeService::GetDevice(const TSerialNumber& serialNumber)
     return *device;
 }
 
+auto TLocalNVMeService::GetLockdownState(
+    const NProto::TNVMeDevice& device) const
+    -> TResultOrError<NNvme::TLockdownState>
+{
+    auto r = SafeExecute<TResultOrError<NNvme::TLockdownState>>(
+        [&]
+        {
+            const auto ctrlPath = GetNVMeCtrlPath(device);
+
+            return NVMeManager->GetLockdownState(ctrlPath);
+        });
+
+    if (HasError(r)) {
+        return MakeError(
+            r.GetError().GetCode(),
+            TStringBuilder() << "Failed to get NVMe lockdown state for device "
+                             << device.GetSerialNumber().Quote() << ": "
+                             << FormatError(r.GetError()));
+    }
+
+    return r;
+}
+
+auto TLocalNVMeService::EnsureLockdown(const NProto::TNVMeDevice& device) const
+    -> NProto::TError
+{
+    const auto lockdownConfig = Config->GetLockdownConfig();
+
+    if (!lockdownConfig) {
+        return MakeError(S_FALSE, "Lockdown is not configured");
+    }
+
+    const auto& serialNumber = device.GetSerialNumber();
+
+    {
+        auto [state, error] = GetLockdownState(device);
+        if (HasError(error)) {
+            return error;
+        }
+
+        if (!state.Supported) {
+            STORAGE_INFO(
+                "Skip NVMe lockdown on device "
+                << serialNumber.Quote() << ": lockdown is not supported");
+
+            return MakeError(S_FALSE, "Lockdown is not supported");
+        }
+
+        STORAGE_INFO(
+            "Ensuring lockdown on NVMe device "
+            << serialNumber.Quote()
+            << ", state before: " << FormatLockdownState(state));
+    }
+
+    {
+        auto error = SafeExecute<NProto::TError>(
+            [&]
+            {
+                const auto ctrlPath = GetNVMeCtrlPath(device);
+
+                return NVMeManager->EnsureLockdown(
+                    ctrlPath,
+                    {
+                        .AllowedAdminOpcodes =
+                            lockdownConfig->GetAllowedAdminOpcodes(),
+                        .AllowedSetFeatureIds =
+                            lockdownConfig->GetAllowedSetFeatureIds(),
+                        .BlockLockdownCommand =
+                            lockdownConfig->GetBlockLockdownCommand(),
+                    });
+            });
+
+        if (HasError(error)) {
+            return error;
+        }
+    }
+
+    {
+        auto [state, error] = GetLockdownState(device);
+        if (HasError(error)) {
+            return error;
+        }
+
+        STORAGE_INFO(
+            "Lockdown ensured on NVMe device "
+            << serialNumber.Quote()
+            << ", state after: " << FormatLockdownState(state));
+    }
+
+    return {};
+}
+
 auto TLocalNVMeService::ReleaseDeviceImpl(const TSerialNumber& serialNumber)
     -> NProto::TError
 {
@@ -1131,8 +1273,16 @@ auto TLocalNVMeService::ReleaseDeviceImpl(const TSerialNumber& serialNumber)
         if (HasError(error)) {
             return error;
         }
-
         device = newDevice;
+    }
+
+    if (auto [state, error] = GetLockdownState(*device); HasError(error)) {
+        STORAGE_ERROR(FormatError(error));
+    } else {
+        STORAGE_INFO(
+            "NVMe lockdown state for device "
+            << device->GetSerialNumber().Quote() << ": "
+            << FormatLockdownState(state));
     }
 
     if (auto error = SanitizeNVMeDevice(*device); HasError(error)) {

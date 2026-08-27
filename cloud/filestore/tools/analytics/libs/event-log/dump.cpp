@@ -33,18 +33,27 @@ TVector<ui32> GetItemOrder(const NProto::TProfileLogRecord& record)
     return order;
 }
 
-TString RequestName(const ui32 requestType)
+ui32 NormalizeRequestTypeLegacy(ui32 requestType)
 {
+    switch (requestType) {
+        case 1001:  // legacy EFileStoreFuseRequest::Flush
+            return static_cast<ui32>(EFileStoreRequest::FuseFlush);
+        case 1002:  // legacy EFileStoreFuseRequest::Fsync
+            return static_cast<ui32>(EFileStoreRequest::FuseFsync);
+        case 1003:  // legacy EFileStoreFuseRequest::FsyncDir
+            return static_cast<ui32>(EFileStoreRequest::FuseFsyncDir);
+        default:
+            return requestType;
+    }
+}
+
+TString RequestName(const ui32 rawRequestType)
+{
+    const ui32 requestType = NormalizeRequestTypeLegacy(rawRequestType);
     TString name;
     if (requestType < static_cast<ui32>(EFileStoreRequest::MAX)) {
         name = GetFileStoreRequestName(
             static_cast<EFileStoreRequest>(requestType));
-    } else if (
-        requestType > static_cast<ui32>(NFuse::EFileStoreFuseRequest::MIN) &&
-        requestType < static_cast<ui32>(NFuse::EFileStoreFuseRequest::MAX))
-    {
-        name = GetFileStoreFuseRequestName(
-            static_cast<NFuse::EFileStoreFuseRequest>(requestType));
     } else if (
         requestType > static_cast<ui32>(NStorage::EFileStoreSystemRequest::MIN) &&
         requestType < static_cast<ui32>(NStorage::EFileStoreSystemRequest::MAX))
@@ -66,12 +75,6 @@ TVector<TRequestTypeInfo> GetRequestTypes()
     TVector<TRequestTypeInfo> ans;
     ans.reserve(2 * FileStoreRequestCount);
     for (ui32 i = 0; i < static_cast<ui32>(EFileStoreRequest::MAX); ++i) {
-        ans.emplace_back(i, RequestName(i));
-    }
-    for (ui32 i = static_cast<ui32>(NFuse::EFileStoreFuseRequest::MIN) + 1;
-         i < static_cast<ui32>(NFuse::EFileStoreFuseRequest::MAX);
-         ++i)
-    {
         ans.emplace_back(i, RequestName(i));
     }
     for (ui32 i = static_cast<ui32>(NStorage::EFileStoreSystemRequest::MIN) + 1;

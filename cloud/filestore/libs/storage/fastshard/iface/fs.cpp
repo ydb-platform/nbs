@@ -2,6 +2,8 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <util/stream/output.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +32,24 @@ struct TFileSystemShardStub: IFileSystemShard
     FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
 
 #undef FAST_SHARD_DEFINE_METHOD
+
+    [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> CollectStats(
+        TFileSystemShardStats* stats) const override
+    {
+        Y_UNUSED(stats);
+
+        return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    }
+
+    void DumpLayoutHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+
+    void DumpLayoutJson(IOutputStream& out) const override
+    {
+        out << "{}";
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

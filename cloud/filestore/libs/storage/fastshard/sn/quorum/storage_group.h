@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
 
+#include <util/generic/buffer.h>
 #include <util/generic/vector.h>
 
 #include <memory>
@@ -20,7 +21,7 @@ struct TPageGroupRef
 struct TPageGroup
 {
     ui64 FirstPageNo = 0;
-    TVector<TString> Content;
+    TVector<TBuffer> Content;
 };
 
 /**
@@ -40,7 +41,8 @@ struct IStorageGroup
     virtual NProto::TError ReleaseDevices() = 0;
     virtual NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
-        TVector<TPageGroup> pageGroups) = 0;
+        TVector<TPageGroup> pageGroups,
+        ui64 lsn) = 0;
     virtual NProto::TError ReadPages(
         NProto::TDeviceRequestHeaders headers,
         const TVector<TPageGroupRef>& pageGroupRefs,

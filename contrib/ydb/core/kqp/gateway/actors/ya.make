@@ -9,7 +9,7 @@ PEERDIR(
     contrib/ydb/core/tx/tx_proxy
     contrib/ydb/core/kqp/common
     contrib/ydb/core/kqp/provider
-    contrib/ydb/library/yql/providers/common/gateway
+    yql/essentials/providers/common/gateway
     contrib/ydb/core/tx/schemeshard
     contrib/ydb/library/actors/core
     contrib/ydb/library/services

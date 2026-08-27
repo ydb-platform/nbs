@@ -233,12 +233,15 @@ NProto::EVolumeBinding TVolumeInfo::OnMountStarted(
     NProto::EPreemptionSource preemptionSource,
     NProto::EVolumeBinding explicitBindingType,
     NProto::EVolumeMountMode clientMode,
-    bool applyLocalVolumesLimit)
+    bool applyLocalVolumesLimit,
+    bool forceRemoteBinding)
 {
-    auto bindingType = CalcVolumeBinding(
-        preemptionSource,
-        explicitBindingType,
-        clientMode);
+    auto bindingType = forceRemoteBinding
+        ? NProto::BINDING_REMOTE
+        : CalcVolumeBinding(
+              preemptionSource,
+              explicitBindingType,
+              clientMode);
 
     if (applyLocalVolumesLimit &&
         bindingType != BindingType &&

@@ -4,6 +4,7 @@
 
 #include <contrib/ydb/core/base/subdomain.h>
 #include <contrib/ydb/core/persqueue/config/config.h>
+#include <contrib/ydb/core/kesus/tablet/events.h>
 
 namespace {
 
@@ -53,7 +54,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TAlterKesus TConfigureParts"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:
@@ -150,7 +151,7 @@ private:
     TString DebugHint() const override {
         return TStringBuilder()
                 << "TAlterKesus TPropose"
-                << " operationId#" << OperationId;
+                << " operationId# " << OperationId;
     }
 
 public:

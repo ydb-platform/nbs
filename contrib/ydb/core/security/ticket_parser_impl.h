@@ -28,6 +28,8 @@
 #include <util/stream/file.h>
 #include <util/string/vector.h>
 
+#include <util/string/join.h>
+
 namespace NKikimr {
 
 inline bool IsRetryableGrpcError(const NYdbGrpc::TGrpcStatus& status) {
@@ -184,13 +186,13 @@ protected:
                     CurrentDelay = Min(CurrentDelay * scaleFactor, ticketParser->MaxErrorRefreshTime - ticketParser->MinErrorRefreshTime);
                 }
             } else {
-                SetRefreshTime(now, ticketParser->RefreshTime - ticketParser->RefreshTime / 2);
+                SetRefreshTime(now, ticketParser->RefreshTime);
             }
         }
 
         template <typename T>
         void SetOkRefreshTime(TTicketParserImpl<T>* ticketParser, TInstant now) {
-            SetRefreshTime(now, ticketParser->RefreshTime - ticketParser->RefreshTime / 2);
+            SetRefreshTime(now, ticketParser->RefreshTime);
         }
 
         void SetRefreshTime(TInstant now, TDuration delay) {
@@ -273,6 +275,9 @@ protected:
             if (TokenType == TDerived::ETokenType::NebiusAccessService) {
                 return SanitizeNebiusTicket(Ticket);
             }
+            if (TokenType == TDerived::ETokenType::Login) {
+                return NLogin::TLoginProvider::SanitizeJwtToken(Ticket);
+            }
             return MaskTicket(Ticket);
         }
     };
@@ -343,6 +348,7 @@ private:
     TPriorityQueue<TTokenRefreshRecord> RefreshQueue;
     std::unordered_map<TString, NLogin::TLoginProvider> LoginProviders;
     bool UseLoginProvider = false;
+    std::unordered_map<TString, std::pair<TInstant, std::unordered_set<TString>>> DeferredLoginTokens;
 
     TDerived* GetDerived() {
         return static_cast<TDerived*>(this);
@@ -756,9 +762,49 @@ private:
     }
 
     template <typename TTokenRecord>
+    const TVector<TString> GetLookupDatabases(const TTokenRecord& record) {
+        TVector<TString> result;
+        result.push_back(DomainName);
+        if (!Config.GetDomainLoginOnly() && !record.Database.empty() && record.Database != DomainName) {
+            result.push_back(record.Database);
+        }
+        std::reverse(result.begin(), result.end());
+        return result;
+    }
+
+    template <typename TTokenRecord>
     bool CanInitLoginToken(const TString& key, TTokenRecord& record) {
         if (UseLoginProvider && (record.TokenType == TDerived::ETokenType::Unknown || record.TokenType == TDerived::ETokenType::Login)) {
-            TString database = Config.GetDomainLoginOnly() ? DomainName : record.Database;
+            if (record.TokenType == TDerived::ETokenType::Unknown) {
+                if (NLogin::TLoginProvider::CanDecodeToken(record.Ticket)) {
+                    record.TokenType = TDerived::ETokenType::Login;
+                } else {
+                    return false;
+                }
+            }
+            // Lookup the token in the login provider for the target database, with the possible fallback to the root (domain) database.
+            //
+            // Target database could be unspecified (some anonymous or backward-compatible mode).
+            // Target database may be the same as the root database.
+            //
+            // In a special case, when DomainLoginOnly = false and a user from the root database attempts to
+            // access a tenant database, target database must be selected between the two candidates: tenant and the root,
+            // based on the database (or audience) embedded in the token itself.
+            auto database = NLogin::TLoginProvider::GetTokenAudience(record.Ticket);
+            BLOG_TRACE("CanInitLoginToken, domain db " << DomainName << ", request db " << record.Database
+                << ", token db " << database << ", DomainLoginOnly " << Config.GetDomainLoginOnly()
+            );
+            if (database.empty()) {
+                database = DomainName;
+            }
+            const auto& lookupDatabases = GetLookupDatabases(record);
+            BLOG_TRACE("CanInitLoginToken, target database candidates(" << lookupDatabases.size() << "): " << JoinSeq(", ", lookupDatabases));
+            if (std::find(lookupDatabases.begin(), lookupDatabases.end(), database) == lookupDatabases.end()) {
+                SetError(key, record, {.Message = "Wrong audience"});
+                CounterTicketsLogin->Inc();
+                BLOG_TRACE("CanInitLoginToken, A1 error Wrong audience");
+                return true;
+            }
             auto itLoginProvider = LoginProviders.find(database);
             if (itLoginProvider != LoginProviders.end()) {
                 NLogin::TLoginProvider& loginProvider(itLoginProvider->second);
@@ -768,8 +814,10 @@ private:
                         record.TokenType = TDerived::ETokenType::Login;
                         SetError(key, record, {.Message = response.Error, .Retryable = response.ErrorRetryable});
                         CounterTicketsLogin->Inc();
+                        BLOG_TRACE("CanInitLoginToken, database " << database << ", A2 error " << response.Error);
                         return true;
                     }
+                    BLOG_TRACE("CanInitLoginToken, database " << database << ", A3 error");
                 } else {
                     record.TokenType = TDerived::ETokenType::Login;
                     record.ExpireTime = ToInstant(response.ExpiresAt);
@@ -793,14 +841,31 @@ private:
                         .GroupSIDs = groups,
                         .AuthType = record.GetAuthType()
                     }));
+                    BLOG_TRACE("CanInitLoginToken, database " << database << ", A4 success");
                     return true;
                 }
             } else {
                 if (record.TokenType == TDerived::ETokenType::Login) {
-                    SetError(key, record, {.Message = "Login state is not available yet", .Retryable = false});
-                    CounterTicketsLogin->Inc();
+                    auto it = DeferredLoginTokens.find(database);
+                    if (it != DeferredLoginTokens.end()) {
+                        auto& tokenKeys = it->second.second;
+                        static constexpr ui64 MAX_NUMBER_DEFERRED_TOKENS = 100'000;
+                        if (tokenKeys.size() < MAX_NUMBER_DEFERRED_TOKENS) {
+                            tokenKeys.insert(key);
+                        } else {
+                            SetError(key, record, {.Message = "Login state is not available yet", .Retryable = false});
+                            CounterTicketsLogin->Inc();
+                            BLOG_TRACE("CanInitLoginToken, database " << database << ", login state is not available yet, cannot deffer token (" << MaskTicket(record.Ticket) << ")");
+                            return true;
+                        }
+                    } else {
+                        static const ui64 NUM_SECONDS_TO_WAIT_FOR_SECURITY_STATE_UPDATE = std::max(RefreshPeriod.Seconds(), 2UL);
+                        DeferredLoginTokens.insert(std::make_pair(database, std::make_pair(TlsActivationContext->Now() + TDuration::Seconds(NUM_SECONDS_TO_WAIT_FOR_SECURITY_STATE_UPDATE), std::unordered_set<TString>({key}))));
+                    }
+                    BLOG_TRACE("CanInitLoginToken, database " << database << ", login state is not available yet, deffer token (" << MaskTicket(record.Ticket) << ")");
                     return true;
                 }
+                BLOG_TRACE("CanInitLoginToken, database " << database << ", A6 error");
             }
         }
         return false;
@@ -818,6 +883,7 @@ private:
     template <typename TTokenRecord>
     void SendRequestToLdap(const TString& key, TTokenRecord& record, const TString& user) {
         if (Config.HasLdapAuthentication()) {
+            ++record.ResponsesLeft;
             Send(MakeLdapAuthProviderID(), new TEvLdapAuthProvider::TEvEnrichGroupsRequest(key, user));
         } else {
             SetError(key, record, {.Message = "LdapAuthProvider is not initialized", .Retryable = false});
@@ -834,6 +900,7 @@ private:
         } else {
             const auto& key = it->first;
             auto& record = it->second;
+            record.ResponsesLeft--;
             if (response->Status == TEvLdapAuthProvider::EStatus::SUCCESS) {
                 const TString domain {"@" + Config.GetLdapAuthenticationDomain()};
                 TVector<NACLib::TSID> groups(response->Groups.cbegin(), response->Groups.cend());
@@ -849,7 +916,9 @@ private:
             } else {
                 SetError(key, record, response->Error);
             }
-            Respond(record);
+            if (record.ResponsesLeft == 0) {
+                Respond(record);
+            }
         }
     }
 
@@ -1046,7 +1115,7 @@ private:
             } else {
                 if (record.ResponsesLeft == 0 && (record.TokenType == TDerived::ETokenType::Unknown || record.TokenType == TDerived::ETokenType::AccessService || record.TokenType == TDerived::ETokenType::NebiusAccessService || record.TokenType == TDerived::ETokenType::ApiKey)) {
                     bool retryable = IsRetryableGrpcError(response->Status);
-                    SetError(key, record, {.Message = response->Status.Msg, .Retryable = retryable});
+                    SetError(key, record, {.Message = TString{response->Status.Msg}, .Retryable = retryable});
                 }
             }
             if (record.ResponsesLeft == 0) {
@@ -1075,7 +1144,7 @@ private:
             auto& record = it->second;
             record.ResponsesLeft--;
             if (!ev->Get()->Status.Ok()) {
-                SetError(key, record, {.Message = ev->Get()->Status.Msg});
+                SetError(key, record, {.Message = TString{ev->Get()->Status.Msg}});
             } else {
                 GetDerived()->SetToken(key, record, ev);
             }
@@ -1097,7 +1166,7 @@ private:
             auto& record = it->second;
             record.ResponsesLeft--;
             if (!ev->Get()->Status.Ok()) {
-                SetError(key, record, {.Message = ev->Get()->Status.Msg});
+                SetError(key, record, {.Message = TString{ev->Get()->Status.Msg}});
             } else {
                 SetToken(key, record, new NACLib::TUserToken(record.Ticket, ev->Get()->Response.name() + "@" + ServiceDomain, {}));
             }
@@ -1265,7 +1334,7 @@ private:
                     }
                 }
             } else {
-                SetAccessServiceBulkAuthorizeError(key, record, response->Status.Msg, IsRetryableGrpcError(response->Status));
+                SetAccessServiceBulkAuthorizeError(key, record, TString{response->Status.Msg}, IsRetryableGrpcError(response->Status));
             }
             if (record.ResponsesLeft == 0) {
                 Respond(record);
@@ -1346,7 +1415,7 @@ private:
                     }
                 }
             } else {
-                SetAccessServiceBulkAuthorizeError(key, record, response->Status.Msg, IsRetryableGrpcError(response->Status));
+                SetAccessServiceBulkAuthorizeError(key, record, TString{response->Status.Msg}, IsRetryableGrpcError(response->Status));
             }
             Respond(record);
         }
@@ -1386,7 +1455,7 @@ private:
                     }
                 } else {
                     bool retryable = IsRetryableGrpcError(response->Status);
-                    itPermission->second.Error = {.Message = response->Status.Msg, .Retryable = retryable};
+                    itPermission->second.Error = {.Message = TString{response->Status.Msg}, .Retryable = retryable};
                     if (itPermission->second.Subject.empty() || !retryable) {
                         itPermission->second.Subject.clear();
                         BLOG_TRACE("Ticket "
@@ -1471,12 +1540,32 @@ private:
         auto& loginProvider = LoginProviders[ev->Get()->SecurityState.GetAudience()];
         loginProvider.UpdateSecurityState(ev->Get()->SecurityState);
         BLOG_D("Updated state for " << loginProvider.Audience << " keys " << GetLoginProviderKeys(loginProvider));
+
+        auto it = DeferredLoginTokens.find(loginProvider.Audience);
+        if (it != DeferredLoginTokens.end()) {
+            BLOG_TRACE("Handle deferred tokens for database: " << loginProvider.Audience);
+            for (const TString& key : it->second.second) {
+                auto& userTokens = GetDerived()->GetUserTokens();
+                auto tokenIt = userTokens.find(key);
+                if (tokenIt == userTokens.end()) {
+                    continue;
+                }
+                auto& record = tokenIt->second;
+                CanInitLoginToken(key, record);
+                if (record.ResponsesLeft == 0) {
+                    Respond(record);
+                }
+            }
+            DeferredLoginTokens.erase(it);
+        }
     }
 
     void Handle(TEvTicketParser::TEvDiscardTicket::TPtr& ev) {
         auto& userTokens = GetDerived()->GetUserTokens();
         userTokens.erase(ev->Get()->Ticket);
     }
+
+    void RefreshDeferredLoginTokens(const TInstant& now);
 
     void HandleRefresh() {
         TInstant now = TlsActivationContext->Now();
@@ -1503,6 +1592,7 @@ private:
                 userTokens.erase(it);
             }
         }
+        RefreshDeferredLoginTokens(now);
         Schedule(RefreshPeriod, new NActors::TEvents::TEvWakeup());
     }
 
@@ -1778,12 +1868,16 @@ protected:
     void SetError(const TString& key, TTokenRecord& record, const TEvTicketParser::TError& error) {
         record.Error = error;
         TInstant now = TlsActivationContext->Now();
+        TStringBuilder errorLogMessage;
+        if (error.HasLogMessage()) {
+            errorLogMessage << " (" << error.LogMessage << ")";
+        }
         if (record.Error.Retryable) {
             record.ExpireTime = GetExpireTime(record, now);
             record.SetErrorRefreshTime(this, now);
             CounterTicketsErrorsRetryable->Inc();
             BLOG_D("Ticket " << record.GetMaskedTicket() << " ("
-                        << record.PeerName << ") has now retryable error message '" << error.Message << "'");
+                        << record.PeerName << ") has now retryable error message '" << error.Message << errorLogMessage << "'");
             if (record.RefreshRetryableErrorImmediately) {
                 record.RefreshRetryableErrorImmediately = false;
                 GetDerived()->CanRefreshTicket(key, record);
@@ -1796,7 +1890,7 @@ protected:
             record.SetOkRefreshTime(this, now);
             CounterTicketsErrorsPermanent->Inc();
             BLOG_D("Ticket " << record.GetMaskedTicket() << " ("
-                        << record.PeerName << ") has now permanent error message '" << error.Message << "'");
+                        << record.PeerName << ") has now permanent error message '" << error.Message << errorLogMessage << "'");
         }
         CounterTicketsErrors->Inc();
         record.IsLowAccessServiceRequestPriority = true;
@@ -1878,7 +1972,7 @@ protected:
 
     template <typename TTokenRecord>
     bool CanRefreshLoginTicket(const TTokenRecord& record) {
-        return record.TokenType == TDerived::ETokenType::Login && record.Error.empty();
+        return record.TokenType == TDerived::ETokenType::Login && record.Error.Retryable;
     }
 
     template <typename TTokenRecord>
@@ -1899,30 +1993,41 @@ protected:
 
     template <typename TTokenRecord>
     bool RefreshLoginTicket(const TString& key, TTokenRecord& record) {
+        if (record.Error.empty()) {
+            GetDerived()->ResetTokenRecord(record);
+            const TString userSID = record.GetToken()->GetUserSID();
+            if (record.IsExternalAuthEnabled()) {
+                return RefreshTicketViaExternalAuthProvider(key, record);
+            }
+            auto database = NLogin::TLoginProvider::GetTokenAudience(record.Ticket);
+            if (database.empty()) {
+                database = DomainName;
+            }
+            const auto& lookupDatabases = GetLookupDatabases(record);
+            if (std::find(lookupDatabases.begin(), lookupDatabases.end(), database) == lookupDatabases.end()) {
+                return false;
+            }
+            auto itLoginProvider = LoginProviders.find(database);
+            if (itLoginProvider == LoginProviders.end()) {
+                return false;
+            }
+            NLogin::TLoginProvider& loginProvider(itLoginProvider->second);
+            if (loginProvider.CheckUserExists(userSID)) {
+                const std::vector<TString> providerGroups = loginProvider.GetGroupsMembership(userSID);
+                const TVector<NACLib::TSID> groups(providerGroups.begin(), providerGroups.end());
+                SetToken(key, record, new NACLib::TUserToken({
+                                        .OriginalUserToken = record.Ticket,
+                                        .UserSID = userSID,
+                                        .GroupSIDs = groups,
+                                        .AuthType = record.GetAuthType()
+                                    }));
+            } else {
+                SetError(key, record, {.Message = "User not found", .Retryable = false});
+            }
+            return true;
+        }
         GetDerived()->ResetTokenRecord(record);
-        const TString userSID = record.GetToken()->GetUserSID();
-        if (record.IsExternalAuthEnabled()) {
-            return RefreshTicketViaExternalAuthProvider(key, record);
-        }
-        const TString& database = Config.GetDomainLoginOnly() ? DomainName : record.Database;
-        auto itLoginProvider = LoginProviders.find(database);
-        if (itLoginProvider == LoginProviders.end()) {
-            return false;
-        }
-        NLogin::TLoginProvider& loginProvider(itLoginProvider->second);
-        if (loginProvider.CheckUserExists(userSID)) {
-            const std::vector<TString> providerGroups = loginProvider.GetGroupsMembership(userSID);
-            const TVector<NACLib::TSID> groups(providerGroups.begin(), providerGroups.end());
-            SetToken(key, record, new NACLib::TUserToken({
-                                    .OriginalUserToken = record.Ticket,
-                                    .UserSID = userSID,
-                                    .GroupSIDs = groups,
-                                    .AuthType = record.GetAuthType()
-                                }));
-        } else {
-            SetError(key, record, {.Message = "User not found", .Retryable = false});
-        }
-        return true;
+        return CanInitLoginToken(key, record);
     }
 
     template <typename TTokenRecord>
@@ -2192,5 +2297,39 @@ public:
         , CertificateChecker(settings.CertificateAuthValues)
     {}
 };
+
+template <typename TDerived>
+void TTicketParserImpl<TDerived>::RefreshDeferredLoginTokens(const TInstant& now) {
+    static constexpr ui32 FINISH_WAITING_FOR_LOGIN_PROVIDERS_NUM = 10;
+    TVector<TString> finishWaitingForLoginProviders;
+    finishWaitingForLoginProviders.reserve(FINISH_WAITING_FOR_LOGIN_PROVIDERS_NUM);
+    for (const auto& [database, deferredTokens] : DeferredLoginTokens) {
+        const auto& expiredTimeWaitingForLoginProvider = deferredTokens.first;
+        if (expiredTimeWaitingForLoginProvider <= now) {
+            finishWaitingForLoginProviders.push_back(database);
+            for (const TString& key : deferredTokens.second) {
+                auto& userTokens = GetDerived()->GetUserTokens();
+                auto it = userTokens.find(key);
+                if (it == userTokens.end()) {
+                    continue;
+                }
+                auto& record = it->second;
+                SetError(key, record, {.Message = "Login state is not available", .Retryable = false});
+                CounterTicketsLogin->Inc();
+                Respond(record);
+            }
+        }
+    }
+    TStringBuilder deferredLoginTokensMessage;
+    deferredLoginTokensMessage << "Finish waiting for login providers for " << finishWaitingForLoginProviders.size() << " databases: ";
+    for (size_t i = 0; i < finishWaitingForLoginProviders.size() && i < FINISH_WAITING_FOR_LOGIN_PROVIDERS_NUM; ++i) {
+        const TString& key = finishWaitingForLoginProviders[i];
+        deferredLoginTokensMessage << key << ", ";
+        DeferredLoginTokens.erase(key);
+    }
+    if (!finishWaitingForLoginProviders.empty()) {
+        BLOG_TRACE(deferredLoginTokensMessage);
+    }
+}
 
 }

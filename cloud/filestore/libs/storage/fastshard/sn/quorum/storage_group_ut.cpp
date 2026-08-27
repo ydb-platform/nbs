@@ -120,14 +120,16 @@ TEST(NaiveGroupTest, MirrorsWrites)
             TStorageFixture fx;
 
             {
-                TVector<TPageGroup> pageGroups = {{
-                    .FirstPageNo = 111,
-                    .Content = {"page1", "page2"},
-                }};
+                TPageGroup pageGroup{.FirstPageNo = 111};
+                pageGroup.Content.emplace_back("page1", 5U /* len */);
+                pageGroup.Content.emplace_back("page2", 5U /* len */);
+                TVector<TPageGroup> pageGroups;
+                pageGroups.push_back(std::move(pageGroup));
 
                 auto error = fx.Group->WriteLogRecord(
                     defaultHeaders,
-                    std::move(pageGroups));
+                    std::move(pageGroups),
+                    1234 /* lsn */);
                 EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
             }
 
@@ -136,6 +138,7 @@ TEST(NaiveGroupTest, MirrorsWrites)
                 EXPECT_EQ(1U, sn->WriteCalls.size());
                 EXPECT_EQ(fx.DeviceUUIDs[i], sn->WriteCalls[0].GetDeviceUUID());
                 EXPECT_EQ(1U, sn->WriteCalls[0].PageGroupsSize());
+                EXPECT_EQ(1234U, sn->WriteCalls[0].GetLogSequenceNumber());
                 const auto& pg = sn->WriteCalls[0].GetPageGroups(0);
                 EXPECT_EQ(111U, pg.GetFirstPageNo());
                 EXPECT_EQ(2U, pg.ContentSize());
@@ -196,9 +199,10 @@ TEST(NaiveGroupTest, RoundRobinsRead)
                             pageGroups[j].Content.size());
                         for (ui64 k = 0; k < pageGroups[j].Content.size(); ++k)
                         {
-                            EXPECT_STREQ(
-                                epg.GetContent(k).c_str(),
-                                pageGroups[j].Content[k].c_str());
+                            const auto& c = pageGroups[j].Content[k];
+                            EXPECT_EQ(
+                                epg.GetContent(k),
+                                TString(c.Data(), c.Size()));
                         }
                     }
                 }

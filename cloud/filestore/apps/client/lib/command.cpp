@@ -15,6 +15,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/guid.h>
+#include <util/generic/scope.h>
 #include <util/system/env.h>
 #include <util/system/fs.h>
 #include <util/system/sysstat.h>
@@ -123,6 +124,7 @@ int TCommand::Run(int argc, char** argv)
 
     Init();
     Start();
+    Y_DEFER { Stop(); };
 
     if (!Execute()) {
         // wait until operation completed
@@ -132,8 +134,6 @@ int TCommand::Run(int argc, char** argv)
             }
         }
     }
-
-    Stop();
 
     return ProgramShouldContinue.GetReturnCode();
 }

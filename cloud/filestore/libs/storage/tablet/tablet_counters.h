@@ -5,6 +5,7 @@
 #include "tablet_tx.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/histogram.h>
+#include <cloud/filestore/libs/diagnostics/metrics/key.h>
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
 
@@ -94,6 +95,7 @@ TTabletCountersPtr CreateIndexTabletCounters();
     xxx(GetNodeAttrInShard,                             __VA_ARGS__)           \
     xxx(CreateHandle,                                   __VA_ARGS__)           \
     xxx(CreateHandleInShard,                            __VA_ARGS__)           \
+    xxx(ConfirmCreateHandle,                            __VA_ARGS__)           \
     xxx(DestroyHandle,                                  __VA_ARGS__)           \
     xxx(CreateNode,                                     __VA_ARGS__)           \
     xxx(CreateNodeInShard,                              __VA_ARGS__)           \
@@ -331,7 +333,13 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     NMetrics::IMetricsRegistryPtr FsRegistry;
     NMetrics::IMetricsRegistryPtr AggregatableFsRegistry;
 
+    // Keys of the registrations that hold FsRegistry alive, needed by ~TTabletMetrics().
+    NMetrics::TMetricKey MaxUsedQuotaKey;
+    NMetrics::TMetricKey ReadDataPostponedKey;
+    NMetrics::TMetricKey WriteDataPostponedKey;
+
     explicit TTabletMetrics(NMetrics::IMetricsRegistryPtr metricsRegistry);
+    ~TTabletMetrics();
 
     void Register(
         const TString& fsId,

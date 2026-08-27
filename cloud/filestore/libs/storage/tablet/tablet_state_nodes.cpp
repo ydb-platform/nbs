@@ -48,6 +48,12 @@ void TIndexTabletState::CreateNodeWithId(
 
     // so far symlink node has size
     UpdateUsedBlocksCount(db, attrs.GetSize(), 0);
+
+    UpdateQuotaUsage(
+        db,
+        attrs.GetQuotaId(),
+        static_cast<i64>(attrs.GetSize()),
+        1);
 }
 
 ui64 TIndexTabletState::CreateNode(
@@ -72,6 +78,28 @@ void TIndexTabletState::UpdateNode(
     const NProto::TNode& prevAttrs)
 {
     UpdateUsedBlocksCount(db, attrs.GetSize(), prevAttrs.GetSize());
+
+    const ui32 prevQuotaId = prevAttrs.GetQuotaId();
+    const ui32 newQuotaId = attrs.GetQuotaId();
+    if (prevQuotaId == newQuotaId) {
+        const i64 sizeDelta = static_cast<i64>(attrs.GetSize())
+            - static_cast<i64>(prevAttrs.GetSize());
+        UpdateQuotaUsage(db, newQuotaId, sizeDelta, 0);
+    } else {
+        // The node's QuotaId itself changed (attach/detach/reattach) - move
+        // its full usage from the old bucket to the new one rather than
+        // just applying the size delta to a single quota.
+        UpdateQuotaUsage(
+            db,
+            prevQuotaId,
+            -static_cast<i64>(prevAttrs.GetSize()),
+            -1);
+        UpdateQuotaUsage(
+            db,
+            newQuotaId,
+            static_cast<i64>(attrs.GetSize()),
+            1);
+    }
 
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, minCommitId);
     if (checkpointId == InvalidCommitId) {
@@ -111,6 +139,12 @@ NProto::TError TIndexTabletState::RemoveNode(
     DecrementUsedNodesCount(db);
 
     UpdateUsedBlocksCount(db, 0, node.Attrs.GetSize());
+
+    UpdateQuotaUsage(
+        db,
+        node.Attrs.GetQuotaId(),
+        -static_cast<i64>(node.Attrs.GetSize()),
+        -1);
 
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(node.NodeId, minCommitId);
     if (checkpointId != InvalidCommitId) {

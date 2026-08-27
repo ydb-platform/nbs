@@ -54,6 +54,8 @@ func newStorage(
 			config.GetS3Bucket(),
 			config.GetChunkBlobsS3KeyPrefix(),
 			tablesPath,
+			config.GetChunkBlobsTableName(),
+			config.GetChunkBlobsShadowTableName(),
 			metrics,
 			map[string]uint32{
 				"gzip": 0,
@@ -63,6 +65,8 @@ func newStorage(
 		return NewStorageYDB(
 			db,
 			tablesPath,
+			config.GetChunkBlobsTableName(),
+			config.GetChunkBlobsShadowTableName(),
 			metrics,
 			map[string]uint32{
 				"gzip": 0,
@@ -177,13 +181,13 @@ func chunkDataExistsInYDB(
 
 	res, err := db.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
+		pragma TablePathPrefix = "%[1]v";
 		declare $chunk_id as Utf8;
 
 		select *
-		from chunk_blobs
+		from %[2]v
 		where chunk_id = $chunk_id and referer = "";
-	`, db.AbsolutePath(config.GetStorageFolder())),
+	`, db.AbsolutePath(config.GetStorageFolder()), config.GetChunkBlobsTableName()),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 	)
 	require.NoError(t, err)
@@ -225,21 +229,64 @@ func deleteMetadata(
 
 	_, err := db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
+		pragma TablePathPrefix = "%[1]v";
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $chunk_id as Utf8;
 
-		delete from chunk_blobs
+		delete from %[2]v
 		where chunk_id = $chunk_id and
 			referer = "" and
 			refcnt <= 1;
-	`, db.AbsolutePath(config.GetStorageFolder())),
+	`, db.AbsolutePath(config.GetStorageFolder()), config.GetChunkBlobsTableName()),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 	)
 	require.NoError(t, err)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Checks that the shadow copy repeats the main table: the chunk has the
+// expected reference count in both (zero means the chunk is absent).
+func requireSameRefCount(
+	t *testing.T,
+	ctx context.Context,
+	db *persistence.YDBClient,
+	config *snapshot_config.SnapshotConfig,
+	chunkID string,
+	expected uint32,
+) {
+
+	tableNames := []string{
+		config.GetChunkBlobsTableName(),
+		config.GetChunkBlobsShadowTableName(),
+	}
+	for _, tableName := range tableNames {
+		res, err := db.ExecuteRO(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%[1]v";
+			declare $chunk_id as Utf8;
+
+			select refcnt
+			from %[2]v
+			where chunk_id = $chunk_id and referer = "";
+		`, db.AbsolutePath(config.GetStorageFolder()), tableName),
+			persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
+		)
+		require.NoError(t, err)
+		defer res.Close()
+
+		var refCount uint32
+		if res.NextResultSet(ctx) && res.NextRow() {
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("refcnt", &refCount),
+			)
+			require.NoError(t, err)
+		}
+		require.Equal(t, expected, refCount, "table %v", tableName)
+	}
+}
 
 func TestWriteIdempotency(t *testing.T) {
 	for _, testCase := range testCases() {
@@ -251,6 +298,58 @@ func TestWriteIdempotency(t *testing.T) {
 				_, _, err := writeTestChunk(t, ctx, storage)
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestWriteChunkWithOverriddenTableName(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, db, s3, config := setupEnvironment(t)
+
+			tableName := "chunk_blobs_v2"
+			config.ChunkBlobsTableName = &tableName
+			err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
+			require.NoError(t, err)
+
+			storage := newStorage(db, s3, config, testCase.useS3)
+
+			_, chunkID, err := writeTestChunk(t, ctx, storage)
+			require.NoError(t, err)
+			require.True(t, chunkDataExists(t, ctx, s3, db, config, chunkID, testCase.useS3))
+		})
+	}
+}
+
+func TestShadowTableRepeatsWrites(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, db, s3, config := setupEnvironment(t)
+
+			shadowTableName := "chunk_blobs_shadow"
+			config.ChunkBlobsShadowTableName = &shadowTableName
+			err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
+			require.NoError(t, err)
+
+			storage := newStorage(db, s3, config, testCase.useS3)
+
+			firstReferer, chunkID, err := writeTestChunk(t, ctx, storage)
+			require.NoError(t, err)
+			requireSameRefCount(t, ctx, db, config, chunkID, 1)
+
+			secondReferer := "secondReferer"
+			err = storage.RefChunk(ctx, secondReferer, chunkID)
+			require.NoError(t, err)
+			requireSameRefCount(t, ctx, db, config, chunkID, 2)
+
+			err = storage.UnrefChunk(ctx, firstReferer, chunkID)
+			require.NoError(t, err)
+			requireSameRefCount(t, ctx, db, config, chunkID, 1)
+
+			// The last unref deletes the chunk from both tables.
+			err = storage.UnrefChunk(ctx, secondReferer, chunkID)
+			require.NoError(t, err)
+			requireSameRefCount(t, ctx, db, config, chunkID, 0)
 		})
 	}
 }

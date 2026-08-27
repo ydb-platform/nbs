@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/fault_injection.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_request_processor.h>
 #include <cloud/blockstore/libs/diagnostics/probes.h>
@@ -107,9 +108,9 @@
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_reader.h>
-#include <cloud/storage/core/libs/version/version.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
+#include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/lwtrace/probes.h>
@@ -297,6 +298,8 @@ void TBootstrapBase::Init()
         ->GetSubgroup("counters", "blockstore");
 
     auto serverGroup = rootGroup->GetSubgroup("component", "server");
+    auto volumeCriticalEventsGroup =
+        rootGroup->GetSubgroup("component", "critical_events");
     auto revisionGroup = serverGroup->GetSubgroup("revision", GetFullVersionString());
 
     auto versionCounter = revisionGroup->GetCounter(
@@ -304,7 +307,19 @@ void TBootstrapBase::Init()
         false);
     *versionCounter = 1;
 
+    InitVolumeCriticalEventsReportingMode(
+        Configs->DiagnosticsConfig->GetVolumeCriticalEventsReportingMode());
     InitCriticalEventsCounter(serverGroup);
+    InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
+
+    STORAGE_INFO("CriticalEvents counters initialized");
+
+    CriticalEventsStatsUpdater = CreateStatsUpdater(
+        Timer,
+        BackgroundScheduler,
+        CreateCriticalEventsStatsHandler());
+
+    STORAGE_INFO("CriticalEventsStatsUpdater initialized");
 
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback())
@@ -1020,6 +1035,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(GrpcEndpointListener);
     START_COMMON_COMPONENT(Executor);
     START_COMMON_COMPONENT(Server);
+    START_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     START_COMMON_COMPONENT(ServerStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
@@ -1092,6 +1108,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
+    STOP_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     STOP_COMMON_COMPONENT(Server);
     STOP_COMMON_COMPONENT(CertificateProvider);
     STOP_COMMON_COMPONENT(Executor);

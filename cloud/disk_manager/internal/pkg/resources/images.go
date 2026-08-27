@@ -116,7 +116,7 @@ func (s *imageState) structValue() persistence.Value {
 		persistence.StructFieldValue("delete_task_id", persistence.UTF8Value(s.deleteTaskID)),
 		persistence.StructFieldValue("deleting_at", persistence.TimestampValue(s.deletingAt)),
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
-		persistence.StructFieldValue("use_dataplane_tasks", persistence.BoolValue(s.useDataplaneTasks)),
+		persistence.StructFieldValue("use_dataplane_tasks", persistence.BoolValue(true)), // legacy
 		persistence.StructFieldValue("size", persistence.Uint64Value(s.size)),
 		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
 		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
@@ -187,7 +187,7 @@ func imageStateStructTypeString() string {
 		delete_task_id: Utf8,
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
-		use_dataplane_tasks: Bool,
+		use_dataplane_tasks: Bool, /* legacy */
 		size: Uint64,
 		storage_size: Uint64,
 		encryption_mode: Uint32,
@@ -211,7 +211,7 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("delete_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithColumn("use_dataplane_tasks", persistence.Optional(persistence.TypeBool)),
+		persistence.WithColumn("use_dataplane_tasks", persistence.Optional(persistence.TypeBool)), // legacy
 		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
@@ -415,7 +415,7 @@ func (s *storageYDB) createImage(
 		createTaskID:      image.CreateTaskID,
 		creatingAt:        image.CreatingAt,
 		createdBy:         image.CreatedBy,
-		useDataplaneTasks: image.UseDataplaneTasks,
+		useDataplaneTasks: true,
 
 		status: imageStatusCreating,
 	}

@@ -57,6 +57,7 @@ func NewFactory(ctx context.Context) nfs.Factory {
 		},
 		metrics.NewEmptyRegistry(),
 		metrics.NewEmptyRegistry(),
+		nil, // tlsProvider
 	)
 }
 

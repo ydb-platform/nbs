@@ -220,6 +220,7 @@ PoolsConfig: <
     OptimizeBaseDisksTaskScheduleInterval: "10s"
     MinOptimizedPoolAge: "1s"
     BaseDiskIdPrefix: "{base_disk_id_prefix}"
+    BaseDiskIdleTTL: "1m"
 >
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"
@@ -389,7 +390,6 @@ PersistenceConfig: <
 >
 DataplaneConfig: <
     SnapshotConfig: <
-        LegacyStorageFolder: "legacy_snapshot"
         PersistenceConfig: <
             Endpoint: "localhost:{dataplane_ydb_port}"
             Database: "/Root"

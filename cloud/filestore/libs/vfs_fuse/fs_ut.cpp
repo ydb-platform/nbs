@@ -20,6 +20,7 @@
 #include <cloud/filestore/libs/vfs/config.h>
 #include <cloud/filestore/libs/vfs/loop.h>
 #include <cloud/filestore/libs/vfs/protos/session.pb.h>
+#include <cloud/filestore/libs/vfs_fuse/protos/queue_entry.pb.h>
 #include <cloud/filestore/libs/vhost/client.h>
 #include <cloud/filestore/libs/vhost/request.h>
 #include <cloud/filestore/libs/vhost/server.h>
@@ -220,6 +221,7 @@ struct TBootstrap
         Fuse = std::make_shared<TFuseVirtioClient>(SocketPath, WaitTimeout);
 
         Service = std::make_shared<TFileStoreTest>();
+
         Service->CreateSessionHandler =
             [featuresConfig](auto callContext, auto request)
         {
@@ -259,12 +261,10 @@ struct TBootstrap
         proto.SetDebug(true);
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);
-        if (featuresConfig.GetAsyncDestroyHandleEnabled() ||
-            featuresConfig.GetAsyncDestroyReadOnlyHandleEnabled())
-        {
-            proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
-            proto.SetHandleOpsQueueSize(handleOpsQueueSize);
-        }
+        // Keep the path configured to allow restoring
+        // an existing HandleOpsQueue.
+        proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
+        proto.SetHandleOpsQueueSize(handleOpsQueueSize);
 
         proto.SetDirectoryHandlesStoragePath(
             TempDir.Path() / "DirectoryHandles");
@@ -299,6 +299,17 @@ struct TBootstrap
             CreateProfileLogStub(),
             Session,
             std::move(fileMapMemoryLimiter));
+    }
+
+    NMonitoring::TDynamicCountersPtr GetFileSystemStatsCounters() const
+    {
+        return Counters
+            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "");
     }
 
     NMonitoring::TDynamicCountersPtr GetDirectoryHandleCounters() const
@@ -1906,6 +1917,130 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingForRestoredDirectoryContent)
+    {
+        const TString sessionId = CreateGuidAsString();
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        auto createSessionHandler = [&](auto, auto)
+        {
+            NProto::TVfsSessionState state;
+            state.SetProtoMajor(7);
+            state.SetProtoMinor(33);
+            state.SetBufferSize(256 * 1024);
+
+            NProto::TCreateSessionResponse result;
+            result.MutableSession()->SetSessionId(sessionId);
+            UNIT_ASSERT(state.SerializeToString(
+                result.MutableSession()->MutableSessionState()));
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(features);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
+            return MakeFuture(result);
+        };
+
+        std::atomic<ui32> numCalls = 0;
+        auto listNodesHandler = [&](auto, auto)
+        {
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+            for (ui32 i = 1; i <= 10; ++i) {
+                result.AddNames()->assign("file_" + ToString(i) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(100 + i);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            return MakeFuture(result);
+        };
+
+        const ui64 nodeId = 123;
+        ui64 handleId = 0;
+
+        TFsPath tmpPathForCache(
+            TFsPath(GetSystemTempDir()) / "directory_handles_storage.restore");
+        TString pathToCache;
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            pathToCache = TFsPath(bootstrap.DirectoryHandleStoragePath) /
+                          FileSystemId / sessionId /
+                          "directory_handles_storage";
+
+            auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(handle.Wait(WaitTimeout));
+            handleId = handle.GetValue();
+
+            auto read =
+                bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_GT(read.GetValue(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
+
+            TFsPath(pathToCache).CopyTo(tmpPathForCache.GetPath(), true);
+        }
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            tmpPathForCache.CopyTo(pathToCache, true);
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            //
+            // The guest doesn't reinitialize the connection after a vhost
+            // restart, so the restored directory content is served without
+            // FUSE_INIT.
+            //
+
+            bootstrap.Start(false /* sendInitRequest */);
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            auto rq = std::make_shared<TReadDirRequest>(
+                nodeId,
+                handleId,
+                dotSize + dotDotSize);
+            auto rf = bootstrap.Fuse->SendRequest(rq);
+            UNIT_ASSERT_NO_EXCEPTION(rf.GetValue(WaitTimeout));
+
+            // Restored content should be served from the handle cache
+            UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
+
+            auto buf = TStringBuf(
+                reinterpret_cast<const char*>(rq->Out->Data()),
+                rq->Out->Header.len - sizeof(rq->Out->Header));
+            UNIT_ASSERT_LE(sizeof(fuse_direntplus), buf.size());
+            const auto* de =
+                reinterpret_cast<const fuse_direntplus*>(buf.data());
+
+            //
+            // Restored content was persisted before the restart and the cache
+            // versions are lost, so neither entries nor attrs can be trusted
+            // to be up-to-date.
+            //
+
+            UNIT_ASSERT_VALUES_EQUAL(101, de->entry_out.nodeid);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.entry_valid_nsec);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid);
+            UNIT_ASSERT_VALUES_EQUAL(0, de->entry_out.attr_valid_nsec);
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleForgetRequestsForUnknownNodes)
     {
         TBootstrap bootstrap;
@@ -3100,6 +3235,112 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
     }
 
+    Y_UNIT_TEST(ShouldDrainHandleOpsQueueBackToBack)
+    {
+        // AsyncHandleOperationDrainPeriod is 0, so a non-empty queue is drained
+        // back-to-back: every entry is rescheduled with zero delay.
+        // With a frozen clock, running only the tasks due "now" fires just the
+        // zero-delay tasks, so the whole queue must drain without advancing
+        // time. A non-zero period would leave every processing task in the
+        // future and this drain would never complete.
+        constexpr ui32 requestCount = 3;
+
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+        features.SetAsyncHandleOperationIdlePeriod(50);
+        features.SetAsyncHandleOperationDrainPeriod(0);
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
+        TBootstrap bootstrap(timer, scheduler, features);
+
+        std::atomic_uint handlerCalled = 0;
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto, auto)
+            {
+                ++handlerCalled;
+                return MakeFuture(NProto::TDestroyHandleResponse{});
+            });
+
+        auto inProgress =
+            bootstrap.Counters->FindSubgroup("component", "fs_ut")
+                ->FindSubgroup("request", "DestroyHandle")
+                ->GetCounter("InProgress");
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        for (ui32 i = 0; i < requestCount; ++i) {
+            auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+                10 + i,
+                2 + i,
+                O_RDONLY);
+            UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        }
+
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]
+            {
+                scheduler->RunAllScheduledTasksUntilNow();
+                return handlerCalled.load() == requestCount
+                    && AtomicGet(inProgress->GetAtomic()) == 0;
+            }));
+    }
+
+    Y_UNIT_TEST(ShouldUseIdlePeriodWhenHandleOpsQueueEmpty)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncDestroyHandleEnabled(true);
+        features.SetAsyncHandleOperationIdlePeriod(50);
+        features.SetAsyncHandleOperationDrainPeriod(0);
+        const auto idlePeriod = TDuration::MilliSeconds(
+            features.GetAsyncHandleOperationIdlePeriod());
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
+        TBootstrap bootstrap(timer, scheduler, features);
+
+        std::atomic_uint handlerCalled = 0;
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto, auto)
+            {
+                ++handlerCalled;
+                return MakeFuture(NProto::TDestroyHandleResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        scheduler->RunAllScheduledTasksUntilNow();
+
+        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            10,
+            2,
+            O_RDONLY);
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+
+        // The only scheduled poll is idlePeriod in the future, so at the
+        // current (frozen) time it does not fire and the entry stays pending.
+        scheduler->RunAllScheduledTasksUntilNow();
+        UNIT_ASSERT_VALUES_EQUAL(0U, handlerCalled.load());
+
+        // Once the backoff elapses the poll fires and picks up the entry.
+        timer->AdvanceTime(idlePeriod);
+        scheduler->AdvanceTime(idlePeriod);
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]
+            {
+                scheduler->RunAllScheduledTasksUntilNow();
+                return handlerCalled.load() == 1;
+            }));
+    }
+
     Y_UNIT_TEST(ShouldProcessReadOnlyDestroyHandleRequestsAsynchronously)
     {
         NProto::TFileStoreFeatures features;
@@ -3195,34 +3436,413 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
     }
 
-    Y_UNIT_TEST(ShouldRetryDestroyIfNotSuccessDuringAsyncProcessing)
+    Y_UNIT_TEST(ShouldNotSetAsyncCreateHandleIfFeatureDisabled)
+    {
+        // The vhost-side feature gate is off, so the client must not advertise
+        // async create support even for an otherwise eligible read-only open.
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(!request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotSetAsyncCreateHandleIfAsyncDestroyDisabled)
     {
         NProto::TFileStoreFeatures features;
-        features.SetAsyncDestroyHandleEnabled(true);
-        TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            CreateScheduler(),
-            features);
+        features.SetAsyncCreateHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
-        const ui64 handle = 2;
         const ui64 nodeId = 10;
-        std::atomic_uint handlerCalled = 0;
-        auto destroyFinished = NewPromise<void>();
-        bootstrap.Service->SetHandlerDestroyHandle(
-            [&, destroyFinished](auto callContext, auto request) mutable
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(!request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldSynchronouslyConfirmUnexpectedAsyncCreateHandleResponse)
+    {
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        ui64 requestId = 0;
+        ui32 flags = 0;
+        TString fileSystemId;
+        TString headers;
+        std::atomic_uint confirmCalled = 0;
+        auto confirmPromise =
+            NewPromise<NProto::TConfirmCreateHandleResponse>();
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
             {
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
                     callContext->FileSystemId);
-                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
                 UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
-                if (++handlerCalled > 3) {
-                    destroyFinished.TrySetValue();
-                    return MakeFuture(NProto::TDestroyHandleResponse{});
-                }
+                UNIT_ASSERT(!request->GetAllowAsyncCreateHandle());
 
-                NProto::TDestroyHandleResponse response = TErrorResponse(
-                    E_REJECTED, "xxx");
+                requestId = request->GetHeaders().GetRequestId()
+                    ? request->GetHeaders().GetRequestId()
+                    : callContext->RequestId;
+                flags = request->GetFlags();
+                fileSystemId = request->GetFileSystemId();
+                headers = request->GetHeaders().SerializeAsString();
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&, confirmPromise](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    FileSystemId,
+                    callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    fileSystemId,
+                    request->GetFileSystemId());
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(flags, request->GetFlags());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    requestId,
+                    request->GetOriginalRequestId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    headers,
+                    request->GetHeaders().SerializeAsString());
+                ++confirmCalled;
+                return confirmPromise;
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        UNIT_ASSERT_EXCEPTION(
+            future.GetValue(ExceptionWaitTimeout),
+            yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/UnexpectedAsyncCreateHandleResponse",
+                    true);
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+
+        confirmPromise.SetValue(NProto::TConfirmCreateHandleResponse{});
+        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+    }
+
+    void CheckIneligibleRequestDoesNotUseAsyncCreate(
+        bool create,
+        int systemFlags,
+        ui32 expectedProtoFlag)
+    {
+        // Async create is allowed only for plain read-only opens. Create,
+        // write, and truncate requests must stay on the synchronous path.
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(request->GetFlags() & expectedProtoFlag);
+                UNIT_ASSERT(!request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        TFuture<ui64> future;
+        if (create) {
+            auto request =
+                std::make_shared<TCreateHandleRequest>("/file1", nodeId);
+            request->In->Body.flags |= systemFlags;
+            future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(request);
+        } else {
+            auto request = std::make_shared<TOpenHandleRequest>(nodeId);
+            request->In->Body.flags |= systemFlags;
+            future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(request);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotSetAsyncCreateHandleForIneligibleRequests)
+    {
+        CheckIneligibleRequestDoesNotUseAsyncCreate(
+            false,  // open
+            O_WRONLY,
+            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE));
+        CheckIneligibleRequestDoesNotUseAsyncCreate(
+            false,  // open
+            O_RDWR,
+            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE));
+        CheckIneligibleRequestDoesNotUseAsyncCreate(
+            false,  // open
+            O_APPEND,
+            ProtoFlag(NProto::TCreateHandleRequest::E_APPEND));
+        CheckIneligibleRequestDoesNotUseAsyncCreate(
+            false,  // open
+            O_TRUNC,
+            ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE));
+        CheckIneligibleRequestDoesNotUseAsyncCreate(
+            true,   // create
+            O_CREAT,
+            ProtoFlag(NProto::TCreateHandleRequest::E_CREATE));
+    }
+
+    Y_UNIT_TEST(ShouldNotQueueAsyncCreateHandleForPersistedResponse)
+    {
+        // The request advertises async support, but the server can still return
+        // a persisted handle. In that case there is nothing to confirm later.
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldQueueAsyncCreateHandleBeforeReplyingOpen)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_bool openFinished = false;
+        std::atomic_uint confirmCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT(openFinished);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    SessionId,
+                    request->GetHeaders().GetSessionId());
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+        openFinished = true;
+        // ConfirmCreateHandle is driven by scheduled queue processing, not by
+        // the foreground open path.
+        UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
+
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotRetryAsyncCreateHandleConfirmationOnError)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_bool openFinished = false;
+        std::atomic_uint confirmCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT(openFinished);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    SessionId,
+                    request->GetHeaders().GetSessionId());
+
+                ++confirmCalled;
+                NProto::TConfirmCreateHandleResponse response =
+                    TErrorResponse(E_REJECTED, "retriable");
                 return MakeFuture(response);
             });
 
@@ -3231,17 +3851,431 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
-            nodeId,
-            handle,
-            O_RDONLY);
-        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+        openFinished = true;
 
-        destroyFinished.GetFuture().Wait(WaitTimeout);
-        UNIT_ASSERT_VALUES_EQUAL(4U, handlerCalled.load());
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/HandleOpsQueueProcessError",
+                    true);
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+
+        // Retriable errors are handled by DurableClient and must not reach this
+        // layer in production. Any error returned here is final.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
     }
 
-    Y_UNIT_TEST(ShouldNotRetryDestroyHandleAndRaiseCritEvent)
+    Y_UNIT_TEST(ShouldConfirmAsyncCreateHandleSynchronouslyIfQueueOverflows)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        // Keep the ring buffer smaller than a serialized queued create entry so
+        // AddCreateRequest returns QueueOverflow.
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+        auto confirmPromise = NewPromise<NProto::TConfirmCreateHandleResponse>();
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&, confirmPromise](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    SessionId,
+                    request->GetHeaders().GetSessionId());
+                ++confirmCalled;
+                return confirmPromise;
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        // Queue overflow forces synchronous confirmation before ReplyOpen, so
+        // the FUSE request must stay pending while confirmPromise is unresolved.
+        UNIT_ASSERT_EXCEPTION(
+            future.GetValue(ExceptionWaitTimeout),
+            yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+
+        confirmPromise.SetValue(NProto::TConfirmCreateHandleResponse{});
+        UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+
+        // The create was not queued, so background queue processing must not
+        // issue another ConfirmCreateHandle.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotRetryOverflowAsyncCreateConfirmationOrCleanupErrors)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        // Keep the ring buffer smaller than a serialized queued create entry so
+        // AddCreateRequest returns QueueOverflow.
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+        std::atomic_uint destroyCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    SessionId,
+                    request->GetHeaders().GetSessionId());
+
+                ++confirmCalled;
+                NProto::TConfirmCreateHandleResponse response =
+                    TErrorResponse(E_REJECTED, "retriable");
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                ++destroyCalled;
+                NProto::TDestroyHandleResponse response =
+                    TErrorResponse(E_REJECTED, "retriable");
+                return MakeFuture(response);
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        UNIT_ASSERT_EXCEPTION(future.GetValue(WaitTimeout), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(1U, destroyCalled.load());
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/ConfirmCreateHandleFailed",
+                    true);
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+
+        auto cleanupErrorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    "AppCriticalEvents/AsyncCreateHandleCleanupFailed",
+                    true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            static_cast<int>(*cleanupErrorCounter));
+
+        // Retriable errors are handled by the durable client. The synchronous
+        // fallback and cleanup must not add their own retry loops.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(1U, destroyCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldFailOpenIfOverflowAsyncCreateConfirmationFails)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+        auto scheduler = std::make_shared<TTestScheduler>();
+        // Keep the ring buffer smaller than a serialized queued create entry so
+        // AddCreateRequest returns QueueOverflow.
+        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic_uint confirmCalled = 0;
+        std::atomic_uint destroyCalled = 0;
+        auto confirmPromise = NewPromise<NProto::TConfirmCreateHandleResponse>();
+        auto destroyPromise = NewPromise<NProto::TDestroyHandleResponse>();
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(handle);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(nodeId);
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&, confirmPromise](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    SessionId,
+                    request->GetHeaders().GetSessionId());
+                ++confirmCalled;
+                return confirmPromise;
+            });
+
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&, destroyPromise](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                ++destroyCalled;
+                return destroyPromise;
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto future = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+        UNIT_ASSERT_EXCEPTION(
+            future.GetValue(ExceptionWaitTimeout),
+            yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+
+        NProto::TConfirmCreateHandleResponse response =
+            TErrorResponse(E_FS_NOENT, "final");
+        confirmPromise.SetValue(std::move(response));
+        UNIT_ASSERT_EXCEPTION(
+            future.GetValue(ExceptionWaitTimeout),
+            yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1U, destroyCalled.load());
+
+        destroyPromise.SetValue(NProto::TDestroyHandleResponse{});
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            future.GetValue(WaitTimeout),
+            yexception,
+            ToString(-ENOENT));
+
+        // The create was never queued, so background queue processing must not
+        // retry the failed synchronous confirmation.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldRestoreAndDrainAsyncCreateHandleQueueAfterSessionRestart)
+    {
+        const TString sessionId = CreateGuidAsString();
+
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyReadOnlyHandleEnabled(true);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        std::atomic<ui64> requestId = 0;
+        std::atomic_uint confirmCalled = 0;
+        auto firstConfirmPromise =
+            NewPromise<NProto::TConfirmCreateHandleResponse>();
+
+        auto createBootstrap = [&]()
+        {
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                std::make_shared<TTestScheduler>(TInstant::Zero()),
+                features);
+
+            bootstrap.Service->CreateSessionHandler =
+                [features, sessionId](auto, auto)
+            {
+                NProto::TCreateSessionResponse result;
+                result.MutableSession()->SetSessionId(sessionId);
+                result.MutableFileStore()->SetBlockSize(4096);
+                result.MutableFileStore()->MutableFeatures()->CopyFrom(
+                    features);
+                result.MutableFileStore()->SetFileSystemId(FileSystemId);
+                return MakeFuture(result);
+            };
+
+            return bootstrap;
+        };
+
+        {
+            auto bootstrap = createBootstrap();
+
+            bootstrap.Service->SetHandlerCreateHandle(
+                [&](auto callContext, auto request)
+                {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        FileSystemId,
+                        callContext->FileSystemId);
+                    UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                    UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                    NProto::TCreateHandleResponse response;
+                    response.SetHandle(handle);
+                    response.SetHandleCreatedAsync(true);
+                    response.MutableNodeAttr()->SetId(nodeId);
+                    response.MutableNodeAttr()->SetType(
+                        NProto::E_REGULAR_NODE);
+                    return MakeFuture(response);
+                });
+
+            bootstrap.Service->SetHandlerConfirmCreateHandle(
+                [&, firstConfirmPromise](auto callContext, auto request)
+                {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        FileSystemId,
+                        callContext->FileSystemId);
+                    UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                    UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        sessionId,
+                        request->GetHeaders().GetSessionId());
+                    UNIT_ASSERT(request->GetOriginalRequestId());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        ProtoFlag(NProto::TCreateHandleRequest::E_READ),
+                        request->GetFlags());
+                    requestId = request->GetOriginalRequestId();
+                    ++confirmCalled;
+                    return firstConfirmPromise;
+                });
+
+            bootstrap.Start();
+            Y_DEFER {
+                bootstrap.Stop();
+            };
+
+            auto future =
+                bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId);
+            UNIT_ASSERT_VALUES_EQUAL(handle, future.GetValue(WaitTimeout));
+
+            auto* scheduler =
+                dynamic_cast<TTestScheduler*>(bootstrap.Scheduler.get());
+            UNIT_ASSERT(scheduler);
+            scheduler->RunAllScheduledTasks();
+
+            // The confirmation is still in flight, so the durable queue entry
+            // remains in place for the restarted loop to reload and confirm.
+            UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+            UNIT_ASSERT(requestId.load());
+
+            auto suspend = bootstrap.Loop->SuspendAsync();
+            UNIT_ASSERT(WaitForCondition(
+                WaitTimeout,
+                [&]
+                {
+                    scheduler->RunAllScheduledTasksUntilNow();
+                    return suspend.HasValue() || suspend.HasException();
+                }));
+            UNIT_ASSERT_NO_EXCEPTION(suspend.GetValue(WaitTimeout));
+
+            // A clean Stop() destroys the session and removes the queue. Drop
+            // the loop after suspend to model a vhost restart with the session
+            // and queue directory still present.
+            bootstrap.Loop = nullptr;
+        }
+
+        // Complete the abandoned request after its filesystem has been
+        // destroyed. Its weak callback must not modify the durable queue.
+        firstConfirmPromise.SetValue(NProto::TConfirmCreateHandleResponse{});
+
+        {
+            auto bootstrap = createBootstrap();
+
+            bootstrap.Service->SetHandlerConfirmCreateHandle(
+                [&](auto callContext, auto request)
+                {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        FileSystemId,
+                        callContext->FileSystemId);
+                    UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                    UNIT_ASSERT_VALUES_EQUAL(handle, request->GetHandle());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        sessionId,
+                        request->GetHeaders().GetSessionId());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        requestId.load(),
+                        request->GetOriginalRequestId());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        ProtoFlag(NProto::TCreateHandleRequest::E_READ),
+                        request->GetFlags());
+                    ++confirmCalled;
+                    return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+                });
+
+            bootstrap.Start();
+            Y_DEFER {
+                bootstrap.Stop();
+            };
+
+            UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+
+            auto* scheduler =
+                dynamic_cast<TTestScheduler*>(bootstrap.Scheduler.get());
+            UNIT_ASSERT(scheduler);
+            scheduler->RunAllScheduledTasks();
+
+            UNIT_ASSERT_VALUES_EQUAL(2U, confirmCalled.load());
+
+            // The restarted loop drained and popped the durable entry, so
+            // another scheduling pass must not confirm the same handle again.
+            scheduler->RunAllScheduledTasks();
+            UNIT_ASSERT_VALUES_EQUAL(2U, confirmCalled.load());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotRetryDestroyHandleAndRaiseCritEventOnError)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
@@ -3250,10 +4284,12 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         const ui64 handle = 2;
         const ui64 nodeId = 10;
+        std::atomic_uint handlerCalled = 0;
         auto responsePromise = NewPromise<NProto::TDestroyHandleResponse>();
         bootstrap.Service->SetHandlerDestroyHandle(
             [&, responsePromise](auto callContext, auto request)
             {
+                ++handlerCalled;
                 UNIT_ASSERT_VALUES_EQUAL(
                     FileSystemId,
                     callContext->FileSystemId);
@@ -3276,7 +4312,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         scheduler->RunAllScheduledTasks();
         NProto::TDestroyHandleResponse response =
-            TErrorResponse(E_FS_NOENT, "xxx");
+            TErrorResponse(E_REJECTED, "retriable");
         responsePromise.SetValue(std::move(response));
 
         auto errorCounter =
@@ -3286,6 +4322,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     true);
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+
+        // Retriable errors are handled by DurableClient and must not reach this
+        // layer in production. Any error returned here is final.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, handlerCalled.load());
     }
 
     Y_UNIT_TEST(ShouldPostponeDestroyHandleRequestIfHandleOpsQueueOverflows)
@@ -3405,12 +4446,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             1,
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
 
-        // Process first request.
+        // A final error still pops the first entry, so it must also retry the
+        // postponed release.
         scheduler->RunAllScheduledTasks();
-        responsePromise.SetValue(NProto::TDestroyHandleResponse{});
+        responsePromise.SetValue(TErrorResponse(E_FS_NOENT, "final"));
         UNIT_ASSERT_VALUES_EQUAL(1u, handlerCalled.load());
 
-        // After the first request is processed, the second request should be
+        // After the first request is removed, the second request should be
         // completed and added to the HandleOpsQueue.
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -3420,6 +4462,137 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // Check that second request was added to the queue and processed later.
         scheduler->RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(2u, handlerCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldRetryPostponedReleaseAfterAsyncCreateHandleConfirmation)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyHandleEnabled(true);
+
+        const ui64 nodeId = 10;
+        const ui64 handle = 2;
+        auto asyncResponse = [=]
+        {
+            NProto::TCreateHandleResponse response;
+            response.SetHandle(handle);
+            response.SetHandleCreatedAsync(true);
+            response.MutableNodeAttr()->SetId(nodeId);
+            response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+            return response;
+        };
+        NProto::TCreateHandleRequest createRequest;
+
+        {
+            auto scheduler = std::make_shared<TTestScheduler>();
+            TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
+            bootstrap.Service->SetHandlerCreateHandle(
+                [&](auto, auto request)
+                {
+                    createRequest = *request;
+                    return MakeFuture(asyncResponse());
+                });
+            bootstrap.Service->SetHandlerConfirmCreateHandle(
+                [](auto, auto)
+                {
+                    return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+                });
+
+            bootstrap.Start();
+            Y_DEFER {
+                bootstrap.Stop();
+            };
+            UNIT_ASSERT_VALUES_EQUAL(
+                handle,
+                bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                    .GetValue(WaitTimeout));
+            scheduler->RunAllScheduledTasks();
+        }
+
+        NProto::TQueueEntry createEntry;
+        auto* queued = createEntry.MutableQueuedCreateHandleRequest();
+        *queued->MutableRequest() = createRequest;
+        queued->SetHandle(handle);
+        queued->SetNodeId(nodeId);
+        queued->SetOriginalRequestId(
+            createRequest.GetHeaders().GetRequestId());
+
+        NProto::TQueueEntry destroyEntry;
+        destroyEntry.MutableDestroyHandleRequest()->SetHandle(handle);
+        destroyEntry.MutableDestroyHandleRequest()->SetNodeId(nodeId);
+
+        // protobuf entries have an 8-byte header and unaligned data. This fits
+        // the create-confirm entry, but leaves less than one destroy entry
+        // free.
+        const ui32 queueSize = static_cast<ui32>(
+            8 + createEntry.ByteSizeLong() +
+            (8 + destroyEntry.ByteSizeLong()) / 2);
+
+        // open fills the queue with a create confirmation. Its release
+        // overflows into DelayedReleaseQueue.
+        auto scheduler = std::make_shared<TTestScheduler>();
+        TBootstrap bootstrap(
+            CreateWallClockTimer(), scheduler, features, queueSize);
+        std::atomic_uint confirmCalled = 0;
+        std::atomic_uint destroyCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [=](auto, auto)
+            {
+                return MakeFuture(asyncResponse());
+            });
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto, auto)
+            {
+                ++destroyCalled;
+                return MakeFuture(NProto::TDestroyHandleResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto moduleCounters = bootstrap.GetHandleOpsQueueCounters();
+        auto entryCount = moduleCounters->FindCounter("EntryCount");
+        auto overflowErrorCount =
+            moduleCounters->FindCounter("OverflowErrorCount");
+        UNIT_ASSERT(entryCount);
+        UNIT_ASSERT(overflowErrorCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            handle,
+            bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                .GetValue(WaitTimeout));
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, overflowErrorCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0U, confirmCalled.load());
+
+        auto release = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId,
+            handle,
+            O_RDONLY);
+        // Destroy does not fit, so ReleaseImpl parks this FUSE request.
+        UNIT_ASSERT_EXCEPTION(release.GetValue(ExceptionWaitTimeout), yexception);
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, overflowErrorCount->GetAtomic());
+
+        // Confirm pops the create entry.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, confirmCalled.load());
+        UNIT_ASSERT_NO_EXCEPTION(release.GetValue(WaitTimeout));
+
+        // The retry queued DestroyHandle. it is processed on the next pass.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1U, destroyCalled.load());
     }
 
     // We want to ensure that the same file cannot be reused for FileRingBuffers
@@ -3454,6 +4627,115 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     true);
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*handleOpsQueueError));
+    }
+
+    Y_UNIT_TEST(ShouldDrainHandleOpsQueueAfterAsyncDestroyDisabled)
+    {
+        const ui64 queuedNodeId = 10;
+        const ui64 queuedHandle = 2;
+        const ui64 directNodeId = 11;
+        const ui64 directHandle = 3;
+
+        auto createBootstrap =
+            [](bool asyncDestroyHandleEnabled, ISchedulerPtr scheduler)
+        {
+            NProto::TFileStoreFeatures features;
+            features.SetAsyncDestroyHandleEnabled(asyncDestroyHandleEnabled);
+
+            return TBootstrap(
+                CreateWallClockTimer(),
+                std::move(scheduler),
+                features);
+        };
+
+        {
+            auto bootstrap = createBootstrap(true, CreateScheduler());
+            auto destroyStarted = NewPromise<void>();
+            bootstrap.Service->SetHandlerDestroyHandle(
+                [destroyStarted](auto, auto) mutable
+                {
+                    destroyStarted.TrySetValue();
+                    return NewPromise<NProto::TDestroyHandleResponse>();
+                });
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            auto release = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+                queuedNodeId,
+                queuedHandle,
+                O_RDONLY);
+            UNIT_ASSERT_NO_EXCEPTION(release.GetValue(WaitTimeout));
+            UNIT_ASSERT(destroyStarted.GetFuture().Wait(WaitTimeout));
+
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            auto counters = bootstrap.GetHandleOpsQueueCounters();
+            auto entryCount = counters->FindCounter("EntryCount");
+            UNIT_ASSERT(entryCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+
+            auto suspend = bootstrap.Loop->SuspendAsync();
+            UNIT_ASSERT(suspend.Wait(WaitTimeout));
+        }
+
+        {
+            auto scheduler = std::make_shared<TTestScheduler>();
+            auto bootstrap = createBootstrap(false, scheduler);
+            std::atomic_uint destroyHandleCalled = 0;
+            bootstrap.Service->SetHandlerDestroyHandle(
+                [&](auto, const auto& request)
+                {
+                    if (++destroyHandleCalled == 1) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            queuedNodeId,
+                            request->GetNodeId());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            queuedHandle,
+                            request->GetHandle());
+                    } else {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            directNodeId,
+                            request->GetNodeId());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            directHandle,
+                            request->GetHandle());
+                    }
+                    return MakeFuture(NProto::TDestroyHandleResponse{});
+                });
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            auto counters = bootstrap.GetHandleOpsQueueCounters();
+            auto entryCount = counters->FindCounter("EntryCount");
+            UNIT_ASSERT(entryCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, entryCount->GetAtomic());
+
+            scheduler->RunAllScheduledTasks();
+            UNIT_ASSERT_VALUES_EQUAL(1, destroyHandleCalled.load());
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            UNIT_ASSERT_VALUES_EQUAL(0, entryCount->GetAtomic());
+
+            auto release = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+                directNodeId,
+                directHandle,
+                O_RDONLY);
+            UNIT_ASSERT_NO_EXCEPTION(release.GetValue(WaitTimeout));
+
+            // Do not run the test scheduler after Release. If the request were
+            // added to HandleOpsQueue, DestroyHandle would not be called and
+            // EntryCount would be 1.
+            UNIT_ASSERT_VALUES_EQUAL(2, destroyHandleCalled.load());
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            UNIT_ASSERT_VALUES_EQUAL(0, entryCount->GetAtomic());
+        }
     }
 
     Y_UNIT_TEST(ShouldReadAndWriteWithServerWriteBackCacheEnabled)
@@ -6297,6 +7579,232 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             }));
 
         restWriteDataPromise.SetValue({});
+    }
+
+    NProto::TFileStoreFeatures AvailabilityTrackingFeatures()
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetAvailabilityTrackingEnabled(true);
+        features.SetAvailabilityTrackingInterval(15000);   // in ms
+        return features;
+    }
+
+    Y_UNIT_TEST(ShouldTrackAvailabilityOfSuccessfulRequests)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap{
+            timer,
+            CreateScheduler(),
+            AvailabilityTrackingFeatures()};
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        bootstrap.Service->CreateHandleHandler =
+            [] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            NProto::TCreateHandleResponse result;
+            result.SetHandle(1);
+            result.MutableNodeAttr()->SetId(2);
+            result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+            return MakeFuture(result);
+        };
+
+        // start the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // The completed wait below guarantees the availability events were
+        // recorded before the clock advances, so the success is classified
+        // in the first interval - the assertions cover the request itself,
+        // not an idle interval.
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file1",
+            RootNodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+
+        // roll the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        auto counters = bootstrap.GetFileSystemStatsCounters();
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_TotalIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_AvailableIntervals",
+                true)->Val());
+
+        // the fuse create callback is published under request=create
+        auto createCounters = counters->FindSubgroup("request", "create");
+        UNIT_ASSERT(createCounters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            createCounters->GetCounter(
+                "Availability_AvailableIntervals",
+                true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldTrackAvailabilityOfEioRequests)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap{
+            timer,
+            CreateScheduler(),
+            AvailabilityTrackingFeatures()};
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        bootstrap.Service->CreateHandleHandler =
+            [] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            // E_IO is delivered to the guest as errno EIO
+            return MakeFuture(
+                NProto::TCreateHandleResponse(TErrorResponse(E_IO)));
+        };
+
+        // start the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // roll the first interval and start the second interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // request is started in the second interval
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file1",
+            RootNodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+
+        // roll the second interval
+        //
+        // request returned Eio => interval unvailable
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        auto counters = bootstrap.GetFileSystemStatsCounters();
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            counters->GetCounter(
+                "Availability_TotalIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_UnavailableIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter(
+                "Availability_LastIntervalAvailable")->Val());
+
+        auto createCounters = counters->FindSubgroup("request", "create");
+        UNIT_ASSERT(createCounters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            createCounters->GetCounter(
+                "Availability_UnavailableIntervals",
+                true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldTrackAvailabilityOfHungRequests)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap{
+            timer,
+            CreateScheduler(),
+            AvailabilityTrackingFeatures()};
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto hungPromise = NewPromise<NProto::TCreateHandleResponse>();
+        auto requestReceived = NewPromise<void>();
+        bootstrap.Service->CreateHandleHandler =
+            [&] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            requestReceived.TrySetValue();
+            return hungPromise.GetFuture();
+        };
+
+        // start the first interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // request is started in the first interval
+        auto handle = bootstrap.Fuse->SendRequest<TCreateHandleRequest>(
+            "/file1",
+            RootNodeId);
+
+        // The request is processed on the fuse loop thread asynchronously:
+        // wait until it has actually reached the service - its availability
+        // registration happens earlier on the same path - before advancing
+        // the fake clock. Otherwise the registration races the advances and
+        // may see a later fake time, shifting the request into a later
+        // interval.
+        UNIT_ASSERT(requestReceived.GetFuture().Wait(WaitTimeout));
+
+        // it is fresh-pending (neutral) in the first interval
+        //
+        // roll the first interval and start the second interval
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // request hung through the second interval => unavailable
+        timer->AdvanceTime(TDuration::MilliSeconds(15000));
+        bootstrap.StatsRegistry->UpdateStats(false /* updatePercentiles */);
+
+        // Unblock the request before the assertions so that a failing
+        // assertion cannot unwind into Stop() with the request still
+        // outstanding.
+        NProto::TCreateHandleResponse result;
+        result.SetHandle(1);
+        result.MutableNodeAttr()->SetId(2);
+        result.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+        hungPromise.SetValue(result);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+
+        // Two intervals are classified: the first interval saw the request
+        // fresh-pending (neutral, no failure evidence) => available, the
+        // second interval saw it hung throughout => unavailable.
+        auto counters = bootstrap.GetFileSystemStatsCounters();
+        UNIT_ASSERT(counters);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            counters->GetCounter(
+                "Availability_TotalIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_AvailableIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(
+                "Availability_UnavailableIntervals",
+                true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter(
+                "Availability_LastIntervalAvailable")->Val());
     }
 }
 

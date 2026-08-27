@@ -82,7 +82,7 @@ namespace NInterconnect {
         )
 
         void Handle(TEvLoadMessage::TPtr& ev, const TActorContext& ctx) {
-            ctx.ExecutorThread.ActorSystem->Send(ev->Forward(Slaves[SlaveIndex]));
+            ctx.ActorSystem()->Send(ev->Forward(Slaves[SlaveIndex]));
             if (++SlaveIndex == Slaves.size()) {
                 SlaveIndex = 0;
             }
@@ -197,9 +197,11 @@ namespace NInterconnect {
                 // create message and send it to the first hop
                 THolder<TEvLoadMessage> ev;
                 if (Params.UseProtobufWithPayload && size) {
-                    auto buffer = TRopeAlignedBuffer::Allocate(size);
-                    memset(buffer->GetBuffer(), '*', size);
-                    ev.Reset(new TEvLoadMessage(Hops, id, TRope(buffer)));
+                    TRcBuf buffer = Params.RdmaMode
+                        ? ctx.ActorSystem()->GetRcBufAllocator()->AllocRcBuf(size, 0, 0)
+                        : TRcBuf(TRopeAlignedBuffer::Allocate(size));
+                    memset(buffer.GetDataMut(), '*', size);
+                    ev.Reset(new TEvLoadMessage(Hops, id, TRope(std::move(buffer))));
                 } else {
                     TString payload;
                     if (size) {

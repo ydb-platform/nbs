@@ -2,12 +2,13 @@
 
 #include "events_private.h"
 
+#include <cloud/blockstore/libs/common/volume_labels.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -26,7 +27,7 @@ private:
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
     const TVector<ui32> FreshChannels;
-    const TString DiskId;
+    const TVolumeLabelsConstPtr VolumeLabels;
     const TDuration Timeout;
 
     ui32 RequestsInFlight = 0;
@@ -41,7 +42,7 @@ public:
         ui32 recordGeneration,
         ui32 perGenerationCounter,
         TVector<ui32> freshChannels,
-        TString diskId,
+        TVolumeLabelsConstPtr volumeLabels,
         TDuration timeout);
 
     void Bootstrap(const NActors::TActorContext& ctx);

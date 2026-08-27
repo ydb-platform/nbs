@@ -426,7 +426,8 @@ public:
             SendRequest(ctx, std::make_unique<NPDisk::TEvChunkWrite>(PDiskParams->Owner, PDiskParams->OwnerRound,
                     chunkIdx, offset,
                     new TParts{DataBuffer.data() + Rng() % (DataBuffer.size() - size), size},
-                    reinterpret_cast<void*>(requestIdx), true, NPriWrite::HullHugeAsyncBlob, Sequential));
+                    reinterpret_cast<void*>(requestIdx), true, NPriWrite::HullHugeAsyncBlob,
+                    TWriteSource::GroupWriteLoadActor, Sequential));
             ++ChunkWrite_RequestsSent;
 
             if (LogMode == NKikimr::TEvLoadTestRequest::LOG_PARALLEL) {
@@ -477,7 +478,7 @@ public:
         ++Lsn;
         SendRequest(ctx, std::make_unique<NPDisk::TEvLog>(PDiskParams->Owner, PDiskParams->OwnerRound,
                 TLogSignature::SignatureHugeLogoBlob, record, TRcBuf(logRecord), seg,
-                reinterpret_cast<void*>(requestIdx)));
+                reinterpret_cast<void*>(requestIdx), TWriteSource::GroupWriteLoadActor));
         ++LogInFlight;
     }
 
@@ -538,7 +539,7 @@ public:
 
     template<typename TRequest>
     void SendRequest(const TActorContext& ctx, std::unique_ptr<TRequest>&& request) {
-        ctx.Send(MakeBlobStoragePDiskID(ctx.ExecutorThread.ActorSystem->NodeId, PDiskId), request.release());
+        ctx.Send(MakeBlobStoragePDiskID(ctx.SelfID.NodeId(), PDiskId), request.release());
     }
 
     void Handle(NMon::TEvHttpInfo::TPtr& ev, const TActorContext& ctx) {

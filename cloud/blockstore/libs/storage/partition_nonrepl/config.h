@@ -55,6 +55,8 @@ public:
         TInstant CreationTs;
         NProto::EStorageMediaKind MediaKind;
         NProto::EEncryptionMode EncryptionMode;
+        TString CloudId;
+        TString FolderId;
     };
 
     struct TNonreplicatedPartitionConfigInitParams
@@ -186,6 +188,16 @@ public:
     const TVolumeInfo& GetVolumeInfo() const
     {
         return VolumeInfo;
+    }
+
+    const TString& GetCloudId() const
+    {
+        return VolumeInfo.CloudId;
+    }
+
+    const TString& GetFolderId() const
+    {
+        return VolumeInfo.FolderId;
     }
 
     NActors::TActorId GetParentActorId() const

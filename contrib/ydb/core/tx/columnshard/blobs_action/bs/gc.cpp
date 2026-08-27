@@ -45,7 +45,9 @@ TGCTask::TGCTask(const TString& storageId, TGCListsByGroup&& listsByGroupId, con
 }
 
 void TGCTask::OnGCResult(TEvBlobStorage::TEvCollectGarbageResult::TPtr ev) {
-    AFL_VERIFY(ev->Get()->Status == NKikimrProto::OK)("status", ev->Get()->Status)("details", ev->Get()->ToString())("action_id", GetActionGuid());
+    if (ev->Get()->Status != NKikimrProto::OK) {
+        Failures++;
+    }
     TBlobAddress bAddress(ev->Cookie, ev->Get()->Channel);
     auto itGroup = ListsByGroupId.find(bAddress);
     AFL_VERIFY(itGroup != ListsByGroupId.end())("address", bAddress.DebugString());
@@ -59,8 +61,14 @@ static TAtomicCounter PerGenerationCounter = 1;
 std::unique_ptr<TEvBlobStorage::TEvCollectGarbage> TGCTask::BuildRequest(const TBlobAddress& address) const {
     auto it = ListsByGroupId.find(address);
     AFL_VERIFY(it != ListsByGroupId.end());
-    AFL_VERIFY(++it->second.RequestsCount < 10)("event", "build_gc_request")("address", address.DebugString())("current_gen", CurrentGen)("gen", CollectGenStepInFlight)
-        ("count", it->second.RequestsCount);
+    if (++it->second.RequestsCount >= TGCLists::RequestsLimit) {
+         AFL_CRIT(NKikimrServices::TX_COLUMNSHARD_BLOBS_BS)
+             ("event", "build_gc_request")
+             ("address", address.DebugString())("current_gen", CurrentGen)
+             ("gen", CollectGenStepInFlight)
+             ("count", it->second.RequestsCount);
+         return nullptr;
+     }
     AFL_DEBUG(NKikimrServices::TX_COLUMNSHARD_BLOBS_BS)("event", "build_gc_request")("address", address.DebugString())("current_gen", CurrentGen)("gen", CollectGenStepInFlight)
         ("count", it->second.RequestsCount);
     auto result = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
@@ -68,8 +76,8 @@ std::unique_ptr<TEvBlobStorage::TEvCollectGarbage> TGCTask::BuildRequest(const T
         address.GetChannelId(), !!CollectGenStepInFlight,
         CollectGenStepInFlight ? CollectGenStepInFlight->Generation() : 0, CollectGenStepInFlight ? CollectGenStepInFlight->Step() : 0,
         new TVector<TLogoBlobID>(it->second.KeepList.begin(), it->second.KeepList.end()),
-        new TVector<TLogoBlobID>(it->second.DontKeepList.begin(), it->second.DontKeepList.end()),
-        TInstant::Max(), true);
+        new TVector<TLogoBlobID>(it->second.DontKeepList.begin(), it->second.DontKeepList.end()), TInstant::Max(), true,
+        TWriteSource::ColumnShardGC);
     result->PerGenerationCounter = PerGenerationCounter.Add(result->PerGenerationCounterStepSize());
     return std::move(result);
 }
