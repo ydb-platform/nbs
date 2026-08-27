@@ -263,6 +263,7 @@ struct TCompactionScores
     float Score = 0;
     ui32 GarbageScore = 0;
     ui32 IgnoringZeroedScore = 0;
+    ui32 MixedBlockCount = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -789,6 +790,11 @@ public:
     }
 
     ui32 CalculateNewlyZeroedBlocks(ui32 blockIndex, ui64 usedBlockCount) const;
+
+    const ICompactionPolicy& GetCompactionPolicy() const
+    {
+        return *CompactionPolicy;
+    }
 
 private:
     void WriteUsedBlocksToDB(TPartitionDatabase& db, ui32 begin, ui32 end);
