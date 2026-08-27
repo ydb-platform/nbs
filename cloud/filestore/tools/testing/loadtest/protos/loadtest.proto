@@ -176,6 +176,20 @@ message TMigrationSpec
     uint32 StateTransferDelay = 2;
 }
 
+message TGarbageValidationSpec
+{
+    enum EOperation {
+        Flush = 0;
+        FlushBytes = 1;
+        Cleanup = 2;
+        Compaction = 3;
+        CollectGarbage = 4;
+    }
+
+    // A sequence of operations to be performed by the test runner at the end of the test.
+    repeated EOperation operations = 1;
+}
+
 message TLoadTest
 {
     string Name = 1;
@@ -213,6 +227,9 @@ message TLoadTest
     // Maximum number of nodes created by this synthetic load test.
     // Zero means unlimited. Ignored by replay specs.
     uint64 MaxNodes = 22;
+
+    // enables validation of gc metrics at the end of the test
+    TGarbageValidationSpec GarbageValidationSpec = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
