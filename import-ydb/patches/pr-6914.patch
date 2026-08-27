@@ -1,0 +1,1806 @@
+diff --git a/contrib/ydb/core/cms/console/configs_dispatcher.cpp b/contrib/ydb/core/cms/console/configs_dispatcher.cpp
+index 0d67e21cbd9fdc704729f7a465e3bb9819195d09..ad38a27ca5ffefc0ea852c86b61e6767da8da8e2 100644
+--- a/contrib/ydb/core/cms/console/configs_dispatcher.cpp
++++ b/contrib/ydb/core/cms/console/configs_dispatcher.cpp
+@@ -19,6 +19,7 @@
+ #include <contrib/ydb/library/actors/interconnect/interconnect.h>
+ #include <library/cpp/json/json_reader.h>
+ #include <library/cpp/json/json_writer.h>
++#include <library/cpp/protobuf/json/util.h>
+ #include <contrib/ydb/core/config/init/init.h>
+ 
+ #include <util/generic/bitmap.h>
+@@ -69,6 +70,7 @@ const THashSet<ui32> DYNAMIC_KINDS({
+     (ui32)NKikimrConsole::TConfigItem::MemoryControllerConfigItem,
+     (ui32)NKikimrConsole::TConfigItem::HealthCheckConfigItem,
+     (ui32)NKikimrConsole::TConfigItem::BlockstoreConfigItem,
++    (ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem,
+     (ui32)NKikimrConsole::TConfigItem::WorkloadManagerConfigItem,
+ });
+ 
+@@ -173,6 +175,19 @@ public:
+ 
+     void UpdateCandidateStartupConfig(TEvConsole::TEvConfigSubscriptionNotification::TPtr &ev);
+ 
++    struct TParsedOpaqueConfig {
++        // Raw JSON section text used for cheap equality between updates.
++        // !empty() (empty strings aka "section present but empty" treated as absent config and not stored)
++        TString RawJson;
++        // May be null in the cache (parser produced nothing), but null
++        // never placed into an outgoing event — see PopulateWithOpaqueConfigs.
++        std::shared_ptr<const ::google::protobuf::Message> Parsed;
++    };
++
++    THashMap<ui32, TParsedOpaqueConfig> ParseOpaqueConfigs() const;
++
++    void PopulateWithOpaqueConfigs(TEvConsole::TEvConfigNotificationRequest& ev, const TDynBitMap& kinds) const;
++
+     void Handle(NMon::TEvHttpInfo::TPtr &ev);
+     void Handle(TEvInterconnect::TEvNodesInfo::TPtr &ev);
+     void Handle(TEvConsole::TEvConfigSubscriptionNotification::TPtr &ev);
+@@ -275,6 +290,16 @@ private:
+     NKikimrConfig::TAppConfig YamlProtoConfig;
+     bool YamlConfigEnabled = false;
+ 
++    // Per-kind parsers for opaque config sections, injected by a client that
++    // reuses the dispatcher. The dispatcher has no schema for these sections; it
++    // just calls the parser and attaches the result to the node-local notification.
++    THashMap<ui32, TOpaqueConfigParser> OpaqueConfigParsers;
++
++    // Parsed opaque-config view, refreshed on every console notification.
++    // Used to detect opaque-only changes and to populate outgoing subscriber
++    // notifications without re-parsing per subscriber.
++    THashMap<ui32, TParsedOpaqueConfig> CurrentOpaqueConfigs;
++
+ };
+ 
+ TConfigsDispatcher::TConfigsDispatcher(const TConfigsDispatcherInitInfo& initInfo)
+@@ -288,6 +313,7 @@ TConfigsDispatcher::TConfigsDispatcher(const TConfigsDispatcherInitInfo& initInf
+         , RecordedInitialConfiguratorDeps(std::move(initInfo.RecordedInitialConfiguratorDeps))
+         , Args(initInfo.Args)
+         , NextRequestCookie(Now().GetValue())
++        , OpaqueConfigParsers(initInfo.OpaqueConfigParsers)
+ {}
+ 
+ void TConfigsDispatcher::Bootstrap()
+@@ -356,6 +382,8 @@ void TConfigsDispatcher::SendUpdateToSubscriber(TSubscription::TPtr subscription
+ 
+     auto notification = MakeHolder<TEvConsole::TEvConfigNotificationRequest>();
+     notification->Record.CopyFrom(subscription->UpdateInProcess->Record);
++    // Parsed once when UpdateInProcess was built; share the (read-only) result.
++    notification->OpaqueConfigs = subscription->UpdateInProcess->OpaqueConfigs;
+ 
+     BLOG_TRACE("Send TEvConsole::TEvConfigNotificationRequest to " << subscriber
+                 << ": " << notification->Record.ShortDebugString());
+@@ -926,6 +954,67 @@ catch (...) {
+     *StartupConfigChanged = 1;
+ }
+ 
++THashMap<ui32, TConfigsDispatcher::TParsedOpaqueConfig> TConfigsDispatcher::ParseOpaqueConfigs() const
++{
++    THashMap<ui32, TParsedOpaqueConfig> result;
++    if (!YamlConfigEnabled || OpaqueConfigParsers.empty() || ResolvedJsonConfig.empty()) {
++        return result;
++    }
++    // The opaque carrier proto is empty by design — its content lives in the
++    // resolved YAML. Pull each kind's section out and pass it to the end-node
++    // parser that owns the real schema.
++    NJson::TJsonValue resolved;
++    if (!NJson::ReadJsonTree(ResolvedJsonConfig, &resolved)) {
++        return result;
++    }
++    const NJson::TJsonValue* configSection = &resolved;
++    if (const NJson::TJsonValue* c = nullptr; resolved.GetValuePointer("config", &c)) {
++        configSection = c;
++    }
++    const auto* desc = NKikimrConfig::TAppConfig::descriptor();
++    for (const auto& [kind, parser] : OpaqueConfigParsers) {
++        const auto* field = desc->FindFieldByNumber(kind);
++        if (!field) {
++            continue;
++        }
++        TString name = field->name();
++        NProtobufJson::ToSnakeCaseDense(&name);
++        const NJson::TJsonValue* section = nullptr;
++        if (!configSection->GetValuePointer(name, &section)) {
++            continue;   // section absent — no config
++        }
++        TParsedOpaqueConfig entry;
++        entry.RawJson = NJson::WriteJson(section, /*formatOutput=*/ false);
++        if (entry.RawJson.empty()) {
++            continue;   // empty section — treated as "no config"
++        }
++        try {
++            entry.Parsed = parser(entry.RawJson);
++        }
++        catch (const std::exception& e) {
++            BLOG_ERROR("Error parsing opaque config [#" << kind << ":" << name << "]: " << e.what());
++        }
++        catch (...) {
++            BLOG_ERROR("Error parsing opaque config [#" << kind << ":" << name << "]: unknown exception");
++        }
++        result.emplace(kind, std::move(entry));
++    }
++    return result;
++}
++
++void TConfigsDispatcher::PopulateWithOpaqueConfigs(
++    TEvConsole::TEvConfigNotificationRequest& ev,
++    const TDynBitMap& kinds) const
++{
++    Y_FOR_EACH_BIT(kind, kinds) {
++        auto it = CurrentOpaqueConfigs.find(kind);
++        if (it == CurrentOpaqueConfigs.end() || !it->second.Parsed) {
++            continue;   // absent OR empty/reset — never emit a null payload
++        }
++        ev.OpaqueConfigs[kind] = it->second.Parsed;
++    }
++}
++
+ void TConfigsDispatcher::Handle(TEvConsole::TEvConfigSubscriptionNotification::TPtr &ev)
+ {
+     auto &rec = ev->Get()->Record;
+@@ -990,12 +1079,40 @@ void TConfigsDispatcher::Handle(TEvConsole::TEvConfigSubscriptionNotification::T
+         affectedKinds.insert(kind);
+     }
+ 
++    // Re-parse opaque configs from the resolved JSON and fold any add /
++    // remove / mutation / empty<->non-empty transition into affectedKinds.
++    // Opaque sections are invisible to AffectedKinds and to the proto diff,
++    // so without this an opaque-only update never reaches subscribers.
++    THashSet<ui32> affectedOpaqueKinds;
++    if (isYamlChanged) {
++        auto newOpaqueConfigs = ParseOpaqueConfigs();
++        for (const auto& [kind, parsed] : newOpaqueConfigs) {
++            auto it = CurrentOpaqueConfigs.find(kind);
++            if (it == CurrentOpaqueConfigs.end() || it->second.RawJson != parsed.RawJson) {
++                // config was added or changed
++                affectedOpaqueKinds.insert(kind);
++            }
++        }
++        for (const auto& [kind, _] : CurrentOpaqueConfigs) {
++            if (!newOpaqueConfigs.contains(kind)) {
++                // config was removed
++                affectedOpaqueKinds.insert(kind);
++            }
++        }
++        CurrentOpaqueConfigs = std::move(newOpaqueConfigs);
++    }
++
+     for (auto &[kinds, subscription] : SubscriptionsByKinds) {
+         NKikimrConfig::TAppConfig trunc;
+ 
+         bool hasAffectedKinds = false;
+ 
+         if (subscription->Yaml && YamlConfigEnabled) {
++            Y_FOR_EACH_BIT(kind, FilterKinds(kinds)) {
++                if (affectedOpaqueKinds.contains(kind)) {
++                    hasAffectedKinds = true;
++                }
++            }
+             if (!isYamlChanged && !yamlConfigTurnedOff && CurrentStateFunc() != &TThis::StateInit) {
+                 continue;
+             }
+@@ -1010,7 +1127,6 @@ void TConfigsDispatcher::Handle(TEvConsole::TEvConfigSubscriptionNotification::T
+                     hasAffectedKinds = true;
+                 }
+             }
+-
+             // we try resend all configs if yaml config was turned off
+             if (!hasAffectedKinds && !yamlConfigTurnedOff && CurrentStateFunc() != &TThis::StateInit) {
+                 continue;
+@@ -1030,6 +1146,7 @@ void TConfigsDispatcher::Handle(TEvConsole::TEvConfigSubscriptionNotification::T
+             Y_FOR_EACH_BIT(kind, FilterKinds(kinds)) {
+                 subscription->UpdateInProcess->Record.AddItemKinds(kind);
+             }
++            PopulateWithOpaqueConfigs(*subscription->UpdateInProcess, FilterKinds(kinds));
+             subscription->UpdateInProcessCookie = ++NextRequestCookie;
+             subscription->UpdateInProcessConfigVersion = FilterVersion(ev->Get()->Record.GetConfig().GetVersion(), FilterKinds(kinds));
+ 
+@@ -1172,6 +1289,7 @@ void TConfigsDispatcher::Handle(TEvConfigsDispatcher::TEvSetConfigSubscriptionRe
+             Y_FOR_EACH_BIT(kind, kinds) {
+                 subscription->UpdateInProcess->Record.AddItemKinds(kind);
+             }
++            PopulateWithOpaqueConfigs(*subscription->UpdateInProcess, FilterKinds(kinds));
+             subscription->UpdateInProcessCookie = ++NextRequestCookie;
+             subscription->UpdateInProcessConfigVersion = FilterVersion(CurrentConfig.GetVersion(), kinds);
+         }
+diff --git a/contrib/ydb/core/cms/console/configs_dispatcher_ut.cpp b/contrib/ydb/core/cms/console/configs_dispatcher_ut.cpp
+index 4dbb2509ad8d4f69e389001267e1c1d1032e2141..62b1b62ee196d48ae6cd491f3e56f96806619f01 100644
+--- a/contrib/ydb/core/cms/console/configs_dispatcher_ut.cpp
++++ b/contrib/ydb/core/cms/console/configs_dispatcher_ut.cpp
+@@ -5,6 +5,12 @@
+ #include <contrib/ydb/core/tablet/bootstrapper.h>
+ #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
+ #include <contrib/ydb/core/testlib/tablet_helpers.h>
++#include <contrib/ydb/core/cms/console/ut_configs_dispatcher/ut_private_database_config.pb.h>
++#include <contrib/ydb/library/fyamlcpp/fyamlcpp.h>
++#include <contrib/ydb/library/yaml_config/yaml_config_helpers.h>
++#include <contrib/ydb/library/yaml_config/yaml_config_parser.h>
++
++#include <library/cpp/protobuf/json/json2proto.h>
+ 
+ #include <util/system/hostname.h>
+ 
+@@ -113,6 +119,8 @@ struct TEvPrivate {
+         EvSetSubscription,
+         EvGotNotification,
+         EvComplete,
++        EvParsedPrivateDatabaseConfig,
++        EvResetPrivateDatabaseConfig,
+         EvEnd
+     };
+ 
+@@ -153,6 +161,19 @@ struct TEvPrivate {
+     };
+ 
+     struct TEvComplete : public TEventLocal<TEvComplete, EvComplete> {};
++
++
++    // Carries the secret_port the end-node subscriber read from the dispatcher-
++    // parsed TUtPrivateDatabaseConfig (OpaqueConfigs), proving the dispatcher did the parse.
++    struct TEvParsedPrivateDatabaseConfig : public TEventLocal<TEvParsedPrivateDatabaseConfig, EvParsedPrivateDatabaseConfig> {
++        ui32 SecretPort = 0;
++    };
++
++    // Emitted when the subscriber received a notification for its subscribed
++    // opaque kind but OpaqueConfigs carried no parsed payload — i.e. the
++    // dispatcher signaled "section absent / cleared".
++    struct TEvResetPrivateDatabaseConfig : public TEventLocal<TEvResetPrivateDatabaseConfig, EvResetPrivateDatabaseConfig> {
++    };
+ };
+ 
+ class TTestSubscriber : public TActorBootstrapped<TTestSubscriber> {
+@@ -1453,4 +1474,369 @@ selector_config: []
+ 
+ }
+ 
++Y_UNIT_TEST_SUITE(TConfigsDispatcherOpaqueConfigTests) {
++
++    // End-node subscriber: subscribes to the opaque kind PrivateDatabaseConfigItem
++    // and reads the already-parsed TUtPrivateDatabaseConfig from the notification's OpaqueConfigs
++    class TPrivateDatabaseConfigSubscriber : public TActorBootstrapped<TPrivateDatabaseConfigSubscriber> {
++        TActorId Sink;
++    public:
++        // No trust to the runtime.SetObserverFunc() - fires multiple times per delivery
++        // for ES_PRIVATE events that share a numeric id with other unrelated private events;
++        // ev->Sender + ev->Recipient filter not help.
++        std::atomic<int> parsedCnt{0};
++        std::atomic<int> resetCnt{0};
++
++        TPrivateDatabaseConfigSubscriber(TActorId sink)
++            : Sink(sink)
++        {}
++
++        void Bootstrap(const TActorContext &ctx) {
++            Become(&TThis::StateWork);
++            ctx.Send(MakeConfigsDispatcherID(ctx.SelfID.NodeId()),
++                new TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest(
++                    (ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem, ctx.SelfID));
++        }
++
++        void Handle(TEvConsole::TEvConfigNotificationRequest::TPtr &ev, const TActorContext &ctx) {
++            auto &rec = ev->Get()->Record;
++            const auto &opaqueConfigs = ev->Get()->OpaqueConfigs;
++
++            if (auto it = opaqueConfigs.find((ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem);
++                it != opaqueConfigs.end() && it->second)
++            {
++                NKikimrOpaqueConfigUt::TUtPrivateDatabaseConfig impl;
++                impl.CopyFrom(*it->second);                 // descriptor-checked, no RTTI
++                auto *event = new TEvPrivate::TEvParsedPrivateDatabaseConfig;
++                event->SecretPort = impl.GetSecretPort();
++                parsedCnt++;
++                ctx.Send(Sink, event);
++            } else {
++                // Notification arrived for subscribed kind but no parsed
++                // opaque payload — section became absent / was cleared
++                resetCnt++;
++                ctx.Send(Sink, new TEvPrivate::TEvResetPrivateDatabaseConfig);
++            }
++            ctx.Send(ev->Sender, new TEvConsole::TEvConfigNotificationResponse(rec), 0, ev->Cookie);
++        }
++
++        STFUNC(StateWork) {
++            switch (ev->GetTypeRewrite()) {
++                HFunc(TEvConsole::TEvConfigNotificationRequest, Handle);
++                IgnoreFunc(TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse);
++            }
++        }
++    };
++
++    void DoTestDispatcherParseAndSendOpaquePrivateDatabaseConfig(bool withParser) {
++        const TString mainYaml0 = R"(
++---
++metadata:
++  kind: MainConfig
++  cluster: ""
++  version: 0
++config:
++  yaml_config_enabled: true
++  feature_flags:
++    database_yaml_config_allowed: true
++)";
++        const TString mainYaml1 = R"(
++---
++metadata:
++  kind: MainConfig
++  cluster: ""
++  version: 1
++config:
++  yaml_config_enabled: true
++  feature_flags:
++    database_yaml_config_allowed: true
++  private_database_config:
++    secret_port: 666
++)";
++        const TString databaseYamlTemplate = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: VERSION
++config:
++  private_database_config:
++    secret_port: VALUE
++)";
++
++        // Set the end-node parser for the opaque kind into the dispatcher.
++        NKikimrConfig::TAppConfig appcfg;
++        auto *label = appcfg.AddLabels();
++        label->SetName("tenant");
++        label->SetValue(TENANT1_1_NAME);
++        appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
++
++        TTenantTestConfig testConfig = DefaultConsoleTestConfig();
++        if (withParser) {
++            auto parser = std::bind(NKikimr::NYaml::DefaultOpaqueConfigParser<NKikimrOpaqueConfigUt::TUtPrivateDatabaseConfig>, std::placeholders::_1, true);
++            testConfig.OpaqueConfigParsers[(ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem] = parser;
++        }
++
++        TTenantTestRuntime runtime(testConfig, appcfg);
++
++        // The end-node consumer subscribes to the private kind.
++        auto subscriber = new TPrivateDatabaseConfigSubscriber(runtime.Sender);
++        TActorId subscriberId = runtime.Register(subscriber);
++        runtime.EnableScheduleForActor(subscriberId, true);
++
++        // Init cluster with main config without private_database_config
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, mainYaml0);
++
++        // No private_database_config yet.
++        // The subscriber must report nothing.
++        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
++
++        // The OpaqueConfig marker makes the cluster accept config.private_database_config
++        // WITHOUT allow_unknown_fields.
++        // The dispatcher resolves it and pulls config.private_database_config from the resolved
++        // YAML for the injected parser.
++
++        // Set the opaque section in the main config.
++        //  withParser: The subscriber reports secret_port read from the dispatcher-parsed config.
++        // !withParser: The subscriber must report nothing.
++        {
++            subscriber->parsedCnt = 0;
++            CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, mainYaml1);
++            TAutoPtr<IEventHandle> handle;
++            if (withParser) {
++                auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++                UNIT_ASSERT_C(ev, "No PrivateDatabaseConfig received and processed by subscriber");
++                UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 666);
++                UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 1);
++            }
++            else {
++                runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
++                UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
++            }
++        }
++
++        // Set the opaque section in the database config.
++        //  withParser: The subscriber reports secret_port read from the dispatcher-parsed config.
++        // !withParser: The subscriber must report nothing.
++        // Run several times to ensure opaque-only change is passed to subscriber.
++        subscriber->parsedCnt = 0;
++        for (int i = 0; i < 5; i++ ) {
++            auto databaseYaml = databaseYamlTemplate;
++
++            SubstGlobal(databaseYaml, "VERSION", ToString(i));
++            SubstGlobal(databaseYaml, "VALUE", ToString(i+1));
++
++            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, databaseYaml);
++            {
++                TAutoPtr<IEventHandle> handle;
++                if (withParser) {
++                    auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++                    UNIT_ASSERT_C(ev, "No PrivateDatabaseConfig received and processed by subscriber");
++                    UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), i+1);
++                    UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, i+1);
++                }
++                else {
++                    runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
++                    UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
++                }
++            }
++        }
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), withParser ? 5 : 0);
++    }
++
++    Y_UNIT_TEST(TestDispatcherOmitsOpaquePrivateDatabaseConfigWithoutParser) {
++        DoTestDispatcherParseAndSendOpaquePrivateDatabaseConfig(/*withParser=*/false);
++    }
++
++    Y_UNIT_TEST(TestDispatcherParseAndSendOpaquePrivateDatabaseConfigWithParser) {
++        DoTestDispatcherParseAndSendOpaquePrivateDatabaseConfig(/*withParser=*/true);
++    }
++
++    // Test every transition of the opaque configs changes Edge cases:
++    //   absent -> absent             (init, no dispatch)
++    //   absent -> non-empty          (added - dispatch, parsed payload)
++    //   non-empty -> non-empty       (same value - no dispatch)
++    //   non-empty(A) -> non-empty(B) (mutated - dispatch, parsed payload)
++    //   non-empty -> absent          (removed - dispatch, reset / no payload)
++    //   absent -> non-empty          (re-added via database yaml - dispatch, parsed)
++    //   non-empty -> non-empty       (mutated via database yaml - dispatch, parsed)
++    Y_UNIT_TEST(TestOpaquePrivateDatabaseConfigEdgeCases) {
++        // No private_database_config - opaque section absent.
++        const TString mainYamlAbsent = R"(
++---
++metadata:
++  kind: MainConfig
++  cluster: ""
++  version: VERSION
++config:
++  yaml_config_enabled: true
++  feature_flags:
++    database_yaml_config_allowed: true
++)";
++        // With private_database_config.secret_port = VALUE.
++        const TString mainYamlWithOpaque = R"(
++---
++metadata:
++  kind: MainConfig
++  cluster: ""
++  version: VERSION
++config:
++  yaml_config_enabled: true
++  feature_flags:
++    database_yaml_config_allowed: true
++  private_database_config:
++    secret_port: VALUE
++)";
++        const TString databaseYamlTemplate = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: VERSION
++config:
++  private_database_config:
++    secret_port: VALUE
++)";
++        auto subst = [](TString tmpl, ui64 version, ui64 value) {
++            SubstGlobal(tmpl, "VERSION", ToString(version));
++            SubstGlobal(tmpl, "VALUE", ToString(value));
++            return tmpl;
++        };
++
++        NKikimrConfig::TAppConfig appcfg;
++        auto *label = appcfg.AddLabels();
++        label->SetName("tenant");
++        label->SetValue(TENANT1_1_NAME);
++        appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
++
++        TTenantTestConfig testConfig = DefaultConsoleTestConfig();
++        auto parser = std::bind(NKikimr::NYaml::DefaultOpaqueConfigParser<NKikimrOpaqueConfigUt::TUtPrivateDatabaseConfig>, std::placeholders::_1, true);
++        testConfig.OpaqueConfigParsers[(ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem] = parser;
++
++        TTenantTestRuntime runtime(testConfig, appcfg);
++
++        auto subscriber = new TPrivateDatabaseConfigSubscriber(runtime.Sender);
++        TActorId subscriberId = runtime.Register(subscriber);
++        runtime.EnableScheduleForActor(subscriberId, true);
++
++        // No trust to the runtime.SetObserverFunc() - fires multiple times per delivery
++        // for ES_PRIVATE events that share a numeric id with other unrelated private events;
++        // ev->Sender + ev->Recipient filter not help.
++        auto pollOneOfEither = [&](TDuration timeout) -> ui32 {
++            TAutoPtr<IEventHandle> handle;
++            auto [parsed, reset] = runtime.GrabEdgeEventsRethrow<
++                TEvPrivate::TEvParsedPrivateDatabaseConfig,
++                TEvPrivate::TEvResetPrivateDatabaseConfig>(handle, timeout);
++            if (parsed) {
++                return TEvPrivate::EvParsedPrivateDatabaseConfig;
++            }
++            if (reset) {
++                return TEvPrivate::EvResetPrivateDatabaseConfig;
++            }
++            return 0;
++        };
++
++        int mainVersion = 0;
++
++        // Case 1: absent -> absent (initial state). No opaque dispatch
++        // expected. There may be an initial subscription notification that
++        // arrives empty — observed via subscriber->resetQuan.
++        subscriber->parsedCnt = 0;
++        subscriber->resetCnt = 0;
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlAbsent, mainVersion++, 0));
++        {
++            TAutoPtr<IEventHandle> handle;
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvResetPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            UNIT_ASSERT_C(ev, "absent -> absent must produce the initial reset notification");
++        }
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
++        // No subscriber->resetQuan.load() check - the subscriber-init notification always
++        // dispatches once on the dispatcher side, so subscriber->resetQuan may have grown.
++
++        // Case 2: absent -> non-empty (added). Expect one parsed event.
++        subscriber->parsedCnt = 0;
++        subscriber->resetCnt = 0;
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlWithOpaque, mainVersion++, 666));
++        {
++            TAutoPtr<IEventHandle> handle;
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            UNIT_ASSERT_C(ev, "absent -> non-empty must dispatch a parsed opaque config");
++            UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 666);
++        }
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 1);
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->resetCnt.load(), 0);
++
++        // Case 3: non-empty -> non-empty (same value, version bumped).
++        // The opaque RawJson is byte-identical so no opaque-driven dispatch;
++        // and the proto truncation for this kind is unchanged so the regular
++        // path also does not fire. Expect zero new events.
++        subscriber->parsedCnt = 0;
++        subscriber->resetCnt = 0;
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlWithOpaque, mainVersion++, 666));
++        {
++            UNIT_ASSERT_VALUES_EQUAL_C(pollOneOfEither(TDuration::Seconds(1)), 0u,
++                                      "identical opaque must not redispatch");
++        }
++        UNIT_ASSERT_VALUES_EQUAL_C(subscriber->parsedCnt.load(), 0, "identical opaque must not redispatch");
++        UNIT_ASSERT_VALUES_EQUAL_C(subscriber->resetCnt.load(), 0, "identical opaque must not redispatch");
++
++        // Case 4: non-empty(666) -> non-empty(777). RawJson differs:
++        // expect exactly one parsed event carrying the new value.
++        subscriber->parsedCnt = 0;
++        subscriber->resetCnt = 0;
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlWithOpaque, mainVersion++, 777));
++        {
++            TAutoPtr<IEventHandle> handle;
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            UNIT_ASSERT_C(ev, "non-empty A -> non-empty B must dispatch a parsed opaque config");
++            UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 777);
++        }
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 1);
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->resetCnt.load(), 0);
++
++        // Case 5: non-empty -> absent (removed). Expect one reset event
++        // and no parsed event.
++        subscriber->parsedCnt = 0;
++        subscriber->resetCnt = 0;
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlAbsent, mainVersion++, 0));
++        {
++            TAutoPtr<IEventHandle> handle;
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvResetPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            UNIT_ASSERT_C(ev, "non-empty -> absent must dispatch a reset notification");
++        }
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->resetCnt.load(), 1);
++
++        int databaseVersion = 0;
++
++        // Case 6: absent -> non-empty via database yaml. The opaque
++        // section reappears with a different value.
++        subscriber->parsedCnt = 0;
++        subscriber->resetCnt = 0;
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, subst(databaseYamlTemplate, databaseVersion++, 888));
++        {
++            TAutoPtr<IEventHandle> handle;
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            UNIT_ASSERT_C(ev, "absent -> non-empty (via db yaml) must dispatch parsed opaque config");
++            UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 888);
++        }
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 1);
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->resetCnt.load(), 0);
++
++        // Case 7: non-empty(888) -> non-empty(999) via database yaml.
++        subscriber->parsedCnt = 0;
++        subscriber->resetCnt = 0;
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, subst(databaseYamlTemplate, databaseVersion++, 999));
++        {
++            TAutoPtr<IEventHandle> handle;
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            UNIT_ASSERT_C(ev, "non-empty A -> non-empty B (via db yaml) must dispatch parsed opaque config");
++            UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 999);
++        }
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 1);
++        UNIT_ASSERT_VALUES_EQUAL(subscriber->resetCnt.load(), 0);
++    }
++}
++
+ } // namespace NKikimr
+diff --git a/contrib/ydb/core/cms/console/console.h b/contrib/ydb/core/cms/console/console.h
+index 7d68ddecda96b0b70e7dc5d348566cebce917daf..85e7a90c867c5c78b5bc90db182d4b748c855d6d 100644
+--- a/contrib/ydb/core/cms/console/console.h
++++ b/contrib/ydb/core/cms/console/console.h
+@@ -10,6 +10,10 @@
+ #include <contrib/ydb/public/api/protos/ydb_cms.pb.h>
+ #include <contrib/ydb/public/api/protos/draft/ydb_dynamic_config.pb.h>
+ 
++#include <util/generic/hash.h>
++
++#include <memory>
++
+ namespace NKikimr::NConsole {
+ 
+ namespace TEvConsole {
+@@ -288,6 +292,11 @@ namespace TEvConsole {
+ 
+     struct TEvConfigNotificationRequest : public TEventShortDebugPB<TEvConfigNotificationRequest, NKikimrConsole::TConfigNotificationRequest, EvConfigNotificationRequest> {
+         const NKikimrConfig::TAppConfig& GetConfig() const { return Record.GetConfig(); }
++
++        // Node-local only: parsed forms of opaque config sections (kind -> message),
++        // produced by the configs dispatcher via an injected OpaqueConfigParser.
++        // .second != nullptr - config either not empty and present or not added into map
++        THashMap<ui32, std::shared_ptr<const ::google::protobuf::Message>> OpaqueConfigs;
+     };
+ 
+     struct TEvConfigNotificationResponse : public TEventShortDebugPB<TEvConfigNotificationResponse, NKikimrConsole::TConfigNotificationResponse, EvConfigNotificationResponse> {
+diff --git a/contrib/ydb/core/cms/console/console_ut_configs.cpp b/contrib/ydb/core/cms/console/console_ut_configs.cpp
+index ba1d480b7eb911dd09bb95a49673590a69369d7d..0f59678b6f72668a0c4f31d04c5cb096640edc6a 100644
+--- a/contrib/ydb/core/cms/console/console_ut_configs.cpp
++++ b/contrib/ydb/core/cms/console/console_ut_configs.cpp
+@@ -1182,102 +1182,6 @@ TVector<ui64> CheckConfigureLogAffected(TTenantTestRuntime &runtime,
+     return {reply->Record.GetAddedItemIds().begin(), reply->Record.GetAddedItemIds().end()};
+ }
+ 
+-void DoFetchMainConfigFromConsole(TTenantTestRuntime &runtime, TString &yamlConfig)
+-{
+-    auto *event = new TEvConsole::TEvGetAllConfigsRequest;
+-    runtime.SendToConsole(event);
+-
+-    TAutoPtr<IEventHandle> handle;
+-    auto response = runtime.GrabEdgeEventRethrow<TEvConsole::TEvGetAllConfigsResponse>(handle);
+-
+-    UNIT_ASSERT_C(response->Record.GetResponse().config_size() == 1,
+-        "expected exactly one config in response");
+-    UNIT_ASSERT_C(response->Record.GetResponse().identity_size() == 1,
+-        "expected exactly one identity in response");
+-    UNIT_ASSERT_C(response->Record.GetResponse().identity(0).type_case() == Ydb::DynamicConfig::ConfigIdentity::kCluster,
+-        "expected kCluster identity in response");
+-
+-    yamlConfig = response->Record.GetResponse().config(0);
+-}
+-
+-void DoFetchDatabaseConfigFromConsole(TTenantTestRuntime &runtime, const TString &databasePath, TString &yamlConfig)
+-{
+-    auto *event = new TEvConsole::TEvGetAllConfigsRequest;
+-    event->Record.SetIngressDatabase(databasePath);
+-    runtime.SendToConsole(event);
+-
+-    TAutoPtr<IEventHandle> handle;
+-    auto response = runtime.GrabEdgeEventRethrow<TEvConsole::TEvGetAllConfigsResponse>(handle);
+-
+-    UNIT_ASSERT_C(response->Record.GetResponse().config_size() == 1,
+-        "expected at least one config in response for database: " << databasePath);
+-    UNIT_ASSERT_C(response->Record.GetResponse().identity_size() == 1,
+-        "expected exactly one identity in response");
+-    UNIT_ASSERT_C(response->Record.GetResponse().identity(0).type_case() == Ydb::DynamicConfig::ConfigIdentity::kDatabase,
+-        "expected kDatabase identity in response");
+-    UNIT_ASSERT_C(response->Record.GetResponse().identity(0).has_database(),
+-        "kDatabase identity in response with no database set");
+-    UNIT_ASSERT_EQUAL_C(response->Record.GetResponse().identity(0).database(), databasePath,
+-        "database in response not match requested database");
+-
+-    yamlConfig = response->Record.GetResponse().config(0);
+-}
+-
+-void DoReplaceYamlConfig(TTenantTestRuntime &runtime,
+-                         const TString &yaml,
+-                         Ydb::StatusIds::StatusCode expectedCode,
+-                         const TString &errorSubstring = {},
+-                         bool allowAbsentDatabase = false)
+-{
+-    auto *event = new TEvConsole::TEvReplaceYamlConfigRequest;
+-    event->Record.MutableRequest()->set_config(yaml);
+-    if (allowAbsentDatabase) {
+-        event->Record.MutableRequest()->set_allow_absent_database(true);
+-    }
+-    runtime.SendToConsole(event);
+-
+-    TAutoPtr<IEventHandle> handle;
+-    auto [success, error] = runtime.GrabEdgeEvents<
+-        TEvConsole::TEvReplaceYamlConfigResponse,
+-        TEvConsole::TEvGenericError>(handle);
+-
+-    if (expectedCode == Ydb::StatusIds::SUCCESS) {
+-        UNIT_ASSERT_C(success != nullptr,
+-            "expected success but got error: " <<
+-            (error ? error->Record.ShortDebugString() : TString("no event")));
+-    } else {
+-        UNIT_ASSERT_C(error != nullptr,
+-            "expected error " << static_cast<int>(expectedCode) << " but got success");
+-        UNIT_ASSERT_VALUES_EQUAL(error->Record.GetYdbStatus(), expectedCode);
+-        if (!errorSubstring.empty()) {
+-            TString allMessages;
+-            for (const auto& issue : error->Record.GetIssues()) {
+-                allMessages += issue.message();
+-                allMessages += ";";
+-            }
+-            UNIT_ASSERT_STRING_CONTAINS(allMessages, errorSubstring);
+-        }
+-    }
+-}
+-
+-void DoEnsureMainConfigReplacedWith(TTenantTestRuntime &runtime, TString replaceConfig)
+-{
+-    TString consoleConfig;
+-    TString expectedConfig = NYamlConfig::UpgradeMainConfigVersion(replaceConfig);
+-
+-    DoFetchMainConfigFromConsole(runtime, consoleConfig);
+-    UNIT_ASSERT_VALUES_EQUAL_C(consoleConfig, expectedConfig, "CONSOLE config version not match replace config version");
+-}
+-
+-void DoEnsureDatabaseConfigReplacedWith(TTenantTestRuntime &runtime, const TString& database, TString replaceConfig)
+-{
+-    TString consoleConfig;
+-    TString expectedConfig = NYamlConfig::UpgradeDatabaseConfigVersion(replaceConfig);
+-
+-    DoFetchDatabaseConfigFromConsole(runtime, database, consoleConfig);
+-    UNIT_ASSERT_VALUES_EQUAL_C(consoleConfig, expectedConfig, "CONSOLE config version not match replace config version");
+-}
+-
+ } // anonymous namespace
+ 
+ Y_UNIT_TEST_SUITE(TConsoleConfigTests) {
+@@ -4501,9 +4405,9 @@ Y_UNIT_TEST_SUITE(TConsoleInMemoryConfigSubscriptionTests) {
+ 
+         CheckAddVolatileConfig(runtime, Ydb::StatusIds::SUCCESS, "", 1, 1, VOLATILE_YAML_CONFIG_1_2);
+ 
+-        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, DATABASE_1_YAML_CONFIG_1, true);
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, DATABASE_1_YAML_CONFIG_1);
+ 
+-        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, DATABASE_2_YAML_CONFIG_1, true);
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, DATABASE_2_YAML_CONFIG_1);
+ 
+         ITEM_DOMAIN_LOG_1.MutableConfig()->MutableLogConfig()->SetClusterName("cluster-1");
+ 
+@@ -4686,86 +4590,133 @@ Y_UNIT_TEST_SUITE(TConsoleInMemoryConfigSubscriptionTests) {
+ 
+         // Fresh runtime: YamlVersion = 0. Per documentation, the client must send
+         // the *current* stored version. A version ahead of stored is rejected.
+-        DoReplaceYamlConfig(runtime, VERSIONED_MAIN_CONFIG_V1,
+-            Ydb::StatusIds::BAD_REQUEST, "Version mismatch");
++        CheckReplaceConfig(runtime, Ydb::StatusIds::BAD_REQUEST, VERSIONED_MAIN_CONFIG_V1,
++            "Version mismatch");
+ 
+         // version: 0 matches stored YamlVersion = 0 — accepted; YamlVersion becomes 1.
+-        DoReplaceYamlConfig(runtime, VERSIONED_MAIN_CONFIG_V0_STALE,
+-            Ydb::StatusIds::SUCCESS);
+-        DoEnsureMainConfigReplacedWith(runtime, VERSIONED_MAIN_CONFIG_V0_STALE);
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_MAIN_CONFIG_V0_STALE);
++        CheckMainConfigReplacedWith(runtime, VERSIONED_MAIN_CONFIG_V0_STALE);
+ 
+         // version: 2 with stored = 1 — rejected.
+-        DoReplaceYamlConfig(runtime, VERSIONED_MAIN_CONFIG_V2,
+-            Ydb::StatusIds::BAD_REQUEST, "Version mismatch");
++        CheckReplaceConfig(runtime, Ydb::StatusIds::BAD_REQUEST, VERSIONED_MAIN_CONFIG_V2,
++            "Version mismatch");
+ 
+         // Re-applying the same body with the stale version: 0 is silently
+         // accepted (documented idempotent behaviour: wire == stored - 1 with
+         // identical content). YamlVersion stays at 1.
+-        DoReplaceYamlConfig(runtime, VERSIONED_MAIN_CONFIG_V0_STALE,
+-            Ydb::StatusIds::SUCCESS);
+-        DoEnsureMainConfigReplacedWith(runtime, VERSIONED_MAIN_CONFIG_V0_STALE);
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_MAIN_CONFIG_V0_STALE);
++        CheckMainConfigReplacedWith(runtime, VERSIONED_MAIN_CONFIG_V0_STALE);
+ 
+         // version: 1 matches stored YamlVersion = 1 — accepted; YamlVersion becomes 2.
+-        DoReplaceYamlConfig(runtime, VERSIONED_MAIN_CONFIG_V1,
+-            Ydb::StatusIds::SUCCESS);
+-        DoEnsureMainConfigReplacedWith(runtime, VERSIONED_MAIN_CONFIG_V1);
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_MAIN_CONFIG_V1);
++        CheckMainConfigReplacedWith(runtime, VERSIONED_MAIN_CONFIG_V1);
+ 
+         // version: 2 with a differing body now matches stored — accepted; YamlVersion = 3.
+-        DoReplaceYamlConfig(runtime, VERSIONED_MAIN_CONFIG_V2,
+-            Ydb::StatusIds::SUCCESS);
+-        DoEnsureMainConfigReplacedWith(runtime, VERSIONED_MAIN_CONFIG_V2);
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_MAIN_CONFIG_V2);
++        CheckMainConfigReplacedWith(runtime, VERSIONED_MAIN_CONFIG_V2);
+     }
+ 
+     Y_UNIT_TEST(TestReplaceDatabaseYamlConfigVersionCheck) {
+         NKikimrConfig::TAppConfig appcfg;
+         appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
+-        TTenantTestRuntime runtime(MultipleTenantsConsoleTestConfig(), appcfg);
++        TTenantTestRuntime runtime(TenantConsoleTestConfig(), appcfg);
+ 
+-        const TString DATABASE = "/dc-1/users/tenant-1";
++        const TString DATABASE = TENANT1_1_NAME;
+ 
+         // ValidateDatabaseConfig appends the database config into the main config
+         // and re-validates the result, which requires a non-empty MainYamlConfig.
+         // Seed a minimal main config first (fresh YamlVersion = 0, so wire = 0).
+-        DoReplaceYamlConfig(runtime, VERSIONED_MAIN_CONFIG_V0_STALE,
+-            Ydb::StatusIds::SUCCESS);
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_MAIN_CONFIG_V0_STALE);
+ 
+         // Fresh runtime: no per-database config stored, so currentVersion = 0.
+         // Per documentation, the wire version must equal the stored version.
+         // Sending version: 1 must be rejected.
+-        DoReplaceYamlConfig(runtime, VERSIONED_DATABASE_CONFIG_V1,
+-            Ydb::StatusIds::BAD_REQUEST, "Version mismatch",
+-            /* allowAbsentDatabase = */ true);
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST, VERSIONED_DATABASE_CONFIG_V1,
++            "Version mismatch");
+ 
+         // version: 0 matches stored currentVersion = 0 — accepted; stored version becomes 1.
+-        DoReplaceYamlConfig(runtime, VERSIONED_DATABASE_CONFIG_V0_STALE,
+-            Ydb::StatusIds::SUCCESS, {},
+-            /* allowAbsentDatabase = */ true);
+-        DoEnsureDatabaseConfigReplacedWith(runtime, DATABASE, VERSIONED_DATABASE_CONFIG_V0_STALE);
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_DATABASE_CONFIG_V0_STALE);
++        CheckDatabaseConfigReplacedWith(runtime, DATABASE, VERSIONED_DATABASE_CONFIG_V0_STALE);
+ 
+         // version: 2 with stored = 1 — rejected.
+-        DoReplaceYamlConfig(runtime, VERSIONED_DATABASE_CONFIG_V2,
+-            Ydb::StatusIds::BAD_REQUEST, "Version mismatch",
+-            /* allowAbsentDatabase = */ true);
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST, VERSIONED_DATABASE_CONFIG_V2,
++            "Version mismatch");
+ 
+         // Re-applying the same body with the stale version: 0 is silently
+         // accepted (documented idempotent behaviour: wire == stored - 1 with
+         // identical content). Stored version stays at 1.
+-        DoReplaceYamlConfig(runtime, VERSIONED_DATABASE_CONFIG_V0_STALE,
+-            Ydb::StatusIds::SUCCESS, {},
+-            /* allowAbsentDatabase = */ true);
+-        DoEnsureDatabaseConfigReplacedWith(runtime, DATABASE, VERSIONED_DATABASE_CONFIG_V0_STALE);
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_DATABASE_CONFIG_V0_STALE);
++        CheckDatabaseConfigReplacedWith(runtime, DATABASE, VERSIONED_DATABASE_CONFIG_V0_STALE);
+ 
+         // version: 1 matches stored = 1 — accepted; stored version becomes 2.
+-        DoReplaceYamlConfig(runtime, VERSIONED_DATABASE_CONFIG_V1,
+-            Ydb::StatusIds::SUCCESS, {},
+-            /* allowAbsentDatabase = */ true);
+-        DoEnsureDatabaseConfigReplacedWith(runtime, DATABASE, VERSIONED_DATABASE_CONFIG_V1);
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_DATABASE_CONFIG_V1);
++        CheckDatabaseConfigReplacedWith(runtime, DATABASE, VERSIONED_DATABASE_CONFIG_V1);
+ 
+         // version: 2 with a differing body now matches stored = 2 — accepted; version = 3.
+-        DoReplaceYamlConfig(runtime, VERSIONED_DATABASE_CONFIG_V2,
+-            Ydb::StatusIds::SUCCESS, {},
+-            /* allowAbsentDatabase = */ true);
+-        DoEnsureDatabaseConfigReplacedWith(runtime, DATABASE, VERSIONED_DATABASE_CONFIG_V2);
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_DATABASE_CONFIG_V2);
++        CheckDatabaseConfigReplacedWith(runtime, DATABASE, VERSIONED_DATABASE_CONFIG_V2);
++    }
++
++    // PrivateDatabaseConfig is marked '(NMarkers.OpaqueConfig) = true'
++    // - unknown fields nested anywhere inside it must NOT cause Console's YAML
++    // validator to reject the config, in both the main cluster YAML and the
++    // per-database YAML.
++
++    Y_UNIT_TEST(TestReplaceMainYamlConfigWithUnknownsUnderPrivateDatabaseConfig) {
++        NKikimrConfig::TAppConfig appcfg;
++        appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
++        TTenantTestRuntime runtime(TenantConsoleTestConfig(), appcfg);
++
++        const TString mainConfig = R"(
++---
++metadata:
++  kind: MainConfig
++  cluster: ""
++  version: 0
++config:
++  log_config:
++    cluster_name: clusterA
++  private_database_config:
++    some_unknown_field: 42
++    some_unknown_struct:
++      field_1: 1
++      field_2: abc
++      struct_3:
++        field_1: 2
++        field_2: def
++)";
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, mainConfig);
++        CheckMainConfigReplacedWith(runtime, mainConfig);
++    }
++
++    Y_UNIT_TEST(TestReplaceDatabaseYamlConfigWithUnknownsUnderPrivateDatabaseConfig) {
++        NKikimrConfig::TAppConfig appcfg;
++        appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
++        TTenantTestRuntime runtime(TenantConsoleTestConfig(), appcfg);
++
++        // ValidateDatabaseConfig appends the database config into the main config
++        // and re-validates the result, which requires a non-empty MainYamlConfig.
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, VERSIONED_MAIN_CONFIG_V0_STALE);
++
++        const TString DATABASE = TENANT1_1_NAME;
++        const TString databaseConfig = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: 0
++config:
++  private_database_config:
++    some_unknown_field: 42
++    some_unknown_struct:
++      field_1: 1
++      field_2: abc
++      struct_3:
++        field_1: 2
++        field_2: def
++)";
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, databaseConfig);
++        CheckDatabaseConfigReplacedWith(runtime, DATABASE, databaseConfig);
+     }
+ }
+ 
+diff --git a/contrib/ydb/core/cms/console/ut/ya.make b/contrib/ydb/core/cms/console/ut/ya.make
+index e8f979621da1b5e3bc5361532ed8a63c32434264..9e1bffef4866432579c92756e22ece83881e2f14 100644
+--- a/contrib/ydb/core/cms/console/ut/ya.make
++++ b/contrib/ydb/core/cms/console/ut/ya.make
+@@ -15,6 +15,7 @@ PEERDIR(
+ YQL_LAST_ABI_VERSION()
+ 
+ SRCS(
++    ut_configs_dispatcher/ut_private_database_config.proto
+     configs_cache_ut.cpp
+     configs_dispatcher_ut.cpp
+     console_ut_tenants.cpp
+diff --git a/contrib/ydb/core/cms/console/ut_configs_dispatcher/ut_private_database_config.proto b/contrib/ydb/core/cms/console/ut_configs_dispatcher/ut_private_database_config.proto
+new file mode 100644
+index 0000000000000000000000000000000000000000..f457e048463f6fafe74c1fe16955a86ea20621db
+--- /dev/null
++++ b/contrib/ydb/core/cms/console/ut_configs_dispatcher/ut_private_database_config.proto
+@@ -0,0 +1,14 @@
++// End-node-only configuration schema.
++//
++// This proto is compiled ONLY into the configs_dispatcher unit test, which
++// plays the role of a custom end node. It is deliberately NOT a dependency of
++// ydb/core/cms/console, so the console / configs_dispatcher code cannot parse
++// payloads of this type. The cluster only ever sees the opaque
++// TAppConfig.PrivateDatabaseConfig string captured from config.private_database_config;
++// this schema interprets it on the node side.
++
++package NKikimrOpaqueConfigUt;
++
++message TUtPrivateDatabaseConfig {
++    optional uint32 SecretPort = 1;
++}
+diff --git a/contrib/ydb/core/cms/console/ut_helpers.h b/contrib/ydb/core/cms/console/ut_helpers.h
+index a516a2845b51c433dd90dbd45fd7c1c32ccb0d1f..ff4f9c511200d6c8d63ee831e263122b72c67386 100644
+--- a/contrib/ydb/core/cms/console/ut_helpers.h
++++ b/contrib/ydb/core/cms/console/ut_helpers.h
+@@ -293,17 +293,109 @@ inline void CheckEqualsIgnoringVersion(NKikimrConfig::TAppConfig config1, NKikim
+     UNIT_ASSERT_VALUES_EQUAL(config1.ShortDebugString(), config2.ShortDebugString());
+ }
+ 
++inline void FetchMainConfigFromConsole(TTenantTestRuntime &runtime, TString &yamlConfig)
++{
++    auto *event = new TEvConsole::TEvGetAllConfigsRequest;
++    runtime.SendToConsole(event);
++
++    TAutoPtr<IEventHandle> handle;
++    //auto response = runtime.GrabEdgeEventRethrow<TEvConsole::TEvGetAllConfigsResponse>(handle);
++    auto [response, error] = runtime.GrabEdgeEventsRethrow<
++        TEvConsole::TEvGetAllConfigsResponse,
++        TEvConsole::TEvGenericError>(handle, TDuration::Seconds(1));
++    UNIT_ASSERT_C(response != nullptr,
++        "error: " << (error ? error->Record.ShortDebugString() : TString("<no event>")));
++
++    UNIT_ASSERT_C(response->Record.GetResponse().config_size() == 1,
++        "expected exactly one config in response");
++    UNIT_ASSERT_C(response->Record.GetResponse().identity_size() == 1,
++        "expected exactly one identity in response");
++    UNIT_ASSERT_C(response->Record.GetResponse().identity(0).type_case() == Ydb::DynamicConfig::ConfigIdentity::kCluster,
++        "expected kCluster identity in response");
++
++    yamlConfig = response->Record.GetResponse().config(0);
++}
++
++inline void FetchDatabaseConfigFromConsole(TTenantTestRuntime &runtime, const TString &databasePath, TString &yamlConfig)
++{
++    auto *event = new TEvConsole::TEvGetAllConfigsRequest;
++    event->Record.SetIngressDatabase(databasePath);
++    runtime.SendToConsole(event);
++
++    TAutoPtr<IEventHandle> handle;
++    //auto response = runtime.GrabEdgeEventRethrow<TEvConsole::TEvGetAllConfigsResponse>(handle);
++    auto [response, error] = runtime.GrabEdgeEventsRethrow<
++        TEvConsole::TEvGetAllConfigsResponse,
++        TEvConsole::TEvGenericError>(handle, TDuration::Seconds(1));
++    UNIT_ASSERT_C(response != nullptr,
++        "error: " << (error ? error->Record.ShortDebugString() : TString("<no event>")));
++
++    UNIT_ASSERT_C(response->Record.GetResponse().config_size() == 1,
++        "expected at least one config in response for database: " << databasePath);
++    UNIT_ASSERT_C(response->Record.GetResponse().identity_size() == 1,
++        "expected exactly one identity in response");
++    UNIT_ASSERT_C(response->Record.GetResponse().identity(0).type_case() == Ydb::DynamicConfig::ConfigIdentity::kDatabase,
++        "expected kDatabase identity in response");
++    UNIT_ASSERT_C(response->Record.GetResponse().identity(0).has_database(),
++        "kDatabase identity in response with no database set");
++    UNIT_ASSERT_EQUAL_C(response->Record.GetResponse().identity(0).database(), databasePath,
++        "database in response not match requested database");
++
++    yamlConfig = response->Record.GetResponse().config(0);
++}
++
+ inline void CheckReplaceConfig(TTenantTestRuntime &runtime,
+-                               Ydb::StatusIds::StatusCode code,
+-                               TString yamlConfig)
++                               Ydb::StatusIds::StatusCode expectedCode,
++                               const TString &yaml,
++                               const TString &expectedErrorSubstring = {},
++                               bool allowUnknownFields = false,
++                               bool allowAbsentDatabase = false)
+ {
+-        TAutoPtr<IEventHandle> handle;
+-        auto *event = new TEvConsole::TEvReplaceYamlConfigRequest;
+-        event->Record.MutableRequest()->set_config(yamlConfig);
+-        runtime.SendToConsole(event);
++    auto *event = new TEvConsole::TEvReplaceYamlConfigRequest;
++    event->Record.MutableRequest()->set_config(yaml);
++    if (allowUnknownFields) {
++        event->Record.MutableRequest()->set_allow_unknown_fields(true);
++    }
++    if (allowAbsentDatabase) {
++        event->Record.MutableRequest()->set_allow_absent_database(true);
++    }
++    runtime.SendToConsole(event);
+ 
+-        runtime.GrabEdgeEventRethrow<TEvConsole::TEvReplaceYamlConfigResponse>(handle);
+-        Y_UNUSED(code);
++    TAutoPtr<IEventHandle> handle;
++    auto [success, error] = runtime.GrabEdgeEventsRethrow<
++        TEvConsole::TEvReplaceYamlConfigResponse,
++        TEvConsole::TEvGenericError>(handle, TDuration::Seconds(1));
++
++    if (expectedCode == Ydb::StatusIds::SUCCESS) {
++        UNIT_ASSERT_C(success != nullptr,
++            "expected success but got error: " <<
++            (error ? error->Record.ShortDebugString() : TString("<no event>")));
++    } else {
++        UNIT_ASSERT_C(error != nullptr,
++            "expected error " << static_cast<int>(expectedCode) << " but got success");
++        UNIT_ASSERT_VALUES_EQUAL_C(error->Record.GetYdbStatus(), expectedCode, error->Record.ShortDebugString());
++        if (!expectedErrorSubstring.empty()) {
++            UNIT_ASSERT_STRING_CONTAINS(error->Record.ShortDebugString(), expectedErrorSubstring);
++        }
++    }
++}
++
++inline void CheckMainConfigReplacedWith(TTenantTestRuntime &runtime, TString replaceConfig)
++{
++    TString consoleConfig;
++    TString expectedConfig = NYamlConfig::UpgradeMainConfigVersion(replaceConfig);
++
++    FetchMainConfigFromConsole(runtime, consoleConfig);
++    UNIT_ASSERT_VALUES_EQUAL_C(consoleConfig, expectedConfig, "CONSOLE config version not match replace config version");
++}
++
++inline void CheckDatabaseConfigReplacedWith(TTenantTestRuntime &runtime, const TString& database, TString replaceConfig)
++{
++    TString consoleConfig;
++    TString expectedConfig = NYamlConfig::UpgradeDatabaseConfigVersion(replaceConfig);
++
++    FetchDatabaseConfigFromConsole(runtime, database, consoleConfig);
++    UNIT_ASSERT_VALUES_EQUAL_C(consoleConfig, expectedConfig, "CONSOLE config version not match replace config version");
+ }
+ 
+ inline void CheckDropConfig(TTenantTestRuntime &runtime,
+@@ -357,21 +449,12 @@ inline void CheckRemoveVolatileConfig(TTenantTestRuntime &runtime,
+ }
+ 
+ inline void CheckReplaceDatabaseConfig(TTenantTestRuntime &runtime,
+-                                       Ydb::StatusIds::StatusCode code,
+-                                       TString yamlConfig,
+-                                       bool allowNoDb = false)
++                                       Ydb::StatusIds::StatusCode expectedCode,
++                                       const TString &yaml,
++                                       const TString &expectedErrorSubstring = {},
++                                       bool allowUnknownFields = false)
+ {
+-        TAutoPtr<IEventHandle> handle;
+-        auto *event = new TEvConsole::TEvReplaceYamlConfigRequest;
+-        event->Record.MutableRequest()->set_config(yamlConfig);
+-        if (allowNoDb) {
+-            event->Record.MutableRequest()->set_allow_absent_database(true);
+-        }
+-        runtime.SendToConsole(event);
+-
+-        runtime.GrabEdgeEventRethrow<TEvConsole::TEvReplaceYamlConfigResponse>(handle);
+-        Y_UNUSED(code);
++    CheckReplaceConfig(runtime, expectedCode, yaml, expectedErrorSubstring, allowUnknownFields, true);
+ }
+ 
+-
+ } // namesapce NKikimr::NConsole::NUT
+diff --git a/contrib/ydb/core/config/init/init.h b/contrib/ydb/core/config/init/init.h
+index 9212bb059d18c1c93252f19bb118fd3531da374f..fc96e806c387ed2b83daae42d1caa74e83fa2a9f 100644
+--- a/contrib/ydb/core/config/init/init.h
++++ b/contrib/ydb/core/config/init/init.h
+@@ -14,6 +14,9 @@
+ #include <util/generic/string.h>
+ #include <util/datetime/base.h>
+ 
++#include <functional>
++#include <memory>
++
+ namespace NKikimr::NConfig {
+ 
+ struct TConfigItemInfo {
+@@ -227,6 +230,19 @@ struct TDebugInfo {
+     THashMap<ui32, TConfigItemInfo> InitInfo;
+ };
+ 
++// Opaque dynamic YAML config parser.
++// Parses YAML config section marked with NMarkers.OpaqueConfig in TAppConfig
++// into a message whose schema the configs dispatcher itself does not have.
++// Provided by the end node, so the configs dispatcher stays schema-agnostic.
++// The parsed message is attached to the node-local config notification
++// (see TEvConfigNotificationRequest).
++//
++// Thrown exceptions are catched and processed by configs dispatcher.
++//
++// @param opaqueYamlConfig - string content of opaque config section in YAML config
++// @return the parsed message, or nullptr to attach nothing.
++using TOpaqueConfigParser = std::function<std::shared_ptr<const ::google::protobuf::Message>(const TString& opaqueYamlConfig)>;
++
+ struct TConfigsDispatcherInitInfo {
+     NKikimrConfig::TAppConfig InitialConfig;
+     TString StartupConfigYaml;
+@@ -235,6 +251,10 @@ struct TConfigsDispatcherInitInfo {
+     std::optional<TDebugInfo> DebugInfo;
+     std::shared_ptr<NConfig::TRecordedInitialConfiguratorDeps> RecordedInitialConfiguratorDeps = nullptr;
+     std::vector<TString> Args;
++    // Per-kind parsers for opaque config sections (kind == TAppConfig field
++    // number). Node-local; empty by default. When set, the dispatcher parses the
++    // section and attaches the result to the notification for that kind.
++    THashMap<ui32, TOpaqueConfigParser> OpaqueConfigParsers;
+ };
+ 
+ class IInitialConfigurator {
+diff --git a/contrib/ydb/core/config/protos/marker.proto b/contrib/ydb/core/config/protos/marker.proto
+index 55f30a4aa5c65d8f539cd7ac62e34ae41478169e..2bd8b51546d77b1b4246bae136a558bf0cc3d4b9 100644
+--- a/contrib/ydb/core/config/protos/marker.proto
++++ b/contrib/ydb/core/config/protos/marker.proto
+@@ -53,5 +53,19 @@ extend google.protobuf.FieldOptions {
+ 
+     // **Top-level** options marked with that label are allowed to be used in the database configuration.
+     optional bool AllowInDatabaseConfig = 82004;
+-}
+ 
++    // **Top-level** options marked with that label are opaque to the cluster
++    // in the dynamic YAML configuration (main and database).
++    //  - must be of (empty) message type (TOpaqueConfig type should be used)
++    //  - the cluster never understands the payload
++    //  - opaque configs are still subject:
++    //      - to the YAML syntax validation
++    //      - to the YAML resolving mechanism
++    //    These are the reasons message type is used instead of simple string
++    //  - makes the YAML->proto parser accept that sub-tree without validating it
++    //    (so the console needs no allow_unknown_fields)
++    //  - the actual content travels in the resolved YAML
++    //  - the configs dispatcher hands it to an end-node-provided parser,
++    //    which interprets it with its own schema
++    optional bool OpaqueConfig = 82005;
++}
+diff --git a/contrib/ydb/core/protos/config.proto b/contrib/ydb/core/protos/config.proto
+index 3b2c9e428228f4c3d7f912b34a511a99274a0ec5..08fa04785c93f8faf2f7be214b510fc518dfa709 100644
+--- a/contrib/ydb/core/protos/config.proto
++++ b/contrib/ydb/core/protos/config.proto
+@@ -2533,6 +2533,13 @@ message TGeneralCacheConfig {
+     optional uint64 DirectInflightGlobalLimit = 3;
+ }
+ 
++// Opaque (NMarkers.OpaqueConfig), end-node-owned configuration.
++// Authored as a nested YAML map under config.<opaque_config>.
++// See NMarkers.OpaqueConfig comments
++message TOpaqueConfig {
++    // Empty
++}
++
+ message TAppConfig {
+     option (NMarkers.Root) = true;
+     optional TActorSystemConfig ActorSystemConfig = 1;
+@@ -2621,6 +2628,7 @@ message TAppConfig {
+     optional TWorkloadManagerConfig WorkloadManagerConfig = 90;
+     optional TGroupedMemoryLimiterConfig CompGroupedMemoryLimiterConfig = 92;
+     optional TBlockstoreConfig BlockstoreConfig = 93;
++    optional TOpaqueConfig PrivateDatabaseConfig = 94 [(NMarkers.AllowInDatabaseConfig) = true, (NMarkers.OpaqueConfig) = true];
+ 
+     repeated TNamedConfig NamedConfigs = 100;
+     optional string ClusterYamlConfig = 101;
+diff --git a/contrib/ydb/core/protos/console_config.proto b/contrib/ydb/core/protos/console_config.proto
+index 1197f4a0ed44c12075dd640800648274fae5dab1..f1db8db4d299ea3d94e6bccb30a697a7c15a65a5 100644
+--- a/contrib/ydb/core/protos/console_config.proto
++++ b/contrib/ydb/core/protos/console_config.proto
+@@ -148,6 +148,7 @@ message TConfigItem {
+         WorkloadManagerConfigItem = 90;
+         CompGroupedMemoryLimiterConfig = 92;
+         BlockstoreConfigItem = 93;
++        PrivateDatabaseConfigItem = 94;
+ 
+         NamedConfigsItem = 100;
+         ClusterYamlConfigItem = 101;
+diff --git a/contrib/ydb/core/testlib/tenant_runtime.cpp b/contrib/ydb/core/testlib/tenant_runtime.cpp
+index bdba59e085f64fa26d0724611280549f78211504..64977a7912618d105187db67114628f04a6dcfc4 100644
+--- a/contrib/ydb/core/testlib/tenant_runtime.cpp
++++ b/contrib/ydb/core/testlib/tenant_runtime.cpp
+@@ -1044,6 +1044,7 @@ void TTenantTestRuntime::Setup(bool createTenantPools)
+                     NKikimr::NConfig::TConfigsDispatcherInitInfo {
+                         .InitialConfig = Extension,
+                         .Labels = labels,
++                        .OpaqueConfigParsers = Config.OpaqueConfigParsers,
+                     }
+                 ));
+             EnableScheduleForActor(aid, true);
+diff --git a/contrib/ydb/core/testlib/tenant_runtime.h b/contrib/ydb/core/testlib/tenant_runtime.h
+index b59874010db1412b28d4a369b532fb7398fda798..a158f5226fa02169023333649d89e0ffbdffd8b3 100644
+--- a/contrib/ydb/core/testlib/tenant_runtime.h
++++ b/contrib/ydb/core/testlib/tenant_runtime.h
+@@ -3,6 +3,7 @@
+ 
+ #include <contrib/ydb/core/base/events.h>
+ #include <contrib/ydb/core/base/subdomain.h>
++#include <contrib/ydb/core/config/init/init.h>
+ #include <contrib/ydb/core/mind/labels_maintainer.h>
+ #include <contrib/ydb/core/mind/local.h>
+ #include <contrib/ydb/core/mind/tenant_pool.h>
+@@ -98,6 +99,9 @@ struct TTenantTestConfig {
+     ui32 DataCenterCount;
+     bool CreateConfigsDispatcher = false;
+     bool RegisterFeatureFlagsConfigurator = false;
++    // Per-kind opaque config parsers injected into the framework-created
++    // ConfigsDispatcher (only used when CreateConfigsDispatcher is true).
++    THashMap<ui32, NConfig::TOpaqueConfigParser> OpaqueConfigParsers = {};
+ };
+ 
+ extern const ui64 SCHEME_SHARD1_ID;
+diff --git a/contrib/ydb/library/yaml_config/ut/protos/test_config.proto b/contrib/ydb/library/yaml_config/ut/protos/test_config.proto
+new file mode 100644
+index 0000000000000000000000000000000000000000..39453a7d13d60ead572a9fc90f0563ddd47ae572
+--- /dev/null
++++ b/contrib/ydb/library/yaml_config/ut/protos/test_config.proto
+@@ -0,0 +1,15 @@
++syntax = "proto2";
++
++package NYamlConfigTest;
++
++message TTestServiceConfig {
++    optional string ServiceName = 1;
++    optional uint32 MaxConnections = 2;
++    optional bool TlsEnabled = 3;
++    repeated TEndpoint Endpoints = 4;
++
++    message TEndpoint {
++        optional string Host = 1;
++        optional uint32 Port = 2;
++    }
++}
+diff --git a/contrib/ydb/library/yaml_config/ut/protos/ya.make b/contrib/ydb/library/yaml_config/ut/protos/ya.make
+new file mode 100644
+index 0000000000000000000000000000000000000000..940b21617f7dc322ac9fdd9e986eb34e74b4e856
+--- /dev/null
++++ b/contrib/ydb/library/yaml_config/ut/protos/ya.make
+@@ -0,0 +1,9 @@
++PROTO_LIBRARY()
++
++SRCS(
++    test_config.proto
++)
++
++EXCLUDE_TAGS(GO_PROTO JAVA_PROTO)
++
++END()
+diff --git a/contrib/ydb/library/yaml_config/ut/ya.make b/contrib/ydb/library/yaml_config/ut/ya.make
+index 9eb69e63293815d1dce0c4e702e386d36546bf52..fc6b9cd7e8a1e94c6814858f5b6952b9a3f72fd1 100644
+--- a/contrib/ydb/library/yaml_config/ut/ya.make
++++ b/contrib/ydb/library/yaml_config/ut/ya.make
+@@ -1,7 +1,12 @@
+ UNITTEST_FOR(contrib/ydb/library/yaml_config)
+ 
++PEERDIR(
++    contrib/ydb/library/yaml_config/ut/protos
++)
++
+ SRCS(
+     console_dumper_ut.cpp
++    yaml_config_helpers_ut.cpp
+     yaml_config_ut.cpp
+     yaml_config_parser_ut.cpp
+     yaml_config_proto2yaml_ut.cpp
+diff --git a/contrib/ydb/library/yaml_config/ya.make b/contrib/ydb/library/yaml_config/ya.make
+index 8d42abea3e6b21dbc05acc8a0dec4ecebe4f44b2..d09de1d555a11c63ffd7f93a9ab074af568df451 100644
+--- a/contrib/ydb/library/yaml_config/ya.make
++++ b/contrib/ydb/library/yaml_config/ya.make
+@@ -18,6 +18,7 @@ PEERDIR(
+     library/cpp/protobuf/json
+     contrib/ydb/core/base
+     contrib/ydb/core/cms/console/util
++    contrib/ydb/core/config/protos
+     contrib/ydb/core/erasure
+     contrib/ydb/core/protos
+     contrib/ydb/core/protos/out
+diff --git a/contrib/ydb/library/yaml_config/yaml_config.cpp b/contrib/ydb/library/yaml_config/yaml_config.cpp
+index 2e9c33a3064d84a05b68fdccfef0a6cb883f416e..28ec20c3cb4c0871a0460d88015366e5e603424b 100644
+--- a/contrib/ydb/library/yaml_config/yaml_config.cpp
++++ b/contrib/ydb/library/yaml_config/yaml_config.cpp
+@@ -5,7 +5,9 @@
+ #include <contrib/ydb/core/base/appdata.h>
+ 
+ #include <library/cpp/protobuf/json/json2proto.h>
++#include <library/cpp/protobuf/json/util.h>
+ 
++#include <contrib/ydb/core/config/protos/marker.pb.h>
+ #include <contrib/ydb/core/protos/netclassifier.pb.h>
+ 
+ namespace NKikimr::NYamlConfig {
+diff --git a/contrib/ydb/library/yaml_config/yaml_config_helpers.h b/contrib/ydb/library/yaml_config/yaml_config_helpers.h
+index 12b8c119c49bbd713d3ccea7bc4b25f04cff1577..9ae5602a484f0f2e4665d7b9d23c82ee2a6d2c69 100644
+--- a/contrib/ydb/library/yaml_config/yaml_config_helpers.h
++++ b/contrib/ydb/library/yaml_config/yaml_config_helpers.h
+@@ -9,8 +9,12 @@
+ #include <library/cpp/json/writer/json.h>
+ 
+ #include <contrib/ydb/library/yaml_config/protos/config.pb.h>
++#include <contrib/ydb/library/fyamlcpp/fyamlcpp.h>
++#include <library/cpp/protobuf/json/json2proto.h>
+ #include <library/cpp/protobuf/json/util.h>
+ 
++#include <functional>
++#include <memory>
+ #include <span>
+ 
+ namespace NKikimr::NYaml {
+@@ -39,4 +43,49 @@ void IterateMut(NJson::TJsonValue& json, const TStringBuf& path, std::function<v
+ 
+ ui64 GetConfigHash(const TString& config);
+ 
++// Default Nkikimr::NConfig::TOpaqueConfigParser implementation template.
++// Parses YAML string into template-parameter specified proto message.
++// Silently ignores unknown fields if allowUnknownFields=true.
++//
++// @param opaqueYamlConfig - YAML document or YAML subfield (with no "---" YAML document prefix)
++// @param allowUnknownFields - silently ignore unknown fields (for specified Proto)
++//
++// @return
++//  nullptr - on empty imput YAML
++//  parsed Proto message - on successfull parsing
++//
++// @throw
++//  std::exception - on underlying parser errors / unknown fields present (without allowUnknownFields)
++//
++// Usage (within end-node service):
++//
++//  NKikimr::NConfig::TConfigsDispatcherInitInfo initInfo;
++//  auto parser = std::bind(NKikimr::NYaml::DefaultOpaqueConfigParser<UserNamespace::TPrivateDatabaseConfigProto>, std::placeholders::_1, true);
++//  initInfo.OpaqueConfigParsers[NKikimrConsole::TConfigItem::PrivateConfigItem] = std::move(parser);
++//  auto* dispatcher = NKikimr::NConsole::CreateConfigsDispatcher(initInfo);
++//
++template<typename Proto>
++std::shared_ptr<const ::google::protobuf::Message> DefaultOpaqueConfigParser(const TString& opaqueYamlConfig, bool allowUnknownFields)
++{
++    const auto& subYaml = (opaqueYamlConfig.StartsWith("---") ? opaqueYamlConfig.substr(3) : opaqueYamlConfig);
++    if ( subYaml.find_first_not_of(" \t\n\r") == TString::npos )
++    {
++        return nullptr;
++    }
++
++    auto msg = std::make_shared<Proto>();
++    auto doc = NFyaml::TDocument::Parse(opaqueYamlConfig);
++
++    TStringStream jsonStream;
++    jsonStream << NFyaml::TJsonEmitter(doc.Root());
++
++    NJson::TJsonValue json;
++    Y_ENSURE(NJson::ReadJsonTree(jsonStream.Str(), &json));
++
++    auto config = GetJsonToProtoConfig(allowUnknownFields);
++    NProtobufJson::Json2Proto(json, *msg, config);
++
++    return msg;
++}
++
+ }
+diff --git a/contrib/ydb/library/yaml_config/yaml_config_helpers_ut.cpp b/contrib/ydb/library/yaml_config/yaml_config_helpers_ut.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..6a276c27fcd0f71a0b301a2944e04765543d815c
+--- /dev/null
++++ b/contrib/ydb/library/yaml_config/yaml_config_helpers_ut.cpp
+@@ -0,0 +1,162 @@
++#include "yaml_config_helpers.h"
++
++#include <contrib/ydb/library/yaml_config/ut/protos/test_config.pb.h>
++
++#include <library/cpp/testing/unittest/registar.h>
++
++using namespace NKikimr::NYaml;
++
++Y_UNIT_TEST_SUITE(DefaultOpaqueConfigParser) {
++
++    Y_UNIT_TEST(ParsesFieldsCorrectly) {
++        const TString yamlTemplate = R"(
++service_name: my-service
++max_connections: 128
++tls_enabled: true
++endpoints:
++- host: node1.example.com
++  port: 8080
++- host: node2.example.com
++  port: 9090
++)";
++        TString yaml = "---\n" + yamlTemplate;
++        // Checks for YAML doc and YAML subfield
++        for ( int i = 0; i < 2; i++ ) {
++            auto msg = DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>(yaml, true);
++            UNIT_ASSERT(msg);
++            // dynamic_cast is to verify that DefaultOpaqueConfigParser<TTestServiceConfig>
++            // actually returns a TTestServiceConfig inside the shared_ptr<Message>.
++            // CopyFrom() would silently succeed even if the function returned a wrong proto type
++            // (as long as fields happened to match), masking a real bug.
++            // CopyFrom() is correct choise for production code where you already trust the source type
++            // and just need to extract the data.
++            auto* cfg = dynamic_cast<const NYamlConfigTest::TTestServiceConfig*>(msg.get());
++            UNIT_ASSERT(cfg != nullptr);
++
++            UNIT_ASSERT(cfg->HasServiceName());
++            UNIT_ASSERT_VALUES_EQUAL(cfg->GetServiceName(), "my-service");
++
++            UNIT_ASSERT(cfg->HasMaxConnections());
++            UNIT_ASSERT_VALUES_EQUAL(cfg->GetMaxConnections(), 128u);
++
++            UNIT_ASSERT(cfg->HasTlsEnabled());
++            UNIT_ASSERT_VALUES_EQUAL(cfg->GetTlsEnabled(), true);
++
++            UNIT_ASSERT_VALUES_EQUAL(cfg->EndpointsSize(), 2);
++            UNIT_ASSERT_VALUES_EQUAL(cfg->GetEndpoints(0).GetHost(), "node1.example.com");
++            UNIT_ASSERT_VALUES_EQUAL(cfg->GetEndpoints(0).GetPort(), 8080u);
++            UNIT_ASSERT_VALUES_EQUAL(cfg->GetEndpoints(1).GetHost(), "node2.example.com");
++            UNIT_ASSERT_VALUES_EQUAL(cfg->GetEndpoints(1).GetPort(), 9090u);
++
++            yaml = yamlTemplate;
++        }
++    }
++
++    Y_UNIT_TEST(AbsentFieldsAreAbsent) {
++        const TString yaml = R"(---
++service_name: minimal
++)";
++        auto msg = DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>(yaml, true);
++        UNIT_ASSERT(msg);
++        NYamlConfigTest::TTestServiceConfig cfg;
++        cfg.CopyFrom(*msg);
++
++        UNIT_ASSERT(cfg.HasServiceName());
++        UNIT_ASSERT_VALUES_EQUAL(cfg.GetServiceName(), "minimal");
++
++        UNIT_ASSERT(!cfg.HasMaxConnections());
++        UNIT_ASSERT(!cfg.HasTlsEnabled());
++        UNIT_ASSERT_VALUES_EQUAL(cfg.EndpointsSize(), 0);
++    }
++
++    Y_UNIT_TEST(AllowsUnknownFieldsWhenEnabled) {
++        const TString yaml = R"(
++service_name: my-service
++unknown_field_xyz: some_value
++)";
++        auto msg = DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>(yaml, true);
++        UNIT_ASSERT(msg);
++        NYamlConfigTest::TTestServiceConfig cfg;
++        cfg.CopyFrom(*msg);
++
++        UNIT_ASSERT(cfg.HasServiceName());
++        UNIT_ASSERT_VALUES_EQUAL(cfg.GetServiceName(), "my-service");
++    }
++
++    Y_UNIT_TEST(ThrowsOnUnknownFieldsWhenDisabled) {
++        const TString yaml = R"(
++service_name: my-service
++unknown_field_xyz: some_value
++)";
++        UNIT_CHECK_GENERATED_EXCEPTION(
++            DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>(yaml, false),
++            std::exception
++        );
++    }
++
++    Y_UNIT_TEST(EmptyInputProducesEmptyProto) {
++        const TString blanks[] = {"", " ", "\t", "\n", "\r\n", "  \t\n  \r\n  "};
++
++        TString prefix = "---";
++        // Checks for YAML doc and YAML subfield
++        for ( int i = 0; i < 2; i++ ) {
++            for (const auto& input : blanks) {
++                auto msg = DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>(prefix + input, true);
++                UNIT_ASSERT(!msg);
++            }
++
++            prefix = "";
++        }
++    }
++
++    Y_UNIT_TEST(ThrowsOnMalformedYaml) {
++        TString prefix = "---\n";
++        // Checks for YAML doc and YAML subfield
++        for ( int i = 0; i < 2; i++ ) {
++            // Completely invalid YAML: bad indentation
++            UNIT_CHECK_GENERATED_EXCEPTION(
++                DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>(
++                    prefix + "some random text", true),
++                std::exception
++            );
++
++            // Unclosed quote
++            UNIT_CHECK_GENERATED_EXCEPTION(
++                DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>(
++                    prefix + "service_name: \"unclosed\n", true),
++                std::exception
++            );
++
++            // Duplicate key (strict YAML parsers reject this)
++            UNIT_CHECK_GENERATED_EXCEPTION(
++                DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>(
++                    prefix + "service_name: first\nservice_name: second\n", true),
++                std::exception
++            );
++
++            // Tabs in indentation (forbidden by YAML spec)
++            UNIT_CHECK_GENERATED_EXCEPTION(
++                DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>(
++                    prefix + "endpoints:\n\t- host: bad\n", true),
++                std::exception
++            );
++
++            prefix = "";
++        }
++    }
++    Y_UNIT_TEST(CheckParserCreation) {
++        const TString yaml = R"(
++service_name: my-service
++unknown_field_xyz: some_value
++)";
++        auto parser = std::bind(NKikimr::NYaml::DefaultOpaqueConfigParser<NYamlConfigTest::TTestServiceConfig>, std::placeholders::_1, true);
++
++        auto msg = parser(yaml);
++        UNIT_ASSERT(msg);
++        NYamlConfigTest::TTestServiceConfig cfg;
++        cfg.CopyFrom(*msg);
++
++        UNIT_ASSERT(cfg.HasServiceName());
++        UNIT_ASSERT_VALUES_EQUAL(cfg.GetServiceName(), "my-service");
++    }
++}
+diff --git a/contrib/ydb/library/yaml_config/yaml_config_parser.cpp b/contrib/ydb/library/yaml_config/yaml_config_parser.cpp
+index 2443a0a8e80d10e4b65a10c31e90625533d8f41c..1620aa7e663ac6ea3a2d459ce7a0123aac3189cb 100644
+--- a/contrib/ydb/library/yaml_config/yaml_config_parser.cpp
++++ b/contrib/ydb/library/yaml_config/yaml_config_parser.cpp
+@@ -18,8 +18,11 @@
+ #include <contrib/ydb/core/protos/tablet.pb.h>
+ #include <library/cpp/json/writer/json.h>
+ #include <library/cpp/protobuf/json/util.h>
++#include <library/cpp/json/json_writer.h>
+ #include <contrib/ydb/library/yaml_json/yaml_to_json.h>
++#include <contrib/ydb/core/config/protos/marker.pb.h>
+ 
++#include <util/generic/hash_set.h>
+ #include <util/generic/string.h>
+ 
+ template <>
+@@ -1517,6 +1520,36 @@ namespace NKikimr::NYaml {
+         return replaceRequest;
+     }
+ 
++    const TVector<TOpaqueField>& OpaqueConfigFields() {
++        static const TVector<TOpaqueField> fields = [] {
++            TVector<TOpaqueField> result;
++            const auto* desc = NKikimrConfig::TAppConfig::descriptor();
++            for (int i = 0; i < desc->field_count(); ++i) {
++                const auto* field = desc->field(i);
++                if (field->options().GetExtension(NKikimrConfig::NMarkers::OpaqueConfig)) {
++                    Y_ENSURE(field->cpp_type() == ::google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE);
++                    TString name = field->name();
++                    NProtobufJson::ToSnakeCaseDense(&name);
++                    result.push_back({name});
++                }
++            }
++            return result;
++        }();
++        return fields;
++    }
++
++    void CaptureOpaqueConfigFields(NJson::TJsonValue& configJson) {
++        if (!configJson.IsMap()) {
++            return;
++        }
++        for (const auto& f : OpaqueConfigFields()) {
++            if (!configJson.Has(f.Name)) {
++                continue;
++            }
++            configJson[f.Name] = NJson::TJsonValue(NJson::JSON_MAP);
++        }
++    }
++
+     void Parse(const NJson::TJsonValue& json, NProtobufJson::TJson2ProtoConfig convertConfig, NKikimrConfig::TAppConfig& config, bool transform, bool relaxed) {
+         auto jsonNode = json;
+         TTransformContext ctx;
+@@ -1542,6 +1575,7 @@ namespace NKikimr::NYaml {
+             ClearEphemeralFields(jsonNode);
+         }
+ 
++        CaptureOpaqueConfigFields(jsonNode);
+         NProtobufJson::MergeJson2Proto(jsonNode, config, convertConfig);
+ 
+         if (transform) {
+diff --git a/contrib/ydb/library/yaml_config/yaml_config_parser.h b/contrib/ydb/library/yaml_config/yaml_config_parser.h
+index d54a91a3422ec255aa4a3156d04d150660e34beb..44970b1d5c80401516230a847e284874608d641c 100644
+--- a/contrib/ydb/library/yaml_config/yaml_config_parser.h
++++ b/contrib/ydb/library/yaml_config/yaml_config_parser.h
+@@ -51,6 +51,11 @@ namespace NKikimr::NYaml {
+         std::map<ui32, TString> GroupErasureSpecies;
+     };
+ 
++    // Top-level TAppConfig fields tagged with the OpaqueConfig marker
++    struct TOpaqueField {
++        TString Name;       // snake_case key
++    };
++
+     NProtobufJson::TJson2ProtoConfig GetJsonToProtoConfig(
+         bool allowUnknownFields = false,
+         TSimpleSharedPtr<NProtobufJson::IUnknownFieldsCollector> unknownFieldsCollector = nullptr);
+@@ -72,4 +77,16 @@ namespace NKikimr::NYaml {
+ 
+     void ValidateMetadata(const NJson::TJsonValue& metadata);
+ 
++    // Get top-level TAppConfig fields tagged with the OpaqueConfig marker
++    // (computed once)
++    const TVector<TOpaqueField>& OpaqueConfigFields();
++
++    // Handle opaque-marked fields so the cluster accepts their content without
++    // knowing the schema and without allow_unknown_fields.
++    // Replaces the sub-tree with an empty object, so the proto merge stores
++    // an empty message and the unknown-field collector never sees the content
++    // (which is recovered later from the resolved YAML).
++    // Only message field types are supported.
++    void CaptureOpaqueConfigFields(NJson::TJsonValue& configJson);
++
+ } // namespace NKikimr::NYaml
+diff --git a/contrib/ydb/library/yaml_config/yaml_config_ut.cpp b/contrib/ydb/library/yaml_config/yaml_config_ut.cpp
+index ec9a143f62313240cfe888501e91fc5139042e80..762111e244e2fc45ff15d4d5420eeb7d991258a7 100644
+--- a/contrib/ydb/library/yaml_config/yaml_config_ut.cpp
++++ b/contrib/ydb/library/yaml_config/yaml_config_ut.cpp
+@@ -1226,6 +1226,125 @@ TMap<TSet<TVector<NYamlConfig::TLabel>>, TVector<int>> ExpectedResolved =
+     },
+ };
+ 
++Y_UNIT_TEST_SUITE(YamlConfigOpaqueConfigMarker) {
++
++    Y_UNIT_TEST(OpaqueConfigFieldsIncludesExistingOpaqueFields) {
++        const auto& fields = NYaml::OpaqueConfigFields();
++
++        bool found = false;
++        for (const auto& f : fields) {
++            if (f.Name == "private_database_config") {
++                found = true;
++                break;
++            }
++        }
++        UNIT_ASSERT_C(found,
++            "expected 'private_database_config' in OpaqueConfigFields()");
++    }
++
++    Y_UNIT_TEST(OpaqueConfigFieldsAreStable) {
++        // The list is computed once and cached; consecutive calls must return
++        // the same vector by reference.
++        const auto& a = NYaml::OpaqueConfigFields();
++        const auto& b = NYaml::OpaqueConfigFields();
++        UNIT_ASSERT_EQUAL(&a, &b);
++    }
++
++    Y_UNIT_TEST(CaptureOpaqueConfigFieldsReplacesMessageSubtreeWithEmptyMap) {
++        NJson::TJsonValue cfg(NJson::JSON_MAP);
++        auto& sub = cfg["private_database_config"];
++        sub.SetType(NJson::JSON_MAP);
++        sub["some_unknown_field"] = 42;
++        sub["some_unknown_struct"]["field_1"] = 1;
++        sub["some_unknown_struct"]["field_2"] = "abc";
++
++        NYaml::CaptureOpaqueConfigFields(cfg);
++
++        UNIT_ASSERT(cfg.Has("private_database_config"));
++        const auto& captured = cfg["private_database_config"];
++        UNIT_ASSERT_C(captured.IsMap(),
++            "private_database_config must remain a map after capture");
++        UNIT_ASSERT_C(captured.GetMap().empty(),
++            "private_database_config must be replaced with an empty map");
++    }
++
++    Y_UNIT_TEST(CaptureOpaqueConfigFieldsLeavesOtherFieldsUntouched) {
++        NJson::TJsonValue cfg(NJson::JSON_MAP);
++        cfg["private_database_config"]["dropped"] = "value";
++        cfg["feature_flags"]["enable_something"] = true;
++        cfg["actor_system_config"]["sys_executor"] = 0;
++
++        NYaml::CaptureOpaqueConfigFields(cfg);
++
++        UNIT_ASSERT(cfg["private_database_config"].IsMap());
++        UNIT_ASSERT(cfg["private_database_config"].GetMap().empty());
++
++        UNIT_ASSERT(cfg["feature_flags"].IsMap());
++        UNIT_ASSERT_EQUAL(cfg["feature_flags"]["enable_something"].GetBoolean(), true);
++
++        UNIT_ASSERT(cfg["actor_system_config"].IsMap());
++        UNIT_ASSERT_EQUAL(cfg["actor_system_config"]["sys_executor"].GetInteger(), 0);
++    }
++
++    Y_UNIT_TEST(CaptureOpaqueConfigFieldsIsNoopWhenFieldAbsent) {
++        NJson::TJsonValue cfg(NJson::JSON_MAP);
++        cfg["feature_flags"]["enable_something"] = true;
++
++        NYaml::CaptureOpaqueConfigFields(cfg);
++
++        UNIT_ASSERT(!cfg.Has("private_database_config"));
++        UNIT_ASSERT(cfg["feature_flags"].IsMap());
++        UNIT_ASSERT_EQUAL(cfg["feature_flags"]["enable_something"].GetBoolean(), true);
++    }
++
++    Y_UNIT_TEST(CaptureOpaqueConfigFieldsIsNoopOnNonMap) {
++        // Non-map inputs must not crash and must remain unchanged.
++        NJson::TJsonValue arr(NJson::JSON_ARRAY);
++        arr.AppendValue(1);
++        arr.AppendValue(2);
++        NYaml::CaptureOpaqueConfigFields(arr);
++        UNIT_ASSERT(arr.IsArray());
++        UNIT_ASSERT_VALUES_EQUAL(arr.GetArray().size(), 2u);
++
++        NJson::TJsonValue scalar(42);
++        NYaml::CaptureOpaqueConfigFields(scalar);
++        UNIT_ASSERT_EQUAL(scalar.GetInteger(), 42);
++    }
++
++    Y_UNIT_TEST(CaptureOpaqueConfigFieldsHandlesAlreadyEmptyMap) {
++        NJson::TJsonValue cfg(NJson::JSON_MAP);
++        cfg["private_database_config"].SetType(NJson::JSON_MAP);
++
++        NYaml::CaptureOpaqueConfigFields(cfg);
++
++        UNIT_ASSERT(cfg["private_database_config"].IsMap());
++        UNIT_ASSERT(cfg["private_database_config"].GetMap().empty());
++    }
++
++    Y_UNIT_TEST(ParseAcceptsUnknownOpaqueFieldSubtree) {
++        // End-to-end: the parser must accept unknown content under an
++        // opaque top-level field without allow_unknown_fields, because
++        // CaptureOpaqueConfigFields() strips the subtree before the
++        // proto merge.
++        const TString yaml = R"(---
++metadata:
++  cluster: ""
++  version: 0
++config:
++  private_database_config:
++    some_unknown_field: 42
++    some_unknown_struct:
++      field_1: 1
++      field_2: abc
++)";
++        NKikimrConfig::TAppConfig cfg;
++        UNIT_ASSERT_NO_EXCEPTION(cfg = NYaml::Parse(yaml, /*transform=*/ false));
++        // The merge stored an empty message for the opaque field; nothing
++        // from the YAML sub-tree leaked into the proto.
++        UNIT_ASSERT(cfg.HasPrivateDatabaseConfig());
++    }
++}
++
+ Y_UNIT_TEST_SUITE(YamlConfig) {
+     Y_UNIT_TEST(CollectLabels) {
+         auto doc = NFyaml::TDocument::Parse(WholeConfig);
