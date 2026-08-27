@@ -5,6 +5,7 @@
 
 #include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 #include <cloud/storage/core/libs/rdma/iface/protocol.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -131,6 +132,25 @@ TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
 
     client->StartEndpoint("::", 10020);
     ASSERT_EQ(42, testContext->ToS);
+}
+
+TEST(TRdmaClientTest, ShouldDeriveQueueSizesFromQueueSizeAtValidate)
+{
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+    auto log = logging->CreateLog("TEST");
+
+    TClientConfig clientConfig;
+    clientConfig.QueueSize = 256;
+    clientConfig.Validate(log);
+    EXPECT_EQ(256u, clientConfig.SendQueueSize);
+    EXPECT_EQ(256u, clientConfig.RecvQueueSize);
+
+    TServerConfig serverConfig;
+    serverConfig.QueueSize = 512;
+    serverConfig.Validate(log);
+    EXPECT_EQ(512u, serverConfig.SendQueueSize);
+    EXPECT_EQ(512u, serverConfig.RecvQueueSize);
 }
 
 TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
