@@ -1701,4 +1701,8 @@ message TStorageServiceConfig
 
     // Number of ranges to process in a single mixed-block-count compaction run.
     optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 531;
+
+    // MaxMixedBlocksPerDisk will be proportional to the disk size.
+    optional uint32 SSDMaxMixedBlocksPerUnit = 532;
+    optional uint32 HDDMaxMixedBlocksPerUnit = 533;
 }

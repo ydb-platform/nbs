@@ -86,6 +86,7 @@ public:
     TVector<TCompactionCounter> GetTopByMixedBlockCount(size_t count) const;
     TVector<ui32> GetNonEmptyRanges() const;
     ui32 GetNonEmptyRangeCount() const;
+    ui64 GetMixedBlocksCountPerDisk() const;
     ui32 GetRangeStart(ui32 blockIndex) const;
     ui32 GetRangeIndex(ui32 blockIndex) const;
     ui32 GetRangeIndex(TBlockRange32 blockRange) const;

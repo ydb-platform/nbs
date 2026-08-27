@@ -672,7 +672,9 @@ void ApplyBlobsSkipping(
         args.BlocksSkipped += skippedBlockCount;
 
         auto* ab = args.AffectedBlobs.FindPtr(blobId);
-        if (ab->IndexKind == EChannelDataKind::Mixed) {
+        if (ab->IndexKind == EChannelDataKind::Mixed &&
+            !IsDeletionMarker(blobId))
+        {
             args.MixedBlocksSkipped += skippedBlockCount;
         }
     }

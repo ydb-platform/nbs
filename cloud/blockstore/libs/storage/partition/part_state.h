@@ -325,6 +325,7 @@ public:
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
+        ui32 maxMixedBlocksPerUnit,
         ui32 maxBLobsPerRange,
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
@@ -637,6 +638,7 @@ private:
     TInstant LastCompactionFinishTs;
     TDuration CompactionDelay;
     const ui32 MaxBlobsPerDisk;
+    const ui64 MaxMixedBlocksPerDisk;
     const ui32 MaxBlobsPerRange;
     ui32 CompactionRangeCountPerRun;
     TInstant LastCompactionRangeCountPerRunTs;
@@ -718,6 +720,11 @@ public:
     ui32 GetMaxBlobsPerDisk() const
     {
         return MaxBlobsPerDisk;
+    }
+
+    ui64 GetMaxMixedBlocksPerDisk() const
+    {
+        return MaxMixedBlocksPerDisk;
     }
 
     ui32 GetCompactionRangeCountPerRun() const

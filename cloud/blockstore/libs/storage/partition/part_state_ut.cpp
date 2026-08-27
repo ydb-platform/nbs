@@ -116,6 +116,7 @@ TPartitionState MakeState(
         0,       // mixedIndexCacheSize
         10000,   // allocationUnit
         100,     // maxBlobsPerUnit
+        0,       // maxMixedBlocksPerUnit
         10,      // maxBlobsPerRange,
         1,       // compactionRangeCountPerRun
         std::move(threadSafeState),
@@ -151,6 +152,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,       // mixedIndexCacheSize
             10000,   // allocationUnit
             100,     // maxBlobsPerUnit
+            0,       // maxMixedBlocksPerUnit
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
@@ -224,6 +226,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,       // mixedIndexCacheSize
             10000,   // allocationUnit
             100,     // maxBlobsPerUnit
+            0,       // maxMixedBlocksPerUnit
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
@@ -263,6 +266,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,       // mixedIndexCacheSize
             10000,   // allocationUnit
             100,     // maxBlobsPerUnit
+            0,       // maxMixedBlocksPerUnit
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
@@ -352,6 +356,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,       // mixedIndexCacheSize
             10000,   // allocationUnit
             100,     // maxBlobsPerUnit
+            0,       // maxMixedBlocksPerUnit
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
@@ -399,6 +404,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,       // mixedIndexCacheSize
             10000,   // allocationUnit
             100,     // maxBlobsPerUnit
+            0,       // maxMixedBlocksPerUnit
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
@@ -520,7 +526,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         ui64 diskSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
-        ui32 maxBlobsPerDisk)
+        ui32 maxBlobsPerDisk,
+        ui32 maxMixedBlocksPerUnit = 0,
+        ui64 maxMixedBlocksPerDisk = 0)
     {
         auto config = DefaultConfig(1, diskSize / DefaultBlockSize);
 
@@ -542,6 +550,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1,                 // mixedIndexCacheSize
             allocationUnit,    // allocationUnit
             maxBlobsPerUnit,   // maxBlobsPerUnit
+            maxMixedBlocksPerUnit,   // maxMixedBlocksPerUnit
             10,                // maxBlobsPerRange,
             1,                 // compactionRangeCountPerRun
             threadSafeState,
@@ -550,6 +559,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             false          // checkpointAwareCleanupEnabled
         );
         UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxMixedBlocksPerDisk,
+            state.GetMaxMixedBlocksPerDisk());
     }
 
     Y_UNIT_TEST(CheckMaxBlobsPerDisk)
@@ -557,6 +569,13 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         CheckMaxBlobsPerDisk(320_GB, 32_GB, 100, 1000);
         CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0);
         CheckMaxBlobsPerDisk(10_GB, 32_GB, 100, 100);
+    }
+
+    Y_UNIT_TEST(CheckMaxMixedBlocksPerDisk)
+    {
+        CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0, 100, 1000);
+        CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0, 0, 0);
+        CheckMaxBlobsPerDisk(10_GB, 32_GB, 0, 0, 100, 100);
     }
 
     Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)
@@ -579,6 +598,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,       // mixedIndexCacheSize
             10000,   // allocationUnit
             100,     // maxBlobsPerUnit
+            0,       // maxMixedBlocksPerUnit
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
@@ -628,6 +648,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0,       // mixedIndexCacheSize
             10000,   // allocationUnit
             100,     // maxBlobsPerUnit
+            0,       // maxMixedBlocksPerUnit
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,

@@ -1301,7 +1301,8 @@ public:
         ByGarbageBlocksPerRange,
         ByIgnoringZeroedPerDisk,
         ByIgnoringZeroedPerRange,
-        ByMixedBlockCount,
+        ByMixedBlockCountPerDisk,
+        ByMixedBlockCountPerRange,
     };
 
     struct TTriggerInfo
@@ -1559,12 +1560,10 @@ private:
     TriggerMixedBlockCountCompactionIfNeeded() const
     {
         const auto mediaKind = State.GetConfig().GetStorageMediaKind();
-        const bool isSSD =
-            mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+        const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
         const bool enabled =
-            isSSD
-                ? Config->GetMixedBlocksCountCompactionEnabledSSD()
-                : Config->GetMixedBlocksCountCompactionEnabledHDD();
+            isSSD ? Config->GetMixedBlocksCountCompactionEnabledSSD()
+                  : Config->GetMixedBlocksCountCompactionEnabledHDD();
         if (!enabled) {
             return std::nullopt;
         }
@@ -1593,19 +1592,31 @@ private:
         const bool rangeMixedBlockCountOverThreshold =
             rangeStat.MixedBlockCount * State.GetBlockSize() >= threshold;
 
-        if (!rangeMixedBlockCountOverThreshold ||
+        const ui64 diskMixedBlockCount =
+            State.GetCompactionMap().GetMixedBlocksCountPerDisk();
+        const bool diskMixedBlockCountOverThreshold =
+            State.GetMaxMixedBlocksPerDisk() &&
+            diskMixedBlockCount > State.GetMaxMixedBlocksPerDisk();
+
+        if ((!rangeMixedBlockCountOverThreshold &&
+             !diskMixedBlockCountOverThreshold) ||
             !rangeStat.MixedBlockCount || rangeStat.Compacted)
         {
             return std::nullopt;
         }
 
+        const auto triggerKind =
+            rangeMixedBlockCountOverThreshold
+                ? ECompactionTriggerKind::ByMixedBlockCountPerRange
+                : ECompactionTriggerKind::ByMixedBlockCountPerDisk;
+
         return TTriggerInfo(
             rangeStat.MixedBlockCount,
             threshold,
-            0,
-            0,
+            diskMixedBlockCount,
+            State.GetMaxMixedBlocksPerDisk(),
             TEvPartitionPrivate::MixedBlockCountCompaction,
-            ECompactionTriggerKind::ByMixedBlockCount,
+            triggerKind,
             true /* throttlingAllowed */,
             true /* fullCompaction */);
     }
@@ -1690,7 +1701,13 @@ void IncrementCompactionCounterByTriggerKind(
             partCounters->Cumulative.CompactionByIgnoringZeroedPerRange
                 .Increment(1);
             break;
-        case TCompactionTriggerer::ECompactionTriggerKind::ByMixedBlockCount:
+        case TCompactionTriggerer::ECompactionTriggerKind::
+            ByMixedBlockCountPerDisk:
+            partCounters->Cumulative.CompactionByMixedBlockCountPerDisk
+                .Increment(1);
+            break;
+        case TCompactionTriggerer::ECompactionTriggerKind::
+            ByMixedBlockCountPerRange:
             partCounters->Cumulative.CompactionByMixedBlockCountPerRange
                 .Increment(1);
             break;

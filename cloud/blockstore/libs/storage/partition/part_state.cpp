@@ -61,6 +61,7 @@ TPartitionState::TPartitionState(
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
+        ui32 maxMixedBlocksPerUnit,
         ui32 maxBlobsPerRange,
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
@@ -96,6 +97,10 @@ TPartitionState::TPartitionState(
           Max(Config.GetBlocksCount() * Config.GetBlockSize() / allocationUnit,
               1ul) *
           maxBlobsPerUnit)
+    , MaxMixedBlocksPerDisk(
+          Max(Config.GetBlocksCount() * Config.GetBlockSize() / allocationUnit,
+              1ul) *
+          maxMixedBlocksPerUnit)
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())
