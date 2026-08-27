@@ -1137,6 +1137,31 @@ void TIndexTabletActor::HandleForcedOperation(
     const TActorContext& ctx)
 {
     const auto& request = ev->Get()->Record;
+    using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
+    std::unique_ptr<TResponse> response;
+    switch (request.GetOpType()) {
+    case NProtoPrivate::TForcedOperationRequest::E_COMPACTION:
+    case NProtoPrivate::TForcedOperationRequest::E_CLEANUP:
+    case NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES:
+        response = ProcessForcedRangeOperationRequest(request, ctx);
+        break;
+    case NProtoPrivate::TForcedOperationRequest::E_FLUSH:
+    case NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES:
+    case NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE:
+        response = ProcessForcedTabletOperationRequest(request, ctx);
+        break;
+    default:
+        response = std::make_unique<TResponse>(
+            MakeError(E_ARGUMENT, "unsupported mode"));
+    }
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+TIndexTabletActor::ProcessForcedRangeOperationRequest(
+    const NProtoPrivate::TForcedOperationRequest& request,
+    const TActorContext& ctx)
+{
     using EMode = TEvIndexTabletPrivate::EForcedRangeOperationMode;
     EMode mode{};
     NProto::TError e;
@@ -1145,33 +1170,30 @@ void TIndexTabletActor::HandleForcedOperation(
             mode = EMode::Compaction;
             break;
         }
-
         case NProtoPrivate::TForcedOperationRequest::E_CLEANUP: {
             mode = EMode::Cleanup;
             break;
         }
-
         case NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES: {
             mode = EMode::DeleteZeroCompactionRanges;
             break;
         }
-
         default: {
             e = MakeError(E_ARGUMENT, "unsupported mode");
         }
     }
 
     if (e.GetCode() == S_OK && IsForcedOperationRunning()) {
-        const auto* rangeState = std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
-        if (rangeState) {
-            const auto currentMode = rangeState->Mode;
+        const auto* state = std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
+        if (state) {
+            const auto currentMode = state->Mode;
             if (currentMode == mode) {
                 e = MakeError(S_ALREADY, "already launched");
-            } else {
-                e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
-                    << static_cast<int>(mode)
-                    << " != " << static_cast<int>(currentMode));
             }
+        } else {
+            e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
+                << static_cast<int>(mode));
+                // << " != " << static_cast<int>(currentMode));
         }
     }
 
@@ -1197,8 +1219,58 @@ void TIndexTabletActor::HandleForcedOperation(
         response->Record.SetOperationId(std::move(operationId));
         EnqueueForcedOperationIfNeeded(ctx);
     }
+    return response;
+}
 
-    NCloud::Reply(ctx, *ev, std::move(response));
+std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+TIndexTabletActor::ProcessForcedTabletOperationRequest(
+    const NProtoPrivate::TForcedOperationRequest& request,
+    const TActorContext& ctx)
+{
+    using EMode = TEvIndexTabletPrivate::EForcedTabletOperationMode;
+    EMode mode{};
+    NProto::TError e;
+    switch (request.GetOpType()) {
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH: {
+            mode = EMode::Flush;
+            break;
+        }
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES: {
+            mode = EMode::FlushBytes;
+            break;
+        }
+        case NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE: {
+            mode = EMode::CollectGarbage;
+            break;
+        }
+        default: {
+            e = MakeError(E_ARGUMENT, "unsupported mode");
+        }
+    }
+
+    if (e.GetCode() == S_OK && IsForcedOperationRunning()) {
+        const auto* state = std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
+        if (state) {
+            const auto currentMode = state->Mode;
+            if (currentMode == mode) {
+                e = MakeError(S_ALREADY, "already launched");
+            }
+        } else {
+            e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
+                << static_cast<int>(mode));
+                // << " != " << static_cast<int>(currentMode));
+        }
+    }
+
+    using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
+    auto code = e.GetCode();
+    auto response = std::make_unique<TResponse>(std::move(e));
+    if (code == S_OK) {
+        auto operationId = EnqueueForcedTabletOperation(mode);
+        response->Record.SetOperationId(std::move(operationId));
+        EnqueueForcedOperationIfNeeded(ctx);
+    }
+    return response;
 }
 
 void TIndexTabletActor::EnqueueForcedOperationIfNeeded(
