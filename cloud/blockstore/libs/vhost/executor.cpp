@@ -22,6 +22,16 @@ TExecutor::TExecutor(
     , Affinity(std::move(affinity))
 {}
 
+TExecutor::~TExecutor()
+{
+    const ui32 assigned = GetAssignedVhostQueuesCount();
+    Y_DEBUG_ABORT_UNLESS(
+        assigned == 0,
+        "Executor %s has %u assigned vhost queues",
+        Name.c_str(),
+        assigned);
+}
+
 void TExecutor::Shutdown()
 {
     VhostQueue->Stop();

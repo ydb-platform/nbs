@@ -28,7 +28,10 @@ struct TStorageOptions
     TString ClientId;
     ui32 BlockSize = 0;
     ui64 BlocksCount = 0;
+    // Number of virtqueues exposed to the guest.
     ui32 VhostQueuesCount = 0;
+    // Requested number of threads serving the endpoint.
+    ui32 ThreadCount = 0;
     bool UnalignedRequestsDisabled = false;
     NProto::EStorageMediaKind StorageMediaKind = NProto::STORAGE_MEDIA_DEFAULT;
     bool DiscardEnabled = false;
