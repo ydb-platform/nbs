@@ -37,6 +37,7 @@ struct TRangeStat
     ui16 ReadRequestBlobCount = 0;
     ui16 ReadRequestBlockCount = 0;
     ui16 NewlyZeroedBlocks = 0; // In-memory only.
+    ui16 MixedBlockCount = 0;
     bool Compacted = false;
     TCompactionScore CompactionScore;
 

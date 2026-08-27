@@ -40,6 +40,7 @@ struct TReferenceImplementation
         ui32 blockCount,
         ui32 usedBlockCount,
         ui32 newlyZeroedBlocks,
+        ui32 mixedBlockCount,
         bool compacted)
     {
         const ui32 rangeStart =
@@ -54,6 +55,9 @@ struct TReferenceImplementation
         TCompactionMap::UpdateCompactionCounter(
             newlyZeroedBlocks,
             &stat.NewlyZeroedBlocks);
+        TCompactionMap::UpdateCompactionCounter(
+            mixedBlockCount,
+            &stat.MixedBlockCount);
 
         if (compacted) {
             stat.ReadRequestCount = 0;
@@ -215,6 +219,9 @@ void AssertRangeStatEqual(const TRangeStat& expected, const TRangeStat& actual)
     UNIT_ASSERT_VALUES_EQUAL(
         expected.NewlyZeroedBlocks,
         actual.NewlyZeroedBlocks);
+    UNIT_ASSERT_VALUES_EQUAL(
+        expected.MixedBlockCount,
+        actual.MixedBlockCount);
     UNIT_ASSERT_VALUES_EQUAL(expected.Compacted, actual.Compacted);
     UNIT_ASSERT_DOUBLES_EQUAL(
         expected.CompactionScore.Score,
@@ -249,7 +256,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
     {
         TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));
         for (size_t i = 1; i <= 100; ++i) {
-            map.Update(GetGroupIndex(i), i, i * 10, i * 5, 0, false);
+            map.Update(GetGroupIndex(i), i, i * 10, i * 5, 0, 0, false);
             map.RegisterRead(GetGroupIndex(i), i + 1, i * 10 + 5);
         }
 
@@ -285,7 +292,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         UNIT_ASSERT_VALUES_EQUAL(1005, map.Get(GetGroupIndex(100)).ReadRequestBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(false, map.Get(GetGroupIndex(100)).Compacted);
 
-        map.Update(GetGroupIndex(1), 22, 33, 11, 0, true);
+        map.Update(GetGroupIndex(1), 22, 33, 11, 0, 0, true);
         UNIT_ASSERT_VALUES_EQUAL(22, map.Get(GetGroupIndex(1)).BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(33, map.Get(GetGroupIndex(1)).BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(11, map.Get(GetGroupIndex(1)).UsedBlockCount);
@@ -302,24 +309,24 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         const auto blockCount = 123;
         const auto usedBlockCount = 23;
         for (size_t i = 1; i <= 100; ++i) {
-            map.Update(GetGroupIndex(i), i, blockCount, usedBlockCount, 0, false);
+            map.Update(GetGroupIndex(i), i, blockCount, usedBlockCount, 0, 0, false);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(GetGroupIndex(100), map.GetTop().BlockIndex);
 
-        map.Update(GetGroupIndex(50), 101, blockCount, usedBlockCount, 0, false);
+        map.Update(GetGroupIndex(50), 101, blockCount, usedBlockCount, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(GetGroupIndex(50), map.GetTop().BlockIndex);
 
-        map.Update(GetGroupIndex(0), 102, blockCount, usedBlockCount, 0, false);
+        map.Update(GetGroupIndex(0), 102, blockCount, usedBlockCount, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(GetGroupIndex(0), map.GetTop().BlockIndex);
 
-        map.Update(GetGroupIndex(0), 0, 0, 0, 0, false);
+        map.Update(GetGroupIndex(0), 0, 0, 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(GetGroupIndex(50), map.GetTop().BlockIndex);
 
-        map.Update(GetGroupIndex(50), 0, 0, 0, 0, false);
+        map.Update(GetGroupIndex(50), 0, 0, 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(GetGroupIndex(100), map.GetTop().BlockIndex);
 
-        map.Update(GetGroupIndex(100), 0, 0, 0, 0, false);
+        map.Update(GetGroupIndex(100), 0, 0, 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(GetGroupIndex(99), map.GetTop().BlockIndex);
 
         map.Update(
@@ -327,6 +334,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             103,
             blockCount,
             usedBlockCount,
+            0,
             0,
             false
         );
@@ -341,7 +349,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));
         const auto blobCount = 3;
         for (size_t i = 1; i <= 100; ++i) {
-            map.Update(GetGroupIndex(i), blobCount, i * 10, i * 5, 0, false);
+            map.Update(GetGroupIndex(i), blobCount, i * 10, i * 5, 0, 0, false);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -349,43 +357,43 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             map.GetTopByGarbageBlockCount().BlockIndex
         );
 
-        map.Update(GetGroupIndex(50), blobCount, 1010, 505, 0, false);
+        map.Update(GetGroupIndex(50), blobCount, 1010, 505, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(50),
             map.GetTopByGarbageBlockCount().BlockIndex
         );
 
-        map.Update(GetGroupIndex(0), blobCount, 600, 1, 0, false);
+        map.Update(GetGroupIndex(0), blobCount, 600, 1, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(0),
             map.GetTopByGarbageBlockCount().BlockIndex
         );
 
-        map.Update(GetGroupIndex(0), 0, 0, 0, 0, false);
+        map.Update(GetGroupIndex(0), 0, 0, 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(50),
             map.GetTopByGarbageBlockCount().BlockIndex
         );
 
-        map.Update(GetGroupIndex(50), 0, 0, 0, 0, false);
+        map.Update(GetGroupIndex(50), 0, 0, 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(100),
             map.GetTopByGarbageBlockCount().BlockIndex
         );
 
-        map.Update(GetGroupIndex(100), 0, 0, 0, 0, false);
+        map.Update(GetGroupIndex(100), 0, 0, 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(99),
             map.GetTopByGarbageBlockCount().BlockIndex
         );
 
-        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 515, 0, false);
+        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 515, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(10) + RangeSize,
             map.GetTopByGarbageBlockCount().BlockIndex
         );
 
-        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 515, 0, true);
+        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 515, 0, 0, true);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(99),
             map.GetTopByGarbageBlockCount().BlockIndex
@@ -400,7 +408,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             // BlockCount = i * 10, UsedBlockCount = i * 5, NewlyZeroedBlocks = i
             // GarbageIgnoringZeroed = BlockCount - UsedBlockCount - NewlyZeroedBlocks
             //                      = i * 10 - i * 5 - i = i * 4
-            map.Update(GetGroupIndex(i), blobCount, i * 10, i * 5, i, false);
+            map.Update(GetGroupIndex(i), blobCount, i * 10, i * 5, i, 0, false);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -409,7 +417,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         );
 
         // GarbageIgnoringZeroed = 1010 - 550 - 0 = 460
-        map.Update(GetGroupIndex(50), blobCount, 1010, 550, 0, false);
+        map.Update(GetGroupIndex(50), blobCount, 1010, 550, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(50),
             map.GetTopByGarbageIgnoringZeroed().BlockIndex
@@ -419,38 +427,38 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             map.GetTopByGarbageBlockCount().BlockIndex);
 
         // GarbageIgnoringZeroed = 600 - 1 - 10 = 589
-        map.Update(GetGroupIndex(0), blobCount, 600, 1, 10, false);
+        map.Update(GetGroupIndex(0), blobCount, 600, 1, 10, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(0),
             map.GetTopByGarbageIgnoringZeroed().BlockIndex
         );
 
-        map.Update(GetGroupIndex(0), 0, 0, 0, 0, false);
+        map.Update(GetGroupIndex(0), 0, 0, 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(50),
             map.GetTopByGarbageIgnoringZeroed().BlockIndex
         );
 
-        map.Update(GetGroupIndex(50), 0, 0, 0, 0, false);
+        map.Update(GetGroupIndex(50), 0, 0, 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(100),
             map.GetTopByGarbageIgnoringZeroed().BlockIndex
         );
 
-        map.Update(GetGroupIndex(100), 0, 0, 0, 0, false);
+        map.Update(GetGroupIndex(100), 0, 0, 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(99),
             map.GetTopByGarbageIgnoringZeroed().BlockIndex
         );
 
         // GarbageIgnoringZeroed = 1030 - 300 - 300 = 430
-        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 300, 300, false);
+        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 300, 300, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(10) + RangeSize,
             map.GetTopByGarbageIgnoringZeroed().BlockIndex
         );
 
-        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 300, 300, true);
+        map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 300, 300, 0, true);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(99),
             map.GetTopByGarbageIgnoringZeroed().BlockIndex
@@ -461,7 +469,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
     {
         TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));
         for (size_t i = 1; i <= 100; ++i) {
-            map.Update(GetGroupIndex(i), i, i * 10, i * 5, 0, false);
+            map.Update(GetGroupIndex(i), i, i * 10, i * 5, 0, 0, false);
         }
 
         map.Clear();
@@ -527,7 +535,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         const auto blockCount = 123;
         const auto usedBlockCount = 23;
         for (size_t i = 1; i <= 100; ++i) {
-            map.Update(GetGroupIndex(i), i, blockCount, usedBlockCount, 0, false);
+            map.Update(GetGroupIndex(i), i, blockCount, usedBlockCount, 0, 0, false);
         }
 
         {
@@ -537,7 +545,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         }
 
         // empty range must be skipped
-        map.Update(GetGroupIndex(46), 0, blockCount, usedBlockCount, 0, false);
+        map.Update(GetGroupIndex(46), 0, blockCount, usedBlockCount, 0, 0, false);
         {
             const auto nonEmptyCount = map.GetNonEmptyRanges().size();
             UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, map.GetNonEmptyRangeCount());
@@ -580,14 +588,14 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
                 blobCount,
                 blockCount,
                 usedBlockCount,
-                newlyZeroedBlocks,
+                newlyZeroedBlocks, 0,
                 compacted);
             ref.Update(
                 blockIndex,
                 blobCount,
                 blockCount,
                 usedBlockCount,
-                newlyZeroedBlocks,
+                newlyZeroedBlocks, 0,
                 compacted);
 
             for (ui32 index : blockIndices) {

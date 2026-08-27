@@ -242,6 +242,7 @@ struct TCompactionMap::TImpl
         ui32 blockCount,
         ui32 usedBlockCount,
         ui32 newlyZeroedBlocks,
+        ui32 mixedBlockCount,
         bool compacted)
     {
         auto* group = AddGroup(blockIndex);
@@ -252,6 +253,7 @@ struct TCompactionMap::TImpl
                 || prev.BlockCount != blockCount
                 || prev.UsedBlockCount != usedBlockCount
                 || prev.NewlyZeroedBlocks != newlyZeroedBlocks
+                || prev.MixedBlockCount != mixedBlockCount
                 || prev.Compacted != compacted)
         {
             if (blobCount && !prev.BlobCount) {
@@ -269,6 +271,9 @@ struct TCompactionMap::TImpl
             UpdateCompactionCounter(
                 newlyZeroedBlocks,
                 &group->Stats[index].NewlyZeroedBlocks);
+            UpdateCompactionCounter(
+                mixedBlockCount,
+                &group->Stats[index].MixedBlockCount);
 
             if (compacted) {
                 group->Stats[index].ReadRequestCount = 0;
@@ -451,6 +456,7 @@ void TCompactionMap::Update(
             c.Stat.BlockCount,
             usedBlockCount,
             c.Stat.NewlyZeroedBlocks,
+            c.Stat.MixedBlockCount,
             c.Stat.BlobCount < 2   // compacted
         );
     }
@@ -470,6 +476,7 @@ void TCompactionMap::Update(
     ui32 blockCount,
     ui32 usedBlockCount,
     ui32 newlyZeroedBlocks,
+    ui32 mixedBlockCount,
     bool compacted)
 {
     auto* group = Impl->Update(
@@ -478,6 +485,7 @@ void TCompactionMap::Update(
         blockCount,
         usedBlockCount,
         newlyZeroedBlocks,
+        mixedBlockCount,
         compacted);
 
     Impl->GroupByScore.Insert(group);
