@@ -213,6 +213,10 @@ message TLoadTest
     // Maximum number of nodes created by this synthetic load test.
     // Zero means unlimited. Ignored by replay specs.
     uint64 MaxNodes = 22;
+
+    // enables final cleanup (e.g. flush, cleanup, compaction etc) and
+    // validation of gc metrics at the end of the test
+    bool ValidateGarbageCollection = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

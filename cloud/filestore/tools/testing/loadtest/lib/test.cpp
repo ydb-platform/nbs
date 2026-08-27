@@ -2,6 +2,7 @@
 
 #include "client.h"
 #include "context.h"
+#include "executeaction.h"
 #include "request.h"
 #include "shm_client.h"
 
@@ -10,6 +11,7 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -35,6 +37,8 @@
 #include <util/system/event.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
+
+#include <google/protobuf/util/json_util.h>
 
 #include <variant>
 
@@ -1149,9 +1153,14 @@ public:
             TargetFuture.GetValueSync();
         }
 
+
         if (Config.HasCreateFileStoreRequest() && !Config.GetKeepFileStore()) {
             auto filesystemId =
                 Config.GetCreateFileStoreRequest().GetFileSystemId();
+
+            if (Config.GetValidateGarbageCollection()) {
+                ValidateGarbageCollection(filesystemId);
+            }
 
             STORAGE_INFO(
                 "%s destroy fs %s",
@@ -1168,8 +1177,9 @@ public:
 
         Client->Stop();
 
+        // The future may already have exception set
         auto result = Result;
-        result.SetValue(SourceFuture.GetValueSync());
+        result.TrySetValue(SourceFuture.GetValueSync());
     }
 
     void* ThreadProc() override
@@ -1216,10 +1226,104 @@ private:
             (TargetFuture.HasValue() || SourceFuture.HasValue());
     }
 
-
     const TString& MakeTestTag() const
     {
         return TestTag;
+    }
+
+    void ValidateGarbageCollection(const TString& filesystemId)
+    {
+        STORAGE_INFO(
+            "%s Starting forced garbage collection",
+            MakeTestTag().c_str());
+        TExecuteActionController executeAction(Log, Client, filesystemId);
+        try {
+            executeAction.Flush();
+            executeAction.FlushBytes();
+            executeAction.Cleanup();
+            executeAction.Compaction();
+            // we need to create new commit to make collect_garbage handle
+            // "new" blobs
+            CreateCommit(filesystemId);
+            executeAction.CollectGarbage();
+            ValidateStorageStats(executeAction.GetStorageStats());
+        } catch (...) {
+            Result.SetException(std::current_exception());
+        }
+    }
+
+    void ValidateStorageStats(const NProtoPrivate::TStorageStats& stats)
+    {
+        bool res = true;
+
+        TStringBuilder builder;
+        bool first = true;
+        auto check = [&](const char* name, auto value)
+        {
+            if (value != 0) {
+                if (first) {
+                    first = false;
+                } else {
+                    builder << ", ";
+                }
+                builder << name << "=" << value;
+            }
+            res &= (value == 0);
+        };
+
+#define CHECK_STAT(x) check(#x, stats.Get##x())
+        CHECK_STAT(FreshBlocksCount);
+        CHECK_STAT(FreshBytesItemCount);
+        CHECK_STAT(DeletedFreshBytesCount);
+        CHECK_STAT(DeletionMarkersCount);
+        CHECK_STAT(LargeDeletionMarkersCount);
+        CHECK_STAT(GarbageQueueSize);
+        CHECK_STAT(GarbageBlocksCount);
+        CHECK_STAT(UnconfirmedDataCount);
+#undef CHECK_STAT
+
+        if (!res) {
+            throw yexception() << "ValidateStorageStats failed: " << builder;
+        }
+
+        STORAGE_INFO("Storage GC stats validation passed");
+    }
+
+    void CreateCommit(const TString& filesystemId)
+    {
+        NProto::TSessionConfig proto;
+        proto.SetFileSystemId(filesystemId);
+        proto.SetClientId(
+            Config.GetClientId() ? Config.GetClientId() : "test-client");
+        proto.SetSessionPingTimeout(Config.GetSessionPingTimeout());
+
+        auto session = NClient::CreateSession(
+            Logging,
+            Timer,
+            Scheduler,
+            Client,
+            std::make_shared<TSessionConfig>(proto));
+
+        WaitForCompletion(
+            "create session",
+            session->CreateSession(false, SessionSeqNo));
+
+        auto request = std::make_shared<NProto::TCreateNodeRequest>();
+        request->SetNodeId(RootNodeId);
+        request->SetName("commit");
+        request->MutableFile()->SetMode(0777);
+
+        auto response = WaitForCompletion(
+            GetRequestName(*request),
+            session->CreateNode(
+                MakeIntrusive<TCallContext>(filesystemId),
+                request));
+
+        STORAGE_INFO(
+            "commit node created: nodeId=%lu",
+            response.GetNode().GetId());
+
+        WaitForCompletion("destroy session", session->DestroySession());
     }
 };
 
