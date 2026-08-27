@@ -459,6 +459,13 @@ struct TTestVerbs
         };
     }
 
+    void SetAckTimeout(rdma_cm_id* id, ui8 timeout) override
+    {
+        if (TestContext->SetAckTimeout) {
+            TestContext->SetAckTimeout(id, timeout);
+        }
+    }
+
     void BindAddress(rdma_cm_id* id, sockaddr* addr) override
     {
         Y_UNUSED(id);
