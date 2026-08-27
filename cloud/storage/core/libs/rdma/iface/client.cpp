@@ -85,6 +85,8 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(QpRnrRetryCount, static_cast<ui32>(QpRnrRetryCount));
                 ENTRY(QpTimeout, static_cast<ui32>(QpTimeout));
                 ENTRY(QpMinRnrTimer, static_cast<ui32>(QpMinRnrTimer));
+                ENTRY(UseMemoryWindows, UseMemoryWindows);
+                ENTRY(MemoryWindowsPoolSize, MemoryWindowsPoolSize);
             }
         }
     }
