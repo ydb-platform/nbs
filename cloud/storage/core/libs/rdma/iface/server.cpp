@@ -6,19 +6,18 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TServerConfig::TServerConfig()
+TServerConfig::TServerConfig() = default;
+
+void TServerConfig::Validate(TLog& log)
 {
-    // Compatibility with old config.
+    // Compatibility with the old config.
     if (SendQueueSize == 0 && QueueSize > 0) {
         SendQueueSize = QueueSize;
     }
     if (RecvQueueSize == 0 && QueueSize > 0) {
         RecvQueueSize = QueueSize;
     }
-}
 
-void TServerConfig::Validate(TLog& log)
-{
     BufferPool.Validate(log);
     constexpr ui8 ThreeBitsMax = 7;
     constexpr ui8 FiveBitsMax = 31;
