@@ -1206,6 +1206,30 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.StatPartition();
     }
 
+    Y_UNIT_TEST(ShouldRestoreMixedBlockCountInCompactionMapOnReboot)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetMixedBlocksCountCompactionEnabledHDD(true);
+        auto runtime = PrepareTestActorRuntime(std::move(config));
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+        partition.Flush();
+
+        auto counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.MixedBlockCount);
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.MixedBlockCount);
+    }
+
     Y_UNIT_TEST(ShouldStoreBlocks)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -3172,12 +3196,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldEnableMixedBlocksCountCompactionByMediaKind)
     {
-        const auto isCompactionTriggered = [](
-            NCloud::NProto::EStorageMediaKind mediaKind,
-            bool enabledHDD,
-            bool enabledSSD,
-            ui32 thresholdHDD,
-            ui32 thresholdSSD)
+        const auto isCompactionTriggered =
+            [](NCloud::NProto::EStorageMediaKind mediaKind,
+               bool enabledHDD,
+               bool enabledSSD,
+               ui32 thresholdHDD,
+               ui32 thresholdSSD)
         {
             auto config = DefaultConfig(1_MB);
             config.SetMixedBlocksCountCompactionEnabledHDD(enabledHDD);

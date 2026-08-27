@@ -79,6 +79,7 @@ private:
     const ui64 DeletionCommitId;
     const ui32 MaxBlocksInBlob;
     const bool UseFlushCommitIdAsTrimFreshLogToCommitId;
+    const bool MixedBlocksCountCompactionEnabled;
     TChildLogTitle LogTitle;
 
     struct TRangeInfo
@@ -103,6 +104,7 @@ public:
             ui64 deletionCommitId,
             ui32 maxBlocksInBlob,
             bool useFlushCommitIdAsTrimFreshLogToCommitId,
+            bool mixedBlocksCountCompactionEnabled,
             TChildLogTitle logTitle)
         : State(state)
         , Args(args)
@@ -112,6 +114,7 @@ public:
         , MaxBlocksInBlob(maxBlocksInBlob)
         , UseFlushCommitIdAsTrimFreshLogToCommitId(
               useFlushCommitIdAsTrimFreshLogToCommitId)
+        , MixedBlocksCountCompactionEnabled(mixedBlocksCountCompactionEnabled)
         , LogTitle(std::move(logTitle))
     {}
 
@@ -678,7 +681,11 @@ private:
                 kv.first,
                 rangeStat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 rangeStat.BlockCount +
-                    kv.second.BlocksSkippedByCompaction);
+                    kv.second.BlocksSkippedByCompaction,
+                MixedBlocksCountCompactionEnabled
+                    ? rangeStat.MixedBlockCount +
+                          kv.second.MixedBlockCountSkippedByCompaction
+                    : 0);
             State.GetCompactionMap().Update(
                 kv.first,
                 rangeStat.BlobCount + kv.second.BlobsSkippedByCompaction,
@@ -757,7 +764,10 @@ private:
             db.WriteCompactionMap(
                 blockIndex,
                 rangeStat.BlobCount,
-                rangeStat.BlockCount);
+                rangeStat.BlockCount,
+                MixedBlocksCountCompactionEnabled
+                    ? rangeStat.MixedBlockCount
+                    : 0);
         }
     }
 
@@ -997,6 +1007,7 @@ void TPartitionActor::ExecuteAddBlobs(
         State->GetMaxBlocksInBlob(),
         Config
             ->GetWaitForFreshWritesBeforeFlushEnabled(),   // useFlushCommitIdAsTrimFreshLogToCommitId
+        IsMixedBlocksCountCompactionEnabled(),
         LogTitle.GetChild(GetCycleCount()));
     executor.Execute(ctx, db);
 }
