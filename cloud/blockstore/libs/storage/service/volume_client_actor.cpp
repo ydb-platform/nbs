@@ -35,10 +35,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_HAS_MEMBER(GetDeprecatedThrottlerDelay);
-
-////////////////////////////////////////////////////////////////////////////////
-
 NTabletPipe::TClientConfig CreateTabletPipeClientConfig(
     const TStorageConfig& config)
 {
@@ -50,20 +46,6 @@ NTabletPipe::TClientConfig CreateTabletPipeClientConfig(
     };
     return clientConfig;
 }
-
-template <typename TProtoMessage>
-const NProto::TTraceInfo& GetTraceInfo(const TProtoMessage& msg)
-{
-    if (msg.Record.GetHeaders().HasTrace()) {
-        return msg.Record.GetHeaders().GetTrace();
-    }
-    if constexpr (requires { msg.Record.MutableDeprecatedTrace(); }) {
-        return msg.Record.GetDeprecatedTrace();
-    }
-    return msg.Record.GetHeaders().GetTrace();
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 class TVolumeClientActor final
     : public TActor<TVolumeClientActor>
@@ -376,31 +358,20 @@ void TVolumeClientActor::HandleResponse(
 
     if (it->second.CallContext->LWOrbit.HasShuttles()) {
         TraceSerializer->HandleTraceInfo(
-            GetTraceInfo(*msg),
+            msg->Record.GetHeaders().GetTrace(),
             it->second.CallContext->LWOrbit,
             it->second.SendTime,
             GetCycleCount());
-        if constexpr (requires { msg->Record.MutableDeprecatedTrace(); }) {
-            msg->Record.ClearDeprecatedTrace();
-        }
         msg->Record.MutableHeaders()->ClearTrace();
     }
-
-    using TProtoType = decltype(TMethod::TResponse::Record);
-    static_assert(
-        RequiresThrottling<TMethod> ==
-        THasGetDeprecatedThrottlerDelay<TProtoType>::value);
 
     if constexpr (RequiresThrottling<TMethod>) {
         NProto::TThrottlerInfo& throttler =
             *msg->Record.MutableHeaders()->MutableThrottler();
-        const ui64 throttlerDelay =
-            Max(msg->Record.GetDeprecatedThrottlerDelay(),
-                throttler.GetDelay());
+        const ui64 throttlerDelay = throttler.GetDelay();
         it->second.CallContext->AddTime(
             EProcessingStage::Postponed,
             TDuration::MicroSeconds(throttlerDelay));
-        msg->Record.SetDeprecatedThrottlerDelay(0);
         throttler.SetDelay(0);
         it->second.CallContext->SetPossiblePostponeDuration(TDuration::Zero());
 

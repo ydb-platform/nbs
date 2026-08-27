@@ -26,13 +26,10 @@ TResponse MergeReadBlocksResponsesImpl(std::span<TResponse> responsesToMerge)
         }
         allZeros &= response.GetAllZeroes();
         allBlocksEmpty &= response.GetBlocks().BuffersSize() == 0;
-        throttlerDelaySum +=
-            Max(response.GetDeprecatedThrottlerDelay(),
-                response.GetHeaders().GetThrottler().GetDelay());
+        throttlerDelaySum += response.GetHeaders().GetThrottler().GetDelay();
         checksums.push_back(response.GetChecksum());
     }
 
-    result.SetDeprecatedThrottlerDelay(throttlerDelaySum);
     result.MutableHeaders()->MutableThrottler()->SetDelay(throttlerDelaySum);
     result.SetAllZeroes(allZeros);
     if (NProto::TChecksum checksum = CombineChecksums(checksums);

@@ -12,7 +12,6 @@ import "cloud/blockstore/public/api/protos/volume.proto";
 
 import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
-import "cloud/storage/core/protos/trace.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 // Follower volume link update action
@@ -121,6 +120,8 @@ message TAddClientRequest
 
 message TAddClientResponse
 {
+    reserved 5;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
@@ -132,9 +133,6 @@ message TAddClientResponse
 
     // Volume information.
     TVolume Volume = 4;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 5;
 
     // Expected pipe generation. Deprecated.
     uint32 ExpectedPipeGeneration = 6;
@@ -167,6 +165,8 @@ message TRemoveClientRequest
 
 message TRemoveClientResponse
 {
+    reserved 5;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
@@ -178,9 +178,6 @@ message TRemoveClientResponse
 
     // Client identifier.
     string ClientId = 4;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 5;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -200,14 +197,13 @@ message TWaitReadyRequest
 
 message TWaitReadyResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     // Volume information.
     TVolume Volume = 2;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -231,11 +227,10 @@ message TUsedBlockData {
 }
 
 message TGetUsedBlocksResponse {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     repeated TUsedBlockData UsedBlocks = 3;
 
@@ -259,14 +254,13 @@ message TGetPartitionInfoRequest
 
 message TGetPartitionInfoResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     // Partition info data in JSON format.
     string Payload = 2;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -298,14 +292,13 @@ message TCompactRangeRequest
 
 message TCompactRangeResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     // Compact operation reference
     string OperationId = 2;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -331,6 +324,8 @@ message TGetCompactionStatusRequest
 
 message TGetCompactionStatusResponse
 {
+    reserved 5;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
@@ -342,9 +337,6 @@ message TGetCompactionStatusResponse
 
     // Flag if operation completed.
     bool IsCompleted = 4;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 5;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -364,11 +356,10 @@ message TReallocateDiskRequest
 
 message TReallocateDiskResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     // Outdated lagging devices of the volume.
     repeated TLaggingDevice OutdatedLaggingDevices = 3;
@@ -398,11 +389,10 @@ message TUpdateUsedBlocksRequest
 
 message TUpdateUsedBlocksResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -483,13 +473,12 @@ message TGetVolumeLoadInfoRequest
 
 message TGetVolumeLoadInfoResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     TVolumeBalancerDiskStats Stats = 2;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -512,11 +501,10 @@ message TDeleteCheckpointDataRequest
 
 message TDeleteCheckpointDataResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -548,11 +536,10 @@ message TRebuildMetadataRequest
 
 message TRebuildMetadataResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -583,13 +570,12 @@ message TGetRebuildMetadataStatusRequest
 
 message TGetRebuildMetadataStatusResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     TMetadataRebuildProgress Progress = 2;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -612,11 +598,10 @@ message TScanDiskRequest
 
 message TScanDiskResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -636,11 +621,10 @@ message TGetVolumeInfoRequest
 
 message TGetVolumeInfoResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     TVolume Volume = 3;
 
@@ -669,9 +653,9 @@ message TUpdateVolumeParamsRequest
 
 message TUpdateVolumeParamsResponse
 {
-    NCloud.NProto.TError Error = 1;
+    reserved 2;
 
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
+    NCloud.NProto.TError Error = 1;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -697,11 +681,10 @@ message TChangeStorageConfigRequest
 
 message TChangeStorageConfigResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     // Result Storage config.
     NProto.TStorageServiceConfig StorageConfig = 3;
@@ -725,11 +708,10 @@ message TGetStorageConfigRequest
 
 message TGetStorageConfigResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     // Result Storage config.
     NProto.TStorageServiceConfig StorageConfig = 3;
@@ -752,11 +734,10 @@ message TGracefulShutdownRequest
 
 message TGracefulShutdownResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -797,7 +778,7 @@ message TMirrorInconsistentChecksums
 
 message TCheckRangeResponse
 {
-    reserved 2, 3;
+    reserved 2, 3, 4;
 
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
@@ -812,9 +793,6 @@ message TCheckRangeResponse
         TChecksums DiskChecksums = 5;
         TMirrorInconsistentChecksums InconsistentChecksums = 6;
     };
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 4;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -843,14 +821,13 @@ message TLinkLeaderVolumeToFollowerRequest
 
 message TLinkLeaderVolumeToFollowerResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     // Uuid of created link.
     string LinkUUID = 2;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -882,11 +859,10 @@ message TUpdateLinkOnFollowerRequest
 
 message TUpdateLinkOnFollowerResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -915,6 +891,8 @@ message TGetLinkStatusRequest
 
 message TGetLinkStatusResponse
 {
+    reserved 999;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
@@ -926,9 +904,6 @@ message TGetLinkStatusResponse
 
     // Error message when link in error state.
     string ErrorMessage = 4;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 999;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -958,11 +933,10 @@ message TUnlinkLeaderVolumeFromFollowerRequest
 
 message TUnlinkLeaderVolumeFromFollowerResponse
 {
+    reserved 2;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

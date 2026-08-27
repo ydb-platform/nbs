@@ -189,7 +189,6 @@ void TDescribeBlocksActionActor::HandleDescribeBlocksResponse(
         // Fresh block information is only needed for index-only requests.
         msg->Record.ClearFreshBlockRanges();
     }
-    msg->Record.ClearDeprecatedTrace();
     msg->Record.MutableHeaders()->ClearTrace();
 
     TString response;
