@@ -993,6 +993,7 @@ void TIndexTabletActor::HandleHttpInfo(
         {"dirViewer",       &TIndexTabletActor::HandleHttpInfo_DirViewer },
         {"locks",           &TIndexTabletActor::HandleHttpInfo_Locks },
         {"fastShardLayout", &TIndexTabletActor::HandleHttpInfo_FastShardLayout },
+        {"diagnostics",     &TIndexTabletActor::HandleHttpInfo_Diagnostics },
     }};
 
     const auto* msg = ev->Get();
@@ -1085,6 +1086,11 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
                 out << "<a href='?TabletID=" << TabletID()
                     << "&action=fastShardLayout'>Fast Shard Layout</a>";
             }
+        }
+
+        TAG(TH3) {
+            out << "<a href='?TabletID=" << TabletID()
+                << "&action=diagnostics'>Diagnostic Metrics</a>";
         }
 
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();

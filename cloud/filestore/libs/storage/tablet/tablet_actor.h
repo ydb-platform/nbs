@@ -688,6 +688,10 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
+    void HandleHttpInfo_Diagnostics(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
 
     //
     // Custom event handlers.

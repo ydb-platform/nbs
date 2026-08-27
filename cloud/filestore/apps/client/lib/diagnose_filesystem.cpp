@@ -1,6 +1,6 @@
-#include "aggregate.h"
 #include "command.h"
 
+#include <cloud/filestore/libs/diagnostics/aggregate.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -377,8 +377,8 @@ private:
         // TotalLatencyDecayed DESC,  LastAccessedTimestamp DESC
         return std::tie(
                    rhsLatency,
-                   lhs.GroupAggregate.LastAccessedTimestampUs) <
-               std::tie(lhsLatency, rhs.GroupAggregate.LastAccessedTimestampUs);
+                   rhs.GroupAggregate.LastAccessedTimestampUs) <
+               std::tie(lhsLatency, lhs.GroupAggregate.LastAccessedTimestampUs);
     }
 
     static constexpr TStringBuf ConsoleMagenta = "\033[95m";

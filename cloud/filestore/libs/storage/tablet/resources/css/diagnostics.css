@@ -1,0 +1,49 @@
+.diagnostics-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.diagnostics-table-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.diagnostics-table-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.diagnostics-table-heading h3 {
+    margin: 20px 0 10px;
+}
+
+.diagnostics-control {
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+.diagnostics-control select {
+    display: inline-block;
+    width: auto;
+}
+
+.diagnostics-table {
+    white-space: nowrap;
+}
+
+.diagnostics-empty {
+    color: #777;
+    margin-bottom: 16px;
+}
+
+.diagnostics-warning {
+    color: #8a6d3b;
+    background: #fcf8e3;
+    border: 1px solid #faebcc;
+    padding: 8px 12px;
+    margin: 8px 0;
+}
