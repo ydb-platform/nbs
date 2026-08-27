@@ -223,48 +223,86 @@ public:
             return MakeFuture(std::move(response));
         }
 
+        auto promise = NewPromise<NProto::TReadDataResponse>();
+
         // Prevent unflushed data parts from being evicted from storage until
         // the response is completed
         const auto pin = State.PinCachedData(request->GetNodeId());
 
         TReadResponseBuilder responseBuilder(*request);
-        if (auto response = responseBuilder.TryFullyServeFromCache(State, pin))
+
+        auto cachedData = State.GetCachedData(
+            request->GetNodeId(),
+            request->GetOffset(),
+            request->GetLength(),
+            pin);
+
+        if (!cachedData) {
+            // WriteBackCache is in failed state - hang the request
+            State.UnpinCachedData(request->GetNodeId(), pin);
+            State.AddHangingRequest(promise);
+            return promise.GetFuture();
+        }
+
+        if (auto response = responseBuilder.TryFullyServeFromCache(*cachedData))
         {
             State.UnpinCachedData(request->GetNodeId(), pin);
             InternalStats->AddReadDataStats(
                 EReadDataRequestCacheStatus::FullHit);
-            return MakeFuture(std::move(*response));
+            promise.SetValue(std::move(*response));
+            return promise.GetFuture();
         }
 
-        auto callback = [ptr = weak_from_this(),
-                         responseBuilder = std::move(responseBuilder),
-                         pin](TFuture<NProto::TReadDataResponse> future)
+        auto future = promise.GetFuture();
+
+        auto callback =
+            [ptr = weak_from_this(),
+             responseBuilder = std::move(responseBuilder),
+             pin,
+             promise = std::move(promise)](
+                const TFuture<NProto::TReadDataResponse>& future) mutable
         {
             auto response = UnsafeExtractValue(future);
+            bool shouldHang = false;
 
             if (auto self = ptr.lock()) {
                 if (!HasError(response)) {
-                    bool cachedDataApplied =
-                        responseBuilder.AugmentResponseWithCachedData(
-                            response,
-                            self->State,
-                            pin);
+                    auto cachedData = self->State.GetCachedData(
+                        responseBuilder.GetNodeId(),
+                        responseBuilder.GetOffset(),
+                        responseBuilder.GetLength(),
+                        pin);
 
-                    if (cachedDataApplied) {
-                        self->InternalStats->AddReadDataStats(
-                            EReadDataRequestCacheStatus::PartialHit);
+                    if (cachedData) {
+                        bool cachedDataApplied =
+                            responseBuilder.AugmentResponseWithCachedData(
+                                response,
+                                *cachedData);
+
+                        if (cachedDataApplied) {
+                            self->InternalStats->AddReadDataStats(
+                                EReadDataRequestCacheStatus::PartialHit);
+                        } else {
+                            self->InternalStats->AddReadDataStats(
+                                EReadDataRequestCacheStatus::Miss);
+                        }
                     } else {
-                        self->InternalStats->AddReadDataStats(
-                            EReadDataRequestCacheStatus::Miss);
+                        self->State.AddHangingRequest(promise);
+                        shouldHang = true;
                     }
                 }
                 self->State.UnpinCachedData(responseBuilder.GetNodeId(), pin);
             }
-            return response;
+
+            if (!shouldHang) {
+                promise.SetValue(std::move(response));
+            }
         };
 
-        return Session->ReadData(std::move(callContext), std::move(request))
-            .Apply(std::move(callback));
+        Session->ReadData(std::move(callContext), std::move(request))
+            .Subscribe(std::move(callback));
+
+        return future;
     }
 
     TFuture<NProto::TWriteDataResponse> WriteData(

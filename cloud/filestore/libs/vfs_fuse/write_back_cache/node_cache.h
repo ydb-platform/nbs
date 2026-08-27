@@ -33,9 +33,6 @@ struct TCachedData
     // This is needed to avoid truncation when there are unflushed data parts
     // beyond the requested range.
     ui64 ReadDataByteCount = 0;
-
-    // WriteBackCache is in failed state
-    bool Failed = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

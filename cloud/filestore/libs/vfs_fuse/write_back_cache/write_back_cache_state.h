@@ -126,14 +126,15 @@ public:
         ui64 nodeId,
         ui64 handle);
 
-    NThreading::TFuture<NProto::TReadDataResponse> AddHandingReadDataResponse();
+    void AddHangingRequest(NThreading::TPromise<NProto::TReadDataResponse> promise);
 
     void TriggerPeriodicFlushAll();
 
     // Includes both flushed and unflushed data.
     // TCachedData::Parts is calculated over pinned data.
     // TCachedData::ReadDataByteCount is calculated over all data.
-    TCachedData GetCachedData(
+    // Returns std::nullopt in a failed state
+    std::optional<TCachedData> GetCachedData(
         ui64 nodeId,
         ui64 offset,
         ui64 byteCount,

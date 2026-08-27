@@ -151,8 +151,10 @@ struct TBootstrap
         auto cachedData =
             State->GetCachedData(nodeId, offset, byteCount, pin);
 
+        UNIT_ASSERT(cachedData);
+
         TStringBuilder out;
-        for (const auto& part: cachedData.Parts) {
+        for (const auto& part: cachedData->Parts) {
             if (!out.empty()) {
                 out << ", ";
             }

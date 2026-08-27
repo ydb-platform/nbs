@@ -3,6 +3,13 @@
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void THangingRequests::Add(
+    NThreading::TPromise<NProto::TReadDataResponse> promise)
+{
+    ReadDataPromises.push_back(std::move(promise));
+}
+
 NThreading::TFuture<TResultOrError<ui64>>
 THangingRequests::CreateAcquireBarrierResponse()
 {
@@ -18,15 +25,6 @@ THangingRequests::CreateFlushOrReleaseHandleResponse()
     auto promise = NThreading::NewPromise<NProto::TError>();
     auto future = promise.GetFuture();
     FlushOrReleaseHandlePromises.push_back(std::move(promise));
-    return future;
-}
-
-NThreading::TFuture<NProto::TReadDataResponse>
-THangingRequests::CreateReadDataResponse()
-{
-    auto promise = NThreading::NewPromise<NProto::TReadDataResponse>();
-    auto future = promise.GetFuture();
-    ReadDataPromises.push_back(std::move(promise));
     return future;
 }
 

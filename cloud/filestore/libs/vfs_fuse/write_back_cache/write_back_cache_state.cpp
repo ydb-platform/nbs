@@ -65,7 +65,8 @@ bool TWriteBackCacheState::IsDrained() const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    return DrainingMode && !RequestManager.HasPendingOrUnflushedRequests();
+    return DrainingMode && !FailedFlag &&
+           !RequestManager.HasPendingOrUnflushedRequests();
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
@@ -200,11 +201,12 @@ TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
     return handleState->ReleaseHandleRequest->ReadyToReleasePromise.GetFuture();
 }
 
-TFuture<TReadDataResponse> TWriteBackCacheState::AddHandingReadDataResponse()
+void TWriteBackCacheState::AddHangingRequest(
+    NThreading::TPromise<NProto::TReadDataResponse> promise)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    return HangingRequests.CreateReadDataResponse();
+    HangingRequests.Add(std::move(promise));
 }
 
 void TWriteBackCacheState::TriggerPeriodicFlushAll()
@@ -214,7 +216,7 @@ void TWriteBackCacheState::TriggerPeriodicFlushAll()
     TriggerFlushAll(false);
 }
 
-TCachedData TWriteBackCacheState::GetCachedData(
+std::optional<TCachedData> TWriteBackCacheState::GetCachedData(
     ui64 nodeId,
     ui64 offset,
     ui64 byteCount,
@@ -223,12 +225,12 @@ TCachedData TWriteBackCacheState::GetCachedData(
     auto guard = LockStateAndPostponeQueuedOperations();
 
     if (FailedFlag) {
-        return {.Parts = {}, .Failed = true};
+        return std::nullopt;
     }
 
     const auto* nodeState = Nodes.GetNodeState(nodeId);
     if (nodeState == nullptr) {
-        return {};
+        return TCachedData{};
     }
 
     return nodeState->Cache.GetCachedData(

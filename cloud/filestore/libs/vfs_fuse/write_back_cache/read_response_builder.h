@@ -1,6 +1,6 @@
 #pragma once
 
-#include "write_back_cache_state.h"
+#include "node_cache.h"
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
@@ -29,23 +29,31 @@ public:
         return NodeId;
     }
 
+    ui64 GetOffset() const
+    {
+        return Offset;
+    }
+
+    ui64 GetLength() const
+    {
+        return Length;
+    }
+
     // Attempt to build a complete TReadDataResponse using only data from cache.
     // If the entire requested byte range is available in the cache, returns
     // a populated TReadDataResponse or std::nullopt otherwise
     std::optional<NProto::TReadDataResponse> TryFullyServeFromCache(
-        TWriteBackCacheState& state,
-        TNodeCachedDataPin pin) const;
+        const TCachedData& cachedData) const;
 
     // Apply cached data on top of the response returned from backend.
     // Returns true if the response was augmented with cached data.
     // Returns false if no cached data was applied to the response.
     bool AugmentResponseWithCachedData(
         NProto::TReadDataResponse& response,
-        TWriteBackCacheState& state,
-        TNodeCachedDataPin pin) const;
+        const TCachedData& cachedData) const;
 
 private:
-    void AugmentResponseWithCachedData(
+    void DoAugmentResponseWithCachedData(
         NProto::TReadDataResponse& response,
         const TCachedData& cachedData) const;
 };

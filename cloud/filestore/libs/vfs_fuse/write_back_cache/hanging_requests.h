@@ -23,9 +23,9 @@ private:
     TVector<NThreading::TPromise<NProto::TWriteDataResponse>> WriteDataPromises;
 
 public:
+    void Add(NThreading::TPromise<NProto::TReadDataResponse> promise);
     NThreading::TFuture<TResultOrError<ui64>> CreateAcquireBarrierResponse();
     NThreading::TFuture<NProto::TError> CreateFlushOrReleaseHandleResponse();
-    NThreading::TFuture<NProto::TReadDataResponse> CreateReadDataResponse();
     NThreading::TFuture<NProto::TWriteDataResponse> CreateWriteDataResponse();
 };
 

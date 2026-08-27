@@ -86,8 +86,16 @@ public:
             }
         }
 
+        auto cachedData = State.GetCachedData(
+            1,
+            request->GetOffset(),
+            request->GetLength(),
+            {});
+
+        UNIT_ASSERT(cachedData);
+
         TReadResponseBuilder builder(*request);
-        builder.AugmentResponseWithCachedData(response, State, /* pin = */ {});
+        builder.AugmentResponseWithCachedData(response, *cachedData);
 
         return result.substr(0, response.GetLength());
     }
