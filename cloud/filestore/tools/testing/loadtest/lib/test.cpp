@@ -2,6 +2,7 @@
 
 #include "client.h"
 #include "context.h"
+#include "filestore_cleanup.h"
 #include "request.h"
 #include "shm_client.h"
 
@@ -73,14 +74,19 @@ struct TTestStats
 template <typename T>
 T WaitForCompletion(
     const TString& request,
-    const TFuture<T>& future)
+    const TFuture<T>& future,
+    TInstant deadlineTs = TInstant::Max())
 {
-    const auto& response = future.GetValue(TDuration::Max());
+    if (!future.Wait(deadlineTs)) {
+        throw yexception() << "Failed to execute " << request
+                           << " request: deadline exceeded";
+    }
+
+    const auto& response = future.GetValue();
     if (HasError(response)) {
         const auto& error = response.GetError();
-        throw yexception()
-            << "Failed to execute " << request << " request: "
-            << FormatError(error);
+        throw yexception() << "Failed to execute " << request
+                           << " request: " << FormatError(error);
     }
 
     return response;
@@ -1132,6 +1138,19 @@ public:
         stopTest(SourceTest, SourceFuture);
         stopTest(TargetTest, TargetFuture);
 
+        if (Config.HasGarbageCollectionValidationConfig()) {
+            TString filesystemId;
+            if (Config.HasFileSystemId()) {
+                filesystemId = Config.GetFileSystemId();
+            } else if (Config.HasCreateFileStoreRequest()) {
+                filesystemId =
+                    Config.GetCreateFileStoreRequest().GetFileSystemId();
+            }
+            ValidateGarbageCollection(
+                Config.GetGarbageCollectionValidationConfig(),
+                filesystemId);
+        }
+
         if (Config.HasCreateFileStoreRequest() && !Config.GetKeepFileStore()) {
             auto filesystemId =
                 Config.GetCreateFileStoreRequest().GetFileSystemId();
@@ -1217,10 +1236,99 @@ private:
                Exception;
     }
 
-
     const TString& MakeTestTag() const
     {
         return TestTag;
+    }
+
+    void ValidateGarbageCollection(
+        const NProto::TGarbageCollectionValidationConfig& config,
+        const TString& filesystemId)
+    {
+        STORAGE_INFO(
+            "%s Starting forced garbage collection",
+            MakeTestTag().c_str());
+
+        const auto timeout =
+            config.GetTimeoutSeconds() ? config.GetTimeoutSeconds() : 60;
+        const auto deadlineTs = TInstant::Now() + TDuration::Seconds(timeout);
+
+        try {
+            TFileStoreCleanup filestoreCleanup(
+                Log,
+                Client,
+                filesystemId,
+                deadlineTs);
+            filestoreCleanup.Flush();
+            filestoreCleanup.FlushBytes();
+            filestoreCleanup.Cleanup();
+            filestoreCleanup.Compaction();
+            // We need to create a new commit to make collect_garbage handle
+            // new blobs
+            CreateCommit(filesystemId, deadlineTs);
+            filestoreCleanup.CollectGarbage();
+            ValidateStorageStats(filestoreCleanup.GetStorageStats());
+        } catch (...) {
+            SaveException();
+        }
+    }
+
+    void ValidateStorageStats(const NProtoPrivate::TStorageStats& stats)
+    {
+        TStringBuilder builder;
+        auto check = [&](const char* name, ui64 value)
+        {
+            if (value != 0) {
+                if (!builder.empty()) {
+                    builder << ", ";
+                }
+                builder << name << "=" << value;
+            }
+        };
+
+        check("FreshBlocksCount", stats.GetFreshBlocksCount());
+        check("FreshBytesItemCount", stats.GetFreshBytesItemCount());
+        check("DeletedFreshBytesCount", stats.GetDeletedFreshBytesCount());
+        check("DeletionMarkersCount", stats.GetDeletionMarkersCount());
+        // TODO: there is no forced op to trigger processing of large deletions
+        // check(LargeDeletionMarkersCount);
+        check("GarbageQueueSize", stats.GetGarbageQueueSize());
+        check("GarbageBlocksCount", stats.GetGarbageBlocksCount());
+        check("UnconfirmedDataCount", stats.GetUnconfirmedDataCount());
+
+        if (!builder.empty()) {
+            throw yexception() << "ValidateStorageStats failed: " << builder;
+        }
+
+        STORAGE_INFO("Storage GC stats validation passed");
+    }
+
+    // Creating and destroying a session should be sufficient to increment
+    // commit id across all shards.
+    void CreateCommit(const TString& filesystemId, TInstant deadlineTs)
+    {
+        NProto::TSessionConfig proto;
+        proto.SetFileSystemId(filesystemId);
+        proto.SetClientId(
+            Config.GetClientId() ? Config.GetClientId() : "test-client");
+        proto.SetSessionPingTimeout(Config.GetSessionPingTimeout());
+
+        auto session = NClient::CreateSession(
+            Logging,
+            Timer,
+            Scheduler,
+            Client,
+            std::make_shared<TSessionConfig>(proto));
+
+        WaitForCompletion(
+            "create session",
+            session->CreateSession(false, SessionSeqNo),
+            deadlineTs);
+
+        WaitForCompletion(
+            "destroy session",
+            session->DestroySession(),
+            deadlineTs);
     }
 };
 

@@ -176,6 +176,12 @@ message TMigrationSpec
     uint32 StateTransferDelay = 2;
 }
 
+message TGarbageCollectionValidationConfig
+{
+    // Maximum duration of final garbage collection (60s by default)
+    uint32 TimeoutSeconds = 1;
+}
+
 message TLoadTest
 {
     string Name = 1;
@@ -213,6 +219,10 @@ message TLoadTest
     // Maximum number of nodes created by this synthetic load test.
     // Zero means unlimited. Ignored by replay specs.
     uint64 MaxNodes = 22;
+
+    // Enables final cleanup and validation of filesystem metrics, assuring
+    // no garbage is left
+    TGarbageCollectionValidationConfig GarbageCollectionValidationConfig = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

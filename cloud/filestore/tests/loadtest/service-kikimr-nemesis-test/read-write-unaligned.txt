@@ -23,5 +23,8 @@ Tests {
         }
         IODepth: 4
         TestDuration: 60
+        GarbageCollectionValidationConfig: {
+            TimeoutSeconds: 300
+        }
     }
 }

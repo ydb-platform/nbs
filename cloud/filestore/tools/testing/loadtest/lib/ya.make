@@ -17,6 +17,7 @@ ENDIF()
 SRCS(
     client.cpp
     context.h
+    filestore_cleanup.cpp
     executor.cpp
     request_data.cpp
     request_index.cpp
