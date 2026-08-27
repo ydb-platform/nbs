@@ -34,7 +34,6 @@ PEERDIR(
     library/cpp/logger
 
     contrib/libs/grpc
-    contrib/libs/grpc/src/proto/grpc/reflection/v1alpha
 )
 
 END()
