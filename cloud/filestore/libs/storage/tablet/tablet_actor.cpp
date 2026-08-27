@@ -1201,6 +1201,37 @@ void TIndexTabletActor::HandleForcedOperation(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TIndexTabletActor::EnqueueForcedOperationIfNeeded(
+    const TActorContext& ctx)
+{
+    if (IsForcedOperationRunning()) {
+        return;
+    }
+
+    auto pendingRequest = DequeueForcedOperation();
+    if (!pendingRequest) {
+        return;
+    }
+
+    std::visit(TOverloaded{
+        [&](TPendingForcedRangeOperation& state) {
+            auto request =
+                    std::make_unique<TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
+                        std::move(state.Ranges),
+                        state.Mode,
+                        std::move(state.OperationId));
+            ctx.Send(ctx.SelfID, request.release());
+        },
+        [&](TPendingForcedTabletOperation& state) {
+            auto request =
+                    std::make_unique<TEvIndexTabletPrivate::TEvForcedTabletOperationRequest>(
+                        state.Mode,
+                        std::move(state.OperationId));
+            ctx.Send(ctx.SelfID, request.release());
+        }
+    }, *pendingRequest.Get());
+}
+
 void TIndexTabletActor::HandleForcedOperationStatus(
     const TEvIndexTablet::TEvForcedOperationStatusRequest::TPtr& ev,
     const TActorContext& ctx)

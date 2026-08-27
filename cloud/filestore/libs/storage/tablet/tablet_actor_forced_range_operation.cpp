@@ -264,37 +264,6 @@ using TDeleteRangesWithEmptyScoreActor = TForcedOperationActor<
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::EnqueueForcedOperationIfNeeded(
-    const TActorContext& ctx)
-{
-    if (IsForcedOperationRunning()) {
-        return;
-    }
-
-    auto pendingRequest = DequeueForcedOperation();
-    if (!pendingRequest) {
-        return;
-    }
-
-    std::visit(TOverloaded{
-        [&](TPendingForcedRangeOperation& state) {
-            auto request =
-                    std::make_unique<TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
-                        std::move(state.Ranges),
-                        state.Mode,
-                        std::move(state.OperationId));
-            ctx.Send(ctx.SelfID, request.release());
-        },
-        [&](TPendingForcedTabletOperation& state) {
-            auto request =
-                    std::make_unique<TEvIndexTabletPrivate::TEvForcedTabletOperationRequest>(
-                        state.Mode,
-                        std::move(state.OperationId));
-            ctx.Send(ctx.SelfID, request.release());
-        }
-    }, *pendingRequest.Get());
-}
-
 void TIndexTabletActor::HandleForcedRangeOperation(
     const TEvIndexTabletPrivate::TEvForcedRangeOperationRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -381,49 +350,6 @@ void TIndexTabletActor::HandleForcedRangeOperation(
     WorkerActors.insert(actorId);
 }
 
-void TIndexTabletActor::HandleForcedTabletOperation(
-    const TEvIndexTabletPrivate::TEvForcedTabletOperationRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedTabletOperation request",
-        LogTag.c_str());
-
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-    requestInfo->StartedTs = ctx.Now();
-
-    // will lose original request info in case of enqueueing external request
-    if (IsForcedOperationRunning()) {
-        EnqueueForcedTabletOperation(msg->Mode);
-        return;
-    }
-
-    StartForcedTabletOperation(
-        msg->Mode,
-        std::move(msg->OperationId));
-
-    std::unique_ptr<IActor> actor;
-
-    switch (msg->Mode) {
-        case TEvIndexTabletPrivate::EForcedTabletOperationMode::Flush:
-            break;
-        case TEvIndexTabletPrivate::EForcedTabletOperationMode::FlushBytes:
-            break;
-        case TEvIndexTabletPrivate::EForcedTabletOperationMode::CollectGarbage:
-            break;
-        default:
-            TABLET_VERIFY_C(false, "unexpected forced tablet operation mode");
-    }
-
-    auto actorId = ctx.Register(actor.release());
-    WorkerActors.insert(actorId);
-}
-
 void TIndexTabletActor::HandleForcedRangeOperationCompleted(
     const TEvIndexTabletPrivate::TEvForcedRangeOperationCompleted::TPtr& ev,
     const TActorContext& ctx)
@@ -450,23 +376,6 @@ void TIndexTabletActor::HandleForcedRangeOperationProgress(
     if (IsForcedOperationRunning()) {
         UpdateForcedRangeOperationProgress(ev->Get()->Current);
     }
-}
-
-void TIndexTabletActor::HandleForcedTabletOperationCompleted(
-    const TEvIndexTabletPrivate::TEvForcedTabletOperationCompleted::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedTabletOperation completed (%s)",
-        LogTag.c_str(),
-        FormatError(msg->GetError()).c_str());
-
-    TABLET_VERIFY(IsForcedOperationRunning());
-    WorkerActors.erase(ev->Sender);
-
-    CompleteForcedTabletOperation();
-    EnqueueForcedOperationIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

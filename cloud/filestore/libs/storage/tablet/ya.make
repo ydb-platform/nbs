@@ -27,7 +27,6 @@ SRCS(
     tablet_actor_collectgarbage.cpp
     tablet_actor_confirmblobs.cpp
     tablet_actor_compaction.cpp
-    tablet_actor_compactionforced.cpp
     tablet_actor_counters.cpp
     tablet_actor_createcheckpoint.cpp
     tablet_actor_createhandle.cpp
@@ -43,6 +42,8 @@ SRCS(
     tablet_actor_filteralivenodes.cpp
     tablet_actor_flush.cpp
     tablet_actor_flush_bytes.cpp
+    tablet_actor_forced_range_operation.cpp
+    tablet_actor_forced_tablet_operation.cpp
     tablet_actor_generatecommitid.cpp
     tablet_actor_getnodeattr.cpp
     tablet_actor_getnodexattr.cpp
