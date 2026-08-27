@@ -17,6 +17,7 @@ ENDIF()
 SRCS(
     client.cpp
     context.h
+    executeaction.cpp
     executor.cpp
     request_data.cpp
     request_index.cpp
