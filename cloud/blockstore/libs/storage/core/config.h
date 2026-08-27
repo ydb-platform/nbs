@@ -970,6 +970,17 @@ public:
     [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
 
     [[nodiscard]] bool GetUseBlobChannelDataKindForCounters() const;
+
+    [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledHDD() const;
+
+    [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledSSD() const;
+
+    [[nodiscard]] ui32 GetMixedBytesCountCompactionThresholdHDD() const;
+
+    [[nodiscard]] ui32 GetMixedBytesCountCompactionThresholdSSD() const;
+
+    [[nodiscard]] ui32
+    GetMixedBlocksCountCompactionRangeCountPerRun() const;
 };
 
 ui64 GetAllocationUnit(

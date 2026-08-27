@@ -268,6 +268,7 @@ struct TCompactionScores
     float Score = 0;
     ui32 GarbageScore = 0;
     ui32 IgnoringZeroedScore = 0;
+    ui32 MixedBlockCount = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -388,6 +388,10 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByMixedBlockCountPerRange{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter CompactionByIgnoringZeroedPerDisk{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
@@ -446,6 +450,7 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByMixedBlockCountPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionTxTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionReadBlobsTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionWriteBlobsTime>(),
