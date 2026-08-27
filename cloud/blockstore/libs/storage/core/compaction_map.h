@@ -78,10 +78,12 @@ public:
     TVector<TCompactionCounter> GetTopsFromGroups(size_t groupCount) const;
     TCompactionCounter GetTopByGarbageBlockCount() const;
     TCompactionCounter GetTopByGarbageIgnoringZeroed() const;
+    TCompactionCounter GetTopByMixedBlockCount() const;
 
     TVector<TCompactionCounter> GetTop(size_t count) const;
     TVector<TCompactionCounter> GetTopByGarbageBlockCount(size_t count) const;
     TVector<TCompactionCounter> GetTopByGarbageIgnoringZeroed(size_t count) const;
+    TVector<TCompactionCounter> GetTopByMixedBlockCount(size_t count) const;
     TVector<ui32> GetNonEmptyRanges() const;
     ui32 GetNonEmptyRangeCount() const;
     ui32 GetRangeStart(ui32 blockIndex) const;

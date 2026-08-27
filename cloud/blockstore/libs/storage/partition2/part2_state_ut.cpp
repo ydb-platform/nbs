@@ -115,6 +115,11 @@ struct TNoBackpressurePolicy
     {
         return false;
     }
+
+    ui64 GetUsedBlocksThresholdForMixedBlocksCompaction() const override
+    {
+        return 0;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -251,7 +256,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -292,7 +297,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -381,7 +386,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -450,7 +455,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -509,7 +514,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             {1024, 0, 0}
@@ -575,7 +580,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -711,7 +716,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -804,7 +809,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 MaxBlobSize,
                 MaxRangesPerBlob,
                 EOptimizationMode::OptimizeForLongRanges,
-                BuildDefaultCompactionPolicy(5),
+                BuildDefaultCompactionPolicy(5, 0),
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
                 DefaultIndexCachingConfig()
@@ -917,7 +922,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -971,7 +976,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
@@ -1049,7 +1054,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 MaxBlobSize,
                 MaxRangesPerBlob,
                 EOptimizationMode::OptimizeForLongRanges,
-                BuildDefaultCompactionPolicy(5),
+                BuildDefaultCompactionPolicy(5, 0),
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
                 DefaultIndexCachingConfig()
@@ -1119,7 +1124,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 MaxBlobSize,
                 MaxRangesPerBlob,
                 EOptimizationMode::OptimizeForLongRanges,
-                BuildDefaultCompactionPolicy(5),
+                BuildDefaultCompactionPolicy(5, 0),
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
                 DefaultIndexCachingConfig()
@@ -1163,7 +1168,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -1213,7 +1218,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                 MaxBlobSize,
                 MaxRangesPerBlob,
                 EOptimizationMode::OptimizeForLongRanges,
-                BuildDefaultCompactionPolicy(5),
+                BuildDefaultCompactionPolicy(5, 0),
                 DefaultBPConfig(),
                 DefaultFreeSpaceConfig(),
                 DefaultIndexCachingConfig()
@@ -1347,7 +1352,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -1402,7 +1407,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -1501,7 +1506,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
@@ -1526,7 +1531,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig()
@@ -1615,7 +1620,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
@@ -1693,7 +1698,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),
@@ -1763,7 +1768,7 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             MaxBlobSize,
             MaxRangesPerBlob,
             EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             DefaultBPConfig(),
             DefaultFreeSpaceConfig(),
             DefaultIndexCachingConfig(),

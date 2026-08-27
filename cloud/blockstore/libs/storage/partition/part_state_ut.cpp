@@ -87,6 +87,11 @@ struct TNoBackpressurePolicy
     {
         return false;
     }
+
+    ui64 GetUsedBlocksThresholdForMixedBlocksCompaction() const override
+    {
+        return 0;
+    }
 };
 
 // TODO: use this function in other tests.
@@ -97,7 +102,7 @@ TPartitionState MakeState(
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
         DefaultConfig(1, blockCount),
-        BuildDefaultCompactionPolicy(5),
+        BuildDefaultCompactionPolicy(5, 0),
         0,   // compactionScoreHistorySize
         0,   // cleanupScoreHistorySize
         DefaultBPConfig(),
@@ -132,7 +137,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             DefaultConfig(1, 1000),
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             0,   // compactionScoreHistorySize
             0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
@@ -244,7 +249,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             config,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             0,   // compactionScoreHistorySize
             0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
@@ -333,7 +338,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             config,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             0,   // compactionScoreHistorySize
             0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
@@ -380,7 +385,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             config,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             0,   // compactionScoreHistorySize
             0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
@@ -523,7 +528,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             config,
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             0,   // compactionScoreHistorySize
             0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
@@ -560,7 +565,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             DefaultConfig(1, 1000),
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             0,   // compactionScoreHistorySize
             0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
@@ -609,7 +614,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             std::make_shared<TPartitionThreadSafeState>();
         TPartitionState state(
             DefaultConfig(1, DefaultBlockCount),
-            BuildDefaultCompactionPolicy(5),
+            BuildDefaultCompactionPolicy(5, 0),
             0,   // compactionScoreHistorySize
             0,   // cleanupScoreHistorySize
             DefaultBPConfig(),
