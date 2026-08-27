@@ -108,6 +108,8 @@ struct IVerbs
         rdma_port_space ps,
         ui8 tos) = 0;
 
+    virtual void SetAckTimeout(rdma_cm_id* id, ui8 timeout) = 0;
+
     virtual void BindAddress(rdma_cm_id* id, sockaddr* addr) = 0;
     virtual void ResolveAddress(
         rdma_cm_id* id,

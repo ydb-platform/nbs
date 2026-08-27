@@ -49,6 +49,7 @@ struct TTestContext: TAtomicRefCount<TTestContext>
         GetAddressInfo;
     std::function<void(rdma_cm_id* id)> DestroyQP;
     std::function<void(ibv_qp* qp, ibv_qp_attr* attr, int mask)> ModifyQP;
+    std::function<void(rdma_cm_id* id, ui8 timeout)> SetAckTimeout;
     std::function<void(ibv_pd* pd, void* addr, size_t length, int flags)>
         RegisterMemoryRegion;
 

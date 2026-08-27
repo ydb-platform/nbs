@@ -258,6 +258,20 @@ struct TVerbs
         return WrapPtr(id);
     }
 
+    void SetAckTimeout(rdma_cm_id* id, ui8 timeout) override
+    {
+        int res = rdma_set_option(
+            id,
+            RDMA_OPTION_ID,
+            RDMA_OPTION_ID_ACK_TIMEOUT,
+            &timeout,
+            sizeof(timeout));
+
+        if (res < 0) {
+            RDMA_THROW_ERROR("rdma_set_option RDMA_OPTION_ID_ACK_TIMEOUT");
+        }
+    }
+
     void BindAddress(rdma_cm_id* id, sockaddr* addr) override
     {
         int res = rdma_bind_addr(id, addr);

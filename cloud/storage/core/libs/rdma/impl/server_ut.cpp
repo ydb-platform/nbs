@@ -192,6 +192,7 @@ TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
     std::atomic<int> acceptRetryCount = -1;
     std::atomic<int> acceptRnrRetryCount = -1;
     std::atomic<bool> modifyCalled = false;
+    std::atomic<bool> ackTimeoutCalled = false;
 
     testContext->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param)
     {
@@ -210,13 +211,20 @@ TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
             return;
         }
 
-        const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
-
-        EXPECT_EQ(expectedMask, mask);
-        EXPECT_EQ(serverConfig->QpTimeout, attr->timeout);
+        EXPECT_EQ(IBV_QP_MIN_RNR_TIMER, mask);
         EXPECT_EQ(serverConfig->QpMinRnrTimer, attr->min_rnr_timer);
 
         modifyCalled.store(true);
+    };
+
+    testContext->SetAckTimeout = [&](rdma_cm_id* id, ui8 timeout)
+    {
+        Y_UNUSED(id);
+
+        EXPECT_EQ(serverConfig->QpTimeout, timeout);
+        EXPECT_FALSE(acceptCalled.load());
+
+        ackTimeoutCalled.store(true);
     };
 
     auto logging =
@@ -244,6 +252,7 @@ TEST(TRdmaServerTest, ShouldUseConfiguredQpParamsOnAcceptAndSetupQp)
     ASSERT_EQ(serverConfig->QpRnrRetryCount, acceptRnrRetryCount.load());
 
     ASSERT_TRUE(modifyCalled.load());
+    ASSERT_TRUE(ackTimeoutCalled.load());
 }
 
 TEST(TRdmaServerTest, StartEndpointShouldNotThrow)
