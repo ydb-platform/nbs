@@ -115,6 +115,9 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(QpMinRnrTimer)
         .StoreResult(&QpMinRnrTimer);
 
+    opts.AddLongOption("memory-windows")
+        .StoreTrue(&UseMemoryWindows);
+
     // device geometry
     opts.AddLongOption("storage")
         .RequiredArgument("{" + GetEnumAllNames<EStorageKind>() + "}")

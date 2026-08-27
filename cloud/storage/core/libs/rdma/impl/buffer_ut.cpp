@@ -44,6 +44,11 @@ public:
         RegisterMemoryRegion,
         (ibv_pd * pd, void* addr, size_t length, int flags),
         (override));
+    MOCK_METHOD(
+        NVerbs::TMemoryWindowPtr,
+        CreateMemoryWindow,
+        (ibv_pd * pd),
+        (override));
 
     MOCK_METHOD(
         NVerbs::TCompletionChannelPtr,
@@ -78,7 +83,11 @@ public:
         (ibv_cq * cq, NVerbs::ICompletionHandler* handler),
         (override));
 
-    MOCK_METHOD(void, PostSend, (ibv_qp * qp, ibv_send_wr* wr), (override));
+    MOCK_METHOD(
+        void,
+        PostSend,
+        (ibv_qp * qp, ibv_send_wr* wr, ibv_send_wr** badWr),
+        (override));
     MOCK_METHOD(void, PostRecv, (ibv_qp * qp, ibv_recv_wr* wr), (override));
 
     MOCK_METHOD(

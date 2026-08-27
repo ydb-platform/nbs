@@ -92,6 +92,7 @@ struct TRequest
     ui32 ReqId = 0;
     ui32 Status = 0;
     ui32 ResponseBytes = 0;
+    bool InvalidateResponseRKey = false;
 
     TBufferDesc In {};
     TBufferDesc Out {};
@@ -853,6 +854,8 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
     req->CallContext = Handler->CreateCallContext();
     Y_ABORT_UNLESS(req->CallContext);
     req->ReqId = msg->ReqId;
+    req->InvalidateResponseRKey =
+        (msg->Unused & RDMA_REQUEST_FLAG_USE_MEMORY_WINDOWS) != 0;
     req->In = msg->In;
     req->Out = msg->Out;
 
@@ -1107,6 +1110,8 @@ void TServerSession::WriteResponseDataCompleted(TSendWr* send) noexcept
 void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
 {
     req->State = ERequestState::SendResponse;
+    send->wr.opcode = IBV_WR_SEND;
+    send->wr.invalidate_rkey = 0;
 
     auto* responseMsg = send->Message();
     Zero(*responseMsg);
@@ -1116,6 +1121,11 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
     responseMsg->ReqId = req->ReqId;
     responseMsg->Status = req->Status;
     responseMsg->ResponseBytes = req->ResponseBytes;
+
+    if (req->InvalidateResponseRKey && req->Out.RKey) {
+        send->wr.opcode = IBV_WR_SEND_WITH_INV;
+        send->wr.invalidate_rkey = req->Out.RKey;
+    }
 
     try {
         auto& cc = req->CallContext;
@@ -1967,6 +1977,7 @@ void TServer::Accept(
         session->CreateQP();
 
         TAcceptMessage acceptMsg = {
+            .Unused = RDMA_ACCEPT_FLAG_SEND_WITH_INV,
             .KeepAliveTimeout =
                 SafeCast<ui16>(Config->KeepAliveTimeout.MilliSeconds()),
         };
@@ -1982,6 +1993,8 @@ void TServer::Accept(
             .rnr_retry_count = Config->QpRnrRetryCount,
         };
 
+        RDMA_INFO(
+            "send with invalidate enabled for " << Verbs->GetPeer(event->id));
         RDMA_DEBUG("accept " << Verbs->GetPeer(event->id));
         Verbs->Accept(event->id, &acceptParams);
 
