@@ -290,11 +290,11 @@ private:
             const bool hasRequestType = !aggregate.Labels[2].empty();
 
             if (hasNodeId && hasShardId && hasRequestType) {
-                nodeLatencyRows.push_back(std::move(aggregate));
+                nodeLatencyRows.push_back(aggregate);
             } else if (!hasNodeId && hasShardId && hasRequestType) {
-                requestLatencyRows.push_back(std::move(aggregate));
+                requestLatencyRows.push_back(aggregate);
             } else if (!hasNodeId && hasShardId && !hasRequestType) {
-                shardLatencyRows.push_back(std::move(aggregate));
+                shardLatencyRows.push_back(aggregate);
             }
         }
     }
