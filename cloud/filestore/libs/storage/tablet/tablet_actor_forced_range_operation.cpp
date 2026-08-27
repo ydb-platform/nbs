@@ -271,8 +271,9 @@ void TIndexTabletActor::HandleForcedRangeOperation(
     auto* msg = ev->Get();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedRangeOperation request for %lu ranges",
+        "%s ForcedRangeOperation request mode=%u for %lu ranges",
         LogTag.c_str(),
+        msg->Mode,
         msg->Ranges.size());
 
     auto replyError = [&](const NProto::TError& error)
@@ -361,12 +362,14 @@ void TIndexTabletActor::HandleForcedRangeOperationCompleted(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedRangeOperation completed (%s)",
-        LogTag.c_str(),
-        FormatError(msg->GetError()).c_str());
-
     TABLET_VERIFY(IsForcedOperationRunning());
+    const auto* state = std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
+    TABLET_VERIFY(state);
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s ForcedRangeOperation mode=%u completed (%s)",
+        LogTag.c_str(),
+        state->Mode,
+        FormatError(msg->GetError()).c_str());
     WorkerActors.erase(ev->Sender);
 
     CompleteForcedRangeOperation();

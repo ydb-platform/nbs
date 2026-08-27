@@ -645,6 +645,9 @@ message TForcedOperationRequest
         E_COMPACTION = 0;
         E_CLEANUP = 1;
         E_DELETE_EMPTY_RANGES = 2;
+        E_FLUSH = 3;
+        E_FLUSH_BYTES = 4;
+        E_COLLECT_GARBAGE = 5;
     };
 
     // Optional request headers.
@@ -657,10 +660,11 @@ message TForcedOperationRequest
     EForcedOperationType OpType = 3;
 
     // Enables processing of all ranges - even the ranges whose compaction
-    // stats are zero.
+    // stats are zero. Used for E_COMPACTION, E_FLUSH, E_DELETE_EMPTY_RANGES
     bool ProcessAllRanges = 4;
 
     // Starts from the min RangeId whose value is >= MinRangeId.
+    // Used for E_COMPACTION, E_FLUSH, E_DELETE_EMPTY_RANGES
     uint32 MinRangeId = 5;
 }
 
@@ -670,6 +674,7 @@ message TForcedOperationResponse
     NCloud.NProto.TError Error = 1;
 
     // Affected range count.
+    // Set for E_COMPACTION, E_FLUSH, E_DELETE_EMPTY_RANGES
     uint64 RangeCount = 2;
 
     // Can be used to query operation status.
@@ -694,13 +699,16 @@ message TForcedOperationStatusResponse
     NCloud.NProto.TError Error = 1;
 
     // Affected range count.
+    // Set for E_COMPACTION, E_FLUSH, E_DELETE_EMPTY_RANGES.
     uint64 RangeCount = 2;
 
     // Processed range count.
+    // Set for E_COMPACTION, E_FLUSH, E_DELETE_EMPTY_RANGES.
     uint64 ProcessedRangeCount = 3;
 
     // Last processed range id. Can be used to skip processed range ids upon
     // operation restart via the MinRangeId parameter.
+    // Set for E_COMPACTION, E_FLUSH, E_DELETE_EMPTY_RANGES.
     uint32 LastProcessedRangeId = 4;
 
     // Operation status summary
