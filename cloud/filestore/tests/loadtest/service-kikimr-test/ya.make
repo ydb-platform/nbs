@@ -23,6 +23,8 @@ SET(
     cloud/filestore/tests/common_configs/nfs-storage-migration-patch.txt
 )
 
+SET(NFS_FORCE_VERBOSE 1)
+
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 
 DEFAULT(FILESTORE_TABLETS_RESTART_INTERVAL 5)
