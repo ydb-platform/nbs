@@ -37,6 +37,7 @@ struct TRangeStat
     ui16 ReadRequestBlobCount = 0;
     ui16 ReadRequestBlockCount = 0;
     ui16 NewlyZeroedBlocks = 0; // In-memory only.
+    ui16 MixedBlockCount = 0;
     bool Compacted = false;
     TCompactionScore CompactionScore;
 
@@ -101,6 +102,7 @@ struct ICompactionPolicy
 
     virtual TCompactionScore CalculateScore(const TRangeStat& stat) const = 0;
     virtual bool BackpressureEnabled() const = 0;
+    virtual ui64 GetUsedBlocksThresholdForMixedBlocksCompaction() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -110,7 +112,9 @@ ui32 GetMaxBlobsPerRange(
     const TStorageConfig& storageConfig,
     const ui32 siblingCount);
 
-ICompactionPolicyPtr BuildDefaultCompactionPolicy(ui32 compactionThreshold);
+ICompactionPolicyPtr BuildDefaultCompactionPolicy(
+    ui32 compactionThreshold,
+    ui64 usedBlocksThresholdForMixedBlocksCompaction);
 
 struct TLoadOptimizationCompactionPolicyConfig
 {
@@ -124,9 +128,11 @@ struct TLoadOptimizationCompactionPolicyConfig
 };
 
 ICompactionPolicyPtr BuildLoadOptimizationCompactionPolicy(
-    const TLoadOptimizationCompactionPolicyConfig& config);
+    const TLoadOptimizationCompactionPolicyConfig& config,
+    const ui64 usedBlocksThresholdForMixedBlocksCompaction);
 
-TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyConfig(
+TLoadOptimizationCompactionPolicyConfig
+BuildLoadOptimizationCompactionPolicyConfig(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
     const ui32 siblingCount);

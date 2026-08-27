@@ -765,6 +765,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         const TVector<std::optional<ui32>>& blockChecksums,
         ui32 blobsSkipped,
         ui32 blocksSkipped,
+        ui32 mixedBlocksSkipped,
         EChannelDataKind channelDataKind)
     {
         while (skipMask.Get(range.End - range.Start)) {
@@ -785,7 +786,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 range,
                 skipMask,
                 std::move(ensuredBlockChecksums));
-            mergedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
+            mergedBlobCompactionInfos.push_back(
+                {blobsSkipped, blocksSkipped, mixedBlocksSkipped});
         } else if (channelDataKind == EChannelDataKind::Mixed) {
             TVector<ui32> blockIndices(Reserve(range.Size()));
             for (auto blockIndex = range.Start; blockIndex <= range.End;
@@ -800,7 +802,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 std::move(blockIndices),
                 std::move(ensuredBlockChecksums),
                 0);   // unknown blob alignment
-            mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
+            mixedBlobCompactionInfos.push_back(
+                {blobsSkipped, blocksSkipped, mixedBlocksSkipped});
         } else {
             LOG_ERROR(
                 ctx,
@@ -820,16 +823,19 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockChecksums,
                 rc.BlobsSkippedByCompaction,
                 rc.BlocksSkippedByCompaction,
+                rc.MixedBlockCountSkippedByCompaction,
                 rc.ChannelDataKind);
         }
 
         if (rc.ZeroBlobId) {
             ui32 blobsSkipped = 0;
             ui32 blocksSkipped = 0;
+            ui32 mixedBlocksSkipped = 0;
 
             if (!rc.DataBlobId) {
                 blobsSkipped = rc.BlobsSkippedByCompaction;
                 blocksSkipped = rc.BlocksSkippedByCompaction;
+                mixedBlocksSkipped = rc.MixedBlockCountSkippedByCompaction;
             }
 
             addBlob(
@@ -839,6 +845,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockChecksums,
                 blobsSkipped,
                 blocksSkipped,
+                mixedBlocksSkipped,
                 rc.ChannelDataKind);
         }
 
@@ -1282,6 +1289,7 @@ private:
     TRangeStat TopRangeStat;
     TRangeStat TopGarbageRangeStat;
     TRangeStat TopByGarbageIgnoringZeroed;
+    TRangeStat TopByMixedBlockCount;
 
 public:
     enum class ECompactionTriggerKind
@@ -1292,7 +1300,8 @@ public:
         ByGarbageBlocksPerDisk,
         ByGarbageBlocksPerRange,
         ByIgnoringZeroedPerDisk,
-        ByIgnoringZeroedPerRange
+        ByIgnoringZeroedPerRange,
+        ByMixedBlockCount,
     };
 
     struct TTriggerInfo
@@ -1338,6 +1347,7 @@ public:
         TopRangeStat = cm.GetTop().Stat;
         TopGarbageRangeStat = cm.GetTopByGarbageBlockCount().Stat;
         TopByGarbageIgnoringZeroed = cm.GetTopByGarbageIgnoringZeroed().Stat;
+        TopByMixedBlockCount = cm.GetTopByMixedBlockCount().Stat;
 
         auto& scoreHistory = State.GetCompactionScoreHistory();
         if (scoreHistory.LastTs() + Config->GetMaxCompactionDelay() <= now) {
@@ -1347,6 +1357,7 @@ public:
                     TopRangeStat.CompactionScore.Score,
                     TopGarbageRangeStat.GarbageBlockCount(),
                     TopByGarbageIgnoringZeroed.GarbageIgnoringZeroed(),
+                    TopByMixedBlockCount.MixedBlockCount,
                 },
             });
         }
@@ -1366,7 +1377,12 @@ public:
             return info;
         }
 
-        return TriggerGarbageCompactionIfNeeded();
+        info = TriggerGarbageCompactionIfNeeded();
+        if (info) {
+            return info;
+        }
+
+        return TriggerMixedBlockCountCompactionIfNeeded();
     }
 
 private:
@@ -1538,6 +1554,61 @@ private:
             true /* throttlingAllowed */,
             true /* fullCompaction */);
     }
+
+    [[nodiscard]] std::optional<TTriggerInfo>
+    TriggerMixedBlockCountCompactionIfNeeded() const
+    {
+        const auto mediaKind = State.GetConfig().GetStorageMediaKind();
+        const bool isSSD =
+            mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+        const bool enabled =
+            isSSD
+                ? Config->GetMixedBlocksCountCompactionEnabledSSD()
+                : Config->GetMixedBlocksCountCompactionEnabledHDD();
+        if (!enabled) {
+            return std::nullopt;
+        }
+
+        ui64 usedBlocksThresholdForMixedBlocksCompaction =
+            State.GetCompactionPolicy()
+                .GetUsedBlocksThresholdForMixedBlocksCompaction();
+
+        ui64 threshold =
+            isSSD ? Config->GetMixedBytesCountCompactionThresholdSSD()
+                  : Config->GetMixedBytesCountCompactionThresholdHDD();
+
+        if (!threshold) {
+            threshold = GetWriteBlobThreshold(*Config, mediaKind);
+        }
+
+        const auto& rangeStat = TopByMixedBlockCount;
+        const bool isEnoghBlocksInTopRangeForBlob =
+            rangeStat.UsedBlockCount >=
+            usedBlocksThresholdForMixedBlocksCompaction;
+
+        if (!isEnoghBlocksInTopRangeForBlob) {
+            return std::nullopt;
+        }
+
+        const bool rangeMixedBlockCountOverThreshold =
+            rangeStat.MixedBlockCount * State.GetBlockSize() >= threshold;
+
+        if (!rangeMixedBlockCountOverThreshold ||
+            !rangeStat.MixedBlockCount || rangeStat.Compacted)
+        {
+            return std::nullopt;
+        }
+
+        return TTriggerInfo(
+            rangeStat.MixedBlockCount,
+            threshold,
+            0,
+            0,
+            TEvPartitionPrivate::MixedBlockCountCompaction,
+            ECompactionTriggerKind::ByMixedBlockCount,
+            true /* throttlingAllowed */,
+            true /* fullCompaction */);
+    }
 };
 
 void FillBlobsInfo(
@@ -1617,6 +1688,10 @@ void IncrementCompactionCounterByTriggerKind(
         case TCompactionTriggerer::ECompactionTriggerKind::
             ByIgnoringZeroedPerRange:
             partCounters->Cumulative.CompactionByIgnoringZeroedPerRange
+                .Increment(1);
+            break;
+        case TCompactionTriggerer::ECompactionTriggerKind::ByMixedBlockCount:
+            partCounters->Cumulative.CompactionByMixedBlockCountPerRange
                 .Increment(1);
             break;
     }
@@ -1789,6 +1864,9 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     if (info->FullCompaction) {
         request->CompactionOptions.set(ToBit(ECompactionOption::Full));
     }
+    if (info->Mode == TEvPartitionPrivate::MixedBlockCountCompaction) {
+        request->CompactionOptions.set(ToBit(ECompactionOption::ForceToMerged));
+    }
 
     auto maxCompactionExecTimePerSecond =
         Config->GetMaxCompactionExecTimePerSecond();
@@ -1931,6 +2009,16 @@ void TPartitionActor::HandleCompaction(
                 Config->GetGarbageCompactionRangeCountPerRun());
         } else {
             const auto& top = cm.GetTopByGarbageIgnoringZeroed();
+            tops.push_back({top.BlockIndex, top.Stat});
+        }
+    } else if (msg->Mode == TEvPartitionPrivate::MixedBlockCountCompaction) {
+        if (batchCompactionEnabled &&
+            Config->GetMixedBlocksCountCompactionRangeCountPerRun() > 1)
+        {
+            tops = cm.GetTopByMixedBlockCount(
+                Config->GetMixedBlocksCountCompactionRangeCountPerRun());
+        } else {
+            const auto& top = cm.GetTopByMixedBlockCount();
             tops.push_back({top.BlockIndex, top.Stat});
         }
     } else {
@@ -2234,9 +2322,11 @@ void TPartitionActor::CompleteCompaction(
     TVector<TRangeCompactionInfo> rangeCompactionInfos;
     TVector<TCompactionActor::TRequest> requests;
 
+    const bool forceToMerged =
+        args.CompactionOptions.test(ToBit(ECompactionOption::ForceToMerged));
     const auto mergedBlobThreshold =
-        PartitionConfig.GetStorageMediaKind() ==
-                NCloud::NProto::STORAGE_MEDIA_SSD
+        forceToMerged || PartitionConfig.GetStorageMediaKind() ==
+                             NCloud::NProto::STORAGE_MEDIA_SSD
             ? 0
             : Config->GetCompactionMergedBlobThresholdHDD();
     for (auto& rangeCompaction: args.RangeCompactions) {

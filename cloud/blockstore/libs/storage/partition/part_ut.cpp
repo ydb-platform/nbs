@@ -2757,6 +2757,254 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_EQUAL(0, compactionByReadStats);
     }
 
+    Y_UNIT_TEST(ShouldAutomaticallyRunCompactionForManyMixedBlocks)
+    {
+        static constexpr ui32 mixedBlockCountThreshold = 4;
+
+        auto config = DefaultConfig(1_MB);
+        config.SetMixedBlocksCountCompactionEnabledHDD(true);
+        config.SetMixedBytesCountCompactionThresholdHDD(
+            mixedBlockCountThreshold * DefaultBlockSize);
+        config.SetWriteBlobThreshold(
+            mixedBlockCountThreshold * DefaultBlockSize);
+        config.SetMixedBytesCountCompactionThresholdSSD(
+            (mixedBlockCountThreshold + 1) * DefaultBlockSize);
+        config.SetWriteBlobThresholdSSD(
+            (mixedBlockCountThreshold + 1) * DefaultBlockSize);
+        config.SetSSDMaxBlobsPerRange(100);
+        config.SetHDDMaxBlobsPerRange(100);
+        config.SetCompactionMergedBlobThresholdHDD(1);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool compactionRequestObserved = false;
+        ui64 compactionByMixedBlockCount = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest: {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvCompactionRequest>();
+                        const auto expectedMode = static_cast<ui32>(
+                            TEvPartitionPrivate::MixedBlockCountCompaction);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            expectedMode,
+                            static_cast<ui32>(msg->Mode));
+                        UNIT_ASSERT(msg->CompactionOptions.test(
+                            ToBit(ECompactionOption::ForceToMerged)));
+                        compactionRequestObserved = true;
+                        break;
+                    }
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg = event->Get<
+                            TEvStatsService::TEvVolumePartCounters>();
+                        compactionByMixedBlockCount =
+                            msg->DiskCounters->Cumulative
+                                .CompactionByMixedBlockCountPerRange.Value;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 1);
+        partition.Flush();
+        UNIT_ASSERT(!compactionRequestObserved);
+
+        partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 2);
+        partition.Flush();
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        UNIT_ASSERT(compactionRequestObserved);
+
+        {
+            const auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlocksCount());
+        }
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionByMixedBlockCount);
+    }
+
+    Y_UNIT_TEST(ShouldProcessMultipleRangesUponMixedBlockCountCompaction)
+    {
+        auto config = DefaultConfig();
+        config.SetBatchCompactionEnabled(true);
+        config.SetGarbageCompactionRangeCountPerRun(2);
+        config.SetMixedBlocksCountCompactionRangeCountPerRun(3);
+        config.SetMixedBlocksCountCompactionEnabledHDD(true);
+        config.SetMixedBytesCountCompactionThresholdHDD(1);
+        config.SetWriteBlobThreshold(1_MB);
+        config.SetHDDMaxBlobsPerRange(100);
+        config.SetCompactionMergedBlobThresholdHDD(1);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            MaxPartitionBlocksCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // Keep each range large enough for mixed-block compaction after the
+        // seed blob is compacted and a sparse mixed overwrite is added.
+        const ui32 writeBlobBlockCount =
+            config.GetWriteBlobThreshold() / DefaultBlockSize;
+        for (ui32 i = 0; i < 3; ++i) {
+            partition.WriteBlocks(
+                TBlockRange32::WithLength(
+                    i * 1024 * 1024,
+                    writeBlobBlockCount),
+                i + 1);
+            runtime->DispatchEvents(
+                TDispatchOptions(),
+                TDuration::Seconds(1));
+        }
+
+        TAutoPtr<IEventHandle> compactionRequest;
+        bool stealCompactionRequest = true;
+        ui32 compactedRangeCount = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvCompactionRequest)
+                {
+                    auto* msg = event->Get<
+                        TEvPartitionPrivate::TEvCompactionRequest>();
+                    if (msg->Mode ==
+                            TEvPartitionPrivate::MixedBlockCountCompaction &&
+                        stealCompactionRequest)
+                    {
+                        stealCompactionRequest = false;
+                        compactionRequest = event.Release();
+                        return true;
+                    }
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvCompactionCompleted)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionPrivate::TEvCompactionCompleted>();
+                    compactedRangeCount = msg->AffectedRanges.size();
+                }
+                return false;
+            });
+
+        for (ui32 i = 0; i < 3; ++i) {
+            partition.WriteBlocks(i * 1024 * 1024, i + 1);
+            partition.Flush();
+        }
+
+        UNIT_ASSERT(compactionRequest);
+        runtime->Send(compactionRequest.Release());
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(3, compactedRangeCount);
+    }
+
+    Y_UNIT_TEST(ShouldEnableMixedBlockCountCompactionByMediaKind)
+    {
+        const auto isCompactionTriggered = [](
+            NCloud::NProto::EStorageMediaKind mediaKind,
+            bool enabledHDD,
+            bool enabledSSD,
+            ui32 thresholdHDD,
+            ui32 thresholdSSD)
+        {
+            auto config = DefaultConfig(1_MB);
+            config.SetMixedBlocksCountCompactionEnabledHDD(enabledHDD);
+            config.SetMixedBlocksCountCompactionEnabledSSD(enabledSSD);
+            config.SetMixedBytesCountCompactionThresholdHDD(
+                thresholdHDD * DefaultBlockSize);
+            config.SetMixedBytesCountCompactionThresholdSSD(
+                thresholdSSD * DefaultBlockSize);
+            config.SetWriteBlobThresholdSSD(thresholdSSD * DefaultBlockSize);
+            config.SetWriteBlobThreshold(thresholdHDD * DefaultBlockSize);
+            config.SetSSDMaxBlobsPerRange(100);
+            config.SetHDDMaxBlobsPerRange(100);
+
+            TTestPartitionInfo partitionInfo;
+            partitionInfo.MediaKind = mediaKind;
+            auto runtime = PrepareTestActorRuntime(
+                config,
+                1024,
+                {},
+                partitionInfo);
+
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            bool compactionRequestObserved = false;
+            runtime->SetEventFilter(
+                [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvCompactionRequest)
+                    {
+                        const auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvCompactionRequest>();
+                        if (msg->Mode ==
+                            TEvPartitionPrivate::MixedBlockCountCompaction)
+                        {
+                            compactionRequestObserved = true;
+                        }
+                    }
+                    return false;
+                });
+
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 1);
+            partition.Flush();
+            partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 2);
+            partition.Flush();
+            runtime->DispatchEvents(
+                TDispatchOptions(),
+                TDuration::Seconds(1));
+
+            return compactionRequestObserved;
+        };
+
+        UNIT_ASSERT(!isCompactionTriggered(
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+            false,
+            true,
+            4,
+            4));
+        UNIT_ASSERT(!isCompactionTriggered(
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            true,
+            false,
+            4,
+            4));
+        UNIT_ASSERT(!isCompactionTriggered(
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+            true,
+            false,
+            5,
+            4));
+        UNIT_ASSERT(isCompactionTriggered(
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            false,
+            true,
+            5,
+            4));
+    }
+
     Y_UNIT_TEST(ShouldAutomaticallyRunCompactionForDeletionMarkers)
     {
         static constexpr ui32 compactionThreshold = 4;
@@ -12835,6 +13083,33 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
+    }
+
+    Y_UNIT_TEST(CompactionShouldWriteDataToMergedChannelWhenForced)
+    {
+        auto config = DefaultConfig();
+        config.SetCompactionMergedBlobThresholdHDD(17_KB);
+
+        auto runtime = PrepareTestActorRuntime(
+            config, 1024,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(0, 1);
+        partition.Flush();
+
+        TCompactionOptions options;
+        options.set(ToBit(ECompactionOption::ForceToMerged));
+        partition.Compaction(0, options);
+        partition.Cleanup();
+
+        const auto response = partition.StatPartition();
+        const auto& stats = response->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
     }
 
     Y_UNIT_TEST(CompactionShouldMoveDataFromMergedToMixedWhenDataSizeIsAboveTheTreshold)

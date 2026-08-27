@@ -817,7 +817,9 @@ message TStorageServiceConfig
     optional uint32 CompactionRangeCountPerRun = 264;
 
     // Specifies whether to use CompactionRangeCountPerRun,
-    // GarbageCompactionRangeCountPerRun and ForcedCompactionRangeCountPerRun.
+    // GarbageCompactionRangeCountPerRun,
+    // MixedBlocksCountCompactionRangeCountPerRun and
+    // ForcedCompactionRangeCountPerRun.
     optional bool BatchCompactionEnabled = 265;
 
     // Timeout before allowing infra to withdraw our unavailable agents.
@@ -1680,4 +1682,23 @@ message TStorageServiceConfig
     // If false (default), cleanup removes only blobs that were added to the
     // cleanup queue before all checkpoints.
     optional bool CheckpointAwareCleanupEnabled = 526;
+
+    // Enables compaction triggered by the number of mixed blocks for HDD
+    // volumes.
+    optional bool MixedBlocksCountCompactionEnabledHDD = 527;
+
+    // Enables compaction triggered by the number of mixed blocks for SSD
+    // volumes.
+    optional bool MixedBlocksCountCompactionEnabledSSD = 528;
+
+    // Number of mixed bytes in a compaction range that triggers compaction for
+    // HDD volumes. Zero means using WriteBlobThreshold.
+    optional uint32 MixedBytesCountCompactionThresholdHDD = 529;
+
+    // Number of mixed bytes in a compaction range that triggers compaction for
+    // SSD volumes. Zero means using WriteBlobThresholdSSD.
+    optional uint32 MixedBytesCountCompactionThresholdSSD = 530;
+
+    // Number of ranges to process in a single mixed-block-count compaction run.
+    optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 531;
 }
