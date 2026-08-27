@@ -543,6 +543,10 @@ func (s *storageYDB) unlockFilesystemSnapshot(
 		return err
 	}
 
+	// Current owner lock is present only in the snapshot lockTaskID,
+	// filesystem_snapshot_locks table is used only for additional locks.
+	// So when the current owner is released, we promoted one of additional
+	// locks to the current owner, if any additional lock exist.
 	state.lockTaskID = nextLockTaskID
 	if nextLockTaskID != "" {
 		err = s.deleteFilesystemSnapshotLock(
