@@ -1598,9 +1598,8 @@ private:
             State.GetMaxMixedBlocksPerDisk() &&
             diskMixedBlockCount > State.GetMaxMixedBlocksPerDisk();
 
-        if ((!rangeMixedBlockCountOverThreshold &&
-             !diskMixedBlockCountOverThreshold) ||
-            !rangeStat.MixedBlockCount || rangeStat.Compacted)
+        if (!rangeMixedBlockCountOverThreshold &&
+            !diskMixedBlockCountOverThreshold)
         {
             return std::nullopt;
         }

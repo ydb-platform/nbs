@@ -246,14 +246,11 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
         args.AffectedBlobs[mergedBlobId].IndexKind =
             EChannelDataKind::Merged;
 
-        ApplyBlobsSkipping(
-            *config,
-            2,
-            state,
-            args);
+        ApplyBlobsSkipping(*config, 2, TTestExecutor::TabletId, state, args);
 
         UNIT_ASSERT_VALUES_EQUAL(1, args.BlobsSkipped);
         UNIT_ASSERT_VALUES_EQUAL(1, args.BlocksSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(0, args.MixedBlocksSkipped);
 
         UNIT_ASSERT(args.AffectedBlobs.contains(mixedBlobId));
         UNIT_ASSERT(!args.AffectedBlobs.contains(mergedBlobId));
@@ -265,6 +262,71 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
         UNIT_ASSERT_VALUES_EQUAL(mixedBlobId, args.BlockMarks[0].BlobId);
         UNIT_ASSERT_VALUES_EQUAL(mixedBlobId, args.BlockMarks[1].BlobId);
         UNIT_ASSERT(!args.BlockMarks[2].CommitId);
+    }
+
+    Y_UNIT_TEST(ShouldCountAllAffectedBlocksOfSkippedMixedBlob)
+    {
+        auto state = MakeState();
+        auto config = MakeStorageConfig(
+            0,   // diskPrefixLength
+            0);  // targetCompactionBytesPerOp
+
+        const TPartialBlobId mixedBlobId(
+            1,
+            1,
+            3,
+            3 * DefaultBlockSize,
+            1,
+            0);
+
+        TTxPartition::TRangeCompaction args(
+            0,
+            TBlockRange32::MakeClosedInterval(0, 2));
+
+        args.MarkBlock(0, CommitId, mixedBlobId, 0, true);
+        args.MarkBlock(1, CommitId, mixedBlobId, 1, true);
+        args.MarkBlock(2, CommitId, mixedBlobId, 2, true);
+        args.MarkBlock(0, CommitId + 1, "fresh block");
+        args.MarkBlock(1, CommitId + 1, "fresh block");
+
+        args.AffectedBlobs[mixedBlobId].IndexKind =
+            EChannelDataKind::Mixed;
+
+        ApplyBlobsSkipping(*config, 1, TTestExecutor::TabletId, state, args);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, args.BlobsSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(1, args.BlocksSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(3, args.MixedBlocksSkipped);
+    }
+
+    Y_UNIT_TEST(ShouldNotCountSkippedDeletionMarkerAsMixedBlocks)
+    {
+        auto state = MakeState();
+        auto config = MakeStorageConfig(
+            0,   // diskPrefixLength
+            0);  // targetCompactionBytesPerOp
+
+        const TPartialBlobId deletionMarkerId(
+            1,
+            1,
+            3,
+            0,
+            1,
+            0);
+
+        TTxPartition::TRangeCompaction args(
+            0,
+            TBlockRange32::MakeOneBlock(0));
+
+        args.MarkBlock(0, CommitId, deletionMarkerId, 0, true);
+        args.AffectedBlobs[deletionMarkerId].IndexKind =
+            EChannelDataKind::Mixed;
+
+        ApplyBlobsSkipping(*config, 1, TTestExecutor::TabletId, state, args);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, args.BlobsSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(1, args.BlocksSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(0, args.MixedBlocksSkipped);
     }
 }
 

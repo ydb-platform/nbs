@@ -231,11 +231,18 @@ struct TPartitionSchema
         {
         };
 
+        struct AdditionalData
+            : public Column<4, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TCompactionMapAdditionalData;
+        };
+
         using TKey = TableKey<BlockIndex>;
         using TColumns = TableColumns<
             BlockIndex,
             BlobCount,
-            BlockCount>;
+            BlockCount,
+            AdditionalData>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };

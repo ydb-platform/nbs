@@ -647,6 +647,7 @@ TBlobPatchingResult ResolveBlobPatchingCandidate(
 void ApplyBlobsSkipping(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
+    const ui64 tabletId,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args)
 {
@@ -675,7 +676,11 @@ void ApplyBlobsSkipping(
         if (ab->IndexKind == EChannelDataKind::Mixed &&
             !IsDeletionMarker(blobId))
         {
-            args.MixedBlocksSkipped += skippedBlockCount;
+            STORAGE_VERIFY(
+                blobId.BlobSize() % state.GetBlockSize() == 0,
+                TWellKnownEntityTypes::TABLET,
+                tabletId);
+            args.MixedBlocksSkipped += ab->AffectedBlocks.size();
         }
     }
 
@@ -778,6 +783,7 @@ void PrepareRangeCompaction(
         ApplyBlobsSkipping(
             config,
             maxSkippedBlobs,
+            tabletId,
             state,
             args);
     }

@@ -564,8 +564,9 @@ private:
             db.WriteCompactionMap(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                kv.second.Stat.BlockCount +
-                    kv.second.BlocksSkippedByCompaction);
+                kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
+                kv.second.Stat.MixedBlockCount +
+                    kv.second.MixedBlockCountSkippedByCompaction);
             State.GetCompactionMap().Update(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,

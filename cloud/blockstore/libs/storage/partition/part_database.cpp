@@ -61,6 +61,25 @@ ui16 ProcessCompactionCounter(ui32 value)
     return value > Max<ui16>() ? Max<ui16>() : value;
 }
 
+TRangeStat MakeCompactionMapRangeStat(
+    ui32 blobCount,
+    ui32 blockCount,
+    const NProto::TCompactionMapAdditionalData& additionalData)
+{
+    TRangeStat stat{
+        ProcessCompactionCounter(blobCount),
+        ProcessCompactionCounter(blockCount),
+        0,
+        0,
+        0,
+        0,
+        false,
+        0};
+    stat.MixedBlockCount =
+        ProcessCompactionCounter(additionalData.GetMixedBlockCount());
+    return stat;
+}
+
 ui32 UnifyBlobOffsetAndCompactionRangeCount(
     ui16 blobOffset,
     ui8 compactionRangeCount)
@@ -1155,14 +1174,19 @@ template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteCompactionMap(
     ui32 blockIndex,
     ui32 blobCount,
-    ui32 blockCount)
+    ui32 blockCount,
+    ui32 mixedBlockCount)
 {
     using TTable = TPartitionSchema::CompactionMap;
+
+    NProto::TCompactionMapAdditionalData additionalData;
+    additionalData.SetMixedBlockCount(mixedBlockCount);
 
     Table<TTable>()
         .Key(blockIndex)
         .Update(NIceDb::TUpdate<TTable::BlobCount>(blobCount))
-        .Update(NIceDb::TUpdate<TTable::BlockCount>(blockCount));
+        .Update(NIceDb::TUpdate<TTable::BlockCount>(blockCount))
+        .Update(NIceDb::TUpdate<TTable::AdditionalData>(additionalData));
 }
 
 template <typename TCounters>
@@ -1188,17 +1212,10 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCompactionMap(
     while (it.IsValid()) {
         compactionMap.emplace_back(
             it.template GetValue<TTable::BlockIndex>(),
-            TRangeStat{
-                ProcessCompactionCounter(
-                    it.template GetValue<TTable::BlobCount>()),
-                ProcessCompactionCounter(
-                    it.template GetValue<TTable::BlockCount>()),
-                0,
-                0,
-                0,
-                0,
-                false,
-                0});
+            MakeCompactionMapRangeStat(
+                it.template GetValue<TTable::BlobCount>(),
+                it.template GetValue<TTable::BlockCount>(),
+                it.template GetValueOrDefault<TTable::AdditionalData>()));
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1228,17 +1245,10 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCompactionMap(
         }
         compactionMap.emplace_back(
             blockIndex,
-            TRangeStat{
-                ProcessCompactionCounter(
-                    it.template GetValue<TTable::BlobCount>()),
-                ProcessCompactionCounter(
-                    it.template GetValue<TTable::BlockCount>()),
-                0,
-                0,
-                0,
-                0,
-                false,
-                0});
+            MakeCompactionMapRangeStat(
+                it.template GetValue<TTable::BlobCount>(),
+                it.template GetValue<TTable::BlockCount>(),
+                it.template GetValueOrDefault<TTable::AdditionalData>()));
 
         if (!it.Next()) {
             return false;   // not ready

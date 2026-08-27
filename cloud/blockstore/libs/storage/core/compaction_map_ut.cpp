@@ -498,6 +498,11 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
         map.Update(range1, 3, 100, 100, 0, 20, true);
         UNIT_ASSERT_VALUES_EQUAL(
+            range1,
+            map.GetTopByMixedBlockCount().BlockIndex);
+
+        map.Update(range1, 3, 100, 100, 0, 4, false);
+        UNIT_ASSERT_VALUES_EQUAL(
             range0,
             map.GetTopByMixedBlockCount().BlockIndex);
 

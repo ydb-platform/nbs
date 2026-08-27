@@ -113,6 +113,7 @@ struct TBlobCompactionRequest
 void ApplyBlobsSkipping(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
+    const ui64 tabletId,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args);
 

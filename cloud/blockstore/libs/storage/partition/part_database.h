@@ -207,7 +207,11 @@ public:
     // CompactionMap
     //
 
-    void WriteCompactionMap(ui32 blockIndex, ui32 blobCount, ui32 blockCount);
+    void WriteCompactionMap(
+        ui32 blockIndex,
+        ui32 blobCount,
+        ui32 blockCount,
+        ui32 mixedBlockCount);
     void DeleteCompactionMap(ui32 blockIndex);
 
     bool ReadCompactionMap(TVector<TCompactionCounter>& compactionMap);

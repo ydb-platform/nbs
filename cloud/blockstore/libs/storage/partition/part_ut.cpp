@@ -2815,6 +2815,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.Flush();
         UNIT_ASSERT(!compactionRequestObserved);
 
+        partition.RebootTablet();
+
         partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 2);
         partition.Flush();
 
@@ -2928,6 +2930,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             mixedBlockCountPerRangeThreshold * DefaultBlockSize);
         config.SetWriteBlobThresholdSSD(
             mixedBlockCountPerRangeThreshold * DefaultBlockSize);
+        config.SetWriteBlobThreshold(
+            mixedBlockCountPerRangeThreshold * DefaultBlockSize);
         config.SetHDDMaxMixedBlocksPerUnit(maxMixedBlocksPerUnit);
         config.SetSSDMaxMixedBlocksPerUnit(maxMixedBlocksPerUnit + 100);
         config.SetSSDMaxBlobsPerRange(100);
@@ -3035,12 +3039,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldEnableMixedBlockCountCompactionByMediaKind)
     {
-        const auto isCompactionTriggered = [](
-            NCloud::NProto::EStorageMediaKind mediaKind,
-            bool enabledHDD,
-            bool enabledSSD,
-            ui32 thresholdHDD,
-            ui32 thresholdSSD)
+        const auto isCompactionTriggered =
+            [](NCloud::NProto::EStorageMediaKind mediaKind,
+               bool enabledHDD,
+               bool enabledSSD,
+               ui32 thresholdHDD,
+               ui32 thresholdSSD)
         {
             auto config = DefaultConfig(1_MB);
             config.SetMixedBlocksCountCompactionEnabledHDD(enabledHDD);
