@@ -195,6 +195,10 @@ private:
             ShardIds.push_back(stats.GetShardId());
         }
 
+        if (ShardIds.empty()) {
+            ShardIds.push_back(FileSystemId);
+        }
+
         SendDiagnosticRequests(ctx);
     }
 
