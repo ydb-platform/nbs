@@ -921,32 +921,6 @@ public:
         return {};
     }
 
-    void RollbackAllocation(
-        const TLoggingContext& lc,
-        const TVector<ui64>& storagePageClusterIds,
-        const TWriteContext& writeContext)
-    {
-        TVector<TPageGroup> pageGroups;
-        for (const ui64 clusterId: storagePageClusterIds) {
-            Y_ABORT_UNLESS(clusterId >= FirstStoragePageClusterId);
-            auto error = Bitmap->Reset(
-                writeContext.Lsn,
-                clusterId - FirstStoragePageClusterId,
-                pageGroups);
-
-            //
-            // Errors aren't expected if allocation has already happened.
-            //
-
-            Y_ABORT_UNLESS(!HasError(error));
-
-            SILK_DEBUG(
-                "[%s] TPageAllocator.RollbackAllocation storagePageCluster=%lu",
-                lc.Describe().c_str(),
-                clusterId);
-        }
-    }
-
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const
     {
@@ -2154,11 +2128,6 @@ public:
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
 
-            PageAllocator.RollbackAllocation(
-                lc,
-                newStoragePageClusterIds,
-                writeContext);
-
             *response.MutableError() = std::move(error);
             return response;
         }
@@ -2176,11 +2145,6 @@ public:
                 "[%s] WriteData::Nodes.ResizeNode error=%s",
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
-
-            PageAllocator.RollbackAllocation(
-                lc,
-                newStoragePageClusterIds,
-                writeContext);
 
             *response.MutableError() = std::move(error);
             return response;
@@ -2204,19 +2168,6 @@ public:
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
-
-            //
-            // We should first rollback the allocation - we should do it while
-            // the bitmap pages are still marked as dirty at our lsn. And only
-            // after that we can rollback the pages.
-            //
-
-            l.lock();
-            PageAllocator.RollbackAllocation(
-                lc,
-                newStoragePageClusterIds,
-                writeContext);
-            l.unlock();
 
             PageStore->RollbackPages(pages);
 

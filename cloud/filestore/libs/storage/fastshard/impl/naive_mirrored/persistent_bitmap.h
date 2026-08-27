@@ -20,7 +20,7 @@ private:
     const ui64 BitsPerPage;
     IPageStorePtr PageStore;
 
-    mutable TVector<TBuffer> BitmapPages;
+    mutable bool Initialized = false;
     mutable TStack<ui64> BitmapPagesWithFreeBits;
     mutable ui64 UnusedBits = 0;
 
@@ -59,6 +59,13 @@ public:
 private:
     [[nodiscard]] bool Validate(ui64 bit, NProto::TError* error) const;
     [[nodiscard]] NProto::TError InitIfNeeded() const;
+    [[nodiscard]] NProto::TError ReadPage(
+        ui64 lsn,
+        ui64 relPageNo,
+        TBuffer* page) const;
+    [[nodiscard]] NProto::TError UpdateFreeStack() const;
+    NProto::TError
+    AllocateImpl(ui64 lsn, ui64* bit, TVector<TPageGroup>& pageGroups);
 
     [[nodiscard]] static ui64 CalcBitsPerPage(ui64 pageSize)
     {
