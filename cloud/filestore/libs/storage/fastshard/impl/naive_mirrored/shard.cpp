@@ -2575,7 +2575,20 @@ struct TNaiveMirroredStorageGroupFactory: IStorageGroupFactory
             });
         }
 
-        return CreateNaiveMirroredStorageGroup(std::move(devices));
+        TStorageGroupRetryPolicy retryPolicy;
+        if (config.GetRetryTotalTimeoutMs()) {
+            retryPolicy.TotalTimeout =
+                TDuration::MilliSeconds(config.GetRetryTotalTimeoutMs());
+        }
+        if (config.GetRetryBackoffIncrementMs()) {
+            retryPolicy.BackoffIncrement =
+                TDuration::MilliSeconds(config.GetRetryBackoffIncrementMs());
+        }
+
+        return CreateNaiveMirroredStorageGroup(
+            std::move(devices),
+            retryPolicy,
+            CreateFiberTimer());
     }
 };
 
