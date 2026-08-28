@@ -175,12 +175,11 @@ void TIndexTabletActor::HandleConfirmAddData(
         return;
     }
 
-    if (auto unconfirmedIt = UnconfirmedData.find(commitId);
-        unconfirmedIt != UnconfirmedData.end())
+    if (const auto* data = FindUnconfirmedData(commitId))
     {
         ProcessStorageStatusFlags(
             ctx,
-            unconfirmedIt->second.Data.GetBlobIds(),
+            data->Data.GetBlobIds(),
             msg->Record);
 
         deferReply();
@@ -261,7 +260,7 @@ void TIndexTabletActor::HandleCancelAddData(
 
     const ui64 commitId = msg->Record.GetCommitId();
 
-    if (!UnconfirmedData.contains(commitId) &&
+    if (!UnconfirmedDataContains(commitId) &&
         !UnconfirmedDataInProgressContains(commitId))
     {
         reply(ErrorUnconfirmedDataNotFound());
@@ -389,13 +388,12 @@ void TIndexTabletActor::AddBlobForUnconfirmedData(
 
 void TIndexTabletActor::ConfirmData(ui64 commitId, const TActorContext& ctx)
 {
-    auto unconfirmedIt = UnconfirmedData.find(commitId);
-    TABLET_VERIFY(unconfirmedIt != UnconfirmedData.end());
+    auto& data = FindAndVerifyUnconfirmedData(commitId);
 
     auto [pos, inserted] =
-        ConfirmedData.emplace(commitId, std::move(unconfirmedIt->second));
+        ConfirmedData.emplace(commitId, std::move(data));
     TABLET_VERIFY(inserted);
-    UnconfirmedData.erase(unconfirmedIt);
+    UnconfirmedDataErase(commitId);
 
     const auto& entry = pos->second;
 
@@ -425,23 +423,6 @@ void TIndexTabletActor::DeleteUnconfirmedData(
         shouldDelete)
 {
     TVector<ui64> commitIdsToDelete;
-
-    auto enqueueCommitIdsToDelete = [&](const auto& data)
-    {
-        for (const auto& [commitId, trackedData]: data) {
-            if (!shouldDelete(commitId, trackedData)) {
-                continue;
-            }
-
-            if (!DeletionQueueEmplace(commitId)) {
-                continue;
-            }
-
-            commitIdsToDelete.push_back(commitId);
-        }
-    };
-
-    enqueueCommitIdsToDelete(UnconfirmedData);
     EnqueueCommitIdsToDelete(shouldDelete, commitIdsToDelete);
 
     if (commitIdsToDelete.empty()) {
@@ -535,7 +516,7 @@ void TIndexTabletActor::ExecuteTx_DeleteUnconfirmedData(
 
     for (ui64 commitId: args.CommitIds) {
         db->DeleteUnconfirmedData(commitId);
-        UnconfirmedData.erase(commitId);
+        UnconfirmedDataErase(commitId);
         const bool released = TryReleaseCollectBarrier(commitId);
         TABLET_VERIFY(released);
     }

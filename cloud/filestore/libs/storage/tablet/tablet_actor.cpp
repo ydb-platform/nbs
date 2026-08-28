@@ -759,7 +759,7 @@ bool TIndexTabletActor::CanUseUnconfirmedData() const
 
     const ui32 hardLimit = Config->GetUnconfirmedDataCountHardLimit();
     const size_t unconfirmedDataCount =
-        UnconfirmedData.size() +
+        GetUnconfirmedDataSize() +
         ConfirmedData.size() +
         GetUnconfirmedDataInProgressSize();
     if (hardLimit && unconfirmedDataCount >= hardLimit) {
