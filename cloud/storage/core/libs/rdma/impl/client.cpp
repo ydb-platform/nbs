@@ -1135,6 +1135,16 @@ void TClientEndpoint::HandleQueuedRequests() noexcept
         Y_ABORT_UNLESS(req);
         Counters->RequestDequeued();
 
+        if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
+            // The caller's thread could have been preempted between the
+            // generation check in SendRequest() and InputRequests.Enqueue()
+            // for the whole duration of a reconnect cycle - req->InBuffer/
+            // OutBuffer may already belong to a torn down pool generation.
+            SendQueue.Push(send);
+            RejectStaleGenerationRequest(std::move(req));
+            continue;
+        }
+
         if (req->State != ERequestState::Enqueued) {
             RDMA_ERROR(
                 "request " << req->ReqId << " has unexpected state "
@@ -1147,16 +1157,6 @@ void TClientEndpoint::HandleQueuedRequests() noexcept
             Counters->Error();
             Disconnect();
             return;
-        }
-
-        if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
-            // The caller's thread could have been preempted between the
-            // generation check in SendRequest() and InputRequests.Enqueue()
-            // for the whole duration of a reconnect cycle - req->InBuffer/
-            // OutBuffer may already belong to a torn down pool generation.
-            SendQueue.Push(send);
-            RejectStaleGenerationRequest(std::move(req));
-            continue;
         }
 
         StartRequest(std::move(req), send);
