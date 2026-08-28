@@ -189,6 +189,69 @@ TEST(PersistentBitmapTest, OutOfSpace2Pages)
     DoTestOutOfSpace(60000);
 }
 
+void DoTestOutOfSpaceDuringMultiAllocationTransaction(ui64 maxBits)
+{
+    TFixture fx(maxBits);
+
+    TVector<TPageGroup> pageGroups;
+
+    const ui64 cap = fx.MaxBits;
+
+    //
+    // Filling the whole bitmap.
+    //
+
+    for (ui64 i = 0; i < cap; ++i) {
+        ui64 bit = 0;
+        auto error =
+            fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit, pageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(pageGroups, *fx.PageStore);
+    }
+
+    //
+    // Freeing exactly two bits - both belong to the same bitmap page.
+    //
+
+    for (const ui64 freedBit: {ui64(1000), ui64(1001)}) {
+        auto error =
+            fx.Bitmap->Reset(fx.PageStore->AllocateLsn(), freedBit, pageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(pageGroups, *fx.PageStore);
+    }
+
+    //
+    // Allocating three bits under one lsn - the first two succeed, the third
+    // one must fail with E_FS_OUT_OF_SPACE.
+    //
+
+    const ui64 lsn = fx.PageStore->AllocateLsn();
+
+    ui64 bit = 0;
+    auto error = fx.Bitmap->Allocate(lsn, &bit, pageGroups);
+    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    ASSERT_EQ(1000ULL, bit);
+
+    error = fx.Bitmap->Allocate(lsn, &bit, pageGroups);
+    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    ASSERT_EQ(1001ULL, bit);
+
+    error = fx.Bitmap->Allocate(lsn, &bit, pageGroups);
+    ASSERT_EQ(E_FS_OUT_OF_SPACE, error.GetCode()) << FormatError(error);
+
+    Rollback(pageGroups, *fx.PageStore);
+}
+
+TEST(PersistentBitmapTest, OutOfSpaceDuringMultiAllocationTransaction1Page)
+{
+    DoTestOutOfSpaceDuringMultiAllocationTransaction(30000);
+}
+
+TEST(PersistentBitmapTest, OutOfSpaceDuringMultiAllocationTransaction2Pages)
+{
+    DoTestOutOfSpaceDuringMultiAllocationTransaction(60000);
+}
+
 TEST(PersistentBitmapTest, SetResetAllocateRandomized)
 {
     TFixture fx;

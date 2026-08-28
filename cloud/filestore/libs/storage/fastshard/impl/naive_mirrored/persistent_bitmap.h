@@ -63,7 +63,7 @@ private:
         ui64 lsn,
         ui64 relPageNo,
         TBuffer* page) const;
-    [[nodiscard]] NProto::TError UpdateFreeStack() const;
+    [[nodiscard]] NProto::TError UpdateFreeStack(ui64 lsn) const;
     NProto::TError
     AllocateImpl(ui64 lsn, ui64* bit, TVector<TPageGroup>& pageGroups);
 
