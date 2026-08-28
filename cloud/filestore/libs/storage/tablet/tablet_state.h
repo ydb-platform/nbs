@@ -254,8 +254,6 @@ private:
 protected:
     TString LogTag;
 
-    // Data written to local db but not yet confirmed/indexed
-    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedData;
     // Data confirmed but not yet added to index
     THashMap<ui64, TTrackedUnconfirmedData> ConfirmedData;
 
@@ -275,20 +273,34 @@ protected:
 protected:
     void SetUnconfirmedRecoveryReady(bool value);
 
-    bool UnconfirmedDataInProgressContains(ui64 commitId);
+    bool UnconfirmedDataInProgressContains(ui64 commitId) const;
     TTrackedUnconfirmedData& UnconfirmedDataInProgressByCommitId(ui64 commitId);
-    TTrackedUnconfirmedData& FindAndVerifyUnconfirmedDataInProgress(ui64 commitId);
+    TTrackedUnconfirmedData& FindAndVerifyUnconfirmedDataInProgress(
+        ui64 commitId);
     void EraseUnconfirmedDataInProgress(ui64 commitId);
-    bool UnconfirmedDataInProgressEmplace(ui64 commitId, TTrackedUnconfirmedData data);
+    bool UnconfirmedDataInProgressEmplace(
+        ui64 commitId,
+        TTrackedUnconfirmedData data);
     void EnqueueCommitIdsToDelete(
-        const std::function<bool(ui64, const TTrackedUnconfirmedData&)>& shouldDelete,
+        const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
+            shouldDelete,
         TVector<ui64>& commitIdsToDelete);
     size_t GetUnconfirmedDataInProgressSize() const;
 
-    bool DeletionQueueContains(ui64 commitId);
+    bool DeletionQueueContains(ui64 commitId) const;
     bool DeletionQueueEmplace(ui64 commitId);
     void DeletionQueueErase(ui64 commitId);
 
+    bool UnconfirmedDataEmplace(ui64 commitId, TTrackedUnconfirmedData data);
+    void UnconfirmedDataErase(ui64 commitId);
+    bool UnconfirmedDataContains(ui64 commitId) const;
+    void UnconfirmedDataClear();
+    size_t GetUnconfirmedDataSize() const;
+    const TTrackedUnconfirmedData* FindUnconfirmedData(ui64 commitId) const;
+    TTrackedUnconfirmedData& FindAndVerifyUnconfirmedData(ui64 commitId);
+    void ForEachUnconfirmedData(
+        const std::function<void(const ui64, const TTrackedUnconfirmedData&)>&
+            visitor) const;
 
 public:
     TIndexTabletState();

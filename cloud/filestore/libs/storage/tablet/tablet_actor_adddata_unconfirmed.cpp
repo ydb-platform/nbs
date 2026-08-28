@@ -131,7 +131,7 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
         // overtaken by later AddBlob TXs. The deferred reply will be triggered
         // in DeleteUnconfirmedData completion.
         if (!deletionInProgress) {
-            UnconfirmedData.emplace(
+            UnconfirmedDataEmplace(
                 args.CommitId,
                 std::move(data));
 

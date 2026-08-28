@@ -826,7 +826,7 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetSevenBytesHandlesCount(Metrics->SevenBytesHandlesCount);
 
     stats->SetUnconfirmedDataCount(
-        UnconfirmedData.size() + GetUnconfirmedDataInProgressSize());
+        GetUnconfirmedDataSize() + GetUnconfirmedDataInProgressSize());
     stats->SetConfirmedDataCount(ConfirmedData.size());
 
     for (const auto& usage: GetQuotaUsages()) {

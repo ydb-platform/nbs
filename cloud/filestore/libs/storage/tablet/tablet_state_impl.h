@@ -65,7 +65,8 @@ struct TIndexTabletState::TImpl
     TNodeLatencyStatsTracker LatencyTracker;
 
     TNodeToSessionCounters NodeToSessionCounters;
-
+    // Data written to local db but not yet confirmed/indexed
+    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedData;
     // Data for which internal AddDataUnconfirmed tx is still executing.
     THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedDataInProgress;
     // CommitIds scheduled for unconfirmed-data deletion and waiting for
