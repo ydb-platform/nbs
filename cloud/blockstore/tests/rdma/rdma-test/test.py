@@ -21,6 +21,14 @@ def check_rdma_connectivity(h1, h2, rdma_port=9999, timeout=10):
         "checking rdma connectivity %s->%s", h1.get_local_ip(), h2.get_local_ip()
     )
 
+    # RDMA server logging resolves the peer address synchronously on the
+    # connection-manager thread.  Keep that lookup local so a DNS timeout does
+    # not delay the handshake past the initiator's reconnect timeout.
+    h2.execute(
+        f"printf '%s\\n' '{h1.get_local_ip()} rdma-initiator' "
+        "| sudo tee -a /etc/hosts >/dev/null"
+    )
+
     target_cmd = [
         h2.get_rdma_test_util_path(),
         "--test", "Target",
