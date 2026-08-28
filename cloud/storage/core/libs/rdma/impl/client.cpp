@@ -1042,10 +1042,22 @@ ui64 TClientEndpoint::SendRequest(
 
     if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
         // Endpoint reconnected between AllocateRequest() and SendRequest():
-        // req->OutBuffer/OutMemoryWindow may belong to an already torn down
-        // pool generation/PD.
+        // req->InBuffer/OutBuffer may belong to an already
+        // torn down pool generation/PD, so don't touch them. Point
+        // ResponseBuffer at a statically preallocated, pre-serialized
+        // error instead of OutBuffer - it has static storage duration, so
+        // this is always safe regardless of buffer pool generation
+        static const TString StaleGenerationError = SerializeError(
+            E_REJECTED,
+            "buffer generation changed");
+
+        req->RequestBuffer = {};
+        req->ResponseBuffer = TStringBuf(
+            StaleGenerationError.data(),
+            StaleGenerationError.length());
+
         auto* handler = req->Handler.get();
-        handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, 0);
+        handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, StaleGenerationError.length());
         return clientReqId;
     }
 
@@ -1280,8 +1292,10 @@ void TClientEndpoint::AbortRequest(
     ui32 err,
     const TString& msg) noexcept
 {
-    // destroying memory window automatically invalidates it. this ensures no
-    // remote write can succeed after this point
+    if (req->InMemoryWindow) {
+        req->InMemoryWindow.reset();
+        Counters->ReleaseMemoryWindow();
+    }
     if (req->OutMemoryWindow) {
         req->OutMemoryWindow.reset();
         Counters->ReleaseMemoryWindow();
@@ -1976,12 +1990,10 @@ void TClientEndpoint::FreeRequest(TRequest* req) noexcept
             req->BufferPoolGeneration == BufferPoolGeneration.load();
 
         if (!sameBufferPoolGeneration) {
-            // Late request destruction after reconnect: buffers/windows
-            // belong to an older pool generation and cannot be safely
-            // released via the current pool/PD, so just drop them without
-            // touching SendBuffers/RecvBuffers or calling ibv_dealloc_mw.
-            req->InMemoryWindow.release();
-            req->OutMemoryWindow.release();
+            // Late request destruction after reconnect: InBuffer/OutBuffer
+            // were acquired eagerly in AllocateRequest() and belong to an
+            // older pool generation, so they cannot be safely released via
+            // the current SendBuffers/RecvBuffers.
             return;
         }
 

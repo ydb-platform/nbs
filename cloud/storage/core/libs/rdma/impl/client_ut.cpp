@@ -1608,7 +1608,6 @@ TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
         auto verbs = NVerbs::CreateTestVerbs(testContext);
         auto monitoring = CreateMonitoringServiceStub();
         auto clientConfig = std::make_shared<TClientConfig>();
-        clientConfig->UseMemoryWindows = true;
 
         auto logging = CreateLoggingService(
             "console",
@@ -1625,12 +1624,6 @@ TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
             client->Stop();
         };
 
-        std::atomic<int> destroyed = 0;
-        testContext->DestroyMemoryWindow = [&](ibv_mw* mw) {
-            Y_UNUSED(mw);
-            destroyed++;
-        };
-
         auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
         testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
@@ -1645,22 +1638,27 @@ TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
             bool Received = false;
             ui32 Status = 0;
             size_t Bytes = 0;
+            TString Buffer;
         };
 
         TResponse response;
 
         auto ctx = std::make_unique<TRequestContext>();
         ctx->Handler = [&](TStringBuf requestBuffer,
-                            TStringBuf responseBuffer,
-                            ui32 status,
-                            size_t bytes)
+            TStringBuf responseBuffer,
+            ui32 status,
+            size_t bytes)
         {
             Y_UNUSED(requestBuffer);
-            Y_UNUSED(responseBuffer);
-            response = TResponse{true, status, bytes};
+            response =
+                TResponse{
+                    .Received = true,
+                    .Status = status,
+                    .Bytes = bytes,
+                    .Buffer = TString(responseBuffer.Head(bytes))};
         };
 
-        // allocate a request (and its memory windows) against the current
+        // allocate a request (InBuffer/OutBuffer) against the current
         // generation, but do not send it yet
         auto request = endpoint->AllocateRequest(
             std::make_shared<TClientHandler>(),
@@ -1676,23 +1674,20 @@ TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
             recv = AtomicGet(testContext->PostRecvCounter);
         } while (recv != 2 * clientConfig->QueueSize);
 
-        // sending a request allocated before the reconnect must be
-        // rejected instead of using buffers/windows that belong to an
-        // already torn down generation
         endpoint->SendRequest(
             request.ExtractResult(),
             MakeIntrusive<TCallContextBase>(0u));
 
         ASSERT_TRUE(response.Received);
         ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response.Status);
-        ASSERT_EQ(0u, response.Bytes);
+        ASSERT_GT(response.Bytes, 0u);
 
-        // the stale memory window must not be deallocated against an
-        // already destroyed protection domain
-        ASSERT_EQ(0, destroyed.load());
+        NProto::TError error =
+            ParseError(TStringBuf(response.Buffer).Head(response.Bytes));
+        ASSERT_EQ(static_cast<ui32>(E_REJECTED), error.GetCode());
     }
 
-    TEST(TRdmaClientTest, ShouldSafelyFreeRequestFromStaleBufferPoolGeneration)
+    TEST(TRdmaClientTest, ShouldEagerlyDestroyBothMemoryWindowsOnAbortRequest)
     {
         auto testContext = MakeIntrusive<NVerbs::TTestContext>();
         testContext->AllowConnect = true;
@@ -1717,7 +1712,16 @@ TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
             client->Stop();
         };
 
+        std::atomic<int> bound = 0;
         std::atomic<int> destroyed = 0;
+
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+            Y_UNUSED(qp);
+            if (wr->opcode == IBV_WR_BIND_MW) {
+                bound++;
+            }
+        };
+
         testContext->DestroyMemoryWindow = [&](ibv_mw* mw) {
             Y_UNUSED(mw);
             destroyed++;
@@ -1725,35 +1729,49 @@ TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
 
         auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
-        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
-            PostSend<TRequestMessage>(testContext, qp, wr);
+        struct THoldingHandler: IClientHandler
+        {
+            TClientRequestPtr Held;
+            TManualEvent Received;
+
+            void HandleResponse(
+                TClientRequestPtr req,
+                ui32 status,
+                size_t responseBytes) override
+            {
+                Y_UNUSED(status);
+                Y_UNUSED(responseBytes);
+                Held = std::move(req);
+                Received.Signal();
+            }
         };
 
-        // allocate a request (and its memory windows) against the current
-        // generation, but never send it
+        auto handler = std::make_shared<THoldingHandler>();
+
         auto request = endpoint->AllocateRequest(
-            std::make_shared<TClientHandler>(),
+            handler,
             std::make_unique<TNullContext>(),
             1024,
             1024);
         ASSERT_FALSE(HasError(request.GetError()));
 
-        Disconnect(testContext);
+        auto reqId = endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
 
-        ui64 recv;
-        do {
-            recv = AtomicGet(testContext->PostRecvCounter);
-        } while (recv != 2 * clientConfig->QueueSize);
-
-        const int destroyedBeforeFree = destroyed.load();
-
-        {
-            // the stale memory window must not be deallocated against an
-            // already destroyed protection domain
-            auto req = request.ExtractResult();
+        // wait until the request's memory windows have been acquired and
+        // the first bind work request posted
+        while (bound.load() < 1) {
+            SpinLockPause();
         }
 
-        ASSERT_EQ(destroyedBeforeFree, destroyed.load());
+\        endpoint->CancelRequest(reqId);
+
+        handler->Received.Wait();
+        ASSERT_TRUE(handler->Held);
+        ASSERT_EQ(2, destroyed.load());
+
+        handler->Held.reset();
     }
 
 }   // namespace NCloud::NStorage::NRdma

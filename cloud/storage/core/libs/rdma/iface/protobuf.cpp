@@ -191,6 +191,19 @@ size_t SerializeError(ui32 code, TStringBuf message, TStringBuf buffer)
     return 0;   // will be interpreted as E_FAIL by ParseError
 }
 
+TString SerializeError(ui32 code, TStringBuf message)
+{
+    auto error = MakeError(code, TString(message));
+
+    TString result;
+    result.resize(error.ByteSizeLong());
+
+    bool succeeded = error.SerializeToArray(result.Detach(), result.size());
+    Y_ENSURE(succeeded, "could not serialize protobuf message");
+
+    return result;
+}
+
 NProto::TError ParseError(TStringBuf buffer)
 {
     NProto::TError error;
