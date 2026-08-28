@@ -264,9 +264,6 @@ protected:
     // is ever in flight up to SafePoint and page faults cannot reorder TXes
     TDeque<ui64> RecoveredDataToConfirm;
 
-    // CommitIds scheduled for unconfirmed-data deletion and waiting for
-    // completion.
-    THashSet<ui64> DeletionQueue;
     // ConfirmAddData requests that arrived before internal AddData completed.
     // Used for all requests until (#5353)
     THashMap<ui64, TVector<TPendingConfirmAddData>> PendingConfirmation;
@@ -277,8 +274,7 @@ protected:
 
 protected:
     void SetUnconfirmedRecoveryReady(bool value);
-    using TUnconfirmedDataMap =
-      THashMap<ui64, TTrackedUnconfirmedData>;
+
     bool UnconfirmedDataInProgressContains(ui64 commitId);
     TTrackedUnconfirmedData& UnconfirmedDataInProgressByCommitId(ui64 commitId);
     TTrackedUnconfirmedData& FindAndVerifyUnconfirmedDataInProgress(ui64 commitId);
@@ -288,6 +284,10 @@ protected:
         const std::function<bool(ui64, const TTrackedUnconfirmedData&)>& shouldDelete,
         TVector<ui64>& commitIdsToDelete);
     size_t GetUnconfirmedDataInProgressSize() const;
+
+    bool DeletionQueueContains(ui64 commitId);
+    bool DeletionQueueEmplace(ui64 commitId);
+    void DeletionQueueErase(ui64 commitId);
 
 
 public:
