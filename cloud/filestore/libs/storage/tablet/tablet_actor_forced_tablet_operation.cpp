@@ -23,11 +23,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief An actor that performs forced compaction or forced cleanup. It is
- * implemented as a template class to avoid code duplication.
- *
- * @tparam TRequestType A functor that constructs a unique_ptr to a
- * request that is necessary to be performed to passed range.
+ * @brief An actor that performs forced flush, flush_bytes, collect_garbage ops.
+ * It is implemented as a template class to avoid code duplication.
  */
 template <typename TResponseType, typename TRequestType>
 class TForcedOperationActor final
@@ -56,7 +53,7 @@ public:
 private:
     STFUNC(StateWork);
 
-    void SendRangeOperationRequest(const TActorContext& ctx);
+    void SendOperationRequest(const TActorContext& ctx);
 
     void HandleOperationResponse(
         const TResponseType::TPtr& ev,
@@ -99,14 +96,14 @@ void TForcedOperationActor<TResponseType, TRequestType>::Bootstrap(
     FILESTORE_TRACK(
         RequestReceived_TabletWorker,
         RequestInfo->CallContext,
-        "ForcedRangeOperation");
+        "ForcedTabletOperation");
 
-    SendRangeOperationRequest(ctx);
+    SendOperationRequest(ctx);
 }
 
 template <typename TResponseType, typename TRequestType>
 void TForcedOperationActor<TResponseType, TRequestType>::
-    SendRangeOperationRequest(const TActorContext& ctx)
+    SendOperationRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TRequestType>();
     ctx.Send(Tablet, request.release());
@@ -156,7 +153,7 @@ void TForcedOperationActor<TResponseType, TRequestType>::
     HandleWakeUp(const TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    SendRangeOperationRequest(ctx);
+    SendOperationRequest(ctx);
 }
 
 template <typename TResponseType, typename TRequestType>
@@ -176,19 +173,19 @@ void TForcedOperationActor<TResponseType, TRequestType>::
     {
         // notify tablet
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedRangeOperationCompleted>(error);
+            TEvIndexTabletPrivate::TEvForcedTabletOperationCompleted>(error);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
     FILESTORE_TRACK(
         ResponseSent_TabletWorker,
         RequestInfo->CallContext,
-        "ForcedRangeOperation");
+        "ForcedTabletOperation");
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedRangeOperationResponse>(error);
+            TEvIndexTabletPrivate::TEvForcedTabletOperationResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
