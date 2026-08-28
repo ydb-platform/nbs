@@ -442,8 +442,8 @@ bool TIndexTabletState::UnconfirmedDataInProgressContains(ui64 commitId)
     return Impl->UnconfirmedDataInProgress.contains(commitId);
 }
 
-TTrackedUnconfirmedData&
-TIndexTabletState::UnconfirmedDataInProgressByCommitId(ui64 commitId)
+TTrackedUnconfirmedData& TIndexTabletState::UnconfirmedDataInProgressByCommitId(
+    ui64 commitId)
 {
     return Impl->UnconfirmedDataInProgress[commitId];
 }
@@ -464,18 +464,22 @@ void TIndexTabletState::EraseUnconfirmedDataInProgress(ui64 commitId)
     Impl->UnconfirmedDataInProgress.erase(commitId);
 }
 
-bool TIndexTabletState::UnconfirmedDataInProgressEmplace(ui64 commitId, TTrackedUnconfirmedData data)
+bool TIndexTabletState::UnconfirmedDataInProgressEmplace(
+    ui64 commitId,
+    TTrackedUnconfirmedData data)
 {
-    return Impl->UnconfirmedDataInProgress.emplace(commitId, data).second;
+    return Impl->UnconfirmedDataInProgress.emplace(commitId, std::move(data))
+        .second;
 }
 
 void TIndexTabletState::EnqueueCommitIdsToDelete(
-    const std::function<bool(ui64, const TTrackedUnconfirmedData&)>& shouldDelete,
+    const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
+        shouldDelete,
     TVector<ui64>& commitIdsToDelete)
 {
-    auto map = Impl->UnconfirmedDataInProgress;
-    for(const auto& [commitId, trackedData]: map){
-        if(!shouldDelete(commitId, trackedData)){
+    const auto& map = Impl->UnconfirmedDataInProgress;
+    for (const auto& [commitId, trackedData]: map) {
+        if (!shouldDelete(commitId, trackedData)) {
             continue;
         }
         if (!DeletionQueue.emplace(commitId).second) {
