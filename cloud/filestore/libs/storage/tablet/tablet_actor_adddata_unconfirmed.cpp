@@ -133,7 +133,7 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
         if (!deletionInProgress) {
             UnconfirmedData.emplace(
                 args.CommitId,
-                std::move(inProgressIt->second));
+                std::move(data));
 
             // Check if ConfirmAddData was received while we were executing.
             auto pendingIt = PendingConfirmation.find(args.CommitId);
