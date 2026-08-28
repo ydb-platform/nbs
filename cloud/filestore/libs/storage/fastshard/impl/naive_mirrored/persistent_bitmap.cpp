@@ -243,7 +243,7 @@ NProto::TError TPersistentBitmap::Allocate(
         // on an up to date stack.
         //
 
-        error = UpdateFreeStack();
+        error = UpdateFreeStack(lsn);
         if (HasError(error)) {
             return error;
         }
@@ -315,19 +315,20 @@ NProto::TError TPersistentBitmap::ReadPage(
     return {};
 }
 
-NProto::TError TPersistentBitmap::UpdateFreeStack() const
+NProto::TError TPersistentBitmap::UpdateFreeStack(ui64 lsn) const
 {
     BitmapPagesWithFreeBits = {};
-    TVector<TBuffer> bitmapPages(GetPageCount());
 
-    for (ui64 i = 0; i < bitmapPages.size(); ++i) {
-        auto error = ReadPage(0 /* lsn */, i, &bitmapPages[i]);
+    const ui64 pageCount = GetPageCount();
+    TBuffer page;
+
+    for (ui64 i = 0; i < pageCount; ++i) {
+        auto error = ReadPage(lsn, i, &page);
         if (HasError(error)) {
-            bitmapPages.clear();
             return error;
         }
 
-        if (!IsFull(bitmapPages[i])) {
+        if (!IsFull(page)) {
             BitmapPagesWithFreeBits.push(i);
         }
     }
@@ -341,7 +342,7 @@ NProto::TError TPersistentBitmap::InitIfNeeded() const
         return {};
     }
 
-    auto error = UpdateFreeStack();
+    auto error = UpdateFreeStack(0 /* lsn */);
     if (HasError(error)) {
         return error;
     }
