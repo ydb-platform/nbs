@@ -1578,7 +1578,8 @@ public:
 
     void UpdateForcedRangeOperationProgress(ui32 current)
     {
-        auto* state = std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
+        auto* state =
+            std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
         TABLET_VERIFY(state);
         state->Current = Max(state->Current, current);
     }
