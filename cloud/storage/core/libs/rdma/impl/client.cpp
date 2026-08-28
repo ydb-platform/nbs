@@ -61,6 +61,12 @@ constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TString StaleGenerationError = SerializeError(
+    E_RDMA_UNAVAILABLE,
+    "buffer generation changed");
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRequest;
 using TRequestPtr = std::unique_ptr<TRequest>;
 
@@ -716,6 +722,7 @@ private:
     void InvalidateBuffers(TRequest* req) noexcept;
     void CompleteRequest(ui32 reqId) noexcept;
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
+    void RejectStaleGenerationRequest(TRequestPtr req) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
     bool PostSend(TRequest* req, TSendWr* send, ibv_send_wr* wr) noexcept;
     void HandleSendError(TSendWr* send) noexcept;
@@ -803,8 +810,6 @@ void TClientEndpoint::ChangeState(
 
 void TClientEndpoint::CreateQP()
 {
-    ++BufferPoolGeneration;
-
     CompletionChannel = Verbs->CreateCompletionChannel(Connection->verbs);
     SetNonBlock(CompletionChannel->fd, true);
 
@@ -858,8 +863,11 @@ void TClientEndpoint::CreateQP()
         recvFlags |= IBV_ACCESS_MW_BIND;
     }
 
-    SendBuffers.Init(Verbs, Connection->pd, sendFlags);
-    RecvBuffers.Init(Verbs, Connection->pd, recvFlags);
+    with_lock (AllocationLock) {
+        ++BufferPoolGeneration;
+        SendBuffers.Init(Verbs, Connection->pd, sendFlags);
+        RecvBuffers.Init(Verbs, Connection->pd, recvFlags);
+    }
 
     SendBuffer = SendBuffers.AcquireBuffer(
         Config.SendQueueSize * sizeof(TRequestMessage), true);
@@ -992,10 +1000,11 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
         shared_from_this(),
         std::move(handler),
         std::move(context));
-    req->BufferPoolGeneration = BufferPoolGeneration.load();
 
     try {
         with_lock (AllocationLock) {
+            req->BufferPoolGeneration = BufferPoolGeneration.load();
+
             if (requestBytes) {
                 req->InBuffer = SendBuffers.AcquireBuffer(requestBytes);
             }
@@ -1041,23 +1050,8 @@ ui64 TClientEndpoint::SendRequest(
     req->ClientReqId = clientReqId;
 
     if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
-        // Endpoint reconnected between AllocateRequest() and SendRequest():
-        // req->InBuffer/OutBuffer may belong to an already
-        // torn down pool generation/PD, so don't touch them. Point
-        // ResponseBuffer at a statically preallocated, pre-serialized
-        // error instead of OutBuffer - it has static storage duration, so
-        // this is always safe regardless of buffer pool generation
-        static const TString StaleGenerationError = SerializeError(
-            E_REJECTED,
-            "buffer generation changed");
-
-        req->RequestBuffer = {};
-        req->ResponseBuffer = TStringBuf(
-            StaleGenerationError.data(),
-            StaleGenerationError.length());
-
-        auto* handler = req->Handler.get();
-        handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, StaleGenerationError.length());
+        // Endpoint reconnected between AllocateRequest() and SendRequest()
+        RejectStaleGenerationRequest(std::move(req));
         return clientReqId;
     }
 
@@ -1080,6 +1074,20 @@ ui64 TClientEndpoint::SendRequest(
     }
 
     return clientReqId;
+}
+
+void TClientEndpoint::RejectStaleGenerationRequest(TRequestPtr req) noexcept
+{
+    req->RequestBuffer = {};
+    req->ResponseBuffer = TStringBuf(
+        StaleGenerationError.data(),
+        StaleGenerationError.length());
+
+    auto* handler = req->Handler.get();
+    handler->HandleResponse(
+        std::move(req),
+        RDMA_PROTO_FAIL,
+        StaleGenerationError.length());
 }
 
 bool TClientEndpoint::HandleInputRequests() noexcept
@@ -1139,6 +1147,16 @@ void TClientEndpoint::HandleQueuedRequests() noexcept
             Counters->Error();
             Disconnect();
             return;
+        }
+
+        if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
+            // The caller's thread could have been preempted between the
+            // generation check in SendRequest() and InputRequests.Enqueue()
+            // for the whole duration of a reconnect cycle - req->InBuffer/
+            // OutBuffer may already belong to a torn down pool generation.
+            SendQueue.Push(send);
+            RejectStaleGenerationRequest(std::move(req));
+            continue;
         }
 
         StartRequest(std::move(req), send);

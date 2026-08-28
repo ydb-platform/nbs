@@ -1684,7 +1684,7 @@ TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
 
         NProto::TError error =
             ParseError(TStringBuf(response.Buffer).Head(response.Bytes));
-        ASSERT_EQ(static_cast<ui32>(E_REJECTED), error.GetCode());
+        ASSERT_EQ(static_cast<ui32>(E_RDMA_UNAVAILABLE), error.GetCode());
     }
 
     TEST(TRdmaClientTest, ShouldEagerlyDestroyBothMemoryWindowsOnAbortRequest)
@@ -1765,7 +1765,7 @@ TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
             SpinLockPause();
         }
 
-\        endpoint->CancelRequest(reqId);
+        endpoint->CancelRequest(reqId);
 
         handler->Received.Wait();
         ASSERT_TRUE(handler->Held);
