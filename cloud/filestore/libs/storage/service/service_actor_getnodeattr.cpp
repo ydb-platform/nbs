@@ -163,15 +163,15 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
 {
     auto* msg = ev->Get();
 
-    FILESTORE_TRACK(
-        ResponseSent_ServiceWorker,
-        RequestInfo->CallContext,
-        LeaderResponded ? "GetNodeAttrInShard" : "GetNodeAttrInLeader");
-
     if (HasError(msg->GetError())) {
         HandleError(ctx, *msg->Record.MutableError());
         return;
     }
+
+    FILESTORE_TRACK(
+        ResponseSent_ServiceWorker,
+        RequestInfo->CallContext,
+        LeaderResponded ? "GetNodeAttrInShard" : "GetNodeAttrInLeader");
 
     if (LeaderResponded) {
         LOG_DEBUG(
@@ -230,6 +230,11 @@ void TGetNodeAttrActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
+    FILESTORE_TRACK(
+        ResponseSent_ServiceWorker,
+        RequestInfo->CallContext,
+        LeaderResponded ? "GetNodeAttrInShard" : "GetNodeAttrInLeader");
+
     auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(
         std::move(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
