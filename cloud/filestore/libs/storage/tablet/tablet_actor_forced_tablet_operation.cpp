@@ -136,6 +136,8 @@ void TForcedOperationActor<TResponseType, TRequestType>::
 {
     auto* msg = ev->Get();
 
+    // Note that collect_garbage returns S_ALREAdY instead of E_TRY_AGAIN
+    // so it will be treated as success and the operation won't be restarted
     if (HasError(msg->Error)) {
         if (msg->Error.GetCode() == E_TRY_AGAIN) {
             ctx.Schedule(RetryTimeout, new TEvents::TEvWakeup());
