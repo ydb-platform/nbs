@@ -22,4 +22,5 @@ message TInterconnectConfig {
     optional bool EnableExternalDataChannel = 5;
     optional ESocketSendOptimization SocketSendOptimization = 6;
     optional bool UseRdma = 7;
+    optional TDuration LostConnectionDuration = 8;
 }
