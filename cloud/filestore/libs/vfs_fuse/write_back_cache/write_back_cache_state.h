@@ -22,8 +22,6 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 
-#include <atomic>
-
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,7 +82,9 @@ private:
     // Requests that are hanging due to WriteBackCache failed state
     THangingRequests HangingRequests;
 
-    bool FailedFlag = false;
+    // Either the persistent storage is corrupted or an internal problem in
+    // the logic has happened
+    bool IsFailed = false;
     bool DrainingMode = false;
 
 public:

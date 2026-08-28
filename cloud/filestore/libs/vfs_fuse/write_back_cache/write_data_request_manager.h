@@ -37,9 +37,10 @@ public:
     {
         std::unique_ptr<TPendingWriteDataRequest> PendingRequest = nullptr;
         std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
+        bool Failed = false;
     };
 
-    struct TProcessPendingRequestRequest
+    struct TProcessPendingRequestResult
     {
         std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
         bool Failed = false;
@@ -49,7 +50,6 @@ public:
         std::unique_ptr<TCachedWriteDataRequest> request,
         bool handleReleased)>;
 
-    TWriteDataRequestManager() = default;
     TWriteDataRequestManager(TWriteDataRequestManager&&) = default;
     TWriteDataRequestManager& operator=(TWriteDataRequestManager&&) = default;
 
@@ -84,7 +84,8 @@ public:
      * the storage is full or backpressure is in effect, and the request has
      * been added to the pending queue.
      *
-     * Returns empty result if the storage is in failed state.
+     * Returns result with TAddRequestResult::Failed == true if the storage is
+     * in failed state.
      */
     [[nodiscard]] TAddRequestResult AddRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
@@ -103,7 +104,7 @@ public:
      * Returns result with empty TAddRequestResult::CachedRequest and
      * TAddRequestResult::Failed == true if the storage is in failed state.
      */
-    [[nodiscard]] TProcessPendingRequestRequest TryProcessPendingRequest();
+    [[nodiscard]] TProcessPendingRequestResult TryProcessPendingRequest();
 
     // Takes and removes front request from the pending queue.
     // Returns the removed request or nullptr if there are no pending requests.
@@ -150,7 +151,7 @@ public:
     void UpdateStats() const;
 
 private:
-    TProcessPendingRequestRequest TryStoreRequestInPersistentStorage(
+    TProcessPendingRequestResult TryStoreRequestInPersistentStorage(
         ui64 sequenceId,
         TInstant time,
         const NProto::TWriteDataRequest& request);

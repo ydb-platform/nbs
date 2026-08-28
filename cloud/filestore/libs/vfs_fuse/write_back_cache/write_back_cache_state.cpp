@@ -65,7 +65,7 @@ bool TWriteBackCacheState::IsDrained() const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    return DrainingMode && !FailedFlag &&
+    return DrainingMode && !IsFailed &&
            !RequestManager.HasPendingOrUnflushedRequests();
 }
 
@@ -93,7 +93,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
                 "WriteBackCache doesn't accept new WriteData requests"));
     }
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return HangingRequests.CreateWriteDataResponse();
     }
 
@@ -116,7 +116,7 @@ TFuture<TError> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return HangingRequests.CreateFlushOrReleaseHandleResponse();
     }
 
@@ -147,7 +147,7 @@ TFuture<TError> TWriteBackCacheState::AddFlushAllRequest()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return HangingRequests.CreateFlushOrReleaseHandleResponse();
     }
 
@@ -170,7 +170,7 @@ TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return HangingRequests.CreateFlushOrReleaseHandleResponse();
     }
 
@@ -224,7 +224,7 @@ std::optional<TCachedData> TWriteBackCacheState::GetCachedData(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return std::nullopt;
     }
 
@@ -243,7 +243,7 @@ ui64 TWriteBackCacheState::GetMaxWrittenOffset(ui64 nodeId) const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return 0;
     }
 
@@ -257,7 +257,7 @@ void TWriteBackCacheState::ResetMaxWrittenOffset(ui64 nodeId)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return;
     }
 
@@ -329,7 +329,7 @@ void TWriteBackCacheState::VisitUnflushedRequestsFromFrontFlushBatch(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return;
     }
 
@@ -352,7 +352,7 @@ ui64 TWriteBackCacheState::GetLiveHandle(ui64 nodeId) const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return NProto::E_INVALID_HANDLE;
     }
 
@@ -374,7 +374,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return;
     }
 
@@ -413,7 +413,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return EFlushRetryStatus::ShouldNotRetry;
     }
 
@@ -530,7 +530,7 @@ NThreading::TFuture<TResultOrError<ui64>> TWriteBackCacheState::AcquireBarrier(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (FailedFlag) {
+    if (IsFailed) {
         return HangingRequests.CreateAcquireBarrierResponse();
     }
 
@@ -779,6 +779,11 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
     ui64 nodeId,
     TNodeState& nodeState)
 {
+    if (IsFailed) {
+        // Prevent from firing repeated critical events on each storage access
+        return;
+    }
+
     bool shouldProcessPendingRequests = false;
 
     const ui64 allowedToEvictMaxSequenceId =
@@ -1076,7 +1081,7 @@ void TWriteBackCacheState::SetFailedFlag()
     // FailedFlag is set only when a failed result is returned from
     // PersistentStorage. Each failure in PersistentStorage is already reported
     // as a critical event - no need to fire an event again.
-    FailedFlag = true;
+    IsFailed = true;
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -102,7 +102,7 @@ NProto::TError TWriteDataRequestManager::Init(
     const TCachedRequestVisitor& visitor)
 {
     if (PersistentStorage->IsCorrupted()) {
-        return MakeError(E_FAIL, "Persistent storage is corrupted");
+        return MakeError(E_INVALID_STATE, "Persistent storage is corrupted");
     }
 
     // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -116,7 +116,7 @@ NProto::TError TWriteDataRequestManager::Init(
 
     if (maxSupportedAllocationByteCount < maxAllocationByteCount) {
         return MakeError(
-            E_FAIL,
+            E_ARGUMENT,
             Sprintf(
                 "MaxSupportedAllocationByteCount (%lu) is less than the "
                 "minimal allowed value (%lu)",
@@ -133,7 +133,7 @@ NProto::TError TWriteDataRequestManager::Init(
         {
             if (tag > static_cast<ui32>(ECachedWriteDataRequestTag::Max)) {
                 error = MakeError(
-                    E_FAIL,
+                    E_INVALID_STATE,
                     Sprintf(
                         "Request deserialization error: tag value %u exceeds "
                         "the maximal value %u",
@@ -148,7 +148,8 @@ NProto::TError TWriteDataRequestManager::Init(
                 allocation);
 
             if (!request) {
-                error = MakeError(E_FAIL, "Request deserialization error");
+                error =
+                    MakeError(E_INVALID_STATE, "Request deserialization error");
                 return;
             }
 
@@ -252,7 +253,7 @@ auto TWriteDataRequestManager::AddRequest(
             TryStoreRequestInPersistentStorage(sequenceId, now, *request);
 
         if (res.Failed) {
-            return {};
+            return {.Failed = true};
         }
 
         if (res.CachedRequest) {
@@ -271,7 +272,7 @@ auto TWriteDataRequestManager::AddRequest(
 }
 
 auto TWriteDataRequestManager::TryProcessPendingRequest()
-    -> TProcessPendingRequestRequest
+    -> TProcessPendingRequestResult
 {
     if (PendingRequests.Empty()) {
         return {};
@@ -313,20 +314,18 @@ void TWriteDataRequestManager::Remove(
 
 bool TWriteDataRequestManager::SetFlushed(TCachedWriteDataRequest* request)
 {
-    UnflushedRequestsRemove(request);
-    request->Time = Timer->Now();
-    FlushedRequestsPushBack(request);
-
     auto setTagResult = PersistentStorage->SetTag(
         request->GetAllocationPtr(),
         static_cast<ui32>(ECachedWriteDataRequestTag::Flushed));
 
-    if (HasError(setTagResult)) {
-        // log
-        return false;
+    if (!HasError(setTagResult)) {
+        UnflushedRequestsRemove(request);
+        request->Time = Timer->Now();
+        FlushedRequestsPushBack(request);
+        return true;
     }
 
-    return true;
+    return false;
 }
 
 bool TWriteDataRequestManager::SetHandleReleased(
@@ -336,12 +335,7 @@ bool TWriteDataRequestManager::SetHandleReleased(
         request->GetAllocationPtr(),
         static_cast<ui32>(ECachedWriteDataRequestTag::UnflushedHandleReleased));
 
-    if (HasError(setTagResult)) {
-        // log
-        return false;
-    }
-
-    return true;
+    return !HasError(setTagResult);
 }
 
 bool TWriteDataRequestManager::Evict(
@@ -350,12 +344,7 @@ bool TWriteDataRequestManager::Evict(
     FlushedRequestsRemove(request.get());
     auto freeResult = PersistentStorage->Free(request->GetAllocationPtr());
 
-    if (HasError(freeResult)) {
-        // log
-        return false;
-    }
-
-    return true;
+    return !HasError(freeResult);
 }
 
 bool TWriteDataRequestManager::SetBackpressureStatusForNode(ui64 nodeId)
@@ -402,7 +391,7 @@ void TWriteDataRequestManager::UpdateStats() const
 auto TWriteDataRequestManager::TryStoreRequestInPersistentStorage(
     ui64 sequenceId,
     TInstant time,
-    const NProto::TWriteDataRequest& request) -> TProcessPendingRequestRequest
+    const NProto::TWriteDataRequest& request) -> TProcessPendingRequestResult
 {
     if (NodesWithBackpressure.contains(request.GetNodeId())) {
         // Known limitation: pending requests are global FIFO.
