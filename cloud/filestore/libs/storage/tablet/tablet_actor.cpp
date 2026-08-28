@@ -761,7 +761,7 @@ bool TIndexTabletActor::CanUseUnconfirmedData() const
     const size_t unconfirmedDataCount =
         UnconfirmedData.size() +
         ConfirmedData.size() +
-        UnconfirmedDataInProgress.size();
+        GetUnconfirmedDataInProgressSize();
     if (hardLimit && unconfirmedDataCount >= hardLimit) {
         return false;
     }

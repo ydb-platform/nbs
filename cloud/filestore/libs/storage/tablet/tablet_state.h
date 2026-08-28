@@ -254,8 +254,6 @@ private:
 protected:
     TString LogTag;
 
-    // Data for which internal AddDataUnconfirmed tx is still executing.
-    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedDataInProgress;
     // Data written to local db but not yet confirmed/indexed
     THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedData;
     // Data confirmed but not yet added to index
@@ -279,6 +277,18 @@ protected:
 
 protected:
     void SetUnconfirmedRecoveryReady(bool value);
+    using TUnconfirmedDataMap =
+      THashMap<ui64, TTrackedUnconfirmedData>;
+    bool UnconfirmedDataInProgressContains(ui64 commitId);
+    TTrackedUnconfirmedData& UnconfirmedDataInProgressByCommitId(ui64 commitId);
+    TTrackedUnconfirmedData& FindAndVerifyUnconfirmedDataInProgress(ui64 commitId);
+    void EraseUnconfirmedDataInProgress(ui64 commitId);
+    bool UnconfirmedDataInProgressEmplace(ui64 commitId, TTrackedUnconfirmedData data);
+    void EnqueueCommitIdsToDelete(
+        const std::function<bool(ui64, const TTrackedUnconfirmedData&)>& shouldDelete,
+        TVector<ui64>& commitIdsToDelete);
+    size_t GetUnconfirmedDataInProgressSize() const;
+
 
 public:
     TIndexTabletState();

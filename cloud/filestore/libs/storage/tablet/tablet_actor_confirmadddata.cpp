@@ -190,8 +190,7 @@ void TIndexTabletActor::HandleConfirmAddData(
         return;
     }
 
-    if (UnconfirmedDataInProgress.find(commitId) !=
-        UnconfirmedDataInProgress.end())
+    if (UnconfirmedDataInProgressContains(commitId))
     {
         deferReply();
         Metrics->ConfirmAddDataExtra.DeferredCount.fetch_add(
@@ -263,7 +262,7 @@ void TIndexTabletActor::HandleCancelAddData(
     const ui64 commitId = msg->Record.GetCommitId();
 
     if (!UnconfirmedData.contains(commitId) &&
-        !UnconfirmedDataInProgress.contains(commitId))
+        !UnconfirmedDataInProgressContains(commitId))
     {
         reply(ErrorUnconfirmedDataNotFound());
         return;
@@ -443,7 +442,7 @@ void TIndexTabletActor::DeleteUnconfirmedData(
     };
 
     enqueueCommitIdsToDelete(UnconfirmedData);
-    enqueueCommitIdsToDelete(UnconfirmedDataInProgress);
+    EnqueueCommitIdsToDelete(shouldDelete, commitIdsToDelete);
 
     if (commitIdsToDelete.empty()) {
         return;
