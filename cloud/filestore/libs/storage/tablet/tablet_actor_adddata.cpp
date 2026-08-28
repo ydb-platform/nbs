@@ -145,7 +145,11 @@ bool TIndexTabletActor::ValidateAddDataRequest(
         args.Error = ErrorInvalidTarget(args.NodeId);
         return true;
     }
-    if (!HasSpaceLeft(args.Node->Attrs.GetSize(), args.ByteRange.End())) {
+    if (!HasSpaceLeft(
+            args.Node->Attrs.GetSize(),
+            args.ByteRange.End(),
+            args.Node->Attrs.GetQuotaId()))
+    {
         args.Error = ErrorNoSpaceLeft();
         return true;
     }
