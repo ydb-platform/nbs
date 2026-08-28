@@ -187,20 +187,6 @@ TString MakeMirroredDiskDeviceReplacementMessage(
 
 /////////////////////////////////////////////////////////////////////////////////
 
-// Automatic replacement should only be attempted for current devices
-// of mirrored disk replicas.
-// The reason of check: a successfully migrated source remains allocated
-// in DeviceList until the volume acknowledges reallocation, but it is
-// no longer a current disk device.
-bool IsDeviceInCurrentReplicaSet(
-    const auto& disk,
-    const TString& deviceId)
-{
-    return disk.MasterDiskId && FindPtr(disk.Devices, deviceId);
-}
-
-/////////////////////////////////////////////////////////////////////////////////
-
 bool IsDeviceDetached(
     const NProto::TAgentConfig& agent,
     const NProto::TDeviceConfig& device)
@@ -1139,7 +1125,7 @@ auto TDiskRegistryState::RegisterAgent(
                 continue;
             }
 
-            if (IsDeviceInCurrentReplicaSet(disk, uuid)) {
+            if (disk.MasterDiskId) {
                 TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
                     db,
                     disk,
@@ -5491,7 +5477,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
             }
         } else {
             if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE &&
-                IsDeviceInCurrentReplicaSet(disk, deviceId))
+                disk.MasterDiskId)
             {
                 TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
                     db,
@@ -6575,7 +6561,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     }
 
     if (device.GetState() == NProto::DEVICE_STATE_ERROR &&
-        IsDeviceInCurrentReplicaSet(*disk, uuid))
+        disk->MasterDiskId)
     {
         TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
             db,
