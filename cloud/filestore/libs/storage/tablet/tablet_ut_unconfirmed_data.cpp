@@ -11,7 +11,9 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
 #include <contrib/ydb/core/mind/local.h>
+#include <contrib/ydb/core/tablet_flat/shared_cache_events.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
+#include <contrib/ydb/core/testlib/tx_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -178,6 +180,76 @@ ui64 RebootTabletAndCreateHandle(TIndexTabletClient& tablet, ui64 nodeId)
     tablet.RebootTablet();
     tablet.InitSession("client", "session");
     return CreateHandle(tablet, nodeId);
+}
+
+// Moves the Nodes table from the executor memtable into an SST and shrinks
+// the private cache so that subsequent node reads page-fault (the shared
+// cache is expected to be disabled via TSharedCacheConfig). The generations
+// must stay in sync with CreateIndexTablePolicy: the executor forbids
+// decreasing the level count.
+void CompactNodesTable(
+    TTestEnv& env,
+    TIndexTabletClient& tablet,
+    ui64 tabletId,
+    ui64 nodeId)
+{
+    auto& runtime = env.GetRuntime();
+
+    NTabletFlatScheme::TSchemeChanges scheme;
+    TString err;
+    const TString policyChange = Sprintf(R"___(
+        Delta {
+            DeltaType: SetCompactionPolicy
+            TableId: %u
+            CompactionPolicy {
+                InMemSizeToSnapshot: 1
+                InMemStepsToSnapshot: 1
+                InMemForceStepsToSnapshot: 1
+                InMemForceSizeToSnapshot: 1
+                Generation {
+                    GenerationId: 0
+                    SizeToCompact: 67108864
+                    CountToCompact: 8
+                    ForceCountToCompact: 24
+                    ForceSizeToCompact: 134217728
+                    ResourceBrokerTask: "compaction_gen1"
+                    KeepInCache: false
+                }
+                Generation {
+                    GenerationId: 1
+                    SizeToCompact: 335544320
+                    CountToCompact: 5
+                    ForceCountToCompact: 15
+                    ForceSizeToCompact: 671088640
+                    ResourceBrokerTask: "compaction_gen2"
+                    KeepInCache: false
+                }
+                Generation {
+                    GenerationId: 2
+                    SizeToCompact: 1677721600
+                    CountToCompact: 5
+                    ForceCountToCompact: 10
+                    ForceSizeToCompact: 3355443200
+                    ResourceBrokerTask: "compaction_gen3"
+                    KeepInCache: false
+                }
+            }
+        }
+    )___", TIndexTabletSchema::Nodes::TableId);
+    const auto status = NKikimr::LocalSchemeTx(
+        runtime,
+        tabletId,
+        policyChange,
+        false,
+        scheme,
+        err);
+    UNIT_ASSERT_VALUES_EQUAL_C(NKikimrProto::OK, status, err);
+
+    env.UpdatePrivateCacheSize(tabletId, 1);
+
+    // Touch the Nodes table to trigger the memtable snapshot
+    tablet.SetNodeAttr(TSetNodeAttrArgs(nodeId).SetUid(1));
+    runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
 }
 
 }   // namespace
@@ -907,6 +979,114 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
 
         tablet.AssertConfirmAddDataResponse(E_REJECTED);
 
+        AssertStorageStats(tablet, 0, 0);
+    }
+
+    // AddDataUnconfirmed prepares after the commitId got into DeletionQueue
+    // (rejected as already deleted) and completes after DeleteUnconfirmedData
+    // has both released the collect barrier and erased the commitId from
+    // DeletionQueue. CompleteTx must not release the barrier again.
+    Y_UNIT_TEST(ShouldNotReleaseCollectBarrierTwiceWhenRejectedAsAlreadyDeleted)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        NKikimr::NSharedCache::TSharedCacheConfig sharedCacheConfig;
+        sharedCacheConfig.SetMemoryLimit(0);
+
+        TTestEnv env({}, std::move(storageConfig), &sharedCacheConfig);
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // Force the Nodes table into an SST and keep both caches cold so
+        // that ReadNode in PrepareTx_AddDataUnconfirmed page-faults
+        CompactNodesTable(env, tablet, tabletId, id);
+
+        TVector<TAutoPtr<IEventHandle>> heldPageLoads;
+        TVector<TAutoPtr<IEventHandle>> heldCommitResults;
+        bool holdPageLoads = true;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvTablet::EvCommitResult:
+                        heldCommitResults.push_back(event.Release());
+                        return true;
+                    case NKikimr::NSharedCache::TEvResult::EventType:
+                        if (holdPageLoads) {
+                            heldPageLoads.push_back(event.Release());
+                            return true;
+                        }
+                        break;
+                }
+                return false;
+            });
+
+        // AddDataUnconfirmed parks in PrepareTx waiting for the held page
+        // load
+        auto gbi = tablet.GenerateBlobIds(id, handle, 0, block);
+        UNIT_ASSERT(gbi->Record.GetUnconfirmedFlowEnabled());
+
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !heldPageLoads.empty(); }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT_C(
+            !heldPageLoads.empty(),
+            "Expected AddDataUnconfirmed to page-fault on Nodes read");
+
+        // The disconnect handler puts the commitId into DeletionQueue and
+        // runs DeleteUnconfirmedData, which releases the collect barrier.
+        // Its CompleteTx (DeletionQueue cleanup) is blocked on the held
+        // commit result.
+        tablet.DisconnectPipe();
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !heldCommitResults.empty(); }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT_C(
+            !heldCommitResults.empty(),
+            "Expected DeleteUnconfirmedData commit result to be held");
+
+        // AddDataUnconfirmed now prepares and gets rejected: the commitId is
+        // still in DeletionQueue
+        holdPageLoads = false;
+        for (auto it = heldPageLoads.rbegin(); it != heldPageLoads.rend();
+             ++it)
+        {
+            runtime.PushFront(*it);
+        }
+        heldPageLoads.clear();
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // DeleteUnconfirmedData completes and erases the commitId from
+        // DeletionQueue, then the rejected AddDataUnconfirmed completes
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto it = heldCommitResults.rbegin();
+             it != heldCommitResults.rend();
+             ++it)
+        {
+            runtime.PushFront(*it);
+        }
+        heldCommitResults.clear();
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        tablet.ReconnectPipe();
         AssertStorageStats(tablet, 0, 0);
     }
 

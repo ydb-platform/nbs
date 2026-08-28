@@ -2413,6 +2413,12 @@ struct TTxIndexTablet
     {
         const ui64 CommitId;
 
+        // Set in PrepareTx when the request is rejected because the commitId
+        // is already in DeletionQueue. In that case DeleteUnconfirmedData
+        // owns the collect barrier and CompleteTx must not release it, even
+        // if the commitId is gone from DeletionQueue by then.
+        bool RejectedByDeletion = false;
+
         TAddDataUnconfirmed(
                 TRequestInfoPtr requestInfo,
                 const NProtoPrivate::TGenerateBlobIdsRequest& request,
