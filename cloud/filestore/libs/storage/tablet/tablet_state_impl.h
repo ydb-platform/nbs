@@ -65,6 +65,8 @@ struct TIndexTabletState::TImpl
     TNodeLatencyStatsTracker LatencyTracker;
 
     TNodeToSessionCounters NodeToSessionCounters;
+    // Data for which internal AddDataUnconfirmed tx is still executing.
+    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedDataInProgress;
 
     TRangeLocks RangeLocks;
     TFreshBytes FreshBytes;

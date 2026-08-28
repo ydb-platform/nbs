@@ -19,7 +19,7 @@ bool TIndexTabletActor::PrepareTx_AddDataUnconfirmed(
 {
     Y_UNUSED(ctx);
 
-    if (!UnconfirmedDataInProgress.contains(args.CommitId)) {
+    if (!UnconfirmedDataInProgressContains(args.CommitId)) {
         ReportUnconfirmedDataNotInProgress(
             TStringBuilder()
             << "tabletId: " << TabletID() << ", commitId: " << args.CommitId);
@@ -59,7 +59,7 @@ void TIndexTabletActor::ExecuteTx_AddDataUnconfirmed(
 
     auto db = CreateIndexTabletDatabase(tx.DB);
 
-    auto& data = UnconfirmedDataInProgress[args.CommitId].Data;
+    auto& data = UnconfirmedDataInProgressByCommitId(args.CommitId).Data;
 
     data.SetNodeId(args.NodeId);
 
@@ -80,16 +80,14 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
     const TActorContext& ctx,
     TTxIndexTablet::TAddDataUnconfirmed& args)
 {
-    auto inProgressIt = UnconfirmedDataInProgress.find(args.CommitId);
-    TABLET_VERIFY(inProgressIt != UnconfirmedDataInProgress.end());
-
-    const ui64 requestBytes = inProgressIt->second.Data.GetLength();
+    auto& data = FindAndVerifyUnconfirmedDataInProgress(args.CommitId);
+    const ui64 requestBytes = data.Data.GetLength();
     const bool deletionInProgress =
         args.RejectedByDeletion || DeletionQueue.contains(args.CommitId);
 
     Y_DEFER
     {
-        UnconfirmedDataInProgress.erase(inProgressIt);
+        EraseUnconfirmedDataInProgress(args.CommitId);
 
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),

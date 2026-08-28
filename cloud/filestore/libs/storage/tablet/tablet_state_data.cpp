@@ -437,6 +437,60 @@ void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
     Impl->CacheReadBypass.SetUnconfirmedRecoveryReady(value);
 }
 
+bool TIndexTabletState::UnconfirmedDataInProgressContains(ui64 commitId)
+{
+    return Impl->UnconfirmedDataInProgress.contains(commitId);
+}
+
+TTrackedUnconfirmedData&
+TIndexTabletState::UnconfirmedDataInProgressByCommitId(ui64 commitId)
+{
+    return Impl->UnconfirmedDataInProgress[commitId];
+}
+
+TTrackedUnconfirmedData&
+TIndexTabletState::FindAndVerifyUnconfirmedDataInProgress(ui64 commitId)
+{
+    auto& map = Impl->UnconfirmedDataInProgress;
+    auto it = map.find(commitId);
+
+    TABLET_VERIFY(it != map.end());
+
+    return it->second;
+}
+
+void TIndexTabletState::EraseUnconfirmedDataInProgress(ui64 commitId)
+{
+    Impl->UnconfirmedDataInProgress.erase(commitId);
+}
+
+bool TIndexTabletState::UnconfirmedDataInProgressEmplace(ui64 commitId, TTrackedUnconfirmedData data)
+{
+    return Impl->UnconfirmedDataInProgress.emplace(commitId, data).second;
+}
+
+void TIndexTabletState::EnqueueCommitIdsToDelete(
+    const std::function<bool(ui64, const TTrackedUnconfirmedData&)>& shouldDelete,
+    TVector<ui64>& commitIdsToDelete)
+{
+    auto map = Impl->UnconfirmedDataInProgress;
+    for(const auto& [commitId, trackedData]: map){
+        if(!shouldDelete(commitId, trackedData)){
+            continue;
+        }
+        if (!DeletionQueue.emplace(commitId).second) {
+            continue;
+        }
+
+        commitIdsToDelete.push_back(commitId);
+    }
+}
+
+size_t TIndexTabletState::GetUnconfirmedDataInProgressSize() const
+{
+    return Impl->UnconfirmedDataInProgress.size();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // FreshBytes
 
