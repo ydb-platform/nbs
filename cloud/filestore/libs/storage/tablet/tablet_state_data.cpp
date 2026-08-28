@@ -482,7 +482,7 @@ void TIndexTabletState::EnqueueCommitIdsToDelete(
         if (!shouldDelete(commitId, trackedData)) {
             continue;
         }
-        if (!DeletionQueue.emplace(commitId).second) {
+        if (!DeletionQueueEmplace(commitId)) {
             continue;
         }
 
@@ -493,6 +493,21 @@ void TIndexTabletState::EnqueueCommitIdsToDelete(
 size_t TIndexTabletState::GetUnconfirmedDataInProgressSize() const
 {
     return Impl->UnconfirmedDataInProgress.size();
+}
+
+bool TIndexTabletState::DeletionQueueContains(ui64 commitId)
+{
+    return Impl->DeletionQueue.contains(commitId);
+}
+
+bool TIndexTabletState::DeletionQueueEmplace(ui64 commitId)
+{
+    return Impl->DeletionQueue.emplace(commitId).second;
+}
+
+void TIndexTabletState::DeletionQueueErase(ui64 commitId)
+{
+    Impl->DeletionQueue.erase(commitId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

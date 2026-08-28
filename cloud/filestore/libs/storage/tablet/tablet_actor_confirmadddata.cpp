@@ -184,7 +184,7 @@ void TIndexTabletActor::HandleConfirmAddData(
             msg->Record);
 
         deferReply();
-        if (!DeletionQueue.contains(commitId)) {
+        if (!DeletionQueueContains(commitId)) {
             ConfirmData(commitId, ctx);
         }
         return;
@@ -268,8 +268,8 @@ void TIndexTabletActor::HandleCancelAddData(
         return;
     }
 
-    if (!DeletionQueue.contains(commitId)) {
-        DeletionQueue.emplace(commitId);
+    if (!DeletionQueueContains(commitId)) {
+        DeletionQueueEmplace(commitId);
         // We reply to CancelAddData immediately, so from this point forward we
         // rely on DeleteUnconfirmedData being executed ahead of any later
         // AddBlob TX. Keep this execute before the reply path,
@@ -433,7 +433,7 @@ void TIndexTabletActor::DeleteUnconfirmedData(
                 continue;
             }
 
-            if (!DeletionQueue.emplace(commitId).second) {
+            if (!DeletionQueueEmplace(commitId)) {
                 continue;
             }
 
@@ -553,7 +553,7 @@ void TIndexTabletActor::CompleteTx_DeleteUnconfirmedData(
     TTxIndexTablet::TDeleteUnconfirmedData& args)
 {
     for (ui64 commitId: args.CommitIds) {
-        DeletionQueue.erase(commitId);
+        DeletionQueueErase(commitId);
         SendPendingConfirmAddDataResponse(
             ctx,
             commitId,
