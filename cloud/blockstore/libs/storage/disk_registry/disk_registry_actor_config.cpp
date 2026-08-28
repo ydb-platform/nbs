@@ -80,6 +80,12 @@ void TDiskRegistryActor::CompleteUpdateConfig(
             FormatError(args.Error).c_str());
     }
 
+    for (const auto& diskId: args.AffectedDisks) {
+        if (!State->HasPendingCleanup(diskId)) {
+            ReplyToPendingDeallocations(ctx, diskId);
+        }
+    }
+
     auto response = std::make_unique<TEvDiskRegistry::TEvUpdateConfigResponse>(
         std::move(args.Error));
 

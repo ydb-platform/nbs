@@ -3991,7 +3991,12 @@ NProto::TError TDiskRegistryState::UpdateConfig(
         return MakeError(E_INVALID_STATE, "Destructive configuration change");
     }
 
-    ForgetDevices(db, effect.RemovedDevices);
+    auto cleanupDisks = ForgetDevices(db, effect.RemovedDevices);
+    affectedDisks.insert(
+        affectedDisks.end(),
+        std::make_move_iterator(cleanupDisks.begin()),
+        std::make_move_iterator(cleanupDisks.end()));
+    SortUnique(affectedDisks);
 
     if (Counters) {
         for (const auto& pool: newConfig.GetDevicePoolConfigs()) {
@@ -4043,17 +4048,27 @@ NProto::TError TDiskRegistryState::UpdateConfig(
     return {};
 }
 
-void TDiskRegistryState::ForgetDevices(
+auto TDiskRegistryState::ForgetDevices(
     TDiskRegistryDatabase& db,
-    const TVector<TString>& ids)
+    const TVector<TString>& ids) -> TVector<TDiskId>
 {
+    TVector<TDiskId> affectedDisks;
+
     for (const auto& id: ids) {
+        auto diskId = RemoveDeviceFromPendingCleanup(db, id);
+        if (!diskId.empty()) {
+            affectedDisks.push_back(std::move(diskId));
+        }
+
         DeviceList.ForgetDevice(id);
         db.DeleteSuspendedDevice(id);
         db.DeleteDirtyDevice(id);
 
         DeleteAutomaticallyReplacedDevice(db, id);
     }
+
+    SortUnique(affectedDisks);
+    return affectedDisks;
 }
 
 void TDiskRegistryState::RemoveAgent(
@@ -8137,7 +8152,8 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     ui32 blockSize,
     NProto::EStorageMediaKind mediaKind,
     const TVector<NProto::TDeviceConfig>& devices,
-    TAllocateDiskResult* result)
+    TAllocateDiskResult* result,
+    TVector<TDiskId>* affectedDisks)
 {
     Y_DEBUG_ABORT_UNLESS(result);
 
@@ -8212,6 +8228,16 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
             "disk " << diskId.Quote() << " already exists");
     }
 
+    for (const auto& uuid: deviceIds) {
+        auto affectedDisk = RemoveDeviceFromPendingCleanup(db, uuid);
+        if (affectedDisks && !affectedDisk.empty()) {
+            affectedDisks->push_back(std::move(affectedDisk));
+        }
+    }
+    if (affectedDisks) {
+        SortUnique(*affectedDisks);
+    }
+
     disk.Devices = deviceIds;
     disk.LogicalBlockSize = blockSize;
     disk.StateTs = now;
@@ -8254,7 +8280,8 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     const TDeviceId& sourceDeviceId,
-    const TDeviceId& targetDeviceId)
+    const TDeviceId& targetDeviceId,
+    TDiskId* affectedDisk)
 {
     TDiskState* diskState = AccessDiskState(diskId);
     if (!diskState) {
@@ -8300,6 +8327,11 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
         return MakeError(E_ARGUMENT, "Target and source block size not equal");
     }
 
+    auto cleanupDiskId = RemoveDeviceFromPendingCleanup(db, targetDeviceId);
+    if (affectedDisk && !cleanupDiskId.empty()) {
+        *affectedDisk = std::move(cleanupDiskId);
+    }
+
     *sourceDevicePtr = targetDeviceId;
     diskState->StateTs = now;
     diskState->State = CalculateDiskState(diskId, *diskState);
@@ -8312,7 +8344,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     db.DeleteSuspendedDevice(targetDeviceId);
 
     DeviceList.ReleaseDevice(sourceDeviceId);
-    db.UpdateDirtyDevice(sourceDeviceId, diskId);
+    db.UpdateDirtyDevice(sourceDeviceId, {});
 
     auto [targetAgent, targetDevice] = FindDeviceLocation(targetDeviceId);
     STORAGE_VERIFY_C(
