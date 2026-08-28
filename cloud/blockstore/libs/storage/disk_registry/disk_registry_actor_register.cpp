@@ -152,6 +152,10 @@ void TDiskRegistryActor::CompleteAddAgent(
             "%s AffectedDiskID=%s",
             LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
+
+        if (!State->HasPendingCleanup(diskId)) {
+            ReplyToPendingDeallocations(ctx, diskId);
+        }
     }
 
     for (const auto& diskId: args.NotifiedDisks) {

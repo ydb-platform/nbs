@@ -1276,6 +1276,7 @@ private:
         const TString& diskId);
 
     NProto::TError AddDevicesToPendingCleanup(
+        TDiskRegistryDatabase* db,
         const TString& diskId,
         TVector<TDeviceId> uuids);
 
