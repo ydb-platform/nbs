@@ -342,9 +342,13 @@ void DumpCompactionInfo(
     IOutputStream& out,
     const TIndexTabletState::TForcedOperationState& state)
 {
-    const auto* rangeOpState = std::get_if<TIndexTabletState::TForcedRangeOperationState>(&state);
+    const auto* rangeOpState =
+        std::get_if<TIndexTabletState::TForcedRangeOperationState>(&state);
     if (rangeOpState) {
-        DumpProgress(out, rangeOpState->Current, rangeOpState->RangesToCompact.size());
+        DumpProgress(
+            out,
+            rangeOpState->Current,
+            rangeOpState->RangesToCompact.size());
     }
 }
 

@@ -310,8 +310,8 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         std::move(msg->Ranges),
         std::move(msg->OperationId));
 
-
-    const auto* state = std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
+    const auto* state =
+        std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
     TABLET_VERIFY(state);
 
     std::unique_ptr<IActor> actor;
@@ -334,7 +334,8 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 *state,
                 std::move(requestInfo));
             break;
-        case TEvIndexTabletPrivate::EForcedRangeOperationMode::DeleteZeroCompactionRanges:
+        case TEvIndexTabletPrivate::EForcedRangeOperationMode::
+            DeleteZeroCompactionRanges:
             actor = std::make_unique<TDeleteRangesWithEmptyScoreActor>(
                 ctx.SelfID,
                 LogTag,
@@ -357,7 +358,8 @@ void TIndexTabletActor::HandleForcedRangeOperationCompleted(
 {
     auto* msg = ev->Get();
     TABLET_VERIFY(IsForcedOperationRunning());
-    const auto* state = std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
+    const auto* state =
+        std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
     TABLET_VERIFY(state);
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s ForcedRangeOperation mode=%u completed (%s)",

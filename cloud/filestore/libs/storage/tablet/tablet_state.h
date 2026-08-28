@@ -1513,7 +1513,8 @@ public:
         {}
     };
 
-    using TForcedOperationState = std::variant<TForcedRangeOperationState, TForcedTabletOperationState>;
+    using TForcedOperationState =
+        std::variant<TForcedRangeOperationState, TForcedTabletOperationState>;
 
 protected:
     struct TPendingForcedRangeOperation
@@ -1529,7 +1530,8 @@ protected:
         TString OperationId;
     };
 
-    using TPendingForcedOperation = std::variant<TPendingForcedRangeOperation, TPendingForcedTabletOperation>;
+    using TPendingForcedOperation = std::
+        variant<TPendingForcedRangeOperation, TPendingForcedTabletOperation>;
 
 private:
     TVector<TPendingForcedOperation> PendingForcedOperations;
@@ -1567,7 +1569,8 @@ public:
 
     void UpdateForcedRangeOperationProgress(ui32 current)
     {
-        auto* state = std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
+        auto* state =
+            std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
         TABLET_VERIFY(state);
         state->Current = Max(state->Current, current);
     }

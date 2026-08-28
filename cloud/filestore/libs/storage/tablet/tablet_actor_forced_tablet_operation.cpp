@@ -220,8 +220,9 @@ void TIndexTabletActor::HandleForcedTabletOperation(
     auto* msg = ev->Get();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedTabletOperation request",
-        LogTag.c_str());
+        "%s ForcedTabletOperation mode=%u request",
+        LogTag.c_str(),
+        msg->Mode);
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -276,12 +277,18 @@ void TIndexTabletActor::HandleForcedTabletOperationCompleted(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedTabletOperation completed (%s)",
-        LogTag.c_str(),
-        FormatError(msg->GetError()).c_str());
 
     TABLET_VERIFY(IsForcedOperationRunning());
+    const auto* state =
+        std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
+    TABLET_VERIFY(state);
+
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        "%s ForcedTabletOperation mode=%u completed (%s)",
+        LogTag.c_str(),
+        state->Mode,
+        FormatError(msg->GetError()).c_str());
+
     WorkerActors.erase(ev->Sender);
 
     CompleteForcedTabletOperation();

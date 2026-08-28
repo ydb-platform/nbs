@@ -1184,7 +1184,8 @@ TIndexTabletActor::ProcessForcedRangeOperationRequest(
     }
 
     if (e.GetCode() == S_OK && IsForcedOperationRunning()) {
-        const auto* state = std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
+        const auto* state =
+            std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
         if (state) {
             const auto currentMode = state->Mode;
             if (currentMode == mode) {
@@ -1249,7 +1250,8 @@ TIndexTabletActor::ProcessForcedTabletOperationRequest(
     }
 
     if (e.GetCode() == S_OK && IsForcedOperationRunning()) {
-        const auto* state = std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
+        const auto* state =
+            std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
         if (state) {
             const auto currentMode = state->Mode;
             if (currentMode == mode) {
@@ -1285,23 +1287,26 @@ void TIndexTabletActor::EnqueueForcedOperationIfNeeded(
         return;
     }
 
-    std::visit(TOverloaded{
-        [&](TPendingForcedRangeOperation& state) {
-            auto request =
-                    std::make_unique<TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
-                        std::move(state.Ranges),
-                        state.Mode,
-                        std::move(state.OperationId));
-            ctx.Send(ctx.SelfID, request.release());
-        },
-        [&](TPendingForcedTabletOperation& state) {
-            auto request =
-                    std::make_unique<TEvIndexTabletPrivate::TEvForcedTabletOperationRequest>(
-                        state.Mode,
-                        std::move(state.OperationId));
-            ctx.Send(ctx.SelfID, request.release());
-        }
-    }, *pendingRequest.Get());
+    std::visit(
+        TOverloaded{
+            [&](TPendingForcedRangeOperation& state)
+            {
+                auto request = std::make_unique<
+                    TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
+                    std::move(state.Ranges),
+                    state.Mode,
+                    std::move(state.OperationId));
+                ctx.Send(ctx.SelfID, request.release());
+            },
+            [&](TPendingForcedTabletOperation& state)
+            {
+                auto request = std::make_unique<
+                    TEvIndexTabletPrivate::TEvForcedTabletOperationRequest>(
+                    state.Mode,
+                    std::move(state.OperationId));
+                ctx.Send(ctx.SelfID, request.release());
+            }},
+        *pendingRequest.Get());
 }
 
 void TIndexTabletActor::HandleForcedOperationStatus(
@@ -1320,7 +1325,8 @@ void TIndexTabletActor::HandleForcedOperationStatus(
         if (rangeState) {
             response->Record.SetRangeCount(rangeState->RangesToCompact.size());
             response->Record.SetProcessedRangeCount(rangeState->Current);
-            response->Record.SetLastProcessedRangeId(rangeState->GetCurrentRange());
+            response->Record.SetLastProcessedRangeId(
+                rangeState->GetCurrentRange());
             response->Record.SetStatus(
                 rangeState->Current < rangeState->RangesToCompact.size()
                     ? TStatus::E_RUNNING
