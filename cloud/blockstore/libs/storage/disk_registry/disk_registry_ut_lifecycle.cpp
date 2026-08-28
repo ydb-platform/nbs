@@ -3508,8 +3508,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         runtime->DispatchEvents({}, 100ms);
 
-        diskRegistry.DeallocateDisk("vol", true);
-        diskRegistry.RecvDeallocateDiskResponse();
+        const auto deallocateResponse =
+            diskRegistry.RecvDeallocateDiskResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, deallocateResponse->GetStatus());
+
+        const auto backup = diskRegistry.BackupDiskRegistryState(
+            NProto::BDRSS_LOCAL_DB);
+        const auto& dirtyDevices =
+            backup->Record.GetLocalDBBackup().GetDirtyDevices();
+        const auto* dirtyDevice = FindIfPtr(
+            dirtyDevices,
+            [&] (const auto& x) {
+                return x.GetId() == deviceUuid;
+            });
+        UNIT_ASSERT(dirtyDevice);
+        UNIT_ASSERT_VALUES_EQUAL("", dirtyDevice->GetDiskId());
     }
 }
 
