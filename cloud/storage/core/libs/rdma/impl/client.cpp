@@ -867,13 +867,13 @@ void TClientEndpoint::CreateQP()
         ++BufferPoolGeneration;
         SendBuffers.Init(Verbs, Connection->pd, sendFlags);
         RecvBuffers.Init(Verbs, Connection->pd, recvFlags);
+
+        SendBuffer = SendBuffers.AcquireBuffer(
+            Config.SendQueueSize * sizeof(TRequestMessage), true);
+
+        RecvBuffer = RecvBuffers.AcquireBuffer(
+            Config.RecvQueueSize * sizeof(TResponseMessage), true);
     }
-
-    SendBuffer = SendBuffers.AcquireBuffer(
-        Config.SendQueueSize * sizeof(TRequestMessage), true);
-
-    RecvBuffer = RecvBuffers.AcquireBuffer(
-        Config.RecvQueueSize * sizeof(TResponseMessage), true);
 
     SendWrs.resize(Config.SendQueueSize);
     RecvWrs.resize(Config.RecvQueueSize);
