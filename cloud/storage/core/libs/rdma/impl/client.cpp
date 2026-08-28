@@ -841,10 +841,10 @@ void TClientEndpoint::CreateQP()
 
     if (Config.UseMemoryWindows) {
         if (Config.MemoryWindowsPoolSize == 0) {
-            Config.MemoryWindowsPoolSize = Config.SendQueueSize * 2;
+            Config.MemoryWindowsPoolSize = Config.RecvQueueSize * 2;
             RDMA_INFO(
                 "MemoryWindowsPoolSize is not configured, set to "
-                << "SendQueueSize * 2 = " << Config.MemoryWindowsPoolSize);
+                << "RecvQueueSize * 2 = " << Config.MemoryWindowsPoolSize);
         }
 
         MemoryWindows.Init(Verbs, Connection->pd, Config.MemoryWindowsPoolSize);
