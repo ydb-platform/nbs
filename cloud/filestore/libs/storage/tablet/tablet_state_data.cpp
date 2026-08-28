@@ -477,29 +477,23 @@ void TIndexTabletState::EnqueueCommitIdsToDelete(
         shouldDelete,
     TVector<ui64>& commitIdsToDelete)
 {
-    const auto& unconfirmed = Impl->UnconfirmedData;
-    for (const auto& [commitId, trackedData]: unconfirmed) {
-        if (!shouldDelete(commitId, trackedData)) {
-            continue;
-        }
-        if (!DeletionQueueEmplace(commitId)) {
-            continue;
-        }
+    auto process = [&](const auto& data)
+    {
+        for (const auto& [commitId, trackedData]: data) {
+            if (!shouldDelete(commitId, trackedData)) {
+                continue;
+            }
 
-        commitIdsToDelete.push_back(commitId);
-    }
+            if (!DeletionQueueEmplace(commitId)) {
+                continue;
+            }
 
-    const auto& unconfirmedInProgress = Impl->UnconfirmedDataInProgress;
-    for (const auto& [commitId, trackedData]: unconfirmedInProgress) {
-        if (!shouldDelete(commitId, trackedData)) {
-            continue;
+            commitIdsToDelete.push_back(commitId);
         }
-        if (!DeletionQueueEmplace(commitId)) {
-            continue;
-        }
+    };
 
-        commitIdsToDelete.push_back(commitId);
-    }
+    process(Impl->UnconfirmedData);
+    process(Impl->UnconfirmedDataInProgress);
 }
 
 size_t TIndexTabletState::GetUnconfirmedDataInProgressSize() const
