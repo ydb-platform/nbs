@@ -132,7 +132,7 @@ TEST(NaiveMirroredShardTest, CreatesFiles)
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -197,7 +197,7 @@ TEST(NaiveMirroredShardTest, ValidatesRequests)
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
 
     const ui32 mode = 0644;
     const ui32 expectedMode = S_IFREG | 0644;
@@ -266,7 +266,7 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -374,7 +374,7 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
 {
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -492,7 +492,7 @@ TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
 {
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -718,7 +718,7 @@ TEST(NaiveMirroredShardTest, UnalignedAppend)
 {
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -818,7 +818,7 @@ TEST(NaiveMirroredShardTest, DeallocatesPagesUponUnlink)
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
