@@ -101,7 +101,7 @@ void TStatsServiceActor::RegisterServiceVolumeCounters(
     if (!counters) {
         return;
     }
-    if (volume.ServiceVolumeCounters) {
+    if (volume.ServiceVolumeCountersRegistered) {
         return;
     }
 
@@ -110,10 +110,21 @@ void TStatsServiceActor::RegisterServiceVolumeCounters(
             ->GetSubgroup("component", "service_volume")
             ->GetSubgroup("host", "cluster");
 
-    volume.ServiceVolumeCounters =
-        RegisterChain(head, BuildVolumeChain(volume.VolumeInfo));
+    const auto chain = BuildVolumeChain(volume.VolumeInfo);
+    Y_ABORT_UNLESS(!chain.empty());
 
-    volume.PerfCounters.Register(volume.ServiceVolumeCounters);
+    if (!volume.ServiceVolumeCounters) {
+        volume.ServiceVolumeCounters = RegisterChain(head, chain);
+        volume.PerfCounters.Register(volume.ServiceVolumeCounters);
+    } else {
+        auto parent = head;
+        for (size_t i = 0; i + 1 < chain.size(); ++i) {
+            parent = parent->GetSubgroup(chain[i].first, chain[i].second);
+        }
+
+        const auto& [name, value] = chain.back();
+        parent->RegisterSubgroup(name, value, volume.ServiceVolumeCounters);
+    }
 
     NUserCounter::RegisterServiceVolume(
         *UserCounters,
@@ -122,6 +133,8 @@ void TStatsServiceActor::RegisterServiceVolumeCounters(
         volume.VolumeInfo.GetDiskId(),
         DiagnosticsConfig->GetHistogramCounterOptions(),
         volume.ServiceVolumeCounters);
+
+    volume.ServiceVolumeCountersRegistered = true;
 }
 
 void TStatsServiceActor::UnregisterServiceVolumeCounters(
@@ -132,6 +145,9 @@ void TStatsServiceActor::UnregisterServiceVolumeCounters(
         return;
     }
     if (!volume.ServiceVolumeCounters) {
+        return;
+    }
+    if (!volume.ServiceVolumeCountersRegistered) {
         return;
     }
 
@@ -148,7 +164,7 @@ void TStatsServiceActor::UnregisterServiceVolumeCounters(
         volume.VolumeInfo.GetFolderId(),
         volume.VolumeInfo.GetDiskId());
 
-    volume.ServiceVolumeCounters = nullptr;
+    volume.ServiceVolumeCountersRegistered = false;
 }
 
 void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)

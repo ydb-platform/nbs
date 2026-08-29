@@ -145,6 +145,8 @@ struct TVolumeStatsInfo
 
     bool IsLocalMount = false;
     NMonitoring::TDynamicCounters::TCounterPtr IsLocalMountCounter;
+
+    bool ServiceVolumeCountersRegistered = false;
     TIntrusivePtr<NMonitoring::TDynamicCounters> ServiceVolumeCounters;
 
     TDiskPerfData PerfCounters;
