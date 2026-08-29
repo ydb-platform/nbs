@@ -78,4 +78,7 @@ enum EFilestoreLimits
 
     // Maximum number of inodes.
     E_FS_LIMITS_INODES = -2; // 0xFFFFFFFE
+
+    // Maximum number of quotas per file system.
+    E_FS_LIMITS_QUOTAS = 1000;
 };

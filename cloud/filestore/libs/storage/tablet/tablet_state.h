@@ -1376,6 +1376,7 @@ public:
     void LoadQuotas(const TVector<NProto::TQuota>& quotas);
 
     TVector<NProto::TQuota> GetQuotas() const;
+    ui32 GetQuotaCount() const;
 
     const NProto::TQuota* FindQuota(ui32 quotaId) const;
 

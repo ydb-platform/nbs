@@ -16,6 +16,11 @@ TVector<NProto::TQuota> TIndexTabletState::GetQuotas() const
     return Impl->Quotas.GetQuotas();
 }
 
+ui32 TIndexTabletState::GetQuotaCount() const
+{
+    return Impl->Quotas.GetQuotaCount();
+}
+
 const NProto::TQuota* TIndexTabletState::FindQuota(ui32 quotaId) const
 {
     return Impl->Quotas.FindQuota(quotaId);
