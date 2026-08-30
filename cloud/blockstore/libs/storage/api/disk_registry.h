@@ -71,6 +71,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ResumeDevice,                   __VA_ARGS__)                           \
     xxx(QueryAgentsInfo,                __VA_ARGS__)                           \
     xxx(ListDiskStates,                 __VA_ARGS__)                           \
+    xxx(QueryKnownStorage,              __VA_ARGS__)                           \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE
 
 #define BLOCKSTORE_DISK_REGISTRY_REQUESTS(xxx, ...)                            \

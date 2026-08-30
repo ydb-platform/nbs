@@ -555,4 +555,14 @@ void TServiceClient::WaitForVolume(const TString& diskId)
     UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
 }
 
+std::unique_ptr<TEvService::TEvQueryKnownStorageRequest>
+CreateQueryKnownStorageRequest(const TVector<TString>& agentIds)
+{
+    auto request = std::make_unique<TEvService::TEvQueryKnownStorageRequest>();
+    request->Record.MutableAgentIds()->Assign(
+            agentIds.begin(),
+            agentIds.end());
+    return request;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

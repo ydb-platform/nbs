@@ -759,6 +759,22 @@ func (client *durableClient) ReleaseNVMeDevice(
 	return resp.(*protos.TReleaseNVMeDeviceResponse), err
 }
 
+func (client *durableClient) QueryKnownStorage(
+	ctx context.Context,
+	req *protos.TQueryKnownStorageRequest,
+) (*protos.TQueryKnownStorageResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.QueryKnownStorage(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TQueryKnownStorageResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type DurableClientOpts struct {
