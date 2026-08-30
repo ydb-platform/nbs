@@ -1253,6 +1253,21 @@ void TIndexTabletActor::HandleForcedOperation(
             break;
         }
 
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH: {
+            mode = EMode::Flush;
+            break;
+        }
+
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES: {
+            mode = EMode::FlushBytes;
+            break;
+        }
+
+        case NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE: {
+            mode = EMode::CollectGarbage;
+            break;
+        }
+
         default: {
             e = MakeError(E_ARGUMENT, "unsupported mode");
         }
@@ -1274,17 +1289,25 @@ void TIndexTabletActor::HandleForcedOperation(
     auto response = std::make_unique<TResponse>(std::move(e));
     if (code == S_OK) {
         TVector<ui32> ranges;
-        if (mode == EMode::DeleteZeroCompactionRanges) {
-            ranges = GenerateForceDeleteZeroCompactionRanges();
-        } else {
-            ranges = request.GetProcessAllRanges()
-                ? GetAllCompactionRanges()
-                : GetNonEmptyCompactionRanges();
+        if (mode == EMode::DeleteZeroCompactionRanges ||
+            mode == EMode::Compaction ||
+            mode == EMode::Cleanup)
+        {
+            if (mode == EMode::DeleteZeroCompactionRanges) {
+                ranges = GenerateForceDeleteZeroCompactionRanges();
+            } else {
+                ranges = request.GetProcessAllRanges()
+                    ? GetAllCompactionRanges()
+                    : GetNonEmptyCompactionRanges();
+            }
+            const auto* b =
+                LowerBound(ranges.begin(), ranges.end(), request.GetMinRangeId());
+            if (b != ranges.begin()) {
+                ranges.erase(ranges.begin(), b);
+            }
         }
-        const auto* b =
-            LowerBound(ranges.begin(), ranges.end(), request.GetMinRangeId());
-        if (b != ranges.begin()) {
-            ranges.erase(ranges.begin(), b);
+        else {
+            ranges.push_back(1);
         }
         response->Record.SetRangeCount(ranges.size());
         auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));

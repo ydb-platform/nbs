@@ -679,6 +679,9 @@ message TForcedOperationRequest
         E_COMPACTION = 0;
         E_CLEANUP = 1;
         E_DELETE_EMPTY_RANGES = 2;
+        E_FLUSH = 3;
+        E_FLUSH_BYTES = 4;
+        E_COLLECT_GARBAGE = 5;
     };
 
     // Optional request headers.

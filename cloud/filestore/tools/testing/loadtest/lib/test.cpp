@@ -10,6 +10,7 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -35,6 +36,8 @@
 #include <util/system/event.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
+
+#include <google/protobuf/util/json_util.h>
 
 #include <variant>
 
@@ -1149,9 +1152,14 @@ public:
             TargetFuture.GetValueSync();
         }
 
+
         if (Config.HasCreateFileStoreRequest() && !Config.GetKeepFileStore()) {
             auto filesystemId =
                 Config.GetCreateFileStoreRequest().GetFileSystemId();
+
+            //if (Config.HasGarbageValidationSpec()) {
+            ValidateGarbageCollection(filesystemId);
+            //}
 
             STORAGE_INFO(
                 "%s destroy fs %s",
@@ -1168,8 +1176,9 @@ public:
 
         Client->Stop();
 
+        // The future may already have exception set
         auto result = Result;
-        result.SetValue(SourceFuture.GetValueSync());
+        result.TrySetValue(SourceFuture.GetValueSync());
     }
 
     void* ThreadProc() override
@@ -1220,6 +1229,198 @@ private:
     const TString& MakeTestTag() const
     {
         return TestTag;
+    }
+
+    NProtoPrivate::TStorageStats GetStorageStats(const TString& filesystemId)
+    {
+        NProtoPrivate::TGetStorageStatsRequest request;
+        request.SetFileSystemId(filesystemId);
+        request.SetCacheTTL(0);
+        request.SetMode(NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+        NProtoPrivate::TGetStorageStatsResponse response;
+        ExecuteAction("getstoragestats", filesystemId, request, &response);
+        if (response.HasError()) {
+            STORAGE_ERROR("Failed to get storage stats");
+        }
+        return response.GetStats();
+    }
+
+    void ValidateStorageStats(const TString& filesystemId)
+    {
+        const auto& stats = GetStorageStats(filesystemId);
+        bool res = true;
+
+        TStringBuilder builder;
+        bool first = true;
+        auto check = [&](const char* name, auto value){
+            if (value != 0) {
+                if (first) {
+                    first = false;
+                } else {
+                    builder << ", ";
+                }
+                builder << name << "=" << value;
+            }
+            res &= (value == 0);
+        };
+
+#define CHECK_STAT(x) check(#x, stats.Get##x())
+        CHECK_STAT(FreshBlocksCount);
+        CHECK_STAT(FreshBytesItemCount);
+        CHECK_STAT(DeletedFreshBytesCount);
+        CHECK_STAT(DeletionMarkersCount);
+        CHECK_STAT(LargeDeletionMarkersCount);
+        CHECK_STAT(GarbageQueueSize);
+        CHECK_STAT(GarbageBlocksCount);
+        CHECK_STAT(UnconfirmedDataCount);
+#undef CHECK_STAT
+
+        if (! res) {
+            throw yexception() << "ValidateStorageStats failed: " << builder;
+        }
+
+        STORAGE_INFO("Storage GC stats validation passed");
+    }
+
+    void RunForcedOperation(const TString& filesystemId, NProtoPrivate::TForcedOperationRequest::EForcedOperationType type)
+    {
+        const auto& typeName = NProtoPrivate::TForcedOperationRequest::EForcedOperationType_Name(type);
+
+        NProtoPrivate::TForcedOperationRequest request;
+        request.SetFileSystemId(filesystemId);
+        request.SetOpType(type);
+        NProtoPrivate::TForcedOperationResponse response;
+        ExecuteAction("forcedoperation", filesystemId, request, &response);
+        if (response.HasError()) {
+            throw yexception() << "failed to start forced operation " << typeName;
+        }
+
+        while (true)
+        {
+            NProtoPrivate::TForcedOperationStatusRequest statusRequest;
+            statusRequest.SetFileSystemId(filesystemId);
+            statusRequest.SetOperationId(response.GetOperationId());
+            NProtoPrivate::TForcedOperationStatusResponse statusResponse;
+            ExecuteAction(
+                "forcedoperationstatus",
+                filesystemId,
+                statusRequest,
+                &statusResponse);
+
+            if (statusResponse.GetError().GetCode() == E_NOT_FOUND) {
+                // tablet rebooted
+                throw yexception() << typeName << ": operation not found (tablet rebooted?)";
+            }
+
+            if (response.HasError()) {
+                throw yexception() << typeName << ": failed to read op status";
+            }
+
+            const auto processed = statusResponse.GetProcessedRangeCount();
+            const auto total = statusResponse.GetRangeCount();
+            STORAGE_INFO(TStringBuilder() << typeName << " progress "
+                << processed << "/" << total << ", last="
+                << statusResponse.GetLastProcessedRangeId());
+            if (processed >= total) {
+                // operation completed
+                break;
+            }
+
+            Sleep(TDuration::Seconds(1));
+        }
+    }
+
+    template <typename TRequest, typename TResponse>
+    void ExecuteAction(
+        const TString& action,
+        const TString& filesystemId,
+        const TRequest& requestProto,
+        TResponse* responseProto)
+    {
+        TString input;
+        google::protobuf::util::MessageToJsonString(requestProto, &input);
+
+        auto request = std::make_shared<NProto::TExecuteActionRequest>();
+        request->SetAction(action);
+        request->SetInput(std::move(input));
+
+        const auto requestId = GetRequestId(*request);
+        auto result = Client->ExecuteAction(
+            MakeIntrusive<TCallContext>(filesystemId, requestId),
+            std::move(request)).GetValueSync();
+
+        if (HasError(result)) {
+            responseProto->MutableError()->CopyFrom(result.GetError());
+            return;
+        }
+
+        if (!google::protobuf::util::JsonStringToMessage(
+                 result.GetOutput(),
+                 responseProto)
+                 .ok())
+        {
+            responseProto->MutableError()->CopyFrom(MakeError(
+                E_BADMSG,
+                TStringBuilder() << "failed to parse response json: "
+                                 << result.GetOutput()));
+        }
+    }
+
+    void CreateCommit(const TString& filesystemId)
+    {
+        NProto::TSessionConfig proto;
+        proto.SetFileSystemId(filesystemId);
+        proto.SetClientId(
+            Config.GetClientId() ? Config.GetClientId() : "test-client");
+        proto.SetSessionPingTimeout(Config.GetSessionPingTimeout());
+
+        auto session = NClient::CreateSession(
+            Logging,
+            Timer,
+            Scheduler,
+            Client,
+            std::make_shared<TSessionConfig>(proto));
+
+        WaitForCompletion(
+            "create session",
+            session->CreateSession(false, SessionSeqNo));
+
+        auto request = std::make_shared<NProto::TCreateNodeRequest>();
+        request->SetNodeId(RootNodeId);
+        request->SetName("commit");
+        request->MutableFile()->SetMode(0777);
+
+        auto response = WaitForCompletion(
+            GetRequestName(*request),
+            session->CreateNode(
+                MakeIntrusive<TCallContext>(filesystemId),
+                request));
+
+        STORAGE_INFO(
+            "commit node created: nodeId=%lu",
+            response.GetNode().GetId());
+
+        WaitForCompletion(
+            "destroy session",
+            session->DestroySession());
+    }
+
+    void ValidateGarbageCollection(const TString& filesystemId)
+    {
+        STORAGE_INFO("Starting forced garbage collection");
+        try
+        {
+            RunForcedOperation(filesystemId, NProtoPrivate::TForcedOperationRequest::E_FLUSH);
+            RunForcedOperation(filesystemId, NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES);
+            RunForcedOperation(filesystemId, NProtoPrivate::TForcedOperationRequest::E_CLEANUP);
+            RunForcedOperation(filesystemId, NProtoPrivate::TForcedOperationRequest::E_COMPACTION);
+            CreateCommit(filesystemId);
+            RunForcedOperation(filesystemId, NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE);
+            ValidateStorageStats(filesystemId);
+        }
+        catch (...) {
+            Result.SetException(std::current_exception());
+        }
     }
 };
 

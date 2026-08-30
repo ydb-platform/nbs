@@ -609,6 +609,9 @@ struct TEvIndexTabletPrivate
         Compaction = 0,
         Cleanup = 1,
         DeleteZeroCompactionRanges = 2,
+        Flush = 3,
+        FlushBytes = 4,
+        CollectGarbage = 5,
     };
 
     struct TForcedRangeOperationRequest
