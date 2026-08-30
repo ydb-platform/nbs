@@ -864,7 +864,7 @@ void TClientEndpoint::CreateQP()
     }
 
     with_lock (AllocationLock) {
-        ++BufferPoolGeneration;
+        BufferPoolGeneration.fetch_add(1);
         SendBuffers.Init(Verbs, Connection->pd, sendFlags);
         RecvBuffers.Init(Verbs, Connection->pd, recvFlags);
 
@@ -2009,10 +2009,7 @@ bool TClientEndpoint::FlushHanging() const
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
 {
     with_lock (AllocationLock) {
-        const bool sameBufferPoolGeneration =
-            req->BufferPoolGeneration == BufferPoolGeneration.load();
-
-        if (!sameBufferPoolGeneration) {
+        if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
             // Late request destruction after reconnect: InBuffer/OutBuffer
             // were acquired eagerly in AllocateRequest() and belong to an
             // older pool generation, so they cannot be safely released via
