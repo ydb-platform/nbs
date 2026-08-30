@@ -1310,6 +1310,11 @@ void TClientEndpoint::AbortRequest(
     ui32 err,
     const TString& msg) noexcept
 {
+    // Bound memory windows prevent MR/PD deallocation.
+    // Destroying a memory window automatically invalidates it.
+    // This ensures that no remote write can succeed after this point.
+    // By destroying all memory windows, we ensure that subsequent
+    // resource deallocation (PD/MR) succeeds.
     if (req->InMemoryWindow) {
         req->InMemoryWindow.reset();
         Counters->ReleaseMemoryWindow();
