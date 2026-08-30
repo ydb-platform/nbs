@@ -68,6 +68,10 @@ message TRdmaServer
     // Sets the "min_rnr_timer" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 31].
     uint32 QpMinRnrTimer = 21;
+
+    // Largest request payload accepted inside the SEND message itself,
+    // skipping the RDMA_READ; receive slots grow by this value. 0 disables.
+    uint32 MaxEagerRequestBytes = 22;
 }
 
 message TRdmaClient
@@ -128,4 +132,8 @@ message TRdmaClient
     // Size of the memory windows pool. If not specified or 0, will be set to
     // RecvQueueSize * 2.
     uint32 MemoryWindowsPoolSize = 23;
+
+    // Largest request payload sent inside the SEND message itself; the
+    // effective limit is min(client, server). 0 disables eager transfer.
+    uint32 MaxEagerRequestBytes = 24;
 }

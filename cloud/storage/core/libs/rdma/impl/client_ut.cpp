@@ -224,7 +224,7 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
         connectCalled.store(true);
 
         TAcceptMessage acceptMsg{};
-        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION_2);
 
         NVerbs::EnqueueAcceptEvent(
             testContext,
@@ -535,7 +535,7 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
                         auto* responseMsg = reinterpret_cast<TResponseMessage*>(
                             re->sg_list[0].addr);
                         Zero(*responseMsg);
-                        InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
+                        InitMessageHeader(responseMsg, RDMA_PROTO_VERSION_2);
                         responseMsg->ReqId = testContext.ReqIds.front();
 
                         testContext.ReqIds.pop_front();
@@ -968,7 +968,7 @@ TEST(TRdmaClientTest, ShouldReconnect)
                     auto* responseMsg = reinterpret_cast<TResponseMessage*>(
                         re->sg_list[0].addr);
                     Zero(*responseMsg);
-                    InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
+                    InitMessageHeader(responseMsg, RDMA_PROTO_VERSION_2);
                     responseMsg->ReqId = testContext->ReqIds.front();
 
                     testContext->ReqIds.pop_front();
@@ -1087,7 +1087,7 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
                 // good id and opcode, success status, good message, but unknown request
                 if (wc->wr_id == recv[1]->wr_id) {
                     auto* msg = reinterpret_cast<TResponseMessage*>(recv[1]->sg_list[0].addr);
-                    InitMessageHeader(msg, RDMA_PROTO_VERSION);
+                    InitMessageHeader(msg, RDMA_PROTO_VERSION_2);
                     return;
                 }
                 // bad id, good opcode
@@ -1118,6 +1118,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
     auto monitoring = CreateMonitoringServiceStub();
     auto clientConfig = std::make_shared<TClientConfig>();
     clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxEagerRequestBytes = 4_KB;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1137,7 +1138,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
         acceptedConnectVersion = ParseMessageHeader(param->private_data);
 
         TAcceptMessage acceptMsg{};
-        InitMessageHeader(&acceptMsg, RDMA_PROTO_PREV_VERSION);
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION_1);
         NVerbs::EnqueueAcceptEvent(
             testContext,
             id,
@@ -1178,7 +1179,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
         MakeIntrusive<TCallContextBase>(0u));
 
     sent.Wait();
-    ASSERT_EQ(RDMA_PROTO_PREV_VERSION, sentVersion.load());
+    ASSERT_EQ(RDMA_PROTO_VERSION_1, sentVersion.load());
 }
 
 TEST(TRdmaClientTest, ShouldDisconnectOnUnsupportedProtocolVersionInAccept)
@@ -1238,6 +1239,7 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
     auto monitoring = CreateMonitoringServiceStub();
     auto clientConfig = std::make_shared<TClientConfig>();
     clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxEagerRequestBytes = 4_KB;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1292,7 +1294,194 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
     ASSERT_TRUE(endpoint);
 
     ASSERT_EQ(RDMA_PROTO_VERSION, firstConnectVersion.load());
-    ASSERT_EQ(RDMA_PROTO_PREV_VERSION, secondConnectVersion.load());
+    ASSERT_EQ(RDMA_PROTO_VERSION_1, secondConnectVersion.load());
+}
+
+TEST(TRdmaClientTest, ShouldSendEagerRequestsUpToNegotiatedLimit)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxResponseDelay = 4s;
+    clientConfig->MaxEagerRequestBytes = 32_KB;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    struct TSentRequest
+    {
+        int NumSge = 0;
+        ui32 HeaderLen = 0;
+        ui32 PayloadSgeLen = 0;
+        ui16 Flags = 0;
+        ui64 InAddress = 0;
+        ui32 InLength = 0;
+    };
+    TVector<TSentRequest> sentRequests;
+
+    testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        if (wr->opcode == IBV_WR_SEND) {
+            const auto* msg =
+                reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
+            sentRequests.push_back({
+                wr->num_sge,
+                wr->sg_list[0].length,
+                wr->num_sge > 1 ? wr->sg_list[1].length : 0,
+                SafeCast<ui16>(msg->Flags),
+                msg->In.Address,
+                msg->In.Length});
+        }
+        PostSend<TRequestMessage>(testContext, qp, wr);
+    };
+
+    auto respond = [&] {
+        while (true) {
+            with_lock (testContext->CompletionLock) {
+                if (testContext->RecvEvents && testContext->ReqIds) {
+                    auto* re = testContext->RecvEvents.front();
+                    auto* responseMsg = reinterpret_cast<TResponseMessage*>(
+                        re->sg_list[0].addr);
+                    Zero(*responseMsg);
+                    InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
+                    responseMsg->ReqId = testContext->ReqIds.front();
+
+                    testContext->ReqIds.pop_front();
+                    testContext->RecvEvents.pop_front();
+                    testContext->ProcessedRecvEvents.push_back(re);
+                    testContext->CompletionHandle.Set();
+                    break;
+                }
+            }
+        }
+    };
+
+    struct TCase
+    {
+        size_t RequestBytes;
+        bool Eager;
+    };
+    const TCase cases[] = {
+        {1024, true},
+        {32_KB, true},
+        {32_KB + 1, false},
+        {64_KB, false},
+    };
+
+    for (const auto& testCase: cases) {
+        TManualEvent ev;
+        bool received = false;
+
+        auto ctx = std::make_unique<TRequestContext>();
+        ctx->Handler = [&](TStringBuf, TStringBuf, ui32, size_t) {
+            received = true;
+            ev.Signal();
+        };
+
+        auto request = endpoint->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            std::move(ctx),
+            testCase.RequestBytes,
+            1024);
+        ASSERT_FALSE(HasError(request.GetError()));
+
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        respond();
+        ev.WaitT(clientConfig->MaxResponseDelay + 1s);
+        ASSERT_TRUE(received);
+
+        const auto& sent = sentRequests.back();
+        if (testCase.Eager) {
+            ASSERT_EQ(2, sent.NumSge);
+            ASSERT_EQ(sizeof(TRequestMessage), sent.HeaderLen);
+            ASSERT_EQ(RDMA_MSG_FLAG_EAGER, sent.Flags & RDMA_MSG_FLAG_EAGER);
+            ASSERT_EQ(0u, sent.InAddress);
+            ASSERT_EQ(sent.InLength, sent.PayloadSgeLen);
+            ASSERT_GE(sent.InLength, testCase.RequestBytes);
+            ASSERT_LE(sent.InLength, clientConfig->MaxEagerRequestBytes);
+        } else {
+            ASSERT_EQ(1, sent.NumSge);
+            ASSERT_EQ(0, sent.Flags & RDMA_MSG_FLAG_EAGER);
+            ASSERT_NE(0u, sent.InAddress);
+        }
+    }
+
+    ASSERT_EQ(std::size(cases), sentRequests.size());
+}
+
+TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionToServerVersionOnRejection)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxEagerRequestBytes = 4_KB;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    std::atomic<int> connectAttempts = 0;
+    std::atomic<int> firstConnectVersion = 0;
+    std::atomic<int> secondConnectVersion = 0;
+
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        const int version = ParseMessageHeader(param->private_data);
+        const int attempt = ++connectAttempts;
+
+        if (attempt == 1) {
+            firstConnectVersion = version;
+            TRejectMessage2 rejectMsg{};
+            InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION_2);
+            rejectMsg.Status = SafeCast<ui16>(RDMA_PROTO_INVALID_REQUEST);
+            NVerbs::EnqueueRejectEvent(
+                testContext,
+                id,
+                &rejectMsg,
+                sizeof(rejectMsg));
+            return;
+        }
+
+        if (attempt == 2) {
+            secondConnectVersion = version;
+        }
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg, version);
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    ASSERT_TRUE(endpoint);
+
+    ASSERT_EQ(RDMA_PROTO_VERSION, firstConnectVersion.load());
+    ASSERT_EQ(RDMA_PROTO_VERSION_2, secondConnectVersion.load());
 }
 
 TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
@@ -1337,7 +1526,7 @@ TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
             firstRecvQueueSize = SafeCast<ui16>(connectMsg->RecvQueueSize);
 
             TRejectMessage2 rejectMsg{};
-            InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION);
+            InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION_2);
             rejectMsg.Status = SafeCast<ui16>(RDMA_PROTO_CONFIG_MISMATCH);
             rejectMsg.SendQueueSize = ServerSendQueueSize;
             rejectMsg.RecvQueueSize = ServerRecvQueueSize;
@@ -1357,7 +1546,7 @@ TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
         }
 
         TAcceptMessage acceptMsg{};
-        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION_2);
         NVerbs::EnqueueAcceptEvent(
             testContext,
             id,
@@ -1515,7 +1704,7 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
                         auto* response = reinterpret_cast<TResponseMessage*>(
                             recv->sg_list[0].addr);
                         Zero(*response);
-                        InitMessageHeader(response, RDMA_PROTO_VERSION);
+                        InitMessageHeader(response, RDMA_PROTO_VERSION_2);
                         response->ReqId = testContext->ReqIds.front();
 
                         testContext->ReqIds.pop_front();

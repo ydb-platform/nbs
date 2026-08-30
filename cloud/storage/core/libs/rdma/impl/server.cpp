@@ -268,6 +268,7 @@ private:
     TEndpointCountersPtr Counters;
     TLog Log;
     const int NegotiatedProtocolVersion;
+    const ui32 NegotiatedEagerRequestBytes;
     size_t MaxInflightBytes;
 
     struct {
@@ -325,7 +326,8 @@ public:
         TServerConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
-        int protocolVersion);
+        int protocolVersion,
+        ui32 negotiatedEagerRequestBytes);
 
     ~TServerSession() override;
 
@@ -349,10 +351,11 @@ private:
     // called from CQ thread
     void HandleQueuedRequests() noexcept;
     void RecvRequest(TRecvWr* recv) noexcept;
-    void RecvRequestCompleted(TRecvWr* recv) noexcept;
+    void RecvRequestCompleted(TRecvWr* recv, ui32 byteLen) noexcept;
+    ui32 RecvSlotSize() const noexcept;
     void ReadRequestData(TRequestPtr req, TSendWr* send) noexcept;
     void ReadRequestDataCompleted(TSendWr* send) noexcept;
-    void ExecuteRequest(TRequestPtr req) noexcept;
+    void ExecuteRequest(TRequestPtr req, TStringBuf eagerIn) noexcept;
     void WriteResponseData(TRequestPtr req, TSendWr* send) noexcept;
     void WriteResponseDataCompleted(TSendWr* send) noexcept;
     void SendResponse(TRequestPtr req, TSendWr* send) noexcept;
@@ -376,7 +379,8 @@ TServerSession::TServerSession(
         TServerConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
-        int protocolVersion)
+        int protocolVersion,
+        ui32 negotiatedEagerRequestBytes)
     : Verbs(std::move(verbs))
     , Connection(std::move(connection))
     , CompletionPoller(completionPoller)
@@ -385,6 +389,7 @@ TServerSession::TServerSession(
     , Counters(std::move(stats))
     , Log(std::move(log))
     , NegotiatedProtocolVersion(protocolVersion)
+    , NegotiatedEagerRequestBytes(negotiatedEagerRequestBytes)
     , MaxInflightBytes(Config->MaxInflightBytes)
     , SendBuffers(Config->BufferPool)
     , RecvBuffers(Config->BufferPool)
@@ -450,8 +455,10 @@ void TServerSession::CreateQP()
         Config->SendQueueSize * sizeof(TResponseMessage),
         true);
 
+    // TODO(SRQ): move receive slots to a per-device shared receive queue so
+    // slot memory scales with traffic instead of connection count
     RecvBuffer = RecvBuffers.AcquireBuffer(
-        Config->RecvQueueSize * sizeof(TRequestMessage),
+        Config->RecvQueueSize * RecvSlotSize(),
         true);
 
     SendWrs.resize(Config->SendQueueSize);
@@ -483,11 +490,16 @@ void TServerSession::CreateQP()
 
         wr.sg_list[0].lkey = RecvBuffer.LKey;
         wr.sg_list[0].addr = requestMsg;
-        wr.sg_list[0].length = sizeof(TRequestMessage);
+        wr.sg_list[0].length = RecvSlotSize();
 
         RecvQueue.Push(&wr);
-        requestMsg += sizeof(TRequestMessage);
+        requestMsg += RecvSlotSize();
     }
+}
+
+ui32 TServerSession::RecvSlotSize() const noexcept
+{
+    return sizeof(TRequestMessage) + NegotiatedEagerRequestBytes;
 }
 
 TServerSession::~TServerSession()
@@ -746,7 +758,7 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc) noexcept
         case IBV_WC_RECV: {
             TRecvWr* recv = &RecvWrs[id.Index];
             RDMA_TRACE(recv << " completed");
-            RecvRequestCompleted(recv);
+            RecvRequestCompleted(recv, wc->byte_len);
             break;
         }
 
@@ -827,7 +839,7 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
     SendQueue.Push(send);
 }
 
-void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
+void TServerSession::RecvRequestCompleted(TRecvWr* recv, ui32 byteLen) noexcept
 {
     const auto* msg = recv->Message();
     const int version = ParseMessageHeader(msg);
@@ -900,6 +912,40 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
         RejectRequest(std::move(req), RDMA_PROTO_THROTTLED, "throttled");
         return;
     }
+
+    if (msg->Flags & RDMA_MSG_FLAG_EAGER) {
+        if (req->In.Length > NegotiatedEagerRequestBytes ||
+            byteLen != sizeof(TRequestMessage) + req->In.Length)
+        {
+            RDMA_ERROR(
+                recv << " malformed eager request: payload " << req->In.Length
+                     << "B (negotiated " << NegotiatedEagerRequestBytes
+                     << "B), completion " << byteLen << "B");
+
+            Counters->Error();
+            RecvRequest(recv);  // should always be posted
+            RejectRequest(
+                std::move(req),
+                RDMA_PROTO_INVALID_REQUEST,
+                "malformed eager request");
+            return;
+        }
+
+        MaxInflightBytes -= req->In.Length + req->Out.Length;
+
+        if (req->Out.Length) {
+            req->OutBuffer = SendBuffers.AcquireBuffer(req->Out.Length);
+        }
+
+        const TStringBuf eagerIn{
+            reinterpret_cast<const char*>(recv->Message() + 1),
+            req->In.Length};
+
+        // eagerIn aliases the receive slot, repost after the handler returns
+        ExecuteRequest(std::move(req), eagerIn);
+        RecvRequest(recv);
+        return;
+    }
     RecvRequest(recv);  // should always be posted
 
     MaxInflightBytes -= req->In.Length + req->Out.Length;
@@ -920,7 +966,7 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv) noexcept
             QueuedRequests.Enqueue(std::move(req));
         }
     } else {
-        ExecuteRequest(std::move(req));
+        ExecuteRequest(std::move(req), {});
     }
 }
 
@@ -1009,14 +1055,14 @@ void TServerSession::ReadRequestDataCompleted(TSendWr* send) noexcept
         req->CallContext->LWOrbit,
         req->CallContext->RequestId);
 
-    ExecuteRequest(std::move(req));
+    ExecuteRequest(std::move(req), {});
 }
 
-void TServerSession::ExecuteRequest(TRequestPtr req) noexcept
+void TServerSession::ExecuteRequest(TRequestPtr req, TStringBuf eagerIn) noexcept
 {
     req->State = ERequestState::ExecuteRequest;
 
-    TStringBuf in = {
+    TStringBuf in = eagerIn ? eagerIn : TStringBuf{
         reinterpret_cast<char*>(req->InBuffer.Address),
         req->In.Length,
     };
@@ -1606,7 +1652,8 @@ private:
     void Accept(
         TServerEndpoint* endpoint,
         rdma_cm_event* event,
-        int protocolVersion) noexcept;
+        int protocolVersion,
+        ui32 eagerBytes) noexcept;
     void HandleConnected(TServerSession* session) noexcept;
     void HandleDisconnected(TServerSession* session) noexcept;
     void Reject(rdma_cm_id* id, int status, int protocolVersion) noexcept;
@@ -1901,7 +1948,7 @@ void TServer::HandleConnectRequest(
     }
 
     const int protocolVersion = ParseMessageHeader(connectParams->private_data);
-    if (protocolVersion < RDMA_PROTO_PREV_VERSION ||
+    if (protocolVersion < RDMA_PROTO_MIN_VERSION ||
         protocolVersion > RDMA_PROTO_VERSION)
     {
         Reject(event->id, RDMA_PROTO_INVALID_REQUEST, RDMA_PROTO_VERSION);
@@ -1941,13 +1988,21 @@ void TServer::HandleConnectRequest(
         }
     }
 
-    Accept(endpoint, event, protocolVersion);
+    ui32 eagerBytes = 0;
+    if (protocolVersion >= RDMA_PROTO_VERSION_3) {
+        eagerBytes = Min<ui32>(
+            connectMsg->MaxEagerRequestBytes,
+            Config->MaxEagerRequestBytes);
+    }
+
+    Accept(endpoint, event, protocolVersion, eagerBytes);
 }
 
 void TServer::Accept(
     TServerEndpoint* endpoint,
     rdma_cm_event* event,
-    int protocolVersion) noexcept
+    int protocolVersion,
+    ui32 eagerBytes) noexcept
 {
     auto session = std::make_shared<TServerSession>(
         Verbs,
@@ -1957,7 +2012,8 @@ void TServer::Accept(
         Config,
         Counters,
         Log,
-        protocolVersion);
+        protocolVersion,
+        eagerBytes);
 
     try {
         session->CreateQP();
@@ -1965,6 +2021,7 @@ void TServer::Accept(
         TAcceptMessage acceptMsg = {
             .KeepAliveTimeout =
                 SafeCast<ui16>(Config->KeepAliveTimeout.MilliSeconds()),
+            .MaxEagerRequestBytes = eagerBytes,
         };
         InitMessageHeader(&acceptMsg, protocolVersion);
 
@@ -1982,7 +2039,11 @@ void TServer::Accept(
             Verbs->SetAckTimeout(event->id, Config->QpTimeout);
         }
 
-        RDMA_DEBUG("accept " << Verbs->GetPeer(event->id));
+        RDMA_INFO(
+            "accept " << Verbs->GetPeer(event->id) << " (protocol v"
+                      << protocolVersion << ", eager " << eagerBytes
+                      << "B, recv slots " << Config->RecvQueueSize << " x "
+                      << sizeof(TRequestMessage) + eagerBytes << "B)");
         Verbs->Accept(event->id, &acceptParams);
 
         // transfer session ownership to the poller
@@ -2025,7 +2086,7 @@ void TServer::Reject(rdma_cm_id* id, int status, int protocolVersion) noexcept
     std::variant<TRejectMessage, TRejectMessage2> rejectMsg;
     void* rejectMsgPtr = nullptr;
     size_t rejectMsgSize = 0;
-    if (protocolVersion == RDMA_PROTO_PREV_VERSION) {
+    if (protocolVersion == RDMA_PROTO_VERSION_1) {
         rejectMsg = TRejectMessage{
             .Status = SafeCast<ui16>(status),
             .QueueSize = SafeCast<ui16>(Config->SendQueueSize),
@@ -2078,7 +2139,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
     if (auto msg = recv->Message()) {
         if (auto ver = ParseMessageHeader(msg);
-            ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
+            ver >= RDMA_PROTO_MIN_VERSION && ver <= RDMA_PROTO_VERSION)
         {
             out << " [request=" << msg->ReqId << "]";
         }
