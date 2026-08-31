@@ -93,8 +93,7 @@ struct IVhostQueueFactory
         ui32 optimalIoSize,
         TVector<IVhostQueuePtr> queues,
         void* cookie,
-        const TVhostCallbacks& callbacks,
-        bool readOnly) = 0;
+        const TVhostCallbacks& callbacks) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

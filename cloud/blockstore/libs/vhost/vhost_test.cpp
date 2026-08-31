@@ -295,8 +295,7 @@ IVhostDevicePtr TTestVhostQueueFactory::CreateDevice(
     ui32 optimalIoSize,
     TVector<IVhostQueuePtr> queues,
     void* cookie,
-    const TVhostCallbacks& callbacks,
-    bool readOnly)
+    const TVhostCallbacks& callbacks)
 {
     Y_UNUSED(deviceName);
     Y_UNUSED(blockSize);
@@ -304,7 +303,6 @@ IVhostDevicePtr TTestVhostQueueFactory::CreateDevice(
     Y_UNUSED(discardEnabled);
     Y_UNUSED(writeZeroesEnabled);
     Y_UNUSED(callbacks);
-    Y_UNUSED(readOnly);
 
     Y_ABORT_UNLESS(!queues.empty());
     Y_ABORT_UNLESS(queues.size() <= queuesCount);
