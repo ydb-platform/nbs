@@ -38,10 +38,20 @@ struct TTestBackend: public IServerBackend
         std::function<TFuture<NProto::TWriteLogRecordResponse>(
             NProto::TWriteLogRecordRequest)>;
 
+    using TReadJournalTailFunc =
+        std::function<TFuture<NProto::TReadJournalTailResponse>(
+            NProto::TReadJournalTailRequest)>;
+
+    using TAdvanceLsnLowWatermarkFunc =
+        std::function<TFuture<NProto::TAdvanceLsnLowWatermarkResponse>(
+            NProto::TAdvanceLsnLowWatermarkRequest)>;
+
     TAcquireDevicesFunc AcquireDevicesImpl;
     TReleaseDevicesFunc ReleaseDevicesImpl;
     TReadPagesFunc ReadPagesImpl;
     TWriteLogRecordFunc WriteLogRecordImpl;
+    TReadJournalTailFunc ReadJournalTailImpl;
+    TAdvanceLsnLowWatermarkFunc AdvanceLsnLowWatermarkImpl;
 
     [[nodiscard]] auto AcquireDevices(
         TInstant now,
@@ -81,6 +91,26 @@ struct TTestBackend: public IServerBackend
         Y_UNUSED(now);
 
         return WriteLogRecordImpl(std::move(request));
+    }
+
+    [[nodiscard]] auto ReadJournalTail(
+        TInstant now,
+        NProto::TReadJournalTailRequest request)
+        -> TFuture<NProto::TReadJournalTailResponse> final
+    {
+        Y_UNUSED(now);
+
+        return ReadJournalTailImpl(std::move(request));
+    }
+
+    [[nodiscard]] auto AdvanceLsnLowWatermark(
+        TInstant now,
+        NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> final
+    {
+        Y_UNUSED(now);
+
+        return AdvanceLsnLowWatermarkImpl(std::move(request));
     }
 };
 

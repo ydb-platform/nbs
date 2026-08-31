@@ -347,6 +347,30 @@ public:
                 return {};
             });
     }
+
+    [[nodiscard]] auto ReadJournalTail(
+        TInstant now,
+        NCloud::NProto::TReadJournalTailRequest request)
+        -> TFuture<NCloud::NProto::TReadJournalTailResponse> final
+    {
+        // TODO(#6956): implement journal tail reading
+        Y_UNUSED(now, request);
+
+        return MakeFuture<NCloud::NProto::TReadJournalTailResponse>(
+            TErrorResponse(E_NOT_IMPLEMENTED, "ReadJournalTail"));
+    }
+
+    [[nodiscard]] auto AdvanceLsnLowWatermark(
+        TInstant now,
+        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> final
+    {
+        // TODO(#6956): implement lsn low watermark advancing
+        Y_UNUSED(now, request);
+
+        return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
+            TErrorResponse(E_NOT_IMPLEMENTED, "AdvanceLsnLowWatermark"));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

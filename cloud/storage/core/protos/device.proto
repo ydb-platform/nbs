@@ -146,6 +146,71 @@ message TWriteLogRecordResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Journal tail read request/response.
+
+message TJournalRecord
+{
+    // Pages written by this record.
+    repeated TDevicePageGroup PageGroups = 1;
+
+    // Log sequence number this record was written with.
+    uint64 LogSequenceNumber = 2;
+}
+
+message TReadJournalTailRequest
+{
+    // Headers.
+    TDeviceRequestHeaders Headers = 1;
+
+    // UUID of the device to read the journal from.
+    string DeviceUUID = 2;
+
+    // Only the records whose LogSequenceNumber is strictly greater than this
+    // value are returned.
+    uint64 AfterLogSequenceNumber = 3;
+
+    // Maximum number of records to return. Zero means "no limit".
+    uint32 MaxRecordCount = 4;
+}
+
+message TReadJournalTailResponse
+{
+    // Headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+
+    // The records still kept in the journal, ordered by LogSequenceNumber.
+    repeated TJournalRecord Records = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Lsn low watermark advance request/response.
+
+message TAdvanceLsnLowWatermarkRequest
+{
+    // Headers.
+    TDeviceRequestHeaders Headers = 1;
+
+    // UUID of the device whose watermark is being advanced.
+    string DeviceUUID = 2;
+
+    // The records with LogSequenceNumber below this value may be applied to
+    // their final locations and dropped from the journal.
+    uint64 LsnLowWatermark = 3;
+}
+
+message TAdvanceLsnLowWatermarkResponse
+{
+    // Headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Device protocol request/response wrappers.
 
 message TDeviceProtocolRequest
@@ -158,6 +223,8 @@ message TDeviceProtocolRequest
         TReleaseDevicesRequest ReleaseDevices = 3;
         TReadPagesRequest ReadPages = 4;
         TWriteLogRecordRequest WriteLogRecord = 5;
+        TReadJournalTailRequest ReadJournalTail = 6;
+        TAdvanceLsnLowWatermarkRequest AdvanceLsnLowWatermark = 7;
     }
 }
 
@@ -173,5 +240,7 @@ message TDeviceProtocolResponse
         TReleaseDevicesResponse ReleaseDevices = 4;
         TReadPagesResponse ReadPages = 5;
         TWriteLogRecordResponse WriteLogRecord = 6;
+        TReadJournalTailResponse ReadJournalTail = 7;
+        TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark = 8;
     }
 }
