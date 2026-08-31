@@ -16,6 +16,18 @@ FMT_JOB = Job.Config(
     ),
 )
 
+CODE_REVIEW_JOB = Job.Config(
+    name="Code Review",
+    runs_on=[RunnerLabels.SMALL_ARM_BEDROCK],
+    command=(
+        "python3 -I -m praktika review --provider bedrock-openai "
+        "--model global.openai.gpt-5.6-sol --reasoning-effort high "
+        "--prompt ./ci/prompts/code_review.md"
+    ),
+    allow_failure=True,
+    enable_gh_auth=True,
+)
+
 TEST_DIGEST = Job.CacheDigestConfig(
     include_paths=[
         "src",
@@ -74,5 +86,13 @@ PUBLISH_COVERAGE_REPORT_JOB = Job.Config(
     command="python3 ./ci/jobs/deploy_pages.py",
     requires=[COVERAGE_HTML_ARTIFACT.name],
     timeout=30 * 60,
+    enable_gh_auth=True,
+)
+
+REBUILD_CLICKHOUSE_PUBLIC_JOB = Job.Config(
+    name="Rebuild clickhouse-public",
+    runs_on=[RunnerLabels.SMALL_ARM],
+    command="python3 ./ci/jobs/rebuild_clickhouse_public.py",
+    timeout=15 * 60,
     enable_gh_auth=True,
 )

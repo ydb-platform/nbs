@@ -12,6 +12,8 @@ Source lives under `src/fibers/`. Data structures and utilities are in `src/util
 
 The active set is the affinity mask of the thread calling `initialize` (`sched_getaffinity`) intersected with `Options::cpuMask`, a `cpu_set_t` of allowed CPUs with every CPU set by default, admitting the whole affinity mask. A scheduler thread is started and pinned only on each active CPU, and the thread-mode worker pool is pinned to the set of active CPUs, so silk schedules no fiber on a CPU outside the active set (a proxy fiber is the caller's own thread and runs wherever that thread runs). This lets a user reserve CPUs for other activity - busy-loop pollers, for example - by clearing their bits in `cpuMask`.
 
+Within the active set, load concentrates on a processor prefix sized to demand - see the Processor Prefix section.
+
 `processorState` is sized to every configured CPU and indexed by raw CPU id, so a CPU left out of the active set keeps `number == kInvalidProcessorNumber` and owns no ring or ready queue. Work injected from a thread running on such a CPU (a reserved-core poller calling `run`, `schedule`, `sleep`, or IO) is redirected to a home active CPU: each configured CPU maps to itself when active, or to an active CPU chosen round-robin when not, so injection lands on a real ring and spreads across the active set instead of piling onto one. The redirect keys off the current CPU read fresh on every call, so a fiber that migrates mid-flight is always routed by the CPU it currently runs on.
 
 ---
@@ -30,7 +32,7 @@ Each iteration always runs both `handleReadyQueue` and `runServiceLoop`, regardl
 
 If the own CPU has nothing to do, `runStealLoop` is attempted next. If all three produce nothing, the thread enters the spin/sleep phase.
 
-When idle, `parkThread` calls `io_uring_enter2` with a `waitNs` timeout; cross-CPU wakeup is delivered by writing to an eventfd that is polled persistently in the ring (`IORING_POLL_ADD_MULTI`), producing a CQE that wakes `io_uring_enter2`.
+When idle, `parkThread` calls `io_uring_enter2` - with a `waitNs` timeout inside the processor prefix, with no timeout outside it; cross-CPU wakeup is delivered by writing to an eventfd that is polled persistently in the ring (`IORING_POLL_ADD_MULTI`), producing a CQE that wakes `io_uring_enter2`.
 
 ---
 
@@ -136,6 +138,10 @@ Each of `read`, `write`, and `poll` has two overloads: a blocking form that subm
 
 The underlying liburing helpers are `io_uring_register_buffers`, `io_uring_prep_read_fixed`, and `io_uring_prep_write_fixed`. `file-perf --fixed-buffers` exercises this path (see `docs/perf.md`).
 
+### Splice
+
+`splice` submits `IORING_OP_SPLICE` in the same blocking and async forms as `read` and `write`, and moves bytes between two descriptors entirely inside the kernel. As with `splice(2)` at least one of the two descriptors must be a pipe, and the offsets apply only to seekable files, so a caller relaying a stream between two sockets moves the bytes through an intermediate pipe: one splice from the source socket into the pipe, another from the pipe into the destination socket. Nothing is copied into user space, so the throughput of such a relay does not depend on any user-space buffer size; `bytesSpliced` of zero means the source reached end of input.
+
 ---
 
 ## Sleep Cancellation
@@ -152,12 +158,12 @@ An idle CPU can steal fibers from a neighbor's ready queue and claim a neighbor'
 
 ### Service Loop Claiming
 
-`runServiceLoop` processes io_uring CQEs (`handleCompletionQueue`), the sleep inbox (`handleSleepQueue`), cancellation requests (`handleCancelQueue`), and expired waiters (`handleExpiredWaiters`), then calls `enqueueWakeup` to arm the next sleep deadline. It is protected by `serviceLoopLock` so at most one thread runs the service loop for a given processor at a time.
+`runServiceLoop` processes io_uring CQEs (`handleCompletionQueue`), the sleep inbox (`handleSleepQueue`), cancellation requests (`handleCancelQueue`), and expired waiters (`handleExpiredWaiters`), then stamps the attendance heartbeat. It is protected by `serviceLoopLock` so at most one thread runs the service loop for a given processor at a time.
 
 - **Owner thread**: try-locks before running its own service loop. If a helper holds the lock, the owner skips it entirely - the helper is already doing the work.
 - **Helper thread**: try-locks the victim's lock; if it fails, moves to the next candidate.
 
-`enqueueWakeup` runs inside the locked section to eliminate a race where a helper could concurrently modify `sleepTree` while the owner armed the next deadline.
+There is no armed deadline to race: the owner caps its next park at the earliest `sleepTree` deadline, and every tree mutation republishes that deadline under the lock for the pre-park sweeps to read.
 
 `enqueueWakeup` is excluded from the `didWork` return value - it is preparation for sleeping, not productive work. Counting it would cause a spin loop.
 
@@ -196,11 +202,34 @@ The deadline is shared across all candidates and all fiber steals, bounding tota
 
 ### Idle Progression
 
-- `waitNs` starts at `INITIAL_WAIT_NS` (1 us) and doubles each idle iteration up to `MAX_WAIT_NS` (10 ms).
-- While `waitNs < SPIN_THRESHOLD_NS` (20 us): `spinWait()` runs 64 x `cpuPause()` iterations (~2 us) checking `hasWork()`.
-- Once `waitNs >= SPIN_THRESHOLD_NS`: `parkThread` calls `io_uring_enter2` with a `waitNs` timeout. The timed wait ensures sleeping CPUs wake periodically to attempt stealing even without an explicit wakeup.
+- `waitNs` starts at `Options::initialWaitNs` (1 us) and doubles each idle iteration up to `Options::maxWaitNs` (10 ms).
+- While `waitNs < Options::spinThresholdNs` (20 us): `spinWait` runs 64 x `cpuPause` iterations (~2 us) checking `hasWork`.
+- Once `waitNs >= Options::spinThresholdNs`: `parkThread` calls `io_uring_enter2` with a `waitNs` timeout. The timed wait ensures sleeping prefix processors wake periodically to attempt stealing even without an explicit wakeup.
+- A processor outside the prefix that has ramped to `Options::maxWaitNs` with no pending SQEs parks with no timeout - wakeups are doorbell-driven; the standby keeps the timed cadence instead (see Processor Prefix).
 
-Any productive iteration resets `waitNs` back to `INITIAL_WAIT_NS`.
+Any productive iteration resets `waitNs` back to `Options::initialWaitNs`.
+
+---
+
+## Processor Prefix
+
+**The scheduler runs on a processor prefix sized to load.** Processors are ordered whole cores first, HT siblings after; the prefix of that order is the awake set. Processors inside the prefix park timed (capped at `Options::maxWaitNs`) and steal from each other; processors outside park with no timeout and hold no work. The scheduler boots at full width and decays; a fully idle scheduler decays to one processor plus the standby poller - the width floors at one. The timed park is the only way parked neighbors learn about stealable backlog, so scoping it to the prefix removes the idle fleet's polling (each park pays kernel newidle balancing) and concentrates small loads on few cores, where every extra awake core inserts park/doorbell round trips into the commit path.
+
+**One time constant governs the width.** `Options::maxWaitNs` is the park backoff cap, the backlog age that grows the prefix, and the wait-outcome window that shrinks it. `Options::disableCpuAdjust` pins the width at full for static-width baselines.
+
+**The policy lives in `CpuController`.** Every grow and shrink decision routes through one gate; the scheduler embeds the controller (a per-processor `Window` of signals on each processor, the shared state on the scheduler) and executes the decisions it returns.
+
+**Growth: two doors, one gate.** A queue continuously non-empty for one window is the stall-regime door: a backlog observation stamps the queue, the owner clears the stamp whenever it drains empty - backlog consumed in time never grows anything - and a stamp that survives a full window asks to grow, paced to one processor per queue per window. A window whose dispatches pile up behind two others is the closed-loop door: a chain of dependent wakes touches empty between bursts and never ages the stamp, so its queueing shows as excess dispatch depth and votes to grow. Both doors pass the same gate - full width refuses, and growth paces to one processor per window fleet-wide, so steal traffic re-homes each new member's share before the next one can prove demand - and a granted grow starts the next processor and rings its ordinary doorbell. No work is assigned to it - its own steal loop finds the backlog cheapest-first.
+
+**Shrink: the rightmost processor extinguishes itself after three consecutive windows of wasted waits - never the first, so the width floors at one.** Only the rightmost meters its windows, and a recent growth vetoes the shed for four windows, so a freshly started member is not judged before steal traffic re-homes its share. Wait outcomes are the signal: a wait rewarded by arriving work - a spin or park cut short, or a park expiry whose drain finds due work - is demand; an expired spin or an empty park expiry is waste; a window whose waste outnumbers rewards eightfold reads as shrink-able. Loaded processors measure 3-4x waste whatever their CPU duty cycle, so IO-heavy load holds the width - utilization cannot make that distinction, which is why time-based signals breathe at the load boundary - and a busy processor never waits, produces no outcomes, and never shrinks. A ripening sleeper rewards each bounded park, so a processor hosting a periodic timer keeps its width. A pure-idle window - not one dispatch - sheds without the streak: there is no load to misread, only decay to finish. A shrunk processor keeps serving its sleep tree; its wakers migrate left, and the drained tree lets it park indefinitely.
+
+**The standby probes.** The first processor right of the prefix keeps timed parks - the only observer of backlog aging behind a prefix too busy to signal. Each growth appoints the new standby by doorbell (a sleeping processor never re-evaluates its role on its own); a standby that finds aged backlog wakes the next standby first and then activates itself into the prefix.
+
+**A pre-park sweep makes silence lossless.** Ready-queue work has a producer running scheduler code at arrival; ring work arrives from the kernel and sleep expiries from the clock, with no agent to signal. Each processor therefore publishes its attendance - a heartbeat stamped on every completed service pass, and its earliest sleep deadline - and before parking, a prefix processor scans its neighbors for aged ready backlog and for unattended work: a heartbeat stale for a full window while the ring holds completions or the published deadline is due, the signature of a thread held inside a long-running fiber or blocked outside the scheduler loop. A hit aborts the park and the steal loop takes the work; the aged-backlog rescue passes the same grow gate as every door, while the unattended rescue is unconditional. The sweep and the growth check are fence-ordered against each other, so either the sweeper sees the enqueue or the producer sees the shrunk prefix and grows it - no interleaving loses both. The park role is classified behind the same fence, so a grow either meets a fresh classification or rings the parked target, and an activating standby appoints the next poller before the width moves - the timed observer never lapses. A callback that blocks a scheduler thread fails loudly, so no park waits on a held thread.
+
+**Placement: a fiber migrates when its home cannot run it without a doorbell** - no home assigned yet, deactivated out of the prefix, or sleeping below full width while an awake prefix producer with an empty ready queue could run it with its data still warm; a producer holding queued work stops attracting, else wakes recentralize on the loaded member and undo every steal. The fiber lands on the producer when it is a prefix member, on the first processor otherwise. At full width placement stays sticky, and stealing is unchanged at every width. The `SchedulerThreadGrow` / `SchedulerThreadShrink` counters expose the controller.
+
+**Known limit.** At partial stall-heavy load the width still moves at the load boundary during warmup, and the run-to-run throughput spread across warmup-locked pipeline modes remains; a pinned width is unimodal, so the residual cost is the transitions, not the resting width.
 
 ---
 
@@ -213,7 +242,7 @@ Measurements on a 32-CPU x86 machine (Intel Xeon Platinum 8488C, 3.6 GHz, shared
 | Benchmark | Round-trip | Per switch |
 |---|---|---|
 | Raw `fcontext` (no scheduler) | ~6.5 ns | ~3.3 ns |
-| Scheduler yield (`yield()` -> re-schedule -> resume) | ~81 ns | ~40 ns |
+| Scheduler yield (`yield()` -> re-schedule -> resume) | ~165 ns | ~83 ns |
 
 The raw `fcontext` round-trip is two `jump_fcontext` calls with no other work. The scheduler yield round-trip goes fiber -> scheduler loop -> ready queue enqueue -> dequeue -> fiber, adding ready queue and state transition overhead.
 
@@ -223,15 +252,15 @@ The main thread schedules fibers via `run()`; completion is delivered through a 
 
 | N | Wall / iter | Throughput |
 |---|---|---|
-| 1 | ~11 µs | ~240k fibers/s |
-| 4 | ~710 ns | ~2.0M fibers/s |
-| 16 | ~360 ns | ~2.8M fibers/s |
-| 64 | ~390 ns | ~2.6M fibers/s |
-| 256 | ~390 ns | ~2.6M fibers/s |
+| 1 | ~4.2 µs | ~490k fibers/s |
+| 4 | ~970 ns | ~1.5M fibers/s |
+| 16 | ~430 ns | ~2.7M fibers/s |
+| 64 | ~330 ns | ~3.0M fibers/s |
+| 256 | ~330 ns | ~3.0M fibers/s |
 
-Throughput saturates at N=16. At saturation, wall time ~= CPU time (~360 ns): the main thread is never blocking. The bottleneck is its own join+schedule loop.
+Throughput saturates at N=64. At saturation, wall time ~= CPU time (~330 ns): the main thread is never blocking. The bottleneck is its own join+schedule loop.
 
-**Bottleneck breakdown (~360 ns at saturation):** pool and queue ops account for ~55 ns. The remaining ~305 ns is cache-line transfer overhead - each join+schedule cycle forces the main thread to reclaim ownership of lines last written by the stealing CPU (~65 ns per transfer, 4-6 transfers).
+**Bottleneck breakdown (~330 ns at saturation):** pool and queue ops account for ~55 ns. The remaining ~275 ns is cache-line transfer overhead - each join+schedule cycle forces the main thread to reclaim ownership of lines last written by the stealing CPU (~65 ns per transfer, 4-5 transfers).
 
 ### Fiber producer (FiberFuture)
 
@@ -239,18 +268,18 @@ The benchmark loop runs inside a driver fiber; child completion is delivered via
 
 | N | Spin | Work | Wall / iter | Speedup vs N=1 |
 |---|---|---|---|---|
-| 1 | 0 | 0 | ~350 ns | -- |
-| 16 | 0 | 0 | ~210 ns | ~1.7x |
-| 1 | 100 | ~3.5 us | ~1440 ns | -- |
-| 16 | 100 | ~3.5 us | ~820 ns | ~1.8x |
-| 1 | 1000 | ~35 us | ~12300 ns | -- |
-| 16 | 1000 | ~35 us | ~2800 ns | ~4.4x |
-| 1 | 10000 | ~350 us | ~121000 ns | -- |
-| 16 | 10000 | ~350 us | ~10900 ns | ~11x |
+| 1 | 0 | 0 | ~420 ns | -- |
+| 16 | 0 | 0 | ~310 ns | ~1.4x |
+| 1 | 100 | ~3.5 us | ~1640 ns | -- |
+| 16 | 100 | ~3.5 us | ~690 ns | ~2.4x |
+| 1 | 1000 | ~35 us | ~13200 ns | -- |
+| 16 | 1000 | ~35 us | ~2320 ns | ~5.7x |
+| 1 | 10000 | ~350 us | ~128000 ns | -- |
+| 16 | 10000 | ~350 us | ~11600 ns | ~11x |
 
-For no-op fibers, N=16 yields 1.7x — steal and scheduling overhead limits gains at small work. As fiber work grows, parallelism dominates: at ~350 us of work per fiber, 16 in-flight fibers run 11x faster than serial, close to linear scaling.
+For no-op fibers, N=16 yields 1.4x — steal and scheduling overhead limits gains at small work. As fiber work grows, parallelism dominates: at ~350 us of work per fiber, 16 in-flight fibers run 11x faster than serial, close to linear scaling. The wide points need a warmed-up scheduler: the first parallel burst after an idle period runs on a narrow prefix and pays the growth pacing of one processor per window, so short cold bursts measure the ramp, not the steady state.
 
-**Fiber producer advantage:** replacing `join` with `FiberFuture` eliminates the POSIX semaphore from the hot path. For no-op fibers at N=1, this gives ~30x lower latency (~350 ns vs ~11 us).
+**Fiber producer advantage:** replacing `join` with `FiberFuture` eliminates the POSIX semaphore from the hot path. For no-op fibers at N=1, this gives ~10x lower latency (~420 ns vs ~4.2 us).
 
 ### io_uring fiber ping-pong
 
@@ -258,9 +287,9 @@ Two fibers exchange bytes through a pipe, both using io_uring for IO. Each itera
 
 | Benchmark | Round-trip | Per io_uring op |
 |---|---|---|
-| `IoUringFiberPingPong` | ~7.6 µs | ~3.8 µs |
+| `IoUringFiberPingPong` | ~2.6 µs | ~1.3 µs |
 
-The ~3.8 µs per operation matches file-perf's 3-5 µs p50 at `numjobs=1 iodepth=1`. The TCP echo p50 of ~23 µs follows directly: 4 io_uring operations (server read, server write, client read, client write) x ~3.8 µs plus kernel TCP processing overhead.
+The ~1.3 µs per operation is the scheduler-side floor with both fibers concentrated on one processor by the prefix. The single-connection TCP echo p50 of ~9 µs follows: 4 io_uring operations (server read, server write, client read, client write) x ~1.3 µs plus kernel TCP processing overhead.
 
 ### Component costs
 
@@ -269,7 +298,7 @@ The ~3.8 µs per operation matches file-perf's 3-5 µs p50 at `numjobs=1 iodepth
 | `MemoryPool` alloc + free (single-thread) | ~5.5 ns |
 | `BoundedQueue` enqueue + dequeue (single-thread) | ~12 ns |
 | `sem_post` + `sem_wait` (same thread, fast path) | ~18 ns |
-| `sem_post` + `sem_wait` (cross-thread, blocking) | ~13 us |
+| `sem_post` + `sem_wait` (cross-thread, blocking) | ~5.2 us |
 | `eventfd_write` + `eventfd_read` (same thread) | ~315 ns |
-| `eventfd_write` + `eventfd_read` (cross-thread, blocking) | ~13 us |
+| `eventfd_write` + `eventfd_read` (cross-thread, blocking) | ~5.3 us |
 | Cache-line ownership round trip (2 transfers) | ~130 ns (~65 ns each) |

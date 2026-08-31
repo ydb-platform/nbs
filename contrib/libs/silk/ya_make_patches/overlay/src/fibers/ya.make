@@ -19,6 +19,7 @@ PEERDIR(
 
 SRCS(
     condvar.cpp
+    cpu-controller.cpp
     cpu.cpp
     fiber.cpp
     futex.cpp

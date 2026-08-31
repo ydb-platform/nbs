@@ -12,9 +12,9 @@
 #include <unistd.h>
 
 /**
- * On older sysroots we fall back to a minimal in-tree `struct rseq` matching
- * the kernel UAPI layout (cpu_id_start at offset 0, cpu_id at offset 4) and
- * alias `__rseq_offset` to librseq's `rseq_offset`, which librseq populates.
+ * On sysroots without sys/rseq.h we fall back to a minimal in-tree struct rseq
+ * matching the kernel UAPI layout (cpu_id_start at offset 0, cpu_id at offset 4)
+ * and declare the standard libc ABI symbol ourselves.
  */
 #if __has_include(<sys/rseq.h>)
 #    include <sys/rseq.h>
@@ -25,8 +25,7 @@ struct rseq
     uint32_t cpu_id_start;
     uint32_t cpu_id;
 };
-extern "C" ptrdiff_t rseq_offset;
-#    define __rseq_offset rseq_offset
+extern "C" ptrdiff_t __rseq_offset;
 #endif
 
 // librseq's public register API. Declared here (not via <rseq/rseq.h>) so
@@ -180,7 +179,8 @@ static inline uint16_t getCurrentProcessor() noexcept
 
     // glibc's sched_getcpu fast path is THREAD_GETMEM_VOLATILE(THREAD_SELF, rseq_area.cpu_id),
     // which is the same rseq read we do here. We skip the function call and the cpu_id >= 0
-    // fallback to vDSO/syscall -- safe on Linux 4.18+ / glibc 2.35+ where rseq is always registered.
+    // fallback to vDSO/syscall - safe on any libc implementing the glibc 2.35 rseq ABI, which
+    // registers the area for every thread before it runs; initialize asserts this at startup.
     struct rseq * rseq = reinterpret_cast<struct rseq *>(threadPointer + __rseq_offset);
     return static_cast<uint16_t>(rseq->cpu_id);
 }
@@ -219,6 +219,14 @@ static inline uint64_t getTimeNanoseconds() noexcept
     return static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000 + static_cast<uint64_t>(ts.tv_nsec);
 }
 
+/** Return the current wall-clock time as nanoseconds since the Unix epoch (CLOCK_REALTIME). */
+static inline uint64_t getRealTimeNanoseconds() noexcept
+{
+    struct timespec ts;
+    ::clock_gettime(CLOCK_REALTIME, &ts);
+    return static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000 + static_cast<uint64_t>(ts.tv_nsec);
+}
+
 /** 64-bit integer hash (Murmur3 fmix64 finalizer). */
 static constexpr uint64_t intHash(uint64_t key) noexcept
 {
@@ -230,14 +238,23 @@ static constexpr uint64_t intHash(uint64_t key) noexcept
     return key;
 }
 
+/** @{ Overloads dispatching on the actual return type of ::strerror_r: the GNU variant
+ * returns char *, the POSIX one returns int. Selecting by feature-test macros misfires
+ * on libcs that accept _GNU_SOURCE but only ship the POSIX variant. */
+[[maybe_unused]] static inline const char * strerrorResult(int r, char * buf) noexcept
+{
+    return r == 0 ? buf : nullptr;
+}
+[[maybe_unused]] static inline const char * strerrorResult(const char * r, char *) noexcept
+{
+    return r;
+}
+/** @} */
+
 /** Thread-safe strerror_r into a caller-provided buffer; may return nullptr for an unknown code. */
 static inline const char * strerror(int code, char * buf, size_t size) noexcept
 {
-#if defined(_GNU_SOURCE)
-    return ::strerror_r(code, buf, size);
-#else
-    return ::strerror_r(code, buf, size) == 0 ? buf : nullptr;
-#endif
+    return strerrorResult(::strerror_r(code, buf, size), buf);
 }
 
 } // namespace silk
