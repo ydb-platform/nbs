@@ -154,9 +154,9 @@ TString TShardBalancerBase::Describe() const
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError TShardBalancerRoundRobin::SelectShard(
-    ui64 hint,
     ui64 fileSize,
-    TString* shardId)
+    TString* shardId,
+    ui64 hint)
 {
     Y_UNUSED(hint);
 
@@ -172,9 +172,9 @@ NProto::TError TShardBalancerRoundRobin::SelectShard(
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError TShardBalancerRandom::SelectShard(
-    ui64 hint,
     ui64 fileSize,
-    TString* shardId)
+    TString* shardId,
+    ui64 hint)
 {
     Y_UNUSED(hint);
 
@@ -238,9 +238,9 @@ NProto::TError TShardBalancerWeightedRandom::Update(
 }
 
 NProto::TError TShardBalancerWeightedRandom::SelectShard(
-    ui64 hint,
     ui64 fileSize,
-    TString* shardId)
+    TString* shardId,
+    ui64 hint)
 {
     Y_UNUSED(hint);
 
@@ -427,9 +427,9 @@ void TShardBalancerWeightedDeterministic::SelectShard(TIterator& it)
 }
 
 NProto::TError TShardBalancerWeightedDeterministic::SelectShard(
-    ui64 hint,
     ui64 fileSize,
-    TString* shardId)
+    TString* shardId,
+    ui64 hint)
 {
     Y_UNUSED(fileSize);
 

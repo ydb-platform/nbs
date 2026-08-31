@@ -1573,8 +1573,12 @@ NProto::TError TIndexTabletState::SelectShard(
         balancer = Impl->FileShardBalancer.get();
     }
 
-    auto e =
-        balancer->SelectShard(ExtractShardNo(parentNodeId), fileSize, shardId);
+    // ShardNo is used as a hint to the shard balancer. The balancer uses this
+    // hint to calculate a set of shards for parentNodeId.
+    auto e = balancer->SelectShard(
+        fileSize,
+        shardId,
+        ExtractShardNo(parentNodeId) /*hint*/);
     if (HasError(e)) {
         return e;
     }
@@ -1631,11 +1635,11 @@ NProto::TError TIndexTabletState::UpdateShardBalancer(
 
 TString TIndexTabletState::DescribeShardBalancers() const
 {
-    TString ret = Impl->ShardBalancer->Describe();
+    TStringBuilder ret;
+    ret << Impl->ShardBalancer->Describe();
 
     if (Impl->FileShardBalancer) {
-        ret += " File shard balancer: ";
-        ret += Impl->FileShardBalancer->Describe();
+        ret << " File shard balancer: " << Impl->FileShardBalancer->Describe();
     }
 
     return ret;

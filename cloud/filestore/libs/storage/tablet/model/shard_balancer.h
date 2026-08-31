@@ -52,9 +52,9 @@ public:
         std::optional<ui64> desiredFreeSpaceReserve,
         std::optional<ui64> minFreeSpaceReserve) = 0;
     virtual NProto::TError SelectShard(
-        ui64 hint,
         ui64 fileSize,
-        TString* shardId) = 0;
+        TString* shardId,
+        ui64 hint) = 0;
 
     NProto::TError Update(const TVector<TShardStats>& stats)
     {
@@ -123,9 +123,9 @@ private:
 public:
     using TShardBalancerBase::TShardBalancerBase;
     NProto::TError SelectShard(
-        ui64 hint,
         ui64 fileSize,
-        TString* shardId) final;
+        TString* shardId,
+        ui64 hint) final;
 };
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -135,9 +135,9 @@ class TShardBalancerRandom: public TShardBalancerBase
 public:
     using TShardBalancerBase::TShardBalancerBase;
     NProto::TError SelectShard(
-        ui64 hint,
         ui64 fileSize,
-        TString* shardId) final;
+        TString* shardId,
+        ui64 hint) final;
 };
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -172,9 +172,9 @@ public:
         std::optional<ui64> minFreeSpaceReserve) final;
 
     NProto::TError SelectShard(
-        ui64 hint,
         ui64 fileSize,
-        TString* shardId) final;
+        TString* shardId,
+        ui64 hint) final;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -199,7 +199,6 @@ public:
 // x x 2 x x
 class TShardBalancerWeightedDeterministic: public TShardBalancerBase
 {
-public:
     static constexpr ui32 ScoreLevelsCount = 8;
     static constexpr ui32 MaxScore = ScoreLevelsCount - 1;
 
@@ -229,7 +228,7 @@ public:
             }
         }
 
-        ui64 Unwrap(ui64 coord)
+        ui64 Unwrap(ui64 coord) const
         {
             if (coord >= Left) {
                 return coord;
@@ -239,7 +238,7 @@ public:
         }
     };
 
-    const ui64 ShardsPerDirectoryCount;
+    const ui32 ShardsPerDirectoryCount;
 
     TVector<TIterator> Iterators;
 
@@ -273,9 +272,9 @@ public:
         std::optional<ui64> minFreeSpaceReserve) final;
 
     NProto::TError SelectShard(
-        ui64 hint,
         ui64 fileSize,
-        TString* shardId) final;
+        TString* shardId,
+        ui64 hint) final;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
