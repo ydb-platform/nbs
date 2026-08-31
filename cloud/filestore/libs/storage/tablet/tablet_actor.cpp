@@ -1141,19 +1141,19 @@ void TIndexTabletActor::HandleForcedOperation(
     using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
     std::unique_ptr<TResponse> response;
     switch (request.GetOpType()) {
-    case NProtoPrivate::TForcedOperationRequest::E_COMPACTION:
-    case NProtoPrivate::TForcedOperationRequest::E_CLEANUP:
-    case NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES:
-        response = ProcessForcedRangeOperationRequest(request, ctx);
-        break;
-    case NProtoPrivate::TForcedOperationRequest::E_FLUSH:
-    case NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES:
-    case NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE:
-        response = ProcessForcedTabletOperationRequest(request, ctx);
-        break;
-    default:
-        response = std::make_unique<TResponse>(
-            MakeError(E_ARGUMENT, "unsupported mode"));
+        case NProtoPrivate::TForcedOperationRequest::E_COMPACTION:
+        case NProtoPrivate::TForcedOperationRequest::E_CLEANUP:
+        case NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES:
+            response = ProcessForcedRangeOperationRequest(request, ctx);
+            break;
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH:
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES:
+        case NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE:
+            response = ProcessForcedTabletOperationRequest(request, ctx);
+            break;
+        default:
+            response = std::make_unique<TResponse>(
+                MakeError(E_ARGUMENT, "unsupported mode"));
     }
     NCloud::Reply(ctx, *ev, std::move(response));
 }
