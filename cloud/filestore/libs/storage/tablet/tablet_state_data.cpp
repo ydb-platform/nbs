@@ -1576,10 +1576,10 @@ void TIndexTabletState::CompleteForcedTabletOperation()
 auto TIndexTabletState::FindForcedOperation(
     const TString& operationId) const -> const TForcedOperationState*
 {
-    auto checkId = [operationId](const TForcedOperationState& state)
+    auto checkId = [&operationId](const TForcedOperationState& state)
     {
         return std::visit(
-            [operationId](const auto& state)
+            [&operationId](const auto& state)
             { return state.OperationId == operationId; },
             state);
     };

@@ -1296,7 +1296,7 @@ void TIndexTabletActor::EnqueueForcedOperationIfNeeded(
                     std::move(state.OperationId));
                 ctx.Send(ctx.SelfID, request.release());
             }},
-        *pendingRequest.Get());
+        *pendingRequest);
 }
 
 void TIndexTabletActor::HandleForcedOperationStatus(
