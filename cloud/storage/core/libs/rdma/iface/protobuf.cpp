@@ -198,8 +198,9 @@ TString SerializeError(ui32 code, TStringBuf message)
     TString result;
     result.resize(error.ByteSizeLong());
 
-    bool succeeded = error.SerializeToArray(result.Detach(), result.size());
-    Y_ENSURE(succeeded, "could not serialize protobuf message");
+    Y_ABORT_UNLESS(
+        error.SerializeToArray(result.Detach(), result.size()),
+        "could not serialize protobuf message");
 
     return result;
 }

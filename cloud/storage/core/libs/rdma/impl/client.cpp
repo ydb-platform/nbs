@@ -722,7 +722,6 @@ private:
     void InvalidateBuffers(TRequest* req) noexcept;
     void CompleteRequest(ui32 reqId) noexcept;
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
-    void RejectStaleGenerationRequest(TRequestPtr req) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
     bool PostSend(TRequest* req, TSendWr* send, ibv_send_wr* wr) noexcept;
     void HandleSendError(TSendWr* send) noexcept;
@@ -1049,12 +1048,6 @@ ui64 TClientEndpoint::SendRequest(
     auto clientReqId = GetNewReqId();
     req->ClientReqId = clientReqId;
 
-    if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
-        // Endpoint reconnected between AllocateRequest() and SendRequest()
-        RejectStaleGenerationRequest(std::move(req));
-        return clientReqId;
-    }
-
     if (!CheckState(EEndpointState::Connected)) {
         AbortRequest(std::move(req), E_RDMA_UNAVAILABLE, "endpoint is unavailable");
         return clientReqId;
@@ -1074,20 +1067,6 @@ ui64 TClientEndpoint::SendRequest(
     }
 
     return clientReqId;
-}
-
-void TClientEndpoint::RejectStaleGenerationRequest(TRequestPtr req) noexcept
-{
-    req->RequestBuffer = {};
-    req->ResponseBuffer = TStringBuf(
-        StaleGenerationError.data(),
-        StaleGenerationError.length());
-
-    auto* handler = req->Handler.get();
-    handler->HandleResponse(
-        std::move(req),
-        RDMA_PROTO_FAIL,
-        StaleGenerationError.length());
 }
 
 bool TClientEndpoint::HandleInputRequests() noexcept
@@ -1133,17 +1112,21 @@ void TClientEndpoint::HandleQueuedRequests() noexcept
 
         auto req = QueuedRequests.Dequeue();
         Y_ABORT_UNLESS(req);
-        Counters->RequestDequeued();
 
         if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
             // The caller's thread could have been preempted between the
-            // generation check in SendRequest() and InputRequests.Enqueue()
-            // for the whole duration of a reconnect cycle - req->InBuffer/
+            // state check in SendRequest() and InputRequests.Enqueue() for
+            // the whole duration of a reconnect cycle - req->InBuffer/
             // OutBuffer may already belong to a torn down pool generation.
             SendQueue.Push(send);
-            RejectStaleGenerationRequest(std::move(req));
+            AbortRequest(
+                std::move(req),
+                E_RDMA_UNAVAILABLE,
+                "buffer generation changed");
             continue;
         }
+
+        Counters->RequestDequeued();
 
         if (req->State != ERequestState::Enqueued) {
             RDMA_ERROR(
@@ -1355,10 +1338,21 @@ void TClientEndpoint::AbortRequest(
             break;
     }
 
-    auto len = SerializeError(
-        err,
-        msg,
-        static_cast<TStringBuf>(req->OutBuffer));
+    size_t len = 0;
+
+    if (req->BufferPoolGeneration == BufferPoolGeneration.load()) {
+        len = SerializeError(
+            err,
+            msg,
+            static_cast<TStringBuf>(req->OutBuffer));
+    } else {
+        // stale generation: OutBuffer belongs to a torn down pool, use the
+        // preallocated error instead
+        req->RequestBuffer = {};
+        req->ResponseBuffer = TStringBuf(
+            StaleGenerationError.data(), StaleGenerationError.length());
+        len = StaleGenerationError.length();
+    }
 
     auto* handler = req->Handler.get();
     handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, len);
