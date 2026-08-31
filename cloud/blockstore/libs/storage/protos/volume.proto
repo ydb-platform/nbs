@@ -530,6 +530,7 @@ enum ERebuildMetadataType
 {
     USED_BLOCKS = 0;
     BLOCK_COUNT = 1;
+    COMPACTION_MAP = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -545,6 +546,10 @@ message TRebuildMetadataRequest
     ERebuildMetadataType MetadataType = 3;
 
     uint32 BatchSize = 4;
+
+    // Disk-wide CPU budget in milliseconds per second for COMPACTION_MAP rebuilds.
+    // Zero disables throttling. Other rebuild types require zero.
+    uint64 AllowedCpuTimePerSecond = 5;
 }
 
 message TRebuildMetadataResponse

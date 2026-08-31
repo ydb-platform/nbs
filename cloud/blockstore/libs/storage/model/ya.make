@@ -6,6 +6,8 @@ GENERATE_ENUM_SERIALIZATION(channel_data_kind.h)
 
 PEERDIR(
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/storage/protos
+    cloud/storage/core/libs/common
     cloud/storage/core/libs/tablet/model
     contrib/ydb/library/actors/core
 )

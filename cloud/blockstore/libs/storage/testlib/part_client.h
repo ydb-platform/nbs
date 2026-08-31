@@ -250,7 +250,8 @@ public:
     std::unique_ptr<TEvVolume::TEvRebuildMetadataRequest>
     CreateRebuildMetadataRequest(
         NProto::ERebuildMetadataType type,
-        ui32 batchSize);
+        ui32 batchSize,
+        TDuration allowedCpuTimePerSecond = {});
 
     std::unique_ptr<TEvVolume::TEvGetRebuildMetadataStatusRequest>
     CreateGetRebuildMetadataStatusRequest();
