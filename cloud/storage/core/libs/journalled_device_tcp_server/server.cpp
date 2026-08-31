@@ -25,7 +25,9 @@ namespace {
     xxx(AcquireDevices, __VA_ARGS__)               \
     xxx(ReleaseDevices, __VA_ARGS__)               \
     xxx(ReadPages, __VA_ARGS__)                    \
-    xxx(WriteLogRecord, __VA_ARGS__)
+    xxx(WriteLogRecord, __VA_ARGS__)               \
+    xxx(ReadJournalTail, __VA_ARGS__)              \
+    xxx(AdvanceLsnLowWatermark, __VA_ARGS__)
 
 // STORAGE_JOURNALLED_DEVICE_SERVER
 
@@ -418,6 +420,16 @@ void TServer::HandleRequest(
         }
         case ERequestCase::kWriteLogRecord: {
             ProcessRequest<TWriteLogRecordMethod>(conn, std::move(request));
+            break;
+        }
+        case ERequestCase::kReadJournalTail: {
+            ProcessRequest<TReadJournalTailMethod>(conn, std::move(request));
+            break;
+        }
+        case ERequestCase::kAdvanceLsnLowWatermark: {
+            ProcessRequest<TAdvanceLsnLowWatermarkMethod>(
+                conn,
+                std::move(request));
             break;
         }
         default: {

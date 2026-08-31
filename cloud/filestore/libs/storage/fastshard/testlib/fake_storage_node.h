@@ -35,11 +35,17 @@ struct TFakeStorageNode: public IStorageNode
     TVector<NCloud::NProto::TReleaseDevicesRequest> ReleaseCalls;
     TVector<NCloud::NProto::TReadPagesRequest> ReadCalls;
     TVector<NCloud::NProto::TWriteLogRecordRequest> WriteCalls;
+    TVector<NCloud::NProto::TReadJournalTailRequest> ReadJournalTailCalls;
+    TVector<NCloud::NProto::TAdvanceLsnLowWatermarkRequest>
+        AdvanceLsnLowWatermarkCalls;
 
     NCloud::NProto::TAcquireDevicesResponse AcquireResp;
     NCloud::NProto::TReleaseDevicesResponse ReleaseResp;
     NCloud::NProto::TReadPagesResponse ReadResp;
     NCloud::NProto::TWriteLogRecordResponse WriteResp;
+    NCloud::NProto::TReadJournalTailResponse ReadJournalTailResp;
+    NCloud::NProto::TAdvanceLsnLowWatermarkResponse
+        AdvanceLsnLowWatermarkResp;
 
     TDeque<NCloud::NProto::TAcquireDevicesResponse> AcquireRespQueue;
     TDeque<NCloud::NProto::TReleaseDevicesResponse> ReleaseRespQueue;
@@ -57,6 +63,12 @@ struct TFakeStorageNode: public IStorageNode
 
     NCloud::NProto::TWriteLogRecordResponse WriteLogRecord(
         NCloud::NProto::TWriteLogRecordRequest request) override;
+
+    NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
+        NCloud::NProto::TReadJournalTailRequest request) override;
+
+    NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override;
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

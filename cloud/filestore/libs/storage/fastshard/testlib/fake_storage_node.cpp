@@ -58,4 +58,23 @@ NCloud::NProto::TWriteLogRecordResponse TFakeStorageNode::WriteLogRecord(
     }
 }
 
+NCloud::NProto::TReadJournalTailResponse TFakeStorageNode::ReadJournalTail(
+    NCloud::NProto::TReadJournalTailRequest request)
+{
+    with_lock (Lock) {
+        ReadJournalTailCalls.push_back(std::move(request));
+    }
+    return ReadJournalTailResp;
+}
+
+NCloud::NProto::TAdvanceLsnLowWatermarkResponse
+TFakeStorageNode::AdvanceLsnLowWatermark(
+    NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
+{
+    with_lock (Lock) {
+        AdvanceLsnLowWatermarkCalls.push_back(std::move(request));
+    }
+    return AdvanceLsnLowWatermarkResp;
+}
+
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
