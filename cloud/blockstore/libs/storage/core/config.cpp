@@ -732,6 +732,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MixedBlocksFilterRangesToLoadPerTx,         ui64,       100           )\
     xxx(MixedBlocksFilterAllowedCpuTimePerSecond,   TDuration,  MSeconds(10)  )\
     xxx(CheckpointAwareCleanupEnabled,              bool,       false         )\
+    xxx(MixedBlocksCountCompactionEnabledHDD,       bool,       false         )\
+    xxx(MixedBlocksCountCompactionEnabledSSD,       bool,       false         )\
+    xxx(MixedBlocksCountCompactionThresholdHDD,     ui32,       0             )\
+    xxx(MixedBlocksCountCompactionThresholdSSD,     ui32,       0             )\
+    xxx(SSDMaxMixedBlocksPerUnit,                   ui32,       0             )\
+    xxx(HDDMaxMixedBlocksPerUnit,                   ui32,       0             )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

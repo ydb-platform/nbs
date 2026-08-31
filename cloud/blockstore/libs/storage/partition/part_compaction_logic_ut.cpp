@@ -78,6 +78,7 @@ TPartitionState MakeState(size_t blockCount = 2048, bool mixedBlocksFilterEnable
         0,             // mixedIndexCacheSize
         10000,         // allocationUnit
         100,           // maxBlobsPerUnit
+        0,             // maxMixedBlocksPerUnit
         10,            // maxBlobsPerRange
         1,             // compactionRangeCountPerRun
         std::move(threadSafeState),

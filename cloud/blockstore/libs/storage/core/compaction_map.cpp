@@ -53,6 +53,26 @@ struct TCompactionMap::TImpl
         }
     };
 
+    struct TCompareByMixedBlockCount
+    {
+        template <typename T1, typename T2>
+        static bool Compare(const T1& l, const T2& r)
+        {
+            const auto maxMixedBlockCountL = GetMaxMixedBlockCount(l);
+            const auto maxMixedBlockCountR = GetMaxMixedBlockCount(r);
+            const auto usedBlockCountForRangeWithMaxMixedBlockCountL =
+                GetUsedBlockCountForRangeWithMaxMixedBlockCount(l);
+            const auto usedBlockCountForRangeWithMaxMixedBlockCountR =
+                GetUsedBlockCountForRangeWithMaxMixedBlockCount(r);
+            return std::tie(
+                       maxMixedBlockCountL,
+                       usedBlockCountForRangeWithMaxMixedBlockCountL) >
+                   std::tie(
+                       maxMixedBlockCountR,
+                       usedBlockCountForRangeWithMaxMixedBlockCountR);
+        }
+    };
+
     struct TGroupByBlockIndexNode
         : public TRbTreeItem<TGroupByBlockIndexNode, TCompareByBlockIndex>
     {};
@@ -75,17 +95,29 @@ struct TCompactionMap::TImpl
         >
     {};
 
+    struct TGroupByMixedBlockCountNode
+        : public TRbTreeItem<
+              TGroupByMixedBlockCountNode,
+              TCompareByMixedBlockCount>
+    {
+    };
+
     struct TGroupNode
         : public TIntrusiveListItem<TGroupNode>
         , public TGroupByBlockIndexNode
         , public TGroupByScoreNode
         , public TGroupByGarbageBlockCountNode
         , public TGroupByGarbageIgnoringZeroedNode
+        , public TGroupByMixedBlockCountNode
     {
         ui32 BlockIndex = 0;
         float Score = 0;
         ui16 GarbageBlockCount = 0;
         ui16 GarbageIgnoringZeroed = 0;
+
+        ui16 MaxMixedBlockCountInGroup = 0;
+        ui32 RangeWithMaxMixedBlockCount = 0;
+
         ui32 Range = 0;
 
         std::array<TRangeStat, GroupSize> Stats {};
@@ -98,6 +130,8 @@ struct TCompactionMap::TImpl
         TRbTree<TGroupByGarbageBlockCountNode, TCompareByGarbageBlockCount>;
     using TGroupByGarbageIgnoringZeroedTree =
         TRbTree<TGroupByGarbageIgnoringZeroedNode, TCompareByGarbageIgnoringZeroed>;
+    using TGroupByMixedBlockCountTree =
+        TRbTree<TGroupByMixedBlockCountNode, TCompareByMixedBlockCount>;
 
     const ui32 RangeSize;
     const ICompactionPolicyPtr Policy;
@@ -107,7 +141,9 @@ struct TCompactionMap::TImpl
     TGroupByScoreTree GroupByScore;
     TGroupByGarbageBlockCountTree GroupByGarbageBlockCount;
     TGroupByGarbageIgnoringZeroedTree GroupByGarbageIgnoringZeroed;
+    TGroupByMixedBlockCountTree GroupByMixedBlockCount;
     ui32 NonEmptyRangeCount = 0;
+    ui64 MixedBlocksCountPerDisk = 0;
 
     TImpl(ui32 rangeSize, ICompactionPolicyPtr policy)
         : RangeSize(rangeSize)
@@ -173,6 +209,15 @@ struct TCompactionMap::TImpl
         return nullptr;
     }
 
+    const TGroupNode* GetTopGroupByMixedBlockCount() const
+    {
+        if (!GroupByMixedBlockCount.Empty()) {
+            return static_cast<const TGroupNode*>(
+                &*GroupByMixedBlockCount.Begin());
+        }
+        return nullptr;
+    }
+
     void InitGroupScores(TGroupNode* group)
     {
         auto score = Policy->CalculateScore({}).Score;
@@ -220,6 +265,30 @@ struct TCompactionMap::TImpl
         }
     }
 
+    void RecalculateGroupMaxMixedBlockCount(TGroupNode* group)
+    {
+        group->MaxMixedBlockCountInGroup = 0;
+
+        for (ui32 i = 0; i < group->Stats.size(); ++i) {
+            const auto& stat = group->Stats[i];
+
+            const ui64 curMixedBlockCount = GetMaxMixedBlockCount(*group);
+            const ui64 curUsedBlockCount =
+                GetUsedBlockCountForRangeWithMaxMixedBlockCount(*group);
+
+            const ui64 rangeMixedBlockCount = stat.MixedBlockCount;
+            const ui64 rangeUsedBlockCount = stat.UsedBlockCount;
+
+            if (!stat.Compacted &&
+                std::tie(rangeMixedBlockCount, rangeUsedBlockCount) >
+                    std::tie(curMixedBlockCount, curUsedBlockCount))
+            {
+                group->MaxMixedBlockCountInGroup = stat.MixedBlockCount;
+                group->RangeWithMaxMixedBlockCount = i;
+            }
+        }
+    }
+
     TGroupNode* AddGroup(ui32 blockIndex)
     {
         const auto groupStart = GetGroupStart(blockIndex, RangeSize);
@@ -242,6 +311,7 @@ struct TCompactionMap::TImpl
         ui32 blockCount,
         ui32 usedBlockCount,
         ui32 newlyZeroedBlocks,
+        ui32 mixedBlockCount,
         bool compacted)
     {
         auto* group = AddGroup(blockIndex);
@@ -252,6 +322,7 @@ struct TCompactionMap::TImpl
                 || prev.BlockCount != blockCount
                 || prev.UsedBlockCount != usedBlockCount
                 || prev.NewlyZeroedBlocks != newlyZeroedBlocks
+                || prev.MixedBlockCount != mixedBlockCount
                 || prev.Compacted != compacted)
         {
             if (blobCount && !prev.BlobCount) {
@@ -269,6 +340,9 @@ struct TCompactionMap::TImpl
             UpdateCompactionCounter(
                 newlyZeroedBlocks,
                 &group->Stats[index].NewlyZeroedBlocks);
+            UpdateCompactionCounter(
+                mixedBlockCount,
+                &group->Stats[index].MixedBlockCount);
 
             if (compacted) {
                 group->Stats[index].ReadRequestCount = 0;
@@ -322,6 +396,40 @@ struct TCompactionMap::TImpl
                 // GarbageIgnoringZeroed block count.
                 RecalculateGroupGarbageIgnoringZeroed(group);
             }
+
+            const ui16 prevMixedBlockCount =
+                prev.Compacted ? 0 : prev.MixedBlockCount;
+            const ui16 prevUsedBlocks = prev.UsedBlockCount;
+
+            const ui16 newMixedBlockCount =
+                compacted ? 0 : group->Stats[index].MixedBlockCount;
+            const auto newUsedBlockCount = group->Stats[index].UsedBlockCount;
+
+            if (std::tie(prevMixedBlockCount, prevUsedBlocks) <=
+                std::tie(newMixedBlockCount, newUsedBlockCount))
+            {
+                const auto prevMaxMixedBlockCount =
+                    group->MaxMixedBlockCountInGroup;
+                const auto prevUsedBlockCountForMaxRange =
+                    group->Stats[group->RangeWithMaxMixedBlockCount]
+                        .UsedBlockCount;
+
+                if (std::tie(
+                        prevMaxMixedBlockCount,
+                        prevUsedBlockCountForMaxRange) <
+                    std::tie(newMixedBlockCount, newUsedBlockCount))
+                {
+                    group->MaxMixedBlockCountInGroup = newMixedBlockCount;
+                    group->RangeWithMaxMixedBlockCount = index;
+                }
+            } else if (index == group->RangeWithMaxMixedBlockCount) {
+                // The selected range's mixed/used block tuple decreased,
+                // so recalculate the group maximum.
+                RecalculateGroupMaxMixedBlockCount(group);
+            }
+
+            MixedBlocksCountPerDisk -= prev.MixedBlockCount;
+            MixedBlocksCountPerDisk += mixedBlockCount;
         }
 
         return group;
@@ -409,9 +517,33 @@ struct TCompactionMap::TImpl
         return static_cast<const TGroupNode&>(node).GarbageIgnoringZeroed;
     }
 
+    static ui16 GetMaxMixedBlockCount(ui16 maxMixedBlockCount)
+    {
+        return maxMixedBlockCount;
+    }
+
+    template <typename T>
+    static ui16 GetMaxMixedBlockCount(const T& node)
+    {
+        return static_cast<const TGroupNode&>(node)
+            .MaxMixedBlockCountInGroup;
+    }
+
+    template <typename T>
+    static ui16 GetUsedBlockCountForRangeWithMaxMixedBlockCount(const T& node)
+    {
+        const auto& group = static_cast<const TGroupNode&>(node);
+        return group.Stats[group.RangeWithMaxMixedBlockCount].UsedBlockCount;
+    }
+
     ui32 GetNonEmptyRangeCount() const
     {
         return NonEmptyRangeCount;
+    }
+
+    ui64 GetMixedBlocksCountPerDisk() const
+    {
+        return MixedBlocksCountPerDisk;
     }
 };
 
@@ -451,6 +583,7 @@ void TCompactionMap::Update(
             c.Stat.BlockCount,
             usedBlockCount,
             c.Stat.NewlyZeroedBlocks,
+            c.Stat.MixedBlockCount,
             c.Stat.BlobCount < 2   // compacted
         );
     }
@@ -461,6 +594,7 @@ void TCompactionMap::Update(
         Impl->GroupByScore.Insert(*group);
         Impl->GroupByGarbageBlockCount.Insert(*group);
         Impl->GroupByGarbageIgnoringZeroed.Insert(*group);
+        Impl->GroupByMixedBlockCount.Insert(*group);
     }
 }
 
@@ -470,6 +604,7 @@ void TCompactionMap::Update(
     ui32 blockCount,
     ui32 usedBlockCount,
     ui32 newlyZeroedBlocks,
+    ui32 mixedBlockCount,
     bool compacted)
 {
     auto* group = Impl->Update(
@@ -478,11 +613,13 @@ void TCompactionMap::Update(
         blockCount,
         usedBlockCount,
         newlyZeroedBlocks,
+        mixedBlockCount,
         compacted);
 
     Impl->GroupByScore.Insert(group);
     Impl->GroupByGarbageBlockCount.Insert(group);
     Impl->GroupByGarbageIgnoringZeroed.Insert(group);
+    Impl->GroupByMixedBlockCount.Insert(group);
 }
 
 void TCompactionMap::RegisterRead(ui32 blockIndex, ui32 blobCount, ui32 blockCount)
@@ -510,6 +647,8 @@ void TCompactionMap::Clear()
     Impl->GroupByScore.Clear();
     Impl->GroupByGarbageBlockCount.Clear();
     Impl->GroupByGarbageIgnoringZeroed.Clear();
+    Impl->GroupByMixedBlockCount.Clear();
+    Impl->MixedBlocksCountPerDisk = 0;
     Impl->Groups.Clear();
 }
 
@@ -582,6 +721,17 @@ TCompactionCounter TCompactionMap::GetTopByGarbageIgnoringZeroed() const
         return {group->BlockIndex + range * Impl->RangeSize, stat};
     }
 
+    return {0, {}};
+}
+
+TCompactionCounter TCompactionMap::GetTopByMixedBlockCount() const
+{
+    if (auto* group = Impl->GetTopGroupByMixedBlockCount()) {
+        return {
+            group->BlockIndex +
+                group->RangeWithMaxMixedBlockCount * Impl->RangeSize,
+            group->Stats[group->RangeWithMaxMixedBlockCount]};
+    }
     return {0, {}};
 }
 
@@ -666,6 +816,35 @@ TVector<TCompactionCounter> TCompactionMap::GetTopByGarbageIgnoringZeroed(
     return result;
 }
 
+TVector<TCompactionCounter> TCompactionMap::GetTopByMixedBlockCount(
+    size_t count) const
+{
+    TVector<TCompactionCounter> result(
+        Reserve(Impl->Groups.Size() * GroupSize));
+    for (const auto& group: Impl->Groups) {
+        for (ui32 i = 0; i < group.Stats.size(); ++i) {
+            if (group.Stats[i].BlobCount > 0) {
+                result.emplace_back(
+                    group.BlockIndex + (i * Impl->RangeSize),
+                    group.Stats[i]);
+            }
+        }
+    }
+    Sort(
+        result,
+        [](const auto& l, const auto& r)
+        {
+            if (l.Stat.Compacted != r.Stat.Compacted) {
+                return r.Stat.Compacted;
+            }
+
+            return std::tie(l.Stat.MixedBlockCount, l.Stat.UsedBlockCount) >
+                   std::tie(r.Stat.MixedBlockCount, r.Stat.UsedBlockCount);
+        });
+    result.crop(count);
+    return result;
+}
+
 TVector<ui32> TCompactionMap::GetNonEmptyRanges() const
 {
     TVector<ui32> result(Reserve(Impl->Groups.Size() * GroupSize));
@@ -684,6 +863,11 @@ TVector<ui32> TCompactionMap::GetNonEmptyRanges() const
 ui32 TCompactionMap::GetNonEmptyRangeCount() const
 {
     return Impl->GetNonEmptyRangeCount();
+}
+
+ui64 TCompactionMap::GetMixedBlocksCountPerDisk() const
+{
+    return Impl->GetMixedBlocksCountPerDisk();
 }
 
 ui32 TCompactionMap::GetRangeStart(ui32 blockIndex) const
