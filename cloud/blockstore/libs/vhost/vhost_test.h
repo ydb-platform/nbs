@@ -65,8 +65,7 @@ struct TTestVhostQueueFactory final
         ui32 optimalIoSize,
         TVector<IVhostQueuePtr> queues,
         void* cookie,
-        const TVhostCallbacks& callbacks,
-        bool readOnly) override;
+        const TVhostCallbacks& callbacks) override;
 };
 
 }   // namespace NCloud::NBlockStore::NVhost
