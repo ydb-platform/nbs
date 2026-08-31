@@ -19,7 +19,7 @@ bool TIndexTabletActor::PrepareTx_AddDataUnconfirmed(
 {
     Y_UNUSED(ctx);
 
-    if (!UnconfirmedDataInProgress.contains(args.CommitId)) {
+    if (!UnconfirmedDataInProgressContains(args.CommitId)) {
         ReportUnconfirmedDataNotInProgress(
             TStringBuilder()
             << "tabletId: " << TabletID() << ", commitId: " << args.CommitId);
@@ -34,7 +34,7 @@ bool TIndexTabletActor::PrepareTx_AddDataUnconfirmed(
         return true;
     }
 
-    if (DeletionQueue.contains(args.CommitId)) {
+    if (DeletionQueueContains(args.CommitId)) {
         args.RejectedByDeletion = true;
         args.Error = MakeError(E_REJECTED, "Already deleted");
         LOG_WARN(
@@ -59,7 +59,7 @@ void TIndexTabletActor::ExecuteTx_AddDataUnconfirmed(
 
     auto db = CreateIndexTabletDatabase(tx.DB);
 
-    auto& data = UnconfirmedDataInProgress[args.CommitId].Data;
+    auto& data = UnconfirmedDataInProgressByCommitId(args.CommitId).Data;
 
     data.SetNodeId(args.NodeId);
 
@@ -80,16 +80,14 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
     const TActorContext& ctx,
     TTxIndexTablet::TAddDataUnconfirmed& args)
 {
-    auto inProgressIt = UnconfirmedDataInProgress.find(args.CommitId);
-    TABLET_VERIFY(inProgressIt != UnconfirmedDataInProgress.end());
-
-    const ui64 requestBytes = inProgressIt->second.Data.GetLength();
+    auto& data = FindAndVerifyUnconfirmedDataInProgress(args.CommitId);
+    const ui64 requestBytes = data.Data.GetLength();
     const bool deletionInProgress =
-        args.RejectedByDeletion || DeletionQueue.contains(args.CommitId);
+        args.RejectedByDeletion || DeletionQueueContains(args.CommitId);
 
     Y_DEFER
     {
-        UnconfirmedDataInProgress.erase(inProgressIt);
+        EraseUnconfirmedDataInProgress(args.CommitId);
 
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),
@@ -133,9 +131,9 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
         // overtaken by later AddBlob TXs. The deferred reply will be triggered
         // in DeleteUnconfirmedData completion.
         if (!deletionInProgress) {
-            UnconfirmedData.emplace(
+            UnconfirmedDataEmplace(
                 args.CommitId,
-                std::move(inProgressIt->second));
+                std::move(data));
 
             // Check if ConfirmAddData was received while we were executing.
             auto pendingIt = PendingConfirmation.find(args.CommitId);

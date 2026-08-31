@@ -362,6 +362,11 @@ void TIndexTabletState::DumpStats(IOutputStream& os) const
     );
 }
 
+const TNodeToSessionCounters& TIndexTabletState::GetNodeToSessionCounters() const
+{
+    return Impl->NodeToSessionCounters;
+}
+
 TMiscNodeStats TIndexTabletState::GetMiscNodeStats() const
 {
     return {

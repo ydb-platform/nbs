@@ -193,7 +193,7 @@ STFUNC(TConfirmBlobsActor::StateWork)
 
 void TIndexTabletActor::ConfirmBlobs(const TActorContext& ctx)
 {
-    if (UnconfirmedData.empty()) {
+    if (GetUnconfirmedDataSize() == 0) {
         BlobsConfirmed(ctx);
         return;
     }
@@ -203,11 +203,12 @@ void TIndexTabletActor::ConfirmBlobs(const TActorContext& ctx)
         TFileStoreComponents::TABLET,
         "%s ConfirmBlobs: starting confirmation for %zu entries",
         LogTag.c_str(),
-        UnconfirmedData.size());
+        GetUnconfirmedDataSize());
 
     TVector<TBlobRequest> requests;
 
-    for (const auto& [_, entry]: UnconfirmedData) {
+    auto makeBlobRequests = [&](const ui64, const auto& entry)
+    {
         for (const auto& blobIdProto: entry.Data.GetBlobIds()) {
             auto blobId = LogoBlobIDFromLogoBlobID(blobIdProto);
             auto partialBlobId = TPartialBlobId(
@@ -223,7 +224,9 @@ void TIndexTabletActor::ConfirmBlobs(const TActorContext& ctx)
                 partialBlobId.Generation());
             requests.emplace_back(partialBlobId, proxy);
         }
-    }
+    };
+
+    ForEachUnconfirmedData(makeBlobRequests);
 
     // Should not have records without blob ids
     if (requests.empty()) {
@@ -233,9 +236,9 @@ void TIndexTabletActor::ConfirmBlobs(const TActorContext& ctx)
             "%s ConfirmBlobs: request list is empty for %zu unconfirmed "
             "entries",
             LogTag.c_str(),
-            UnconfirmedData.size());
+            GetUnconfirmedDataSize());
 
-        UnconfirmedData.clear();
+        UnconfirmedDataClear();
         BlobsConfirmed(ctx);
         return;
     }
@@ -291,15 +294,17 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
     TVector<ui64> unrecoverableCommitIds;
     TVector<ui64> recoverableCommitIds;
     unrecoverableCommitIds.reserve(unrecoverableCommitIdsSet.size());
-    recoverableCommitIds.reserve(UnconfirmedData.size());
+    recoverableCommitIds.reserve(GetUnconfirmedDataSize());
 
-    for (const auto& [commitId, _]: UnconfirmedData) {
+    auto getUnconfirmedCommitIds = [&] (ui64 commitId, const auto&) {
         if (unrecoverableCommitIdsSet.contains(commitId)) {
             unrecoverableCommitIds.push_back(commitId);
         } else {
             recoverableCommitIds.push_back(commitId);
         }
-    }
+    };
+
+    ForEachUnconfirmedData(getUnconfirmedCommitIds);
 
     if (!unrecoverableCommitIds.empty()) {
         // This Tx doesn't read from db and can't have page faults, so it's safe
@@ -334,9 +339,7 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
     Sort(recoverableCommitIds);
 
     for (const ui64 commitId: recoverableCommitIds) {
-        auto it = UnconfirmedData.find(commitId);
-        TABLET_VERIFY(it != UnconfirmedData.end());
-        const auto& data = it->second.Data;
+        const auto& data = FindAndVerifyUnconfirmedData(commitId).Data;
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitTabletProfileLogRequestInfo(
             profileLogRequest,

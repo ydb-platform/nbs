@@ -466,13 +466,12 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             unconfirmedData.GetLength(),
             GetBlockSize());
 
-        auto [inProgressIt, inserted] = UnconfirmedDataInProgress.emplace(
+        TABLET_VERIFY(UnconfirmedDataInProgressEmplace(
             commitId,
             TTrackedUnconfirmedData{
                 .Data = std::move(unconfirmedData),
                 .SessionId = GetSessionId(msg->Record),
-                .PipeServerId = ev->Recipient});
-        TABLET_VERIFY(inserted);
+                .PipeServerId = ev->Recipient}));
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitTabletProfileLogRequestInfo(

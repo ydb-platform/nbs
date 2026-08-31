@@ -373,7 +373,7 @@ void TIndexTabletState::LoadUnconfirmedData(
         AcquireCollectBarrier(entry.CommitId);
 
         // Skip session id. After restart we add all records to the index
-        UnconfirmedData[entry.CommitId] = {
+        Impl->UnconfirmedData[entry.CommitId] = {
             .Data = std::move(entry.Data)};
     }
 }
@@ -405,7 +405,7 @@ bool TIndexTabletState::HasDataOverlapWithUnconfirmed(
 
     // Intentionally without DataInProgress as we need it currently only for
     // recovery phase.
-    return hasDataOverlap(UnconfirmedData) || hasDataOverlap(ConfirmedData);
+    return hasDataOverlap(Impl->UnconfirmedData) || hasDataOverlap(ConfirmedData);
 }
 
 void TIndexTabletState::ActivateCacheReadBypass(
@@ -435,6 +435,141 @@ void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
 {
     UnconfirmedRecoveryReady = value;
     Impl->CacheReadBypass.SetUnconfirmedRecoveryReady(value);
+}
+
+bool TIndexTabletState::UnconfirmedDataInProgressContains(ui64 commitId) const
+{
+    return Impl->UnconfirmedDataInProgress.contains(commitId);
+}
+
+TTrackedUnconfirmedData& TIndexTabletState::UnconfirmedDataInProgressByCommitId(
+    ui64 commitId)
+{
+    return Impl->UnconfirmedDataInProgress[commitId];
+}
+
+TTrackedUnconfirmedData&
+TIndexTabletState::FindAndVerifyUnconfirmedDataInProgress(ui64 commitId)
+{
+    auto& map = Impl->UnconfirmedDataInProgress;
+    auto it = map.find(commitId);
+
+    TABLET_VERIFY(it != map.end());
+
+    return it->second;
+}
+
+void TIndexTabletState::EraseUnconfirmedDataInProgress(ui64 commitId)
+{
+    Impl->UnconfirmedDataInProgress.erase(commitId);
+}
+
+bool TIndexTabletState::UnconfirmedDataInProgressEmplace(
+    ui64 commitId,
+    TTrackedUnconfirmedData data)
+{
+    return Impl->UnconfirmedDataInProgress.emplace(commitId, std::move(data))
+        .second;
+}
+
+void TIndexTabletState::EnqueueCommitIdsToDelete(
+    const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
+        shouldDelete,
+    TVector<ui64>& commitIdsToDelete)
+{
+    auto process = [&](const auto& data)
+    {
+        for (const auto& [commitId, trackedData]: data) {
+            if (!shouldDelete(commitId, trackedData)) {
+                continue;
+            }
+
+            if (!DeletionQueueEmplace(commitId)) {
+                continue;
+            }
+
+            commitIdsToDelete.push_back(commitId);
+        }
+    };
+
+    process(Impl->UnconfirmedData);
+    process(Impl->UnconfirmedDataInProgress);
+}
+
+size_t TIndexTabletState::GetUnconfirmedDataInProgressSize() const
+{
+    return Impl->UnconfirmedDataInProgress.size();
+}
+
+bool TIndexTabletState::DeletionQueueContains(ui64 commitId) const
+{
+    return Impl->DeletionQueue.contains(commitId);
+}
+
+bool TIndexTabletState::DeletionQueueEmplace(ui64 commitId)
+{
+    return Impl->DeletionQueue.emplace(commitId).second;
+}
+
+void TIndexTabletState::DeletionQueueErase(ui64 commitId)
+{
+    Impl->DeletionQueue.erase(commitId);
+}
+
+bool TIndexTabletState::UnconfirmedDataEmplace(
+    ui64 commitId,
+    TTrackedUnconfirmedData data)
+{
+    return Impl->UnconfirmedData.emplace(commitId, std::move(data)).second;
+}
+
+bool TIndexTabletState::UnconfirmedDataContains(ui64 commitId) const
+{
+    return Impl->UnconfirmedData.contains(commitId);
+}
+
+const TTrackedUnconfirmedData* TIndexTabletState::FindUnconfirmedData(
+    ui64 commitId) const
+{
+    const auto& map = Impl->UnconfirmedData;
+
+    auto it = map.find(commitId);
+    return it == map.end() ? nullptr : &it->second;
+}
+
+TTrackedUnconfirmedData& TIndexTabletState::FindAndVerifyUnconfirmedData(
+    ui64 commitId)
+{
+    auto& map = Impl->UnconfirmedData;
+    auto it = map.find(commitId);
+
+    TABLET_VERIFY(it != map.end());
+
+    return it->second;
+}
+
+void TIndexTabletState::UnconfirmedDataErase(ui64 commitId)
+{
+    Impl->UnconfirmedData.erase(commitId);
+}
+
+size_t TIndexTabletState::GetUnconfirmedDataSize() const
+{
+    return Impl->UnconfirmedData.size();
+}
+
+void TIndexTabletState::ForEachUnconfirmedData(
+    const std::function<void(const ui64, const TTrackedUnconfirmedData&)>&
+        visitor) const
+{
+    for (const auto& [key, entry]: Impl->UnconfirmedData) {
+        visitor(key, entry);
+    }
+}
+
+void TIndexTabletState::UnconfirmedDataClear()
+{
+    Impl->UnconfirmedData.clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

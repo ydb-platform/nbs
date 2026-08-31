@@ -233,7 +233,6 @@ private:
     NProto::TFileSystem FileSystem;
     NProto::TFileSystemStats FileSystemStats;
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
-    TNodeToSessionCounters NodeToSessionCounters;
     ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
     /*const*/ ui32 TruncateBlocksThreshold = 0;
@@ -255,10 +254,6 @@ private:
 protected:
     TString LogTag;
 
-    // Data for which internal AddDataUnconfirmed tx is still executing.
-    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedDataInProgress;
-    // Data written to local db but not yet confirmed/indexed
-    THashMap<ui64, TTrackedUnconfirmedData> UnconfirmedData;
     // Data confirmed but not yet added to index
     THashMap<ui64, TTrackedUnconfirmedData> ConfirmedData;
 
@@ -267,9 +262,6 @@ protected:
     // is ever in flight up to SafePoint and page faults cannot reorder TXes
     TDeque<ui64> RecoveredDataToConfirm;
 
-    // CommitIds scheduled for unconfirmed-data deletion and waiting for
-    // completion.
-    THashSet<ui64> DeletionQueue;
     // ConfirmAddData requests that arrived before internal AddData completed.
     // Used for all requests until (#5353)
     THashMap<ui64, TVector<TPendingConfirmAddData>> PendingConfirmation;
@@ -280,6 +272,35 @@ protected:
 
 protected:
     void SetUnconfirmedRecoveryReady(bool value);
+
+    bool UnconfirmedDataInProgressContains(ui64 commitId) const;
+    TTrackedUnconfirmedData& UnconfirmedDataInProgressByCommitId(ui64 commitId);
+    TTrackedUnconfirmedData& FindAndVerifyUnconfirmedDataInProgress(
+        ui64 commitId);
+    void EraseUnconfirmedDataInProgress(ui64 commitId);
+    bool UnconfirmedDataInProgressEmplace(
+        ui64 commitId,
+        TTrackedUnconfirmedData data);
+    void EnqueueCommitIdsToDelete(
+        const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
+            shouldDelete,
+        TVector<ui64>& commitIdsToDelete);
+    size_t GetUnconfirmedDataInProgressSize() const;
+
+    bool DeletionQueueContains(ui64 commitId) const;
+    bool DeletionQueueEmplace(ui64 commitId);
+    void DeletionQueueErase(ui64 commitId);
+
+    bool UnconfirmedDataEmplace(ui64 commitId, TTrackedUnconfirmedData data);
+    void UnconfirmedDataErase(ui64 commitId);
+    bool UnconfirmedDataContains(ui64 commitId) const;
+    void UnconfirmedDataClear();
+    size_t GetUnconfirmedDataSize() const;
+    const TTrackedUnconfirmedData* FindUnconfirmedData(ui64 commitId) const;
+    TTrackedUnconfirmedData& FindAndVerifyUnconfirmedData(ui64 commitId);
+    void ForEachUnconfirmedData(
+        const std::function<void(const ui64, const TTrackedUnconfirmedData&)>&
+            visitor) const;
 
 public:
     TIndexTabletState();
@@ -429,10 +450,7 @@ public:
         );
     }
 
-    const TNodeToSessionCounters& GetNodeToSessionCounters() const
-    {
-        return NodeToSessionCounters;
-    }
+    const TNodeToSessionCounters& GetNodeToSessionCounters() const;
 
     bool UpdateLatencyStats(
         ui64 nodeId,
