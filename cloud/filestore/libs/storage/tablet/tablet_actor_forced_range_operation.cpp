@@ -345,9 +345,6 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 *state,
                 std::move(requestInfo));
             break;
-
-        default:
-            TABLET_VERIFY_C(false, "unexpected forced compaction mode");
     }
 
     auto actorId = ctx.Register(actor.release());

@@ -264,8 +264,6 @@ void TIndexTabletActor::HandleForcedTabletOperation(
                     Config->GetCompactionRetryTimeout(),
                     std::move(requestInfo));
             break;
-        default:
-            TABLET_VERIFY_C(false, "unexpected forced tablet operation mode");
     }
 
     auto actorId = ctx.Register(actor.release());

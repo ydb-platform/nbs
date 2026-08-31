@@ -1519,14 +1519,16 @@ public:
 protected:
     struct TPendingForcedRangeOperation
     {
-        TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
+        TEvIndexTabletPrivate::EForcedRangeOperationMode Mode =
+            TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
         TVector<ui32> Ranges;
         TString OperationId;
     };
 
     struct TPendingForcedTabletOperation
     {
-        TEvIndexTabletPrivate::EForcedTabletOperationMode Mode;
+        TEvIndexTabletPrivate::EForcedTabletOperationMode Mode =
+            TEvIndexTabletPrivate::EForcedTabletOperationMode::Flush;
         TString OperationId;
     };
 
@@ -1565,7 +1567,7 @@ public:
     }
 
     // TODO: FindForcedOperation does not perform lookup in pending
-    // requests queue
+    // requests queue (https://github.com/ydb-platform/nbs/issues/6977)
     const TForcedOperationState* FindForcedOperation(
         const TString& operationId) const;
 
