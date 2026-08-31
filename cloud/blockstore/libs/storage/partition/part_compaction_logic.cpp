@@ -672,6 +672,7 @@ void ApplyBlobsSkipping(
         args.BlocksSkipped += skippedBlockCount;
 
         auto* ab = args.AffectedBlobs.FindPtr(blobId);
+        Y_ABORT_UNLESS(ab);
         if (ab->IndexKind == EChannelDataKind::Mixed) {
             args.MixedBlocksSkipped += skippedBlockCount;
         }

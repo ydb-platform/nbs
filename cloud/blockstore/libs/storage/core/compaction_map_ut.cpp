@@ -509,7 +509,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldPrioritizeMixedBlocksPastUsedBlocksThreshold)
+    Y_UNIT_TEST(ShouldFilterRangesBelowUsedBlocksThreshold)
     {
         TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 50));
 
@@ -527,10 +527,9 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
         {
             const auto tops = map.GetTopByMixedBlockCount(3);
-            UNIT_ASSERT_VALUES_EQUAL(3, tops.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, tops.size());
             UNIT_ASSERT_VALUES_EQUAL(range1, tops[0].BlockIndex);
             UNIT_ASSERT_VALUES_EQUAL(range2, tops[1].BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(range0, tops[2].BlockIndex);
         }
 
         map.Update(range2, 3, 100, 60, 0, 25, false);
@@ -543,10 +542,12 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             range1,
             map.GetTopByMixedBlockCount().BlockIndex);
 
-        map.Update(range1, 3, 100, 40, 0, 20, false);
-        UNIT_ASSERT_VALUES_EQUAL(
-            range0,
-            map.GetTopByMixedBlockCount().BlockIndex);
+        map.Update(range1, 3, 100, 50, 0, 0, false);
+
+        const auto top = map.GetTopByMixedBlockCount();
+        UNIT_ASSERT_VALUES_EQUAL(0, top.Stat.MixedBlockCount);
+        UNIT_ASSERT(map.GetTopByMixedBlockCount(1).empty());
+        UNIT_ASSERT(map.GetTopByMixedBlockCount(2).empty());
     }
 
     Y_UNIT_TEST(ShouldBeEmptyAfterClear)
