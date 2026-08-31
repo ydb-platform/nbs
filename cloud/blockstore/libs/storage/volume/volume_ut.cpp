@@ -10419,7 +10419,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoShouldRejectRequestsWhenVolumeIsKilled(true, true);
     }
 
-    void DoShouldRejectDuplicateWriteBlocksLocalWhenVolumeIsKilled(bool rebootSysTablet) {
+    void DoShouldRejectDuplicateWriteBlocksLocalWhenVolumeIsKilled(bool rebootSysTablet)
+    {
         NProto::TStorageServiceConfig config;
         config.SetOverlappingRequestsPolicy(NProto::EOverlappingRequestsPolicy::ORP_ENABLE);
 
