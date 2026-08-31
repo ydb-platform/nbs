@@ -4663,40 +4663,37 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TVector<std::unique_ptr<IEventHandle>> scheduledRequests;
         std::unique_ptr<IEventHandle> flushBytesRequest;
 
-        env.GetRuntime().SetEventFilter(
-            [&](auto& runtime, auto& event)
-            {
-                Y_UNUSED(runtime);
+        auto filter = [&](auto& runtime, auto& event)
+        {
+            Y_UNUSED(runtime);
 
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTabletPrivate ::EvForcedTabletOperationRequest:
-                    case TEvIndexTabletPrivate ::
-                        EvForcedRangeOperationRequest: {
-                        if (captureScheduledRequests) {
-                            scheduledRequests.emplace_back(event.Release());
-                            return true;
-                        }
-                        break;
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate ::EvForcedTabletOperationRequest:
+                case TEvIndexTabletPrivate ::EvForcedRangeOperationRequest: {
+                    if (captureScheduledRequests) {
+                        scheduledRequests.emplace_back(event.Release());
+                        return true;
                     }
-                    case TEvIndexTabletPrivate::EvFlushBytesRequest: {
-                        if (captureFlushBytesRequest) {
-                            captureFlushBytesRequest = false;
-                            flushBytesRequest.reset(event.Release());
-                            return true;
-                        }
-                        break;
-                    }
-                    case TEvIndexTabletPrivate ::
-                        EvForcedRangeOperationCompleted:
-                    case TEvIndexTabletPrivate ::
-                        EvForcedTabletOperationCompleted: {
-                        ++completedOperations;
-                        break;
-                    }
+                    break;
                 }
+                case TEvIndexTabletPrivate::EvFlushBytesRequest: {
+                    if (captureFlushBytesRequest) {
+                        captureFlushBytesRequest = false;
+                        flushBytesRequest.reset(event.Release());
+                        return true;
+                    }
+                    break;
+                }
+                case TEvIndexTabletPrivate ::EvForcedRangeOperationCompleted:
+                case TEvIndexTabletPrivate ::EvForcedTabletOperationCompleted: {
+                    ++completedOperations;
+                    break;
+                }
+            }
 
-                return false;
-            });
+            return false;
+        };
+        env.GetRuntime().SetEventFilter(filter);
 
         // Initialize all operations and capture their operationIds
         for (const auto operation: operations) {
