@@ -245,6 +245,27 @@ void TStorageServiceActor::ReplyToXAttrRequest(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+// Explicit instantiations - ReplyToXAttrRequest is also called from
+// service_actor_control_namespace.cpp.
+template void
+TStorageServiceActor::ReplyToXAttrRequest<TEvService::TGetNodeXAttrMethod>(
+    const TActorContext&,
+    const TEvService::TGetNodeXAttrMethod::TRequest::TPtr&,
+    std::unique_ptr<TEvService::TGetNodeXAttrMethod::TResponse>,
+    const TSessionInfo*);
+template void
+TStorageServiceActor::ReplyToXAttrRequest<TEvService::TListNodeXAttrMethod>(
+    const TActorContext&,
+    const TEvService::TListNodeXAttrMethod::TRequest::TPtr&,
+    std::unique_ptr<TEvService::TListNodeXAttrMethod::TResponse>,
+    const TSessionInfo*);
+template void
+TStorageServiceActor::ReplyToXAttrRequest<TEvService::TSetNodeXAttrMethod>(
+    const TActorContext&,
+    const TEvService::TSetNodeXAttrMethod::TRequest::TPtr&,
+    std::unique_ptr<TEvService::TSetNodeXAttrMethod::TResponse>,
+    const TSessionInfo*);
+
 ///////////////////////////////////////////////////////////////////////////////
 
 void TStorageServiceActor::HandleGetNodeXAttr(
@@ -254,6 +275,10 @@ void TStorageServiceActor::HandleGetNodeXAttr(
     const TSessionInfo* session =
         GetAndValidateSession<TEvService::TGetNodeXAttrMethod>(ctx, ev);
     if (!session) {
+        return;
+    }
+
+    if (TryHandleControlNamespaceGetNodeXAttr(ctx, ev, session)) {
         return;
     }
 
@@ -289,6 +314,10 @@ void TStorageServiceActor::HandleListNodeXAttr(
         return;
     }
 
+    if (TryHandleControlNamespaceListNodeXAttr(ctx, ev, session)) {
+        return;
+    }
+
     // if there no extended attributes in the file system we return an empty
     // list
     if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
@@ -316,6 +345,10 @@ void TStorageServiceActor::HandleSetNodeXAttr(
     const TSessionInfo* session =
         GetAndValidateSession<TEvService::TSetNodeXAttrMethod>(ctx, ev);
     if (!session) {
+        return;
+    }
+
+    if (TryHandleControlNamespaceSetNodeXAttr(ctx, ev, session)) {
         return;
     }
 

@@ -1,11 +1,16 @@
 #include "service_actor.h"
 
+    #include "service_actor_control_namespace.h"
+
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+
+#include <unistd.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -33,6 +38,103 @@ void CalculateRequestChecksums(
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
     CalculateWriteDataRequestChecksums(request, blockSize, profileLogRequest);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Default: reject instead of forwarding to a real tablet with the fake
+    // marker NodeId/Handle. Methods with real control-namespace content get a
+// specialization below.
+
+template <typename TMethod>
+    std::unique_ptr<typename TMethod::TResponse> BuildControlNamespaceResponse(
+    const typename TMethod::TRequest::TPtr& ev)
+{
+    Y_UNUSED(ev);
+    return std::make_unique<typename TMethod::TResponse>(
+            ControlNamespaceReadOnlyError());
+}
+
+template <>
+std::unique_ptr<TEvService::TGetNodeAttrMethod::TResponse>
+    BuildControlNamespaceResponse<TEvService::TGetNodeAttrMethod>(
+    const TEvService::TGetNodeAttrMethod::TRequest::TPtr& ev)
+{
+    const auto& record = ev->Get()->Record;
+    auto response =
+        std::make_unique<TEvService::TGetNodeAttrMethod::TResponse>();
+        if (record.GetNodeId() == ControlDirIno) {
+            FillControlDirAttr(*response->Record.MutableNode());
+    } else {
+            FillControlFsIdAttr(
+            *response->Record.MutableNode(),
+            record.GetFileSystemId());
+    }
+    return response;
+}
+
+template <>
+std::unique_ptr<TEvService::TCreateHandleMethod::TResponse>
+    BuildControlNamespaceResponse<TEvService::TCreateHandleMethod>(
+    const TEvService::TCreateHandleMethod::TRequest::TPtr& ev)
+{
+    const auto& record = ev->Get()->Record;
+    auto response =
+        std::make_unique<TEvService::TCreateHandleMethod::TResponse>();
+
+    const bool wantsWrite = HasFlag(
+        record.GetFlags(),
+        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE));
+    if (wantsWrite) {
+            *response->Record.MutableError() = ControlNamespaceReadOnlyError();
+        return response;
+    }
+
+    response->Record.SetHandle(record.GetNodeId());
+        if (record.GetNodeId() == ControlDirIno) {
+            FillControlDirAttr(*response->Record.MutableNodeAttr());
+    } else {
+            FillControlFsIdAttr(
+            *response->Record.MutableNodeAttr(),
+            record.GetFileSystemId());
+    }
+    return response;
+}
+
+template <>
+std::unique_ptr<TEvService::TAccessNodeMethod::TResponse>
+    BuildControlNamespaceResponse<TEvService::TAccessNodeMethod>(
+    const TEvService::TAccessNodeMethod::TRequest::TPtr& ev)
+{
+    const auto& record = ev->Get()->Record;
+        const bool isDir = record.GetNodeId() == ControlDirIno;
+    const ui32 mask = record.GetMask();
+
+    auto response = std::make_unique<TEvService::TAccessNodeMethod::TResponse>();
+    if ((!isDir && (mask & X_OK)) || (mask & W_OK)) {
+            *response->Record.MutableError() = ControlNamespaceReadOnlyError();
+    }
+    return response;
+}
+
+template <>
+std::unique_ptr<TEvService::TConfirmCreateHandleMethod::TResponse>
+    BuildControlNamespaceResponse<TEvService::TConfirmCreateHandleMethod>(
+    const TEvService::TConfirmCreateHandleMethod::TRequest::TPtr& ev)
+{
+    Y_UNUSED(ev);
+    // nothing real to confirm - the handle was synthesized locally
+    return std::make_unique<
+        TEvService::TConfirmCreateHandleMethod::TResponse>();
+}
+
+template <>
+std::unique_ptr<TEvService::TDestroyHandleMethod::TResponse>
+    BuildControlNamespaceResponse<TEvService::TDestroyHandleMethod>(
+    const TEvService::TDestroyHandleMethod::TRequest::TPtr& ev)
+{
+    Y_UNUSED(ev);
+    // nothing real to destroy - the handle was synthesized locally
+    return std::make_unique<TEvService::TDestroyHandleMethod::TResponse>();
 }
 
 }   // namespace
@@ -204,6 +306,15 @@ void TStorageServiceActor::ForwardRequestToShard(
     bool forceBehaveAsShard,
     ui64 entityId)
 {
+        if (StorageConfig->GetEnableControlNamespace() &&
+            IsControlNamespaceNode(entityId))
+    {
+        return NCloud::Reply(
+            ctx,
+            *ev,
+                BuildControlNamespaceResponse<TMethod>(ev));
+    }
+
     auto* msg = ev->Get();
 
     const auto& clientId = GetClientId(msg->Record);
@@ -308,6 +419,24 @@ void TStorageServiceActor::ForwardRequestToShard(
         TEvService)
 
 #undef FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID
+
+// Handled by hand, not by the macro above - RenameNode has two node ids
+    // (source and destination parent) that both need the control-namespace
+// check.
+void TStorageServiceActor::HandleRenameNode(
+    const TEvService::TEvRenameNodeRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+        if (TryHandleControlNamespaceRenameNode(ctx, ev)) {
+        return;
+    }
+
+    ForwardRequestToShard<TEvService::TRenameNodeMethod>(
+        ctx,
+        ev,
+        false /* forceBehaveAsShard */,
+        ev->Get()->Record.GetNodeId());
+}
 
 #define FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_HANDLE(name, ns)                 \
     void TStorageServiceActor::Handle##name(                                   \

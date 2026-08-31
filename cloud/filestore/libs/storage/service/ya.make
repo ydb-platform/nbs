@@ -21,6 +21,7 @@ SRCS(
     service_actor_actions.cpp
     service_actor_alterfs.cpp
     service_actor_complete.cpp
+    service_actor_control_namespace.cpp
     service_actor_createfs.cpp
     service_actor_createhandle.cpp
     service_actor_createnode.cpp

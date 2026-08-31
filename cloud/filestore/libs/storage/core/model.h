@@ -42,7 +42,12 @@ constexpr TStringBuf ShardNumPrefix = "_s";
 
 // It is not possible to have more than MaxShardCount shards,
 // as we reserve two bytes to store it in handles and node IDs.
-constexpr ui64 MaxShardCount = Max<ui16>();
+//
+// Max<ui16>() itself (the highest representable shard number) is reserved
+// for the control namespace's synthetic inos - see
+// service_actor_control_namespace.h - and is never assignable to a real
+// shard.
+constexpr ui64 MaxShardCount = Max<ui16>() - 1;
 
 // Range of possible ShardId encoding versions.
 constexpr char MinShardIdEncodingVersion = 1;
