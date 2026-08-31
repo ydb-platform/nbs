@@ -1,7 +1,12 @@
 #include "side_channel.h"
 
+#include <cloud/filestore/libs/diagnostics/profile_log.h>
+#include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
+
+#include <cloud/storage/core/libs/common/timer.h>
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/headers.pb.h>
@@ -407,13 +412,19 @@ private:
     THashMap<TString, TFileSystemTCPSideChannelPtr> Id2Channel;
 
     TLog Log;
+    const IProfileLogPtr ProfileLog;
+    const ITimerPtr Timer;
     std::shared_ptr<IAsyncClient> Client;
 
 public:
     TTCPSideChannel(
             ILoggingService& logging,
+            IProfileLogPtr profileLog,
+            ITimerPtr timer,
             std::shared_ptr<IAsyncClient> client)
         : Log(logging.CreateLog("TCP_SIDE_CHANNEL"))
+        , ProfileLog(std::move(profileLog))
+        , Timer(std::move(timer))
         , Client(std::move(client))
     {}
 
@@ -425,6 +436,13 @@ public:
     {
         Y_UNUSED(callContext);
 
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        NFuse::InitProfileLogRequestInfo(
+            profileLogRequest,
+            EFileStoreRequest::ReadData,
+            Timer->Now());
+        InitProfileLogRequestInfo(profileLogRequest, *request);
+
         // Iovec base addresses are pointers in this process and cannot be
         // sent over the wire. Strip them from the request and copy data
         // from the response Buffer back into the original iovecs.
@@ -435,7 +453,8 @@ public:
 
         auto channel = AccessFileSystemChannel(*request);
 
-        return channel->Dispatch(
+        auto future = response.GetFuture();
+        const bool dispatched = channel->Dispatch(
             *request,
             std::move(response),
             [](TRequest& req, const NProto::TReadDataRequest& body) {
@@ -448,6 +467,15 @@ public:
                 resp = std::move(*r.MutableReadData());
                 MoveBufferToIovecs(resp, iovecs);
             });
+
+        if (dispatched) {
+            SubscribeProfileLogging(
+                std::move(profileLogRequest),
+                request->GetFileSystemId(),
+                std::move(future));
+        }
+
+        return dispatched;
     }
 
     bool ExecuteRequest(
@@ -457,6 +485,13 @@ public:
     {
         Y_UNUSED(callContext);
 
+        NProto::TProfileLogRequestInfo profileLogRequest;
+        NFuse::InitProfileLogRequestInfo(
+            profileLogRequest,
+            EFileStoreRequest::WriteData,
+            Timer->Now());
+        InitProfileLogRequestInfo(profileLogRequest, *request);
+
         const ui64 iovecsSize = request->IovecsSize();
         const ui64 bufferOffset = request->GetBufferOffset();
         if (iovecsSize > 0 && bufferOffset > 0) {
@@ -465,13 +500,22 @@ public:
                 E_ARGUMENT,
                 TStringBuilder() << "BufferOffset=" << bufferOffset
                     << ", iovecsSize=" << iovecsSize << " are both nonzero");
+
+            NFuse::FinalizeProfileLogRequestInfo(
+                std::move(profileLogRequest),
+                Timer->Now(),
+                request->GetFileSystemId(),
+                errorResponse.GetError(),
+                ProfileLog);
+
             response.SetValue(std::move(errorResponse));
             return true;
         }
 
         auto channel = AccessFileSystemChannel(*request);
 
-        return channel->Dispatch(
+        auto future = response.GetFuture();
+        const bool dispatched = channel->Dispatch(
             *request,
             std::move(response),
             [](TRequest& req, const NProto::TWriteDataRequest& body) {
@@ -488,6 +532,15 @@ public:
             [](NProto::TWriteDataResponse& resp, TResponse& r) {
                 resp = std::move(*r.MutableWriteData());
             });
+
+        if (dispatched) {
+            SubscribeProfileLogging(
+                std::move(profileLogRequest),
+                request->GetFileSystemId(),
+                std::move(future));
+        }
+
+        return dispatched;
     }
 
     void Update(const NProto::TBackendInfo& backendInfo) override
@@ -499,6 +552,35 @@ public:
     }
 
 private:
+    //
+    // Requests dispatched via the side channel bypass TStorageServiceActor,
+    // so their profile log records are written here upon response arrival.
+    //
+
+    template <typename TResponse>
+    void SubscribeProfileLogging(
+        NProto::TProfileLogRequestInfo profileLogRequest,
+        TString fileSystemId,
+        TFuture<TResponse> future)
+    {
+        future.Subscribe(
+            [profileLog = ProfileLog,
+             timer = Timer,
+             fileSystemId = std::move(fileSystemId),
+             profileLogRequest = std::move(profileLogRequest)] (
+                const TFuture<TResponse>& f) mutable
+            {
+                const auto& response = f.GetValue();
+                FinalizeProfileLogRequestInfo(profileLogRequest, response);
+                NFuse::FinalizeProfileLogRequestInfo(
+                    std::move(profileLogRequest),
+                    timer->Now(),
+                    fileSystemId,
+                    response.GetError(),
+                    profileLog);
+            });
+    }
+
     TString MakeFileSystemId(const TString& mainFileSystemId, ui32 shardNo)
         const
     {
@@ -548,10 +630,14 @@ private:
 
 ISideChannelPtr CreateTCPSideChannel(
     ILoggingService& logging,
+    IProfileLogPtr profileLog,
+    ITimerPtr timer,
     std::shared_ptr<IAsyncClient> client)
 {
     return std::make_shared<TTCPSideChannel>(
         logging,
+        std::move(profileLog),
+        std::move(timer),
         std::move(client));
 }
 
