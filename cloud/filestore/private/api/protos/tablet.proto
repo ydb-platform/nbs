@@ -715,8 +715,10 @@ message TForcedOperationStatusResponse
     enum EStatus
     {
         E_UNKNOWN = 0;
-        E_RUNNING = 1;
-        E_COMPLETED = 2;
+        E_PENDING = 1; // unused https://github.com/ydb-platform/nbs/issues/6977
+        E_RUNNING = 2;
+        E_COMPLETED = 3;
+        E_FAILED = 4; // unused, https://github.com/ydb-platform/nbs/issues/6979
     }
     EStatus Status = 5;
 }
