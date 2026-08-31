@@ -54,6 +54,11 @@ TVector<NProto::TQuota> TQuotaStore::GetQuotas() const
     return quotas;
 }
 
+ui32 TQuotaStore::GetQuotaCount() const
+{
+    return static_cast<ui32>(QuotaById.size());
+}
+
 void TQuotaStore::LoadUsage(const TQuotaUsage& usage)
 {
     UsageByQuotaId[usage.QuotaId] = usage;

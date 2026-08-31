@@ -43,7 +43,16 @@ void TIndexTabletActor::HandleSetQuota(
         return;
     }
 
-    // TODO(6608): add limit for the number of quotas per file system
+    if (!FindQuota(msg->Record.GetQuotaId()) && GetQuotaCount() >= MaxQuotas)
+    {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvSetQuotaResponse>(MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "too many quotas, limit is " << MaxQuotas));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
 
     AddInFlightRequest<TEvIndexTablet::TSetQuotaMethod>(*requestInfo);
 
