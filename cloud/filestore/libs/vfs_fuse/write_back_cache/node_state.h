@@ -36,11 +36,12 @@ struct TReleaseHandleRequest: public TIntrusiveListItem<TReleaseHandleRequest>
 
 struct THandleState
 {
-    // Pending requests from TNodeState::Cache filtered by Handle
-    TIntrusiveList<TPendingWriteDataRequest, THandleStateTag> PendingRequests;
-
     // Unflushed requests from TNodeState::Cache filtered by Handle
     TIntrusiveList<TCachedWriteDataRequest, THandleStateTag> UnflushedRequests;
+
+    // The total amount of pending requests and flush operations holding the
+    // handle
+    size_t ReferenceCount = 0;
 
     // The field is initialized when ReleaseHandle request is made.
     // Only one ReleaseHandle request may be active at a time for a handle.
@@ -48,7 +49,7 @@ struct THandleState
 
     bool HasRequests() const
     {
-        return !PendingRequests.Empty() || !UnflushedRequests.Empty();
+        return !UnflushedRequests.Empty() || ReferenceCount > 0;
     }
 };
 
