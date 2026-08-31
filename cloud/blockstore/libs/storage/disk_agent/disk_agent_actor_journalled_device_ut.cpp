@@ -261,12 +261,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
             {[&](auto& proto)
              {
                  proto.SetDeviceUUID(uuid);
+                 proto.SetLogSequenceNumber(1);
                  proto.MutablePageGroups()->Add();
              },
              MakeError(E_ARGUMENT, "empty page group")},
             {[&](auto& proto)
              {
                  proto.SetDeviceUUID(uuid);
+                 proto.SetLogSequenceNumber(1);
                  auto& groups = *proto.MutablePageGroups();
 
                  {
@@ -281,6 +283,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
             {[&](auto& proto)
              {
                  proto.SetDeviceUUID(uuid);
+                 proto.SetLogSequenceNumber(1);
                  auto& groups = *proto.MutablePageGroups();
 
                  {
@@ -303,6 +306,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
             {[&](auto& proto)
              {
                  proto.SetDeviceUUID(uuid);
+                 proto.SetLogSequenceNumber(1);
                  auto& groups = *proto.MutablePageGroups();
 
                  {
@@ -315,7 +319,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
              MakeError(E_ARGUMENT, "invalid page data: block size mismatch")},
             {[&](auto& proto)
              {
-                 proto.SetDeviceUUID(uuid);
+                 // the client id is checked after the device is found
+                 proto.SetDeviceUUID(FileDevices[0].GetDeviceId());
+                 proto.SetLogSequenceNumber(1);
                  auto& groups = *proto.MutablePageGroups();
 
                  {
@@ -334,6 +340,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
              {
                  proto.MutableHeaders()->SetClientId(clientId);
                  proto.SetDeviceUUID(uuid);
+                 proto.SetLogSequenceNumber(1);
                  auto& groups = *proto.MutablePageGroups();
 
                  {
@@ -352,6 +359,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
              {
                  proto.MutableHeaders()->SetClientId(clientId);
                  proto.SetDeviceUUID(FileDevices[0].GetDeviceId());
+                 proto.SetLogSequenceNumber(1);
 
                  auto& groups = *proto.MutablePageGroups();
 
@@ -367,6 +375,43 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
                  }
              },
              MakeError(E_BS_INVALID_SESSION, "not acquired by client")},
+            {[&](auto& proto)
+             {
+                 proto.MutableHeaders()->SetClientId(clientId);
+                 proto.SetDeviceUUID(uuid);
+                 // LogSequenceNumber is not set
+
+                 auto& groups = *proto.MutablePageGroups();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.MutableContent()->Add()->resize(
+                         DefaultBlockSize,
+                         'A');
+                 }
+             },
+             MakeError(E_ARGUMENT, "invalid lsn: 0")},
+            {[&](auto& proto)
+             {
+                 proto.MutableHeaders()->SetClientId(clientId);
+                 proto.SetDeviceUUID(uuid);
+                 proto.SetLogSequenceNumber(10);
+                 proto.SetPrevLogSequenceNumber(10);
+
+                 auto& groups = *proto.MutablePageGroups();
+
+                 {
+                     auto& group = *groups.Add();
+                     group.SetFirstPageNo(0x10);
+                     group.MutableContent()->Add()->resize(
+                         DefaultBlockSize,
+                         'A');
+                 }
+             },
+             MakeError(
+                 E_ARGUMENT,
+                 "invalid lsn: 10, must be greater than the prev one: 10")},
         };
 
         for (ui64 i = 0; i != std::size(testCases); ++i) {
@@ -697,6 +742,129 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
             const auto& error = response.GetWriteLogRecord().GetError();
 
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldValidateLogSequenceNumber, TFixture)
+    {
+        const TString clientId = "client-id";
+        const TString uuid = FileDevices[0].GetDeviceId();
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        TTestClient client{Port};
+
+        // Acquire device
+
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            auto& proto = *request.MutableAcquireDevices();
+            proto.MutableHeaders()->SetClientId(clientId);
+            *proto.MutableDeviceUUIDs()->Add() = uuid;
+            client.Send(request);
+        }
+
+        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+        {
+            auto response = client.Receive();
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kAcquireDevices,
+                response.GetResponseCase());
+
+            const auto& error = response.GetAcquireDevices().GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        ui64 requestId = 0;
+
+        const auto writeLogRecord = [&](ui64 lsn, ui64 prevLsn)
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(++requestId);
+
+            auto& proto = *request.MutableWriteLogRecord();
+            proto.MutableHeaders()->SetClientId(clientId);
+            proto.SetDeviceUUID(uuid);
+            proto.SetLogSequenceNumber(lsn);
+            proto.SetPrevLogSequenceNumber(prevLsn);
+
+            auto& group = *proto.MutablePageGroups()->Add();
+            group.SetFirstPageNo(0x10);
+            group.MutableContent()->Add()->resize(DefaultBlockSize, 'A');
+
+            client.Send(request);
+
+            Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+            auto response = client.Receive();
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kWriteLogRecord,
+                response.GetResponseCase());
+
+            return response.GetWriteLogRecord().GetError();
+        };
+
+        // the very first record is accepted with any prev lsn
+
+        {
+            const auto error = writeLogRecord(10, 5);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            const auto error = writeLogRecord(11, 10);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        // a gap in the log
+
+        {
+            const auto error = writeLogRecord(20, 15);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "Wrong lsn: 15, expected 11");
+        }
+
+        // an outdated record
+
+        {
+            const auto error = writeLogRecord(13, 5);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_INVALID_STATE,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "Wrong lsn: 5, expected 11");
+        }
+
+        // the rejected records have not changed the state
+
+        {
+            const auto error = writeLogRecord(12, 11);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
