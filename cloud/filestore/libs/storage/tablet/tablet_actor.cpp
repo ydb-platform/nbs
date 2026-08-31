@@ -1186,15 +1186,10 @@ TIndexTabletActor::ProcessForcedRangeOperationRequest(
     if (e.GetCode() == S_OK && IsForcedOperationRunning()) {
         const auto* state =
             std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
-        if (state) {
-            const auto currentMode = state->Mode;
-            if (currentMode == mode) {
-                e = MakeError(S_ALREADY, "already launched");
-            }
+        if (state && state->Mode == mode) {
+            e = MakeError(S_ALREADY, "already launched");
         } else {
-            e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
-                << static_cast<int>(mode));
-                // << " != " << static_cast<int>(currentMode));
+            e = MakeError(E_TRY_AGAIN, "another operation is running");
         }
     }
 
@@ -1252,15 +1247,10 @@ TIndexTabletActor::ProcessForcedTabletOperationRequest(
     if (e.GetCode() == S_OK && IsForcedOperationRunning()) {
         const auto* state =
             std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
-        if (state) {
-            const auto currentMode = state->Mode;
-            if (currentMode == mode) {
-                e = MakeError(S_ALREADY, "already launched");
-            }
+        if (state && state->Mode == mode) {
+            e = MakeError(S_ALREADY, "already launched");
         } else {
-            e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
-                << static_cast<int>(mode));
-                // << " != " << static_cast<int>(currentMode));
+            e = MakeError(E_TRY_AGAIN, "another operation is running");
         }
     }
 
