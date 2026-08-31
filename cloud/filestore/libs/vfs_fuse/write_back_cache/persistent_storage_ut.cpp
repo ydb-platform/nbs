@@ -73,7 +73,7 @@ struct TBootstrap
         char* ptr = allocationResult.GetResult();
         if (ptr != nullptr) {
             data.copy(ptr, data.size());
-            UNIT_ASSERT(!HasError(Storage->Commit()));
+            UNIT_ASSERT(!HasError(Storage->Commit(ptr)));
         }
         return ptr;
     }

@@ -49,8 +49,16 @@ TResultOrError<char*> TTestStorage::Alloc(size_t size)
     return res;
 }
 
-NProto::TError TTestStorage::Commit()
+NProto::TError TTestStorage::Commit(const void* ptr)
 {
+    Y_UNUSED(ptr);
+    return {};
+}
+
+NProto::TError TTestStorage::Commit(const void* ptr, ui32 crc32)
+{
+    Y_UNUSED(ptr);
+    Y_UNUSED(crc32);
     return {};
 }
 

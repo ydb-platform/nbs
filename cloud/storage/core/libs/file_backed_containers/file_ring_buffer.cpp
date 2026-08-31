@@ -8,6 +8,7 @@
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 #include <util/stream/mem.h>
 #include <util/string/builder.h>
@@ -142,11 +143,13 @@ private:
     TFileMapFileRingBufferAccessor Accessor;
     std::atomic<bool> Corrupted = false;
 
-    TEntryInfo CurrentAllocation = TEntryInfo::CreateInvalid();
     ui64 MaxObservedEntryByteCount = 0;
 
-    // Map of non-free entries: data ptr -> pos
+    // Map of allocated entries: data ptr -> pos
     THashMap<const void*, ui64> EntryMap;
+
+    // Allocated entries that have not been committed yet
+    THashSet<ui64> IncompleteEntries;
 
 private:
     THeader* Header()
@@ -253,6 +256,22 @@ private:
         return e.HasValue()
             ? GetEntry(e.ActualPos + Data()->GetEntrySize(e.Header.DataSize))
             : TEntryInfo::CreateInvalid();
+    }
+
+    // Sets corrupted state if Data()->WriteEntryHeader is failed
+    bool WriteEntryHeader(ui64 pos, const TFileRingBufferEntryHeader& header)
+    {
+        // A compiler-only fence is sufficient here because there is no
+        // concurrent access to the memory and we just need to ensure
+        // that a compiler does not reorder writes.
+        std::atomic_signal_fence(std::memory_order_seq_cst);
+
+        auto success = Data()->WriteEntryHeader(pos, header);
+        if (!success) {
+            SetCorrupted(
+                TStringBuilder() << "Cannot write entry header at " << pos);
+        }
+        return success;
     }
 
     void CopyMappedData(ui64 destPos, ui64 srcPos, ui64 size)
@@ -372,7 +391,9 @@ private:
     void EraseFreeEntriesFromFront()
     {
         auto front = GetFrontEntry();
-        while (front.HasValue() && front.GetFreeFlag()) {
+        while (front.HasValue() && front.GetFreeFlag() &&
+               !IncompleteEntries.contains(front.ActualPos))
+        {
             front = GetNextEntry(front);
         }
 
@@ -506,7 +527,7 @@ public:
 
         data.copy(allocationResult.AllocationPtr, data.size());
 
-        auto commitResult = Commit();
+        auto commitResult = Commit(allocationResult.AllocationPtr, 0, false);
 
         if (HasError(commitResult)) {
             return TPushBackResult(commitResult);
@@ -519,12 +540,6 @@ public:
     {
         if (!ValidateAccess("Alloc")) {
             return TAllocResult(MakeBufferIsCorruptError());
-        }
-
-        if (CurrentAllocation.HasValue()) {
-            return TAllocResult(MakeError(
-                E_INVALID_STATE,
-                "Previous allocation is not committed"));
         }
 
         if (size == 0) {
@@ -595,38 +610,37 @@ public:
             Max(MaxObservedEntryByteCount, size);
 
         char* ptr = Data()->GetEntryDataPtr(writePos, size);
-        Y_ABORT_UNLESS(ptr != nullptr);
-
-        CurrentAllocation = TEntryInfo::Create(
-            writePos,
-            {.DataSize = static_cast<ui32>(size)},
-            ptr);
-
-        return TAllocResult(ptr);
-    }
-
-    NProto::TError Commit()
-    {
-        if (!ValidateAccess("Commit")) {
-            return MakeBufferIsCorruptError();
-        }
-
-        if (!CurrentAllocation.HasValue()) {
-            return MakeError(E_ARGUMENT, "No allocation to commit");
-        }
-
-        CurrentAllocation.Header.DataChecksum =
-            Crc32c(CurrentAllocation.Data, CurrentAllocation.Header.DataSize);
-
-        bool written = Data()->WriteEntryHeader(
-            CurrentAllocation.ActualPos,
-            CurrentAllocation.Header);
-
-        if (!written) {
+        if (ptr == nullptr) {
             SetCorrupted(
-                TStringBuilder() << "Cannot write entry header at "
-                                 << CurrentAllocation.ActualPos);
-            return MakeBufferIsCorruptError();
+                TStringBuilder() << "Cannot access data buffer at " << writePos
+                                 << ", size = " << size);
+            return TAllocResult(MakeBufferIsCorruptError());
+        }
+
+        auto [it1, inserted1] = IncompleteEntries.insert(writePos);
+        if (!inserted1) {
+            SetCorrupted(
+                TStringBuilder()
+                << "Duplicate incomplete allocation at " << writePos);
+            return TAllocResult(MakeBufferIsCorruptError());
+        }
+
+        auto [it2, inserted2] = EntryMap.insert({ptr, writePos});
+        if (!inserted2) {
+            SetCorrupted(
+                TStringBuilder() << "Duplicate allocation at " << writePos);
+            return TAllocResult(MakeBufferIsCorruptError());
+        }
+
+        auto headerWritten = WriteEntryHeader(
+            writePos,
+            {.DataSize = static_cast<ui32>(size),
+             .DataChecksum = 0,
+             .Tag = 0,
+             .FreeFlag = true});
+
+        if (!headerWritten) {
+            return TAllocResult(MakeBufferIsCorruptError());
         }
 
         // A compiler-only fence is sufficient here because there is no
@@ -634,13 +648,63 @@ public:
         // that a compiler does not reorder writes.
         std::atomic_signal_fence(std::memory_order_seq_cst);
 
-        Header()->WritePos =
-            CurrentAllocation.ActualPos +
-            Data()->GetEntrySize(CurrentAllocation.Header.DataSize);
+        Header()->WritePos = writePos + sz;
 
-        EntryMap[CurrentAllocation.Data] = CurrentAllocation.ActualPos;
+        return TAllocResult(ptr);
+    }
 
-        CurrentAllocation = TEntryInfo::CreateInvalid();
+    NProto::TError Commit(const void* ptr, ui32 crc32c, bool hasCrc)
+    {
+        if (!ValidateAccess("Commit")) {
+            return MakeBufferIsCorruptError();
+        }
+
+        const auto it = EntryMap.find(ptr);
+        if (it == EntryMap.end()) {
+            return MakeInvalidPointerError();
+        }
+        ui64 pos = it->second;
+
+        auto removed = IncompleteEntries.erase(pos);
+        if (!removed) {
+            return MakeInvalidPointerError();
+        }
+
+        auto eh = Data()->ReadEntryHeader(pos);
+        if (!eh.FreeFlag || eh.DataSize == 0 || eh.DataChecksum != 0 ||
+            eh.Tag != 0)
+        {
+            SetCorrupted(
+                TStringBuilder()
+                << "Invalid header for incomplete allocation at " << pos);
+            return MakeBufferIsCorruptError();
+        }
+
+        if (!hasCrc) {
+            crc32c = Crc32c(ptr, eh.DataSize);
+        }
+
+        if (Capabilities().EntryHeaderIsProcessedAtomically) {
+            eh.DataChecksum = crc32c;
+            eh.FreeFlag = false;
+
+            if (!WriteEntryHeader(pos, eh)) {
+                return MakeBufferIsCorruptError();
+            }
+        } else {
+            eh.DataChecksum = crc32c;
+
+            if (!WriteEntryHeader(pos, eh)) {
+                return MakeBufferIsCorruptError();
+            }
+
+            eh.FreeFlag = false;
+
+            if (!WriteEntryHeader(pos, eh)) {
+                return MakeBufferIsCorruptError();
+            }
+        }
+
         return {};
     }
 
@@ -655,17 +719,38 @@ public:
             return MakeInvalidPointerError();
         }
 
-        auto eh = Data()->ReadEntryHeader(it->second);
-        eh.DataChecksum = 0;
-        eh.FreeFlag = true;
+        auto pos = it->second;
 
-        bool written = Data()->WriteEntryHeader(it->second, eh);
+        if (IncompleteEntries.contains(pos)) {
+            return MakeInvalidPointerError();
+        }
 
-        if (!written) {
+        auto eh = Data()->ReadEntryHeader(pos);
+        if (eh.FreeFlag || eh.DataSize == 0) {
             SetCorrupted(
-                TStringBuilder()
-                << "Cannot write entry header at " << it->second);
+                TStringBuilder() << "Invalid header for allocation at " << pos);
             return MakeBufferIsCorruptError();
+        }
+
+        if (Capabilities().EntryHeaderIsProcessedAtomically) {
+            eh.DataChecksum = 0;
+            eh.FreeFlag = true;
+
+            if (!WriteEntryHeader(pos, eh)) {
+                return MakeBufferIsCorruptError();
+            }
+        } else {
+            eh.FreeFlag = true;
+
+            if (!WriteEntryHeader(pos, eh)) {
+                return MakeBufferIsCorruptError();
+            }
+
+            eh.DataChecksum = 0;
+
+            if (!WriteEntryHeader(pos, eh)) {
+                return MakeBufferIsCorruptError();
+            }
         }
 
         EntryMap.erase(it);
@@ -696,7 +781,13 @@ public:
             return TGetTagResult(MakeInvalidPointerError());
         }
 
-        auto eh = Data()->ReadEntryHeader(it->second);
+        auto pos = it->second;
+
+        if (IncompleteEntries.contains(pos)) {
+            return TGetTagResult(MakeInvalidPointerError());
+        }
+
+        auto eh = Data()->ReadEntryHeader(pos);
         return TGetTagResult(eh.Tag);
     }
 
@@ -711,6 +802,12 @@ public:
             return MakeInvalidPointerError();
         }
 
+        auto pos = it->second;
+
+        if (IncompleteEntries.contains(pos)) {
+            return MakeInvalidPointerError();
+        }
+
         if (tag > Capabilities().MaxTag) {
             return MakeError(
                 E_ARGUMENT,
@@ -719,15 +816,11 @@ public:
                                  << Capabilities().MaxTag << ")");
         }
 
-        auto eh = Data()->ReadEntryHeader(it->second);
+        auto eh = Data()->ReadEntryHeader(pos);
         eh.Tag = tag;
 
-        bool written = Data()->WriteEntryHeader(it->second, eh);
-
+        bool written = WriteEntryHeader(pos, eh);
         if (!written) {
-            SetCorrupted(
-                TStringBuilder()
-                << "Cannot write entry header at " << it->second);
             return MakeBufferIsCorruptError();
         }
 
@@ -747,6 +840,10 @@ public:
             return TFrontResult(MakeBufferIsCorruptError());
         }
 
+        if (!e.HasValue() || e.GetFreeFlag()) {
+            return TFrontResult(TStringBuf());
+        }
+
         return TFrontResult(e.GetData());
     }
 
@@ -763,7 +860,7 @@ public:
             return TPopFrontResult(MakeBufferIsCorruptError());
         }
 
-        if (!e.HasValue()) {
+        if (!e.HasValue() || e.GetFreeFlag()) {
             return TPopFrontResult(false);
         }
 
@@ -778,7 +875,7 @@ public:
 
     ui64 Size() const
     {
-        return EntryMap.size();
+        return EntryMap.size() - IncompleteEntries.size();
     }
 
     bool Empty() const
@@ -961,10 +1058,16 @@ TFileRingBuffer::TAllocResult TFileRingBuffer::Alloc(size_t size)
     return Impl->Alloc(size);
 }
 
-NProto::TError TFileRingBuffer::Commit()
+NProto::TError TFileRingBuffer::Commit(const void* ptr)
 {
-    return Impl->Commit();
+    return Impl->Commit(ptr, 0, false);
 }
+
+NProto::TError TFileRingBuffer::Commit(const void* ptr, ui32 crc32c)
+{
+    return Impl->Commit(ptr, crc32c, true);
+}
+
 
 NProto::TError TFileRingBuffer::Free(const void* ptr)
 {
