@@ -120,6 +120,12 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
         FormatError(args.Error).c_str(),
         args.Timeout.Seconds());
 
+    for (const auto& diskId: args.AffectedDisks) {
+        if (!State->HasPendingCleanup(diskId)) {
+            ReplyToPendingDeallocations(ctx, diskId);
+        }
+    }
+
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

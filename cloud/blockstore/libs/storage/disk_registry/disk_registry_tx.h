@@ -1203,6 +1203,7 @@ struct TTxDiskRegistry
 
         NProto::TError Error;
         ui64 LogicalBlockCount = 0;
+        TVector<TString> AffectedDisks;
 
         TCreateDiskFromDevices(
                 TRequestInfoPtr requestInfo,
@@ -1223,6 +1224,7 @@ struct TTxDiskRegistry
         {
             Error.Clear();
             LogicalBlockCount = 0;
+            AffectedDisks.clear();
         }
 
         TString ToString() const
@@ -1257,6 +1259,7 @@ struct TTxDiskRegistry
         const TString TargetDeviceId;
 
         NProto::TError Error;
+        TString AffectedDisk;
 
         TChangeDiskDevice(
                 TRequestInfoPtr requestInfo,
@@ -1272,6 +1275,7 @@ struct TTxDiskRegistry
         void Clear()
         {
             Error.Clear();
+            AffectedDisk.clear();
         }
     };
 

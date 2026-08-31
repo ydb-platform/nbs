@@ -807,7 +807,10 @@ void TDiskRegistryState::ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices)
 {
     for (auto&& [uuid, diskId]: dirtyDevices) {
         if (!diskId.empty()) {
-            auto error = AddDevicesToPendingCleanup(diskId, {std::move(uuid)});
+            auto error = AddDevicesToPendingCleanup(
+                nullptr,
+                diskId,
+                {std::move(uuid)});
             if (HasError(error)) {
                 ReportDiskRegistryInsertToPendingCleanupFailed(
                     "An error occurred while processing dirty devices",
@@ -1085,6 +1088,19 @@ auto TDiskRegistryState::RegisterAgent(
 
         DeviceList.UpdateDevices(agent, DevicePoolConfigs, r.PrevNodeId);
 
+        for (const auto& device: agent.GetDevices()) {
+            if (device.GetState() != NProto::DEVICE_STATE_ERROR) {
+                continue;
+            }
+
+            auto diskId = RemoveDeviceFromPendingCleanup(
+                db,
+                device.GetDeviceUUID());
+            if (!diskId.empty()) {
+                affectedDisks.push_back(std::move(diskId));
+            }
+        }
+
         for (const auto& uuid: r.NewDeviceIds) {
             if (!DeviceList.FindDiskId(uuid)) {
                 DeviceList.MarkDeviceAsDirty(uuid);
@@ -1173,6 +1189,8 @@ auto TDiskRegistryState::RegisterAgent(
     for (const auto& diskId: disksToReallocate) {
         AddReallocateRequest(db, diskId);
     }
+
+    SortUnique(affectedDisks);
 
     return TAgentRegistrationResult{
         .AffectedDisks = std::move(affectedDisks),
@@ -1611,7 +1629,7 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
                 seqNo);
         }
 
-        error = AddDevicesToPendingCleanup(diskId, {deviceId});
+        error = AddDevicesToPendingCleanup(&db, diskId, {deviceId});
         if (HasError(error)) {
             ReportDiskRegistryInsertToPendingCleanupFailed(
                 "An error occurred while replacing device",
@@ -3135,6 +3153,7 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
         for (const auto& affectedDiskId: affectedDisks) {
             Y_DEBUG_ABORT_UNLESS(affectedDiskId.StartsWith(diskId + "/"));
             error = AddDevicesToPendingCleanup(
+                &db,
                 diskId,
                 DeallocateSimpleDisk(
                     db,
@@ -3156,7 +3175,10 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     }
 
     auto dirtyDevices = DeallocateSimpleDisk(db, diskId, *disk);
-    auto error = AddDevicesToPendingCleanup(diskId, std::move(dirtyDevices));
+    auto error = AddDevicesToPendingCleanup(
+        &db,
+        diskId,
+        std::move(dirtyDevices));
     if (!HasError(error)) {
         // NOTE: We must pass S_ALREADY to the higher-level code. It is used for
         // sync deallocations.
@@ -3984,7 +4006,12 @@ NProto::TError TDiskRegistryState::UpdateConfig(
         return MakeError(E_INVALID_STATE, "Destructive configuration change");
     }
 
-    ForgetDevices(db, effect.RemovedDevices);
+    auto cleanupDisks = ForgetDevices(db, effect.RemovedDevices);
+    affectedDisks.insert(
+        affectedDisks.end(),
+        std::make_move_iterator(cleanupDisks.begin()),
+        std::make_move_iterator(cleanupDisks.end()));
+    SortUnique(affectedDisks);
 
     if (Counters) {
         for (const auto& pool: newConfig.GetDevicePoolConfigs()) {
@@ -4036,17 +4063,27 @@ NProto::TError TDiskRegistryState::UpdateConfig(
     return {};
 }
 
-void TDiskRegistryState::ForgetDevices(
+auto TDiskRegistryState::ForgetDevices(
     TDiskRegistryDatabase& db,
-    const TVector<TString>& ids)
+    const TVector<TString>& ids) -> TVector<TDiskId>
 {
+    TVector<TDiskId> affectedDisks;
+
     for (const auto& id: ids) {
+        auto diskId = RemoveDeviceFromPendingCleanup(db, id);
+        if (!diskId.empty()) {
+            affectedDisks.push_back(std::move(diskId));
+        }
+
         DeviceList.ForgetDevice(id);
         db.DeleteSuspendedDevice(id);
         db.DeleteDirtyDevice(id);
 
         DeleteAutomaticallyReplacedDevice(db, id);
     }
+
+    SortUnique(affectedDisks);
+    return affectedDisks;
 }
 
 void TDiskRegistryState::RemoveAgent(
@@ -5200,7 +5237,10 @@ void TDiskRegistryState::RemoveFinishedMigrations(
 
             DeviceList.ReleaseDevice(m.DeviceId);
             db.UpdateDirtyDevice(m.DeviceId, diskId);
-            auto error = AddDevicesToPendingCleanup(diskId, {m.DeviceId});
+            auto error = AddDevicesToPendingCleanup(
+                &db,
+                diskId,
+                {m.DeviceId});
             if (HasError(error)) {
                 ReportDiskRegistryInsertToPendingCleanupFailed(
                     "An error occurred while removing finished migrations",
@@ -5767,6 +5807,21 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
             StorageConfig->GetNonReplicatedDontSuspendDevices())
         {
             ResumeLocalDevices(db, *agent, now);
+
+            for (const auto& device: agent->GetDevices()) {
+                if (device.GetPoolKind() != NProto::DEVICE_POOL_KIND_LOCAL ||
+                    device.GetState() != NProto::DEVICE_STATE_ERROR)
+                {
+                    continue;
+                }
+
+                auto diskId = RemoveDeviceFromPendingCleanup(
+                    db,
+                    device.GetDeviceUUID());
+                if (!diskId.empty()) {
+                    affectedDisks.push_back(std::move(diskId));
+                }
+            }
         }
     }
 
@@ -5779,6 +5834,8 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     } else if (newState == NProto::AGENT_STATE_ONLINE) {
         AttachPathsOnAgentIfNeeded(db, *agent);
     }
+
+    SortUnique(affectedDisks);
 
     return result;
 }
@@ -6200,7 +6257,10 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
     ApplyDeviceStateChange(db, *agentPtr, *devicePtr, now, affectedDisk);
 
     if (newState == NProto::DEVICE_STATE_ERROR) {
-        RemoveDeviceFromPendingCleanup(db, deviceId);
+        auto cleanupDiskId = RemoveDeviceFromPendingCleanup(db, deviceId);
+        if (!cleanupDiskId.empty()) {
+            affectedDisk = std::move(cleanupDiskId);
+        }
     }
 
     return error;
@@ -6305,9 +6365,24 @@ auto TDiskRegistryState::AddNewDevices(
         ResumeDevices(now, db, ids);
     }
 
-    return {
+    TUpdateCmsDeviceStateResult result{
         .Error = std::move(error),
     };
+
+    for (const auto& id: ids) {
+        const auto device = GetDevice(id);
+        if (device.GetState() != NProto::DEVICE_STATE_ERROR) {
+            continue;
+        }
+
+        auto diskId = RemoveDeviceFromPendingCleanup(db, id);
+        if (!diskId.empty()) {
+            result.AffectedDisks.push_back(std::move(diskId));
+        }
+    }
+
+    SortUnique(result.AffectedDisks);
+    return result;
 }
 
 NProto::TError TDiskRegistryState::CmsAddDevice(
@@ -6549,6 +6624,21 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
             processed,
             devices[processed]->GetDeviceUUID().c_str(),
             FormatError(result.Error).c_str());
+    }
+
+    if (!dryRun) {
+        for (const auto* device: devices) {
+            if (device->GetState() != NProto::DEVICE_STATE_ERROR) {
+                continue;
+            }
+
+            auto diskId = RemoveDeviceFromPendingCleanup(
+                db,
+                device->GetDeviceUUID());
+            if (!diskId.empty()) {
+                result.AffectedDisks.push_back(std::move(diskId));
+            }
+        }
     }
 
     SortUnique(result.AffectedDisks);
@@ -6805,7 +6895,10 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     DeviceList.ReleaseDevice(sourceId);
     db.UpdateDirtyDevice(sourceId, diskId);
 
-    auto error = AddDevicesToPendingCleanup(disk.MasterDiskId, {sourceId});
+    auto error = AddDevicesToPendingCleanup(
+        &db,
+        disk.MasterDiskId,
+        {sourceId});
     if (HasError(error)) {
         ReportDiskRegistryInsertToPendingCleanupFailed(
             "An error occurred while aborting migration",
@@ -7636,6 +7729,7 @@ NProto::TError TDiskRegistryState::AllocateDiskReplicas(
             const size_t idx = masterDisk->ReplicaCount + i + 1;
 
             auto error = AddDevicesToPendingCleanup(
+                &db,
                 masterDiskId,
                 DeallocateSimpleDisk(
                     db,
@@ -7680,6 +7774,7 @@ NProto::TError TDiskRegistryState::AllocateDiskReplicas(
 }
 
 NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
+    TDiskRegistryDatabase* db,
     const TString& diskId,
     TVector<TDeviceId> uuids)
 {
@@ -7688,6 +7783,13 @@ NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
     for (auto& uuid: uuids) {
         if (CanSecureErase(uuid)) {
             devicesAllowedToBeCleaned.push_back(std::move(uuid));
+        } else if (db) {
+            const auto device = GetDevice(uuid);
+            if (device.GetState() == NProto::DEVICE_STATE_ERROR &&
+                IsDirtyDevice(uuid))
+            {
+                db->UpdateDirtyDevice(uuid, {});
+            }
         }
     }
     if (devicesAllowedToBeCleaned.empty()) {
@@ -7706,17 +7808,17 @@ NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
     return PendingCleanup.Insert(diskId, std::move(devicesAllowedToBeCleaned));
 }
 
-void TDiskRegistryState::RemoveDeviceFromPendingCleanup(
+auto TDiskRegistryState::RemoveDeviceFromPendingCleanup(
     TDiskRegistryDatabase& db,
-    const TDeviceId& deviceId)
+    const TDeviceId& deviceId) -> TDiskId
 {
-    if (!IsDirtyDevice(deviceId) || PendingCleanup.FindDiskId(deviceId).empty())
-    {
-        return;
+    auto diskId = PendingCleanup.EraseDevice(deviceId);
+
+    if (IsDirtyDevice(deviceId)) {
+        db.UpdateDirtyDevice(deviceId, {});
     }
 
-    PendingCleanup.EraseDevice(deviceId);
-    db.UpdateDirtyDevice(deviceId, {});
+    return diskId;
 }
 
 NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
@@ -7755,6 +7857,7 @@ NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
     for (size_t i = masterDisk->ReplicaCount; i >= newReplicaCount + 1; --i) {
         const auto replicaDiskId = GetReplicaDiskId(masterDiskId, i);
         auto error = AddDevicesToPendingCleanup(
+            &db,
             masterDiskId,
             DeallocateSimpleDisk(db, replicaDiskId, "DeallocateDiskReplicas"));
         if (HasError(error)) {
@@ -8097,7 +8200,8 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     ui32 blockSize,
     NProto::EStorageMediaKind mediaKind,
     const TVector<NProto::TDeviceConfig>& devices,
-    TAllocateDiskResult* result)
+    TAllocateDiskResult* result,
+    TVector<TDiskId>* affectedDisks)
 {
     Y_DEBUG_ABORT_UNLESS(result);
 
@@ -8172,6 +8276,16 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
             "disk " << diskId.Quote() << " already exists");
     }
 
+    for (const auto& uuid: deviceIds) {
+        auto affectedDisk = RemoveDeviceFromPendingCleanup(db, uuid);
+        if (affectedDisks && !affectedDisk.empty()) {
+            affectedDisks->push_back(std::move(affectedDisk));
+        }
+    }
+    if (affectedDisks) {
+        SortUnique(*affectedDisks);
+    }
+
     disk.Devices = deviceIds;
     disk.LogicalBlockSize = blockSize;
     disk.StateTs = now;
@@ -8214,7 +8328,8 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     const TDeviceId& sourceDeviceId,
-    const TDeviceId& targetDeviceId)
+    const TDeviceId& targetDeviceId,
+    TDiskId* affectedDisk)
 {
     TDiskState* diskState = AccessDiskState(diskId);
     if (!diskState) {
@@ -8260,6 +8375,11 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
         return MakeError(E_ARGUMENT, "Target and source block size not equal");
     }
 
+    auto cleanupDiskId = RemoveDeviceFromPendingCleanup(db, targetDeviceId);
+    if (affectedDisk && !cleanupDiskId.empty()) {
+        *affectedDisk = std::move(cleanupDiskId);
+    }
+
     *sourceDevicePtr = targetDeviceId;
     diskState->StateTs = now;
     diskState->State = CalculateDiskState(diskId, *diskState);
@@ -8272,7 +8392,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     db.DeleteSuspendedDevice(targetDeviceId);
 
     DeviceList.ReleaseDevice(sourceDeviceId);
-    db.UpdateDirtyDevice(sourceDeviceId, diskId);
+    db.UpdateDirtyDevice(sourceDeviceId, {});
 
     auto [targetAgent, targetDevice] = FindDeviceLocation(targetDeviceId);
     STORAGE_VERIFY_C(

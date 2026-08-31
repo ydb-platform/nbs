@@ -22,6 +22,248 @@ using namespace NDiskRegistryStateTest;
 
 Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
 {
+    Y_UNIT_TEST(ShouldDetachErrorDevicesReportedOnRegistration)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+            db.UpdateDirtyDevice("uuid-1", "vol0");
+        });
+
+        auto agent = AgentConfig(
+            1,
+            {Device("dev-1", "uuid-1")});
+
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({agent})
+                            .WithAgents({agent})
+                            .WithDirtyDevices(
+                                {TDirtyDevice{"uuid-1", "vol0"}})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        UNIT_ASSERT(state.HasPendingCleanup("vol0"));
+
+        agent.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ERROR);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            auto result = state.RegisterAgent(db, agent, Now());
+            UNIT_ASSERT_SUCCESS(result.GetError());
+            ASSERT_VECTORS_EQUAL(
+                TVector<TString>{"vol0"},
+                result.GetResult().AffectedDisks);
+        });
+
+        UNIT_ASSERT(!state.HasPendingCleanup("vol0"));
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDirtyDevice> dirtyDevices;
+            UNIT_ASSERT(db.ReadDirtyDevices(dirtyDevices));
+            UNIT_ASSERT_VALUES_EQUAL(1, dirtyDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1", dirtyDevices[0].Id);
+            UNIT_ASSERT_VALUES_EQUAL("", dirtyDevices[0].DiskId);
+        });
+    }
+
+    Y_UNIT_TEST(ShouldNotWaitForErrorDevicesOnDeallocation)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        const auto agent = AgentConfig(
+            1,
+            {Device("dev-1", "uuid-nr", NProto::DEVICE_STATE_ERROR),
+             Device("dev-2", "uuid-local", NProto::DEVICE_STATE_ERROR)});
+
+        auto nonreplicatedDisk = Disk("vol-nr", {"uuid-nr"});
+        nonreplicatedDisk.SetStorageMediaKind(
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        auto localDisk = Disk("vol-local", {"uuid-local"});
+        localDisk.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithAgents({agent})
+                .WithDisks({nonreplicatedDisk, localDisk})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            for (const auto& diskId: {"vol-nr", "vol-local"}) {
+                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, diskId));
+                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, diskId));
+            }
+        });
+
+        UNIT_ASSERT(!state.HasPendingCleanup("vol-nr"));
+        UNIT_ASSERT(!state.HasPendingCleanup("vol-local"));
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDirtyDevice> dirtyDevices;
+            UNIT_ASSERT(db.ReadDirtyDevices(dirtyDevices));
+            UNIT_ASSERT_VALUES_EQUAL(2, dirtyDevices.size());
+            for (const auto& device: dirtyDevices) {
+                UNIT_ASSERT_VALUES_EQUAL("", device.DiskId);
+            }
+        });
+    }
+
+    Y_UNIT_TEST(ShouldConsumePendingDeviceWhenCreatingDisk)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+            db.UpdateDirtyDevice("uuid-1", "old-disk");
+        });
+
+        const auto agent = AgentConfig(
+            1,
+            {Device("dev-1", "uuid-1")});
+
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithAgents({agent})
+                            .WithDirtyDevices(
+                                {TDirtyDevice{"uuid-1", "old-disk"}})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        UNIT_ASSERT(state.HasPendingCleanup("old-disk"));
+
+        TVector<TString> affectedDisks;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TDiskRegistryState::TAllocateDiskResult result;
+            const auto error = state.CreateDiskFromDevices(
+                Now(),
+                db,
+                true,   // force
+                "new-disk",
+                4_KB,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                {state.GetDevice("uuid-1")},
+                &result,
+                &affectedDisks);
+
+            UNIT_ASSERT_SUCCESS(error);
+            ASSERT_VECTORS_EQUAL(
+                TVector<TString>{"old-disk"},
+                affectedDisks);
+        });
+
+        UNIT_ASSERT(!state.HasPendingCleanup("old-disk"));
+        UNIT_ASSERT_VALUES_EQUAL("new-disk", state.FindDisk("uuid-1"));
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDirtyDevice> dirtyDevices;
+            UNIT_ASSERT(db.ReadDirtyDevices(dirtyDevices));
+            UNIT_ASSERT(dirtyDevices.empty());
+        });
+    }
+
+    Y_UNIT_TEST(ShouldConsumePendingTargetWhenChangingDiskDevice)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+            db.UpdateDirtyDevice("uuid-target", "old-disk");
+        });
+
+        const auto agent = AgentConfig(
+            1,
+            {Device("dev-1", "uuid-source"),
+             Device("dev-2", "uuid-target")});
+
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithAgents({agent})
+                .WithDisks({Disk("current-disk", {"uuid-source"})})
+                .WithDirtyDevices(
+                    {TDirtyDevice{"uuid-target", "old-disk"}})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        UNIT_ASSERT(state.HasPendingCleanup("old-disk"));
+
+        TString affectedDisk;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            const auto error = state.ChangeDiskDevice(
+                Now(),
+                db,
+                "current-disk",
+                "uuid-source",
+                "uuid-target",
+                &affectedDisk);
+
+            UNIT_ASSERT_SUCCESS(error);
+            UNIT_ASSERT_VALUES_EQUAL("old-disk", affectedDisk);
+        });
+
+        UNIT_ASSERT(!state.HasPendingCleanup("old-disk"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "current-disk",
+            state.FindDisk("uuid-target"));
+        UNIT_ASSERT_EQUAL(
+            NProto::DEVICE_STATE_ERROR,
+            state.GetDevice("uuid-target").GetState());
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDirtyDevice> dirtyDevices;
+            UNIT_ASSERT(db.ReadDirtyDevices(dirtyDevices));
+            UNIT_ASSERT_VALUES_EQUAL(1, dirtyDevices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-source", dirtyDevices[0].Id);
+            UNIT_ASSERT_VALUES_EQUAL("", dirtyDevices[0].DiskId);
+        });
+    }
+
+    Y_UNIT_TEST(ShouldDetachPendingDeviceWhenUpdatingConfig)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+            db.UpdateDirtyDevice("uuid-1", "old-disk");
+        });
+
+        const auto agent = AgentConfig(
+            1,
+            {Device("dev-1", "uuid-1")});
+
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({agent})
+                            .WithAgents({agent})
+                            .WithDirtyDevices(
+                                {TDirtyDevice{"uuid-1", "old-disk"}})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        UNIT_ASSERT(state.HasPendingCleanup("old-disk"));
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            auto config = state.GetConfig();
+            config.MutableKnownAgents()->Clear();
+
+            TVector<TString> affectedDisks;
+            const auto error = state.UpdateConfig(
+                db,
+                std::move(config),
+                false,   // ignoreVersion
+                affectedDisks);
+
+            UNIT_ASSERT_SUCCESS(error);
+            ASSERT_VECTORS_EQUAL(
+                TVector<TString>{"old-disk"},
+                affectedDisks);
+        });
+
+        UNIT_ASSERT(!state.HasPendingCleanup("old-disk"));
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) {
+            TVector<TDirtyDevice> dirtyDevices;
+            UNIT_ASSERT(db.ReadDirtyDevices(dirtyDevices));
+            UNIT_ASSERT(dirtyDevices.empty());
+        });
+    }
+
     Y_UNIT_TEST(ShouldWaitForDevicesCleanup)
     {
         TTestExecutor executor;
