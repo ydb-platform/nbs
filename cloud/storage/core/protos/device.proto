@@ -134,6 +134,9 @@ message TWriteLogRecordRequest
 
     // Log sequence number used to order the writes.
     uint64 LogSequenceNumber = 4;
+
+    // Prev log sequence number used to validate order.
+    uint64 PrevLogSequenceNumber = 5;
 }
 
 message TWriteLogRecordResponse
@@ -155,6 +158,9 @@ message TJournalRecord
 
     // Log sequence number this record was written with.
     uint64 LogSequenceNumber = 2;
+
+    // Prev log sequence number used to validate order.
+    uint64 PrevLogSequenceNumber = 3;
 }
 
 message TReadJournalTailRequest

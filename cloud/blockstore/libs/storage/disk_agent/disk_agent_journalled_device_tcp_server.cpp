@@ -10,6 +10,8 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <atomic>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -77,6 +79,13 @@ auto ValidateWriteLogRecordRequest(
         return MakeError(E_ARGUMENT, "nothing to write");
     }
 
+    if (request.GetLogSequenceNumber() <= request.GetPrevLogSequenceNumber()) {
+        return MakeError(E_ARGUMENT, TStringBuilder()
+                << "invalid lsn: " << request.GetLogSequenceNumber()
+                << ", must be greater than the prev one: "
+                << request.GetPrevLogSequenceNumber());
+    }
+
     for (const auto& group: request.GetPageGroups()) {
         if (group.ContentSize() == 0) {
             return MakeError(E_ARGUMENT, "empty page group");
@@ -95,11 +104,9 @@ auto ValidateWriteLogRecordRequest(
             }
 
             if (blockSize != block.size()) {
-                return MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder() << "invalid page data: block size "
-                                        "mismatch: expected "
-                                     << blockSize << ", got " << block.size());
+                return MakeError(E_ARGUMENT, TStringBuilder()
+                    << "invalid page data: block size mismatch: expected "
+                    << blockSize << ", got " << block.size());
             }
         }
     }
@@ -135,6 +142,13 @@ auto ValidateReadPagesRequest(const NCloud::NProto::TReadPagesRequest& request)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TJournalledState
+{
+    std::atomic<ui64> LastLsn = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TJournalledDeviceHandler final: public IServerBackend
 {
 private:
@@ -142,15 +156,22 @@ private:
     const TActorId DiskAgentActorId;
     const TDeviceClientPtr DeviceClient;
 
+    THashMap<TString, TJournalledState> JournalledStateByDevice;
+
 public:
     TJournalledDeviceHandler(
         TActorSystem* actorSystem,
         const TActorId& diskAgentActorId,
-        TDeviceClientPtr deviceClient)
+        TDeviceClientPtr deviceClient,
+        const TVector<TString>& deviceUUIDs)
         : ActorSystem(actorSystem)
         , DiskAgentActorId(diskAgentActorId)
         , DeviceClient(std::move(deviceClient))
-    {}
+    {
+        for (const auto& uuid: deviceUUIDs) {
+            JournalledStateByDevice[uuid];
+        }
+    }
 
     // IServerBackend
 
@@ -292,8 +313,6 @@ public:
         NCloud::NProto::TWriteLogRecordRequest request)
         -> TFuture<NCloud::NProto::TWriteLogRecordResponse> final
     {
-        // TODO(sharpeye): check LogSequenceNumber
-
         ui32 requestBlockSize = 0;
         if (auto [bs, error] = ValidateWriteLogRecordRequest(request);
             HasError(error))
@@ -304,8 +323,30 @@ public:
             requestBlockSize = bs;
         }
 
+        const auto& deviceUUID = request.GetDeviceUUID();
+        auto* state = JournalledStateByDevice.FindPtr(deviceUUID);
+
+        if (!state) {
+            return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
+                TErrorResponse(E_NOT_FOUND, TStringBuilder()
+                    << "Device " << deviceUUID.Quote() << " not found"));
+        }
+
+        const ui64 lastLsn = state->LastLsn.load(std::memory_order_relaxed);
+        const ui64 lsn = request.GetLogSequenceNumber();
+        const ui64 prevLsn = request.GetPrevLogSequenceNumber();
+
+        // TODO(#6956): allow to handle request with wrong lsn order
+        if (lastLsn != 0 && prevLsn != lastLsn) {
+            const auto code = prevLsn > lastLsn ? E_REJECTED : E_INVALID_STATE;
+
+            return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
+                TErrorResponse(code, TStringBuilder()
+                    << "Wrong lsn: " << prevLsn << ", expected " << lastLsn));
+        }
+
         auto [storageAdapter, error] = DeviceClient->AccessDevice(
-            request.GetDeviceUUID(),
+            deviceUUID,
             request.GetHeaders().GetClientId(),
             DefaultAccessMode);
 
@@ -330,7 +371,7 @@ public:
         auto all = WaitAll(futures);
 
         return all.Apply(
-            [futures](const TFuture<void>& future) mutable
+            [futures, state, lsn](const TFuture<void>& future) mutable
                 -> NCloud::NProto::TWriteLogRecordResponse
             {
                 if (future.HasException()) {
@@ -343,6 +384,8 @@ public:
                         return TErrorResponse(sub.GetError());
                     }
                 }
+
+                state->LastLsn.store(lsn, std::memory_order_relaxed);
 
                 return {};
             });
@@ -422,7 +465,8 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
             std::make_shared<TJournalledDeviceHandler>(
                 TActivationContext::ActorSystem(),
                 ctx.SelfID,
-                State->GetDeviceClient()));
+                State->GetDeviceClient(),
+                State->GetDeviceIds()));
 
         JournalledDeviceTcpServer->Start();
 
