@@ -13,3 +13,61 @@
     "list-wlat-us": true,
     "errors": false
 }
+{
+    "components": [
+        {
+            "name": "NodeTable",
+            "offsetBytes": 0,
+            "sizeBytes": 9752576,
+            "slotSize": 96,
+            "slotCount": 100002
+        },
+        {
+            "name": "NameTable",
+            "offsetBytes": 9752576,
+            "sizeBytes": 4820992,
+            "slotSize": 48,
+            "slotCount": 100045
+        },
+        {
+            "name": "HandleTable",
+            "offsetBytes": 14573568,
+            "sizeBytes": 16003072,
+            "slotSize": 16,
+            "slotCount": 1000192
+        },
+        {
+            "name": "PageIndex",
+            "offsetBytes": 30576640,
+            "sizeBytes": 757760,
+            "slotSize": 24,
+            "slotCount": 31450
+        },
+        {
+            "name": "PageAllocatorBitmap",
+            "offsetBytes": 31334400,
+            "sizeBytes": 4096,
+            "slotSize": 0,
+            "slotCount": 29492
+        },
+        {
+            "name": "DataPages",
+            "offsetBytes": 31358976,
+            "sizeBytes": 966393856,
+            "slotSize": 32768,
+            "slotCount": 29492
+        }
+    ],
+    "storageGroups": [
+        {
+            "type": "E_SG_MIRROR",
+            "devices": [
+                {
+                    "host": "localhost",
+                    "port": true,
+                    "deviceId": "3400a1bfdf724d36b3fd934cc8dcb020"
+                }
+            ]
+        }
+    ]
+}

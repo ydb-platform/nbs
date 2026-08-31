@@ -989,11 +989,30 @@ void TIndexTabletActor::HandleHttpInfo(
     }};
 
     static const THttpHandlers getActions {{
-        {"dumpRange",       &TIndexTabletActor::HandleHttpInfo_DumpCompactionRange },
-        {"dirViewer",       &TIndexTabletActor::HandleHttpInfo_DirViewer },
-        {"locks",           &TIndexTabletActor::HandleHttpInfo_Locks },
-        {"fastShardLayout", &TIndexTabletActor::HandleHttpInfo_FastShardLayout },
-        {"diagnostics",     &TIndexTabletActor::HandleHttpInfo_Diagnostics },
+        {
+            "dumpRange",
+            &TIndexTabletActor::HandleHttpInfo_DumpCompactionRange
+        },
+        {
+            "dirViewer",
+            &TIndexTabletActor::HandleHttpInfo_DirViewer
+        },
+        {
+            "locks",
+            &TIndexTabletActor::HandleHttpInfo_Locks
+        },
+        {
+            "fastShardLayoutJson",
+            &TIndexTabletActor::HandleHttpInfo_FastShardLayoutJson
+        },
+        {
+            "fastShardLayout",
+            &TIndexTabletActor::HandleHttpInfo_FastShardLayout
+        },
+        {
+            "diagnostics",
+            &TIndexTabletActor::HandleHttpInfo_Diagnostics
+        },
     }};
 
     const auto* msg = ev->Get();

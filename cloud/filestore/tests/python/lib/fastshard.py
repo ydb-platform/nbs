@@ -3,6 +3,7 @@ import os
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.fs import request_tablet
 
 
 def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
@@ -49,3 +50,10 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
             "DirectoryCreationInShardsEnabled": True,
         },
     )
+
+    return file_shard_ids
+
+
+def fetch_layout(tablet_id):
+    response = request_tablet(tablet_id, f"action=fastShardLayoutJson")
+    return response.json()

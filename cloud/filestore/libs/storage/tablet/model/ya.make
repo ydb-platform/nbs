@@ -28,6 +28,7 @@ SRCS(
     layer.cpp
     metadata_cache.cpp
     mixed_blocks.cpp
+    monpage_helpers.cpp
     node_access_stats.cpp
     node_latency_stats.cpp
     node_ref.cpp
