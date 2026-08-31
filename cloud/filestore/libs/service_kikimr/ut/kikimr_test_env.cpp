@@ -6,6 +6,7 @@
 
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <contrib/ydb/library/actors/core/scheduler_cookie.h>
 
 namespace NCloud::NFileStore {
 
@@ -94,6 +95,17 @@ bool TTestActorSystem::Send(NActors::IEventHandlePtr event)
 {
     Runtime->Send(event.release());
     return true;
+}
+
+void TTestActorSystem::Schedule(
+    TDuration delta,
+    IEventHandlePtr event,
+    ISchedulerCookie* cookie)
+{
+    if (cookie) {
+        cookie->Detach();
+    }
+    Runtime->Schedule(event.release(), delta);
 }
 
 TProgramShouldContinue& TTestActorSystem::GetProgramShouldContinue()

@@ -60,6 +60,11 @@ public:
 
     bool Send(NActors::IEventHandlePtr event) override;
 
+    void Schedule(
+        TDuration delta,
+        NActors::IEventHandlePtr event,
+        NActors::ISchedulerCookie* cookie) override;
+
     TProgramShouldContinue& GetProgramShouldContinue() override;
 
     //

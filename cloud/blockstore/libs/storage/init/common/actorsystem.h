@@ -67,6 +67,10 @@ public:
         const NActors::TActorId& recipient,
         NActors::IEventBasePtr event) override;
     bool Send(NActors::IEventHandlePtr ev) override;
+    void Schedule(
+        TDuration delta,
+        NActors::IEventHandlePtr ev,
+        NActors::ISchedulerCookie* cookie) override;
 
     TLog CreateLog(const TString& component) override;
 
