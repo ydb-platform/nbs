@@ -246,6 +246,7 @@ void TIndexTabletActor::HandleForcedTabletOperation(
         StartForcedTabletOperation(msg->Mode, std::move(msg->OperationId));
     if (!state) {
         replyError(MakeError(E_INVALID_STATE, "could not start the operation"));
+        return;
     }
 
     std::unique_ptr<IActor> actor;
