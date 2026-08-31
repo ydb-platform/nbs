@@ -190,10 +190,13 @@ public:
 private:
     void IncrementBlobCounters(
         const TPartialBlobId& blobId,
-        EChannelDataKind indexKind, ui64 blocksCount)
+        EChannelDataKind indexKind,
+        ui64 blocksCount)
     {
         // Deletion markers contribute to blob totals, but not block totals.
-        blocksCount = IsDeletionMarker(blobId) ? 0 : blocksCount;
+        if (IsDeletionMarker(blobId)) {
+            blocksCount = 0;
+        }
 
         switch (indexKind) {
             case EChannelDataKind::Mixed:
