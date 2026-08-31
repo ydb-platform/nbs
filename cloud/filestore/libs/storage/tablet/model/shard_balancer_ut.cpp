@@ -13,7 +13,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 {
 #define ASSERT_NO_SB_ERROR(fileSize, expectedShardId) {                        \
     TString shardId;                                                           \
-    const auto error = balancer.SelectShard(0, fileSize, &shardId);            \
+    const auto error = balancer.SelectShard(fileSize, &shardId, 0);            \
     UNIT_ASSERT_VALUES_EQUAL_C(                                                \
         S_OK,                                                                  \
         error.GetCode(),                                                       \
@@ -24,7 +24,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
 #define ASSERT_NO_SB_ERROR_WITH_HINT(hint, fileSize, expectedShardId) {        \
     TString shardId;                                                           \
-    const auto error = balancer.SelectShard(hint, fileSize, &shardId);         \
+    const auto error = balancer.SelectShard(fileSize, &shardId, hint);         \
     UNIT_ASSERT_VALUES_EQUAL_C(                                                \
         S_OK,                                                                  \
         error.GetCode(),                                                       \
@@ -35,7 +35,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
 #define ASSERT_SB_ERROR(fileSize, expectedCode) {                              \
     TString shardId;                                                           \
-    const auto error = balancer.SelectShard(0, fileSize, &shardId);            \
+    const auto error = balancer.SelectShard(fileSize, &shardId, 0);            \
     UNIT_ASSERT_VALUES_EQUAL_C(                                                \
         expectedCode,                                                          \
         error.GetCode(),                                                       \
@@ -237,7 +237,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         const ui64 iterations = 64;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(0, 1_GB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId, 0);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -259,7 +259,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         const ui64 iterations = 64;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(0, 1_GB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId, 0);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -340,7 +340,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(0, 1_GB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId, 0);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -370,7 +370,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         hitCount.clear();
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(0, 1_TB, &shardId);
+            const auto error = balancer.SelectShard(1_TB, &shardId, 0);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -412,7 +412,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         THashMap<TString, ui64> hitCount;
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(0, 1_GB, &shardId);
+            const auto error = balancer.SelectShard(1_GB, &shardId, 0);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -441,7 +441,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         hitCount.clear();
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(0, 0, &shardId);
+            const auto error = balancer.SelectShard(0, &shardId, 0);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -484,7 +484,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         }
 
         // For 500 GiB file though it should be possible to select any shard
-        const auto error = balancer.SelectShard(0, 500_GB, &shardId);
+        const auto error = balancer.SelectShard(500_GB, &shardId, 0);
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
         // For a situation where in every shard there is less than 1 TiB left,
@@ -501,7 +501,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         hitCount.clear();
         for (ui64 i = 0; i < iterations; ++i) {
             TString shardId;
-            const auto error = balancer.SelectShard(0, 3_GB, &shardId);
+            const auto error = balancer.SelectShard(3_GB, &shardId, 0);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -529,7 +529,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
         // For 5 GiB file though it should be possible to select only s5
         shardId.clear();
         for (ui64 i = 0; i < iterations; ++i) {
-            const auto error = balancer.SelectShard(0, 5_GB, &shardId);
+            const auto error = balancer.SelectShard(5_GB, &shardId, 0);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -539,7 +539,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
 
         // For 6 GiB file it should not be possible to select any shard
         for (ui64 i = 0; i < iterations; ++i) {
-            const auto error = balancer.SelectShard(0, 6_GB, &shardId);
+            const auto error = balancer.SelectShard(6_GB, &shardId, 0);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_NOSPC,
                 error.GetCode(),
