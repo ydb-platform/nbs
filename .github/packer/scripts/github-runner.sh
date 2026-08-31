@@ -101,18 +101,15 @@ nebius version || nebius --version
 apt-get update
 apt-get -y upgrade
 
-# linux-image-6.2.0-39-generic is important because default kernel doesn't allow
+# linux-image-generic-hwe-22.04 is important because default (5.15) kernel doesn't allow
 # `nvme --id-ctrl` without CAP_SYS_ADMIN or root privilege
-LINUX_VER=6.2.0-39-generic
-
-LINUX_PKGS="linux-image-${LINUX_VER} \
-    linux-modules-${LINUX_VER} \
-    linux-modules-extra-${LINUX_VER} \
-    linux-tools-${LINUX_VER} \
-    linux-tools-common"
+LINUX_PKGS=(
+    linux-image-generic-hwe-22.04
+    linux-tools-generic-hwe-22.04
+)
 
 apt-get install -y --no-install-recommends \
-    ${LINUX_PKGS} \
+    "${LINUX_PKGS[@]}" \
     git wget gnupg lsb-release curl tzdata \
     libidn11-dev libaio1 libaio-dev \
     file qemu-kvm qemu-utils \
@@ -155,8 +152,10 @@ create_password_user "${DEBUG_USER}"
 sed -i -e 's/\\\$/$/g' /etc/shadow
 usermod -a -G kvm "${USER_TO_CREATE}"
 usermod -a -G docker "${USER_TO_CREATE}"
+usermod -a -G disk "${USER_TO_CREATE}"
 usermod -a -G kvm "${DEBUG_USER}"
 usermod -a -G docker "${DEBUG_USER}"
+usermod -a -G disk "${DEBUG_USER}"
 cat > "/etc/sudoers.d/99-${USER_TO_CREATE}" << EOF
 Cmnd_Alias GITHUB_RUNNER_LOGS = /usr/local/bin/actions-runner-collect-system-logs.sh
 ${USER_TO_CREATE} ALL=(root) NOPASSWD: GITHUB_RUNNER_LOGS
