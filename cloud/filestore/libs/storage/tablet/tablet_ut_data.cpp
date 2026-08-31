@@ -4375,6 +4375,257 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(lastCompactionMapRangeId, 79);
     }
 
+    std::unique_ptr<TEvIndexTablet::TEvForcedOperationStatusResponse>
+    GetForcedOperationStatus(
+        TIndexTabletClient & tablet,
+        const TString& operationId)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvForcedOperationStatusRequest>();
+        request->Record.SetOperationId(operationId);
+
+        tablet.SendRequest(std::move(request));
+        return tablet.RecvForcedOperationStatusResponse();
+    }
+
+    template <typename TOperationResponse>
+    struct TForcedTabletOperationTestConfig
+    {
+        using EOperation =
+            NProtoPrivate::TForcedOperationRequest::EForcedOperationType;
+        using EMode = TEvIndexTabletPrivate::EForcedTabletOperationMode;
+        using TResponse = TOperationResponse;
+
+        EOperation Type;
+        EMode Mode;
+        ui32 RequestEventType;
+    };
+
+    template <typename TOperationResponse>
+    void TestForcedTabletOperation(
+        const TForcedTabletOperationTestConfig<TOperationResponse>& operation,
+        TFileSystemConfig tabletConfig,
+        TTestEnvConfig testEnvConfig)
+    {
+        using EMode =
+            typename TForcedTabletOperationTestConfig<TOperationResponse>::EMode;
+        using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
+
+        TTestEnv env(testEnvConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        if (operation.Mode != EMode::CollectGarbage) {
+            auto id =
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+            auto handle = CreateHandle(tablet, id);
+            tablet.WriteData(handle, 0, tabletConfig.BlockSize, 'a');
+
+            if (operation.Mode == EMode::FlushBytes) {
+                tablet.WriteData(handle, 100, 10, 'b');
+            }
+        }
+
+        bool operationRequestObserved = false;
+        bool forcedOperationCompleted = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == operation.RequestEventType) {
+                    operationRequestObserved = true;
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvIndexTabletPrivate::EvForcedTabletOperationCompleted)
+                {
+                    forcedOperationCompleted = true;
+                }
+
+                return false;
+            });
+
+        auto response = tablet.ForcedOperation(operation.Type);
+        const auto operationId = response->Record.GetOperationId();
+        UNIT_ASSERT_VALUES_UNEQUAL(TString(), operationId);
+
+        NActors::TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return forcedOperationCompleted;
+        };
+        env.GetRuntime().DispatchEvents(options);
+
+        UNIT_ASSERT(operationRequestObserved);
+
+        auto status = GetForcedOperationStatus(tablet, operationId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            status->GetStatus(),
+            status->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(TStatus::E_COMPLETED),
+            static_cast<int>(status->Record.GetStatus()));
+
+        if (operation.Mode == EMode::Flush) {
+            auto stats = tablet.GetStorageStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                stats->Record.GetStats().GetFreshBlocksCount());
+        } else if (operation.Mode == EMode::FlushBytes) {
+            auto stats = tablet.GetStorageStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                stats->Record.GetStats().GetFreshBytesCount());
+        }
+    }
+
+    template <typename TOperationResponse>
+    void TestForcedTabletOperationError(
+        const TForcedTabletOperationTestConfig<TOperationResponse>& operation,
+        TFileSystemConfig tabletConfig,
+        TTestEnvConfig testEnvConfig)
+    {
+        using TResponse = typename TForcedTabletOperationTestConfig<
+            TOperationResponse>::TResponse;
+
+        TTestEnv env(testEnvConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const TString errorMessage = "injected forced operation error";
+        bool operationRequestObserved = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                if (event->GetTypeRewrite() != operation.RequestEventType) {
+                    return false;
+                }
+
+                operationRequestObserved = true;
+                const auto error = MakeError(E_REJECTED, errorMessage);
+                const auto sendForcedOperationError = [&](auto response)
+                {
+                    auto responseHandle =
+                        std::make_unique<NActors::IEventHandle>(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0,
+                            event->Cookie);
+
+                    runtime.Send(responseHandle.release(), nodeIdx);
+                };
+                sendForcedOperationError(std::make_unique<TResponse>(error));
+
+                return true;
+            });
+
+        auto request = std::make_unique<
+            TEvIndexTabletPrivate::TEvForcedTabletOperationRequest>(
+            operation.Mode,
+            CreateGuidAsString());
+        tablet.SendRequest(std::move(request));
+
+        auto response = tablet.RecvForcedTabletOperationResponse();
+        UNIT_ASSERT(operationRequestObserved);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(errorMessage, response->GetErrorReason());
+    }
+
+    static const TForcedTabletOperationTestConfig<
+        TEvIndexTabletPrivate::TEvFlushResponse>
+        ForcedFlushOperation = {
+            NProtoPrivate::TForcedOperationRequest::E_FLUSH,
+            TEvIndexTabletPrivate::EForcedTabletOperationMode::Flush,
+            TEvIndexTabletPrivate::EvFlushRequest,
+        };
+
+    const TForcedTabletOperationTestConfig<
+        TEvIndexTabletPrivate::TEvFlushBytesResponse>
+        ForcedFlushBytesOperation = {
+            NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES,
+            TEvIndexTabletPrivate::EForcedTabletOperationMode::FlushBytes,
+            TEvIndexTabletPrivate::EvFlushBytesRequest,
+        };
+
+    const TForcedTabletOperationTestConfig<
+        TEvIndexTabletPrivate::TEvCollectGarbageResponse>
+        ForcedCollectGarbageOperation = {
+            NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE,
+            TEvIndexTabletPrivate::EForcedTabletOperationMode::CollectGarbage,
+            TEvIndexTabletPrivate::EvCollectGarbageRequest,
+        };
+
+    TABLET_TEST(ShouldDoForcedFlush)
+    {
+        TestForcedTabletOperation(
+            ForcedFlushOperation,
+            tabletConfig,
+            testEnvConfig);
+    }
+
+    TABLET_TEST(ShouldDoForcedFlushBytes)
+    {
+        TestForcedTabletOperation(
+            ForcedFlushBytesOperation,
+            tabletConfig,
+            testEnvConfig);
+    }
+
+    TABLET_TEST(ShouldDoForcedCollectGarbage)
+    {
+        TestForcedTabletOperation(
+            ForcedCollectGarbageOperation,
+            tabletConfig,
+            testEnvConfig);
+    }
+
+    // So far there is no proper error reporting in public api, so
+    // using private api here.
+    TABLET_TEST(ShouldReportForcedFlushError)
+    {
+        TestForcedTabletOperationError(
+            ForcedFlushOperation,
+            tabletConfig,
+            testEnvConfig);
+    }
+
+    TABLET_TEST(ShouldReportForcedFlushBytesError)
+    {
+        TestForcedTabletOperationError(
+            ForcedFlushBytesOperation,
+            tabletConfig,
+            testEnvConfig);
+    }
+
+    TABLET_TEST(ShouldReportForcedCollectGarbageError)
+    {
+        TestForcedTabletOperationError(
+            ForcedCollectGarbageOperation,
+            tabletConfig,
+            testEnvConfig);
+    }
+
     TABLET_TEST(ShouldDumpCompactionRangeBlobs)
     {
         TTestEnv env(testEnvConfig);
