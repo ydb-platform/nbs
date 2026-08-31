@@ -1397,6 +1397,48 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         b.State->ReleaseBarrier(3, barrier.GetResult());
         UNIT_ASSERT_VALUES_EQUAL("3", b.DumpEvents());
     }
+
+    Y_UNIT_TEST(ShouldNotReleaseHandleBeingUsedForFlush)
+    {
+        TBootstrap b;
+        b.Storage->SetCapacity(2);
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 102, 3, "def").GetValue());
+
+        auto release = b.State->AddReleaseHandleRequest(1, 102);
+        UNIT_ASSERT(!release.HasValue());
+
+        UNIT_ASSERT(
+            b.State->FlushFailed(1, MakeError(E_IO)) ==
+            EFlushRetryStatus::ShouldRetry);
+
+        UNIT_ASSERT(release.HasValue());
+
+        auto pending2 = b.Add(2, 201, 0, "ghi");
+        auto pending1 = b.Add(1, 103, 10, "jkl");
+
+        b.State->FlushSucceeded(1, 1);
+
+        UNIT_ASSERT(pending2.HasValue());
+        UNIT_ASSERT(!pending1.HasValue());
+
+        // Current state:
+        // Node 1:
+        // - 1 unflushed request with released handle
+        // - 1 pending request with live handle
+        // Node 2:
+        // - 1 unflushed request with live handle
+
+        UNIT_ASSERT_VALUES_EQUAL(103, b.State->GetLiveHandle(1));
+
+        UNIT_ASSERT(
+            b.State->FlushFailed(2, MakeError(E_FS_NOSPC)) ==
+            EFlushRetryStatus::ShouldRetry);
+
+        UNIT_ASSERT(!pending1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(103, b.State->GetLiveHandle(2));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
