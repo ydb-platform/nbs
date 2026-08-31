@@ -223,7 +223,7 @@ void TAlterVolumeActor::DescribeVolume(const TActorContext& ctx)
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
             DiskId,
-            /*exactDiskIdMatch=*/true));
+            /*exactDiskIdMatch=*/false));
 }
 
 void TAlterVolumeActor::AlterVolume(
