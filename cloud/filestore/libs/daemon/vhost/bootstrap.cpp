@@ -170,6 +170,7 @@ private:
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
+    IProfileLogPtr ProfileLog;
     IFileStoreServicePtr LocalService;
     IActorSystemPtr ActorSystem;
 
@@ -182,12 +183,14 @@ public:
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
+            IProfileLogPtr profileLog,
             IFileStoreServicePtr localService,
             IActorSystemPtr actorSystem)
         : CertificateProviderFactory(std::move(certificateProviderFactory))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
+        , ProfileLog(std::move(profileLog))
         , LocalService(std::move(localService))
         , ActorSystem(std::move(actorSystem))
     {}
@@ -306,6 +309,8 @@ private:
             case NProto::SCT_TCP: {
                 return CreateTCPSideChannel(
                     *Logging,
+                    ProfileLog,
+                    Timer,
                     std::make_shared<NStorage::NFastShard::TAsyncClient>());
             }
         }
@@ -571,6 +576,7 @@ void TBootstrapVhost::InitEndpoints()
         Timer,
         Scheduler,
         Logging,
+        ProfileLog,
         LocalService,
         ActorSystem);
 
