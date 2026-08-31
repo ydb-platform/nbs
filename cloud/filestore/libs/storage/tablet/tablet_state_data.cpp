@@ -1451,9 +1451,12 @@ void TIndexTabletState::LoadCompactionMap(
 
 TString TIndexTabletState::EnqueueForcedRangeOperation(
     TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
-    TVector<ui32> ranges)
+    TVector<ui32> ranges,
+    TString operationId)
 {
-    auto operationId = CreateGuidAsString();
+    if (!operationId) {
+        operationId = CreateGuidAsString();
+    }
     PendingForcedOperations.emplace_back(TPendingForcedRangeOperation(
         mode,
         std::move(ranges),
@@ -1462,9 +1465,12 @@ TString TIndexTabletState::EnqueueForcedRangeOperation(
 }
 
 TString TIndexTabletState::EnqueueForcedTabletOperation(
-    TEvIndexTabletPrivate::EForcedTabletOperationMode mode)
+    TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
+    TString operationId)
 {
-    auto operationId = CreateGuidAsString();
+    if (!operationId) {
+        operationId = CreateGuidAsString();
+    }
     PendingForcedOperations.emplace_back(TPendingForcedTabletOperation(
         mode,
         operationId));
