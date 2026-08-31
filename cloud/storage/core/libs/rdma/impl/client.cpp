@@ -61,6 +61,12 @@ constexpr TDuration INSTANT_RECONNECT_DELAY = TDuration::MicroSeconds(1);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TString StaleGenerationError = SerializeError(
+    E_RDMA_UNAVAILABLE,
+    "buffer generation changed");
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRequest;
 using TRequestPtr = std::unique_ptr<TRequest>;
 
@@ -163,6 +169,8 @@ struct TRequest
 
     NVerbs::TMemoryWindowPtr InMemoryWindow = NVerbs::NullPtr;
     NVerbs::TMemoryWindowPtr OutMemoryWindow = NVerbs::NullPtr;
+
+    ui64 BufferPoolGeneration = 0;
 
     ERequestState State = ERequestState::Init;
 
@@ -597,6 +605,7 @@ private:
 
     TBufferPool SendBuffers;
     TBufferPool RecvBuffers;
+    std::atomic<ui64> BufferPoolGeneration = 0;
     TMutex AllocationLock;
 
     TPooledBuffer SendBuffer {};
@@ -853,14 +862,17 @@ void TClientEndpoint::CreateQP()
         recvFlags |= IBV_ACCESS_MW_BIND;
     }
 
-    SendBuffers.Init(Verbs, Connection->pd, sendFlags);
-    RecvBuffers.Init(Verbs, Connection->pd, recvFlags);
+    with_lock (AllocationLock) {
+        BufferPoolGeneration.fetch_add(1);
+        SendBuffers.Init(Verbs, Connection->pd, sendFlags);
+        RecvBuffers.Init(Verbs, Connection->pd, recvFlags);
 
-    SendBuffer = SendBuffers.AcquireBuffer(
-        Config.SendQueueSize * sizeof(TRequestMessage), true);
+        SendBuffer = SendBuffers.AcquireBuffer(
+            Config.SendQueueSize * sizeof(TRequestMessage), true);
 
-    RecvBuffer = RecvBuffers.AcquireBuffer(
-        Config.RecvQueueSize * sizeof(TResponseMessage), true);
+        RecvBuffer = RecvBuffers.AcquireBuffer(
+            Config.RecvQueueSize * sizeof(TResponseMessage), true);
+    }
 
     SendWrs.resize(Config.SendQueueSize);
     RecvWrs.resize(Config.RecvQueueSize);
@@ -986,6 +998,8 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
 
     try {
         with_lock (AllocationLock) {
+            req->BufferPoolGeneration = BufferPoolGeneration.load();
+
             if (requestBytes) {
                 req->InBuffer = SendBuffers.AcquireBuffer(requestBytes);
             }
@@ -1094,6 +1108,20 @@ void TClientEndpoint::HandleQueuedRequests() noexcept
 
         auto req = QueuedRequests.Dequeue();
         Y_ABORT_UNLESS(req);
+
+        if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
+            // The caller's thread could have been preempted between the
+            // state check in SendRequest() and InputRequests.Enqueue() for
+            // the whole duration of a reconnect cycle - req->InBuffer/
+            // OutBuffer may already belong to a torn down pool generation.
+            SendQueue.Push(send);
+            AbortRequest(
+                std::move(req),
+                E_RDMA_UNAVAILABLE,
+                "buffer generation changed");
+            continue;
+        }
+
         Counters->RequestDequeued();
 
         if (req->State != ERequestState::Enqueued) {
@@ -1261,8 +1289,15 @@ void TClientEndpoint::AbortRequest(
     ui32 err,
     const TString& msg) noexcept
 {
-    // destroying memory window automatically invalidates it. this ensures no
-    // remote write can succeed after this point
+    // Bound memory windows prevent MR/PD deallocation.
+    // Destroying a memory window automatically invalidates it.
+    // This ensures that no remote write can succeed after this point.
+    // By destroying all memory windows, we ensure that subsequent
+    // resource deallocation (PD/MR) succeeds.
+    if (req->InMemoryWindow) {
+        req->InMemoryWindow.reset();
+        Counters->ReleaseMemoryWindow();
+    }
     if (req->OutMemoryWindow) {
         req->OutMemoryWindow.reset();
         Counters->ReleaseMemoryWindow();
@@ -1299,10 +1334,21 @@ void TClientEndpoint::AbortRequest(
             break;
     }
 
-    auto len = SerializeError(
-        err,
-        msg,
-        static_cast<TStringBuf>(req->OutBuffer));
+    size_t len = 0;
+
+    if (req->BufferPoolGeneration == BufferPoolGeneration.load()) {
+        len = SerializeError(
+            err,
+            msg,
+            static_cast<TStringBuf>(req->OutBuffer));
+    } else {
+        // stale generation: OutBuffer belongs to a torn down pool, use the
+        // preallocated error instead
+        req->RequestBuffer = {};
+        req->ResponseBuffer = TStringBuf(
+            StaleGenerationError.data(), StaleGenerationError.length());
+        len = StaleGenerationError.length();
+    }
 
     auto* handler = req->Handler.get();
     handler->HandleResponse(std::move(req), RDMA_PROTO_FAIL, len);
@@ -1953,6 +1999,14 @@ bool TClientEndpoint::FlushHanging() const
 void TClientEndpoint::FreeRequest(TRequest* req) noexcept
 {
     with_lock (AllocationLock) {
+        if (req->BufferPoolGeneration != BufferPoolGeneration.load()) {
+            // Late request destruction after reconnect: InBuffer/OutBuffer
+            // were acquired eagerly in AllocateRequest() and belong to an
+            // older pool generation, so they cannot be safely released via
+            // the current SendBuffers/RecvBuffers.
+            return;
+        }
+
         // destroy memory windows that haven't been properly invalidated
         if (req->InMemoryWindow) {
             req->InMemoryWindow.reset();

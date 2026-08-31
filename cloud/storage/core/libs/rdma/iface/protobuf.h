@@ -101,6 +101,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 size_t SerializeError(ui32 code, TStringBuf message, TStringBuf buffer);
+TString SerializeError(ui32 code, TStringBuf message);
 
 NProto::TError ParseError(TStringBuf buffer);
 
