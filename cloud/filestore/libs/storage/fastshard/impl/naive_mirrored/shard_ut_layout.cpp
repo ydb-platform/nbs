@@ -42,9 +42,10 @@ struct TNullStorageGroup: IStorageGroup
 
     NCloud::NProto::TError WriteLogRecord(
         NCloud::NProto::TDeviceRequestHeaders headers,
-        TVector<TPageGroup> pageGroups) override
+        TVector<TPageGroup> pageGroups,
+        ui64 lsn) override
     {
-        Y_UNUSED(headers, pageGroups);
+        Y_UNUSED(headers, pageGroups, lsn);
 
         return {};
     }
@@ -108,8 +109,11 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
 {
     TStorageFixture fx;
 
-    auto shard =
-        CreateNaiveMirroredFileSystemShard(ShardNo, fx.Factory, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        fx.Factory,
+        fx.Config);
 
     //
     // Json test.

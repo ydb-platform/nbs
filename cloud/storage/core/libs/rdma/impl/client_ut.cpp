@@ -5,6 +5,7 @@
 
 #include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 #include <cloud/storage/core/libs/rdma/iface/protocol.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -133,6 +134,25 @@ TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
     ASSERT_EQ(42, testContext->ToS);
 }
 
+TEST(TRdmaClientTest, ShouldDeriveQueueSizesFromQueueSizeAtValidate)
+{
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+    auto log = logging->CreateLog("TEST");
+
+    TClientConfig clientConfig;
+    clientConfig.QueueSize = 256;
+    clientConfig.Validate(log);
+    EXPECT_EQ(256u, clientConfig.SendQueueSize);
+    EXPECT_EQ(256u, clientConfig.RecvQueueSize);
+
+    TServerConfig serverConfig;
+    serverConfig.QueueSize = 512;
+    serverConfig.Validate(log);
+    EXPECT_EQ(512u, serverConfig.SendQueueSize);
+    EXPECT_EQ(512u, serverConfig.RecvQueueSize);
+}
+
 TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
 {
     auto testContext = MakeIntrusive<NVerbs::TTestContext>();
@@ -156,6 +176,7 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
     std::atomic<int> connectRnrRetryCount = -1;
 
     std::atomic<bool> modifyCalled = false;
+    std::atomic<bool> ackTimeoutCalled = false;
 
     testContext->HandleResolveAddress =
         [&](rdma_cm_id* id, sockaddr* srcAddr, sockaddr* dstAddr, TDuration t)
@@ -180,13 +201,20 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
     {
         Y_UNUSED(qp);
 
-        const int expectedMask = IBV_QP_TIMEOUT | IBV_QP_MIN_RNR_TIMER;
-
-        EXPECT_EQ(expectedMask, mask);
-        EXPECT_EQ(clientConfig->QpTimeout, attr->timeout);
+        EXPECT_EQ(IBV_QP_MIN_RNR_TIMER, mask);
         EXPECT_EQ(clientConfig->QpMinRnrTimer, attr->min_rnr_timer);
 
         modifyCalled.store(true);
+    };
+
+    testContext->SetAckTimeout = [&](rdma_cm_id* id, ui8 timeout)
+    {
+        Y_UNUSED(id);
+
+        EXPECT_EQ(clientConfig->QpTimeout, timeout);
+        EXPECT_FALSE(connectCalled.load());
+
+        ackTimeoutCalled.store(true);
     };
 
     testContext->HandleConnect = [&](rdma_cm_id* id, rdma_conn_param* param)
@@ -233,6 +261,7 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
     ASSERT_EQ(clientConfig->QpRnrRetryCount, connectRnrRetryCount.load());
 
     ASSERT_TRUE(modifyCalled.load());
+    ASSERT_TRUE(ackTimeoutCalled.load());
 }
 
 TEST(TRdmaClientTest, ShouldDetachFromPoller)
@@ -1076,7 +1105,7 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
             context->CompletionHandle.Set();
         }
 
-        while (errors->Val() != 7 || active->Val() != 6) {
+        while (errors->Val() != 6 || active->Val() != 6) {
             SpinLockPause();
         }
 }
@@ -1399,6 +1428,419 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnknownProtocolVersionInRejectMessage)
     }
 
     ASSERT_GE(connectAttempts.load(), 1);
+}
+
+TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
+{
+        auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+        testContext->AllowConnect = true;
+
+        auto verbs = NVerbs::CreateTestVerbs(testContext);
+        auto monitoring = CreateMonitoringServiceStub();
+        auto clientConfig = std::make_shared<TClientConfig>();
+        clientConfig->UseMemoryWindows = true;
+        clientConfig->MaxReconnectDelay = 5s;
+        clientConfig->MaxResponseDelay = 1s;
+
+        auto logging =
+            CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+        auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+        };
+
+        std::atomic<int> bound = 0;
+        std::atomic<int> invalidated = 0;
+        std::atomic<int> destroyed = 0;
+
+        testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+        {
+            Y_UNUSED(qp);
+
+            auto guard = Guard(testContext->CompletionLock);
+
+            switch (wr->opcode) {
+                case IBV_WR_BIND_MW:
+                    bound++;
+                    break;
+
+                case IBV_WR_LOCAL_INV:
+                    invalidated++;
+                    break;
+
+                default:
+                    testContext->ReqIds.push_back(
+                        reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr)
+                            ->ReqId);
+            }
+
+            testContext->SendEvents.push_back(new ibv_send_wr(*wr));
+            testContext->CompletionHandle.Set();
+        };
+
+        testContext->DestroyMemoryWindow = [&](ibv_mw* mw) {
+            Y_UNUSED(mw);
+            destroyed++;
+        };
+
+        auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+        struct TResponse: IClientHandler
+        {
+            ui32 Status = 0;
+            TManualEvent Received;
+
+            void HandleResponse(
+                TClientRequestPtr req,
+                ui32 status,
+                size_t responseBytes) override
+            {
+                Y_UNUSED(req);
+                Y_UNUSED(responseBytes);
+
+                Status = status;
+                Received.Signal();
+            }
+        };
+
+        auto handleRequest = [&]()
+        {
+            while (true) {
+                with_lock (testContext->CompletionLock) {
+                    if (testContext->RecvEvents && testContext->ReqIds) {
+                        auto* recv = testContext->RecvEvents.front();
+                        auto* response = reinterpret_cast<TResponseMessage*>(
+                            recv->sg_list[0].addr);
+                        Zero(*response);
+                        InitMessageHeader(response, RDMA_PROTO_VERSION);
+                        response->ReqId = testContext->ReqIds.front();
+
+                        testContext->ReqIds.pop_front();
+                        testContext->RecvEvents.pop_front();
+                        testContext->ProcessedRecvEvents.push_back(recv);
+                        testContext->CompletionHandle.Set();
+                        break;
+                    }
+                }
+            }
+        };
+
+        // normal completion will invalidate its buffers
+        auto response1 = std::make_shared<TResponse>();
+        auto request1 = endpoint->AllocateRequest(
+            response1,
+            std::make_unique<TNullContext>(),
+            4096,
+            4096);
+        ASSERT_FALSE(HasError(request1.GetError()));
+
+        endpoint->SendRequest(
+            request1.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        handleRequest();
+
+        ASSERT_TRUE(response1->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_OK), response1->Status);
+        ASSERT_EQ(2, bound);
+        ASSERT_EQ(2, invalidated);
+        ASSERT_EQ(0, destroyed);
+
+        // timeout will result in memory windows destruction
+        auto response2 = std::make_shared<TResponse>();
+        auto request2 = endpoint->AllocateRequest(
+            response2,
+            std::make_unique<TNullContext>(),
+            4096,
+            4096);
+        ASSERT_FALSE(HasError(request2.GetError()));
+
+        endpoint->SendRequest(
+            request2.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        // do not complete request to trigger timeout
+        ASSERT_TRUE(response2->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response2->Status);
+        ASSERT_EQ(4, bound);
+        ASSERT_EQ(2, invalidated);
+        ASSERT_EQ(2, destroyed);
+
+        // complete request to drain the test transport
+        handleRequest();
+
+        // cancellation will also result in memory windows destruction
+        auto response3 = std::make_shared<TResponse>();
+        auto request3 = endpoint->AllocateRequest(
+            response3,
+            std::make_unique<TNullContext>(),
+            4096,
+            4096);
+        ASSERT_FALSE(HasError(request3.GetError()));
+
+        auto requestId3 = endpoint->SendRequest(
+            request3.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        endpoint->CancelRequest(requestId3);
+
+        ASSERT_TRUE(response3->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+        ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response3->Status);
+
+        // request can get cancelled at any stage, so `bound` can be anything
+        // between 4 and 6
+        ASSERT_GE(6, bound);
+        ASSERT_EQ(2, invalidated);
+        ASSERT_EQ(4, destroyed);
+
+        // validate relevant counters
+        auto counters = GetClientCounters(monitoring);
+
+        while (counters->GetCounter("ActiveBinds")->Val() != 0 ||
+               counters->GetCounter("QueuedInvalidations")->Val() != 0 ||
+               counters->GetCounter("ActiveInvalidations")->Val() != 0 ||
+               counters->GetCounter("MemoryWindows")->Val() != 0 ||
+               counters->GetCounter("MaxMemoryWindows")->Val() != 2)
+        {
+            SpinLockPause();
+        }
+}
+
+TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+
+    auto logging = CreateLoggingService(
+        "console",
+        TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(
+        verbs,
+        logging,
+        monitoring,
+        clientConfig);
+
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        PostSend<TRequestMessage>(testContext, qp, wr);
+    };
+
+    size_t requestBytes = 1024;
+    size_t responseBytes = 1024;
+
+    struct TResponse
+    {
+        bool Received = false;
+        ui32 Status = 0;
+        size_t Bytes = 0;
+        TString Buffer;
+    };
+
+    TResponse response;
+    TManualEvent received;
+
+    auto ctx = std::make_unique<TRequestContext>();
+    ctx->Handler = [&](TStringBuf requestBuffer,
+        TStringBuf responseBuffer,
+        ui32 status,
+        size_t bytes)
+    {
+        Y_UNUSED(requestBuffer);
+        response =
+            TResponse{
+                .Received = true,
+                .Status = status,
+                .Bytes = bytes,
+                .Buffer = TString(responseBuffer.Head(bytes))};
+        received.Signal();
+    };
+
+    // allocate a request (InBuffer/OutBuffer) against the current
+    // generation, but do not send it yet
+    auto request = endpoint->AllocateRequest(
+        std::make_shared<TClientHandler>(),
+        std::move(ctx),
+        requestBytes,
+        responseBytes);
+    ASSERT_FALSE(HasError(request.GetError()));
+
+    Disconnect(testContext);
+
+    ui64 recv;
+    do {
+        recv = AtomicGet(testContext->PostRecvCounter);
+    } while (recv != 2 * clientConfig->QueueSize);
+
+    // the endpoint is Connected again, so the request is accepted and
+    // enqueued - the stale generation is detected on the CQ thread, in
+    // HandleQueuedRequests(), before the buffers are touched
+    endpoint->SendRequest(
+        request.ExtractResult(),
+        MakeIntrusive<TCallContextBase>(0u));
+
+    received.Wait();
+
+    ASSERT_TRUE(response.Received);
+    ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response.Status);
+    ASSERT_GT(response.Bytes, 0u);
+
+    NProto::TError error =
+        ParseError(TStringBuf(response.Buffer).Head(response.Bytes));
+    ASSERT_EQ(static_cast<ui32>(E_RDMA_UNAVAILABLE), error.GetCode());
+
+    auto counters = GetClientCounters(monitoring);
+    ASSERT_EQ(0, counters->GetCounter("QueuedRequests")->Val());
+    ASSERT_EQ(0, counters->GetCounter("ActiveRequests")->Val());
+}
+
+TEST(TRdmaClientTest, ShouldEagerlyDestroyBothMemoryWindowsOnAbortRequest)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->UseMemoryWindows = true;
+
+    auto logging = CreateLoggingService(
+        "console",
+        TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(
+        verbs,
+        logging,
+        monitoring,
+        clientConfig);
+
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    std::atomic<int> bound = 0;
+    std::atomic<int> destroyed = 0;
+
+    testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        Y_UNUSED(qp);
+        if (wr->opcode == IBV_WR_BIND_MW) {
+            bound++;
+        }
+    };
+
+    testContext->DestroyMemoryWindow = [&](ibv_mw* mw) {
+        Y_UNUSED(mw);
+        destroyed++;
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    struct THoldingHandler: IClientHandler
+    {
+        TClientRequestPtr Held;
+        TManualEvent Received;
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            Y_UNUSED(status);
+            Y_UNUSED(responseBytes);
+            Held = std::move(req);
+            Received.Signal();
+        }
+    };
+
+    auto handler = std::make_shared<THoldingHandler>();
+
+    auto request = endpoint->AllocateRequest(
+        handler,
+        std::make_unique<TNullContext>(),
+        1024,
+        1024);
+    ASSERT_FALSE(HasError(request.GetError()));
+
+    auto reqId = endpoint->SendRequest(
+        request.ExtractResult(),
+        MakeIntrusive<TCallContextBase>(0u));
+
+    // wait until the request's memory windows have been acquired and
+    // the first bind work request posted
+    while (bound.load() < 1) {
+        SpinLockPause();
+    }
+
+    endpoint->CancelRequest(reqId);
+
+    handler->Received.Wait();
+    ASSERT_TRUE(handler->Held);
+    ASSERT_EQ(2, destroyed.load());
+
+    handler->Held.reset();
+}
+
+TEST(TRdmaClientTest, ShouldNotReleaseBuffersFromStaleBufferPoolGeneration)
+{
+    // NOTE: this test only detects the bug it guards against when built with ASAN.
+    // Without a sanitizer the freed chunk memory is still mapped, so releasing a
+    // buffer into a torn down pool silently corrupts the freelist instead of
+    // crashing, and the test passes either way.
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+
+    auto logging = CreateLoggingService(
+        "console",
+        TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(
+        verbs,
+        logging,
+        monitoring,
+        clientConfig);
+
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    auto request = endpoint->AllocateRequest(
+        std::make_shared<TClientHandler>(),
+        std::make_unique<TNullContext>(),
+        1024,
+        1024);
+    ASSERT_FALSE(HasError(request.GetError()));
+
+    Disconnect(testContext);
+
+    ui64 recv;
+    do {
+        recv = AtomicGet(testContext->PostRecvCounter);
+    } while (recv != 2 * clientConfig->QueueSize);
+
+    // dropping the request must not touch the torn down pool
+    auto req = request.ExtractResult();
+    req.reset();
 }
 
 }   // namespace NCloud::NStorage::NRdma

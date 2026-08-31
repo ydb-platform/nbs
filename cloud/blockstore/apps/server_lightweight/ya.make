@@ -29,7 +29,7 @@ CHECK_DEPENDENT_DIRS(ALLOW_ONLY PEERDIRS
     cloud/contrib
     cloud/storage
     contrib/libs
-    contrib/proto/opentelemetry/
+    contrib/proto/opentelemetry
     contrib/restricted
     library/cpp
     contrib/ydb/core

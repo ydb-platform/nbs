@@ -27,8 +27,8 @@ concurrency:
       (
         github.event.action != 'labeled' ||
         contains(
-          vars.LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS,
-          format('''{0}''', github.event.label.name)
+          fromJSON(vars.LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS || '[]'),
+          github.event.label.name
         )
       ) && 'pre-commit' || 'ignored'
     }}
@@ -41,8 +41,8 @@ jobs:
         (
           github.event.action != 'labeled' ||
           contains(
-            vars.LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS,
-            format('''{0}''', github.event.label.name)
+            fromJSON(vars.LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS || '[]'),
+            github.event.label.name
           )
         ) &&
         (

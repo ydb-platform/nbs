@@ -160,8 +160,8 @@ void TDestroyFileStoreActor::HandleDescribeFileStoreResponse(
         LOG_INFO(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] filestore size(%u bytes) less than "
-            "ForceDestroySizeThreshold(%u bytes), force destroying",
+            "[%s] filestore size(%lu bytes) less than "
+            "ForceDestroySizeThreshold(%lu bytes), force destroying",
             FileSystemId.c_str(),
             bytesSize,
             ForceDestroySizeThreshold);

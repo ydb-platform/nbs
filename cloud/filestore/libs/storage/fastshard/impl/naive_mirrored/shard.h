@@ -29,11 +29,13 @@ IStorageGroupFactoryPtr CreateNaiveMirroredStorageGroupFactory();
 ////////////////////////////////////////////////////////////////////////////////
 
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+    TString fileSystemId,
     ui32 shardNo,
     IStorageGroupFactoryPtr storageGroupFactory,
     const NProtoPrivate::TPersistentFastShardConfig& config);
 
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+    TString fileSystemId,
     ui32 shardNo,
     const NProtoPrivate::TPersistentFastShardConfig& config);
 

@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/vhost/server.h>
 #include <cloud/storage/core/libs/common/media.h>
 
@@ -21,6 +20,7 @@ class TVhostEndpointListener final
 private:
     const NVhost::IServerPtr Server;
     const NProto::TChecksumFlags ChecksumFlags;
+    const TVhostEndpointThreadCounts ThreadCounts;
     const bool VhostDiscardEnabled;
     const bool VhostWriteZeroesEnabled;
     const bool DropDiscardRequests;
@@ -31,6 +31,7 @@ public:
     TVhostEndpointListener(
             NVhost::IServerPtr server,
             NProto::TChecksumFlags checksumFlags,
+            const TVhostEndpointThreadCounts& threadCounts,
             bool vhostDiscardEnabled,
             bool vhostWriteZeroesEnabled,
             bool dropDiscardRequests,
@@ -38,6 +39,7 @@ public:
             ui32 optimalIoSize)
         : Server(std::move(server))
         , ChecksumFlags(std::move(checksumFlags))
+        , ThreadCounts(threadCounts)
         , VhostDiscardEnabled(vhostDiscardEnabled)
         , VhostWriteZeroesEnabled(vhostWriteZeroesEnabled)
         , DropDiscardRequests(dropDiscardRequests)
@@ -58,7 +60,10 @@ public:
         options.ClientId = request.GetClientId();
         options.BlockSize = volume.GetBlockSize();
         options.BlocksCount = volume.GetBlocksCount();
-        options.VhostQueuesCount = request.GetVhostQueuesCount();
+        options.VhostQueuesCount = Max<ui32>(1, request.GetVhostQueuesCount());
+        options.ThreadCount = GetVhostEndpointThreadCount(
+            ThreadCounts,
+            volume.GetStorageMediaKind());
         options.UnalignedRequestsDisabled = request.GetUnalignedRequestsDisabled();
         options.StorageMediaKind = volume.GetStorageMediaKind();
         options.DiscardEnabled =
@@ -69,7 +74,6 @@ public:
             ShouldDropDiscardRequestsForVolume(DropDiscardRequests, volume);
         options.MaxZeroBlocksSubRequestSize = MaxZeroBlocksSubRequestSize;
         options.OptimalIoSize = OptimalIoSize;
-        options.ReadOnly = !IsReadWriteMode(request.GetVolumeAccessMode());
 
         return Server->StartEndpoint(
             request.GetUnixSocketPath(),
@@ -135,9 +139,40 @@ bool ShouldDropDiscardRequestsForVolume(
            IsDiskRegistryMediaKind(volume.GetStorageMediaKind());
 }
 
+ui32 GetVhostEndpointThreadCount(
+    const TVhostEndpointThreadCounts& threadCounts,
+    NCloud::NProto::EStorageMediaKind mediaKind)
+{
+    ui32 threadCount = 0;
+    switch (mediaKind) {
+        case NCloud::NProto::STORAGE_MEDIA_SSD:
+            threadCount = threadCounts.SSD;
+            break;
+        case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
+        case NCloud::NProto::STORAGE_MEDIA_HYBRID:
+        case NCloud::NProto::STORAGE_MEDIA_HDD:
+            threadCount = threadCounts.HDD;
+            break;
+        case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+            threadCount = threadCounts.NonReplicated;
+            break;
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
+            threadCount = threadCounts.Mirror2;
+            break;
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
+            threadCount = threadCounts.Mirror3;
+            break;
+        default:
+            break;
+    }
+    return Max<ui32>(1, threadCount);
+}
+
 IEndpointListenerPtr CreateVhostEndpointListener(
     NVhost::IServerPtr server,
     const NProto::TChecksumFlags& checksumFlags,
+    const TVhostEndpointThreadCounts& threadCounts,
     bool vhostDiscardEnabled,
     bool vhostWriteZeroesEnabled,
     bool dropDiscardRequests,
@@ -147,6 +182,7 @@ IEndpointListenerPtr CreateVhostEndpointListener(
     return std::make_shared<TVhostEndpointListener>(
         std::move(server),
         checksumFlags,
+        threadCounts,
         vhostDiscardEnabled,
         vhostWriteZeroesEnabled,
         dropDiscardRequests,

@@ -165,6 +165,11 @@ message TPersistentFastShardConfig
     repeated TStorageGroup StorageGroups = 1;
     uint64 NodesPerGroup = 2;
     uint64 ExpectedGroupCapacity = 3;
+
+    // Retry policy for storage node requests. Zero values mean defaults:
+    // 5min total timeout, 500ms backoff increment.
+    uint64 RetryTotalTimeoutMs = 4;
+    uint64 RetryBackoffIncrementMs = 5;
 }
 
 message TMemFastShardConfig

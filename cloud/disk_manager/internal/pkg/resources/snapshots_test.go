@@ -26,6 +26,7 @@ func requireSnapshotsAreEqual(t *testing.T, expected SnapshotMeta, actual Snapsh
 	}
 	require.Equal(t, expected.CreatedBy, actual.CreatedBy)
 	require.Equal(t, expected.DeleteTaskID, actual.DeleteTaskID)
+	require.True(t, actual.UseDataplaneTasks)
 	require.Equal(t, expected.Size, actual.Size)
 	require.Equal(t, expected.StorageSize, actual.StorageSize)
 	require.Equal(t, expected.Ready, actual.Ready)
@@ -61,6 +62,12 @@ func TestSnapshotsCreateSnapshot(t *testing.T) {
 	created, err := storage.CreateSnapshot(ctx, snapshot)
 	require.NoError(t, err)
 	require.Equal(t, snapshot.ID, created.ID)
+	require.True(t, created.UseDataplaneTasks)
+
+	meta, err := storage.GetSnapshotMeta(ctx, snapshot.ID)
+	require.NoError(t, err)
+	require.NotNil(t, meta)
+	require.True(t, meta.UseDataplaneTasks)
 
 	// Check idempotency.
 	created, err = storage.CreateSnapshot(ctx, snapshot)
@@ -69,6 +76,12 @@ func TestSnapshotsCreateSnapshot(t *testing.T) {
 
 	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)
 	require.NoError(t, err)
+
+	meta, err = storage.GetSnapshotMeta(ctx, snapshot.ID)
+	require.NoError(t, err)
+	require.NotNil(t, meta)
+	require.True(t, meta.UseDataplaneTasks)
+	require.True(t, meta.Ready)
 
 	// Check idempotency.
 	err = storage.SnapshotCreated(ctx, snapshot.ID, "", time.Now(), 0, 0)

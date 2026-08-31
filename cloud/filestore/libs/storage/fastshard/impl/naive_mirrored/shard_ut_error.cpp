@@ -73,9 +73,10 @@ struct TTestStorageGroup: IStorageGroup
 
     NCloud::NProto::TError WriteLogRecord(
         NCloud::NProto::TDeviceRequestHeaders headers,
-        TVector<TPageGroup> pageGroups) override
+        TVector<TPageGroup> pageGroups,
+        ui64 lsn) override
     {
-        Y_UNUSED(headers);
+        Y_UNUSED(headers, lsn);
 
         auto e = WriteError.Get();
         if (HasError(e)) {
@@ -159,8 +160,11 @@ TEST(NaiveMirroredShardErrorTest, CreatesHandles)
 
     TStorageFixture fx;
 
-    auto shard =
-        CreateNaiveMirroredFileSystemShard(ShardNo, fx.Factory, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        fx.Factory,
+        fx.Config);
 
     const TString file1 = "file1";
     const ui32 mode = 0644;

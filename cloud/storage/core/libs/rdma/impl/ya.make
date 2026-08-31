@@ -6,6 +6,7 @@ SRCS(
     client.cpp
     event.cpp
     list.cpp
+    memory_window.cpp
     observability.cpp
     poll.cpp
     rcu.cpp

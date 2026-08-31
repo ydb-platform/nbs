@@ -6,7 +6,9 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TClientConfig::TClientConfig()
+TClientConfig::TClientConfig() = default;
+
+void TClientConfig::Validate(TLog& log)
 {
     // Compatibility with the old config.
     if (SendQueueSize == 0 && QueueSize > 0) {
@@ -15,10 +17,7 @@ TClientConfig::TClientConfig()
     if (RecvQueueSize == 0 && QueueSize > 0) {
         RecvQueueSize = QueueSize;
     }
-}
 
-void TClientConfig::Validate(TLog& log)
-{
     BufferPool.Validate(log);
     constexpr ui8 ThreeBitsMax = 7;
     constexpr ui8 FiveBitsMax = 31;
@@ -86,6 +85,8 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(QpRnrRetryCount, static_cast<ui32>(QpRnrRetryCount));
                 ENTRY(QpTimeout, static_cast<ui32>(QpTimeout));
                 ENTRY(QpMinRnrTimer, static_cast<ui32>(QpMinRnrTimer));
+                ENTRY(UseMemoryWindows, UseMemoryWindows);
+                ENTRY(MemoryWindowsPoolSize, MemoryWindowsPoolSize);
             }
         }
     }

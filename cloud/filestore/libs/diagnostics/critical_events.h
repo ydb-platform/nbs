@@ -28,6 +28,7 @@ namespace NCloud::NFileStore{
     xxx(DuplicateRequestId)                                                    \
     xxx(InvalidDupCacheEntry)                                                  \
     xxx(GeneratedOrphanNode)                                                   \
+    xxx(DeferredNodeDestructionLimitExceeded)                                  \
     xxx(ReceivedNodeOpErrorFromShard)                                          \
     xxx(LocalFsMaxSessionNodesInUse)                                           \
     xxx(LocalFsMaxSessionFileHandlesInUse)                                     \
@@ -41,6 +42,7 @@ namespace NCloud::NFileStore{
     xxx(WriteBackCacheCorruptionError)                                         \
     xxx(WriteBackCacheDataLossError)                                           \
     xxx(WriteBackCacheImpossibleState)                                         \
+    xxx(WriteBackCacheInitializationError)                                     \
     xxx(WriteBackCacheWritingNotAllowedInDrainingMode)                         \
     xxx(ErrorWasSentToTheGuest)                                                \
     xxx(DirectoryHandlesStorageError)                                          \

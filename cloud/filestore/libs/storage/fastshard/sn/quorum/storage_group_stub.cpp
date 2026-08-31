@@ -25,9 +25,10 @@ public:
 
     NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
-        TVector<TPageGroup> pageGroups) override
+        TVector<TPageGroup> pageGroups,
+        ui64 lsn) override
     {
-        Y_UNUSED(headers, pageGroups);
+        Y_UNUSED(headers, pageGroups, lsn);
         return MakeError(E_NOT_IMPLEMENTED);
     }
 
@@ -46,11 +47,18 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
-    TVector<TStorageDevice> devices)
+    TVector<TStorageDevice> devices,
+    TStorageGroupRetryPolicy retryPolicy,
+    ITimerPtr timer)
 {
-    Y_UNUSED(devices);
+    Y_UNUSED(devices, retryPolicy, timer);
 
     return std::make_shared<TStorageGroupStub>();
+}
+
+ITimerPtr CreateFiberTimer()
+{
+    return CreateWallClockTimer();
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

@@ -80,8 +80,8 @@ private:
     const TString LogTag;
     const TString FileSystemId;
     const TString FilePath;
+    const IPersistentStoragePtr PersistentStorage;
 
-    IPersistentStoragePtr PersistentStorage;
     TWriteBackCacheState State;
 
     std::atomic<bool> DrainRequested = false;
@@ -109,61 +109,36 @@ public:
               args.ClientId.c_str()))
         , FileSystemId(args.FileSystemId)
         , FilePath(args.FilePath)
+        , PersistentStorage(CreateFileRingBufferPersistentStorage(
+              args.Stats->GetPersistentStorageStats(),
+              {.FilePath = args.FilePath, .DataCapacity = args.CapacityBytes},
+              Log,
+              LogTag))
         , State(
               *this,
+              PersistentStorage,
               Timer,
               args.Stats->GetWriteBackCacheStateStats(),
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
               BuildFlushBatchLimits(args),
               LogTag)
-    {
-        auto createPersistentStorageResult =
-            CreateFileRingBufferPersistentStorage(
-                args.Stats->GetPersistentStorageStats(),
-                {.FilePath = args.FilePath, .DataCapacity = args.CapacityBytes},
-                Log,
-                LogTag);
-
-        if (HasError(createPersistentStorageResult)) {
-            ReportWriteBackCacheCorruptionError(
-                TStringBuilder()
-                << LogTag
-                << " WriteBackCache persistent storage initialization failed: "
-                << createPersistentStorageResult.GetError()
-                << ", FilePath: " << args.FilePath.Quote());
-            return;
-        }
-
-        PersistentStorage = createPersistentStorageResult.ExtractResult();
-
-        // File ring buffer should be able to store any valid TWriteDataRequest.
-        // Inability to store it will cause this and future requests to remain
-        // in the pending queue forever (including requests with smaller size).
-        // Should fit 1 MiB of data plus some headers (assume 1 KiB is enough).
-        Y_ABORT_UNLESS(
-            PersistentStorage->GetMaxSupportedAllocationByteCount() >=
-            1024 * 1024 + 1016);
-    }
+    {}
 
     // This method should be called outside TImpl constructor because
     // it captures weak_from_this()
     void Init()
     {
-        if (!PersistentStorage) {
-            return;
-        }
+        auto error = State.Init();
 
-        if (!State.Init(PersistentStorage)) {
-            ReportWriteBackCacheCorruptionError(
+        if (HasError(error)) {
+            ReportWriteBackCacheInitializationError(
                 TStringBuilder()
-                << LogTag
-                << " WriteBackCache failed to deserialize requests from the "
-                   "persistent storage due to corruption"
-                << ", FilePath: " << FilePath.Quote());
+                << LogTag << " WriteBackCache initialization failure: "
+                << FormatError(error) << ", FilePath: " << FilePath.Quote());
+        } else {
+            ScheduleAutomaticFlushIfNeeded();
         }
-
-        ScheduleAutomaticFlushIfNeeded();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -248,48 +223,86 @@ public:
             return MakeFuture(std::move(response));
         }
 
+        auto promise = NewPromise<NProto::TReadDataResponse>();
+
         // Prevent unflushed data parts from being evicted from storage until
         // the response is completed
         const auto pin = State.PinCachedData(request->GetNodeId());
 
         TReadResponseBuilder responseBuilder(*request);
-        if (auto response = responseBuilder.TryFullyServeFromCache(State, pin))
+
+        auto cachedData = State.GetCachedData(
+            request->GetNodeId(),
+            request->GetOffset(),
+            request->GetLength(),
+            pin);
+
+        if (!cachedData) {
+            // WriteBackCache is in failed state - hang the request
+            State.UnpinCachedData(request->GetNodeId(), pin);
+            State.AddHangingRequest(promise);
+            return promise.GetFuture();
+        }
+
+        if (auto response = responseBuilder.TryFullyServeFromCache(*cachedData))
         {
             State.UnpinCachedData(request->GetNodeId(), pin);
             InternalStats->AddReadDataStats(
                 EReadDataRequestCacheStatus::FullHit);
-            return MakeFuture(std::move(*response));
+            promise.SetValue(std::move(*response));
+            return promise.GetFuture();
         }
 
-        auto callback = [ptr = weak_from_this(),
-                         responseBuilder = std::move(responseBuilder),
-                         pin](TFuture<NProto::TReadDataResponse> future)
+        auto future = promise.GetFuture();
+
+        auto callback =
+            [ptr = weak_from_this(),
+             responseBuilder = std::move(responseBuilder),
+             pin,
+             promise = std::move(promise)](
+                const TFuture<NProto::TReadDataResponse>& future) mutable
         {
-            auto response = UnsafeExtractValue(future);
+            auto response = ExtractResponse(future);
+            bool shouldHang = false;
 
             if (auto self = ptr.lock()) {
                 if (!HasError(response)) {
-                    bool cachedDataApplied =
-                        responseBuilder.AugmentResponseWithCachedData(
-                            response,
-                            self->State,
-                            pin);
+                    auto cachedData = self->State.GetCachedData(
+                        responseBuilder.GetNodeId(),
+                        responseBuilder.GetOffset(),
+                        responseBuilder.GetLength(),
+                        pin);
 
-                    if (cachedDataApplied) {
-                        self->InternalStats->AddReadDataStats(
-                            EReadDataRequestCacheStatus::PartialHit);
+                    if (cachedData) {
+                        bool cachedDataApplied =
+                            responseBuilder.AugmentResponseWithCachedData(
+                                response,
+                                *cachedData);
+
+                        if (cachedDataApplied) {
+                            self->InternalStats->AddReadDataStats(
+                                EReadDataRequestCacheStatus::PartialHit);
+                        } else {
+                            self->InternalStats->AddReadDataStats(
+                                EReadDataRequestCacheStatus::Miss);
+                        }
                     } else {
-                        self->InternalStats->AddReadDataStats(
-                            EReadDataRequestCacheStatus::Miss);
+                        self->State.AddHangingRequest(promise);
+                        shouldHang = true;
                     }
                 }
                 self->State.UnpinCachedData(responseBuilder.GetNodeId(), pin);
             }
-            return response;
+
+            if (!shouldHang) {
+                promise.SetValue(std::move(response));
+            }
         };
 
-        return Session->ReadData(std::move(callContext), std::move(request))
-            .Apply(std::move(callback));
+        Session->ReadData(std::move(callContext), std::move(request))
+            .Subscribe(std::move(callback));
+
+        return future;
     }
 
     TFuture<NProto::TWriteDataResponse> WriteData(
@@ -441,7 +454,7 @@ private:
         auto batchBuilder =
             RequestBuilder->CreateWriteDataRequestBatchBuilder(nodeId);
 
-        State.VisitUnflushedRequestsFromFrontFlushBatch(
+        bool success = State.VisitUnflushedRequestsFromFrontFlushBatch(
             nodeId,
             [&batchBuilder](const TCachedWriteDataRequest* request)
             {
@@ -449,6 +462,14 @@ private:
                     request->GetOffset(),
                     request->GetBuffer());
             });
+
+        if (!success) {
+            // This may happen if the storage is corrupted or an internal
+            // problem in the logic has happened. This is fatal and should
+            // result in suspending all operations. Flush will remain in-flight
+            // until manual resolution takes place.
+            return;
+        }
 
         auto writeDataBatch = batchBuilder->Build();
 
@@ -481,12 +502,17 @@ private:
 
     void ExecuteFlush(std::shared_ptr<TNodeFlushState> flushState)
     {
+        // TODO(#6201): until handleless IO is implemented, flush needs a live
+        // handle to execute WriteData requests
         auto handle = State.GetLiveHandle(flushState->GetNodeId());
 
         if (handle == NProto::E_INVALID_HANDLE) {
-            // It is not possible to flush data when all handles are released
-            // TODO(#6201): this will not be needed after adding support for
-            // handleless IO
+            // This may happen in the following cases:
+            // - Flush has been requested while there are no live handles
+            //   remaining;
+            // - WriteBackCache is in failed state (storage is corrupted or an
+            //   error in the logic has occured).
+
             auto retryStatus = State.FlushFailed(
                 flushState->GetNodeId(),
                 MakeError(
@@ -495,18 +521,17 @@ private:
                     "%lu",
                     flushState->GetNodeId()));
 
-            // A live handle could appear between GetLiveHandle and FlushFailed
+            // A live handle could appear concurrently between GetLiveHandle and
+            // FlushFailed
             if (retryStatus == EFlushRetryStatus::ShouldNotRetry) {
                 return;
             }
 
             handle = State.GetLiveHandle(flushState->GetNodeId());
-
-            Y_ABORT_UNLESS(
-                handle != NProto::E_INVALID_HANDLE,
-                "There are no known live handles to flush data for node %lu, "
-                "but FlushFailed returned ShouldRetry",
-                flushState->GetNodeId());
+            if (handle == NProto::E_INVALID_HANDLE) {
+                ScheduleRetryFlush(flushState);
+                return;
+            }
         }
 
         auto requests = flushState->BeginFlush();

@@ -788,6 +788,117 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             });
     }
 
+    Y_UNIT_TEST(ShouldAddOutdatedLaggingDevices_CanceledMigrationTarget)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+        auto statePtr = CreateDiskRegistryState();
+        TDiskRegistryState& state = *statePtr;
+        CreateMirror3Disk(executor, state);
+
+        const TString sourceId = "uuid-7";
+        const TString replicaId = "disk-1/2";
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                TString affectedDisk;
+                UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
+                    db,
+                    sourceId,
+                    NProto::DEVICE_STATE_WARNING,
+                    Now(),
+                    "test",
+                    affectedDisk));
+                UNIT_ASSERT_VALUES_EQUAL(replicaId, affectedDisk);
+            });
+
+        const auto migrations = state.BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL(replicaId, migrations[0].DiskId);
+        UNIT_ASSERT_VALUES_EQUAL(sourceId, migrations[0].SourceDeviceId);
+
+        TString targetId;
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                auto result =
+                    state.StartDeviceMigration(Now(), db, replicaId, sourceId);
+                UNIT_ASSERT_SUCCESS(result.GetError());
+                targetId = result.GetResult().GetDeviceUUID();
+            });
+
+        // Cancel the migration by recovering its source. The target remains in
+        // FinishedMigrations until the volume acknowledges reallocation.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                TString affectedDisk;
+                UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
+                    db,
+                    sourceId,
+                    NProto::DEVICE_STATE_ONLINE,
+                    Now(),
+                    "test",
+                    affectedDisk));
+                UNIT_ASSERT_VALUES_EQUAL(replicaId, affectedDisk);
+            });
+
+        size_t historySize = 0;
+        {
+            TDiskInfo diskInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+            UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.DeviceReplacementIds.size());
+            historySize = diskInfo.History.size();
+
+            TDiskInfo replicaInfo;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo(replicaId, replicaInfo));
+            UNIT_ASSERT_VALUES_EQUAL(0, replicaInfo.Migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, replicaInfo.FinishedMigrations.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                targetId,
+                replicaInfo.FinishedMigrations[0].DeviceId);
+            UNIT_ASSERT(replicaInfo.FinishedMigrations[0].IsCanceled);
+        }
+
+        // Simulate a delayed report from the volume, created while the target
+        // was still part of the active migration.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                NProto::TLaggingDevice laggingDevice;
+                laggingDevice.SetDeviceUUID(targetId);
+                laggingDevice.SetRowIndex(0);
+
+                auto error = state.AddOutdatedLaggingDevices(
+                    Now(),
+                    db,
+                    "disk-1",
+                    {std::move(laggingDevice)});
+                UNIT_ASSERT_SUCCESS(error);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+
+        TDiskInfo diskInfo;
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+        UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.DeviceReplacementIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(historySize, diskInfo.History.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.OutdatedLaggingDevices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            targetId,
+            diskInfo.OutdatedLaggingDevices[0].Device.GetDeviceUUID());
+
+        TDiskInfo replicaInfo;
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo(replicaId, replicaInfo));
+        UNIT_ASSERT_VALUES_EQUAL(0, replicaInfo.Migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, replicaInfo.FinishedMigrations.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            targetId,
+            replicaInfo.FinishedMigrations[0].DeviceId);
+        UNIT_ASSERT(replicaInfo.FinishedMigrations[0].IsCanceled);
+    }
+
     Y_UNIT_TEST(ShouldAddOutdatedLaggingDevices_ComplicatedDisk)
     {
         TTestExecutor executor;

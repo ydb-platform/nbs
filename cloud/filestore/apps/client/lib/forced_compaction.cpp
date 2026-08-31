@@ -25,7 +25,7 @@ private:
         const TRequest& requestProto,
         TResponse* responseProto)
     {
-        auto callContext = PrepareCallContext();
+        auto callContext = PrepareCallContext(FileSystemId);
 
         TString input;
         google::protobuf::util::MessageToJsonString(requestProto, &input);
@@ -34,12 +34,11 @@ private:
         auto request = std::make_shared<NProto::TExecuteActionRequest>();
         request->SetAction(action);
         request->SetInput(std::move(input));
+        request->MutableHeaders()->SetRequestId(callContext->RequestId);
 
         STORAGE_DEBUG("Sending ExecuteAction request");
-        const auto requestId = GetRequestId(*request);
-        auto result = WaitFor(Client->ExecuteAction(
-            MakeIntrusive<TCallContext>(FileSystemId, requestId),
-            std::move(request)));
+        auto result = WaitFor(
+            Client->ExecuteAction(std::move(callContext), std::move(request)));
 
         STORAGE_DEBUG("Received ExecuteAction response");
 
@@ -83,8 +82,6 @@ public:
 public:
     bool Execute() override
     {
-        auto callContext = PrepareCallContext();
-
         auto response = RunCompaction();
 
         while (true) {

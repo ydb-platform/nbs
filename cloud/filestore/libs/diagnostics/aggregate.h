@@ -7,7 +7,7 @@
 
 #include <utility>
 
-namespace NCloud::NFileStore::NClient::NAggregation {
+namespace NCloud::NFileStore::NAggregation {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -79,4 +79,4 @@ TVector<TResult<T>> Aggregate(const TVector<TRow<T>>& rows)
     return result;
 }
 
-}   // namespace NCloud::NFileStore::NClient::NAggregation
+}   // namespace NCloud::NFileStore::NAggregation

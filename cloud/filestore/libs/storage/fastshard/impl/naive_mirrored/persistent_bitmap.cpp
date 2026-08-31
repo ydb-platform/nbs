@@ -119,7 +119,13 @@ NProto::TError TPersistentBitmap::Get(ui64 bit, bool* result) const
     }
 
     const ui64 bitmapPageNo = bit / BitsPerPage;
-    *result = GetBit(BitmapPages[bitmapPageNo], bit % BitsPerPage);
+    TBuffer page;
+    error = ReadPage(0 /* lsn */, bitmapPageNo, &page);
+    if (HasError(error)) {
+        return error;
+    }
+
+    *result = GetBit(page, bit % BitsPerPage);
     return {};
 }
 
@@ -137,11 +143,16 @@ TPersistentBitmap::Set(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups)
     }
 
     const ui64 bitmapPageNo = bit / BitsPerPage;
-    SetBit(BitmapPages[bitmapPageNo], bit % BitsPerPage, false /* isReset */);
+    TBuffer page;
+    error = ReadPage(lsn, bitmapPageNo, &page);
+    if (HasError(error)) {
+        return error;
+    }
+
+    SetBit(page, bit % BitsPerPage, false /* isReset */);
 
     const ui64 pageNo = FirstPageNo + bitmapPageNo;
-    return PageStore
-        ->WritePage(lsn, pageNo, BitmapPages[bitmapPageNo], pageGroups);
+    return PageStore->WritePage(lsn, pageNo, page, pageGroups);
 }
 
 NProto::TError
@@ -158,7 +169,12 @@ TPersistentBitmap::Reset(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups)
     }
 
     const ui64 bitmapPageNo = bit / BitsPerPage;
-    auto& page = BitmapPages[bitmapPageNo];
+    TBuffer page;
+    error = ReadPage(lsn, bitmapPageNo, &page);
+    if (HasError(error)) {
+        return error;
+    }
+
     const bool wasFull = IsFull(page);
     SetBit(page, bit % BitsPerPage, true /* isReset */);
 
@@ -167,23 +183,22 @@ TPersistentBitmap::Reset(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups)
     }
 
     const ui64 pageNo = FirstPageNo + bitmapPageNo;
-    return PageStore
-        ->WritePage(lsn, pageNo, BitmapPages[bitmapPageNo], pageGroups);
+    return PageStore->WritePage(lsn, pageNo, page, pageGroups);
 }
 
-NProto::TError TPersistentBitmap::Allocate(
+NProto::TError TPersistentBitmap::AllocateImpl(
     ui64 lsn,
     ui64* bit,
     TVector<TPageGroup>& pageGroups)
 {
-    auto error = InitIfNeeded();
-    if (HasError(error)) {
-        return error;
-    }
-
     while (!BitmapPagesWithFreeBits.empty()) {
         const ui64 bitmapPageNo = BitmapPagesWithFreeBits.top();
-        auto& page = BitmapPages[bitmapPageNo];
+        TBuffer page;
+        auto error = ReadPage(lsn, bitmapPageNo, &page);
+        if (HasError(error)) {
+            return error;
+        }
+
         const ui64 pageBit = FindFirstFreeBit(page);
         if (pageBit == InvalidBitNo) {
             //
@@ -208,6 +223,37 @@ NProto::TError TPersistentBitmap::Allocate(
     return MakeError(E_FS_OUT_OF_SPACE, "bitmap full");
 }
 
+NProto::TError TPersistentBitmap::Allocate(
+    ui64 lsn,
+    ui64* bit,
+    TVector<TPageGroup>& pageGroups)
+{
+    auto error = InitIfNeeded();
+    if (HasError(error)) {
+        return error;
+    }
+
+    error = AllocateImpl(lsn, bit, pageGroups);
+    if (error.GetCode() == E_FS_OUT_OF_SPACE) {
+        //
+        // Not guaranteeing that BitmapPagesWithFreeBits is perfectly up to date
+        // to avoid having complex rollback logic in case of errors.
+        //
+        // Rebuilding free page stack once to ensure that the next loop operates
+        // on an up to date stack.
+        //
+
+        error = UpdateFreeStack(lsn);
+        if (HasError(error)) {
+            return error;
+        }
+
+        error = AllocateImpl(lsn, bit, pageGroups);
+    }
+
+    return error;
+}
+
 [[nodiscard]] NProto::TError TPersistentBitmap::CountBits(ui64* bits) const
 {
     auto e = InitIfNeeded();
@@ -216,7 +262,13 @@ NProto::TError TPersistentBitmap::Allocate(
     }
 
     *bits = 0;
-    for (const auto& page: BitmapPages) {
+    for (ui64 i = 0; i < GetPageCount(); ++i) {
+        TBuffer page;
+        e = ReadPage(0 /* lsn */, i, &page);
+        if (HasError(e)) {
+            return e;
+        }
+
         *bits += PopCount(page);
     }
 
@@ -230,45 +282,72 @@ NProto::TError TPersistentBitmap::Allocate(
     return {};
 }
 
-NProto::TError TPersistentBitmap::InitIfNeeded() const
+NProto::TError TPersistentBitmap::ReadPage(
+    ui64 lsn,
+    ui64 relPageNo,
+    TBuffer* page) const
 {
-    if (!BitmapPages.empty()) {
-        return {};
+    const ui64 bitsPerPage = CalcBitsPerPage(PageSize);
+    const ui64 pageNo = FirstPageNo + relPageNo;
+    auto error = PageStore->ReadPage(lsn, pageNo, page);
+    if (HasError(error)) {
+        return error;
     }
 
-    const ui64 bitsPerPage = CalcBitsPerPage(PageSize);
-    BitmapPages.resize(GetPageCount());
+    Y_ABORT_UNLESS(page->Size() == PageSize);
 
-    for (ui64 i = 0; i < BitmapPages.size(); ++i) {
-        const ui64 pageNo = FirstPageNo + i;
-        auto error = PageStore->ReadPage(0 /* lsn */, pageNo, &BitmapPages[i]);
+    if (relPageNo == GetPageCount() - 1) {
+        const ui64 endBit = MaxBits % bitsPerPage;
+        if (endBit) {
+            if (endBit % 8 != 0) {
+                SILK_WARN("unaligned max bit count: %lu", MaxBits);
+            }
+
+            const ui64 endByte = endBit / 8;
+            memset(
+                page->data() + endByte,
+                0xFF,
+                PageSize - endByte);
+            UnusedBits = (PageSize - endByte) * 8;
+        }
+    }
+
+    return {};
+}
+
+NProto::TError TPersistentBitmap::UpdateFreeStack(ui64 lsn) const
+{
+    BitmapPagesWithFreeBits = {};
+
+    const ui64 pageCount = GetPageCount();
+    TBuffer page;
+
+    for (ui64 i = 0; i < pageCount; ++i) {
+        auto error = ReadPage(lsn, i, &page);
         if (HasError(error)) {
-            BitmapPages.clear();
             return error;
         }
 
-        Y_ABORT_UNLESS(BitmapPages[i].Size() == PageSize);
-
-        if (i == BitmapPages.size() - 1) {
-            const ui64 endBit = MaxBits % bitsPerPage;
-            if (endBit) {
-                if (endBit % 8 != 0) {
-                    SILK_WARN("unaligned max bit count: %lu", MaxBits);
-                }
-
-                const ui64 endByte = endBit / 8;
-                memset(
-                    BitmapPages[i].data() + endByte,
-                    0xFF,
-                    PageSize - endByte);
-                UnusedBits = (PageSize - endByte) * 8;
-            }
-        }
-
-        if (!IsFull(BitmapPages[i])) {
+        if (!IsFull(page)) {
             BitmapPagesWithFreeBits.push(i);
         }
     }
+
+    return {};
+}
+
+NProto::TError TPersistentBitmap::InitIfNeeded() const
+{
+    if (Initialized) {
+        return {};
+    }
+
+    auto error = UpdateFreeStack(0 /* lsn */);
+    if (HasError(error)) {
+        return error;
+    }
+
+    Initialized = true;
 
     return {};
 }

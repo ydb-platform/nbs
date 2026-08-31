@@ -163,6 +163,37 @@ struct TTestVerbs
         };
     }
 
+    struct TMemoryWindow
+        : ibv_mw
+    {
+        TTestContextPtr TestContext;
+
+        TMemoryWindow(ibv_pd* pd, TTestContextPtr testContext)
+            : TestContext(std::move(testContext))
+        {
+            Y_UNUSED(pd);
+            rkey = TestContext->RKey++;
+        }
+
+        static int Destroy(ibv_mw* mw)
+        {
+            auto* window = static_cast<TMemoryWindow*>(mw);
+            if (window->TestContext->DestroyMemoryWindow) {
+                window->TestContext->DestroyMemoryWindow(mw);
+            }
+            delete window;
+            return 0;
+        }
+    };
+
+    TMemoryWindowPtr CreateMemoryWindow(ibv_pd* pd) override
+    {
+        return {
+            static_cast<ibv_mw*>(new TMemoryWindow(pd, TestContext)),
+            TMemoryWindow::Destroy,
+        };
+    }
+
     struct TCompletionChannel
         : ibv_comp_channel
     {
@@ -270,6 +301,12 @@ struct TTestVerbs
                     break;
                 case IBV_WR_RDMA_WRITE:
                     handleEvent(x->wr_id, IBV_WC_RDMA_WRITE);
+                    break;
+                case IBV_WR_BIND_MW:
+                    handleEvent(x->wr_id, IBV_WC_BIND_MW);
+                    break;
+                case IBV_WR_LOCAL_INV:
+                    handleEvent(x->wr_id, IBV_WC_LOCAL_INV);
                     break;
                 default:
                     handleEvent(x->wr_id, IBV_WC_SEND);
@@ -420,6 +457,13 @@ struct TTestVerbs
             static_cast<rdma_cm_id*>(connection),
             TConnection::Destroy,
         };
+    }
+
+    void SetAckTimeout(rdma_cm_id* id, ui8 timeout) override
+    {
+        if (TestContext->SetAckTimeout) {
+            TestContext->SetAckTimeout(id, timeout);
+        }
     }
 
     void BindAddress(rdma_cm_id* id, sockaddr* addr) override

@@ -39,6 +39,16 @@ struct IServerBackend
         TInstant now,
         NProto::TWriteLogRecordRequest request)
         -> NThreading::TFuture<NProto::TWriteLogRecordResponse> = 0;
+
+    [[nodiscard]] virtual auto ReadJournalTail(
+        TInstant now,
+        NProto::TReadJournalTailRequest request)
+        -> NThreading::TFuture<NProto::TReadJournalTailResponse> = 0;
+
+    [[nodiscard]] virtual auto AdvanceLsnLowWatermark(
+        TInstant now,
+        NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> NThreading::TFuture<NProto::TAdvanceLsnLowWatermarkResponse> = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

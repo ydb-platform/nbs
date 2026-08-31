@@ -11,6 +11,7 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NVhost {
 
@@ -56,19 +57,6 @@ struct IVhostQueue
     virtual int Run() = 0;
     virtual void Stop() = 0;
 
-    virtual IVhostDevicePtr CreateDevice(
-        TString socketPath,
-        TString deviceName,
-        ui32 blockSize,
-        ui64 blocksCount,
-        ui32 queuesCount,
-        bool discardEnabled,
-        bool writeZeroesEnabled,
-        ui32 optimalIoSize,
-        void* cookie,
-        const TVhostCallbacks& callbacks,
-        bool readOnly) = 0;
-
     virtual TVhostRequestPtr DequeueRequest() = 0;
 };
 
@@ -79,6 +67,33 @@ struct IVhostQueueFactory
     virtual ~IVhostQueueFactory() = default;
 
     virtual IVhostQueuePtr CreateQueue() = 0;
+
+    // Creates a vhost block device that exposes |queuesCount| virtio queues
+    // to the guest and is served by the given set of request queues.
+    //
+    // Note that |queuesCount| and |queues| are different things:
+    // |queuesCount| is the number of virtqueues the guest may set up, while
+    // |queues| contains the backend queue selected for each round-robin slot.
+    // A backend queue may occur more than once so that an uneven number of
+    // virtqueues can be distributed exactly across the requested executor
+    // threads. |queues| must be non-empty and must not be larger than
+    // |queuesCount|.
+    //
+    // |cookie| is placed into TVhostRequest::Cookie of every request dequeued
+    // from any of the device's queues, so that the executor can route the
+    // request back to the endpoint it belongs to.
+    virtual IVhostDevicePtr CreateDevice(
+        TString socketPath,
+        TString deviceName,
+        ui32 blockSize,
+        ui64 blocksCount,
+        ui32 queuesCount,
+        bool discardEnabled,
+        bool writeZeroesEnabled,
+        ui32 optimalIoSize,
+        TVector<IVhostQueuePtr> queues,
+        void* cookie,
+        const TVhostCallbacks& callbacks) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

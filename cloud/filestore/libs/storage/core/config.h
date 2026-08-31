@@ -280,6 +280,8 @@ public:
     TDuration GetAsyncHandleOperationIdlePeriod() const;
     TDuration GetAsyncHandleOperationDrainPeriod() const;
     TDuration GetUnconfirmedCreateHandleGraceTimeout() const;
+    ui64 GetMaxDeferredNodeDestructionCount() const;
+    ui32 GetMaxDeferredNodeDestructionsPerTx() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

@@ -1,20 +1,20 @@
 --- a/include/silk/util/platform.h
 +++ b/include/silk/util/platform.h
-@@ -29,6 +29,10 @@
- #    define __rseq_offset rseq_offset
+@@ -28,6 +28,10 @@
+ extern "C" ptrdiff_t __rseq_offset;
  #endif
-
+ 
 +// librseq's public register API. Declared here (not via <rseq/rseq.h>) so
 +// this header stays self-contained; the definition lives in librseq.
 +extern "C" int rseq_register_current_thread(void);
 +
  /** Suppress unused-variable warnings. */
  #define SILK_UNUSED(x) (void)(x)
-
-@@ -120,9 +124,36 @@
+ 
+@@ -126,9 +130,36 @@
      return static_cast<uint16_t>(CPU_COUNT(&cpuSet));
  }
-
+ 
 +// Lazy per-thread rseq registration. Silk supports arbitrary application
 +// threads calling fiber-aware APIs (docs/scheduler.md, "Proxy Fibers"), and
 +// every such API funnels through getCurrentProcessor(). On glibc < 2.35 or
@@ -53,7 +53,7 @@
 @@ -5,21 +5,19 @@
  #include <silk/util/queue.h>
  #include <silk/util/tsc.h>
-
+ 
 -// Suppress warnings emitted by librseq headers: volatile assignment in rseq_cs
 -// and unused parameters in the asm stubs.
 -#pragma clang diagnostic push
@@ -62,10 +62,10 @@
 -#include <rseq/rseq.h>
 -#pragma clang diagnostic pop
 +#include <silk/util/platform.h>
-
+ 
  namespace silk
  {
-
+ 
  void initialize() noexcept
  {
 -    int r = rseq_init();
@@ -76,6 +76,6 @@
 +    // returns a valid cpu_id. Every other thread that later calls into
 +    // silk hits the same guard lazily through getCurrentProcessor().
 +    ensureRseqRegistered();
-
+ 
      Tsc::initialize();
      Perf::initialize();

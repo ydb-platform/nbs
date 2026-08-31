@@ -13,11 +13,14 @@
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <cloud/contrib/vhost/include/vhost/server.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/string/builder.h>
 #include <util/system/tempfile.h>
 #include <util/thread/factory.h>
 #include <util/thread/lfqueue.h>
@@ -255,6 +258,71 @@ private:
         }
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Starts a single endpoint on a server with |threadPoolSize| executors and
+// returns the number of executors that serve it, i.e. the number of request
+// queues the endpoint's vhost device got registered in.
+ui32 StartEndpointAndCountExecutors(
+    ui32 threadPoolSize,
+    ui32 vhostQueuesCount,
+    ui32 threadCount)
+{
+    const TString unixSocketPath = "testSocket";
+    TTempFile tempFile(unixSocketPath);
+
+    auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+
+    TServerConfig serverConfig;
+    serverConfig.ThreadsCount = threadPoolSize;
+
+    auto server = CreateServer(
+        CreateLoggingService("console"),
+        std::make_shared<TTestServerStats>(),
+        queueFactory,
+        CreateDefaultDeviceHandlerFactory(),
+        serverConfig,
+        TVhostCallbacks());
+
+    server->Start();
+    Y_DEFER {
+        server->Stop();
+    };
+
+    UNIT_ASSERT_VALUES_EQUAL(threadPoolSize, queueFactory->Queues.size());
+
+    // Every executor thread has to reach its queue before the server is
+    // stopped - the test queue does not allow stopping a queue that was never
+    // run.
+    const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+    for (const auto& queue: queueFactory->Queues) {
+        while (!queue->IsRun() && TInstant::Now() < deadline) {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queue->IsRun());
+    }
+
+    TStorageOptions options;
+    options.DiskId = "testDiskId";
+    options.BlockSize = 4096;
+    options.BlocksCount = 256;
+    options.VhostQueuesCount = vhostQueuesCount;
+    options.ThreadCount = threadCount;
+
+    auto future = server->StartEndpoint(
+        unixSocketPath,
+        std::make_shared<TTestStorage>(),
+        options);
+    const auto& error = future.GetValue(TDuration::Seconds(5));
+    UNIT_ASSERT_C(!HasError(error), error);
+
+    ui32 executorsCount = 0;
+    for (const auto& queue: queueFactory->Queues) {
+        executorsCount += !queue->GetDevices().empty();
+    }
+    return executorsCount;
+}
 
 }   // namespace
 
@@ -792,6 +860,166 @@ Y_UNIT_TEST_SUITE(TServerTest)
         stopEvent.Wait();
     }
 
+    Y_UNIT_TEST(ShouldWaitForStoppingEndpointBeforeShuttingDownExecutors)
+    {
+        const TString unixSocketPath = CreateGuidAsString() + ".sock";
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            CreateServerStatsStub(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+
+        server->Start();
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = 4096;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = 1;
+
+        {
+            auto future = server->StartEndpoint(
+                unixSocketPath,
+                std::make_shared<TTestStorage>(),
+                options);
+            const auto& error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+
+        auto device = queueFactory->Queues.at(0)->GetDevices().at(0);
+        device->DisableAutostop(true);
+
+        auto stopEndpointFuture = server->StopEndpoint(unixSocketPath);
+        UNIT_ASSERT(!stopEndpointFuture.HasValue());
+
+        TManualEvent stopStarted;
+        TManualEvent stopCompleted;
+        auto stopThread = SystemThreadFactory()->Run([&] {
+            stopStarted.Signal();
+            server->Stop();
+            stopCompleted.Signal();
+        });
+
+        stopStarted.Wait();
+        UNIT_ASSERT(!stopCompleted.WaitT(TDuration::MilliSeconds(100)));
+
+        device->DisableAutostop(false);
+
+        const auto& error =
+            stopEndpointFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT(stopCompleted.WaitT(TDuration::Seconds(5)));
+        stopThread->Join();
+    }
+
+    Y_UNIT_TEST(ShouldReleaseExecutorAssignmentsBeforeRequestCallbackReturns)
+    {
+        const TString unixSocketPath = CreateGuidAsString() + ".sock";
+
+        TManualEvent requestStarted;
+        TManualEvent completionPaused;
+        TManualEvent resumeCompletion;
+        auto storagePromise = NewPromise<void>();
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            requestStarted.Signal();
+            return storagePromise.GetFuture().Apply(
+                [](const auto&) { return NProto::TReadBlocksLocalResponse(); });
+        };
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        queueFactory->RequestCompletionHandler = [&]
+        {
+            completionPaused.Signal();
+            resumeCompletion.Wait();
+        };
+
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            CreateServerStatsStub(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+
+        server->Start();
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = 4096;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = 1;
+
+        const auto startError =
+            server->StartEndpoint(unixSocketPath, storage, options)
+                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(startError), startError);
+
+        auto device = queueFactory->Queues.at(0)->GetDevices().at(0);
+        TVector<TString> blocks;
+        auto sgList = ResizeBlocks(blocks, 1, TString(options.BlockSize, 'f'));
+        auto requestFuture = device->SendTestRequest(
+            EBlockStoreRequest::ReadBlocks,
+            0,
+            options.BlockSize,
+            sgList);
+        Y_DEFER
+        {
+            resumeCompletion.Signal();
+            storagePromise.TrySetValue();
+        };
+
+        UNIT_ASSERT(requestStarted.WaitT(TDuration::Seconds(5)));
+
+        auto completionThread =
+            SystemThreadFactory()->Run([&] { storagePromise.SetValue(); });
+        Y_DEFER
+        {
+            resumeCompletion.Signal();
+            completionThread->Join();
+        };
+
+        UNIT_ASSERT(completionPaused.WaitT(TDuration::Seconds(5)));
+        UNIT_ASSERT(requestFuture.HasValue());
+
+        const auto stopError = server->StopEndpoint(unixSocketPath)
+                                   .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(stopError), stopError);
+
+        // The request continuation still owns the endpoint and is paused
+        // before UnregisterRequest(). Executor shutdown must not depend on
+        // that endpoint being destroyed.
+        server->Stop();
+        server.reset();
+    }
+
     Y_UNIT_TEST(ShouldPassCorrectMetrics)
     {
         TString testDiskId = "testDiskId";
@@ -1159,6 +1387,467 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 request.BlocksCount * blockSize == totalSectors * sectorSize);
             UNIT_ASSERT(!environment.DequeueRequest(request));
         }
+    }
+
+    Y_UNIT_TEST(ShouldServeSingleEndpointByMultipleExecutors)
+    {
+        const ui32 blockSize = 4096;
+        const ui32 vhostQueuesCount = 4;
+        const TString unixSocketPath = "testSocket";
+        TTempFile tempFile(unixSocketPath);
+
+        // Every request blocks its executor thread until all of them have
+        // arrived. This can only be completed if the endpoint is served by
+        // |vhostQueuesCount| executors simultaneously.
+        std::atomic<ui32> arrivedCount = 0;
+        TManualEvent allArrived;
+
+        auto testStorage = std::make_shared<TTestStorage>();
+        testStorage->ReadBlocksLocalHandler = [&] (
+            TCallContextPtr ctx,
+            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+
+            if (arrivedCount.fetch_add(1) + 1 == vhostQueuesCount) {
+                allArrived.Signal();
+            }
+            UNIT_ASSERT(allArrived.WaitT(TDuration::Seconds(30)));
+
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+
+        TServerConfig serverConfig;
+        serverConfig.ThreadsCount = vhostQueuesCount;
+
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            std::make_shared<TTestServerStats>(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            serverConfig,
+            TVhostCallbacks());
+
+        server->Start();
+        Y_DEFER {
+            server->Stop();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            serverConfig.ThreadsCount,
+            queueFactory->Queues.size());
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = blockSize;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = vhostQueuesCount;
+        options.ThreadCount = vhostQueuesCount;
+
+        {
+            auto future = server->StartEndpoint(
+                unixSocketPath,
+                testStorage,
+                options);
+            const auto& error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+
+        // The device has to be registered in every queue, otherwise its
+        // virtqueues would all be served by a single executor.
+        for (const auto& queue: queueFactory->Queues) {
+            UNIT_ASSERT_VALUES_EQUAL(1, queue->GetDevices().size());
+        }
+        auto device = queueFactory->Queues.at(0)->GetDevices().at(0);
+
+        TVector<TString> blocks;
+        auto sgList = ResizeBlocks(blocks, 1, TString(blockSize, 'f'));
+
+        TVector<TFuture<TVhostRequest::EResult>> futures;
+        for (ui32 i = 0; i < vhostQueuesCount; ++i) {
+            // Non-overlapping ranges, so that the requests aren't serialized
+            // by the device handler.
+            futures.push_back(device->SendTestRequest(
+                EBlockStoreRequest::ReadBlocks,
+                i * blockSize,
+                blockSize,
+                sgList));
+        }
+
+        for (auto& future: futures) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(TVhostRequest::SUCCESS),
+                static_cast<int>(future.GetValue(TDuration::Seconds(30))));
+        }
+
+        {
+            auto future = server->StopEndpoint(unixSocketPath);
+            const auto& error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleRequestsCorrectlyWhenServedByMultipleExecutors)
+    {
+        const ui32 blockSize = 4096;
+        const ui32 vhostQueuesCount = 4;
+        const ui32 threadCount = 4;
+        const ui32 blocksPerRequest = 4;
+        const ui32 requestCount = 16;
+        const ui64 blocksCount = requestCount * blocksPerRequest;
+        const TString unixSocketPath = "testSocket";
+        TTempFile tempFile(unixSocketPath);
+
+        // In-memory disk image. It is accessed from all the executor threads of
+        // the endpoint at once, hence the lock. Every request touches its own
+        // block range, so requests never overlap.
+        TVector<char> image(blocksCount * blockSize, 0);
+        TAdaptiveLock imageLock;
+
+        // The first |threadCount| requests block until all of them have
+        // arrived, so the data below is verified for requests that were really
+        // processed simultaneously.
+        std::atomic<ui32> arrivedCount = 0;
+        TManualEvent allArrived;
+
+        auto waitForAllExecutors = [&] {
+            if (arrivedCount.fetch_add(1) + 1 == threadCount) {
+                allArrived.Signal();
+            }
+            UNIT_ASSERT(allArrived.WaitT(TDuration::Seconds(30)));
+        };
+
+        auto testStorage = std::make_shared<TTestStorage>();
+
+        testStorage->WriteBlocksLocalHandler = [&] (
+            TCallContextPtr ctx,
+            std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+
+            waitForAllExecutors();
+
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sgList = guard.Get();
+            UNIT_ASSERT_VALUES_EQUAL(
+                request->BlocksCount * blockSize,
+                SgListGetSize(sgList));
+
+            ui64 offset = request->GetStartIndex() * blockSize;
+            with_lock (imageLock) {
+                for (const auto& buffer: sgList) {
+                    UNIT_ASSERT(offset + buffer.Size() <= image.size());
+                    memcpy(image.data() + offset, buffer.Data(), buffer.Size());
+                    offset += buffer.Size();
+                }
+            }
+
+            return MakeFuture(NProto::TWriteBlocksLocalResponse());
+        };
+
+        testStorage->ReadBlocksLocalHandler = [&] (
+            TCallContextPtr ctx,
+            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+
+            waitForAllExecutors();
+
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sgList = guard.Get();
+            UNIT_ASSERT_VALUES_EQUAL(
+                request->GetBlocksCount() * blockSize,
+                SgListGetSize(sgList));
+
+            ui64 offset = request->GetStartIndex() * blockSize;
+            with_lock (imageLock) {
+                for (const auto& buffer: sgList) {
+                    UNIT_ASSERT(offset + buffer.Size() <= image.size());
+                    memcpy(
+                        const_cast<char*>(buffer.Data()),
+                        image.data() + offset,
+                        buffer.Size());
+                    offset += buffer.Size();
+                }
+            }
+
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+
+        TServerConfig serverConfig;
+        serverConfig.ThreadsCount = threadCount;
+
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            std::make_shared<TTestServerStats>(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            serverConfig,
+            TVhostCallbacks());
+
+        server->Start();
+        Y_DEFER {
+            server->Stop();
+        };
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = blockSize;
+        options.BlocksCount = blocksCount;
+        options.VhostQueuesCount = vhostQueuesCount;
+        options.ThreadCount = threadCount;
+
+        {
+            auto future = server->StartEndpoint(
+                unixSocketPath,
+                testStorage,
+                options);
+            const auto& error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+
+        auto device = queueFactory->Queues.at(0)->GetDevices().at(0);
+
+        // Every request gets its own pattern, so that data landing at a wrong
+        // offset or a response completing a wrong request is detected.
+        auto blockData = [&] (ui32 requestIndex) {
+            return TString(blockSize, 'a' + requestIndex % 26);
+        };
+
+        // All the requests are sent before any of them completes, so they are
+        // spread over all the executors of the endpoint.
+        auto sendRequests = [&] (
+            EBlockStoreRequest requestType,
+            TVector<TVector<TString>>& buffers)
+        {
+            TVector<TFuture<TVhostRequest::EResult>> futures;
+            for (ui32 i = 0; i < requestCount; ++i) {
+                futures.push_back(device->SendTestRequest(
+                    requestType,
+                    i * blocksPerRequest * blockSize,
+                    blocksPerRequest * blockSize,
+                    ResizeBlocks(
+                        buffers[i],
+                        blocksPerRequest,
+                        requestType == EBlockStoreRequest::WriteBlocks
+                            ? blockData(i)
+                            : TString(blockSize, 0))));
+            }
+
+            for (auto& future: futures) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    static_cast<int>(TVhostRequest::SUCCESS),
+                    static_cast<int>(future.GetValue(TDuration::Seconds(30))));
+            }
+        };
+
+        {
+            TVector<TVector<TString>> buffers(requestCount);
+            sendRequests(EBlockStoreRequest::WriteBlocks, buffers);
+        }
+
+        // Each request has to be written at its own offset.
+        for (ui32 i = 0; i < requestCount; ++i) {
+            for (ui32 j = 0; j < blocksPerRequest; ++j) {
+                const ui64 offset =
+                    (i * blocksPerRequest + j) * ui64(blockSize);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    TStringBuf(blockData(i)),
+                    TStringBuf(image.data() + offset, blockSize),
+                    "request " << i << ", block " << j);
+            }
+        }
+
+        arrivedCount = 0;
+        allArrived.Reset();
+
+        TVector<TVector<TString>> readBuffers(requestCount);
+        sendRequests(EBlockStoreRequest::ReadBlocks, readBuffers);
+
+        // Each request has to read back the data written by itself.
+        for (ui32 i = 0; i < requestCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(blocksPerRequest, readBuffers[i].size());
+            for (ui32 j = 0; j < blocksPerRequest; ++j) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    blockData(i),
+                    readBuffers[i][j],
+                    "request " << i << ", block " << j);
+            }
+        }
+
+        {
+            auto future = server->StopEndpoint(unixSocketPath);
+            const auto& error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldBalanceVhostQueuesBetweenExecutors)
+    {
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        TVector<std::unique_ptr<TTempFile>> socketFiles;
+
+        TServerConfig serverConfig;
+        serverConfig.ThreadsCount = 3;
+
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            std::make_shared<TTestServerStats>(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            serverConfig,
+            TVhostCallbacks());
+
+        server->Start();
+        Y_DEFER {
+            server->Stop();
+        };
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        for (const auto& queue: queueFactory->Queues) {
+            while (!queue->IsRun() && TInstant::Now() < deadline) {
+                Sleep(TDuration::MilliSeconds(10));
+            }
+            UNIT_ASSERT(queue->IsRun());
+        }
+
+        auto startEndpoint = [&] (ui32 vhostQueuesCount, ui32 threadCount) {
+            const TString socketPath = CreateGuidAsString() + ".sock";
+            socketFiles.push_back(std::make_unique<TTempFile>(socketPath));
+
+            TStorageOptions options;
+            options.DiskId = socketPath;
+            options.BlockSize = 4096;
+            options.BlocksCount = 256;
+            options.VhostQueuesCount = vhostQueuesCount;
+            options.ThreadCount = threadCount;
+
+            auto future = server->StartEndpoint(
+                socketPath,
+                std::make_shared<TTestStorage>(),
+                options);
+            const auto& error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        };
+
+        // The first contributes four queues to executor 0. The second endpoint
+        // contributes three queues to executor 1 and two to executor 2.
+        startEndpoint(4, 1);
+        startEndpoint(5, 2);
+
+        // Executor 2 is now the least loaded one (two queues), so it must get
+        // the last endpoint. All executors end up with their exact number of
+        // assigned virtqueues rather than a rounded-up approximation.
+        startEndpoint(1, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            queueFactory->Queues[0]->GetDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            queueFactory->Queues[1]->GetDevices().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            queueFactory->Queues[2]->GetDevices().size());
+    }
+
+    Y_UNIT_TEST(ShouldValidateVhostQueuesCount)
+    {
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            std::make_shared<TTestServerStats>(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+
+        server->Start();
+        Y_DEFER {
+            server->Stop();
+        };
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        auto startEndpoint = [&] (ui32 vhostQueuesCount) {
+            TStorageOptions options;
+            options.DiskId = "testDiskId";
+            options.BlockSize = 4096;
+            options.BlocksCount = 256;
+            options.VhostQueuesCount = vhostQueuesCount;
+
+            return server->StartEndpoint(
+                "testSocket",
+                std::make_shared<TTestStorage>(),
+                options).GetValue(TDuration::Seconds(5));
+        };
+
+        for (ui32 invalidCount: {0, VHD_MAX_REQUEST_QUEUES + 1}) {
+            const auto error = startEndpoint(invalidCount);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TStringBuilder()
+                    << "Vhost queues count must be in range [1, "
+                    << VHD_MAX_REQUEST_QUEUES << "]",
+                error.GetMessage());
+        }
+
+        const auto error = startEndpoint(VHD_MAX_REQUEST_QUEUES);
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(
+            VHD_MAX_REQUEST_QUEUES,
+            queueFactory->Queues.at(0)->GetDevices().size());
+
+        const auto stopError =
+            server->StopEndpoint("testSocket").GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(stopError), stopError);
+    }
+
+    Y_UNIT_TEST(ShouldUseRequestedThreadCount)
+    {
+        // Neither the thread pool nor the guest's virtqueues are the limit
+        // here, so the requested value is used as is.
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            StartEndpointAndCountExecutors(4, 4, 1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            StartEndpointAndCountExecutors(4, 4, 2));
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            StartEndpointAndCountExecutors(4, 4, 4));
+    }
+
+    Y_UNIT_TEST(ShouldClampRequestedThreadCount)
+    {
+        // Not more threads than there are virtqueues.
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            StartEndpointAndCountExecutors(4, 2, 4));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            StartEndpointAndCountExecutors(4, 1, 4));
+
+        // Not more threads than there are in the thread pool.
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            StartEndpointAndCountExecutors(2, 4, 4));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            StartEndpointAndCountExecutors(1, 4, 4));
     }
 }
 

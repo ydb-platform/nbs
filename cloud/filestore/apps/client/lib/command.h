@@ -110,6 +110,11 @@ protected:
         return MakeIntrusive<TCallContext>(CreateRequestId());
     }
 
+    static TCallContextPtr PrepareCallContext(const TString& fileSystemId)
+    {
+        return MakeIntrusive<TCallContext>(fileSystemId, CreateRequestId());
+    }
+
     template <typename T>
     T WaitFor(NThreading::TFuture<T> future, bool extract = true)
     {

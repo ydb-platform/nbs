@@ -5,6 +5,7 @@
 #include "tablet_tx.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/histogram.h>
+#include <cloud/filestore/libs/diagnostics/metrics/key.h>
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
 
@@ -265,6 +266,12 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
 
     std::atomic<i64> OrphanNodesCount{0};
 
+    // Deferred node destruction stats
+    std::atomic<i64> DeferredNodeDestructionCount{0};
+    std::atomic<i64> DeferredNodeDestructionsCompleted{0};
+    std::atomic<i64> DeferredNodeDestructionsCancelled{0};
+    std::atomic<i64> NodeDestructionsDeferralSkipped{0};
+
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
 
     using TLatHistogram =
@@ -332,7 +339,13 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     NMetrics::IMetricsRegistryPtr FsRegistry;
     NMetrics::IMetricsRegistryPtr AggregatableFsRegistry;
 
+    // Keys of the registrations that hold FsRegistry alive, needed by ~TTabletMetrics().
+    NMetrics::TMetricKey MaxUsedQuotaKey;
+    NMetrics::TMetricKey ReadDataPostponedKey;
+    NMetrics::TMetricKey WriteDataPostponedKey;
+
     explicit TTabletMetrics(NMetrics::IMetricsRegistryPtr metricsRegistry);
+    ~TTabletMetrics();
 
     void Register(
         const TString& fsId,

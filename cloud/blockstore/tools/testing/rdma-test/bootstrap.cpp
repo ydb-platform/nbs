@@ -103,6 +103,8 @@ void TBootstrap::Init()
         config->QpRnrRetryCount = Options->QpRnrRetryCount;
         config->QpTimeout = Options->QpTimeout;
         config->QpMinRnrTimer = Options->QpMinRnrTimer;
+        config->UseMemoryWindows = Options->UseMemoryWindows;
+        config->MemoryWindowsPoolSize = Options->MemoryWindowsPoolSize;
 
         Client = NCloud::NBlockStore::NRdma::CreateRdmaClient(
             Logging,

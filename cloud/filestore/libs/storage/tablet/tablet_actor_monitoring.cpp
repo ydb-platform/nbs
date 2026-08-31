@@ -993,6 +993,7 @@ void TIndexTabletActor::HandleHttpInfo(
         {"dirViewer",       &TIndexTabletActor::HandleHttpInfo_DirViewer },
         {"locks",           &TIndexTabletActor::HandleHttpInfo_Locks },
         {"fastShardLayout", &TIndexTabletActor::HandleHttpInfo_FastShardLayout },
+        {"diagnostics",     &TIndexTabletActor::HandleHttpInfo_Diagnostics },
     }};
 
     const auto* msg = ev->Get();
@@ -1087,6 +1088,11 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
             }
         }
 
+        TAG(TH3) {
+            out << "<a href='?TabletID=" << TabletID()
+                << "&action=diagnostics'>Diagnostic Metrics</a>";
+        }
+
         const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
         if (shardIds.size()) {
             TAG(TH3) { out << "Shards"; }
@@ -1136,6 +1142,10 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
 
         TAG(TH3) { out << "State"; }
         DIV() { out << "Current commitId: " << GetCurrentCommitId(); }
+        DIV() {
+            out << "Nodes with deferred destruction: "
+                << GetDeferredNodeDestructionCount();
+        }
         DIV() { DumpOperationState("Flush", FlushState, out); }
         DIV() { DumpOperationState("BlobIndexOp", BlobIndexOpState, out); }
         DIV() { DumpOperationState("CollectGarbage", CollectGarbageState, out); }

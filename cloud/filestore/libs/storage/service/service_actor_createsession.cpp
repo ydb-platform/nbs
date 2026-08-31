@@ -777,8 +777,9 @@ void TStorageServiceActor::HandleCreateSession(
         session->CreateDestroyState =
             ESessionCreateDestroyState::STATE_CREATE_SESSION;
 
-        if (session->SessionActor) {
-            return proceed(session->SessionActor);
+        const auto sessionActor = session->GetSessionActor(seqNo);
+        if (sessionActor) {
+            return proceed(*sessionActor);
         }
     }
 
@@ -819,38 +820,33 @@ void TStorageServiceActor::HandleCreateSession(
         ToString(SelfId()).c_str());
 }
 
-bool TStorageServiceActor::RemoveSession(
+bool TStorageServiceActor::RemoveSubSession(
     const TString& sessionId,
     ui64 seqNo,
     const TActorContext& ctx)
 {
     if (auto* session = State->FindSession(sessionId, seqNo); session) {
-        if (State->IsLastSubSession(sessionId, seqNo)) {
-            LOG_INFO(ctx, TFileStoreComponents::SERVICE,
-                "[s:%s][n:%lu] remove subsession %s self %s",
-                sessionId.Quote().c_str(),
-                seqNo,
-                ToString(session->SessionActor).c_str(),
-                ToString(SelfId()).c_str());
-        }
-        return State->RemoveSession(sessionId, seqNo);
-    }
-    return false;
-}
+        const ui32 subSessionCount = session->GetSubSessionCount();
+        const bool isLastSubSession = subSessionCount == 1;
+        const auto* subSession = session->FindSubSession(seqNo);
+        const auto sessionActor =
+            subSession ? subSession->SessionActor : TActorId();
 
-void TStorageServiceActor::RemoveSession(
-    const TString& sessionId,
-    const TActorContext& ctx)
-{
-    if (auto* session = State->FindSession(sessionId); session) {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE,
-            "[s:%s]remove session %s self %s",
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[s:%s][n:%lu] remove subsession %s, subsessions=%u, last=%s, self "
+            "%s",
             sessionId.Quote().c_str(),
-            ToString(session->SessionActor).c_str(),
+            seqNo,
+            ToString(sessionActor).c_str(),
+            subSessionCount,
+            isLastSubSession ? "true" : "false",
             ToString(SelfId()).c_str());
 
-        State->RemoveSession(sessionId);
+        return State->RemoveSubSession(sessionId, seqNo);
     }
+    return false;
 }
 
 void TStorageServiceActor::HandleSessionCreated(
@@ -866,12 +862,22 @@ void TStorageServiceActor::HandleSessionCreated(
     }
     const ui64 storedOwnerGeneration =
         subSession ? subSession->OwnerGeneration : 0;
+    const auto sessionActor = session
+        ? session->GetSessionActor(msg->SessionSeqNo)
+        : std::optional<TActorId>();
+
     if (SUCCEEDED(msg->GetStatus())) {
         // in case of vhost restart we don't know session id
         // so inevitably will create new actor
         auto actorId = ev->Sender;
-        if (session && storedOwnerGeneration && msg->OwnerGeneration) {
-            if (msg->OwnerGeneration < storedOwnerGeneration) {
+        ui64 ownerGeneration = msg->OwnerGeneration;
+        bool staleOwnerGeneration = false;
+
+        if (session && storedOwnerGeneration && ownerGeneration) {
+            if (ownerGeneration < storedOwnerGeneration) {
+                staleOwnerGeneration = true;
+                ownerGeneration = storedOwnerGeneration;
+
                 LOG_WARN(
                     ctx,
                     TFileStoreComponents::SERVICE,
@@ -886,7 +892,7 @@ void TStorageServiceActor::HandleSessionCreated(
                     storedOwnerGeneration,
                     msg->OwnerGeneration,
                     ToString(ev->Sender).c_str());
-            } else if (msg->OwnerGeneration > storedOwnerGeneration) {
+            } else if (ownerGeneration > storedOwnerGeneration) {
                 LOG_INFO(
                     ctx,
                     TFileStoreComponents::SERVICE,
@@ -904,29 +910,39 @@ void TStorageServiceActor::HandleSessionCreated(
             }
         }
 
-        if (session &&
-            session->SessionActor &&
-            session->SessionActor != ev->Sender)
-        {
-            LOG_WARN(
+        if (sessionActor && *sessionActor != ev->Sender) {
+            const auto logLevel =
+                staleOwnerGeneration ? NLog::PRI_WARN : NLog::PRI_INFO;
+            const auto* action =
+                staleOwnerGeneration
+                    ? "keeping current actor and poisoning notification sender"
+                    : "keeping notification sender and poisoning current actor";
+
+            LOG_LOG(
                 ctx,
+                logLevel,
                 TFileStoreComponents::SERVICE,
-                "%s CreateSession returned session actor mismatch: current "
-                "actor %s generation %lu, notification sender %s generation "
-                "%lu; keeping current actor and poisoning notification sender",
+                "%s CreateSession returned session actor mismatch: "
+                "current actor %s generation %lu, notification sender %s "
+                "generation %lu; %s",
                 LogTag(
                     msg->FileStore.GetFileSystemId(),
                     msg->ClientId,
                     msg->SessionId,
                     msg->SessionSeqNo)
                     .c_str(),
-                ToString(session->SessionActor).c_str(),
+                ToString(*sessionActor).c_str(),
                 storedOwnerGeneration,
                 ToString(ev->Sender).c_str(),
-                msg->OwnerGeneration);
+                msg->OwnerGeneration,
+                action);
 
-            ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
-            actorId = session->SessionActor;
+            if (staleOwnerGeneration) {
+                ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
+                actorId = *sessionActor;
+            } else {
+                ctx.Send(*sessionActor, new TEvents::TEvPoisonPill());
+            }
         }
 
         if (!session) {
@@ -970,15 +986,13 @@ void TStorageServiceActor::HandleSessionCreated(
             session->AddSubSession(
                 msg->SessionSeqNo,
                 msg->ReadOnly,
-                actorId == ev->Sender
-                    ? msg->OwnerGeneration
-                    : storedOwnerGeneration);
-            session->SessionActor = actorId;
+                actorId,
+                ownerGeneration);
         }
     } else if (session) {
         // else it's an old notify from a dead actor
         session->CreateDestroyState = ESessionCreateDestroyState::STATE_NONE;
-        if (session->SessionActor == ev->Sender) {
+        if (sessionActor && *sessionActor == ev->Sender) {
             // e.g. pipe failed or smth. client will have to restore it
             LOG_WARN(ctx, TFileStoreComponents::SERVICE,
                 "%s session failed (%s)",
@@ -989,13 +1003,22 @@ void TStorageServiceActor::HandleSessionCreated(
                     msg->SessionSeqNo).c_str(),
                 FormatError(msg->GetError()).c_str());
 
-            if (msg->Shutdown) {
-                RemoveSession(msg->SessionId, ctx);
-                ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
+            // RemoveSubSession returns true if it did not remove the whole
+            // session object.
+            const bool sessionAlive = RemoveSubSession(
+                msg->SessionId,
+                msg->SessionSeqNo,
+                ctx);
+            if (!sessionAlive) {
                 session = nullptr;
-            } else if (!RemoveSession(msg->SessionId, msg->SessionSeqNo, ctx)) {
+            }
+
+            // Shutdown means that the notification sender has already started
+            // its shutdown path, so finish it with a poison pill. For a
+            // regular failure, poison it only when this subsession was the
+            // last one and the whole session object was removed.
+            if (msg->Shutdown || !sessionAlive) {
                 ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
-                session = nullptr;
             }
         }
     } else {

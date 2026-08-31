@@ -40,6 +40,8 @@ public:
         TChunk* Chunk;
         ui32 LKey;
 
+        ibv_mr* GetMemoryRegion() const;
+
         explicit operator TStringBuf() const;
     };
 

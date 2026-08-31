@@ -153,7 +153,9 @@ void TStorageServiceActor::ForwardRequest(
         msg->CallContext->RequestId);
 
     auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId || !session->SessionActor) {
+    if (!session || session->ClientId != clientId ||
+        !session->GetSessionActor(seqNo))
+    {
         auto response = std::make_unique<typename TMethod::TResponse>(
             ErrorInvalidSession(clientId, sessionId, seqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));
@@ -216,7 +218,9 @@ void TStorageServiceActor::ForwardRequestToShard(
         msg->CallContext->RequestId);
 
     auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId || !session->SessionActor) {
+    if (!session || session->ClientId != clientId ||
+        !session->GetSessionActor(seqNo))
+    {
         auto response = std::make_unique<typename TMethod::TResponse>(
             ErrorInvalidSession(clientId, sessionId, seqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));

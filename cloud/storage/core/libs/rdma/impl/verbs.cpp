@@ -80,6 +80,15 @@ struct TVerbs
         return WrapPtr(mr);
     }
 
+    TMemoryWindowPtr CreateMemoryWindow(ibv_pd* pd) override
+    {
+        auto* mw = ibv_alloc_mw(pd, IBV_MW_TYPE_2);
+        if (!mw) {
+            RDMA_THROW_ERROR("ibv_alloc_mw");
+        }
+        return WrapPtr(mw);
+    }
+
     TCompletionChannelPtr CreateCompletionChannel(ibv_context* context) override
     {
         auto* channel = ibv_create_comp_channel(context);
@@ -258,6 +267,20 @@ struct TVerbs
         return WrapPtr(id);
     }
 
+    void SetAckTimeout(rdma_cm_id* id, ui8 timeout) override
+    {
+        int res = rdma_set_option(
+            id,
+            RDMA_OPTION_ID,
+            RDMA_OPTION_ID_ACK_TIMEOUT,
+            &timeout,
+            sizeof(timeout));
+
+        if (res < 0) {
+            RDMA_THROW_ERROR("rdma_set_option RDMA_OPTION_ID_ACK_TIMEOUT");
+        }
+    }
+
     void BindAddress(rdma_cm_id* id, sockaddr* addr) override
     {
         int res = rdma_bind_addr(id, addr);
@@ -404,6 +427,11 @@ IVerbsPtr CreateVerbs()
     return std::make_shared<TVerbs>();
 }
 
+int DestroyId(rdma_cm_id* id)
+{
+    return rdma_destroy_id(id);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const char* GetOpcodeName(ibv_wc_opcode opcode)
@@ -540,11 +568,6 @@ TString PrintCompletion(ibv_wc* wc)
         << " status=" << GetStatusString(wc->status)
         << " vendor_err=" << wc->vendor_err
         << "]";
-}
-
-int DestroyId(rdma_cm_id* id)
-{
-    return rdma_destroy_id(id);
 }
 
 }   // namespace NCloud::NStorage::NRdma::NVerbs

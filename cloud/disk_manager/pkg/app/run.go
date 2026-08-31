@@ -131,7 +131,11 @@ func run(
 		defer shutdown(ctx)
 	}
 
-	creds := internal_auth.NewCredentials(ctx, config.GetAuthConfig())
+	creds, err := internal_auth.NewCredentials(ctx, config.GetAuthConfig())
+	if err != nil {
+		logging.Error(ctx, "Failed to create credentials: %v", err)
+		return err
+	}
 
 	logging.Info(ctx, "Initializing YDB client")
 	ydbClientRegistry := mon.NewRegistry("ydb_client")

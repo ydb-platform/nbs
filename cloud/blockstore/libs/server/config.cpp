@@ -120,6 +120,11 @@ constexpr TDuration Seconds(int s)
     xxx(EnableRequestSplitter,       bool,                   false            )\
     xxx(ExternalVhostServerThreadPoolSize, ui64,             0                )\
     xxx(RefreshCertsPeriod,          TDuration,              Seconds(0)       )\
+    xxx(VhostEndpointThreadCountSSD,           ui32,         0                )\
+    xxx(VhostEndpointThreadCountHDD,           ui32,         0                )\
+    xxx(VhostEndpointThreadCountNonReplicated, ui32,         0                )\
+    xxx(VhostEndpointThreadCountMirror2,       ui32,         0                )\
+    xxx(VhostEndpointThreadCountMirror3,       ui32,         0                )\
 // BLOCKSTORE_SERVER_CONFIG
 
 // clang-format on

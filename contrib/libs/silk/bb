@@ -62,6 +62,8 @@ def run_capture(*args: str, **kwargs: Any) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         args, cwd=ROOT, capture_output=True, text=True, check=False, **kwargs
     )
+    if result.stderr:
+        sys.stderr.write(result.stderr)
     if result.returncode:
         log.error("command failed: %s\n\n%s", " ".join(args), result.stderr)
     result.check_returncode()
@@ -444,13 +446,31 @@ def _render_flamegraph(folded_file: str, out_svg: str, title: str) -> None:
         )
 
 
-def _run_flamegraph(preset: str, name: str, client_args: list[str]) -> None:
+def _run_flamegraph(
+    preset: str, name: str, client_args: list[str], server_pid: int | None = None
+) -> None:
     cmd_build(preset, ["profiler"])
 
     profiler_bin = os.path.join(ROOT, f"build/{preset}/bin/profiler")
     folded_stacks = os.path.join(ROOT, f"build/{preset}/{name}.flamegraph.folded")
     out_svg = os.path.join(ROOT, f"build/{preset}/{name}.flamegraph.svg")
+    server_folded = os.path.join(
+        ROOT, f"build/{preset}/{name}-server.flamegraph.folded"
+    )
+    server_svg = os.path.join(ROOT, f"build/{preset}/{name}-server.flamegraph.svg")
     verbose_flag = ["--verbose"] if log.isEnabledFor(logging.DEBUG) else []
+
+    def start_profiler(pid: int, out: Any) -> subprocess.Popen[str]:
+        return start_process(
+            profiler_bin,
+            "--pid",
+            str(pid),
+            "--on-cpu",
+            "--off-cpu",
+            "--kernel-stacks",
+            *verbose_flag,
+            stdout=out,
+        )
 
     log.info("profiling %s -> %s", name, out_svg)
 
@@ -458,23 +478,21 @@ def _run_flamegraph(preset: str, name: str, client_args: list[str]) -> None:
 
     try:
         with open(folded_stacks, "w") as f:
-            profiler = start_process(
-                profiler_bin,
-                "--pid",
-                str(client.pid),
-                "--on-cpu",
-                "--off-cpu",
-                "--kernel-stacks",
-                *verbose_flag,
-                stdout=f,
-            )
+            profiler = start_profiler(client.pid, f)
+        server_profiler = None
         try:
+            if server_pid is not None:
+                with open(server_folded, "w") as server_out:
+                    server_profiler = start_profiler(server_pid, server_out)
             client.wait()
             if client.returncode != 0:
                 raise RuntimeError(f"client exited with code {client.returncode}")
         finally:
             profiler.send_signal(signal.SIGTERM)
             profiler.wait()
+            if server_profiler is not None:
+                server_profiler.send_signal(signal.SIGTERM)
+                server_profiler.wait()
             if profiler.returncode != 0:
                 raise RuntimeError(f"profiler exited with code {profiler.returncode}")
     except Exception:
@@ -482,6 +500,9 @@ def _run_flamegraph(preset: str, name: str, client_args: list[str]) -> None:
         raise
 
     _render_flamegraph(folded_stacks, out_svg, f"{name} on-CPU + off-CPU")
+    if server_pid is not None:
+        _render_flamegraph(server_folded, server_svg, f"{name} server on-CPU + off-CPU")
+        log.info("server folded stacks: %s", server_folded)
 
     log.info("folded stacks: %s", folded_stacks)
     log.info("flamegraph: %s", out_svg)
@@ -588,6 +609,8 @@ class NetPerfParams:
     delay: str = "0"
     stall_rate: float = 0.0
     stall_duration: str = "0"
+    server_cpus: str = ""
+    client_cpus: str = ""
     flamegraph: bool = False
     print_counters: bool = False
     timeout: int = 180
@@ -618,6 +641,10 @@ def cmd_net_perf(preset: str, params: NetPerfParams) -> None:
 
     net_perf = os.path.join(ROOT, f"build/{preset}/bin/{binary}")
     server_cpus, client_cpus = _cpu_split()
+    if params.server_cpus:
+        server_cpus = params.server_cpus
+    if params.client_cpus:
+        client_cpus = params.client_cpus
     local = params.host in ("127.0.0.1", "localhost")
     verbose_flag = ["--verbose"] if log.isEnabledFor(logging.DEBUG) else []
     print_counters_flag = ["--print-counters"] if params.print_counters else []
@@ -657,6 +684,7 @@ def cmd_net_perf(preset: str, params: NetPerfParams) -> None:
 
     try:
         if params.flamegraph:
+            _run_flamegraph_server_pid = server.pid if server else None
             _run_flamegraph(
                 preset,
                 binary,
@@ -681,6 +709,7 @@ def cmd_net_perf(preset: str, params: NetPerfParams) -> None:
                     *stall_flags,
                     *verbose_flag,
                 ],
+                server_pid=_run_flamegraph_server_pid,
             )
         else:
             print(_perf_row(_NP_HEADERS, _NP_WIDTH))
@@ -739,6 +768,103 @@ def cmd_net_perf(preset: str, params: NetPerfParams) -> None:
                     _print_counters(server_data)
                 except json.JSONDecodeError as e:
                     log.warning("could not parse server counters: %s", e)
+
+
+@dataclass
+class SimulatorParams:
+    config: str = ""
+    duration: str = ""
+    warmup: str = ""
+    cpus: str = ""
+    param: list[str] = field(default_factory=list)
+    flamegraph: bool = False
+    print_counters: bool = False
+    disable_cpu_adjust: bool = False
+    timeout: int = 180
+
+
+SIM_CONFIGS_DIR = os.path.join(ROOT, "src/perf/simulator/configs")
+
+
+def _resolve_simulator_config(config: str) -> str:
+    if os.path.isfile(config):
+        return config
+    named = os.path.join(SIM_CONFIGS_DIR, f"{config}.cfg")
+    if os.path.isfile(named):
+        return named
+    names = sorted(
+        os.path.splitext(os.path.basename(f))[0]
+        for f in glob.glob(os.path.join(SIM_CONFIGS_DIR, "*.cfg"))
+    )
+    log.error(
+        "unknown simulator config %r; bundled configs: %s", config, ", ".join(names)
+    )
+    sys.exit(1)
+
+
+def _sim_us(lat: dict[str, Any], key: str) -> str:
+    return f"{lat[key]:.0f} µs" if key in lat else "-"
+
+
+def cmd_simulator(preset: str, params: SimulatorParams) -> None:
+    config = _resolve_simulator_config(params.config)
+    binary = os.path.join(ROOT, f"build/{preset}/bin/fibers-simulator")
+    verbose_flag = ["--verbose"] if log.isEnabledFor(logging.DEBUG) else []
+    taskset = ["taskset", "-c", params.cpus] if params.cpus else []
+
+    args = [*taskset, binary, "--config", config, *verbose_flag]
+    if params.duration:
+        args += ["--duration", params.duration]
+    if params.warmup:
+        args += ["--warmup", params.warmup]
+    for param in params.param:
+        args += ["--param", param]
+    if params.print_counters:
+        args += ["--print-counters"]
+    if params.disable_cpu_adjust:
+        args += ["--disable-cpu-adjust"]
+
+    param_note = f" ({', '.join(params.param)})" if params.param else ""
+    print()
+    print(f"## fibers-simulator -- {os.path.basename(config)}{param_note}")
+    print()
+
+    if params.flamegraph:
+        _run_flamegraph(preset, "fibers-simulator", args)
+        return
+
+    result = run_capture(*args, timeout=params.timeout or None)
+    data = json.loads(result.stdout)
+
+    print(
+        f"duration={data.get('duration_s', 0):.1f}s, measured={data.get('measured_s', 0):.1f}s"
+    )
+    print()
+
+    steps = data.get("steps", {})
+    headers = ["step", "type", "executions", "rate/s", "avg", "p50", "p90", "p99", "p99.9", "max"]
+    widths = [max([len(headers[0]), *(len(n) for n in steps)]), 10, 12, 12, 9, 9, 9, 9, 9, 9]
+    print(_perf_row(headers, widths))
+    print(_perf_sep(widths))
+
+    for name, step in steps.items():
+        lat = step.get("latency_us", {})
+        cells = [
+            name,
+            step.get("type", "?"),
+            f"{step.get('executions', 0):,}",
+            f"{step.get('rate', 0):,.0f}",
+            _sim_us(lat, "avg"),
+            _sim_us(lat, "p50"),
+            _sim_us(lat, "p90"),
+            _sim_us(lat, "p99"),
+            _sim_us(lat, "p999"),
+            _sim_us(lat, "max"),
+        ]
+        print(_perf_row(cells, widths))
+
+    if params.print_counters:
+        _print_counters(data)
 
 
 @dataclass
@@ -965,6 +1091,8 @@ class HttpPerfParams:
     print_counters: bool = False
     timeout: int = 180
     nginx: bool = False
+    server_cpus: str = ""
+    client_cpus: str = ""
 
 
 _HP_HEADERS: list[str] = [
@@ -1070,6 +1198,10 @@ def cmd_http_perf(preset: str, params: HttpPerfParams) -> None:
     print()
 
     server_cpus, client_cpus = _cpu_split()
+    if params.server_cpus:
+        server_cpus = params.server_cpus
+    if params.client_cpus:
+        client_cpus = params.client_cpus
     workers = (os.cpu_count() or 2) // 2
 
     if params.nginx:
@@ -1214,6 +1346,8 @@ class S3PerfParams:
     data_dir: str = "/dev/shm/minio-data"
     print_counters: bool = False
     timeout: int = 180
+    server_cpus: str = ""
+    client_cpus: str = ""
 
 
 _S3P_HEADERS: list[str] = [
@@ -1303,6 +1437,10 @@ def cmd_s3_perf(preset: str, params: S3PerfParams) -> None:
 
     minio_bin, mcli_bin = _ensure_minio()
     server_cpus, client_cpus = _cpu_split()
+    if params.server_cpus:
+        server_cpus = params.server_cpus
+    if params.client_cpus:
+        client_cpus = params.client_cpus
 
     os.makedirs(params.data_dir, exist_ok=True)
     minio = start_process(
@@ -1776,6 +1914,20 @@ def _build_parser() -> argparse.ArgumentParser:
             help="per-connection Poisson rate of stall messages (Hz, 0 disables)",
         )
         parser.add_argument(
+            "--server-cpus",
+            dest="net_server_cpus",
+            default=net_params.server_cpus,
+            metavar="CPUS",
+            help="taskset CPU list for the server (default: lower half of the machine)",
+        )
+        parser.add_argument(
+            "--client-cpus",
+            dest="net_client_cpus",
+            default=net_params.client_cpus,
+            metavar="CPUS",
+            help="taskset CPU list for the client (default: upper half of the machine)",
+        )
+        parser.add_argument(
             "--stall-duration",
             dest="net_stall_duration",
             default=net_params.stall_duration,
@@ -1817,6 +1969,71 @@ def _build_parser() -> argparse.ArgumentParser:
         help="build then run net-perf-epoll (raw epoll)",
     )
     _add_net_args(net_perf_epoll_parser)
+
+    simulator_parser = sub.add_parser(
+        "simulator",
+        help="build then run fibers-simulator (fiber workload pipelines)",
+    )
+    simulator_parser.add_argument(
+        "sim_config",
+        metavar="CONFIG",
+        help="config file path or a bundled config name (e.g. chain, net-baseline)",
+    )
+    simulator_parser.add_argument(
+        "--duration",
+        dest="sim_duration",
+        default="",
+        metavar="DURATION",
+        help="override the run duration",
+    )
+    simulator_parser.add_argument(
+        "--warmup",
+        dest="sim_warmup",
+        default="",
+        metavar="DURATION",
+        help="override the warmup",
+    )
+    simulator_parser.add_argument(
+        "--cpus",
+        dest="sim_cpus",
+        default="",
+        metavar="CPUS",
+        help="taskset CPU list for the run (default: no pinning)",
+    )
+    simulator_parser.add_argument(
+        "--param",
+        dest="sim_param",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="override a config param (repeatable; comma-separated pairs allowed)",
+    )
+    simulator_parser.add_argument(
+        "--print-counters",
+        dest="sim_print_counters",
+        action="store_true",
+        help="print perf counters after the run",
+    )
+    simulator_parser.add_argument(
+        "--disable-cpu-adjust",
+        dest="sim_disable_cpu_adjust",
+        action="store_true",
+        help="pin the scheduler CPU width at full (static-width baselines)",
+    )
+    simulator_parser.add_argument(
+        "--flamegraph",
+        dest="sim_flamegraph",
+        action="store_true",
+        help="profile the run and generate flamegraph SVG",
+    )
+    simulator_parser.add_argument(
+        "--timeout",
+        dest="sim_timeout",
+        default=180,
+        type=int,
+        metavar="SECONDS",
+        help="run timeout in seconds (default: 180, 0=none)",
+    )
 
     #
     # http-perf
@@ -1878,6 +2095,20 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="http_print_counters",
         action="store_true",
         help="print perf counters after each run",
+    )
+    http_perf_parser.add_argument(
+        "--server-cpus",
+        dest="http_server_cpus",
+        default=http_params.server_cpus,
+        metavar="CPUS",
+        help="taskset CPU list for the server (default: lower half of the machine)",
+    )
+    http_perf_parser.add_argument(
+        "--client-cpus",
+        dest="http_client_cpus",
+        default=http_params.client_cpus,
+        metavar="CPUS",
+        help="taskset CPU list for the client (default: upper half of the machine)",
     )
     http_perf_parser.add_argument(
         "--timeout",
@@ -1970,6 +2201,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print perf counters after each run",
     )
     s3_perf_parser.add_argument(
+        "--server-cpus",
+        dest="s3_server_cpus",
+        default=s3_params.server_cpus,
+        metavar="CPUS",
+        help="taskset CPU list for the server (default: lower half of the machine)",
+    )
+    s3_perf_parser.add_argument(
+        "--client-cpus",
+        dest="s3_client_cpus",
+        default=s3_params.client_cpus,
+        metavar="CPUS",
+        help="taskset CPU list for the client (default: upper half of the machine)",
+    )
+    s3_perf_parser.add_argument(
         "--timeout",
         dest="s3_timeout",
         default=180,
@@ -2048,6 +2293,10 @@ def main() -> None:
         cmd_build(preset, ["net-perf-epoll"])
         params = _params_from_args(args, "net", NetPerfParams)
         cmd_net_perf(preset, replace(params, engine=NetPerfEngine.EPOLL))
+    elif args.command == "simulator":
+        _check_no_extra(extra)
+        cmd_build(preset, ["fibers-simulator"])
+        cmd_simulator(preset, _params_from_args(args, "sim", SimulatorParams))
     elif args.command == "http-perf":
         _check_no_extra(extra)
         cmd_build(preset, ["http-perf"])

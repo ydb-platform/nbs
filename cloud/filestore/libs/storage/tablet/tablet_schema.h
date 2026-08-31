@@ -628,6 +628,20 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+    // Nodes kept alive during the post-restart handle confirmation grace period
+    struct DeferredNodeDestruction: TTableSchema<32>
+    {
+        struct NodeId       : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};
+
+        using TKey = TableKey<NodeId>;
+
+        using TColumns = TableColumns<
+            NodeId
+        >;
+
+        using StoragePolicy = TStoragePolicy<IndexChannel>;
+    };
+
     using TTables = SchemaTables<
         FileSystem,
         Sessions,
@@ -659,7 +673,8 @@ struct TIndexTabletSchema
         ResponseLog,
         UnconfirmedData,
         Quotas,
-        QuotaUsage
+        QuotaUsage,
+        DeferredNodeDestruction
     >;
 
     using TSettings = SchemaSettings<

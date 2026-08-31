@@ -37,6 +37,7 @@ struct TTestContext: TAtomicRefCount<TTestContext>
     TDeque<ibv_recv_wr*> ProcessedRecvEvents;
     TSpinLock CompletionLock;
     TAtomic PostRecvCounter = 0;
+    std::atomic<ui32> RKey = 0;
 
     std::function<void(ibv_qp* qp, ibv_send_wr* wr)> PostSend;
     std::function<void(ibv_qp* qp, ibv_recv_wr* wr)> PostRecv;
@@ -49,8 +50,10 @@ struct TTestContext: TAtomicRefCount<TTestContext>
         GetAddressInfo;
     std::function<void(rdma_cm_id* id)> DestroyQP;
     std::function<void(ibv_qp* qp, ibv_qp_attr* attr, int mask)> ModifyQP;
+    std::function<void(rdma_cm_id* id, ui8 timeout)> SetAckTimeout;
     std::function<void(ibv_pd* pd, void* addr, size_t length, int flags)>
         RegisterMemoryRegion;
+    std::function<void(ibv_mw* mw)> DestroyMemoryWindow;
 
     // If set, called when TTestVerbs resolves address/route.
     std::function<void(

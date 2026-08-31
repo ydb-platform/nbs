@@ -142,7 +142,9 @@ public:
      * EWriteBackCacheMode::Drained.
      *
      * The returned future is completed successfully when WriteBackCache become
-     * drained. An error is returned if flush is failed.
+     * drained. An error is returned if flush is failed. The returned future
+     * never completes if WriteBackCache is in failed state due to underlying
+     * storage corrption or logic failure.
      *
      * The call has no effect if WriteBackCache is already drained and will
      * return a completed future immediately.

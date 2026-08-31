@@ -6,6 +6,8 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <functional>
+
 namespace NCloud::NBlockStore::NVhost {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,8 +50,22 @@ struct TTestVhostQueueFactory final
 {
     TManualEvent FailedEvent;
     TVector<std::shared_ptr<ITestVhostQueue>> Queues;
+    std::function<void()> RequestCompletionHandler;
 
     IVhostQueuePtr CreateQueue() override;
+
+    IVhostDevicePtr CreateDevice(
+        TString socketPath,
+        TString deviceName,
+        ui32 blockSize,
+        ui64 blocksCount,
+        ui32 queuesCount,
+        bool discardEnabled,
+        bool writeZeroesEnabled,
+        ui32 optimalIoSize,
+        TVector<IVhostQueuePtr> queues,
+        void* cookie,
+        const TVhostCallbacks& callbacks) override;
 };
 
 }   // namespace NCloud::NBlockStore::NVhost
