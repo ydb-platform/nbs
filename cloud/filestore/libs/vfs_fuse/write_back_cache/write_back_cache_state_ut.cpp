@@ -166,7 +166,7 @@ struct TBootstrap
     TString GetFrontFlushBatch(ui64 nodeId) const
     {
         TStringBuilder out;
-        State->VisitUnflushedRequestsFromFrontFlushBatch(
+        auto success = State->VisitUnflushedRequestsFromFrontFlushBatch(
             nodeId,
             [&out](const TCachedWriteDataRequest* entry)
             {
@@ -176,6 +176,7 @@ struct TBootstrap
                 out << entry->GetOffset() << ":" << entry->GetBuffer();
                 return true;
             });
+        UNIT_ASSERT(success);
         return out;
     }
 

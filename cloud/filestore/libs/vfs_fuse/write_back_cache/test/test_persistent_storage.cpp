@@ -57,7 +57,9 @@ NProto::TError TTestStorage::Commit()
 NProto::TError TTestStorage::Free(const void* ptr)
 {
     auto it = Data.find(ptr);
-    Y_ENSURE(it != Data.end(), "Double free detected");
+    if (it == Data.end()) {
+        return MakeError(E_ARGUMENT, "Double free detected");
+    }
 
     Data.erase(it);
 
@@ -68,7 +70,9 @@ NProto::TError TTestStorage::Free(const void* ptr)
 NProto::TError TTestStorage::SetTag(const void* ptr, ui32 tag)
 {
     auto it = Data.find(ptr);
-    Y_ENSURE(it != Data.end(), "Entry not found");
+    if (it == Data.end()) {
+        return MakeError(E_ARGUMENT);
+    }
 
     it->second->Tag = tag;
     return {};

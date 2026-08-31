@@ -131,6 +131,10 @@ NProto::TError TWriteDataRequestManager::Init(
     auto visitResult = PersistentStorage->Visit(
         [this, &error, &loadedRequests](ui32 tag, const TStringBuf allocation)
         {
+            if (HasError(error)) {
+                return;
+            }
+
             if (tag > static_cast<ui32>(ECachedWriteDataRequestTag::Max)) {
                 error = MakeError(
                     E_INVALID_STATE,

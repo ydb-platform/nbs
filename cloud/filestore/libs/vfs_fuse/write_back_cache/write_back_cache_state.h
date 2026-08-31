@@ -80,11 +80,14 @@ private:
     TIntrusiveList<TReleaseHandleRequest> ReleaseHandleRequests;
 
     // Requests that are hanging due to WriteBackCache failed state
+    // It will be used in the future to prevent hanging on session destroy.
     THangingRequests HangingRequests;
 
     // Either the persistent storage is corrupted or an internal problem in
-    // the logic has happened
+    // the logic has happened. This is fatal and should result in suspending all
+    // operations until manual resolution takes place.
     bool IsFailed = false;
+
     bool DrainingMode = false;
 
 public:
@@ -126,7 +129,8 @@ public:
         ui64 nodeId,
         ui64 handle);
 
-    void AddHangingRequest(NThreading::TPromise<NProto::TReadDataResponse> promise);
+    void AddHangingRequest(
+        NThreading::TPromise<NProto::TReadDataResponse> promise);
 
     void TriggerPeriodicFlushAll();
 
@@ -156,16 +160,19 @@ public:
     TNodeStatePin PinNodeStates();
     void UnpinNodeStates(TNodeStatePin pinId);
 
-    // Returns empty batch if flush is not allowed due to barriers
+    // Visits the requests from the front flush batch that are not prevented
+    // from flushing by barriers.
     // Forces completion of an incomplete flush batch if there are no completed
-    // flush batches
-    void VisitUnflushedRequestsFromFrontFlushBatch(
+    // flush batches.
+    // Returns true on success or false when TWriteBackCacheState::IsFailed is
+    // set
+    bool VisitUnflushedRequestsFromFrontFlushBatch(
         ui64 nodeId,
         const TEntryVisitor& visitor);
 
     // Returns a known live handle that should be used for flushing requests or
     // NProto::E_INVALID_HANDLE if there are no unflushed requests with live
-    // handles
+    // handles or TWriteBackCacheState::IsFailed is set
     ui64 GetLiveHandle(ui64 nodeId) const;
 
     // Inform that the first |requestCount| unflushed changes requests have

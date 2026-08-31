@@ -2818,7 +2818,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto setNodeAttrFuture =
             b.Cache.SetNodeAttr(b.CallContext, std::move(setNodeAttrRequest));
 
-        Sleep(TDuration::Seconds(1));
+        // All requests are processed synchronously - no need to wait here
 
         UNIT_ASSERT(!writeFuture.HasValue());
         UNIT_ASSERT(!readFuture.HasValue());
@@ -2873,7 +2873,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         // Flush is succeded because flush completion happens before data
         // eviction
-        UNIT_ASSERT(flushFuture.HasValue());
+        UNIT_ASSERT(!HasError(flushFuture.GetValue()));
     }
 }
 

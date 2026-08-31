@@ -213,6 +213,10 @@ void TWriteBackCacheState::TriggerPeriodicFlushAll()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
+    if (IsFailed) {
+        return;
+    }
+
     TriggerFlushAll(false);
 }
 
@@ -243,10 +247,6 @@ ui64 TWriteBackCacheState::GetMaxWrittenOffset(ui64 nodeId) const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (IsFailed) {
-        return 0;
-    }
-
     const auto* nodeState =
         Nodes.GetNodeState(nodeId, /* includeDeleted = */ true);
 
@@ -256,10 +256,6 @@ ui64 TWriteBackCacheState::GetMaxWrittenOffset(ui64 nodeId) const
 void TWriteBackCacheState::ResetMaxWrittenOffset(ui64 nodeId)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
-
-    if (IsFailed) {
-        return;
-    }
 
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
@@ -323,29 +319,30 @@ void TWriteBackCacheState::UnpinNodeStates(TNodeStatePin pinId)
     Nodes.Unpin(pinId);
 }
 
-void TWriteBackCacheState::VisitUnflushedRequestsFromFrontFlushBatch(
+bool TWriteBackCacheState::VisitUnflushedRequestsFromFrontFlushBatch(
     ui64 nodeId,
     const TEntryVisitor& visitor)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
     if (IsFailed) {
-        return;
+        return false;
     }
 
     auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
     if (nodeState == nullptr || !nodeState->Cache.HasUnflushedRequests()) {
-        return;
+        return true;
     }
 
     if (!nodeState->Barriers.empty()) {
         const ui64 minBarrierId = nodeState->Barriers.cbegin()->first;
         if (minBarrierId < nodeState->Cache.GetMinUnflushedSequenceId()) {
-            return;
+            return true;
         }
     }
 
     nodeState->Cache.VisitUnflushedRequestsFromFrontFlushBatch(visitor);
+    return true;
 }
 
 ui64 TWriteBackCacheState::GetLiveHandle(ui64 nodeId) const

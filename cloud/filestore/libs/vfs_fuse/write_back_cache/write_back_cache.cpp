@@ -80,8 +80,8 @@ private:
     const TString LogTag;
     const TString FileSystemId;
     const TString FilePath;
+    const IPersistentStoragePtr PersistentStorage;
 
-    IPersistentStoragePtr PersistentStorage;
     TWriteBackCacheState State;
 
     std::atomic<bool> DrainRequested = false;
@@ -262,7 +262,7 @@ public:
              promise = std::move(promise)](
                 const TFuture<NProto::TReadDataResponse>& future) mutable
         {
-            auto response = UnsafeExtractValue(future);
+            auto response = ExtractResponse(future);
             bool shouldHang = false;
 
             if (auto self = ptr.lock()) {
@@ -454,7 +454,7 @@ private:
         auto batchBuilder =
             RequestBuilder->CreateWriteDataRequestBatchBuilder(nodeId);
 
-        State.VisitUnflushedRequestsFromFrontFlushBatch(
+        bool success = State.VisitUnflushedRequestsFromFrontFlushBatch(
             nodeId,
             [&batchBuilder](const TCachedWriteDataRequest* request)
             {
@@ -463,11 +463,31 @@ private:
                     request->GetBuffer());
             });
 
+        if (!success) {
+            // This may happen if the storage is corrupted or an internal
+            // problem in the logic has happened. This is fatal and should
+            // result in suspending all operations. Flush will remain in-flight
+            // until manual resolution takes place.
+            return;
+        }
+
         auto writeDataBatch = batchBuilder->Build();
 
         if (writeDataBatch.Requests.empty()) {
-            // This may happen when the cache entered failed state after
-            // flush has been scheduled
+            // Flush can be scheduled only when there are requests to flush.
+            // The only reason why VisitUnflushedRequestsFromFrontFlushBatch()
+            // may return an empty batch for a non-empty unflushed queue is a
+            // presence of a barrier with BarrierId less than SequenceId for all
+            // unflushed requests. This cannot happen because:
+            // - newly added barriers cannot have BarrierId less than SequenceId
+            //   for any existing WriteData request;
+            // - flush cannot be scheduled if an existing barrier prevents it.
+            ReportWriteBackCacheImpossibleState(Sprintf(
+                "Flush is scheduled for node %lu but flush batch is empty",
+                nodeId));
+
+            // We do not fail flush because it may cause dropping WriteData
+            // requests
             State.FlushSucceeded(nodeId, 0);
             return;
         }
@@ -509,9 +529,7 @@ private:
 
             handle = State.GetLiveHandle(flushState->GetNodeId());
             if (handle == NProto::E_INVALID_HANDLE) {
-                // This may happen when WriteBackCache entered failed state
-                // concurrently after FlushFailed was called
-                // We stop any further processing including metrics reporting
+                ScheduleRetryFlush(flushState);
                 return;
             }
         }

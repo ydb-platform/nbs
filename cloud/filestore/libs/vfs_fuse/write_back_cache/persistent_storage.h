@@ -26,14 +26,13 @@ struct IPersistentStorage
 
     /**
      * Enumerates the contents of the persistent storage in the allocation order
-     *
-     * Does not visit anything and returns an error if the buffer is corrupted.
+     * Stops visiting when corruption is detected.
      */
     [[nodiscard]] virtual NProto::TError Visit(const TVisitor& visitor) = 0;
 
     /**
-     * Returns the number of bytes that can be successfully allocated by
-     * PushBack and Alloc for an empty buffer without exceeding the capacity.
+     * Returns the number of bytes that can be successfully allocated by Alloc
+     * for an empty buffer without exceeding the capacity.
      *
      * Returns zero if the buffer is corrupted.
      *

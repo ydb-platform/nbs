@@ -94,14 +94,14 @@ public:
      * Takes front request from the pending queue and tries to store it into
      * the persistent storage.
      *
-     * Returns result with non-empty TAddRequestResult::CachedRequest if the
-     * front request has been successfully stored in the storage.
+     * Returns result with non-empty TProcessPendingRequestResult::CachedRequest
+     * if the front request has been successfully stored in the storage.
      *
-     * Returns result with empty TAddRequestResult::CachedRequest and
+     * Returns result with empty TProcessPendingRequestResult::CachedRequest and
      * TAddRequestResult::Failed == false if the storage is full, backpressure
      * is in effect or the pending queue is empty.
      *
-     * Returns result with empty TAddRequestResult::CachedRequest and
+     * Returns result with empty TProcessPendingRequestResult::CachedRequest and
      * TAddRequestResult::Failed == true if the storage is in failed state.
      */
     [[nodiscard]] TProcessPendingRequestResult TryProcessPendingRequest();
