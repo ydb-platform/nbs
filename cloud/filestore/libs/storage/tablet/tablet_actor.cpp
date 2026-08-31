@@ -1191,7 +1191,7 @@ TIndexTabletActor::ProcessForcedRangeOperationRequest(
         if (rangeState && rangeState->Mode == mode) {
             error = MakeError(S_ALREADY, "already launched");
         } else {
-            error = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch");
+            error = MakeError(E_TRY_AGAIN, "another operation is running");
         }
         return std::make_unique<TResponse>(std::move(error));
     }
@@ -1250,7 +1250,7 @@ TIndexTabletActor::ProcessForcedTabletOperationRequest(
         if (state && state->Mode == mode) {
             error = MakeError(S_ALREADY, "already launched");
         } else {
-            error = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch");
+            error = MakeError(E_TRY_AGAIN, TStringBuilder() << "another operation is running");
         }
         return std::make_unique<TResponse>(std::move(error));
     }
