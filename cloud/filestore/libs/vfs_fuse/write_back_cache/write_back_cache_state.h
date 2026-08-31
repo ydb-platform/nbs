@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hanging_requests.h"
 #include "node_cache.h"
 #include "node_state.h"
 #include "node_state_holder.h"
@@ -54,7 +55,6 @@ private:
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const ITimerPtr Timer;
     const IWriteBackCacheStateStatsPtr Stats;
-    const IWriteDataRequestManagerStatsPtr RequestManagerStats;
     const TFlushBatchLimits FlushBatchLimits;
     const TString LogTag;
 
@@ -79,6 +79,15 @@ private:
     TIntrusiveList<TFlushRequest> FlushRequests;
     TIntrusiveList<TReleaseHandleRequest> ReleaseHandleRequests;
 
+    // Requests that are hanging due to WriteBackCache failed state
+    // It will be used in the future to prevent hanging on session destroy.
+    THangingRequests HangingRequests;
+
+    // Either the persistent storage is corrupted or an internal problem in
+    // the logic has happened. This is fatal and should result in suspending all
+    // operations until manual resolution takes place.
+    bool IsFailed = false;
+
     bool DrainingMode = false;
 
 public:
@@ -86,6 +95,7 @@ public:
 
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
+        IPersistentStoragePtr persistentStorage,
         ITimerPtr timer,
         IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
@@ -93,8 +103,8 @@ public:
         const TFlushBatchLimits& flushBatchLimits,
         TString logTag);
 
-    // Read state from the persistent storage
-    bool Init(IPersistentStoragePtr persistentStorage);
+    // Reads state from the persistent storage and schedules node flush
+    NProto::TError Init();
 
     // Prevent new WriteData requests from being added to the cache - they
     // will fail with E_REJECTED error.
@@ -119,12 +129,16 @@ public:
         ui64 nodeId,
         ui64 handle);
 
+    void AddHangingRequest(
+        NThreading::TPromise<NProto::TReadDataResponse> promise);
+
     void TriggerPeriodicFlushAll();
 
     // Includes both flushed and unflushed data.
     // TCachedData::Parts is calculated over pinned data.
     // TCachedData::ReadDataByteCount is calculated over all data.
-    TCachedData GetCachedData(
+    // Returns std::nullopt in a failed state
+    std::optional<TCachedData> GetCachedData(
         ui64 nodeId,
         ui64 offset,
         ui64 byteCount,
@@ -146,16 +160,19 @@ public:
     TNodeStatePin PinNodeStates();
     void UnpinNodeStates(TNodeStatePin pinId);
 
-    // Returns empty batch if flush is not allowed due to barriers
+    // Visits the requests from the front flush batch that are not prevented
+    // from flushing by barriers.
     // Forces completion of an incomplete flush batch if there are no completed
-    // flush batches
-    void VisitUnflushedRequestsFromFrontFlushBatch(
+    // flush batches.
+    // Returns true on success or false when TWriteBackCacheState::IsFailed is
+    // set
+    bool VisitUnflushedRequestsFromFrontFlushBatch(
         ui64 nodeId,
         const TEntryVisitor& visitor);
 
     // Returns a known live handle that should be used for flushing requests or
     // NProto::E_INVALID_HANDLE if there are no unflushed requests with live
-    // handles
+    // handles or TWriteBackCacheState::IsFailed is set
     ui64 GetLiveHandle(ui64 nodeId) const;
 
     // Inform that the first |requestCount| unflushed changes requests have
@@ -245,6 +262,8 @@ private:
         const NCloud::NProto::TError& error);
 
     void FailAllPendingRequests(const NCloud::NProto::TError& error);
+
+    void SetFailedFlag();
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -29,12 +29,13 @@ public:
     explicit TTestStorage(IPersistentStorageStatsPtr stats);
 
     bool Empty() const override;
-    void Visit(const TVisitor& visitor) override;
+    bool IsCorrupted() const override;
+    NProto::TError Visit(const TVisitor& visitor) override;
     ui64 GetMaxSupportedAllocationByteCount() const override;
     TResultOrError<char*> Alloc(size_t size) override;
-    void Commit() override;
-    void Free(const void* ptr) override;
-    void SetTag(const void* ptr, ui32 tag) override;
+    NProto::TError Commit() override;
+    NProto::TError Free(const void* ptr) override;
+    NProto::TError SetTag(const void* ptr, ui32 tag) override;
     void UpdateStats() const override;
 
     void SetCapacity(size_t capacity);

@@ -11,8 +11,6 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/generic/overloaded.h>
-
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 namespace {
@@ -55,27 +53,24 @@ struct TBootstrap
 
         auto res = RequestManager.AddRequest(std::move(request));
 
-        return std::visit(
-            TOverloaded(
-                [this](std::unique_ptr<TPendingWriteDataRequest> request)
-                {
-                    auto future = request->AccessPromise().GetFuture();
-                    PendingRequests[request->GetSequenceId()] =
-                        std::move(request);
-                    return future.IgnoreResult();
-                },
-                [this](std::unique_ptr<TCachedWriteDataRequest> request)
-                {
-                    CachedRequests[request->GetSequenceId()] =
-                        std::move(request);
-                    return NThreading::MakeFuture();
-                }),
-            std::move(res));
+        if (res.PendingRequest) {
+            UNIT_ASSERT(!res.CachedRequest);
+            auto future = res.PendingRequest->AccessPromise().GetFuture();
+            PendingRequests[res.PendingRequest->GetSequenceId()] =
+                std::move(res.PendingRequest);
+            return future.IgnoreResult();
+        }
+
+        UNIT_ASSERT(res.CachedRequest);
+        CachedRequests[res.CachedRequest->GetSequenceId()] =
+            std::move(res.CachedRequest);
+        return NThreading::MakeFuture();
     }
 
     void SetFlushed(ui64 sequenceId)
     {
-        RequestManager.SetFlushed(CachedRequests[sequenceId].get());
+        UNIT_ASSERT(
+            RequestManager.SetFlushed(CachedRequests[sequenceId].get()));
     }
 
     void Remove(ui64 sequenceId)
@@ -86,14 +81,17 @@ struct TBootstrap
 
     void Evict(ui64 sequenceId)
     {
-        RequestManager.Evict(std::move(CachedRequests[sequenceId]));
+        UNIT_ASSERT(
+            RequestManager.Evict(std::move(CachedRequests[sequenceId])));
         CachedRequests.erase(sequenceId);
     }
 
     bool TryProcessPendingRequests()
     {
         while (RequestManager.HasPendingRequests()) {
-            auto request = RequestManager.TryProcessPendingRequest();
+            auto res = RequestManager.TryProcessPendingRequest();
+            UNIT_ASSERT(!res.Failed);
+            auto request = std::move(res.CachedRequest);
             if (!request) {
                 return false;
             }

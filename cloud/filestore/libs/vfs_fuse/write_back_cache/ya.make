@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     disjoint_interval_builder.cpp
     flush_batch_write_request_counter.cpp
+    hanging_requests.cpp
     node_cache.cpp
     node_flush_state.cpp
     node_state_holder.cpp
