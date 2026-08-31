@@ -316,14 +316,17 @@ void TIndexTabletActor::HandleWriteBlob(
 
             const auto chunkSize = Config->GetBlobCompressionChunkSize();
             TString chunk;
-            chunk.ReserveAndResize(chunkSize);
 
             const auto& data = blob.BlobContent;
             for (auto begin = data.begin(); begin < data.end(); begin += chunkSize) {
                 const auto end = Min(begin + chunkSize, data.end());
-                compressedSize += BlobCodec->Compress(
-                    TStringBuf(begin, end),
-                    chunk.begin());
+                const TStringBuf src(begin, end);
+                const auto maxCompressedLength =
+                    BlobCodec->MaxCompressedLength(src);
+                if (chunk.size() < maxCompressedLength) {
+                    chunk.ReserveAndResize(maxCompressedLength);
+                }
+                compressedSize += BlobCodec->Compress(src, chunk.begin());
             }
 
             Metrics->UncompressedBytesWritten.fetch_add(
