@@ -25,6 +25,7 @@ SRCS(
     part_actor_initschema.cpp
     part_actor_loadstate.cpp
     part_actor_metadata_rebuild_blockcount.cpp
+    part_actor_metadata_rebuild_compactionmap.cpp
     part_actor_metadata_rebuild_usedblocks.cpp
     part_actor_metadata_rebuild.cpp
     part_actor_monitoring.cpp

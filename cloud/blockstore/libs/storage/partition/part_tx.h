@@ -37,36 +37,37 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_TRANSACTIONS(xxx, ...)                            \
-    xxx(InitSchema,                 __VA_ARGS__)                               \
-    xxx(LoadState,                  __VA_ARGS__)                               \
-    xxx(WriteBlocks,                __VA_ARGS__)                               \
-    xxx(ZeroBlocks,                 __VA_ARGS__)                               \
-    xxx(ReadBlocks,                 __VA_ARGS__)                               \
-    xxx(AddBlobs,                   __VA_ARGS__)                               \
-    xxx(Compaction,                 __VA_ARGS__)                               \
-    xxx(CompactionReadBlobInfo,     __VA_ARGS__)                               \
-    xxx(Cleanup,                    __VA_ARGS__)                               \
-    xxx(CollectGarbage,             __VA_ARGS__)                               \
-    xxx(AddGarbage,                 __VA_ARGS__)                               \
-    xxx(DeleteGarbage,              __VA_ARGS__)                               \
-    xxx(CreateCheckpoint,           __VA_ARGS__)                               \
-    xxx(DeleteCheckpoint,           __VA_ARGS__)                               \
-    xxx(DescribeRange,              __VA_ARGS__)                               \
-    xxx(DescribeBlob,               __VA_ARGS__)                               \
-    xxx(CheckIndex,                 __VA_ARGS__)                               \
-    xxx(GetChangedBlocks,           __VA_ARGS__)                               \
-    xxx(DescribeBlocks,             __VA_ARGS__)                               \
-    xxx(FlushToDevNull,             __VA_ARGS__)                               \
-    xxx(GetUsedBlocks,              __VA_ARGS__)                               \
-    xxx(UpdateLogicalUsedBlocks,    __VA_ARGS__)                               \
-    xxx(MetadataRebuildUsedBlocks,  __VA_ARGS__)                               \
-    xxx(MetadataRebuildBlockCount,  __VA_ARGS__)                               \
-    xxx(ScanDiskBatch,              __VA_ARGS__)                               \
-    xxx(AddUnconfirmedBlobs,        __VA_ARGS__)                               \
-    xxx(ConfirmBlobs,               __VA_ARGS__)                               \
-    xxx(DeleteUnconfirmedBlobs,     __VA_ARGS__)                               \
-    xxx(LoadCompactionMapChunk,     __VA_ARGS__)                               \
-    xxx(LoadMixedBlocksFilterChunk, __VA_ARGS__)                               \
+    xxx(InitSchema,                   __VA_ARGS__)                               \
+    xxx(LoadState,                    __VA_ARGS__)                               \
+    xxx(WriteBlocks,                  __VA_ARGS__)                               \
+    xxx(ZeroBlocks,                   __VA_ARGS__)                               \
+    xxx(ReadBlocks,                   __VA_ARGS__)                               \
+    xxx(AddBlobs,                     __VA_ARGS__)                               \
+    xxx(Compaction,                   __VA_ARGS__)                               \
+    xxx(CompactionReadBlobInfo,       __VA_ARGS__)                               \
+    xxx(Cleanup,                      __VA_ARGS__)                               \
+    xxx(CollectGarbage,               __VA_ARGS__)                               \
+    xxx(AddGarbage,                   __VA_ARGS__)                               \
+    xxx(DeleteGarbage,                __VA_ARGS__)                               \
+    xxx(CreateCheckpoint,             __VA_ARGS__)                               \
+    xxx(DeleteCheckpoint,             __VA_ARGS__)                               \
+    xxx(DescribeRange,                __VA_ARGS__)                               \
+    xxx(DescribeBlob,                 __VA_ARGS__)                               \
+    xxx(CheckIndex,                   __VA_ARGS__)                               \
+    xxx(GetChangedBlocks,             __VA_ARGS__)                               \
+    xxx(DescribeBlocks,               __VA_ARGS__)                               \
+    xxx(FlushToDevNull,               __VA_ARGS__)                               \
+    xxx(GetUsedBlocks,                __VA_ARGS__)                               \
+    xxx(UpdateLogicalUsedBlocks,      __VA_ARGS__)                               \
+    xxx(MetadataRebuildUsedBlocks,    __VA_ARGS__)                               \
+    xxx(MetadataRebuildBlockCount,    __VA_ARGS__)                               \
+    xxx(MetadataRebuildCompactionMap, __VA_ARGS__)                             \
+    xxx(ScanDiskBatch,                __VA_ARGS__)                               \
+    xxx(AddUnconfirmedBlobs,          __VA_ARGS__)                               \
+    xxx(ConfirmBlobs,                 __VA_ARGS__)                               \
+    xxx(DeleteUnconfirmedBlobs,       __VA_ARGS__)                               \
+    xxx(LoadCompactionMapChunk,       __VA_ARGS__)                               \
+    xxx(LoadMixedBlocksFilterChunk,   __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -604,6 +605,50 @@ struct TTxPartition
             MixedBlockCount = 0;
             MergedBlockCount = 0;
             LastReadBlobId = {};
+        }
+    };
+
+    //
+    // MetadataRebuildCompactionMap
+    //
+
+    struct TMetadataRebuildCompactionMap
+    {
+        struct TBlockInfo
+        {
+            ui32 BlockIndex = 0;
+            ui16 BlobOffset = 0;
+        };
+
+        struct TBlobInfo
+        {
+            TVector<TBlockInfo> Blocks;
+            TMaybe<TBlockMask> BlockMask;
+            TMaybe<NProto::TBlobMeta> BlobMeta;
+        };
+
+        const TRequestInfoPtr RequestInfo;
+        const ui32 RangeIndex;
+        const ui32 RangeCount;
+
+        TBlockRange32 BlockRange;
+        THashMap<TPartialBlobId, TBlobInfo, TPartialBlobIdHash> Blobs;
+        TVector<TCompactionMapRebuildCounters> Counters;
+
+        TMetadataRebuildCompactionMap(
+            TRequestInfoPtr requestInfo,
+            ui32 rangeIndex,
+            ui32 rangeCount)
+            : RequestInfo(std::move(requestInfo))
+            , RangeIndex(rangeIndex)
+            , RangeCount(rangeCount)
+        {}
+
+        void Clear()
+        {
+            BlockRange = {};
+            Blobs.clear();
+            Counters.clear();
         }
     };
 

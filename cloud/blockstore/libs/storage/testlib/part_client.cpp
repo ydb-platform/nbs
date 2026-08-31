@@ -509,11 +509,14 @@ std::unique_ptr<NMon::TEvRemoteHttpInfoRes> TPartitionClient::RemoteHttpInfo(
 std::unique_ptr<TEvVolume::TEvRebuildMetadataRequest>
 TPartitionClient::CreateRebuildMetadataRequest(
     NProto::ERebuildMetadataType type,
-    ui32 batchSize)
+    ui32 batchSize,
+    TDuration allowedCpuTimePerSecond)
 {
     auto request = std::make_unique<TEvVolume::TEvRebuildMetadataRequest>();
     request->Record.SetMetadataType(type);
     request->Record.SetBatchSize(batchSize);
+    request->Record.SetAllowedCpuTimePerSecond(
+        allowedCpuTimePerSecond.MilliSeconds());
     return request;
 }
 

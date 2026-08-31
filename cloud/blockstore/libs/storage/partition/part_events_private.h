@@ -202,20 +202,21 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_REQUESTS_PRIVATE(xxx, ...)                        \
-    xxx(AddBlobs,                  __VA_ARGS__)                                \
-    xxx(Flush,                     __VA_ARGS__)                                \
-    xxx(Compaction,                __VA_ARGS__)                                \
-    xxx(CompactionReadBlobInfo,    __VA_ARGS__)                                \
-    xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
-    xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
-    xxx(ScanDiskBatch,             __VA_ARGS__)                                \
-    xxx(Cleanup,                   __VA_ARGS__)                                \
-    xxx(CollectGarbage,            __VA_ARGS__)                                \
-    xxx(AddGarbage,                __VA_ARGS__)                                \
-    xxx(DeleteGarbage,             __VA_ARGS__)                                \
-    xxx(AddConfirmedBlobs,         __VA_ARGS__)                                \
-    xxx(AddUnconfirmedBlobs,       __VA_ARGS__)                                \
-    xxx(DeleteUnconfirmedBlobs,    __VA_ARGS__)                                \
+    xxx(AddBlobs,                     __VA_ARGS__)                                \
+    xxx(Flush,                        __VA_ARGS__)                                \
+    xxx(Compaction,                   __VA_ARGS__)                                \
+    xxx(CompactionReadBlobInfo,       __VA_ARGS__)                                \
+    xxx(MetadataRebuildUsedBlocks,    __VA_ARGS__)                                \
+    xxx(MetadataRebuildBlockCount,    __VA_ARGS__)                                \
+    xxx(MetadataRebuildCompactionMap, __VA_ARGS__)                             \
+    xxx(ScanDiskBatch,                __VA_ARGS__)                                \
+    xxx(Cleanup,                      __VA_ARGS__)                                \
+    xxx(CollectGarbage,               __VA_ARGS__)                                \
+    xxx(AddGarbage,                   __VA_ARGS__)                                \
+    xxx(DeleteGarbage,                __VA_ARGS__)                                \
+    xxx(AddConfirmedBlobs,            __VA_ARGS__)                                \
+    xxx(AddUnconfirmedBlobs,          __VA_ARGS__)                                \
+    xxx(DeleteUnconfirmedBlobs,       __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -256,6 +257,19 @@ struct TBlockCountRebuildState
 
     ui64 InitialMixedBlocks = 0;
     ui64 InitialMergedBlocks = 0;
+};
+
+struct TCompactionMapRangeCounters
+{
+    ui64 BlobCount = 0;
+    ui64 BlockCount = 0;
+    ui64 MixedBlockCount = 0;
+};
+
+struct TCompactionMapRebuildCounters
+{
+    ui32 BlockIndex = 0;
+    TCompactionMapRangeCounters Counters;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -457,6 +471,42 @@ struct TEvPartitionPrivate
                 const TBlockCountRebuildState& rebuildState)
             : LastReadBlobId(lastReadBlobId)
             , RebuildState(rebuildState)
+        {}
+    };
+
+    //
+    // MetadataRebuildCompactionMap
+    //
+
+    struct TMetadataRebuildCompactionMapRequest
+    {
+        const ui32 RangeIndex = 0;
+        const ui32 RangeCount = 0;
+
+        TMetadataRebuildCompactionMapRequest(ui32 rangeIndex, ui32 rangeCount)
+            : RangeIndex(rangeIndex)
+            , RangeCount(rangeCount)
+        {}
+    };
+
+    struct TMetadataRebuildCompactionMapResponse
+    {
+        ui32 RangeIndex = 0;
+        ui32 RangeCount = 0;
+        TDuration CpuTime;
+        TVector<TCompactionMapRebuildCounters> Counters;
+
+        TMetadataRebuildCompactionMapResponse() = default;
+
+        TMetadataRebuildCompactionMapResponse(
+            ui32 rangeIndex,
+            ui32 rangeCount,
+            TDuration cpuTime,
+            TVector<TCompactionMapRebuildCounters> counters)
+            : RangeIndex(rangeIndex)
+            , RangeCount(rangeCount)
+            , CpuTime(cpuTime)
+            , Counters(std::move(counters))
         {}
     };
 

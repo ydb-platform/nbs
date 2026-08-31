@@ -9704,6 +9704,297 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldRebuildCompactionMapCounters)
+    {
+        constexpr ui32 blockCount = 16;
+
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MaxBlocksInBlob = 4;
+        auto runtime = PrepareTestActorRuntime(
+            DefaultConfig(),
+            blockCount,
+            {}, partitionInfo);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // A mixed write blob spanning two compaction ranges.
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(3, 6), 1);
+
+        // One mixed blob spanning the same two ranges.
+        partition.WriteBlocks(0, 2);
+        partition.WriteBlocks(4, 3);
+        partition.Flush();
+
+        // A deletion blob contributes only to BlobCount.
+        partition.ZeroBlocks(8);
+        partition.Flush();
+
+        // Compact only the first range. Both source blobs span the range
+        // boundary, so they remain in BlobsIndex with partial block masks.
+        partition.Compaction(0);
+
+        THashMap<ui32, TCompactionMapRangeCounters> rebuilt;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event) mutable
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvMetadataRebuildCompactionMapResponse)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionPrivate::
+                            TEvMetadataRebuildCompactionMapResponse>();
+                    for (const auto& range: msg->Counters) {
+                        if (range.Counters.BlobCount ||
+                            range.Counters.BlockCount ||
+                            range.Counters.MixedBlockCount)
+                        {
+                            rebuilt[range.BlockIndex] = range.Counters;
+                        }
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.RebuildMetadata(NProto::COMPACTION_MAP, 1);
+        bool completed = false;
+        for (ui32 i = 0; i < 100 && !completed; ++i) {
+            const auto progress = partition.GetRebuildMetadataStatus();
+            completed = progress->Record.GetProgress().GetIsCompleted();
+        }
+        UNIT_ASSERT_C(completed, "Compaction map rebuild did not complete");
+
+        auto assertCounters =
+            [](const THashMap<ui32, TCompactionMapRangeCounters>& counters)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(3, counters.size());
+
+            const auto& range0 = counters.at(0);
+            UNIT_ASSERT_VALUES_EQUAL(1, range0.BlobCount);
+            UNIT_ASSERT_VALUES_EQUAL(2, range0.BlockCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, range0.MixedBlockCount);
+
+            const auto& range4 = counters.at(4);
+            UNIT_ASSERT_VALUES_EQUAL(2, range4.BlobCount);
+            UNIT_ASSERT_VALUES_EQUAL(3, range4.BlockCount);
+            UNIT_ASSERT_VALUES_EQUAL(3, range4.MixedBlockCount);
+
+            const auto& range8 = counters.at(8);
+            UNIT_ASSERT_VALUES_EQUAL(1, range8.BlobCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, range8.BlockCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, range8.MixedBlockCount);
+        };
+
+        assertCounters(rebuilt);
+
+        const auto progress = partition.GetRebuildMetadataStatus();
+        UNIT_ASSERT_VALUES_EQUAL(
+            4, progress->Record.GetProgress().GetProcessed());
+        UNIT_ASSERT_VALUES_EQUAL(4, progress->Record.GetProgress().GetTotal());
+    }
+
+    Y_UNIT_TEST(ShouldRebuildMergedBlobSpanningCompactionMapRanges)
+    {
+        constexpr ui32 blockCount = 16;
+
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MaxBlocksInBlob = 4;
+        auto runtime =
+            PrepareTestActorRuntime(config, blockCount, {}, partitionInfo);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(3, 6), 1);
+
+        const auto stats = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+
+        THashMap<ui32, TCompactionMapRangeCounters> rebuilt;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event) mutable
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvMetadataRebuildCompactionMapResponse)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionPrivate::
+                            TEvMetadataRebuildCompactionMapResponse>();
+                    for (const auto& range: msg->Counters) {
+                        if (range.Counters.BlobCount) {
+                            rebuilt[range.BlockIndex] = range.Counters;
+                        }
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.RebuildMetadata(NProto::COMPACTION_MAP, 1);
+        bool completed = false;
+        for (ui32 i = 0; i < 100 && !completed; ++i) {
+            const auto progress = partition.GetRebuildMetadataStatus();
+            completed = progress->Record.GetProgress().GetIsCompleted();
+        }
+
+        UNIT_ASSERT_C(completed, "Compaction map rebuild did not complete");
+        UNIT_ASSERT_VALUES_EQUAL(2, rebuilt.size());
+
+        const auto& range0 = rebuilt.at(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, range0.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, range0.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, range0.MixedBlockCount);
+
+        const auto& range4 = rebuilt.at(4);
+        UNIT_ASSERT_VALUES_EQUAL(1, range4.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, range4.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, range4.MixedBlockCount);
+    }
+
+    Y_UNIT_TEST(ShouldRebuildCompactionMapAlongsideMaintenance)
+    {
+        constexpr ui32 blockCount = 16;
+
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MaxBlocksInBlob = 4;
+        auto runtime = PrepareTestActorRuntime(
+            DefaultConfig(),
+            blockCount,
+            {}, partitionInfo);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(3, 6), 1);
+        partition.WriteBlocks(0, 2);
+        partition.WriteBlocks(4, 3);
+        partition.Flush();
+        partition.ZeroBlocks(8);
+        partition.Flush();
+        partition.Compaction(0);
+
+        TAutoPtr<IEventHandle> savedRangeRequest;
+        bool rangeRequestDelayed = false;
+        THashMap<ui32, TCompactionMapRangeCounters> rebuilt;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event) mutable
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::
+                            EvMetadataRebuildCompactionMapRequest &&
+                    !rangeRequestDelayed)
+                {
+                    rangeRequestDelayed = true;
+                    savedRangeRequest = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvMetadataRebuildCompactionMapResponse)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionPrivate::
+                            TEvMetadataRebuildCompactionMapResponse>();
+                    for (const auto& item: msg->Counters) {
+                        if (item.Counters.BlobCount) {
+                            rebuilt[item.BlockIndex] = item.Counters;
+                        }
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.RebuildMetadata(NProto::COMPACTION_MAP, 1);
+        UNIT_ASSERT(savedRangeRequest);
+
+        // Cleanup and compaction are allowed while the range worker is idle.
+        // The delayed range transaction must observe their final index state.
+        partition.Cleanup();
+        partition.Compaction(4);
+
+        // Writes remain safe as well: their compaction-map update either runs
+        // before or after the atomic range rebuild transaction.
+        partition.WriteBlocks(1, 4);
+        partition.Flush();
+
+        runtime->Send(savedRangeRequest.Release());
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvPartitionPrivate::EvMetadataRebuildCompleted);
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        const auto& range0 = rebuilt.at(0);
+        UNIT_ASSERT_VALUES_EQUAL(2, range0.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, range0.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, range0.MixedBlockCount);
+
+        const auto progress = partition.GetRebuildMetadataStatus();
+        UNIT_ASSERT_VALUES_EQUAL(
+            4, progress->Record.GetProgress().GetProcessed());
+        UNIT_ASSERT_VALUES_EQUAL(4, progress->Record.GetProgress().GetTotal());
+        UNIT_ASSERT(progress->Record.GetProgress().GetIsCompleted());
+    }
+
+    Y_UNIT_TEST(ShouldThrottleCompactionMapRebuild)
+    {
+        constexpr ui32 blockCount = 16;
+
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MaxBlocksInBlob = 4;
+        auto runtime = PrepareTestActorRuntime(
+            DefaultConfig(),
+            blockCount,
+            {}, partitionInfo);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TVector<TInstant> requestTimestamps;
+        bool cpuTimeInjected = false;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event) mutable
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvMetadataRebuildCompactionMapRequest)
+                {
+                    requestTimestamps.push_back(runtime->GetCurrentTime());
+                }
+
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::
+                            EvMetadataRebuildCompactionMapResponse &&
+                    !cpuTimeInjected)
+                {
+                    auto* msg = event->Get<
+                        TEvPartitionPrivate::
+                            TEvMetadataRebuildCompactionMapResponse>();
+                    msg->CpuTime = TDuration::MilliSeconds(150);
+                    cpuTimeInjected = true;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.RebuildMetadata(
+            NProto::COMPACTION_MAP, 1, TDuration::MilliSeconds(100));
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvPartitionPrivate::EvMetadataRebuildCompleted);
+        runtime->DispatchEvents(options, TDuration::Seconds(2));
+
+        UNIT_ASSERT(cpuTimeInjected);
+        UNIT_ASSERT_VALUES_EQUAL(4, requestTimestamps.size());
+        UNIT_ASSERT_GE(
+            requestTimestamps[1] - requestTimestamps[0],
+            TDuration::MilliSeconds(500));
+    }
+
     Y_UNIT_TEST(ShouldReturnRebuildMetadataProgressDuringExecution)
     {
         constexpr ui32 blockCount = 1024 * 1024;

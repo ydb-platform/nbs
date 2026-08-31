@@ -1275,6 +1275,8 @@ STFUNC(TPartitionActor::StateWork)
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionReadBlobInfoResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse);
+        IgnoreFunc(
+            TEvPartitionPrivate::TEvMetadataRebuildCompactionMapResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsResponse);
@@ -1347,6 +1349,8 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvPartitionPrivate::TEvCompactionReadBlobInfoResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse);
+        IgnoreFunc(
+            TEvPartitionPrivate::TEvMetadataRebuildCompactionMapResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvFlushResponse);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsResponse);

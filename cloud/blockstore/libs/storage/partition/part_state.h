@@ -86,7 +86,8 @@ enum class EMetadataRebuildType
 {
     NoOperation,
     UsedBlocks,
-    BlockCount
+    BlockCount,
+    CompactionMap,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -167,6 +168,14 @@ struct TMetadataRebuildState
         Started = true;
         MetadataType = EMetadataRebuildType::BlockCount;
         Total = totalMixedBlobs + totalMergedBlobs;
+        Processed = 0;
+    }
+
+    void StartRebuildCompactionMap(ui64 totalRangeCount)
+    {
+        Started = true;
+        MetadataType = EMetadataRebuildType::CompactionMap;
+        Total = totalRangeCount;
         Processed = 0;
     }
 
@@ -874,6 +883,11 @@ public:
         RebuildState.StartRebuildBlockCount(
             GetMixedBlobsCount(),
             GetMergedBlobsCount());
+    }
+
+    void StartRebuildCompactionMap(ui64 totalRangeCount)
+    {
+        RebuildState.StartRebuildCompactionMap(totalRangeCount);
     }
 
     TMedatadataRebuildProgress GetMetadataRebuildProgress() const

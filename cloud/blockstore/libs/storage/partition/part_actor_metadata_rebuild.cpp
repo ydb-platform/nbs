@@ -12,6 +12,7 @@
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+#include <util/generic/ymath.h>
 #include <util/stream/str.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
@@ -47,7 +48,8 @@ void TPartitionActor::HandleHttpInfo_RebuildMetadata(
         result = DoHandleMetadataRebuildBatch(
             ctx,
             NProto::USED_BLOCKS,
-            batchSize);
+            batchSize,
+            TDuration::Zero());
     }
 
     auto alertType = EAlertLevel::SUCCESS;
@@ -71,7 +73,8 @@ void TPartitionActor::HandleRebuildMetadata(
     result = DoHandleMetadataRebuildBatch(
         ctx,
         msg->Record.GetMetadataType(),
-        msg->Record.GetBatchSize());
+        msg->Record.GetBatchSize(),
+        TDuration::MilliSeconds(msg->Record.GetAllowedCpuTimePerSecond()));
 
     auto response = std::make_unique<TEvVolume::TEvRebuildMetadataResponse>(result);
     NCloud::Reply(ctx, *ev, std::move(response));
@@ -106,7 +109,8 @@ void TPartitionActor::HandleGetRebuildMetadataStatus(
 NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
     const TActorContext& ctx,
     NProto::ERebuildMetadataType type,
-    ui32 batchSize)
+    ui32 batchSize,
+    TDuration allowedCpuTimePerSecond)
 {
     if (State->IsMetadataRebuildStarted()) {
         return MakeError(S_ALREADY, "Metadata rebuild is already running");
@@ -157,6 +161,36 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
             Actors.Insert(actorId);
 
             return MakeError(S_OK, "Metadata rebuild has been started");
+        }
+        case NProto::COMPACTION_MAP: {
+            if (State->GetMetadataRebuildType() ==
+                EMetadataRebuildType::CompactionMap)
+            {
+                return MakeError(
+                    S_ALREADY, "Compaction map is already rebuilt");
+            }
+
+            if (CompactionMapLoadState) {
+                return MakeError(E_REJECTED, "Compaction map is still loading");
+            }
+
+            const ui32 totalRangeCount = SafeIntegerCast<ui32>(CeilDiv(
+                State->GetBlocksCount(),
+                static_cast<ui64>(State->GetCompactionMap().GetRangeSize())));
+            State->StartRebuildCompactionMap(totalRangeCount);
+
+            auto actorId = NCloud::Register(
+                ctx,
+                CreateMetadataRebuildCompactionMapActor(
+                    SelfId(),
+                    batchSize,
+                    totalRangeCount,
+                    allowedCpuTimePerSecond,
+                    Config->GetCompactionRetryTimeout()));
+
+            Actors.Insert(actorId);
+
+            return MakeError(S_OK, "Compaction map rebuild has been started");
         }
         default: {
             return MakeError(
