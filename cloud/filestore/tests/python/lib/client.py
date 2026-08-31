@@ -481,12 +481,22 @@ class FilestoreCliClient:
     def mkdir(self, cmd):
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    @standard_command("write")
-    def write(self, cmd):
+    def write(self, fs, path=None, *custom_opts, node=None):
+        cmd = [self.__binary_path, "write", "--filesystem", fs]
+        if path is not None:
+            cmd += ["--path", path]
+        if node is not None:
+            cmd += ["--node", str(node)]
+        cmd += self.__cmd_opts() + [*custom_opts]
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    @standard_command("read")
-    def read(self, cmd):
+    def read(self, fs, path=None, *custom_opts, node=None):
+        cmd = [self.__binary_path, "read", "--filesystem", fs]
+        if path is not None:
+            cmd += ["--path", path]
+        if node is not None:
+            cmd += ["--node", str(node)]
+        cmd += self.__cmd_opts() + [*custom_opts]
         return common.execute(cmd).stdout
 
     @standard_command("touch")

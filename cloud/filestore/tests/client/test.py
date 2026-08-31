@@ -428,6 +428,33 @@ def test_write_ls_rm_ls():
     return ret
 
 
+def test_read_write_by_node_id():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    data_file = os.path.join(common.output_path(), "data.txt")
+    with open(data_file, "w") as f:
+        f.write("0123456789")
+
+    # create the file by path, then write/read it by node id
+    client.touch("fs0", "/file")
+    node_id = json.loads(client.stat("fs0", "/file"))["Id"]
+
+    client.write("fs0", None, "--data", data_file, node=node_id)
+
+    # read back by node id and by path - must be identical
+    out = client.read("fs0", None, "--length", "10", node=node_id) + b"\n"
+    out += client.read("fs0", "/file", "--length", "10") + b"\n"
+
+    client.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
 def test_set_node_attr():
     client, results_path = __init_test()
     client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
