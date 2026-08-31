@@ -229,9 +229,10 @@ void TIndexTabletActor::HandleForcedTabletOperation(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    // will lose original request info in case of enqueueing external request
     if (IsForcedOperationRunning()) {
-        EnqueueForcedTabletOperation(msg->Mode);
+        EnqueueForcedTabletOperation(
+            msg->Mode,
+            std::move(msg->OperationId));
         return;
     }
 

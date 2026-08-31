@@ -1465,9 +1465,12 @@ TString TIndexTabletState::EnqueueForcedRangeOperation(
 }
 
 TString TIndexTabletState::EnqueueForcedTabletOperation(
-    TEvIndexTabletPrivate::EForcedTabletOperationMode mode)
+    TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
+    TString operationId)
 {
-    auto operationId = CreateGuidAsString();
+    if (!operationId) {
+        operationId = CreateGuidAsString();
+    }
     PendingForcedOperations.emplace_back(TPendingForcedTabletOperation(
         mode,
         operationId));

@@ -4675,6 +4675,145 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             testEnvConfig);
     }
 
+    TABLET_TEST(ShouldPreserveIdsOfQueuedForcedOperations)
+    {
+        using EOperation =
+            NProtoPrivate::TForcedOperationRequest::EForcedOperationType;
+        using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
+
+        const TVector<EOperation> operations = {
+            NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES,
+            NProtoPrivate::TForcedOperationRequest::E_FLUSH,
+            NProtoPrivate::TForcedOperationRequest::E_COMPACTION,
+        };
+
+        TTestEnv env(testEnvConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        NProtoPrivate::TCompactionRangeStats range;
+        range.SetRangeId(0);
+        range.SetBlobCount(1);
+        tablet.WriteCompactionMap(
+            TVector<NProtoPrivate::TCompactionRangeStats>{range});
+        tablet.RebootTablet();
+
+        bool captureScheduledRequests = true;
+        ui32 completedOperations = 0;
+        bool captureFlushBytesRequest = true;
+        TVector<std::unique_ptr<IEventHandle>> scheduledRequests;
+        std::unique_ptr<IEventHandle> flushBytesRequest;
+
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate ::EvForcedTabletOperationRequest:
+                    case TEvIndexTabletPrivate ::
+                        EvForcedRangeOperationRequest: {
+                        if (captureScheduledRequests) {
+                            scheduledRequests.emplace_back(event.Release());
+                            return true;
+                        }
+                        break;
+                    }
+                    case TEvIndexTabletPrivate::EvFlushBytesRequest: {
+                        if (captureFlushBytesRequest) {
+                            captureFlushBytesRequest = false;
+                            flushBytesRequest.reset(event.Release());
+                            return true;
+                        }
+                        break;
+                    }
+                    case TEvIndexTabletPrivate ::
+                        EvForcedRangeOperationCompleted:
+                    case TEvIndexTabletPrivate ::
+                        EvForcedTabletOperationCompleted: {
+                        ++completedOperations;
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        // Initialize all operations and capture their operationIds
+        for (const auto operation: operations) {
+            tablet.SendForcedOperationRequest(operation);
+        }
+
+        TVector<TString> operationIds;
+        for (ui32 i = 0; i < operations.size(); ++i) {
+            auto response = tablet.RecvForcedOperationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                TString(),
+                response->Record.GetOperationId());
+            operationIds.push_back(response->Record.GetOperationId());
+        }
+
+        // Wait until all private tablet/range events are sent
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return scheduledRequests.size() == operations.size();
+        };
+        env.GetRuntime().DispatchEvents(options);
+
+        // Send first request and wait until it is convered into a
+        // real operation event (flush_bytes).
+        captureScheduledRequests = false;
+        env.GetRuntime().Send(scheduledRequests.front().release(), nodeIdx);
+
+        options.CustomFinalCondition = [&]
+        {
+            return !!flushBytesRequest;
+        };
+        env.GetRuntime().DispatchEvents(options);
+
+        // Send all other tablet/range op requests. Here is the window between
+        // flush_bytes event is sent but the operation is not yet started,
+        // hence all the new concrete op events are queued.
+        for (ui32 i = 1; i < scheduledRequests.size(); ++i) {
+            env.GetRuntime().Send(scheduledRequests[i].release(), nodeIdx);
+        }
+        // Resend flush_bytes request. After it is handled, the operation
+        // is started and new requests are rejected.
+        env.GetRuntime().Send(flushBytesRequest.release(), nodeIdx);
+
+        // Wait until all events complete
+        options.CustomFinalCondition = [&]
+        {
+            return completedOperations == operations.size();
+        };
+        env.GetRuntime().DispatchEvents(options);
+
+        // Ensure that we can check operation status also if it was queued.
+        for (const auto& operationId: operationIds) {
+            auto status = GetForcedOperationStatus(tablet, operationId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                status->GetStatus(),
+                status->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(TStatus::E_COMPLETED),
+                static_cast<int>(status->Record.GetStatus()));
+        }
+    }
+
     TABLET_TEST(ShouldDumpCompactionRangeBlobs)
     {
         TTestEnv env(testEnvConfig);
