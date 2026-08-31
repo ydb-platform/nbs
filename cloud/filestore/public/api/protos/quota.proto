@@ -9,7 +9,13 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/prot
 message TQuota
 {
     uint32 QuotaId = 1;
+
+    // Byte limit for everything under this quota's attached directories,
+    // combined. 0 means unlimited.
     uint64 MaxBytes = 2;
+
+    // Node (file/directory) count limit for everything under this quota's
+    // attached directories, combined. 0 means unlimited.
     uint64 MaxNodes = 3;
 
     repeated uint64 NodeId = 4;

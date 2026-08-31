@@ -321,6 +321,37 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
             TSetNodeAttrArgs(fileId).SetSize(101));
     }
 
+    SERVICE_TEST(ShouldRejectCreateNodeExceedingQuotaBytesViaInitialSize)
+    {
+        auto& service = *fixture.Service;
+        const auto& fsId = fixture.FsId;
+
+        SetQuota(service, fsId, 42, 5, 100);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto dirId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(
+            headers,
+            fsId,
+            TSetNodeAttrArgs(dirId).SetQuotaId(42));
+
+        // one byte over the limit (5), with nothing else charged against
+        // the quota yet - rejected right at creation
+        service.AssertCreateNodeFailed(
+            headers,
+            TCreateNodeArgs::SymLink(dirId, "toolong", "123456"));
+
+        // exactly at the limit - allowed
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::SymLink(dirId, "fits", "12345"));
+    }
+
     SERVICE_TEST(ShouldNotEnforceUnlimitedQuota)
     {
         auto& service = *fixture.Service;
