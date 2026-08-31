@@ -31,20 +31,20 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
-    if (SharedState->UnflushedFreshBlobByteCount.load() >=
-        Config->GetFreshByteCountHardLimit())
+    if (auto error = MakeFreshHardLimitExceededError(
+            SharedState->UnflushedFreshBlobByteCount.load(),
+            SharedState->UnflushedFreshBlocksCount.load() *
+                PartitionConfig.GetBlockSize(),
+            Config->GetFreshByteCountHardLimit(),
+            Config->GetFreshLogicalBlocksByteCountHardLimit());
+        !error.empty())
     {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);
             auto response = CreateWriteBlocksResponse(
                 r.Data.ReplyLocal,
-                MakeError(
-                    E_REJECTED,
-                    TStringBuilder()
-                        << "FreshByteCountHardLimit exceeded: "
-                        << SharedState->UnflushedFreshBlobByteCount.load(),
-                    flags));
+                MakeError(E_REJECTED, error, flags));
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -144,18 +144,19 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
     TRequestInfoPtr requestInfo,
     TBlockRange32 writeRange)
 {
-    if (SharedState->UnflushedFreshBlobByteCount.load() >=
-        Config->GetFreshByteCountHardLimit())
+    if (auto error = MakeFreshHardLimitExceededError(
+            SharedState->UnflushedFreshBlobByteCount.load(),
+            SharedState->UnflushedFreshBlocksCount.load() *
+                PartitionConfig.GetBlockSize(),
+            Config->GetFreshByteCountHardLimit(),
+            Config->GetFreshLogicalBlocksByteCountHardLimit());
+        !error.empty())
     {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);
         auto response =
-            std::make_unique<TEvService::TEvZeroBlocksResponse>(MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "FreshByteCountHardLimit exceeded: "
-                    << SharedState->UnflushedFreshBlobByteCount.load(),
-                flags));
+            std::make_unique<TEvService::TEvZeroBlocksResponse>(
+                MakeError(E_REJECTED, std::move(error), flags));
 
         LWTRACK(
             ResponseSent_Partition,

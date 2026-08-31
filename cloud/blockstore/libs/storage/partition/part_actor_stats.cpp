@@ -79,6 +79,13 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.UntrimmedFreshBlobBytesCount.Set(
         State->GetUntrimmedFreshBlobByteCount());
 
+    PartCounters->Simple.UnflushedFreshBlobByteCount.Set(
+        State->GetUnflushedFreshBlobByteCount());
+
+    PartCounters->Simple.UnflushedFreshLogicalBlocksByteCount.Set(
+        static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
+        State->GetBlockSize());
+
     PartCounters->Simple.UsedBytesCount.Set(
         State->GetUsedBlocksCount() * State->GetBlockSize());
 

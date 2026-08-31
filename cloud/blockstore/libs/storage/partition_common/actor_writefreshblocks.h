@@ -9,6 +9,9 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/generic/string.h>
+#include <util/string/builder.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 enum class EFreshRequestType
@@ -27,6 +30,24 @@ NActors::IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
     }
     return std::make_unique<TEvService::TEvWriteBlocksResponse>(
         std::forward<T>(args)...);
+}
+
+inline TString MakeFreshHardLimitExceededError(
+    ui64 freshByteCount,
+    ui64 freshLogicalBlocksByteCount,
+    ui64 freshByteCountHardLimit,
+    ui64 freshLogicalBlocksByteCountHardLimit)
+{
+    if (freshByteCount >= freshByteCountHardLimit) {
+        return TStringBuilder()
+               << "FreshByteCountHardLimit exceeded: " << freshByteCount;
+    }
+    if (freshLogicalBlocksByteCount >= freshLogicalBlocksByteCountHardLimit) {
+        return TStringBuilder()
+               << "FreshLogicalBlocksByteCountHardLimit exceeded: "
+               << freshLogicalBlocksByteCount;
+    }
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

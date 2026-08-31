@@ -40,19 +40,20 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    if (State->GetUnflushedFreshBlobByteCount()
-            >= Config->GetFreshByteCountHardLimit())
+    if (auto error = MakeFreshHardLimitExceededError(
+            State->GetUnflushedFreshBlobByteCount(),
+            static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
+                State->GetBlockSize(),
+            Config->GetFreshByteCountHardLimit(),
+            Config->GetFreshLogicalBlocksByteCountHardLimit());
+        !error.empty())
     {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);
             auto response = CreateWriteBlocksResponse(
                 r.Data.ReplyLocal,
-                MakeError(
-                    E_REJECTED,
-                    TStringBuilder() << "FreshByteCountHardLimit exceeded: "
-                                     << State->GetUnflushedFreshBlobByteCount(),
-                    flags));
+                MakeError(E_REJECTED, error, flags));
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -196,6 +197,7 @@ void TPartitionActor::HandleAddFreshBlocks(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    ui64 removedBlocksCount = 0;
 
     STORAGE_VERIFY(
         msg->WriteHandlers.size() == msg->BlockRanges.size() ||
@@ -207,7 +209,10 @@ void TPartitionActor::HandleAddFreshBlocks(
         auto& blockRange = msg->BlockRanges[i];
 
         if (!msg->WriteHandlers) {
-            State->ZeroFreshBlocks(blockRange, msg->CommitId);
+            State->ZeroFreshBlocks(
+                blockRange,
+                msg->CommitId,
+                removedBlocksCount);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
 
             continue;
@@ -219,7 +224,12 @@ void TPartitionActor::HandleAddFreshBlocks(
 
         if (auto guard = guardedSgList.Acquire()) {
             const auto& sgList = guard.Get();
-            State->WriteFreshBlocks(blockRange, msg->CommitId, sgList, msg->BlobId);
+            State->WriteFreshBlocks(
+                blockRange,
+                msg->CommitId,
+                sgList,
+                msg->BlobId,
+                removedBlocksCount);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
         } else {
             LOG_ERROR(
@@ -240,6 +250,10 @@ void TPartitionActor::HandleAddFreshBlocks(
     }
 
     State->AddFreshBlob(msg->CommitId, msg->BlobSize);
+
+    if (FreshBlocksWriter) {
+        SharedState->UnflushedFreshBlocksCount.fetch_sub(removedBlocksCount);
+    }
 
     // TODO(NBS-1976): update used blocks map
 
@@ -451,17 +465,18 @@ void TPartitionActor::ZeroFreshBlocks(
         TabletID(),
         "All small writes should be handled by TFreshBlockWriter");
 
-    if (State->GetUnflushedFreshBlobByteCount() >=
-        Config->GetFreshByteCountHardLimit())
+    if (auto error = MakeFreshHardLimitExceededError(
+            State->GetUnflushedFreshBlobByteCount(),
+            static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
+                State->GetBlockSize(),
+            Config->GetFreshByteCountHardLimit(),
+            Config->GetFreshLogicalBlocksByteCountHardLimit());
+        !error.empty())
     {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);
-        auto response =
-            std::make_unique<TEvService::TEvZeroBlocksResponse>(MakeError(
-                E_REJECTED,
-                TStringBuilder() << "FreshByteCountHardLimit exceeded: "
-                                 << State->GetUnflushedFreshBlobByteCount(),
-                flags));
+        auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(
+            MakeError(E_REJECTED, std::move(error), flags));
 
         LWTRACK(
             ResponseSent_Partition,

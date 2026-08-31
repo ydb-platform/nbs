@@ -157,6 +157,14 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter UnflushedFreshBlobByteCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter UnflushedFreshLogicalBlocksByteCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter UsedBytesCount{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
@@ -278,6 +286,8 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::MergedIndexBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::UntrimmedFreshBlobBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::UnflushedFreshBlobByteCount>(),
+        MakeMeta<&TSimpleDiskCounters::UnflushedFreshLogicalBlocksByteCount>(),
         MakeMeta<&TSimpleDiskCounters::UsedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::LogicalUsedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::IORequestsQueued>(),
@@ -295,7 +305,8 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::CompactionIgnoringZeroedScore>(),
         MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
-        MakeMeta<&TSimpleDiskCounters::GarbageCompactionExecTimePerSecondLimit>(),
+        MakeMeta<
+            &TSimpleDiskCounters::GarbageCompactionExecTimePerSecondLimit>(),
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),

@@ -76,6 +76,7 @@ public:
     NPartition::TGroupDowntimes GroupDowntimes;
 
     std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
+    std::atomic<ui64> UnflushedFreshBlocksCount = 0;
 
     std::atomic<ui64> WriteAndZeroRequestsInProgress = 0;
 

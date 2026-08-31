@@ -1689,4 +1689,8 @@ message TStorageServiceConfig
     // If true, QueryAvailableStorage includes suspended devices that are
     // resuming after secure erase.
     optional bool QueryAvailableStorageForResumingDevicesEnabled = 528;
+
+    // Maximum allowed logical size of all blocks (block count * block size) in
+    // fresh after which we start to reject write and zero requests.
+    optional uint64 FreshLogicalBlocksByteCountHardLimit = 529;
 }
