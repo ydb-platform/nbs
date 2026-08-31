@@ -1550,11 +1550,11 @@ public:
         TString operationId = {});
     TMaybe<TPendingForcedOperation> DequeueForcedOperation();
 
-    void StartForcedRangeOperation(
+    TForcedRangeOperationState* StartForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges,
         TString operationId);
-    void StartForcedTabletOperation(
+    TForcedTabletOperationState* StartForcedTabletOperation(
         TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
         TString operationId);
 
@@ -1579,13 +1579,7 @@ public:
     const TForcedOperationState* FindForcedOperation(
         const TString& operationId) const;
 
-    void UpdateForcedRangeOperationProgress(ui32 current)
-    {
-        auto* state =
-            std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
-        TABLET_VERIFY(state);
-        state->Current = Max(state->Current, current);
-    }
+    void UpdateForcedRangeOperationProgress(ui32 current);
 
     bool IsForcedOperationRunning() const
     {

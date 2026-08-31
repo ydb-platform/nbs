@@ -1490,26 +1490,46 @@ TMaybe<TIndexTabletState::TPendingForcedOperation> TIndexTabletState::
     return op;
 }
 
-void TIndexTabletState::StartForcedRangeOperation(
+TIndexTabletState::TForcedRangeOperationState*
+TIndexTabletState::StartForcedRangeOperation(
     TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
     TVector<ui32> ranges,
     TString operationId)
 {
-    TABLET_VERIFY(!ForcedOperationState.Defined());
+    if (ForcedOperationState.Defined()) {
+        ReportForcedOperationUnexpectedState("operation already running");
+        return nullptr;
+    }
     ForcedOperationState.ConstructInPlace(TForcedRangeOperationState(
         mode,
         std::move(ranges),
         std::move(operationId)));
+    return std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
 }
 
-void TIndexTabletState::StartForcedTabletOperation(
-        TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
-        TString operationId)
+TIndexTabletState::TForcedTabletOperationState*
+TIndexTabletState::StartForcedTabletOperation(
+    TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
+    TString operationId)
 {
-    TABLET_VERIFY(!ForcedOperationState.Defined());
-    ForcedOperationState.ConstructInPlace(TForcedTabletOperationState(
-        mode,
-        std::move(operationId)));
+    if (ForcedOperationState.Defined()) {
+        ReportForcedOperationUnexpectedState("operation already running");
+        return nullptr;
+    }
+    ForcedOperationState.ConstructInPlace(
+        TForcedTabletOperationState(mode, std::move(operationId)));
+    return std::get_if<TForcedTabletOperationState>(ForcedOperationState.Get());
+}
+
+void TIndexTabletState::UpdateForcedRangeOperationProgress(ui32 current)
+{
+    auto* state =
+        std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
+    if (!state) {
+        ReportForcedOperationUnexpectedState("range state expected");
+        return;
+    }
+    state->Current = Max(state->Current, current);
 }
 
 void TIndexTabletState::AbortForcedRangeOperation(
@@ -1536,10 +1556,19 @@ void TIndexTabletState::AbortForcedTabletOperation(
 
 void TIndexTabletState::CompleteForcedRangeOperation()
 {
-    Y_DEBUG_ABORT_UNLESS(ForcedOperationState);
+    if (!ForcedOperationState) {
+        ReportForcedOperationUnexpectedState("no current operation");
+        return;
+    }
+
     auto* rangeState =
         std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
-    TABLET_VERIFY(rangeState);
+    if (!rangeState) {
+        ReportForcedOperationUnexpectedState(
+            "current state is not a range state");
+        return;
+    }
+
     if (rangeState->OperationId) {
         rangeState->Current = rangeState->RangesToCompact.size();
         CompletedForcedOperations.push_back(*ForcedOperationState);
@@ -1549,10 +1578,17 @@ void TIndexTabletState::CompleteForcedRangeOperation()
 
 void TIndexTabletState::CompleteForcedTabletOperation()
 {
-    Y_DEBUG_ABORT_UNLESS(ForcedOperationState);
-    auto* tabletState =
-        std::get_if<TForcedTabletOperationState>(ForcedOperationState.Get());
-    TABLET_VERIFY(tabletState);
+    if (!ForcedOperationState) {
+        ReportForcedOperationUnexpectedState("no current operation");
+        return;
+    }
+
+    auto* tabletState = std::get_if<TForcedTabletOperationState>(ForcedOperationState.Get());
+    if (!tabletState) {
+        ReportForcedOperationUnexpectedState(
+            "current state is not a tablet state");
+        return;
+    }
     if (tabletState->OperationId) {
         CompletedForcedOperations.push_back(*ForcedOperationState);
     }

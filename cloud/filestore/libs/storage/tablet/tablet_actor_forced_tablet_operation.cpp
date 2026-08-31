@@ -67,20 +67,17 @@ private:
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TResponseType, typename TRequestType>
-TForcedOperationActor<TResponseType, TRequestType>::
-    TForcedOperationActor(
-        TActorId tablet,
-        TString logTag,
-        TDuration retry,
-        TRequestInfoPtr requestInfo)
+TForcedOperationActor<TResponseType, TRequestType>::TForcedOperationActor(
+    TActorId tablet,
+    TString logTag,
+    TDuration retry,
+    TRequestInfoPtr requestInfo)
     : Tablet(tablet)
     , LogTag(std::move(logTag))
     , RetryTimeout(retry)
@@ -102,16 +99,15 @@ void TForcedOperationActor<TResponseType, TRequestType>::Bootstrap(
 }
 
 template <typename TResponseType, typename TRequestType>
-void TForcedOperationActor<TResponseType, TRequestType>::
-    SendOperationRequest(const TActorContext& ctx)
+void TForcedOperationActor<TResponseType, TRequestType>::SendOperationRequest(
+    const TActorContext& ctx)
 {
     auto request = std::make_unique<TRequestType>();
     ctx.Send(Tablet, request.release());
 }
 
 template <typename TResponseType, typename TRequestType>
-STFUNC(
-    (TForcedOperationActor<TResponseType, TRequestType>::StateWork))
+STFUNC((TForcedOperationActor<TResponseType, TRequestType>::StateWork))
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeUp);
@@ -151,26 +147,27 @@ void TForcedOperationActor<TResponseType, TRequestType>::
 }
 
 template <typename TResponseType, typename TRequestType>
-void TForcedOperationActor<TResponseType, TRequestType>::
-    HandleWakeUp(const TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx)
+void TForcedOperationActor<TResponseType, TRequestType>::HandleWakeUp(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     SendOperationRequest(ctx);
 }
 
 template <typename TResponseType, typename TRequestType>
-void TForcedOperationActor<TResponseType, TRequestType>::
-    HandlePoisonPill(
-        const TEvents::TEvPoison::TPtr& ev,
-        const TActorContext& ctx)
+void TForcedOperationActor<TResponseType, TRequestType>::HandlePoisonPill(
+    const TEvents::TEvPoison::TPtr& ev,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     ReplyAndDie(ctx, MakeError(E_FAIL, "actor killed"));
 }
 
 template <typename TResponseType, typename TRequestType>
-void TForcedOperationActor<TResponseType, TRequestType>::
-    ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
+void TForcedOperationActor<TResponseType, TRequestType>::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& error)
 {
     {
         // notify tablet
@@ -218,27 +215,38 @@ void TIndexTabletActor::HandleForcedTabletOperation(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ForcedTabletOperation mode=%u request",
         LogTag.c_str(),
         msg->Mode);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto replyError = [&](const NProto::TError& error)
+    {
+        if (ev->Sender == ctx.SelfID) {
+            return;
+        }
+
+        auto response = std::make_unique<
+            TEvIndexTabletPrivate::TEvForcedRangeOperationResponse>(error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     if (IsForcedOperationRunning()) {
-        EnqueueForcedTabletOperation(
-            msg->Mode,
-            std::move(msg->OperationId));
+        EnqueueForcedTabletOperation(msg->Mode, std::move(msg->OperationId));
         return;
     }
 
-    StartForcedTabletOperation(
-        msg->Mode,
-        std::move(msg->OperationId));
+    const auto* state =
+        StartForcedTabletOperation(msg->Mode, std::move(msg->OperationId));
+    if (!state) {
+        replyError(MakeError(E_INVALID_STATE, "could not start the operation"));
+    }
 
     std::unique_ptr<IActor> actor;
 
@@ -252,17 +260,17 @@ void TIndexTabletActor::HandleForcedTabletOperation(
             break;
         case TEvIndexTabletPrivate::EForcedTabletOperationMode::FlushBytes:
             actor = std::make_unique<TForcedFlushBytesActor>(
-                    ctx.SelfID,
-                    LogTag,
-                    Config->GetCompactionRetryTimeout(),
-                    std::move(requestInfo));
+                ctx.SelfID,
+                LogTag,
+                Config->GetCompactionRetryTimeout(),
+                std::move(requestInfo));
             break;
         case TEvIndexTabletPrivate::EForcedTabletOperationMode::CollectGarbage:
             actor = std::make_unique<TForcedCollectGarbageActor>(
-                    ctx.SelfID,
-                    LogTag,
-                    Config->GetCompactionRetryTimeout(),
-                    std::move(requestInfo));
+                ctx.SelfID,
+                LogTag,
+                Config->GetCompactionRetryTimeout(),
+                std::move(requestInfo));
             break;
     }
 
@@ -274,14 +282,24 @@ void TIndexTabletActor::HandleForcedTabletOperationCompleted(
     const TEvIndexTabletPrivate::TEvForcedTabletOperationCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    if (!IsForcedOperationRunning()) {
+        ReportForcedOperationUnexpectedState(
+            "got ForcedTabletOperationCompleted but no current op");
+        return;
+    }
 
-    TABLET_VERIFY(IsForcedOperationRunning());
+    auto* msg = ev->Get();
     const auto* state =
         std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
-    TABLET_VERIFY(state);
+    if (!state) {
+        ReportForcedOperationUnexpectedState(
+            "got ForcedTabletOperationCompleted but current op is a range op");
+        return;
+    }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ForcedTabletOperation mode=%u completed (%s)",
         LogTag.c_str(),
         state->Mode,
