@@ -279,6 +279,7 @@ void TIndexTabletActor::CompleteAdapterLoadState(
     if (fastShardConfig.HasPersistentConfig()) {
         if (Config->GetFastShardRuntimeEnabled()) {
             FastShard = NFastShard::CreateNaiveMirroredFileSystemShard(
+                GetFileSystemId(),
                 GetFileSystem().GetShardNo(),
                 fastShardConfig.GetPersistentConfig());
         } else {

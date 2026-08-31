@@ -726,6 +726,7 @@ public:
 
 struct TLoggingContext
 {
+    TString FileSystemId;
     TString Name;
     ui64 NodeId = 0;
     ui64 Handle = 0;
@@ -735,7 +736,15 @@ struct TLoggingContext
     TString Describe() const
     {
         TStringBuilder s;
+        if (FileSystemId) {
+            s << "F=" << FileSystemId;
+        }
+
         if (Name) {
+            if (s) {
+                s << " ";
+            }
+
             s << "N=" << Name;
         }
 
@@ -1105,6 +1114,7 @@ void DumpLayoutComponentsHtml(
 class TFiberShardImpl
 {
 private:
+    const TString FileSystemId;
     const ui32 ShardNo;
     const IStorageGroupFactoryPtr StorageGroupFactory;
     const NProtoPrivate::TPersistentFastShardConfig Config;
@@ -1126,10 +1136,12 @@ private:
 
 public:
     TFiberShardImpl(
+        TString fileSystemId,
         ui32 shardNo,
         IStorageGroupFactoryPtr storageGroupFactory,
         NProtoPrivate::TPersistentFastShardConfig config)
-        : ShardNo(shardNo)
+        : FileSystemId(std::move(fileSystemId))
+        , ShardNo(shardNo)
         , StorageGroupFactory(std::move(storageGroupFactory))
         , Config(std::move(config))
     {
@@ -1225,6 +1237,14 @@ public:
         };
     }
 
+private:
+    TLoggingContext MakeLoggingContext() const
+    {
+        TLoggingContext lc;
+        lc.FileSystemId = FileSystemId;
+        return lc;
+    }
+
 public:
     void DumpLayoutHtml(IOutputStream& out) const
     {
@@ -1251,7 +1271,7 @@ public:
         }
 
         for (const auto& name: request.GetNames()) {
-            TLoggingContext lc;
+            auto lc = MakeLoggingContext();
             lc.Name = name;
             lc.NodeId = request.GetNodeId();
 
@@ -1308,7 +1328,7 @@ public:
             return response;
         }
 
-        TLoggingContext lc;
+        auto lc = MakeLoggingContext();
         lc.Name = request.GetName();
         lc.NodeId = request.GetNodeId();
 
@@ -1337,7 +1357,7 @@ public:
             return response;
         }
 
-        TLoggingContext lc;
+        auto lc = MakeLoggingContext();
         lc.NodeId = request.GetNodeId();
 
         TWriteContext writeContext;
@@ -1457,7 +1477,7 @@ public:
             return response;
         }
 
-        TLoggingContext lc;
+        auto lc = MakeLoggingContext();
         lc.Name = request.GetName();
         lc.NodeId = request.GetNodeId();
 
@@ -1524,7 +1544,7 @@ public:
             return response;
         }
 
-        TLoggingContext lc;
+        auto lc = MakeLoggingContext();
         lc.Name = request.GetName();
 
         TWriteContext writeContext;
@@ -1665,7 +1685,7 @@ public:
             return response;
         }
 
-        TLoggingContext lc;
+        auto lc = MakeLoggingContext();
         lc.Name = request.GetName();
         lc.NodeId = request.GetNodeId();
 
@@ -1813,7 +1833,7 @@ public:
             return response;
         }
 
-        TLoggingContext lc;
+        auto lc = MakeLoggingContext();
         lc.Handle = request.GetHandle();
 
         TWriteContext writeContext;
@@ -1877,7 +1897,7 @@ public:
             return response;
         }
 
-        TLoggingContext lc;
+        auto lc = MakeLoggingContext();
         lc.Handle = request.GetHandle();
 
         std::unique_lock l(Mutex);
@@ -2188,7 +2208,7 @@ public:
             return response;
         }
 
-        TLoggingContext lc;
+        auto lc = MakeLoggingContext();
         lc.Handle = request.GetHandle();
 
         std::lock_guard l(Mutex);
@@ -2561,11 +2581,13 @@ private:
 
 public:
     TNaiveMirroredFileSystemShard(
+        TString fileSystemId,
         ui32 shardNo,
         IStorageGroupFactoryPtr storageGroupFactory,
         NProtoPrivate::TPersistentFastShardConfig config)
         : FiberShard(
               std::make_shared<TFiberShardImpl>(
+                  std::move(fileSystemId),
                   shardNo,
                   std::move(storageGroupFactory),
                   std::move(config)))
@@ -2648,21 +2670,25 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+    TString fileSystemId,
     ui32 shardNo,
     IStorageGroupFactoryPtr storageGroupFactory,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
     return std::make_shared<TNaiveMirroredFileSystemShard>(
+        std::move(fileSystemId),
         shardNo,
         std::move(storageGroupFactory),
         config);
 }
 
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+    TString fileSystemId,
     ui32 shardNo,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
     return std::make_shared<TNaiveMirroredFileSystemShard>(
+        std::move(fileSystemId),
         shardNo,
         CreateNaiveMirroredStorageGroupFactory(),
         config);
