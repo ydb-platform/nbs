@@ -136,13 +136,8 @@ def port_listening(port):
     # concurrent bind fail with EADDRINUSE. Connecting verifies readiness
     # without competing with the daemon for ownership of the port.
     with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
-        error = sock.connect_ex(("::1", port))
-
-    if error == 0:
-        return True
-    if error == errno.ECONNREFUSED:
-        return False
-    raise OSError(error, os.strerror(error))
+        sock.settimeout(0.1)
+        return sock.connect_ex(("::1", port)) == 0
 
 
 def wait_for(predicate, timeout=60, step=0.1):
