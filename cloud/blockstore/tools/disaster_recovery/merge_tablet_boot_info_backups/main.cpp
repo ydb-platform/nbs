@@ -5,6 +5,7 @@
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <util/charset/utf8.h>
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
 #include <util/generic/map.h>
@@ -44,11 +45,17 @@ bool LoadTabletBootInfoBackup(
     TString fileContent = TUnbufferedFileInput(file).ReadAll();
     auto input = TStringInput(fileContent);
 
-    return TryMergeFromTextFormat(
+    if(IsUtf(fileContent)){
+        if(TryMergeFromTextFormat(
                input,
                *backupProto,
-               EParseFromTextFormatOption::AllowUnknownField) ||
-           backupProto->MergeFromString(fileContent);
+               EParseFromTextFormatOption::AllowUnknownField))
+               {
+                    return true;
+               }
+    }
+
+    return backupProto->MergeFromString(fileContent);
 }
 
 void ProcessDir(
