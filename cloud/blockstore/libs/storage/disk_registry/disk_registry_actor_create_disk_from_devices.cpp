@@ -85,7 +85,8 @@ void TDiskRegistryActor::ExecuteCreateDiskFromDevices(
         args.BlockSize,
         args.MediaKind,
         args.Devices,
-        &result);
+        &result,
+        args.AffectedDisks);
 
     if (HasError(args.Error)) {
         return;
@@ -125,6 +126,12 @@ void TDiskRegistryActor::CompleteCreateDiskFromDevices(
             LogTitle.GetWithTime().c_str(),
             args.ToString().c_str(),
             FormatError(args.Error).c_str());
+    }
+
+    for (const auto& diskId: args.AffectedDisks) {
+        if (!State->HasPendingCleanup(diskId)) {
+            ReplyToPendingDeallocations(ctx, diskId);
+        }
     }
 
     auto response =

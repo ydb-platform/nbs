@@ -99,6 +99,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             return config;
         };
 
+        TVector<TString> affectedDisks;
+
         // unknown device
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TDiskRegistryState::TAllocateDiskResult result {};
@@ -113,7 +115,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                     deviceByName("agent-2", "dev-3"),
                     deviceByName("agent-3", "foo-2"),
                 },
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
             UNIT_ASSERT(error.GetMessage().Contains("not found"));
@@ -133,7 +136,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 nativeBlockSize,
                 NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {deviceByName("agent-1", "dev-1")},
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
             UNIT_ASSERT(error.GetMessage().Contains("is allocated for"));
@@ -150,7 +154,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 nativeBlockSize,
                 NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {deviceByName("agent-2", "dev-1")},
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
             UNIT_ASSERT(error.GetMessage().Contains("is dirty"));
@@ -167,7 +172,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 nativeBlockSize,
                 NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {deviceByName("agent-2", "dev-2")},
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
             UNIT_ASSERT(error.GetMessage().Contains("already exists"));
@@ -184,7 +190,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 nativeBlockSize,
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 {deviceByName("agent-2", "dev-1")},
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
             UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", result.Devices[0].GetDeviceUUID());
@@ -220,7 +227,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                     deviceByName("agent-1", "dev-2"),
                     deviceByName("agent-2", "dev-2")
                 },
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
@@ -256,7 +264,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                     deviceByUUID("uuid-2.3"),
                     deviceByUUID("uuid-1.3")
                 },
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
@@ -289,7 +298,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 4_KB,
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 { deviceByUUID("uuid-2.4") },
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
@@ -337,7 +347,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                     deviceByUUID("uuid-1.4"),
                     deviceByUUID("uuid-1.5")
                 },
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
@@ -460,6 +471,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TDiskRegistryState::TAllocateDiskResult result;
+            TVector<TString> affectedDisks;
             const auto error = state.CreateDiskFromDevices(
                 {},
                 db,
@@ -468,7 +480,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 nativeBlockSize,
                 NProto::STORAGE_MEDIA_SSD_LOCAL,
                 {agent.GetDevices(0)},
-                &result);
+                &result,
+                affectedDisks);
 
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
             UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());

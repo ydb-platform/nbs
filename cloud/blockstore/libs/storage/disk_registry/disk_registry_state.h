@@ -868,14 +868,16 @@ public:
         ui32 blockSize,
         NProto::EStorageMediaKind mediaKind,
         const TVector<NProto::TDeviceConfig>& devices,
-        TAllocateDiskResult* result);
+        TAllocateDiskResult* result,
+        TVector<TDiskId>& affectedDisks);
 
     NProto::TError ChangeDiskDevice(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         const TDeviceId& sourceDeviceId,
-        const TDeviceId& targetDeviceId);
+        const TDeviceId& targetDeviceId,
+        TDiskId& affectedDisk);
 
     // for tests and monpages
     const TReplicaTable& GetReplicaTable() const
@@ -1278,7 +1280,7 @@ private:
         TDiskRegistryDatabase& db,
         const TDiskId& diskId);
 
-    void ForgetDevices(
+    TVector<TDiskId> ForgetDevices(
         TDiskRegistryDatabase& db,
         const TVector<TString>& ids);
 
@@ -1288,6 +1290,7 @@ private:
         const TString& diskId);
 
     NProto::TError AddDevicesToPendingCleanup(
+        TDiskRegistryDatabase* db,
         const TString& diskId,
         TVector<TDeviceId> uuids);
 

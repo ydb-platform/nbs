@@ -128,6 +128,12 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
         }()
             .c_str());
 
+    for (const auto& diskId: args.AffectedDisks) {
+        if (!State->HasPendingCleanup(diskId)) {
+            ReplyToPendingDeallocations(ctx, diskId);
+        }
+    }
+
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

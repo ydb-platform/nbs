@@ -58,13 +58,13 @@ void TDiskRegistryActor::ExecuteChangeDiskDevice(
 {
     TDiskRegistryDatabase db(tx.DB);
 
-    TDiskRegistryState::TAllocateDiskResult result;
     args.Error = State->ChangeDiskDevice(
         ctx.Now(),
         db,
         args.DiskId,
         args.SourceDeviceId,
-        args.TargetDeviceId);
+        args.TargetDeviceId,
+        args.AffectedDisk);
 }
 
 void TDiskRegistryActor::CompleteChangeDiskDevice(
@@ -90,6 +90,12 @@ void TDiskRegistryActor::CompleteChangeDiskDevice(
             args.DiskId.Quote().c_str(),
             args.SourceDeviceId.Quote().c_str(),
             args.TargetDeviceId.Quote().c_str());
+    }
+
+    if (!args.AffectedDisk.empty() &&
+        !State->HasPendingCleanup(args.AffectedDisk))
+    {
+        ReplyToPendingDeallocations(ctx, args.AffectedDisk);
     }
 
     NCloud::Reply(

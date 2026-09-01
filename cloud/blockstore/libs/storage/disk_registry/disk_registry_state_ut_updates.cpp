@@ -280,12 +280,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryChangeNonreplDiskTest)
     Y_UNIT_TEST_F(ShouldFailByDiskId, TChangeNonreplDiskDevice)
     {
         Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
             auto error = State->ChangeDiskDevice(
                 TInstant::FromValue(1000),
                 db,
                 "disk-2",
                 "uuid-1.1",
-                "uuid-1.3");
+                "uuid-1.3",
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT, error.GetCode(), error.GetMessage());
@@ -295,12 +297,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryChangeNonreplDiskTest)
     Y_UNIT_TEST_F(ShouldFailBySourceDeviceId, TChangeNonreplDiskDevice)
     {
         Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
             auto error = State->ChangeDiskDevice(
                 TInstant::FromValue(1000),
                 db,
                 "disk-2",
                 "uuid-1.4",
-                "uuid-1.3");
+                "uuid-1.3",
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT, error.GetCode(), error.GetMessage());
@@ -310,12 +314,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryChangeNonreplDiskTest)
     Y_UNIT_TEST_F(ShouldFailByTargetDeviceId, TChangeNonreplDiskDevice)
     {
         Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
             auto error = State->ChangeDiskDevice(
                 TInstant::FromValue(1000),
                 db,
                 "disk-2",
                 "uuid-1.1",
-                "uuid-1.4");
+                "uuid-1.4",
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT, error.GetCode(), error.GetMessage());
@@ -325,12 +331,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryChangeNonreplDiskTest)
     Y_UNIT_TEST_F(ShouldSuccess, TChangeNonreplDiskDevice)
     {
         Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
             auto error = State->ChangeDiskDevice(
                 TInstant::FromValue(1000),
                 db,
                 "disk-1",
                 "uuid-1.1",
-                "uuid-1.3");
+                "uuid-1.3",
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -358,12 +366,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryChangeMirrorDiskTest)
     Y_UNIT_TEST_F(ShouldFailByDiskId, TChangeMirrorDiskDevice)
     {
         Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
             auto error = State->ChangeDiskDevice(
                 TInstant::FromValue(1000),
                 db,
                 "disk-2",
                 "uuid-1.1",
-                "uuid-1.3");
+                "uuid-1.3",
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT, error.GetCode(), error.GetMessage());
@@ -373,12 +383,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryChangeMirrorDiskTest)
     Y_UNIT_TEST_F(ShouldFailBySourceDeviceId, TChangeMirrorDiskDevice)
     {
         Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
             auto error = State->ChangeDiskDevice(
                 TInstant::FromValue(1000),
                 db,
                 "disk-2",
                 "uuid-1.4",
-                "uuid-1.3");
+                "uuid-1.3",
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT, error.GetCode(), error.GetMessage());
@@ -388,12 +400,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryChangeMirrorDiskTest)
     Y_UNIT_TEST_F(ShouldFailByTargetDeviceId, TChangeMirrorDiskDevice)
     {
         Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
             auto error = State->ChangeDiskDevice(
                 TInstant::FromValue(1000),
                 db,
                 "disk-2",
                 "uuid-1.1",
-                "uuid-1.4");
+                "uuid-1.4",
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT, error.GetCode(), error.GetMessage());
@@ -403,12 +417,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryChangeMirrorDiskTest)
     Y_UNIT_TEST_F(ShouldSuccess, TChangeMirrorDiskDevice)
     {
         Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
             auto error = State->ChangeDiskDevice(
                 TInstant::FromValue(1000),
                 db,
                 "disk-1/0",
                 "uuid-1.1",
-                "uuid-1.3");
+                "uuid-1.3",
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -430,12 +446,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryChangeMirrorDiskTest)
         });
 
         Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
             auto error = State->ChangeDiskDevice(
                 TInstant::FromValue(1000),
                 db,
                 "disk-1/1",
                 "uuid-2.1",
-                "uuid-2.3");
+                "uuid-2.3",
+                affectedDisk);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
