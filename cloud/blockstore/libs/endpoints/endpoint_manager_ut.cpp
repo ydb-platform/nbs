@@ -1758,6 +1758,17 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         UNIT_ASSERT(wrongCount != correctCount);
         UNIT_ASSERT_VALUES_EQUAL(wrongCount, static_cast<int>(*configCounter));
+
+        auto response =
+            ListEndpoints(*manager).GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(!HasError(response));
+        UNIT_ASSERT(response.GetEndpointsWereRestored());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::ENDPOINT_RESTORING_STATE_FAILED),
+            static_cast<int>(response.GetEndpointRestoringState()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            wrongCount,
+            response.GetEndpointRestoringErrorCount());
     }
 
     Y_UNIT_TEST(ShouldRemoveEndpointForNotFoundVolume)
