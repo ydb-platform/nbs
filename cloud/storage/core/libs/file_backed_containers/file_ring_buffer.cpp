@@ -18,6 +18,7 @@
 #include <util/system/filemap.h>
 
 #include <atomic>
+#include <optional>
 
 namespace NCloud {
 
@@ -147,9 +148,6 @@ private:
 
     // Map of allocated entries: data ptr -> pos
     THashMap<const void*, ui64> EntryMap;
-
-    // Allocated entries that have not been committed yet
-    THashSet<ui64> IncompleteEntries;
 
 private:
     THeader* Header()
@@ -392,7 +390,7 @@ private:
     {
         auto front = GetFrontEntry();
         while (front.HasValue() && front.GetFreeFlag() &&
-               !IncompleteEntries.contains(front.ActualPos))
+               !EntryMap.contains(front.Data))
         {
             front = GetNextEntry(front);
         }
@@ -527,7 +525,8 @@ public:
 
         data.copy(allocationResult.AllocationPtr, data.size());
 
-        auto commitResult = Commit(allocationResult.AllocationPtr, 0, false);
+        auto commitResult =
+            Commit(allocationResult.AllocationPtr, std::nullopt);
 
         if (HasError(commitResult)) {
             return TPushBackResult(commitResult);
@@ -617,16 +616,8 @@ public:
             return TAllocResult(MakeBufferIsCorruptError());
         }
 
-        auto [it1, inserted1] = IncompleteEntries.insert(writePos);
-        if (!inserted1) {
-            SetCorrupted(
-                TStringBuilder()
-                << "Duplicate incomplete allocation at " << writePos);
-            return TAllocResult(MakeBufferIsCorruptError());
-        }
-
-        auto [it2, inserted2] = EntryMap.insert({ptr, writePos});
-        if (!inserted2) {
+        auto [_, inserted] = EntryMap.insert({ptr, writePos});
+        if (!inserted) {
             SetCorrupted(
                 TStringBuilder() << "Duplicate allocation at " << writePos);
             return TAllocResult(MakeBufferIsCorruptError());
@@ -653,7 +644,7 @@ public:
         return TAllocResult(ptr);
     }
 
-    NProto::TError Commit(const void* ptr, ui32 crc32c, bool hasCrc)
+    NProto::TError Commit(const void* ptr, std::optional<ui32> crc32c)
     {
         if (!ValidateAccess("Commit")) {
             return MakeBufferIsCorruptError();
@@ -663,12 +654,8 @@ public:
         if (it == EntryMap.end()) {
             return MakeInvalidPointerError();
         }
-        ui64 pos = it->second;
 
-        auto removed = IncompleteEntries.erase(pos);
-        if (!removed) {
-            return MakeInvalidPointerError();
-        }
+        ui64 pos = it->second;
 
         auto eh = Data()->ReadEntryHeader(pos);
         if (!eh.FreeFlag || eh.DataSize == 0 || eh.DataChecksum != 0 ||
@@ -680,7 +667,7 @@ public:
             return MakeBufferIsCorruptError();
         }
 
-        if (!hasCrc) {
+        if (!crc32c) {
             if (ptr != Data()->GetEntryDataPtr(pos, eh.DataSize)) {
                 SetCorrupted(
                     TStringBuilder()
@@ -692,14 +679,14 @@ public:
         }
 
         if (Capabilities().EntryHeaderIsProcessedAtomically) {
-            eh.DataChecksum = crc32c;
+            eh.DataChecksum = *crc32c;
             eh.FreeFlag = false;
 
             if (!WriteEntryHeader(pos, eh)) {
                 return MakeBufferIsCorruptError();
             }
         } else {
-            eh.DataChecksum = crc32c;
+            eh.DataChecksum = *crc32c;
 
             if (!WriteEntryHeader(pos, eh)) {
                 return MakeBufferIsCorruptError();
@@ -728,12 +715,14 @@ public:
 
         auto pos = it->second;
 
-        if (IncompleteEntries.contains(pos)) {
+        auto eh = Data()->ReadEntryHeader(pos);
+
+        if (eh.FreeFlag) {
+            // Releasing incomplete entries is not allowed
             return MakeInvalidPointerError();
         }
 
-        auto eh = Data()->ReadEntryHeader(pos);
-        if (eh.FreeFlag || eh.DataSize == 0) {
+        if (eh.DataSize == 0) {
             SetCorrupted(
                 TStringBuilder() << "Invalid header for allocation at " << pos);
             return MakeBufferIsCorruptError();
@@ -790,11 +779,11 @@ public:
 
         auto pos = it->second;
 
-        if (IncompleteEntries.contains(pos)) {
+        auto eh = Data()->ReadEntryHeader(pos);
+        if (eh.FreeFlag) {
             return TGetTagResult(MakeInvalidPointerError());
         }
 
-        auto eh = Data()->ReadEntryHeader(pos);
         return TGetTagResult(eh.Tag);
     }
 
@@ -811,10 +800,6 @@ public:
 
         auto pos = it->second;
 
-        if (IncompleteEntries.contains(pos)) {
-            return MakeInvalidPointerError();
-        }
-
         if (tag > Capabilities().MaxTag) {
             return MakeError(
                 E_ARGUMENT,
@@ -824,6 +809,10 @@ public:
         }
 
         auto eh = Data()->ReadEntryHeader(pos);
+        if (eh.FreeFlag) {
+            return MakeInvalidPointerError();
+        }
+
         eh.Tag = tag;
 
         bool written = WriteEntryHeader(pos, eh);
@@ -867,7 +856,7 @@ public:
             return TPopFrontResult(MakeBufferIsCorruptError());
         }
 
-        if (!e.HasValue() || e.GetFreeFlag()) {
+        if (!e.HasValue()) {
             return TPopFrontResult(false);
         }
 
@@ -882,7 +871,7 @@ public:
 
     ui64 Size() const
     {
-        return EntryMap.size() - IncompleteEntries.size();
+        return EntryMap.size();
     }
 
     bool Empty() const
@@ -1067,14 +1056,13 @@ TFileRingBuffer::TAllocResult TFileRingBuffer::Alloc(size_t size)
 
 NProto::TError TFileRingBuffer::Commit(const void* ptr)
 {
-    return Impl->Commit(ptr, 0, false);
+    return Impl->Commit(ptr, std::nullopt);
 }
 
 NProto::TError TFileRingBuffer::Commit(const void* ptr, ui32 crc32c)
 {
-    return Impl->Commit(ptr, crc32c, true);
+    return Impl->Commit(ptr, crc32c);
 }
-
 
 NProto::TError TFileRingBuffer::Free(const void* ptr)
 {

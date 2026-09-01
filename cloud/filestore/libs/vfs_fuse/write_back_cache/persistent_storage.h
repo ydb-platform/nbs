@@ -54,7 +54,8 @@ struct IPersistentStorage
     [[nodiscard]] virtual TResultOrError<char*> Alloc(size_t size) = 0;
 
     /**
-     * Commits previously allocated memory buffer.
+     * Completes the previously made allocation by calculating checksum and
+     * making the allocation visible.
      *
      * Once committed, it is not allowed to modify the contents of the allocated
      * entry. If there is a need to augment the allocation with additional data,
@@ -63,14 +64,14 @@ struct IPersistentStorage
      * Memory that was allocated but not committed will be lost at buffer
      * recreation.
      *
-     * An error is returned if there is no incomplete allocation or the buffer
-     * is corrupted.
+     * An error is returned if there is no incomplete allocation correponding to
+     * the provided pointer or the buffer is corrupted.
      */
     [[nodiscard]] virtual NProto::TError Commit(const void* ptr) = 0;
 
     /**
-     * Commits previously allocated memory buffer but takes a checksum provided
-     * by the caller instead of calculating it.
+     * Commits the previously allocated memory buffer but takes a checksum
+     * provided by the caller instead of calculating it.
      *
      * Note: the checksum is not validated, the calling code has responsibility
      * to provide the correct Crc32c checksum. Passing an incorrect checksum may

@@ -100,6 +100,9 @@ public:
      * Additionally, TAllocResult::Error is set if allocation has failed for any
      * reason other than insufficient capacity, for example, buffer corruption
      * or invalid argument.
+     *
+     * Note: methods Front() and PopFront() should not be called while an
+     * allocation is in progress.
      */
     [[nodiscard]] TAllocResult Alloc(size_t size);
 
@@ -191,15 +194,16 @@ public:
      * Frees the front allocation.
      *
      * TPopFrontResult::Removed is true if the front allocation has been
-     * successfully freed or false if the buffer is empty, the front allocation
-     * is not committed or the buffer is corrupted.
+     * successfully freed or false otherwise.
      *
-     * Additionally, TFrontResult::Error is set on corruption.
+     * TFrontResult::Error is set if the front allocation is incomplete or the
+     * buffer is corrupted.
      */
     [[nodiscard]] TPopFrontResult PopFront();
 
     /**
-     * Returns the number of visible allocations in the buffer.
+     * Returns the number of all allocations in the buffer (including
+     * incomplete ones).
      * The behavior is unspecified if the buffer is corrupted.
      */
     [[nodiscard]] ui64 Size() const;

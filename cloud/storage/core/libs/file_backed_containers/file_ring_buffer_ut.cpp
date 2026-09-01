@@ -1172,7 +1172,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         auto popFrontResult = rb.PopFront();
         UNIT_ASSERT(!popFrontResult.Removed);
-        UNIT_ASSERT(!HasError(popFrontResult.Error));
+        UNIT_ASSERT(HasError(popFrontResult.Error));
 
         UNIT_ASSERT_VALUES_EQUAL("two", Dump(rb));
 
@@ -1193,6 +1193,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const ui32 len = 64;
         const TString data = "precomputed checksum";
         const ui32 checksum = Crc32c(data.data(), data.size());
+        const ui32 badChecksum = checksum ^ 1;
 
         {
             TFileRingBuffer rb(f.GetName(), len, 0, ver);
@@ -1213,11 +1214,38 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(checksum, visitedChecksum);
         }
 
-        // A caller-provided checksum must produce an entry that survives
-        // validation when the ring buffer is reopened.
-        TFileRingBuffer rb(f.GetName(), len, 0, ver);
-        UNIT_ASSERT(!rb.IsCorrupted());
-        UNIT_ASSERT_VALUES_EQUAL(data, rb.Front().Data);
+        {
+            // A caller-provided checksum must produce an entry that survives
+            // validation when the ring buffer is reopened.
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            UNIT_ASSERT(!rb.IsCorrupted());
+            UNIT_ASSERT_VALUES_EQUAL(data, rb.Front().Data);
+        }
+
+        // Bad checksum
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            auto alloc = rb.Alloc(data.size());
+
+            UNIT_ASSERT(!HasError(alloc.Error));
+            UNIT_ASSERT(alloc.AllocationPtr != nullptr);
+            data.copy(alloc.AllocationPtr, data.size());
+            UNIT_ASSERT(!HasError(rb.Commit(alloc.AllocationPtr, badChecksum)));
+
+            ui32 visitedChecksum = 0;
+            UNIT_ASSERT(!HasError(rb.Visit(
+                [&](ui32 crc32, ui32, TStringBuf entry)
+                {
+                    visitedChecksum = crc32;
+                    UNIT_ASSERT_VALUES_EQUAL(data, entry);
+                })));
+            UNIT_ASSERT_VALUES_EQUAL(badChecksum, visitedChecksum);
+        }
+
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            UNIT_ASSERT(rb.IsCorrupted());
+        }
     }
 
     FILE_RING_BUFFER_TEST(ShouldDropNotCommittedEntries)
@@ -1234,23 +1262,23 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT(rb.Empty());
 
             auto alloc1 = rb.Alloc(data1.size());
-            UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
+            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
             UNIT_ASSERT(!rb.Empty());
             UNIT_ASSERT(!HasError(alloc1.Error));
             UNIT_ASSERT(alloc1.AllocationPtr != nullptr);
             data1.copy(alloc1.AllocationPtr, data1.size());
 
             auto alloc2 = rb.Alloc(data2.size());
-            UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
+            UNIT_ASSERT_VALUES_EQUAL(2, rb.Size());
             UNIT_ASSERT(!rb.Empty());
             UNIT_ASSERT(!HasError(alloc2.Error));
             UNIT_ASSERT(alloc2.AllocationPtr != nullptr);
             data2.copy(alloc2.AllocationPtr, data2.size());
             UNIT_ASSERT(!HasError(rb.Commit(alloc2.AllocationPtr)));
-            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+            UNIT_ASSERT_VALUES_EQUAL(2, rb.Size());
 
             auto alloc3 = rb.Alloc(data3.size());
-            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+            UNIT_ASSERT_VALUES_EQUAL(3, rb.Size());
             UNIT_ASSERT(!rb.Empty());
             UNIT_ASSERT(!HasError(alloc3.Error));
             UNIT_ASSERT(alloc3.AllocationPtr != nullptr);
