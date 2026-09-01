@@ -163,7 +163,7 @@ void DumpChannels(
 void DumpCheckpoints(
     IOutputStream& out,
     const TTabletStorageInfo& storage,
-    ui32 freshBlocksCount,
+    ui64 freshBlocksCount,
     ui32 blockSize,
     const TVector<TCheckpoint>& checkpoints,
     const THashMap<TString, ui64>& checkpointId2CommitId)
@@ -201,10 +201,10 @@ void DumpCheckpoints(
                         TABLED() {
                             ui64 byteSize = 0;
                             if (checkpoint) {
-                                ui32 blocksCount = freshBlocksCount;
+                                ui64 blocksCount = freshBlocksCount;
                                 blocksCount += checkpoint->Stats.GetMixedBlocksCount();
                                 blocksCount += checkpoint->Stats.GetMergedBlocksCount();
-                                byteSize = static_cast<ui64>(blocksCount) * blockSize;
+                                byteSize = blocksCount * blockSize;
                             }
 
                             out << FormatByteSize(byteSize);
