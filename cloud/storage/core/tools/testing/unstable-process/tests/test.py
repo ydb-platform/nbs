@@ -131,17 +131,13 @@ class Env:
             stealer.stop()
 
 
-def port_bound(port):
-    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-    try:
-        sock.bind(("::", port))
-    except OSError as e:
-        if e.errno == errno.EADDRINUSE:
-            return True
-        raise
-    finally:
-        sock.close()
-    return False
+def port_listening(port):
+    # A bind-based probe can briefly capture the port and make the daemon's
+    # concurrent bind fail with EADDRINUSE. Connecting verifies readiness
+    # without competing with the daemon for ownership of the port.
+    with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.1)
+        return sock.connect_ex(("::1", port)) == 0
 
 
 def wait_for(predicate, timeout=60, step=0.1):
@@ -168,7 +164,7 @@ def test_cannot_steal_reserved_port():
             "port stealer captured the port before launcer is started"
 
         launcher = env.start_launcher(port, reserve=True)
-        assert wait_for(lambda: port_bound(port))
+        assert wait_for(lambda: port_listening(port))
         assert launcher.is_alive(), \
             "launcher died shortly after start"
 
@@ -202,7 +198,7 @@ def test_steals_port_without_reservation():
         env.start_stealers(port)
 
         launcher = env.start_launcher(port, reserve=False)
-        assert wait_for(lambda: port_bound(port))
+        assert wait_for(lambda: port_listening(port))
         pm.release_port(port)
 
         assert wait_for(env.stolen), \
