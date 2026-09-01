@@ -91,8 +91,18 @@ class FilestoreCliClient:
             "--filesystem", fs,
         ] + self.__cmd_opts()
 
-        logger.info("destroying filestore: " + " ".join(cmd))
-        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+        # destroy asks to confirm by typing the filesystem id to stdin
+        with tempfile.NamedTemporaryFile(mode="w+") as confirmation:
+            confirmation.write(fs)
+            confirmation.flush()
+            confirmation.seek(0)
+
+            logger.info("destroying filestore: " + " ".join(cmd))
+            return common.execute(
+                cmd,
+                env=self.__env,
+                stdin=confirmation,
+                check_exit_code=self.__check_exit_code).stdout
 
     def mount(self, fs, path, mount_seqno=0, readonly=False):
         cmd = [
