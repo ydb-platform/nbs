@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/blob_id.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 

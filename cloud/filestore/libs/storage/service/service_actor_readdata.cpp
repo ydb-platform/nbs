@@ -10,6 +10,7 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/blob_id.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
