@@ -10,6 +10,8 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 
+#include <util/system/file_lock.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -20,10 +22,54 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void WriteFile(TString filePath, TString data)
+void WriteFile(TString filePath, TString data, const TActorContext& ctx)
 {
-    TFile file(filePath, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly);
-    TFileOutput(file).Write(std::move(data));
+    TFsPath tmpFilePath = filePath + ".tmp";
+
+    NProto::TError error;
+
+    try {
+        TFileLock lock(tmpFilePath);
+
+        if (lock.TryAcquire()) {
+            Y_DEFER {
+                lock.Release();
+            };
+
+            TFile file(tmpFilePath, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly);
+            TFileOutput(file).Write(std::move(data));
+
+            tmpFilePath.RenameTo(filePath);
+        } else {
+            auto message = TStringBuilder()
+                << "failed to acquire lock on file: " << tmpFilePath;
+            error = MakeError(E_IO, std::move(message));
+        }
+    } catch (...) {
+        error = MakeError(E_FAIL, CurrentExceptionMessage());
+    }
+
+    if (!SUCCEEDED(error.GetCode()))
+    {
+
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            TStringBuilder()
+                << "Failed to write manually preempted volumes: "
+                << error);
+        ReportManuallyPreemptedVolumesFileError(error.GetMessage());
+
+        try {
+            tmpFilePath.DeleteIfExists();
+        } catch (...) {
+            LOG_WARN_S(ctx,
+                TBlockStoreComponents::SERVICE,
+                "ServiceActorSyncManuallyPreemptedVolumes: failed to delete temporary file: "
+                << CurrentExceptionMessage());
+        }
+
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,17 +100,7 @@ TSyncManuallyPreemptedVolumesActor::TSyncManuallyPreemptedVolumesActor(
 
 void TSyncManuallyPreemptedVolumesActor::Bootstrap(const TActorContext& ctx)
 {
-    try {
-        WriteFile(std::move(FilePath), std::move(Data));
-    } catch (...) {
-        LOG_ERROR_S(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            TStringBuilder()
-                << "Failed to write manually preempted volumes: "
-                << CurrentExceptionMessage());
-        ReportManuallyPreemptedVolumesFileError(CurrentExceptionMessage());
-    }
+    WriteFile(std::move(FilePath), std::move(Data), ctx);
 
     using TResponse = TEvServicePrivate::TEvSyncManuallyPreemptedVolumesComplete;
 
