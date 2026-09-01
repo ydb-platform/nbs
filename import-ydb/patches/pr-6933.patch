@@ -1,0 +1,71 @@
+diff --git a/contrib/ydb/core/node_whiteboard/node_whiteboard.h b/contrib/ydb/core/node_whiteboard/node_whiteboard.h
+index c99a39e5fb..1933e37da8 100644
+--- a/contrib/ydb/core/node_whiteboard/node_whiteboard.h
++++ b/contrib/ydb/core/node_whiteboard/node_whiteboard.h
+@@ -515,8 +515,29 @@ struct WhiteboardResponse<TEvWhiteboard::TEvNodeStateRequest> {
+     using Type = TEvWhiteboard::TEvNodeStateResponse;
+ };
+ 
+-template<typename TResponseType>
+-::google::protobuf::RepeatedField<int> GetDefaultWhiteboardFields();
++template<typename TMessage>
++::google::protobuf::RepeatedField<int> InitDefaultWhiteboardFields() {
++    using namespace ::google::protobuf;
++    const Descriptor& descriptor = *TMessage::GetDescriptor();
++    ::google::protobuf::RepeatedField<int> defaultFields;
++    int fieldCount = descriptor.field_count();
++    for (int index = 0; index < fieldCount; ++index) {
++        const FieldDescriptor* field = descriptor.field(index);
++        const auto& options(field->options());
++        if (options.HasExtension(NKikimrWhiteboard::DefaultField)) {
++            if (options.GetExtension(NKikimrWhiteboard::DefaultField)) {
++                defaultFields.Add(field->number());
++            }
++        }
++    }
++    return defaultFields;
++}
++
++template<typename TMessage>
++::google::protobuf::RepeatedField<int> GetDefaultWhiteboardFields() {
++    static ::google::protobuf::RepeatedField<int> defaultFields = InitDefaultWhiteboardFields<TMessage>();
++    return defaultFields;
++}
+ 
+ } // NNodeWhiteboard
+ } // NKikimr
+diff --git a/contrib/ydb/core/tablet/node_whiteboard.cpp b/contrib/ydb/core/tablet/node_whiteboard.cpp
+index 8ec1001610..a6bfc5f519 100644
+--- a/contrib/ydb/core/tablet/node_whiteboard.cpp
++++ b/contrib/ydb/core/tablet/node_whiteboard.cpp
+@@ -1190,30 +1190,6 @@ protected:
+     }
+ };
+ 
+-template<typename TMessage>
+-::google::protobuf::RepeatedField<int> InitDefaultWhiteboardFields() {
+-    using namespace ::google::protobuf;
+-    const Descriptor& descriptor = *TMessage::GetDescriptor();
+-    ::google::protobuf::RepeatedField<int> defaultFields;
+-    int fieldCount = descriptor.field_count();
+-    for (int index = 0; index < fieldCount; ++index) {
+-        const FieldDescriptor* field = descriptor.field(index);
+-        const auto& options(field->options());
+-        if (options.HasExtension(NKikimrWhiteboard::DefaultField)) {
+-            if (options.GetExtension(NKikimrWhiteboard::DefaultField)) {
+-                defaultFields.Add(field->number());
+-            }
+-        }
+-    }
+-    return defaultFields;
+-}
+-
+-template<typename TMessage>
+-::google::protobuf::RepeatedField<int> GetDefaultWhiteboardFields() {
+-    static ::google::protobuf::RepeatedField<int> defaultFields = InitDefaultWhiteboardFields<TMessage>();
+-    return defaultFields;
+-}
+-
+ IActor* CreateNodeWhiteboardService() {
+     return new TNodeWhiteboardService();
+ }

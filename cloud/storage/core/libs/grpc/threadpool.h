@@ -8,6 +8,6 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-size_t SetDefaultThreadPoolLimit(size_t count);
+void SetDefaultThreadPoolLimit(size_t count);
 
 }   // namespace NCloud
