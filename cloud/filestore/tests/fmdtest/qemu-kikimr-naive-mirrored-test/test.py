@@ -3,7 +3,12 @@ import os
 
 import yatest.common as common
 
-from cloud.filestore.tests.python.lib.fastshard import configure_fastshard
+from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+
+from cloud.filestore.tests.python.lib.fastshard import (
+    configure_fastshard,
+    fetch_layout,
+)
 from cloud.storage.core.tools.testing.qemu.lib.common import (
     env_with_guest_index,
     SshToGuest,
@@ -60,7 +65,7 @@ def do_test(test_name, aux_params):
     # which is a bit excessive for this test.
     #
 
-    configure_fastshard(
+    file_shard_ids = configure_fastshard(
         shard_count=2,
         file_shard_count=1,
         fast_shard_config=fast_shard_config)
@@ -89,6 +94,38 @@ def do_test(test_name, aux_params):
     with open(results_path, 'w') as results:
         results.write(json.dumps(report, indent=4))
         results.write("\n")
+
+    #
+    # Dumping layout.
+    #
+
+    port = os.getenv("NFS_SERVER_PORT")
+    binary_path = common.binary_path(
+        "cloud/filestore/apps/client/filestore-client")
+    client = FilestoreCliClient(
+        binary_path,
+        port,
+        cwd=common.output_path())
+
+    for shard_id in file_shard_ids:
+        shard = json.loads(client.describe(shard_id))
+        # MainTabletId for a shard is actually its own IndexTabletId
+        tablet_id = shard["FileStore"]["MainTabletId"]
+        layout = fetch_layout(tablet_id)
+
+        #
+        # Masking unstable fields.
+        #
+
+        for sg in layout["storageGroups"]:
+            for d in sg["devices"]:
+                d["port"] = d.get("port", 0) != 0
+                d["deviceId"] = len(d["deviceId"]) > 0
+
+        result = json.dumps(layout, indent=4)
+
+        with open(results_path, 'a') as results:
+            results.write('{}\n'.format(result))
 
     ret = common.canonical_file(results_path, local=True)
     return ret
