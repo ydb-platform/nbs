@@ -162,6 +162,8 @@ void TPartitionActor::CompleteLoadState(
     TTxPartition::TLoadState& args)
 {
     const auto& partitionConfig = args.Meta->GetConfig();
+    const auto freshCapacityLimits =
+        GetEffectiveFreshCapacityLimits(*Config, partitionConfig);
 
     // initialize state
     TBackpressureFeaturesConfig bpConfig {
@@ -171,8 +173,8 @@ void TPartitionActor::CompleteLoadState(
             static_cast<double>(Config->GetCompactionScoreFeatureMaxValue()),
         },
         {
-            Config->GetFreshByteCountLimitForBackpressure(),
-            Config->GetFreshByteCountThresholdForBackpressure(),
+            freshCapacityLimits.FreshByteCountLimitForBackpressure,
+            freshCapacityLimits.FreshByteCountThresholdForBackpressure,
             static_cast<double>(Config->GetFreshByteCountFeatureMaxValue()),
         },
         {

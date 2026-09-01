@@ -4,6 +4,9 @@
 
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 
+#include <util/generic/size_literals.h>
+#include <util/stream/str.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -623,6 +626,147 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             UNIT_ASSERT_VALUES_EQUAL(150, bandwidth.Bandwidth);
             UNIT_ASSERT_VALUES_EQUAL(2, bandwidth.IoDepth);
         }
+    }
+
+    Y_UNIT_TEST(ShouldExposeFreshCapacityDefaults)
+    {
+        const TStorageConfig config(
+            NProto::TStorageServiceConfig{},
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        UNIT_ASSERT_VALUES_EQUAL(4_MB, config.GetFlushThresholdSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            128_MB,
+            config.GetFreshByteCountLimitForBackpressureSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            40_MB,
+            config.GetFreshByteCountThresholdForBackpressureSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3200,
+            config.GetFreshBlobCountFlushThresholdSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            16_MB,
+            config.GetFreshBlobByteCountFlushThresholdSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            256_MB,
+            config.GetFreshByteCountHardLimitSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            256_GB,
+            config.GetBytesPerFreshCapacityUnitHDD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            32_GB,
+            config.GetBytesPerFreshCapacityUnitSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            config.GetAllocationUnitHDD() * 1_GB,
+            config.GetBytesPerFreshCapacityUnitHDD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            config.GetAllocationUnitSSD() * 1_GB,
+            config.GetBytesPerFreshCapacityUnitSSD());
+    }
+
+    Y_UNIT_TEST(ShouldKeepFreshCapacityUnitsIndependentFromAllocationUnits)
+    {
+        NProto::TStorageServiceConfig proto;
+        proto.SetAllocationUnitHDD(1);
+        proto.SetAllocationUnitSSD(2);
+
+        TStorageConfig config(
+            proto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            256_GB,
+            config.GetBytesPerFreshCapacityUnitHDD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            32_GB,
+            config.GetBytesPerFreshCapacityUnitSSD());
+
+        proto.SetBytesPerFreshCapacityUnitHDD(3_GB);
+        proto.SetBytesPerFreshCapacityUnitSSD(4_GB);
+        TStorageConfig overriddenConfig(
+            proto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3_GB,
+            overriddenConfig.GetBytesPerFreshCapacityUnitHDD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_GB,
+            overriddenConfig.GetBytesPerFreshCapacityUnitSSD());
+    }
+
+    Y_UNIT_TEST(ShouldExposeFreshCapacitySettingsViaImmediateControlsAndDump)
+    {
+        auto config = std::make_shared<TStorageConfig>(
+            NProto::TStorageServiceConfig{},
+            std::make_shared<NFeatures::TFeaturesConfig>());
+        NKikimr::TControlBoard controlBoard;
+        config->Register(controlBoard);
+
+        const auto setValue = [&] (const TString& name, i64 value) {
+            TAtomic previousValue = {};
+            UNIT_ASSERT(!controlBoard.SetValue(name, value, previousValue));
+        };
+
+        setValue("BlockStore_FlushThresholdSSD", 1);
+        setValue("BlockStore_FreshByteCountLimitForBackpressureSSD", 2);
+        setValue("BlockStore_FreshByteCountThresholdForBackpressureSSD", 3);
+        setValue("BlockStore_FreshBlobCountFlushThresholdSSD", 4);
+        setValue("BlockStore_FreshBlobByteCountFlushThresholdSSD", 5);
+        setValue("BlockStore_FreshByteCountHardLimitSSD", 6);
+        setValue("BlockStore_BytesPerFreshCapacityUnitHDD", 7);
+        setValue("BlockStore_BytesPerFreshCapacityUnitSSD", 8);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, config->GetFlushThresholdSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            config->GetFreshByteCountLimitForBackpressureSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            config->GetFreshByteCountThresholdForBackpressureSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            config->GetFreshBlobCountFlushThresholdSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            5,
+            config->GetFreshBlobByteCountFlushThresholdSSD());
+        UNIT_ASSERT_VALUES_EQUAL(6, config->GetFreshByteCountHardLimitSSD());
+        UNIT_ASSERT_VALUES_EQUAL(7, config->GetBytesPerFreshCapacityUnitHDD());
+        UNIT_ASSERT_VALUES_EQUAL(8, config->GetBytesPerFreshCapacityUnitSSD());
+
+        const auto proto = config->GetStorageConfigProto();
+        UNIT_ASSERT_VALUES_EQUAL(1, proto.GetFlushThresholdSSD());
+        UNIT_ASSERT_VALUES_EQUAL(8, proto.GetBytesPerFreshCapacityUnitSSD());
+
+        TStringStream out;
+        config->Dump(out);
+        const TString dump = out.Str();
+        UNIT_ASSERT_UNEQUAL(
+            TString::npos,
+            dump.find("FreshByteCountHardLimitSSD: 6"));
+        UNIT_ASSERT_UNEQUAL(
+            TString::npos,
+            dump.find("BytesPerFreshCapacityUnitHDD: 7"));
+    }
+
+    Y_UNIT_TEST(ShouldKeepFreshCapacityConfigTagsStable)
+    {
+        const auto* descriptor = NProto::TStorageServiceConfig::descriptor();
+        const auto assertTag = [&] (const TString& name, int number) {
+            const auto* field = descriptor->FindFieldByName(name);
+            UNIT_ASSERT_C(field, name);
+            UNIT_ASSERT_VALUES_EQUAL(number, field->number());
+        };
+
+        assertTag("UseBlobChannelDataKindForCounters", 527);
+        assertTag("FlushThresholdSSD", 528);
+        assertTag("FreshByteCountLimitForBackpressureSSD", 529);
+        assertTag("FreshByteCountThresholdForBackpressureSSD", 530);
+        assertTag("FreshBlobCountFlushThresholdSSD", 531);
+        assertTag("FreshBlobByteCountFlushThresholdSSD", 532);
+        assertTag("FreshByteCountHardLimitSSD", 533);
+        assertTag("BytesPerFreshCapacityUnitHDD", 534);
+        assertTag("BytesPerFreshCapacityUnitSSD", 535);
     }
 }
 

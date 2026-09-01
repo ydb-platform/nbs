@@ -269,6 +269,8 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
     config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
     config.SetFreshByteCountThresholdForBackpressure(400_KB);
     config.SetFreshByteCountLimitForBackpressure(1200_KB);
+    config.SetFreshByteCountThresholdForBackpressureSSD(400_KB);
+    config.SetFreshByteCountLimitForBackpressureSSD(1200_KB);
     config.SetFreshByteCountFeatureMaxValue(6);
     config.SetCollectGarbageThreshold(10);
     config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
@@ -969,8 +971,8 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     {
         auto config = DefaultConfig();
         config.SetFreshBlocksWriterEnabled(true);
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitSSD(8_KB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);
@@ -1019,6 +1021,65 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             S_OK,
             response->GetStatus(),
             response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldUseEffectiveSSDHardLimitForWritesAndZeros)
+    {
+        for (const ui32 blocksCount: {1, 2}) {
+            auto config = DefaultConfig();
+            config.SetFreshByteCountHardLimit(8_KB);
+            config.SetFreshByteCountHardLimitSSD(512_MB);
+            config.SetBytesPerFreshCapacityUnitSSD(DefaultBlockSize);
+
+            TMyTestEnv testEnv;
+            InitTestActorRuntime(testEnv, config, blocksCount);
+            auto& runtime = testEnv.GetRuntime();
+
+            TPartitionThreadSafeStatePtr sharedState;
+            runtime.SetEventFilter(
+                [&](TTestActorRuntimeBase& runtime,
+                    TAutoPtr<IEventHandle>& event)
+                {
+                    Y_UNUSED(runtime);
+
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::
+                            EvGetFreshChannelsInfoResponse)
+                    {
+                        sharedState =
+                            event
+                                ->Get<TEvPartitionCommonPrivate::
+                                          TEvGetFreshChannelsInfoResponse>()
+                                ->SharedState;
+                    }
+                    return false;
+                });
+
+            auto partition = testEnv.GetPartitionClient();
+            partition.WaitReady();
+
+            auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+            fbwClient.WaitReady();
+
+            UNIT_ASSERT(sharedState);
+            sharedState->UnflushedFreshBlobByteCount.store(256_MB);
+
+            fbwClient.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(0), 1);
+            auto writeResponse = fbwClient.RecvWriteBlocksResponse();
+
+            fbwClient.SendZeroBlocksRequest(0);
+            auto zeroResponse = fbwClient.RecvZeroBlocksResponse();
+
+            const ui32 expectedStatus = blocksCount == 1 ? E_REJECTED : S_OK;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedStatus,
+                writeResponse->GetStatus(),
+                writeResponse->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedStatus,
+                zeroResponse->GetStatus(),
+                zeroResponse->GetErrorReason());
+        }
     }
 
     Y_UNIT_TEST(ShouldNotTrimInProgressWrites)
@@ -1684,8 +1745,8 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     {
         auto config = DefaultConfig();
         config.SetFreshBlocksWriterEnabled(true);
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitSSD(8_KB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);

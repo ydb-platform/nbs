@@ -113,6 +113,23 @@ void WriteBlocksWithBlockSize(
         response->GetErrorReason());
 }
 
+void AddFreshBlobToPartitionState(
+    TPartitionClient& partition,
+    ui64 commitId,
+    ui64 blobSize)
+{
+    partition.SendToPipe(
+        std::make_unique<
+            TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest>(
+            commitId,
+            blobSize,
+            TPartialBlobId{},
+            TVector<TBlockRange32>{},
+            TVector<IWriteBlocksHandlerPtr>{}));
+    partition.RecvResponse<
+        TEvPartitionCommonPrivate::TEvAddFreshBlocksResponse>();
+}
+
 void CheckRangesArePartition(
     TVector<TBlockRange32> ranges,
     const TBlockRange32& unionRange)
@@ -2147,12 +2164,237 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldUseSizeScaledSSDFreshFlushThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThresholdSSD(16_MB);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetBytesPerFreshCapacityUnitSSD(4_MB);
+        config.SetFlushThresholdSSD(8_MB);
+        config.SetFreshBlobCountFlushThresholdSSD(Max<ui32>());
+        config.SetFreshBlobByteCountFlushThresholdSSD(Max<ui32>());
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            2048,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512));
+        partition.WriteBlocks(TBlockRange32::WithLength(512, 512));
+
+        {
+            const auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
+        }
+
+        partition.WriteBlocks(TBlockRange32::WithLength(1024, 512));
+        partition.WriteBlocks(TBlockRange32::WithLength(1536, 512));
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            const auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2048, stats.GetMixedIndexBlocksCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseSizeScaledSSDFreshBlobCountFlushThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetBytesPerFreshCapacityUnitSSD(4_MB);
+        config.SetFlushThresholdSSD(Max<ui32>());
+        config.SetFreshBlobCountFlushThresholdSSD(3201);
+        config.SetFreshBlobByteCountFlushThresholdSSD(Max<ui32>());
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui32 flushRequestCount = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest)
+                {
+                    ++flushRequestCount;
+                    return true;
+                }
+                return false;
+            });
+
+        for (ui32 i = 0; i < 3199; ++i) {
+            AddFreshBlobToPartitionState(
+                partition,
+                MakeCommitId(1, i + 1),
+                1);
+        }
+
+        partition.WriteBlocks(0, 1);
+        runtime->DispatchEvents(
+            TDispatchOptions(),
+            TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(0, flushRequestCount);
+
+        AddFreshBlobToPartitionState(
+            partition,
+            MakeCommitId(1, 3200),
+            1);
+        partition.WriteBlocks(1, 1);
+        runtime->DispatchEvents(
+            TDispatchOptions(),
+            TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, flushRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldUseSizeScaledSSDFreshBlobByteFlushThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetBytesPerFreshCapacityUnitSSD(4_MB);
+        config.SetFlushThresholdSSD(Max<ui32>());
+        config.SetFreshBlobCountFlushThresholdSSD(Max<ui32>());
+        config.SetFreshBlobByteCountFlushThresholdSSD(16_MB + 1);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui32 flushRequestCount = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest)
+                {
+                    ++flushRequestCount;
+                    return true;
+                }
+                return false;
+            });
+
+        AddFreshBlobToPartitionState(
+            partition,
+            MakeCommitId(1, 1),
+            16_MB - 1);
+        partition.WriteBlocks(0, 1);
+        runtime->DispatchEvents(
+            TDispatchOptions(),
+            TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(0, flushRequestCount);
+
+        AddFreshBlobToPartitionState(
+            partition,
+            MakeCommitId(1, 2),
+            1);
+        partition.WriteBlocks(1, 1);
+        runtime->DispatchEvents(
+            TDispatchOptions(),
+            TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, flushRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldUseSizeScaledSSDFreshBackpressureThresholds)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThresholdSSD(8_MB);
+        config.SetBytesPerFreshCapacityUnitSSD(64_MB);
+        config.SetFreshByteCountThresholdForBackpressureSSD(80_MB);
+        config.SetFreshByteCountLimitForBackpressureSSD(256_MB);
+
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
+        partitionInfo.BlockSize = 32_KB;
+
+        constexpr ui32 BlocksPerWrite = 128;
+        constexpr ui32 WriteCount = 12;
+        constexpr ui32 BlockCount = BlocksPerWrite * WriteCount;
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            BlockCount,
+            {},
+            partitionInfo);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TBackpressureReport report;
+        bool reportUpdated = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest)
+                {
+                    return true;
+                }
+
+                if (event->GetTypeRewrite() ==
+                    TEvPartition::EvBackpressureReport)
+                {
+                    report = *event->Get<
+                        TEvPartition::TEvBackpressureReport>();
+                    reportUpdated = true;
+                }
+                return false;
+            });
+
+        for (ui32 i = 0; i < WriteCount; ++i) {
+            WriteBlocksWithBlockSize(
+                partition,
+                TBlockRange32::WithLength(
+                    i * BlocksPerWrite,
+                    BlocksPerWrite),
+                i,
+                partitionInfo.BlockSize);
+        }
+
+        reportUpdated = false;
+        partition.SendToPipe(
+            std::make_unique<
+                TEvPartitionPrivate::TEvSendBackpressureReport>());
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return reportUpdated;
+        };
+        runtime->DispatchEvents(options, TDuration::Seconds(5));
+
+        constexpr double expectedScore =
+            1.0 + 5.0 * (48.0 - 40.0) / (128.0 - 40.0);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            expectedScore,
+            report.FreshIndexScore,
+            1e-5);
+    }
+
     Y_UNIT_TEST(ShouldAutomaticallyFlushBlocksWhenFreshBlobCountThresholdIsReached)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(4_MB);
         config.SetFreshBlobCountFlushThreshold(4);
         config.SetFreshBlobByteCountFlushThreshold(999999999);
+        config.SetBytesPerFreshCapacityUnitHDD(0);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2202,6 +2444,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThreshold(4_MB);
         config.SetFreshBlobCountFlushThreshold(999999);
         config.SetFreshBlobByteCountFlushThreshold(15_MB);
+        config.SetBytesPerFreshCapacityUnitHDD(0);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -5109,6 +5352,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetCleanupThreshold(1);
         config.SetCollectGarbageThreshold(1);
         config.SetFlushThreshold(8_MB);
+        config.SetBytesPerFreshCapacityUnitHDD(0);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -5140,6 +5384,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetSSDMaxBlobsPerRange(4);
         config.SetHDDMaxBlobsPerRange(4);
         config.SetFlushThreshold(8_MB);
+        config.SetBytesPerFreshCapacityUnitHDD(0);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -5173,6 +5418,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetSSDMaxBlobsPerRange(4);
         config.SetHDDMaxBlobsPerRange(4);
         config.SetFlushThreshold(8_MB);
+        config.SetBytesPerFreshCapacityUnitHDD(0);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -5210,6 +5456,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetHDDMaxBlobsPerRange(2);
         config.SetCollectGarbageThreshold(1);
         config.SetFlushThreshold(8_MB);
+        config.SetBytesPerFreshCapacityUnitHDD(0);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -5264,6 +5511,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetSSDMaxBlobsPerRange(2);
         config.SetCollectGarbageThreshold(3);
         config.SetFlushThreshold(8_MB);
+        config.SetBytesPerFreshCapacityUnitHDD(0);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -10202,6 +10450,58 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             response->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldUseEffectiveSSDHardLimitForWritesAndZeros)
+    {
+        for (const ui32 blocksCount: {1, 2}) {
+            auto config = DefaultConfig();
+            config.SetFreshByteCountHardLimit(8_KB);
+            config.SetFreshByteCountHardLimitSSD(512_MB);
+            config.SetBytesPerFreshCapacityUnitSSD(DefaultBlockSize);
+            config.SetFreshChannelWriteRequestsEnabled(true);
+            config.SetFreshChannelZeroRequestsEnabled(true);
+
+            auto runtime = PrepareTestActorRuntime(
+                config,
+                blocksCount,
+                {},
+                {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
+
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            AddFreshBlobToPartitionState(
+                partition,
+                MakeCommitId(1, 1),
+                256_MB);
+
+            runtime->SetEventFilter(
+                [](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+                {
+                    return event->GetTypeRewrite() ==
+                           TEvPartitionPrivate::EvFlushRequest;
+                });
+
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::MakeOneBlock(0),
+                1);
+            auto writeResponse = partition.RecvWriteBlocksResponse();
+
+            partition.SendZeroBlocksRequest(0);
+            auto zeroResponse = partition.RecvZeroBlocksResponse();
+
+            const ui32 expectedStatus =
+                blocksCount == 1 ? E_REJECTED : S_OK;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedStatus,
+                writeResponse->GetStatus(),
+                writeResponse->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedStatus,
+                zeroResponse->GetStatus(),
+                zeroResponse->GetErrorReason());
+        }
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyScanDiskWithoutBrokenBlobs)
     {
         constexpr ui32 blockCount = 1024 * 1024;
@@ -12029,6 +12329,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetMaxBlobRangeSize(128_MB);
         // disabling flush
         config.SetFlushThreshold(1_GB);
+        config.SetBytesPerFreshCapacityUnitHDD(0);
         // enabling fresh channel writes to make stats check a bit more
         // convenient
         config.SetFreshChannelWriteRequestsEnabled(true);
@@ -16248,6 +16549,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetCleanupThreshold(1000);
         config.SetSSDMaxBlobsPerRange(1000);
         config.SetFlushThreshold(1000_MB);
+        config.SetFlushThresholdSSD(1000_MB);
+        config.SetBytesPerFreshCapacityUnitSSD(0);
         config.SetV1GarbageCompactionEnabled(true);
         config.SetIgnoringZeroedCompactionEnabled(ignoringZeroedCompactionEnabled);
         config.SetCompactionGarbageThreshold(999999);

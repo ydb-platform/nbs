@@ -1685,4 +1685,19 @@ message TStorageServiceConfig
     // by the data kind of the channel where a blob is stored. If false, both
     // the legacy and index counter families are classified by index kind.
     optional bool UseBlobChannelDataKindForCounters = 527;
+
+    // SSD-specific Fresh limits. The unsuffixed settings are used for HDD and
+    // other replicated media kinds.
+    optional uint32 FlushThresholdSSD = 528;
+    optional uint32 FreshByteCountLimitForBackpressureSSD = 529;
+    optional uint32 FreshByteCountThresholdForBackpressureSSD = 530;
+    optional uint32 FreshBlobCountFlushThresholdSSD = 531;
+    optional uint32 FreshBlobByteCountFlushThresholdSSD = 532;
+    optional uint32 FreshByteCountHardLimitSSD = 533;
+
+    // Partition bytes represented by one unit of Fresh capacity. Zero disables
+    // size scaling and makes the selected media-specific limits exact.
+    optional uint64 BytesPerFreshCapacityUnitHDD = 534;
+    optional uint64 BytesPerFreshCapacityUnitSSD = 535;
+
 }

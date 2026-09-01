@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_writefreshblocks.h>
 
@@ -40,8 +41,10 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    if (State->GetUnflushedFreshBlobByteCount()
-            >= Config->GetFreshByteCountHardLimit())
+    const auto freshCapacityLimits =
+        GetEffectiveFreshCapacityLimits(*Config, PartitionConfig);
+    if (State->GetUnflushedFreshBlobByteCount() >=
+        freshCapacityLimits.FreshByteCountHardLimit)
     {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
@@ -451,8 +454,10 @@ void TPartitionActor::ZeroFreshBlocks(
         TabletID(),
         "All small writes should be handled by TFreshBlockWriter");
 
+    const auto freshCapacityLimits =
+        GetEffectiveFreshCapacityLimits(*Config, PartitionConfig);
     if (State->GetUnflushedFreshBlobByteCount() >=
-        Config->GetFreshByteCountHardLimit())
+        freshCapacityLimits.FreshByteCountHardLimit)
     {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);
