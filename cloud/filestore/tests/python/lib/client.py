@@ -157,6 +157,20 @@ class FilestoreCliClient:
         logger.info("resizing filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def alter(self, fs, cloud, folder, config_version=None):
+        cmd = [
+            self.__binary_path, "alter",
+            "--filesystem", fs,
+            "--cloud", cloud,
+            "--folder", folder,
+        ] + self.__cmd_opts()
+
+        if config_version is not None:
+            cmd += ["--config-version", str(config_version)]
+
+        logger.info("altering filestore: " + " ".join(cmd))
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def list_filestores(self):
         cmd = [
             self.__binary_path, "listfilestores",
