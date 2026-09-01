@@ -1927,6 +1927,140 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldAllocateResumedLocalDiskAfterSecureErase)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {MakeLocalDevice("NVMELOCAL01", "uuid-1")});
+
+        auto runtime =
+            TTestRuntimeBuilder()
+                .With(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfig();
+                        config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
+                        config.SetNonReplicatedDontSuspendDevices(false);
+                        config.SetQueryAvailableStorageForResumingDevicesEnabled(
+                            true);
+
+                        return config;
+                    }())
+                .WithAgents({agent})
+                .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(
+            CreateRegistryConfig(0, {agent}) |
+            WithPoolConfig(
+                "local-ssd",
+                NProto::DEVICE_POOL_KIND_LOCAL,
+                LocalDeviceSize));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, GetSuspendedDeviceCount(diskRegistry));
+        UNIT_ASSERT_VALUES_EQUAL(1, GetDirtyDeviceCount(diskRegistry));
+
+        auto queryAvailableStorage = [&]
+        {
+            return diskRegistry.QueryAvailableStorage(
+                TVector<TString>{agent.GetAgentId()},
+                "local-ssd",
+                NProto::STORAGE_POOL_KIND_LOCAL);
+        };
+
+        {
+            auto response = queryAvailableStorage();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.AvailableStorageSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetAvailableStorage(0).GetChunkCount());
+        }
+
+        std::unique_ptr<IEventHandle> secureEraseRequest;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvSecureEraseDeviceRequest)
+                {
+                    event->DropRewrite();
+                    secureEraseRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        diskRegistry.ResumeDevice(
+            agent.GetAgentId(),
+            agent.GetDevices(0).GetDeviceName(),
+            false   // dryRun
+        );
+
+        runtime->DispatchEvents({
+            .CustomFinalCondition = [&]
+            {
+                return secureEraseRequest != nullptr;
+            }
+        });
+
+        {
+            auto response = queryAvailableStorage();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.AvailableStorageSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                LocalDeviceSize,
+                response->Record.GetAvailableStorage(0).GetChunkSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.GetAvailableStorage(0).GetChunkCount());
+        }
+
+        auto allocate = [&]
+        {
+            auto request = diskRegistry.CreateAllocateDiskRequest(
+                "local0",
+                LocalDeviceSize);
+            request->Record.SetStorageMediaKind(
+                NProto::STORAGE_MEDIA_SSD_LOCAL);
+            request->Record.AddAgentIds(agent.GetAgentId());
+
+            diskRegistry.SendRequest(std::move(request));
+            return diskRegistry.RecvAllocateDiskResponse();
+        };
+
+        {
+            auto response = allocate();
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
+        }
+
+        runtime->SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+        runtime->Send(secureEraseRequest.release());
+        WaitForSecureErase(*runtime, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, GetSuspendedDeviceCount(diskRegistry));
+        UNIT_ASSERT_VALUES_EQUAL(0, GetDirtyDeviceCount(diskRegistry));
+
+        {
+            auto response = allocate();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-1",
+                response->Record.GetDevices(0).GetDeviceUUID());
+        }
+    }
+
     Y_UNIT_TEST(ShouldRespondWithTryAgainWhenCanAllocateAfterSecureErase)
     {
         const TVector agents{
