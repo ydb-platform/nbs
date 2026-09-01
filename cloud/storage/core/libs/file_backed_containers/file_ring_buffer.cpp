@@ -678,25 +678,11 @@ public:
             crc32c = Crc32c(ptr, eh.DataSize);
         }
 
-        if (Capabilities().EntryHeaderIsProcessedAtomically) {
-            eh.DataChecksum = *crc32c;
-            eh.FreeFlag = false;
+        eh.DataChecksum = *crc32c;
+        eh.FreeFlag = false;
 
-            if (!WriteEntryHeader(pos, eh)) {
-                return MakeBufferIsCorruptError();
-            }
-        } else {
-            eh.DataChecksum = *crc32c;
-
-            if (!WriteEntryHeader(pos, eh)) {
-                return MakeBufferIsCorruptError();
-            }
-
-            eh.FreeFlag = false;
-
-            if (!WriteEntryHeader(pos, eh)) {
-                return MakeBufferIsCorruptError();
-            }
+        if (!WriteEntryHeader(pos, eh)) {
+            return MakeBufferIsCorruptError();
         }
 
         return {};
@@ -728,25 +714,11 @@ public:
             return MakeBufferIsCorruptError();
         }
 
-        if (Capabilities().EntryHeaderIsProcessedAtomically) {
-            eh.DataChecksum = 0;
-            eh.FreeFlag = true;
+        eh.DataChecksum = 0;
+        eh.FreeFlag = true;
 
-            if (!WriteEntryHeader(pos, eh)) {
-                return MakeBufferIsCorruptError();
-            }
-        } else {
-            eh.FreeFlag = true;
-
-            if (!WriteEntryHeader(pos, eh)) {
-                return MakeBufferIsCorruptError();
-            }
-
-            eh.DataChecksum = 0;
-
-            if (!WriteEntryHeader(pos, eh)) {
-                return MakeBufferIsCorruptError();
-            }
+        if (!WriteEntryHeader(pos, eh)) {
+            return MakeBufferIsCorruptError();
         }
 
         EntryMap.erase(it);

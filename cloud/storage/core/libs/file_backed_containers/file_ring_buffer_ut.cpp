@@ -1325,7 +1325,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(!HasError(alloc3.Error));
         UNIT_ASSERT(!HasError(rb.Commit(alloc3.AllocationPtr)));
 
-        // Already allocated
+        // Already committed
         UNIT_ASSERT(HasError(rb.Commit(alloc3.AllocationPtr)));
 
         rb.SetCorrupted();
