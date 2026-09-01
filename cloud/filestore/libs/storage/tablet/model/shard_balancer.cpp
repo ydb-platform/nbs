@@ -357,12 +357,12 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
 
 void TShardBalancerWeightedDeterministic::UpdateIterators()
 {
-    // With empty Metas, the balancer does not make any sense and 
+    // With empty Metas, the balancer does not make any sense and
     // SelectShard returns an error.
     if (Metas.empty()) {
         return;
     }
-    
+
     if (ShardsPerDirectoryCount && ShardsPerDirectoryCount < Metas.size()) {
         if (Iterators.size() == Metas.size()) {
             return;
