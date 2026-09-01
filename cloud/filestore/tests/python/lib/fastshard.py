@@ -55,5 +55,5 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
 
 
 def fetch_layout(tablet_id):
-    response = request_tablet(tablet_id, f"action=fastShardLayoutJson")
+    response = request_tablet(tablet_id, "action=fastShardLayoutJson")
     return response.json()
