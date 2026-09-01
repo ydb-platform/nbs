@@ -65,7 +65,7 @@
                 {
                     "host": "localhost",
                     "port": true,
-                    "deviceId": "3400a1bfdf724d36b3fd934cc8dcb020"
+                    "deviceId": true
                 }
             ]
         }

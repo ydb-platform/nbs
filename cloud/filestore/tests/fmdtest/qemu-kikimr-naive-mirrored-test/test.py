@@ -120,6 +120,7 @@ def do_test(test_name, aux_params):
         for sg in layout["storageGroups"]:
             for d in sg["devices"]:
                 d["port"] = d.get("port", 0) != 0
+                d["deviceId"] = len(d["deviceId"]) > 0
 
         result = json.dumps(layout, indent=4)
 
