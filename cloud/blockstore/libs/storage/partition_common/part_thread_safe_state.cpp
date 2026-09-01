@@ -84,6 +84,17 @@ ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
         TrimFreshLogBarriers.GetMinCommitId() - 1);
 }
 
+TTrimFreshLogBarrierState
+TPartitionThreadSafeState::GetTrimFreshLogBarrierState() const
+{
+    TGuard guard(StateLock);
+
+    const ui64 minBarrierCommitId = TrimFreshLogBarriers.GetMinCommitId();
+    return {
+        Min(GetLastCommitIdImpl(), minBarrierCommitId - 1),
+        minBarrierCommitId != Max<ui64>()};
+}
+
 void TPartitionThreadSafeState::WaitCommitForCompaction(
     const NActors::TActorContext& ctx,
     std::unique_ptr<ITransactionBase> tx,

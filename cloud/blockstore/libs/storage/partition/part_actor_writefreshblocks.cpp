@@ -242,7 +242,7 @@ void TPartitionActor::HandleAddFreshBlocks(
         }
     }
 
-    State->AddFreshBlob(msg->CommitId, msg->BlobSize);
+    State->AddFreshBlob(msg->CommitId, msg->BlobSize, ctx.Now());
 
     // TODO(NBS-1976): update used blocks map
 
@@ -258,7 +258,7 @@ void TPartitionActor::HandleAddFreshBlocks(
         // reach the hard limit on the unflushed blob byte count, and FBW will
         // start to reject all requests. Therefore, we should trigger Flush on
         // the AddFreshBlock request.
-        EnqueueFlushIfNeeded(ctx);
+        EnqueueFlushIfNeeded(ctx, false);
     }
 }
 
@@ -436,7 +436,7 @@ void TPartitionActor::CompleteWriteBlocks(
         SharedState->WriteAndZeroRequestsInProgress.load() >= args.Requests.size());
     SharedState->WriteAndZeroRequestsInProgress.fetch_sub(args.Requests.size());
 
-    EnqueueFlushIfNeeded(ctx);
+    EnqueueFlushIfNeeded(ctx, false);
     SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
 }

@@ -5,9 +5,10 @@
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 void TFreshBlocksCompanionClient::FreshBlobsLoaded(
-    const NActors::TActorContext& ctx)
+    const NActors::TActorContext& ctx,
+    ui64 maxFreshBlobCommitId)
 {
-    PartitionActor.FreshBlobsLoaded(ctx);
+    PartitionActor.FreshBlobsLoaded(ctx, maxFreshBlobCommitId);
 }
 
 void TFreshBlocksCompanionClient::Poison(const NActors::TActorContext& ctx)

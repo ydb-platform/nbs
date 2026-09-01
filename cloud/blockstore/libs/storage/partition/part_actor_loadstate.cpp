@@ -374,8 +374,11 @@ void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
         State->GetMeta().GetTrimFreshLogToCommitId());
 }
 
-void TPartitionActor::FreshBlobsLoaded(const TActorContext& ctx)
+void TPartitionActor::FreshBlobsLoaded(
+    const TActorContext& ctx,
+    ui64 maxFreshBlobCommitId)
 {
+    RecoveryFreshFlushCommitId = maxFreshBlobCommitId;
     ConfirmBlobs(ctx);
 }
 

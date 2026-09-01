@@ -17,6 +17,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTrimFreshLogBarrierState
+{
+    ui64 TrimFreshLogToCommitId = 0;
+    bool HasBarriers = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename T, typename TLock>
 struct TObjectGuard
 {
@@ -162,6 +170,7 @@ public:
     }
 
     ui64 GetTrimFreshLogToCommitId() const;
+    TTrimFreshLogBarrierState GetTrimFreshLogBarrierState() const;
 
     auto GetCommitQueue()
     {

@@ -131,14 +131,22 @@ public:
 class TPartitionFreshBlobState
 {
 private:
+    struct TFreshBlobInfo
+    {
+        ui64 BlobSize = 0;
+        TInstant AddedAt;
+    };
+
     ui64 TabletID = 0;
 
     ui64 UntrimmedFreshBlobByteCount = 0;
-    TMap<ui64, ui64> UntrimmedFreshBlobByteCountByCommitId;
+    TMap<ui64, TFreshBlobInfo> UntrimmedFreshBlobsByCommitId;
+    TMultiSet<TInstant> UntrimmedFreshBlobTimestamps;
 
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
-    TMap<ui64, ui64> UnflushedFreshBlobByteCountByCommitId;
+    TMap<ui64, TFreshBlobInfo> UnflushedFreshBlobsByCommitId;
+    TMultiSet<TInstant> UnflushedFreshBlobTimestamps;
 
 public:
     explicit TPartitionFreshBlobState(ui64 tabletID)
@@ -160,10 +168,24 @@ public:
         return UnflushedFreshBlobByteCount;
     }
 
+    [[nodiscard]] TInstant GetOldestUnflushedFreshBlobTimestamp() const
+    {
+        return UnflushedFreshBlobTimestamps.empty()
+                   ? TInstant::Zero()
+                   : *UnflushedFreshBlobTimestamps.begin();
+    }
+
+    [[nodiscard]] TInstant GetOldestUntrimmedFreshBlobTimestamp() const
+    {
+        return UntrimmedFreshBlobTimestamps.empty()
+                   ? TInstant::Zero()
+                   : *UntrimmedFreshBlobTimestamps.begin();
+    }
+
     [[nodiscard]] TVector<ui64> GetUnflushedFreshBlobCommitIds(
         ui64 commitId) const;
 
-    void AddFreshBlob(ui64 commitId, ui64 blobSize);
+    void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant addedAt);
     void TrimFreshBlobs(ui64 commitId);
     ui64 FlushFreshBlob(ui64 commitId);
 };

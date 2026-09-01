@@ -446,6 +446,16 @@ TFreshCapacityLimits GetEffectiveFreshCapacityLimits(
     return limits;
 }
 
+TDuration GetMaxUnflushedFreshBlobAge(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind mediaKind)
+{
+    if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD) {
+        return config.GetMaxUnflushedFreshBlobAgeSSD();
+    }
+
+    return config.GetMaxUnflushedFreshBlobAgeHDD();
+}
 
 bool IsFreshRequest(
     const TStorageConfig& config,

@@ -62,6 +62,7 @@ private:
 
     const TActorId Tablet;
     const ui64 CommitId;
+    const bool UseFlushCommitIdAsTrimFreshLogToCommitId;
     TFlushedCommitIds FlushedCommitIdsFromChannel;
     TVector<ui64> FlushedFreshBlobCommitIds;
     const TDuration BlobStorageAsyncRequestTimeout;
@@ -83,6 +84,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         const TActorId& tablet,
         ui64 commitId,
+        bool useFlushCommitIdAsTrimFreshLogToCommitId,
         TFlushedCommitIds flushedCommitIdsFromChannel,
         TVector<ui64> flushedFreshBlobCommitIds,
         TDuration blobStorageAsyncRequestTimeout,
@@ -125,6 +127,7 @@ TFlushActor::TFlushActor(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     const TActorId& tablet,
     ui64 commitId,
+    bool useFlushCommitIdAsTrimFreshLogToCommitId,
     TFlushedCommitIds flushedCommitIdsFromChannel,
     TVector<ui64> flushedFreshBlobCommitIds,
     TDuration blobStorageAsyncRequestTimeout,
@@ -134,6 +137,8 @@ TFlushActor::TFlushActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , Tablet(tablet)
     , CommitId(commitId)
+    , UseFlushCommitIdAsTrimFreshLogToCommitId(
+          useFlushCommitIdAsTrimFreshLogToCommitId)
     , FlushedCommitIdsFromChannel(std::move(flushedCommitIdsFromChannel))
     , FlushedFreshBlobCommitIds(std::move(flushedFreshBlobCommitIds))
     , BlobStorageAsyncRequestTimeout(blobStorageAsyncRequestTimeout)
@@ -247,6 +252,8 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
         freshBlobs,
         ADD_FLUSH_RESULT
     );
+    request->UseFlushCommitIdAsTrimFreshLogToCommitId =
+        UseFlushCommitIdAsTrimFreshLogToCommitId;
 
     NCloud::Send(
         ctx,
@@ -438,7 +445,9 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
+void TPartitionActor::EnqueueFlushIfNeeded(
+    const TActorContext& ctx,
+    bool checkAge)
 {
     if (State->GetFlushState().GetOperationState().Status != EOperationStatus::Idle) {
         // already enqueued
@@ -453,16 +462,59 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
     const auto freshBlobCount = State->GetUnflushedFreshBlobCount();
     const auto freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
-    const bool shouldFlush =
-        !State->IsLoadStateFinished() ||
-        freshBlockByteCount >= freshCapacityLimits.FlushThreshold ||
-        freshBlobCount >=
-            freshCapacityLimits.FreshBlobCountFlushThreshold ||
-        freshBlobByteCount >=
-            freshCapacityLimits.FreshBlobByteCountFlushThreshold;
+    const auto maxAge = GetMaxUnflushedFreshBlobAge(
+        *Config,
+        PartitionConfig.GetStorageMediaKind());
+    const auto oldestUnflushed = State->GetOldestUnflushedFreshBlobTimestamp();
+    const auto oldestAge = oldestUnflushed && oldestUnflushed <= ctx.Now()
+                               ? ctx.Now() - oldestUnflushed
+                               : TDuration::Zero();
 
-    if (!shouldFlush) {
+    const bool startupFlush = !State->IsLoadStateFinished() ||
+                              (checkAge && RecoveryFreshFlushCommitId);
+    const bool logicalBytesFlush =
+        freshBlockByteCount >= freshCapacityLimits.FlushThreshold;
+    const bool blobCountFlush =
+        freshBlobCount >= freshCapacityLimits.FreshBlobCountFlushThreshold;
+    const bool blobBytesFlush =
+        freshBlobByteCount >=
+        freshCapacityLimits.FreshBlobByteCountFlushThreshold;
+    const bool ageFlush =
+        checkAge && maxAge && oldestUnflushed && oldestAge >= maxAge;
+
+    const char* reason = nullptr;
+    if (startupFlush) {
+        reason = "manual/startup";
+    } else if (logicalBytesFlush) {
+        reason = "logical bytes";
+    } else if (blobCountFlush) {
+        reason = "physical blob count";
+    } else if (blobBytesFlush) {
+        reason = "physical blob bytes";
+    } else if (ageFlush) {
+        reason = "age";
+    }
+
+    if (!reason) {
         return;
+    }
+
+    if (TStringBuf(reason) == "age") {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Enqueue flush: reason=%s, oldestAgeMs=%lu, maxAgeMs=%lu",
+            LogTitle.GetWithTime().c_str(),
+            reason,
+            oldestAge.MilliSeconds(),
+            maxAge.MilliSeconds());
+    } else {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Enqueue flush: reason=%s",
+            LogTitle.GetWithTime().c_str(),
+            reason);
     }
 
     bool stateTransitionOk = State->AccessFlushState().SetEnqueued(ctx.Now());
@@ -569,7 +621,9 @@ void TPartitionActor::HandleFlush(
         State->GetGarbageQueue().AcquireBarrier(commitId);
     }
 
-    if (Config->GetWaitForFreshWritesBeforeFlushEnabled()) {
+    const bool waitForFreshWrites =
+        Config->GetWaitForFreshWritesBeforeFlushEnabled();
+    if (waitForFreshWrites) {
         SharedState->WaitFreshWritesToComplete(
             [partActorId = ctx.SelfID](const NActors::TActorSystem* actorSystem)
             {
@@ -579,7 +633,7 @@ void TPartitionActor::HandleFlush(
             },
             commitId);
     } else {
-        StartFlush(ctx);
+        StartFlush(ctx, false);
     }
 }
 
@@ -592,10 +646,12 @@ void TPartitionActor::HandleResumeFlush(
     auto requestInfo = State->AccessFlushState().GetRequestInfo();
     TRequestScope timer(*requestInfo);
 
-    StartFlush(ctx);
+    StartFlush(ctx, true);
 }
 
-void TPartitionActor::StartFlush(const TActorContext& ctx)
+void TPartitionActor::StartFlush(
+    const TActorContext& ctx,
+    bool useFlushCommitIdAsTrimFreshLogToCommitId)
 {
     auto commitId = State->AccessFlushState().GetFlushCommitId();
     auto requestInfo = State->AccessFlushState().GetRequestInfo();
@@ -703,7 +759,13 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
 
         ExecuteTx(
             ctx,
-            CreateTx<TFlushToDevNull>(requestInfo, std::move(freshBlocks)));
+            CreateTx<TFlushToDevNull>(
+                requestInfo,
+                commitId,
+                useFlushCommitIdAsTrimFreshLogToCommitId,
+                std::move(freshBlocks),
+                std::move(flushedCommitIdsFromChannel),
+                std::move(unflushedFreshBlobCommitIds)));
     } else {
         auto actor = NCloud::Register<TFlushActor>(
             ctx,
@@ -712,6 +774,7 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
             BlockDigestGenerator,
             SelfId(),
             commitId,
+            useFlushCommitIdAsTrimFreshLogToCommitId,
             std::move(flushedCommitIdsFromChannel),
             std::move(unflushedFreshBlobCommitIds),
             GetBlobStorageAsyncRequestTimeout(),
@@ -750,6 +813,13 @@ void TPartitionActor::ExecuteFlushToDevNull(
         }
     }
 
+    if (args.UseFlushCommitIdAsTrimFreshLogToCommitId) {
+        State->AccessMeta().SetTrimFreshLogToCommitId(
+            Max(State->GetTrimFreshLogToCommitId(), args.CommitId));
+    } else {
+        State->UpdateTrimFreshLogToCommitIdInMeta();
+    }
+
     db.WriteMeta(State->GetMeta());
 }
 
@@ -757,9 +827,33 @@ void TPartitionActor::CompleteFlushToDevNull(
     const TActorContext& ctx,
     TTxPartition::TFlushToDevNull& args)
 {
-    Y_UNUSED(args);
+    for (const auto& i: args.FlushedCommitIdsFromChannel) {
+        State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
+            i.CommitId,
+            i.BlockCount);
+    }
 
+    ui64 flushedFreshBlobByteCount = 0;
+    for (const ui64 commitId: args.FlushedFreshBlobCommitIds) {
+        flushedFreshBlobByteCount += State->FlushFreshBlob(commitId);
+
+        if (commitId == RecoveryFreshFlushCommitId) {
+            RecoveryFreshFlushCommitId = 0;
+        }
+    }
+
+    TrimFreshLogMaintenanceNeeded = true;
+
+    if (FreshBlocksWriter) {
+        SharedState->UnflushedFreshBlobByteCount.fetch_sub(
+            flushedFreshBlobByteCount);
+    }
+
+    State->AccessFlushedCommitIdsInProgress().clear();
     State->AccessFlushState().SetIdle(ctx.Now());
+
+    EnqueueTrimFreshLogIfNeeded(ctx);
+    EnqueueFlushIfNeeded(ctx, false);
 }
 
 void TPartitionActor::HandleFlushCompleted(
@@ -795,7 +889,13 @@ void TPartitionActor::HandleFlushCompleted(
         for (const auto& freshBlobCommitId: msg->FlushedFreshBlobCommitIds) {
             flushedFreshBlobByteCount +=
                 State->FlushFreshBlob(freshBlobCommitId);
+
+            if (freshBlobCommitId == RecoveryFreshFlushCommitId) {
+                RecoveryFreshFlushCommitId = 0;
+            }
         }
+
+        TrimFreshLogMaintenanceNeeded = true;
 
         if (FreshBlocksWriter) {
             SharedState->UnflushedFreshBlobByteCount.fetch_sub(
@@ -847,7 +947,7 @@ void TPartitionActor::HandleFlushCompleted(
     }
 
     EnqueueTrimFreshLogIfNeeded(ctx);
-    EnqueueFlushIfNeeded(ctx);
+    EnqueueFlushIfNeeded(ctx, false);
     EnqueueCleanupIfNeeded(ctx);
     ProcessCommitQueue(ctx);
 }

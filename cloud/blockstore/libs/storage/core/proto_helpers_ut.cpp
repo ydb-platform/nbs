@@ -588,6 +588,33 @@ Y_UNIT_TEST_SUITE(TProtoHelpersTest)
             3);
     }
 
+    Y_UNIT_TEST(ShouldSelectMaximumUnflushedFreshBlobAgeByMediaKind)
+    {
+        NProto::TStorageServiceConfig proto;
+        proto.SetMaxUnflushedFreshBlobAgeHDD(123);
+        proto.SetMaxUnflushedFreshBlobAgeSSD(456);
+        TStorageConfig config(
+            proto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(456),
+            GetMaxUnflushedFreshBlobAge(
+                config,
+                NCloud::NProto::STORAGE_MEDIA_SSD));
+
+        const NCloud::NProto::EStorageMediaKind hddKinds[] = {
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+            NCloud::NProto::STORAGE_MEDIA_HDD,
+            NCloud::NProto::STORAGE_MEDIA_HYBRID,
+            static_cast<NCloud::NProto::EStorageMediaKind>(999),
+        };
+        for (const auto mediaKind: hddKinds) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDuration::MilliSeconds(123),
+                GetMaxUnflushedFreshBlobAge(config, mediaKind));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

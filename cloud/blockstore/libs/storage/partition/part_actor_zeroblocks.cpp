@@ -503,7 +503,7 @@ void TPartitionActor::CompleteZeroBlocks(
     Y_DEBUG_ABORT_UNLESS(SharedState->WriteAndZeroRequestsInProgress.load() > 0);
     SharedState->WriteAndZeroRequestsInProgress.fetch_sub(1);
 
-    EnqueueFlushIfNeeded(ctx);
+    EnqueueFlushIfNeeded(ctx, false);
     SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
 }

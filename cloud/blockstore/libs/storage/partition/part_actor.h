@@ -168,6 +168,10 @@ private:
     bool FirstGarbageCollectionCompleted = false;
     bool IsGarbageCompactionThrottlingMisconfigured = false;
 
+    ui64 RecoveryFreshFlushCommitId = 0;
+    ui64 TrimFreshLogReplayCommitId = 0;
+    bool TrimFreshLogMaintenanceNeeded = false;
+
     TTransactionTimeTracker TransactionTimeTracker;
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
     ui64 BSGroupOperationId = 0;
@@ -238,13 +242,17 @@ private:
     void SendGetUsedBlocksFromBaseDisk(const NActors::TActorContext& ctx);
     void FinalizeLoadState(const NActors::TActorContext& ctx);
 
-    void FreshBlobsLoaded(const NActors::TActorContext& ctx);
+    void FreshBlobsLoaded(
+        const NActors::TActorContext& ctx,
+        ui64 maxFreshBlobCommitId);
 
     void ConfirmBlobs(const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
-    void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
-    void StartFlush(const NActors::TActorContext& ctx);
+    void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx, bool checkAge);
+    void StartFlush(
+        const NActors::TActorContext& ctx,
+        bool useFlushCommitIdAsTrimFreshLogToCommitId);
     void EnqueueCompactionIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueCleanupIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);

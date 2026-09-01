@@ -57,6 +57,8 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
 
     Actors.Erase(ev->Sender);
 
+    const auto addedAt = ctx.Now();
+    ui64 maxFreshBlobCommitId = 0;
     TVector<NPartition::TOwningFreshBlock> blocks;
     for (const auto& blob: msg->Blobs) {
         auto error = ParseFreshBlobContent(
@@ -78,7 +80,10 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
             return;
         }
 
-        FreshBlobState.AddFreshBlob(blob.CommitId, blob.Data.size());
+        FreshBlobState.AddFreshBlob(blob.CommitId, blob.Data.size(), addedAt);
+        if (blob.CommitId > maxFreshBlobCommitId) {
+            maxFreshBlobCommitId = blob.CommitId;
+        }
     }
 
     for (const auto& block: blocks) {
@@ -92,7 +97,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
 
     // TODO(NBS-1976): update used blocks map
 
-    Client.FreshBlobsLoaded(ctx);
+    Client.FreshBlobsLoaded(ctx, maxFreshBlobCommitId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -509,10 +509,13 @@ BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
 #undef BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER
 
-void TPartitionState::AddFreshBlob(ui64 commitId, ui64 blobSize)
+void TPartitionState::AddFreshBlob(
+    ui64 commitId,
+    ui64 blobSize,
+    TInstant addedAt)
 {
     Y_ABORT_UNLESS(commitId > GetLastTrimFreshLogToCommitId());
-    TPartitionFreshBlobState::AddFreshBlob(commitId, blobSize);
+    TPartitionFreshBlobState::AddFreshBlob(commitId, blobSize, addedAt);
 }
 
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)

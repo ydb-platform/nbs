@@ -23,10 +23,28 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
+    const ui64 lastTrimFreshLogToCommitId =
+        State->GetLastTrimFreshLogToCommitId();
+    if (TrimFreshLogReplayCommitId &&
+        TrimFreshLogReplayCommitId <= lastTrimFreshLogToCommitId)
+    {
+        TrimFreshLogReplayCommitId = 0;
+    }
 
-    if (trimFreshLogToCommitId == State->GetLastTrimFreshLogToCommitId()) {
-        // not ready
+    if (!TrimFreshLogReplayCommitId && !TrimFreshLogMaintenanceNeeded) {
+        return;
+    }
+
+    const auto barrierState = State->GetTrimFreshLogBarrierState();
+    const ui64 trimFreshLogToCommitId =
+        TrimFreshLogReplayCommitId
+            ? TrimFreshLogReplayCommitId
+            : barrierState.TrimFreshLogToCommitId;
+
+    if (trimFreshLogToCommitId <= lastTrimFreshLogToCommitId) {
+        if (!TrimFreshLogReplayCommitId && !barrierState.HasBarriers) {
+            TrimFreshLogMaintenanceNeeded = false;
+        }
         return;
     }
 
@@ -111,7 +129,13 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
+    if (!TrimFreshLogReplayCommitId) {
+        TrimFreshLogMaintenanceNeeded = true;
+    }
+
+    const ui64 trimFreshLogToCommitId =
+        TrimFreshLogReplayCommitId ? TrimFreshLogReplayCommitId
+                                   : State->GetTrimFreshLogToCommitId();
 
     auto nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
@@ -174,8 +198,15 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             LogTitle.GetWithTime().c_str());
 
         State->RegisterTrimFreshLogSuccess();
-        State->SetLastTrimFreshLogToCommitId(msg->CommitId);
+        State->SetLastTrimFreshLogToCommitId(
+            Max(State->GetLastTrimFreshLogToCommitId(), msg->CommitId));
         State->TrimFreshBlobs(msg->CommitId);
+
+        if (TrimFreshLogReplayCommitId &&
+            msg->CommitId >= TrimFreshLogReplayCommitId)
+        {
+            TrimFreshLogReplayCommitId = 0;
+        }
     }
 
     State->AccessTrimFreshLogState().SetStatus(

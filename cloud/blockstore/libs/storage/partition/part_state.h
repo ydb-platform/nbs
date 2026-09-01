@@ -452,7 +452,7 @@ public:
     //
 
 public:
-    void AddFreshBlob(ui64 commitId, ui64 blobSize);
+    void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant addedAt);
 
     //
     // Fresh Blocks
@@ -578,6 +578,11 @@ public:
     ui64 GetTrimFreshLogToCommitId() const
     {
         return ThreadSafeState->GetTrimFreshLogToCommitId();
+    }
+
+    TTrimFreshLogBarrierState GetTrimFreshLogBarrierState() const
+    {
+        return ThreadSafeState->GetTrimFreshLogBarrierState();
     }
 
     //

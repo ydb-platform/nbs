@@ -11,6 +11,7 @@
 
 #include <cloud/storage/core/protos/media.pb.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/generic/typetraits.h>
 
@@ -179,6 +180,9 @@ struct TFreshCapacityLimits
     const TStorageConfig& config,
     const NProto::TPartitionConfig& partitionConfig);
 
+[[nodiscard]] TDuration GetMaxUnflushedFreshBlobAge(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind mediaKind);
 
 bool IsFreshRequest(
     const TStorageConfig& config,

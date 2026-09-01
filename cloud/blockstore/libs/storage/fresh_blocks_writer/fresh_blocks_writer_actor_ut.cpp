@@ -645,6 +645,99 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         fbwClient.WriteBlocks(0, '0');
     }
 
+    Y_UNIT_TEST(ShouldFlushSuccessfulFreshWriteAtConfiguredAge)
+    {
+        auto config = DefaultConfig();
+        config.SetFlushThresholdSSD(1_MB);
+        config.SetFreshBlobCountFlushThresholdSSD(100);
+        config.SetFreshBlobByteCountFlushThresholdSSD(1_MB);
+        config.SetMaxUnflushedFreshBlobAgeSSD(
+            TDuration::Seconds(1).MilliSeconds());
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        bool addFreshBlocksResponseObserved = false;
+        ui32 flushRequestCount = 0;
+        bool flushCompleted = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                addFreshBlocksResponseObserved |=
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksResponse;
+                flushRequestCount +=
+                    event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest;
+                flushCompleted |= event->GetTypeRewrite() ==
+                                  TEvPartitionPrivate::EvFlushCompleted;
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        flushRequestCount = 0;
+        flushCompleted = false;
+        fbwClient.WriteBlocks(0, 'A');
+
+        if (!addFreshBlocksResponseObserved) {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return addFreshBlocksResponseObserved;
+            };
+            runtime.DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        UNIT_ASSERT(addFreshBlocksResponseObserved);
+        UNIT_ASSERT_VALUES_EQUAL(0, flushRequestCount);
+        {
+            const auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
+        }
+
+        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(999));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents(
+            TDispatchOptions(),
+            TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, flushRequestCount);
+
+        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(1));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return flushCompleted;
+            };
+            runtime.DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, flushRequestCount);
+        UNIT_ASSERT(flushCompleted);
+        {
+            const auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlocksCount());
+        }
+    }
 
     Y_UNIT_TEST(ShouldWriteFreshBlocks)
     {
@@ -1224,6 +1317,156 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         runtime.SendAsync(addFreshBlocksRequest.release());
         partition.RecvFlushResponse();
         UNIT_ASSERT(flushCompleted);
+    }
+
+    Y_UNIT_TEST(ShouldWaitForInFlightFreshWriteBeforeAgeFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFlushThresholdSSD(1_MB);
+        config.SetFreshBlobCountFlushThresholdSSD(100);
+        config.SetFreshBlobByteCountFlushThresholdSSD(1_MB);
+        config.SetMaxUnflushedFreshBlobAgeSSD(
+            TDuration::Seconds(1).MilliSeconds());
+        config.SetWaitForFreshWritesBeforeFlushEnabled(true);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        std::unique_ptr<IEventHandle> heldAddFreshBlocksRequest;
+        bool holdAddFreshBlocksRequest = false;
+        bool addFreshBlocksResponseObserved = false;
+        ui64 heldCommitId = 0;
+        ui32 flushRequestCount = 0;
+        bool flushAddBlobsObserved = false;
+        bool flushContainsHeldWrite = false;
+        bool flushCompleted = false;
+        bool trimObservedWhileWriteWasHeld = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvAddFreshBlocksRequest &&
+                    holdAddFreshBlocksRequest)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest>();
+                    heldCommitId = msg->CommitId;
+                    heldAddFreshBlocksRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                addFreshBlocksResponseObserved |=
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksResponse;
+                flushRequestCount +=
+                    event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest;
+                flushCompleted |= event->GetTypeRewrite() ==
+                                  TEvPartitionPrivate::EvFlushCompleted;
+
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvAddBlobsRequest)
+                {
+                    const auto* msg =
+                        event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                    if (msg->Mode == ADD_FLUSH_RESULT) {
+                        flushAddBlobsObserved = true;
+                        UNIT_ASSERT(
+                            msg->UseFlushCommitIdAsTrimFreshLogToCommitId);
+                        for (const auto& blob: msg->FreshBlobs) {
+                            for (const auto& block: blob.Blocks) {
+                                flushContainsHeldWrite |=
+                                    block.BlockIndex == 1 &&
+                                    block.CommitId == heldCommitId;
+                            }
+                        }
+                    }
+                }
+
+                if (heldAddFreshBlocksRequest &&
+                    (event->GetTypeRewrite() ==
+                         TEvPartitionCommonPrivate::EvTrimFreshLogRequest ||
+                     event->GetTypeRewrite() ==
+                         TEvBlobStorage::EvCollectGarbage))
+                {
+                    trimObservedWhileWriteWasHeld = true;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        flushRequestCount = 0;
+        flushCompleted = false;
+        fbwClient.WriteBlocks(0, '0');
+
+        if (!addFreshBlocksResponseObserved) {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return addFreshBlocksResponseObserved;
+            };
+            runtime.DispatchEvents(options, TDuration::Seconds(1));
+        }
+        UNIT_ASSERT(addFreshBlocksResponseObserved);
+
+        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(999));
+        holdAddFreshBlocksRequest = true;
+        fbwClient.WriteBlocks(1, '1');
+        holdAddFreshBlocksRequest = false;
+
+        UNIT_ASSERT(heldAddFreshBlocksRequest);
+        UNIT_ASSERT(heldCommitId);
+
+        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(1));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return flushRequestCount == 1;
+            };
+            runtime.DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, flushRequestCount);
+        UNIT_ASSERT(!flushAddBlobsObserved);
+        UNIT_ASSERT(!flushCompleted);
+        UNIT_ASSERT(!trimObservedWhileWriteWasHeld);
+        {
+            const auto response = partition.StatPartition();
+            UNIT_ASSERT(
+                response->Record.GetStats().GetTrimFreshLogToCommitId() <
+                heldCommitId);
+        }
+
+        runtime.SendAsync(heldAddFreshBlocksRequest.release());
+
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return flushCompleted;
+            };
+            runtime.DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        UNIT_ASSERT(flushAddBlobsObserved);
+        UNIT_ASSERT(flushContainsHeldWrite);
+        UNIT_ASSERT(flushCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuilder() << GetBlockContent('0') << GetBlockContent('1'),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 2))));
     }
 
     Y_UNIT_TEST(ShouldNotLoseInFlightWritesOnReboot)

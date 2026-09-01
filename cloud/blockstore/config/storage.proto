@@ -1700,4 +1700,8 @@ message TStorageServiceConfig
     optional uint64 BytesPerFreshCapacityUnitHDD = 534;
     optional uint64 BytesPerFreshCapacityUnitSSD = 535;
 
+    // Maximum lifetime of an unflushed physical Fresh blob (in milliseconds).
+    // Zero disables age-based flushing for the selected media kind.
+    optional uint32 MaxUnflushedFreshBlobAgeHDD = 536;
+    optional uint32 MaxUnflushedFreshBlobAgeSSD = 537;
 }

@@ -91,6 +91,8 @@ public:
     ui32 GetFreshBlobByteCountFlushThresholdSSD() const;
     ui64 GetBytesPerFreshCapacityUnitHDD() const;
     ui64 GetBytesPerFreshCapacityUnitSSD() const;
+    [[nodiscard]] TDuration GetMaxUnflushedFreshBlobAgeHDD() const;
+    [[nodiscard]] TDuration GetMaxUnflushedFreshBlobAgeSSD() const;
     ui32 GetFlushBlobSizeThreshold() const;
     bool GetFlushToDevNull() const;
 

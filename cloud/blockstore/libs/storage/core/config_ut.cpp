@@ -662,6 +662,12 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(
             config.GetAllocationUnitSSD() * 1_GB,
             config.GetBytesPerFreshCapacityUnitSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            config.GetMaxUnflushedFreshBlobAgeHDD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            config.GetMaxUnflushedFreshBlobAgeSSD());
     }
 
     Y_UNIT_TEST(ShouldKeepFreshCapacityUnitsIndependentFromAllocationUnits)
@@ -716,6 +722,8 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         setValue("BlockStore_FreshByteCountHardLimitSSD", 6);
         setValue("BlockStore_BytesPerFreshCapacityUnitHDD", 7);
         setValue("BlockStore_BytesPerFreshCapacityUnitSSD", 8);
+        setValue("BlockStore_MaxUnflushedFreshBlobAgeHDD", 9);
+        setValue("BlockStore_MaxUnflushedFreshBlobAgeSSD", 10);
 
         UNIT_ASSERT_VALUES_EQUAL(1, config->GetFlushThresholdSSD());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -733,10 +741,17 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(6, config->GetFreshByteCountHardLimitSSD());
         UNIT_ASSERT_VALUES_EQUAL(7, config->GetBytesPerFreshCapacityUnitHDD());
         UNIT_ASSERT_VALUES_EQUAL(8, config->GetBytesPerFreshCapacityUnitSSD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(9),
+            config->GetMaxUnflushedFreshBlobAgeHDD());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(10),
+            config->GetMaxUnflushedFreshBlobAgeSSD());
 
         const auto proto = config->GetStorageConfigProto();
         UNIT_ASSERT_VALUES_EQUAL(1, proto.GetFlushThresholdSSD());
         UNIT_ASSERT_VALUES_EQUAL(8, proto.GetBytesPerFreshCapacityUnitSSD());
+        UNIT_ASSERT_VALUES_EQUAL(10, proto.GetMaxUnflushedFreshBlobAgeSSD());
 
         TStringStream out;
         config->Dump(out);
@@ -747,6 +762,9 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_UNEQUAL(
             TString::npos,
             dump.find("BytesPerFreshCapacityUnitHDD: 7"));
+        UNIT_ASSERT_UNEQUAL(
+            TString::npos,
+            dump.find("MaxUnflushedFreshBlobAgeSSD:"));
     }
 
     Y_UNIT_TEST(ShouldKeepFreshCapacityConfigTagsStable)
@@ -767,6 +785,8 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         assertTag("FreshByteCountHardLimitSSD", 533);
         assertTag("BytesPerFreshCapacityUnitHDD", 534);
         assertTag("BytesPerFreshCapacityUnitSSD", 535);
+        assertTag("MaxUnflushedFreshBlobAgeHDD", 536);
+        assertTag("MaxUnflushedFreshBlobAgeSSD", 537);
     }
 }
 
