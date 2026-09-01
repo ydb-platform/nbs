@@ -84,8 +84,20 @@ TPartitionState MakeState(size_t blockCount = 2048)
         std::move(threadSafeState),
         TTestExecutor::TabletId,
         std::nullopt,  // mixedBlocksFilterConfig
-        false          // checkpointAwareCleanupEnabled
+        false,         // checkpointAwareCleanupEnabled
+        true           // useBlobChannelDataKindForCounters
     );
+}
+
+TPartialBlobId MoveToDataChannel(TPartialBlobId blobId)
+{
+    return TPartialBlobId(
+        blobId.Generation(),
+        blobId.Step(),
+        3,
+        blobId.BlobSize(),
+        blobId.Cookie(),
+        blobId.PartId());
 }
 
 NProto::TBlobMeta MakeMixedBlobMeta(
@@ -135,12 +147,12 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
     executor.WriteTx(
         [&](TPartitionDatabase db)
         {
-            setup.MixedBlobId = executor.MakeBlobId(3);
+            setup.MixedBlobId = MoveToDataChannel(executor.MakeBlobId(3));
             state.WriteMixedBlocks(db, setup.MixedBlobId, {0, 1, 2}, 1);
             db.WriteBlobMeta(setup.MixedBlobId, setup.MixedBlobMeta);
             db.WriteCleanupQueue(setup.MixedBlobId, deletionCommitId);
 
-            setup.MergedBlobId = executor.MakeBlobId(4);
+            setup.MergedBlobId = MoveToDataChannel(executor.MakeBlobId(4));
             db.WriteMergedBlocks(
                 setup.MergedBlobId,
                 TBlockRange32::MakeClosedInterval(10, 13),
@@ -152,10 +164,12 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
     state.GetCleanupQueue().Add({setup.MixedBlobId, deletionCommitId, {}});
     state.GetCleanupQueue().Add({setup.MergedBlobId, deletionCommitId, {}});
 
-    state.IncrementMixedBlocksCount(3);
-    state.IncrementMixedBlobsCount(1);
-    state.IncrementMergedBlocksCount(4);
-    state.IncrementMergedBlobsCount(1);
+    state.IncrementMergedBlocksCount(7);
+    state.IncrementMergedBlobsCount(2);
+    state.IncrementMixedIndexBlocksCount(3);
+    state.IncrementMixedIndexBlobsCount(1);
+    state.IncrementMergedIndexBlocksCount(4);
+    state.IncrementMergedIndexBlobsCount(1);
 
     return setup;
 }
@@ -403,7 +417,7 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                blobId = executor.MakeBlobId(3);
+                blobId = MoveToDataChannel(executor.MakeBlobId(3));
                 db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
             });
 
@@ -434,7 +448,7 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                blobId = executor.MakeBlobId(2);
+                blobId = MoveToDataChannel(executor.MakeBlobId(2));
                 db.WriteMixedBlocks(blobId, {5, 7}, 1);
             });
 
@@ -464,7 +478,7 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                blobId = executor.MakeBlobId(3);
+                blobId = MoveToDataChannel(executor.MakeBlobId(3));
                 db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
                 db.DeleteMixedBlock(1, blobId.CommitId());
             });
@@ -495,7 +509,7 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                blobId = executor.MakeBlobId(3);
+                blobId = MoveToDataChannel(executor.MakeBlobId(3));
                 db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
             });
 
@@ -531,9 +545,9 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                blobId = executor.MakeBlobId(1);
+                blobId = MoveToDataChannel(executor.MakeBlobId(1));
 
-                auto anotherBlobId = executor.MakeBlobId(1);
+                auto anotherBlobId = MoveToDataChannel(executor.MakeBlobId(1));
                 db.WriteMixedBlock({anotherBlobId, 1, 0, 0, 0});
             });
 
@@ -563,7 +577,7 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                blobId = executor.MakeBlobId(3);
+                blobId = MoveToDataChannel(executor.MakeBlobId(3));
                 db.WriteMixedBlocks(blobId, {0, 1, 2}, 1);
             });
 
@@ -934,14 +948,14 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         TVector<TPartialBlobId> mixedBlobIds;
 
         for (const auto& tc: mergedTestCases) {
-            mergedBlobIds.push_back(executor.MakeBlobIdWithCommitId(
-                tc.BlobCommitId,
-                tc.EndIndex - tc.StartIndex + 1));
+            mergedBlobIds.push_back(
+                MoveToDataChannel(executor.MakeBlobIdWithCommitId(
+                    tc.BlobCommitId, tc.EndIndex - tc.StartIndex + 1)));
         }
         for (const auto& tc: mixedTestCases) {
-            mixedBlobIds.push_back(executor.MakeBlobIdWithCommitId(
-                tc.BlobCommitId,
-                tc.BlockIndices.size()));
+            mixedBlobIds.push_back(
+                MoveToDataChannel(executor.MakeBlobIdWithCommitId(
+                    tc.BlobCommitId, tc.BlockIndices.size())));
         }
 
         executor.WriteTx(
@@ -1015,10 +1029,13 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             }
         }
 
-        state.IncrementMergedBlocksCount(mergedBlocksCount);
-        state.IncrementMergedBlobsCount(mergedTestCases.size());
-        state.IncrementMixedBlocksCount(mixedBlocksCount);
-        state.IncrementMixedBlobsCount(mixedTestCases.size());
+        state.IncrementMergedBlocksCount(mergedBlocksCount + mixedBlocksCount);
+        state.IncrementMergedBlobsCount(
+            mergedTestCases.size() + mixedTestCases.size());
+        state.IncrementMergedIndexBlocksCount(mergedBlocksCount);
+        state.IncrementMergedIndexBlobsCount(mergedTestCases.size());
+        state.IncrementMixedIndexBlocksCount(mixedBlocksCount);
+        state.IncrementMixedIndexBlobsCount(mixedTestCases.size());
 
         auto args = MakeCleanupArgs(
             state.GetCleanupQueue().GetItems(cleanupCommitId),
@@ -1038,12 +1055,12 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             remainingCount,
             state.GetCleanupQueue().GetCount());
+        UNIT_ASSERT_VALUES_EQUAL(remainingCount, state.GetMergedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlobsCount());
         UNIT_ASSERT_VALUES_EQUAL(
-            remainingMergedBlobs,
-            state.GetMergedBlobsCount());
+            remainingMergedBlobs, state.GetMergedIndexBlobsCount());
         UNIT_ASSERT_VALUES_EQUAL(
-            remainingMixedBlobs,
-            state.GetMixedBlobsCount());
+            remainingMixedBlobs, state.GetMixedIndexBlobsCount());
 
         executor.ReadTx(
             [&](TPartitionDatabase db)

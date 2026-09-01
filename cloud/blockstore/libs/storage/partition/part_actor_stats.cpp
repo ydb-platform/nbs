@@ -67,6 +67,12 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.MergedBytesCount.Set(
         State->GetMergedBlocksCount() * State->GetBlockSize());
 
+    PartCounters->Simple.MixedIndexBytesCount.Set(
+        State->GetMixedIndexBlocksCount() * State->GetBlockSize());
+
+    PartCounters->Simple.MergedIndexBytesCount.Set(
+        State->GetMergedIndexBlocksCount() * State->GetBlockSize());
+
     PartCounters->Simple.FreshBytesCount.Set(
         State->GetUnflushedFreshBlocksCount() * State->GetBlockSize());
 

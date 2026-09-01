@@ -241,11 +241,15 @@ using TReadBlocksRequests = TVector<TReadBlocksRequest>;
 
 struct TBlockCountRebuildState
 {
-    ui64 MixedBlocks = 0;
-    ui64 MergedBlocks = 0;
+    ui64 MixedIndexBlocks = 0;
+    ui64 MergedIndexBlocks = 0;
+    ui64 MixedChannelBlocks = 0;
+    ui64 MergedChannelBlocks = 0;
 
-    ui64 InitialMixedBlocks = 0;
-    ui64 InitialMergedBlocks = 0;
+    ui64 InitialMixedIndexBlocks = 0;
+    ui64 InitialMergedIndexBlocks = 0;
+    ui64 InitialMixedChannelBlocks = 0;
+    ui64 InitialMergedChannelBlocks = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

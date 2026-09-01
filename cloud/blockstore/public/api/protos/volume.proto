@@ -348,11 +348,11 @@ message TVolumeStats
     TIOCounters SysReadCounters = 3;
     TIOCounters SysWriteCounters = 4;
 
-    // Numbers of stored blobs.
+    // Numbers of stored blobs (classified by channel).
     uint64 MixedBlobsCount = 5;
     uint64 MergedBlobsCount = 6;
 
-    // Numbers of stored blocks.
+    // Numbers of stored blocks (classified by channel).
     uint64 FreshBlocksCount = 7;
     uint64 MixedBlocksCount = 8;
     uint64 MergedBlocksCount = 9;
@@ -422,6 +422,14 @@ message TVolumeStats
 
     // Number of garbage blocks in the most dirty range ignoring zeroed blocks.
     uint32 CompactionIgnoringZeroedScore = 32;
+
+    // Numbers of blobs classified by the index they are stored in.
+    uint64 MixedIndexBlobsCount = 33;
+    uint64 MergedIndexBlobsCount = 34;
+
+    // Numbers of blocks classified by the index they are stored in.
+    uint64 MixedIndexBlocksCount = 35;
+    uint64 MergedIndexBlocksCount = 36;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

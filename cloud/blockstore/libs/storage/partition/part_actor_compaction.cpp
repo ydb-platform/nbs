@@ -1384,7 +1384,7 @@ private:
     TriggerRangeCompactionIfNeeded() const
     {
         const auto blobCount =
-            State.GetMixedBlobsCount() + State.GetMergedBlobsCount();
+            State.GetMixedIndexBlobsCount() + State.GetMergedIndexBlobsCount();
         const bool diskBlobCountOverThreshold =
             State.GetMaxBlobsPerDisk() &&
             blobCount >

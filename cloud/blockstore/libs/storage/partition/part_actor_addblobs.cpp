@@ -188,6 +188,59 @@ public:
     }
 
 private:
+    void IncrementBlobCounters(
+        const TPartialBlobId& blobId,
+        EChannelDataKind indexKind,
+        ui64 blocksCount)
+    {
+        // Deletion markers contribute to blob totals, but not block totals.
+        if (IsDeletionMarker(blobId)) {
+            blocksCount = 0;
+        }
+
+        switch (indexKind) {
+            case EChannelDataKind::Mixed:
+                State.IncrementMixedIndexBlobsCount(1);
+                State.IncrementMixedIndexBlocksCount(blocksCount);
+                break;
+            case EChannelDataKind::Merged:
+                State.IncrementMergedIndexBlobsCount(1);
+                State.IncrementMergedIndexBlocksCount(blocksCount);
+                break;
+            default:
+                Y_ABORT(
+                    "Unexpected index kind: %u", static_cast<ui32>(indexKind));
+        }
+
+        // Deletion markers do not have a data channel.
+        if (IsDeletionMarker(blobId) &&
+            State.ShouldUseBlobChannelDataKindForCounters())
+        {
+            return;
+        }
+
+        // If channel-based counters are enabled, use the channel data kind
+        // otherwise use the index kind
+        const auto countersKind =
+            State.ShouldUseBlobChannelDataKindForCounters()
+                ? State.GetChannelDataKind(blobId.Channel())
+                : indexKind;
+        switch (countersKind) {
+            case EChannelDataKind::Mixed:
+                State.IncrementMixedBlobsCount(1);
+                State.IncrementMixedBlocksCount(blocksCount);
+                break;
+            case EChannelDataKind::Merged:
+                State.IncrementMergedBlobsCount(1);
+                State.IncrementMergedBlocksCount(blocksCount);
+                break;
+            default:
+                Y_ABORT(
+                    "Unexpected blob channel data kind: %u",
+                    static_cast<ui32>(countersKind));
+        }
+    }
+
     void ProcessNewBlob(
         const TActorContext& ctx,
         TPartitionDatabase& db,
@@ -249,10 +302,10 @@ private:
             blob.CompactionRangeCount);
 
         // update counters
-        State.IncrementMixedBlobsCount(1);
-        if (!IsDeletionMarker(blob.BlobId)) {
-            State.IncrementMixedBlocksCount(blob.Blocks.size());
-        }
+        IncrementBlobCounters(
+            blob.BlobId,
+            EChannelDataKind::Mixed,
+            blob.Blocks.size());
     }
 
     void ProcessNewBlob(
@@ -312,10 +365,10 @@ private:
         db.WriteMergedBlocks(blob.BlobId, blob.BlockRange, blob.SkipMask);
 
         // update counters
-        State.IncrementMergedBlobsCount(1);
-        if (!IsDeletionMarker(blob.BlobId)) {
-            State.IncrementMergedBlocksCount(blob.BlockRange.Size() - skipped);
-        }
+        IncrementBlobCounters(
+            blob.BlobId,
+            EChannelDataKind::Merged,
+            blob.BlockRange.Size() - skipped);
 
         State.ConfirmedBlobsAdded(db, Args.CommitId);
     }
@@ -416,10 +469,10 @@ private:
         }
 
         // update counters
-        State.IncrementMixedBlobsCount(1);
-        if (!IsDeletionMarker(blob.BlobId)) {
-            State.IncrementMixedBlocksCount(blob.Blocks.size());
-        }
+        IncrementBlobCounters(
+            blob.BlobId,
+            EChannelDataKind::Mixed,
+            blob.Blocks.size());
     }
 
     void ProcessOverwrittenBlocks(const TAddFreshBlob& blob)
