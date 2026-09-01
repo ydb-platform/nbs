@@ -58,7 +58,7 @@ NProto::TUnconfirmedData BuildUnconfirmedData(
     data.SetOffset(offset);
     data.SetLength(end - offset);
     for (const auto& blob: generateResponse.GetBlobs()) {
-        *data.AddBlobIds() = blob.GetBlobId();
+        Convert(blob.GetBlobId(), *data.AddBlobIds());
     }
     return data;
 }

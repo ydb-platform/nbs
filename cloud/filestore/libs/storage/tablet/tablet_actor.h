@@ -12,6 +12,7 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/core/blob_id.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
@@ -278,7 +279,7 @@ private:
         const auto count = Min<int>(blobIds.size(), flags.size());
         for (int i = 0; i < count; ++i) {
             const auto blobId =
-                NKikimr::LogoBlobIDFromLogoBlobID(blobIds.Get(i));
+                LogoBlobIDFromLogoBlobID(blobIds.Get(i));
             const double share = i < shares.size() ? shares.Get(i) : 0;
             RegisterEvPutResult(
                 ctx,
