@@ -1,17 +1,39 @@
 --- a/include/silk/util/platform.h
 +++ b/include/silk/util/platform.h
-@@ -28,6 +28,10 @@
- extern "C" ptrdiff_t __rseq_offset;
+@@ -13,8 +13,7 @@
+ 
+ /**
+  * On sysroots without sys/rseq.h we fall back to a minimal in-tree struct rseq
+- * matching the kernel UAPI layout (cpu_id_start at offset 0, cpu_id at offset 4)
+- * and declare the standard libc ABI symbol ourselves.
++ * matching the kernel UAPI layout (cpu_id_start at offset 0, cpu_id at offset 4).
+  */
+ #if __has_include(<sys/rseq.h>)
+ #    include <sys/rseq.h>
+@@ -25,9 +24,21 @@
+     uint32_t cpu_id_start;
+     uint32_t cpu_id;
+ };
+-extern "C" ptrdiff_t __rseq_offset;
  #endif
  
-+// librseq's public register API. Declared here (not via <rseq/rseq.h>) so
-+// this header stays self-contained; the definition lives in librseq.
++// librseq's public API. Declared here (not via <rseq/rseq.h>) so this header
++// stays self-contained; the definitions live in librseq.
++//
++// rseq_offset is the offset of the registered rseq area from the thread
++// pointer. librseq fills it in during initialization for both ownership
++// modes: when libc registers the areas itself librseq copies libc's
++// __rseq_offset, otherwise librseq points the offset at its own per-thread
++// area. Reading libc's __rseq_offset directly would return garbage on libc
++// versions which do not register rseq - the symbol never gets a meaningful
++// value there while the actual areas live at librseq's offset.
 +extern "C" int rseq_register_current_thread(void);
++extern "C" ptrdiff_t rseq_offset;
 +
  /** Suppress unused-variable warnings. */
  #define SILK_UNUSED(x) (void)(x)
  
-@@ -126,9 +130,36 @@
+@@ -126,9 +137,36 @@
      return static_cast<uint16_t>(CPU_COUNT(&cpuSet));
  }
  
@@ -22,7 +44,7 @@
 +// rseq for us, so we do it here on first use. rseq_register_current_thread
 +// is a no-op on glibc-owned rseq installs.
 +//
-+// The function is `inline` (not `static inline`) so its function-local
++// The function is inline (not static inline) so its function-local
 +// thread_local guard has vague linkage and is shared across every TU that
 +// touches it. Otherwise each TU carries its own guard, hits registration
 +// once, and later librseq's second sys_rseq for the same thread aborts
@@ -41,13 +63,26 @@
  static inline uint16_t getCurrentProcessor() noexcept
  {
 +    // Ensure the calling thread's rseq is registered before we read from
-+    // its TLS area; without this, __rseq_offset stays zero and the read
-+    // below returns garbage from some unrelated TLS slot.
++    // its TLS area; registration also initializes rseq_offset, without which
++    // the read below returns garbage from some unrelated TLS slot.
 +    ensureRseqRegistered();
 +
      // The thread pointer is read through volatile asm rather than __builtin_thread_pointer(). A fiber
      // may suspend on one OS thread and resume on another (work-stealing, or the SQ-ring-overflow yield
      // in enqueueIo), which changes the thread pointer mid-function. The C++ abstract machine assumes the
+@@ -148,9 +186,9 @@
+ 
+     // glibc's sched_getcpu fast path is THREAD_GETMEM_VOLATILE(THREAD_SELF, rseq_area.cpu_id),
+     // which is the same rseq read we do here. We skip the function call and the cpu_id >= 0
+-    // fallback to vDSO/syscall - safe on any libc implementing the glibc 2.35 rseq ABI, which
+-    // registers the area for every thread before it runs; initialize asserts this at startup.
+-    struct rseq * rseq = reinterpret_cast<struct rseq *>(threadPointer + __rseq_offset);
++    // fallback to vDSO/syscall - safe because ensureRseqRegistered above guarantees the area
++    // is registered and rseq_offset locates it regardless of who owns the registration.
++    struct rseq * rseq = reinterpret_cast<struct rseq *>(threadPointer + rseq_offset);
+     return static_cast<uint16_t>(rseq->cpu_id);
+ }
+ 
 --- a/src/util/init.cpp
 +++ b/src/util/init.cpp
 @@ -5,21 +5,19 @@
@@ -79,3 +114,39 @@
  
      Tsc::initialize();
      Perf::initialize();
+--- a/src/util/sharded-stack.cpp
++++ b/src/util/sharded-stack.cpp
+@@ -1,6 +1,7 @@
+ #include <silk/util/sharded-stack.h>
+ 
+ #include <silk/util/assert.h>
++#include <silk/util/platform.h>
+ #include <silk/util/sanitizers.h>
+ 
+ #include <new>
+@@ -44,6 +45,12 @@
+ 
+ void ShardedStackBase::push(StackEntry * entry) noexcept
+ {
++    // On libc versions which do not register rseq for new threads the calling
++    // thread may reach this point unregistered - rseq_cpu_start would then
++    // return 0 regardless of the actual CPU and the critical section below
++    // would run without kernel restart protection.
++    ensureRseqRegistered();
++
+     for (;;)
+     {
+         uint32_t cpu = rseq_cpu_start();
+@@ -117,6 +124,12 @@
+ 
+ StackEntry * ShardedStackBase::pop() noexcept
+ {
++    // On libc versions which do not register rseq for new threads the calling
++    // thread may reach this point unregistered - rseq_cpu_start would then
++    // return 0 regardless of the actual CPU and the critical section below
++    // would run without kernel restart protection.
++    ensureRseqRegistered();
++
+     for (;;)
+     {
+         uint32_t cpu = rseq_cpu_start();
