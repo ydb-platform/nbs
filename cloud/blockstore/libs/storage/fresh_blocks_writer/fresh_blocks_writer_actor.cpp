@@ -79,6 +79,8 @@ TFreshBlocksWriterActor::TFreshBlocksWriterActor(
         IProfileLogPtr profileLog)
     : Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
+    , FreshCapacityLimits(
+          GetEffectiveFreshCapacityLimits(*Config, PartitionConfig))
     , VolumeLabels(MakeVolumeLabels(
           PartitionConfig.GetDiskId(),
           PartitionConfig.GetCloudId(),
