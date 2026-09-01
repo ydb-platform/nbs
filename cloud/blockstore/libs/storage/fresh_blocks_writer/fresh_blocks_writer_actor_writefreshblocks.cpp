@@ -1,5 +1,6 @@
 #include "fresh_blocks_writer_actor.h"
 
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_writefreshblocks.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
@@ -31,8 +32,10 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
+    const auto freshCapacityLimits =
+        GetEffectiveFreshCapacityLimits(*Config, PartitionConfig);
     if (SharedState->UnflushedFreshBlobByteCount.load() >=
-        Config->GetFreshByteCountHardLimit())
+        freshCapacityLimits.FreshByteCountHardLimit)
     {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
@@ -144,8 +147,10 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
     TRequestInfoPtr requestInfo,
     TBlockRange32 writeRange)
 {
+    const auto freshCapacityLimits =
+        GetEffectiveFreshCapacityLimits(*Config, PartitionConfig);
     if (SharedState->UnflushedFreshBlobByteCount.load() >=
-        Config->GetFreshByteCountHardLimit())
+        freshCapacityLimits.FreshByteCountHardLimit)
     {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);

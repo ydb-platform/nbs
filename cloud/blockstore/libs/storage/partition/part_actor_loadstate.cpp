@@ -162,6 +162,8 @@ void TPartitionActor::CompleteLoadState(
     TTxPartition::TLoadState& args)
 {
     const auto& partitionConfig = args.Meta->GetConfig();
+    const auto freshCapacityLimits =
+        GetEffectiveFreshCapacityLimits(*Config, partitionConfig);
 
     // initialize state
     TBackpressureFeaturesConfig bpConfig {
@@ -171,8 +173,8 @@ void TPartitionActor::CompleteLoadState(
             static_cast<double>(Config->GetCompactionScoreFeatureMaxValue()),
         },
         {
-            Config->GetFreshByteCountLimitForBackpressure(),
-            Config->GetFreshByteCountThresholdForBackpressure(),
+            freshCapacityLimits.FreshByteCountLimitForBackpressure,
+            freshCapacityLimits.FreshByteCountThresholdForBackpressure,
             static_cast<double>(Config->GetFreshByteCountFeatureMaxValue()),
         },
         {
@@ -372,8 +374,11 @@ void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
         State->GetMeta().GetTrimFreshLogToCommitId());
 }
 
-void TPartitionActor::FreshBlobsLoaded(const TActorContext& ctx)
+void TPartitionActor::FreshBlobsLoaded(
+    const TActorContext& ctx,
+    ui64 maxFreshBlobCommitId)
 {
+    RecoveryFreshFlushCommitId = maxFreshBlobCommitId;
     ConfirmBlobs(ctx);
 }
 

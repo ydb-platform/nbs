@@ -18,7 +18,9 @@ namespace NCloud::NBlockStore::NStorage {
 class IFreshBlocksCompanionClient: public IMortalActor
 {
 public:
-    virtual void FreshBlobsLoaded(const NActors::TActorContext& ctx) = 0;
+    virtual void FreshBlobsLoaded(
+        const NActors::TActorContext& ctx,
+        ui64 maxFreshBlobCommitId) = 0;
 
     ~IFreshBlocksCompanionClient() override = default;
 };

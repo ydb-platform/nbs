@@ -9,9 +9,43 @@
 
 #include <cloud/storage/core/libs/common/media.h>
 
+#include <util/generic/size_literals.h>
+
+#include <limits>
+
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui64 LegacyFlushThreshold = 4_MB;
+constexpr ui64 LegacyFreshByteCountLimitForBackpressure = 128_MB;
+constexpr ui64 LegacyFreshByteCountThresholdForBackpressure = 40_MB;
+constexpr ui64 LegacyFreshBlobCountFlushThreshold = 3200;
+constexpr ui64 LegacyFreshBlobByteCountFlushThreshold = 16_MB;
+constexpr ui64 LegacyFreshByteCountHardLimit = 256_MB;
+
+ui64 SaturatingMultiply(ui64 lhs, ui64 rhs)
+{
+    constexpr ui64 MaxValue = std::numeric_limits<ui64>::max();
+
+    if (rhs && lhs > MaxValue / rhs) {
+        return MaxValue;
+    }
+
+    return lhs * rhs;
+}
+
+ui32 ScaleFreshCapacityLimit(ui32 cap, ui64 base, ui64 units)
+{
+    const ui64 unitsToCap = cap / base + (cap % base != 0);
+    if (units >= unitsToCap) {
+        return cap;
+    }
+
+    return static_cast<ui32>(base * units);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -331,6 +365,96 @@ ui32 GetWriteMixedBlobThreshold(
     }
 
     return config.GetWriteMixedBlobThresholdHDD();
+}
+
+TFreshCapacityLimits GetEffectiveFreshCapacityLimits(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig)
+{
+    TFreshCapacityLimits limits;
+
+    const bool isSSD =
+        partitionConfig.GetStorageMediaKind() ==
+        NCloud::NProto::STORAGE_MEDIA_SSD;
+
+    if (isSSD) {
+        limits.FlushThreshold = config.GetFlushThresholdSSD();
+        limits.FreshByteCountLimitForBackpressure =
+            config.GetFreshByteCountLimitForBackpressureSSD();
+        limits.FreshByteCountThresholdForBackpressure =
+            config.GetFreshByteCountThresholdForBackpressureSSD();
+        limits.FreshBlobCountFlushThreshold =
+            config.GetFreshBlobCountFlushThresholdSSD();
+        limits.FreshBlobByteCountFlushThreshold =
+            config.GetFreshBlobByteCountFlushThresholdSSD();
+        limits.FreshByteCountHardLimit =
+            config.GetFreshByteCountHardLimitSSD();
+        limits.BytesPerFreshCapacityUnit =
+            config.GetBytesPerFreshCapacityUnitSSD();
+    } else {
+        limits.FlushThreshold = config.GetFlushThreshold();
+        limits.FreshByteCountLimitForBackpressure =
+            config.GetFreshByteCountLimitForBackpressure();
+        limits.FreshByteCountThresholdForBackpressure =
+            config.GetFreshByteCountThresholdForBackpressure();
+        limits.FreshBlobCountFlushThreshold =
+            config.GetFreshBlobCountFlushThreshold();
+        limits.FreshBlobByteCountFlushThreshold =
+            config.GetFreshBlobByteCountFlushThreshold();
+        limits.FreshByteCountHardLimit = config.GetFreshByteCountHardLimit();
+        limits.BytesPerFreshCapacityUnit =
+            config.GetBytesPerFreshCapacityUnitHDD();
+    }
+
+    if (!limits.BytesPerFreshCapacityUnit) {
+        return limits;
+    }
+
+    const ui64 partitionBytes = SaturatingMultiply(
+        partitionConfig.GetBlocksCount(),
+        partitionConfig.GetBlockSize());
+    limits.Units =
+        partitionBytes / limits.BytesPerFreshCapacityUnit +
+        (partitionBytes % limits.BytesPerFreshCapacityUnit != 0);
+    limits.Units = Max<ui64>(1, limits.Units);
+
+    limits.FlushThreshold = ScaleFreshCapacityLimit(
+        limits.FlushThreshold,
+        LegacyFlushThreshold,
+        limits.Units);
+    limits.FreshByteCountLimitForBackpressure = ScaleFreshCapacityLimit(
+        limits.FreshByteCountLimitForBackpressure,
+        LegacyFreshByteCountLimitForBackpressure,
+        limits.Units);
+    limits.FreshByteCountThresholdForBackpressure = ScaleFreshCapacityLimit(
+        limits.FreshByteCountThresholdForBackpressure,
+        LegacyFreshByteCountThresholdForBackpressure,
+        limits.Units);
+    limits.FreshBlobCountFlushThreshold = ScaleFreshCapacityLimit(
+        limits.FreshBlobCountFlushThreshold,
+        LegacyFreshBlobCountFlushThreshold,
+        limits.Units);
+    limits.FreshBlobByteCountFlushThreshold = ScaleFreshCapacityLimit(
+        limits.FreshBlobByteCountFlushThreshold,
+        LegacyFreshBlobByteCountFlushThreshold,
+        limits.Units);
+    limits.FreshByteCountHardLimit = ScaleFreshCapacityLimit(
+        limits.FreshByteCountHardLimit,
+        LegacyFreshByteCountHardLimit,
+        limits.Units);
+
+    return limits;
+}
+
+TDuration GetMaxUnflushedFreshBlobAge(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind mediaKind)
+{
+    if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD) {
+        return config.GetMaxUnflushedFreshBlobAgeSSD();
+    }
+
+    return config.GetMaxUnflushedFreshBlobAgeHDD();
 }
 
 bool IsFreshRequest(

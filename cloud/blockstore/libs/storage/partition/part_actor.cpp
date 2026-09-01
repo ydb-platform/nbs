@@ -139,12 +139,15 @@ void TPartitionActor::Activate(const TActorContext& ctx)
     //State->CollectGarbageHardRequested = true;
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    EnqueueFlushIfNeeded(ctx);
+    EnqueueFlushIfNeeded(ctx, false);
     EnqueueCompactionIfNeeded(ctx);
     EnqueueCleanupIfNeeded(ctx);
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
 
     State->FinishLoadState();
+
+    TrimFreshLogReplayCommitId = State->GetMeta().GetTrimFreshLogToCommitId();
+    EnqueueTrimFreshLogIfNeeded(ctx);
 
     ctx.Schedule(
         Config->GetResourceMetricsUpdateInterval(),
@@ -711,6 +714,12 @@ void TPartitionActor::HandleUpdateCounters(
     UpdateCountersScheduled = false;
 
     UpdateCounters(ctx);
+
+    if (State && State->IsLoadStateFinished()) {
+        EnqueueFlushIfNeeded(ctx, true);
+        EnqueueTrimFreshLogIfNeeded(ctx);
+    }
+
     ScheduleCountersUpdate(ctx);
 }
 

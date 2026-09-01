@@ -97,6 +97,11 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
             ++RequestsInFlight;
         }
     }
+
+    if (!RequestsInFlight) {
+        NotifyCompleted(ctx);
+        ReplyAndDie(ctx);
+    }
 }
 
 void TTrimFreshLogActor::NotifyCompleted(const TActorContext& ctx)

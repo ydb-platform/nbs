@@ -116,6 +116,38 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, step);
     }
 
+    Y_UNIT_TEST(ShouldSnapshotTrimFreshLogFrontierAndBarriersAtomically)
+    {
+        TPartitionThreadSafeState state;
+        state.Init({}, 1, 0);
+
+        {
+            const auto snapshot = state.GetTrimFreshLogBarrierState();
+            UNIT_ASSERT_VALUES_EQUAL(
+                MakeCommitId(1, 0),
+                snapshot.TrimFreshLogToCommitId);
+            UNIT_ASSERT(!snapshot.HasBarriers);
+        }
+
+        const ui64 commitId = state.StartFreshWrite(2);
+        {
+            const auto snapshot = state.GetTrimFreshLogBarrierState();
+            UNIT_ASSERT_VALUES_EQUAL(
+                commitId - 1,
+                snapshot.TrimFreshLogToCommitId);
+            UNIT_ASSERT(snapshot.HasBarriers);
+        }
+
+        state.AccessTrimFreshLogBarriers()->ReleaseBarrierN(commitId, 2);
+        {
+            const auto snapshot = state.GetTrimFreshLogBarrierState();
+            UNIT_ASSERT_VALUES_EQUAL(
+                commitId,
+                snapshot.TrimFreshLogToCommitId);
+            UNIT_ASSERT(!snapshot.HasBarriers);
+        }
+    }
+
     Y_UNIT_TEST(ShouldBeThreadSafe)
     {
         TPartitionThreadSafeState generator;

@@ -325,6 +325,7 @@ struct TTxPartition
         const TVector<TAddMergedBlob> MergedBlobs;
         const TVector<TAddFreshBlob> FreshBlobs;
         const EAddBlobMode Mode;
+        const bool UseFlushCommitIdAsTrimFreshLogToCommitId;
 
         // compaction
         const TAffectedBlobs AffectedBlobs;
@@ -344,13 +345,16 @@ struct TTxPartition
                 TAffectedBlobs affectedBlobs,
                 TAffectedBlocks affectedBlocks,
                 TVector<TBlobCompactionInfo> mixedBlobCompactionInfos,
-                TVector<TBlobCompactionInfo> mergedBlobCompactionInfos)
+                TVector<TBlobCompactionInfo> mergedBlobCompactionInfos,
+                bool useFlushCommitIdAsTrimFreshLogToCommitId)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , MixedBlobs(std::move(mixedBlobs))
             , MergedBlobs(std::move(mergedBlobs))
             , FreshBlobs(std::move(freshBlobs))
             , Mode(mode)
+            , UseFlushCommitIdAsTrimFreshLogToCommitId(
+                  useFlushCommitIdAsTrimFreshLogToCommitId)
             , AffectedBlobs(std::move(affectedBlobs))
             , AffectedBlocks(std::move(affectedBlocks))
             , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))
@@ -1188,13 +1192,28 @@ struct TTxPartition
     struct TFlushToDevNull
     {
         const TRequestInfoPtr RequestInfo;
+        const ui64 CommitId;
+        const bool UseFlushCommitIdAsTrimFreshLogToCommitId;
         TVector<TBlock> FreshBlocks;
+        TFlushedCommitIds FlushedCommitIdsFromChannel;
+        TVector<ui64> FlushedFreshBlobCommitIds;
 
         TFlushToDevNull(
                 TRequestInfoPtr requestInfo,
-                TVector<TBlock> freshBlocks)
+                ui64 commitId,
+                bool useFlushCommitIdAsTrimFreshLogToCommitId,
+                TVector<TBlock> freshBlocks,
+                TFlushedCommitIds flushedCommitIdsFromChannel,
+                TVector<ui64> flushedFreshBlobCommitIds)
             : RequestInfo(std::move(requestInfo))
+            , CommitId(commitId)
+            , UseFlushCommitIdAsTrimFreshLogToCommitId(
+                  useFlushCommitIdAsTrimFreshLogToCommitId)
             , FreshBlocks(std::move(freshBlocks))
+            , FlushedCommitIdsFromChannel(
+                  std::move(flushedCommitIdsFromChannel))
+            , FlushedFreshBlobCommitIds(
+                  std::move(flushedFreshBlobCommitIds))
         {
         }
 

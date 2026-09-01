@@ -14,7 +14,9 @@ struct TFreshBlocksCompanionClient: public IFreshBlocksCompanionClient
         : PartitionActor(partitionActor)
     {}
 
-    void FreshBlobsLoaded(const NActors::TActorContext& ctx) override;
+    void FreshBlobsLoaded(
+        const NActors::TActorContext& ctx,
+        ui64 maxFreshBlobCommitId) override;
 
     void Poison(const NActors::TActorContext& ctx) override;
 };

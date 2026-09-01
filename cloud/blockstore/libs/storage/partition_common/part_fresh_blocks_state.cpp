@@ -45,9 +45,10 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     ui64 commitId) const
 {
     TVector<ui64> commitIds;
-    for (const auto& [blobCommitId, blobSize]:
-         UnflushedFreshBlobByteCountByCommitId)
+    for (const auto& [blobCommitId, blobInfo]:
+         UnflushedFreshBlobsByCommitId)
     {
+        Y_UNUSED(blobInfo);
         if (blobCommitId > commitId) {
             break;
         }
@@ -56,11 +57,15 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     return commitIds;
 }
 
-void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
+void TPartitionFreshBlobState::AddFreshBlob(
+    ui64 commitId,
+    ui64 blobSize,
+    TInstant addedAt)
 {
     {
         const bool inserted =
-            UntrimmedFreshBlobByteCountByCommitId.insert({commitId, blobSize})
+            UntrimmedFreshBlobsByCommitId
+                .insert({commitId, {blobSize, addedAt}})
                 .second;
         STORAGE_VERIFY_C(
             inserted,
@@ -68,11 +73,13 @@ void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
             TabletID,
             "Commit id: " << commitId);
         UntrimmedFreshBlobByteCount += blobSize;
+        UntrimmedFreshBlobTimestamps.insert(addedAt);
     }
 
     {
         const bool inserted =
-            UnflushedFreshBlobByteCountByCommitId.insert({commitId, blobSize})
+            UnflushedFreshBlobsByCommitId
+                .insert({commitId, {blobSize, addedAt}})
                 .second;
         STORAGE_VERIFY_C(
             inserted,
@@ -82,29 +89,40 @@ void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
         UnflushedFreshBlobCount = SafeIncrement(UnflushedFreshBlobCount, 1);
         UnflushedFreshBlobByteCount =
             SafeIncrement(UnflushedFreshBlobByteCount, blobSize);
+        UnflushedFreshBlobTimestamps.insert(addedAt);
     }
 }
 
 void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 {
-    auto& blobs = UntrimmedFreshBlobByteCountByCommitId;
+    auto& blobs = UntrimmedFreshBlobsByCommitId;
 
     while (blobs && blobs.begin()->first <= commitId) {
-        auto blobSize = blobs.begin()->second;
+        const auto& blobInfo = blobs.begin()->second;
         STORAGE_VERIFY_C(
-            UntrimmedFreshBlobByteCount >= blobSize,
+            UntrimmedFreshBlobByteCount >= blobInfo.BlobSize,
             TWellKnownEntityTypes::TABLET,
             TabletID,
             "UntrimmedFreshBlobByteCount: " << UntrimmedFreshBlobByteCount
-                                            << " < BlobSize: " << blobSize);
-        UntrimmedFreshBlobByteCount -= blobSize;
+                                            << " < BlobSize: "
+                                            << blobInfo.BlobSize);
+        UntrimmedFreshBlobByteCount -= blobInfo.BlobSize;
+
+        auto timestampIt = UntrimmedFreshBlobTimestamps.find(blobInfo.AddedAt);
+        STORAGE_VERIFY_C(
+            timestampIt != UntrimmedFreshBlobTimestamps.end(),
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << blobs.begin()->first);
+        UntrimmedFreshBlobTimestamps.erase(timestampIt);
+
         blobs.erase(blobs.begin());
     }
 }
 
 ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
 {
-    auto& blobs = UnflushedFreshBlobByteCountByCommitId;
+    auto& blobs = UnflushedFreshBlobsByCommitId;
 
     auto it = blobs.find(commitId);
     STORAGE_VERIFY_C(
@@ -113,15 +131,23 @@ ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
         TabletID,
         "Commit id: " << commitId);
 
-    ui64 blobSize = it->second;
+    const auto blobInfo = it->second;
 
     UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, 1);
     UnflushedFreshBlobByteCount =
-        SafeDecrement(UnflushedFreshBlobByteCount, blobSize);
+        SafeDecrement(UnflushedFreshBlobByteCount, blobInfo.BlobSize);
+
+    auto timestampIt = UnflushedFreshBlobTimestamps.find(blobInfo.AddedAt);
+    STORAGE_VERIFY_C(
+        timestampIt != UnflushedFreshBlobTimestamps.end(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID,
+        "Commit id: " << commitId);
+    UnflushedFreshBlobTimestamps.erase(timestampIt);
 
     blobs.erase(it);
 
-    return blobSize;
+    return blobInfo.BlobSize;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

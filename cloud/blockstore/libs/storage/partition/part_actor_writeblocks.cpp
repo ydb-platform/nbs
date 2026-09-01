@@ -452,7 +452,7 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
 
     SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
-    EnqueueFlushIfNeeded(ctx);
+    EnqueueFlushIfNeeded(ctx, false);
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
 }
 

@@ -189,8 +189,15 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(WriteBlobThresholdSSD,         ui32,      128_KB                      )\
     xxx(WriteMixedBlobThresholdHDD,    ui32,      0                           )\
     xxx(FlushThreshold,                ui32,      4_MB                        )\
+    xxx(FlushThresholdSSD,             ui32,      4_MB                        )\
     xxx(FreshBlobCountFlushThreshold,  ui32,      3200                        )\
+    xxx(FreshBlobCountFlushThresholdSSD,   ui32,      3200                    )\
     xxx(FreshBlobByteCountFlushThreshold,   ui32,      16_MB                  )\
+    xxx(FreshBlobByteCountFlushThresholdSSD,   ui32,      16_MB               )\
+    xxx(BytesPerFreshCapacityUnitHDD,  ui64,      256_GB                      )\
+    xxx(BytesPerFreshCapacityUnitSSD,  ui64,      32_GB                       )\
+    xxx(MaxUnflushedFreshBlobAgeHDD,   TDuration,  TDuration::Zero()          )\
+    xxx(MaxUnflushedFreshBlobAgeSSD,   TDuration,  TDuration::Zero()          )\
                                                                                \
     xxx(SSDCompactionType,                                                     \
             NProto::ECompactionType,                                           \
@@ -390,9 +397,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionScoreFeatureMaxValue,                 ui32,   10            )\
                                                                                \
     xxx(FreshByteCountLimitForBackpressure,             ui32,   128_MB        )\
+    xxx(FreshByteCountLimitForBackpressureSSD,          ui32,   128_MB        )\
     xxx(FreshByteCountThresholdForBackpressure,         ui32,   40_MB         )\
+    xxx(FreshByteCountThresholdForBackpressureSSD,      ui32,   40_MB         )\
     xxx(FreshByteCountFeatureMaxValue,                  ui32,   10            )\
     xxx(FreshByteCountHardLimit,                        ui32,   256_MB        )\
+    xxx(FreshByteCountHardLimitSSD,                     ui32,   256_MB        )\
                                                                                \
     xxx(CleanupQueueBytesLimitForBackpressure,            ui64,   4_TB        )\
     xxx(CleanupQueueBytesThresholdForBackpressure,        ui64,   1_TB        )\

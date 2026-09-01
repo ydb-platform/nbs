@@ -270,6 +270,10 @@ struct TEvPartitionPrivate
         TVector<TAddFreshBlob> FreshBlobs;
         EAddBlobMode Mode = ADD_WRITE_RESULT;
 
+        // Captured when the flush starts: the immediate control may change
+        // before the AddBlobs transaction executes.
+        bool UseFlushCommitIdAsTrimFreshLogToCommitId = false;
+
         // compaction
         TAffectedBlobs AffectedBlobs;
         TAffectedBlocks AffectedBlocks;
