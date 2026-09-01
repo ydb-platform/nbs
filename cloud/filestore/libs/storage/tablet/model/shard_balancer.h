@@ -210,6 +210,20 @@ class TShardBalancerWeightedDeterministic: public TShardBalancerBase
         ui32 Right = 0;
         ui32 ShardCount = 0;
 
+        void Init(
+            const ui32 shardCount,
+            const ui32 iteratorIdx,
+            const ui32 shardsPerDirectoryCount)
+        {
+            ShardCount = shardCount;
+            Left = iteratorIdx % shardCount;
+            Right = (Left + shardsPerDirectoryCount - 1) % ShardCount;
+            if (!IsInside(LastSelectedShard)) {
+                LastSelectedShard = Right;
+                CurrentScore = MaxScore;
+            }
+        }
+
         ui32 PrevToLeft() const
         {
             if (Left > 0) {
@@ -228,12 +242,12 @@ class TShardBalancerWeightedDeterministic: public TShardBalancerBase
             }
         }
 
-        ui64 Unwrap(ui64 coord) const
+        ui32 Unwrap(const ui32 idx) const
         {
-            if (coord >= Left) {
-                return coord;
+            if (idx >= Left) {
+                return idx;
             } else {
-                return coord + ShardCount;
+                return idx + ShardCount;
             }
         }
     };
@@ -252,7 +266,7 @@ class TShardBalancerWeightedDeterministic: public TShardBalancerBase
     void CalcNextShard();
     void UpdateIterators();
 
-    void SelectShard(TIterator& it);
+    void Step(TIterator& it);
 
 public:
     TShardBalancerWeightedDeterministic(

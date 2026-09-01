@@ -700,7 +700,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
             FormatError(e));
     }
 
-    Y_UNIT_TEST(ShouldSelectCircularShardRangeForEachHint)
+    Y_UNIT_TEST(ShouldSelectCircularShardRangeForEachShardNo)
     {
         const TVector<TString> shards =
             {"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"};
@@ -718,13 +718,13 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
                 shardsPerDir /* shardsPerDirectoryCount */,
                 shards);
 
-            for (ui64 hint = 0; hint < shards.size(); ++hint) {
+            for (ui64 shardNo = 1; shardNo <= shards.size(); ++shardNo) {
                 for (ui64 i = 0; i < shardsPerDir * 2; ++i) {
                     ASSERT_NO_SB_ERROR_WITH_HINT(
-                        hint,
+                        shardNo,
                         0,
                         shards
-                            [(hint + 1 + (i % shardsPerDir)) % shards.size()]);
+                            [(shardNo + (i % shardsPerDir)) % shards.size()]);
                 }
             }
         }
@@ -750,7 +750,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
                 {"s8", 56_TB / 4_KB, 7_TB / 4_KB, 0, 0},
             }));
 
-            ui64 hint = 2;
+            ui64 shardNo = 3;
             TVector<TString> refShardIds = {
                 "s4", "s5", "s6", "s7",
                 "s4", "s5", "s6", "s7",
@@ -760,10 +760,10 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
                 "s4", "s5", "s6", "s7"
             };
             for (const TString& refShardId: refShardIds) {
-                ASSERT_NO_SB_ERROR_WITH_HINT(hint, 0, refShardId);
+                ASSERT_NO_SB_ERROR_WITH_HINT(shardNo, 0, refShardId);
             }
 
-            hint = 6;
+            shardNo = 7;
             refShardIds = {
                 "s8", "s1", "s2", "s3",
                 "s1", "s2", "s3",
@@ -776,10 +776,10 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
                 "s8", "s1", "s2", "s3"
             };
             for (const TString& refShardId: refShardIds) {
-                ASSERT_NO_SB_ERROR_WITH_HINT(hint, 0, refShardId);
+                ASSERT_NO_SB_ERROR_WITH_HINT(shardNo, 0, refShardId);
             }
 
-            hint = 7;
+            shardNo = 8;
             refShardIds = {
                 "s1", "s2", "s3", "s4",
                 "s1", "s2", "s3", "s4",
@@ -792,7 +792,7 @@ Y_UNIT_TEST_SUITE(TShardBalancerTest)
                 "s1", "s2", "s3", "s4"
             };
             for (const TString& refShardId: refShardIds) {
-                ASSERT_NO_SB_ERROR_WITH_HINT(hint, 0, refShardId);
+                ASSERT_NO_SB_ERROR_WITH_HINT(shardNo, 0, refShardId);
             }
         }
     }

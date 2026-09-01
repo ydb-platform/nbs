@@ -357,30 +357,27 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
 
 void TShardBalancerWeightedDeterministic::UpdateIterators()
 {
+    // With empty Metas, the balancer does not make any sense and 
+    // SelectShard returns an error.
+    if (Metas.empty()) {
+        return;
+    }
+    
     if (ShardsPerDirectoryCount && ShardsPerDirectoryCount < Metas.size()) {
         if (Iterators.size() == Metas.size()) {
             return;
         }
         Iterators.resize(Metas.size());
         for (ui64 i = 0; i < Iterators.size(); ++i) {
-            auto& it = Iterators[i];
-            it.ShardCount = Metas.size();
-            it.Left = (i + 1) % Metas.size();
-            it.Right = (it.Left + ShardsPerDirectoryCount - 1) % Metas.size();
-            if (!it.IsInside(it.LastSelectedShard)) {
-                it.LastSelectedShard = it.Right;
-            }
+            Iterators[i].Init(Metas.size(), i, ShardsPerDirectoryCount);
         }
     } else {
         if (Iterators.size() == 1) {
             return;
         }
         Iterators.resize(1);
-        auto& it = Iterators[0];
-        it.ShardCount = Metas.size();
-        it.Left = 0;
-        it.Right = Metas.size() - 1;
-        it.LastSelectedShard = it.Right;
+        // In this case, we just have one iterator spanning all the shards.
+        Iterators[0].Init(Metas.size(), 0, Metas.size());
     }
 }
 
@@ -405,15 +402,15 @@ NProto::TError TShardBalancerWeightedDeterministic::Update(
     return {};
 }
 
-void TShardBalancerWeightedDeterministic::SelectShard(TIterator& it)
+void TShardBalancerWeightedDeterministic::Step(TIterator& it)
 {
-    ui64 nextShardIdx = NextShard[it.CurrentScore][it.LastSelectedShard];
+    ui32 nextShardIdx = NextShard[it.CurrentScore][it.LastSelectedShard];
 
     if (!it.IsInside(nextShardIdx) ||
         (it.IsInside(it.LastSelectedShard) &&
          it.Unwrap(nextShardIdx) <= it.Unwrap(it.LastSelectedShard)))
     {
-        it.CurrentScore = (++it.CurrentScore) % ScoreLevelsCount;
+        it.CurrentScore = (it.CurrentScore + 1) % ScoreLevelsCount;
         it.LastSelectedShard = it.PrevToLeft();
     }
 
@@ -439,9 +436,8 @@ NProto::TError TShardBalancerWeightedDeterministic::SelectShard(
             TStringBuilder() << "Metas.size() is zero");
     }
 
-    ui64 ind = hint % Iterators.size();
-    TIterator& it = Iterators[ind];
-    SelectShard(it);
+    TIterator& it = Iterators[hint % Iterators.size()];
+    Step(it);
     *shardId = Metas[it.LastSelectedShard].Stats.ShardId;
 
     return {};

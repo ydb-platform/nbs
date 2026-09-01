@@ -6088,28 +6088,26 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         TMap<ui32, ui64> dirByShard;
         const TVector<ui32> expectedDirectoryShards =
-            {2, 4, 6, 8, 3, 5, 7, 1};
+            {1, 2, 3, 4, 5, 6, 7, 8};
         ui64 directoryNo = 0;
-        for (ui64 chain = 0; chain < 2; ++chain) {
-            ui64 parentId = RootNodeId;
-            for (ui64 i = 0; i < shardCount / 2; ++i) {
-                const auto response = service.CreateNode(
-                    headers,
-                    TCreateNodeArgs::Directory(
-                        parentId,
-                        TStringBuilder() << "dir" << directoryNo))->Record;
+        ui64 parentId = RootNodeId;
+        for (ui64 i = 0; i < shardCount; ++i) {
+            const auto response = service.CreateNode(
+                headers,
+                TCreateNodeArgs::Directory(
+                    parentId,
+                    TStringBuilder() << "dir" << directoryNo))->Record;
 
-                const ui64 directoryId = response.GetNode().GetId();
-                const ui32 shardNo = ExtractShardNo(directoryId);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    expectedDirectoryShards[directoryNo],
-                    shardNo);
-                UNIT_ASSERT(
-                    dirByShard.emplace(shardNo, directoryId).second);
+            const ui64 directoryId = response.GetNode().GetId();
+            const ui32 shardNo = ExtractShardNo(directoryId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedDirectoryShards[directoryNo],
+                shardNo);
+            UNIT_ASSERT(
+                dirByShard.emplace(shardNo, directoryId).second);
 
-                parentId = directoryId;
-                ++directoryNo;
-            }
+            parentId = directoryId;
+            ++directoryNo;
         }
         UNIT_ASSERT_VALUES_EQUAL(shardCount, dirByShard.size());
 
@@ -6156,8 +6154,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             }
         };
 
-        const TSet<ui32> dir2Shards = {4, 5, 6, 7};
-        const TSet<ui32> dir4Shards = {6, 7, 8, 1};
+        const TSet<ui32> dir2Shards = {3, 4, 5, 6};
+        const TSet<ui32> dir4Shards = {5, 6, 7, 8};
         for (ui32 i = 0; i < 8; ++i) {
             createFiles(dirByShard[2], 128_KB, dir2Shards);
             createFiles(dirByShard[4], 128_KB, dir4Shards);
