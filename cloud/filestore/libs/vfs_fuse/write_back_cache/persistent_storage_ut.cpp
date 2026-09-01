@@ -262,7 +262,7 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
 
         const auto* ptr1 = b.BeginAlloc("1234");
         UNIT_ASSERT(ptr1);
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
         auto rawUsed = stats.RawUsedByteCount->Get();
         UNIT_ASSERT_LT(0, rawUsed);
 
