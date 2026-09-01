@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -32,22 +34,29 @@ NActors::IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
         std::forward<T>(args)...);
 }
 
-inline TString MakeFreshHardLimitExceededError(
+inline NProto::TError MakeFreshHardLimitExceededError(
     ui64 freshByteCount,
     ui64 freshLogicalBlocksByteCount,
     ui64 freshByteCountHardLimit,
     ui64 freshLogicalBlocksByteCountHardLimit)
 {
+    TString message;
     if (freshByteCount >= freshByteCountHardLimit) {
-        return TStringBuilder()
-               << "FreshByteCountHardLimit exceeded: " << freshByteCount;
+        message = TStringBuilder()
+                  << "FreshByteCountHardLimit exceeded: " << freshByteCount;
+    } else if (
+        freshLogicalBlocksByteCount >= freshLogicalBlocksByteCountHardLimit)
+    {
+        message = TStringBuilder()
+                  << "FreshLogicalBlocksByteCountHardLimit exceeded: "
+                  << freshLogicalBlocksByteCount;
+    } else {
+        return {};
     }
-    if (freshLogicalBlocksByteCount >= freshLogicalBlocksByteCountHardLimit) {
-        return TStringBuilder()
-               << "FreshLogicalBlocksByteCountHardLimit exceeded: "
-               << freshLogicalBlocksByteCount;
-    }
-    return {};
+
+    ui32 flags = 0;
+    SetProtoFlag(flags, NProto::EF_SILENT);
+    return MakeError(E_REJECTED, std::move(message), flags);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

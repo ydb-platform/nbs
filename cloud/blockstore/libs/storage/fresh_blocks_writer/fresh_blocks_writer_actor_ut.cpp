@@ -1041,7 +1041,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
         // The previous write becomes garbage and should not be accounted in
         // the unflushed fresh bytes count.
-        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 2);
         // Zero block should be accounted in the unflushed fresh bytes count.
         fbwClient.ZeroBlocks(TBlockRange32::MakeOneBlock(1));
 

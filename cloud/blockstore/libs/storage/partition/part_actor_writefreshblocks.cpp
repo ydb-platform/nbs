@@ -46,14 +46,11 @@ void TPartitionActor::WriteFreshBlocks(
                 State->GetBlockSize(),
             Config->GetFreshByteCountHardLimit(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
-        !error.empty())
+        HasError(error))
     {
         for (auto& r: requestsInBuffer) {
-            ui32 flags = 0;
-            SetProtoFlag(flags, NProto::EF_SILENT);
-            auto response = CreateWriteBlocksResponse(
-                r.Data.ReplyLocal,
-                MakeError(E_REJECTED, error, flags));
+            auto response =
+                CreateWriteBlocksResponse(r.Data.ReplyLocal, std::move(error));
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -471,12 +468,10 @@ void TPartitionActor::ZeroFreshBlocks(
                 State->GetBlockSize(),
             Config->GetFreshByteCountHardLimit(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
-        !error.empty())
+        HasError(error))
     {
-        ui32 flags = 0;
-        SetProtoFlag(flags, NProto::EF_SILENT);
         auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(
-            MakeError(E_REJECTED, std::move(error), flags));
+            std::move(error));
 
         LWTRACK(
             ResponseSent_Partition,

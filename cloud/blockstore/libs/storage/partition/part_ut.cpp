@@ -10096,7 +10096,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(1), 1);
         partition.WriteBlocks(TBlockRange32::MakeOneBlock(3), 3);
         partition.WriteBlocks(TBlockRange32::MakeOneBlock(4), 4);
 
