@@ -179,7 +179,7 @@ public:
 
         // In V5 format it is allowed for a entry with FreeFlag set to have an
         // invalid checksum - we need to ensure that fields are visible in the
-        // correct order
+        // correct order.
         //
         // A compiler-only fence is sufficient here because there is no
         // concurrent access to the memory and we just need to ensure

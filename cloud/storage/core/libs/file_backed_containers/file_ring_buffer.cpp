@@ -128,6 +128,11 @@ NProto::TError MakeBufferIsCorruptError()
     return MakeError(E_INVALID_STATE, "Buffer is corrupted");
 }
 
+NProto::TError MakeBufferIsCorruptError(const TString& message)
+{
+    return MakeError(E_INVALID_STATE, "Buffer is corrupted: " + message);
+}
+
 NProto::TError MakeInvalidPointerError()
 {
     return MakeError(E_ARGUMENT, "Invalid pointer");
@@ -254,22 +259,6 @@ private:
         return e.HasValue()
             ? GetEntry(e.ActualPos + Data()->GetEntrySize(e.Header.DataSize))
             : TEntryInfo::CreateInvalid();
-    }
-
-    // Sets corrupted state if Data()->WriteEntryHeader is failed
-    bool WriteEntryHeader(ui64 pos, const TFileRingBufferEntryHeader& header)
-    {
-        // A compiler-only fence is sufficient here because there is no
-        // concurrent access to the memory and we just need to ensure
-        // that a compiler does not reorder writes.
-        std::atomic_signal_fence(std::memory_order_seq_cst);
-
-        auto success = Data()->WriteEntryHeader(pos, header);
-        if (!success) {
-            SetCorrupted(
-                TStringBuilder() << "Cannot write entry header at " << pos);
-        }
-        return success;
     }
 
     void CopyMappedData(ui64 destPos, ui64 srcPos, ui64 size)
@@ -610,20 +599,18 @@ public:
 
         char* ptr = Data()->GetEntryDataPtr(writePos, size);
         if (ptr == nullptr) {
-            SetCorrupted(
+            return TAllocResult(SetCorruptedAndReturnError(
                 TStringBuilder() << "Cannot access data buffer at " << writePos
-                                 << ", size = " << size);
-            return TAllocResult(MakeBufferIsCorruptError());
+                                 << ", size = " << size));
         }
 
         auto [_, inserted] = EntryMap.insert({ptr, writePos});
         if (!inserted) {
-            SetCorrupted(
-                TStringBuilder() << "Duplicate allocation at " << writePos);
-            return TAllocResult(MakeBufferIsCorruptError());
+            return TAllocResult(SetCorruptedAndReturnError(
+                TStringBuilder() << "Duplicate allocation at " << writePos));
         }
 
-        auto headerWritten = WriteEntryHeader(
+        auto headerWritten = Data()->WriteEntryHeader(
             writePos,
             {.DataSize = static_cast<ui32>(size),
              .DataChecksum = 0,
@@ -631,9 +618,13 @@ public:
              .FreeFlag = true});
 
         if (!headerWritten) {
-            return TAllocResult(MakeBufferIsCorruptError());
+            return TAllocResult(SetCorruptedAndReturnError(
+                TStringBuilder()
+                << "Cannot write entry header for a new allocation at "
+                << writePos));
         }
 
+        // Ensure that the entry header is written before WritePos is updated
         // A compiler-only fence is sufficient here because there is no
         // concurrent access to the memory and we just need to ensure
         // that a compiler does not reorder writes.
@@ -658,22 +649,23 @@ public:
         ui64 pos = it->second;
 
         auto eh = Data()->ReadEntryHeader(pos);
-        if (!eh.FreeFlag || eh.DataSize == 0 || eh.DataChecksum != 0 ||
-            eh.Tag != 0)
-        {
-            SetCorrupted(
+
+        if (!eh.FreeFlag) {
+            return MakeInvalidPointerError();
+        }
+
+        if (eh.DataSize == 0 || eh.DataChecksum != 0 || eh.Tag != 0) {
+            return SetCorruptedAndReturnError(
                 TStringBuilder()
                 << "Invalid header for incomplete allocation at " << pos);
-            return MakeBufferIsCorruptError();
         }
 
         if (!crc32c) {
             if (ptr != Data()->GetEntryDataPtr(pos, eh.DataSize)) {
-                SetCorrupted(
+                return SetCorruptedAndReturnError(
                     TStringBuilder()
                     << "Invalid data pointer for incomplete allocation at "
                     << pos);
-                return MakeBufferIsCorruptError();
             }
             crc32c = Crc32c(ptr, eh.DataSize);
         }
@@ -681,8 +673,11 @@ public:
         eh.DataChecksum = *crc32c;
         eh.FreeFlag = false;
 
-        if (!WriteEntryHeader(pos, eh)) {
-            return MakeBufferIsCorruptError();
+        if (!Data()->WriteEntryHeader(pos, eh)) {
+            return SetCorruptedAndReturnError(
+                TStringBuilder()
+                << "Cannot write entry header for a committed allocation at "
+                << pos);
         }
 
         return {};
@@ -709,16 +704,18 @@ public:
         }
 
         if (eh.DataSize == 0) {
-            SetCorrupted(
+            return SetCorruptedAndReturnError(
                 TStringBuilder() << "Invalid header for allocation at " << pos);
-            return MakeBufferIsCorruptError();
         }
 
         eh.DataChecksum = 0;
         eh.FreeFlag = true;
 
-        if (!WriteEntryHeader(pos, eh)) {
-            return MakeBufferIsCorruptError();
+        if (!Data()->WriteEntryHeader(pos, eh)) {
+            return SetCorruptedAndReturnError(
+                TStringBuilder()
+                << "Cannot write entry header for a freed allocation at "
+                << pos);
         }
 
         EntryMap.erase(it);
@@ -787,9 +784,11 @@ public:
 
         eh.Tag = tag;
 
-        bool written = WriteEntryHeader(pos, eh);
+        bool written = Data()->WriteEntryHeader(pos, eh);
         if (!written) {
-            return MakeBufferIsCorruptError();
+            return SetCorruptedAndReturnError(
+                TStringBuilder()
+                << "Cannot write entry header with updated tag at " << pos);
         }
 
         return {};
@@ -902,6 +901,12 @@ public:
                 "Corruption detected in FileRingBuffer, path: " +
                 Args.FilePath + ", message: " + message);
         }
+    }
+
+    NProto::TError SetCorruptedAndReturnError(const TString& message)
+    {
+        SetCorrupted(message);
+        return MakeBufferIsCorruptError(message);
     }
 
     ui64 GetRawCapacity() const

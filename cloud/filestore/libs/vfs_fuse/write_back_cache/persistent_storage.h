@@ -64,8 +64,8 @@ struct IPersistentStorage
      * Memory that was allocated but not committed will be lost at buffer
      * recreation.
      *
-     * An error is returned if there is no incomplete allocation correponding to
-     * the provided pointer or the buffer is corrupted.
+     * An error is returned if there is no incomplete allocation corresponding
+     * to the provided pointer or the buffer is corrupted.
      */
     [[nodiscard]] virtual NProto::TError Commit(const void* ptr) = 0;
 
