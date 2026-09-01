@@ -222,15 +222,27 @@ public:
         ](IAsyncEndpointPtr e, ui32 generation, TResponse r) mutable
         {
             TResp resp;
-            bool shardMoved = false;
+            bool dropEndpoint = false;
             if (r.HasError()) {
                 if (r.GetError().GetCode() == E_NOT_FOUND) {
-                    shardMoved = true;
+                    //
+                    // Shard moved - the connection points to the wrong host.
+                    //
+
+                    dropEndpoint = true;
                     *resp.MutableError() = MakeError(
                         E_REJECTED,
                         TStringBuilder() << "shard moved: "
                             << FormatError(r.GetError()));
                 } else {
+                    //
+                    // E_UNAVAILABLE is reported by the client for transport
+                    // failures - the connection is broken and must not be
+                    // reused.
+                    //
+
+                    dropEndpoint =
+                        r.GetError().GetCode() == E_UNAVAILABLE;
                     *resp.MutableError() = r.GetError();
                 }
             } else {
@@ -238,7 +250,7 @@ public:
             }
             response.SetValue(std::move(resp));
 
-            if (!shardMoved) {
+            if (!dropEndpoint) {
                 ep->Push(std::move(e), generation);
             }
         };

@@ -349,6 +349,68 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldDropBrokenEndpoints)
+    {
+        auto logging = CreateLoggingService("console", { TLOG_DEBUG });
+        auto client = std::make_shared<TTestAsyncClient>();
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
+
+        sideChannel->Update(BackendInfo());
+
+        TConnInfo connInfo;
+        auto e = client->CompleteConnection(&connInfo);
+        UNIT_ASSERT(e);
+
+        //
+        // A top-level E_UNAVAILABLE response means the connection is broken -
+        // the error should be propagated and the endpoint should not go back
+        // to the pool.
+        //
+
+        auto writeResponse = NewPromise<NProto::TWriteDataResponse>();
+        bool success = sideChannel->ExecuteRequest(
+            CC(),
+            WriteReq(1, 0, TString(1_KB, 'a')),
+            writeResponse);
+        UNIT_ASSERT(success);
+
+        NProtoSrv::TResponse brokenResp;
+        *brokenResp.MutableError() =
+            MakeError(E_UNAVAILABLE, "recv length failed: 104");
+        UNIT_ASSERT(e->Reply(std::move(brokenResp)));
+
+        UNIT_ASSERT(writeResponse.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_UNAVAILABLE,
+            writeResponse.GetValue().GetError().GetCode());
+
+        //
+        // The next request should not reuse the broken endpoint - it should
+        // trigger a new connection attempt instead.
+        //
+
+        auto readResponse = NewPromise<NProto::TReadDataResponse>();
+        success = sideChannel->ExecuteRequest(
+            CC(),
+            ReadReq(1, 0, 1_KB),
+            readResponse);
+        UNIT_ASSERT(success);
+        UNIT_ASSERT(!e->RequestReceived);
+
+        auto e2 = client->CompleteConnection(&connInfo);
+        UNIT_ASSERT(e2);
+        UNIT_ASSERT(e2->RequestReceived);
+
+        UNIT_ASSERT(e2->Reply(ReadResp(MakeError(S_OK), TString(1_KB, 'b'))));
+        UNIT_ASSERT(readResponse.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            readResponse.GetValue().GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldProcessRequestsBeforeConnectionCompletes)
     {
         auto logging = CreateLoggingService("console", { TLOG_DEBUG });
