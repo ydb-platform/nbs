@@ -50,9 +50,6 @@ struct IPersistentStorage
      *
      * On failure, returns nullptr if the buffer is full or an error if
      * allocation is not possible due to corruption or invalid argument.
-     *
-     * Note: only one allocation is possible at a time. Repeated Alloc will
-     * return an error.
      */
     [[nodiscard]] virtual TResultOrError<char*> Alloc(size_t size) = 0;
 
@@ -72,22 +69,8 @@ struct IPersistentStorage
     [[nodiscard]] virtual NProto::TError Commit(const void* ptr) = 0;
 
     /**
-     * Completes the previously made allocation using checksum provided by
-     * caller and making the allocation visible.
-     *
-     * Since IPersistentStorage is non-thread safe, it requires external
-     * synchronization and executing its methods under a lock. Calculating
-     * checksums inside Commit() consumes some time and it will prevent other
-     * threads from using IPersistentStorage. The purpose of this method is to
-     * make multi-threaded work with IPersistentStorage more efficient by
-     * reducing the time spent inside the lock.
-     *
-     * Once committed, it is not allowed to modify the contents of the allocated
-     * entry. If there is a need to augment the allocation with additional data,
-     * GetTag/SetTag can be used.
-     *
-     * An error is returned if there is no incomplete allocation correponding to
-     * the provided pointer or the buffer is corrupted.
+     * Commits previously allocated memory buffer but takes a checksum provided
+     * by the caller instead of calculating it.
      *
      * Note: the checksum is not validated, the calling code has responsibility
      * to provide the correct Crc32c checksum. Passing an incorrect checksum may

@@ -681,6 +681,13 @@ public:
         }
 
         if (!hasCrc) {
+            if (ptr != Data()->GetEntryDataPtr(pos, eh.DataSize)) {
+                SetCorrupted(
+                    TStringBuilder()
+                    << "Invalid data pointer for incomplete allocation at "
+                    << pos);
+                return MakeBufferIsCorruptError();
+            }
             crc32c = Crc32c(ptr, eh.DataSize);
         }
 
