@@ -253,7 +253,8 @@ struct TTxPartition
 
         TBlockMarks BlockMarks;
         TVector<ui64> BlockMarkCommitIds;
-        THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash> BlobId2Meta;
+        THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash>
+            BlobId2Meta;
 
         TVector<IProfileLog::TBlockInfo> BlockInfos;
 

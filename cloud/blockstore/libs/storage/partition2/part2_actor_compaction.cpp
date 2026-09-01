@@ -60,7 +60,7 @@ void FillRangeCompactionInfos(
     TVector<TRangeCompactionInfo>& infos,
     const TVector<TPartialBlobId>& blobsToReadBlobMetas,
     const TVector<TPartialBlobId>& blobsToReadBlockMasks,
-    const TVector<NProto::TBlobMeta>& blobMetas,
+    const TVector<NProto::TBlobMeta2>& blobMetas,
     const TVector<TBlockMask>& blockMasks)
 {
     for (size_t i = 0; i < blobsToReadBlobMetas.size(); ++i) {
@@ -1540,7 +1540,7 @@ void FillBlobsInfo(
         blobsToReadBlobMetas);
 
     TVector<TBlockMask> blockMasks(args.BlobsToReadBlockMasks.size());
-    TVector<NProto::TBlobMeta> blobMetas(args.BlobsToReadBlobMetas.size());
+    TVector<NProto::TBlobMeta2> blobMetas(args.BlobsToReadBlobMetas.size());
     if (!ReadBlobsInfo(
             db,
             blobsToOutputIndices,

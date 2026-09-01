@@ -18,7 +18,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 class TPromoteCompactionVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
-    , public IBlobsVisitor
+    , public IBlobsVisitor2
 {
 public:
     struct TFreshBlockMark
@@ -59,7 +59,7 @@ private:
     const bool AllowBlockDuplicates;
 
     TMap<ui64, TMap<ui64, TVector<TBlockMark>>> BlocksPerRange;
-    THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash>
+    THashMap<TPartialBlobId, NProto::TBlobMeta2, TPartialBlobIdHash>
         AffectedBlobs;
     ui64 MaxCommitId = 0;
 
@@ -80,12 +80,12 @@ public:
 
     bool Visit(
         const TPartialBlobId& blobId,
-        NProto::TBlobMeta blobMeta) override;
+        NProto::TBlobMeta2 blobMeta) override;
 
     struct TScanResult
     {
         TVector<TBlob> ResultedBlobs;
-        THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash>
+        THashMap<TPartialBlobId, NProto::TBlobMeta2, TPartialBlobIdHash>
             AffectedBlobs;
         ui64 MaxCommitId = 0;
     };

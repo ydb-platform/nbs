@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <util/generic/bitmap.h>
 #include <util/generic/string.h>

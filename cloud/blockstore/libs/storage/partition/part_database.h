@@ -139,9 +139,7 @@ public:
         IBlocksIndexVisitor& visitor,
         IBlobsVisitor& blobsVisitor,
         const TBlockRange32& readRange,
-        bool precharge,
-        ui32 maxBlocksInBlob,
-        ui64 maxCommitId = Max());
+        bool precharge, ui32 maxBlocksInBlob, ui64 maxCommitId = Max());
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,
@@ -161,8 +159,7 @@ public:
     //
 
     void WriteBlobMeta(
-        const TPartialBlobId& blobId,
-        const NProto::TBlobMeta& blobMeta);
+        const TPartialBlobId& blobId, const NProto::TBlobMeta& blobMeta);
 
     void DeleteBlobMeta(const TPartialBlobId& blobId);
 

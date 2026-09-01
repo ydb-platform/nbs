@@ -199,8 +199,7 @@ public:
     }
 
     bool Visit(
-        const TPartialBlobId& blobId,
-        NProto::TBlobMeta blobMeta) override
+        const TPartialBlobId& blobId, NProto::TBlobMeta blobMeta) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
 
@@ -212,9 +211,9 @@ public:
             CompactionMap.GetRangeIndex(mergedBlocks.GetStart()) + 1;
 
         ab.MergedBlobsSpecificInfo.ConstructInPlace();
-        TBlockRange32::MakeClosedInterval(
-            mergedBlocks.GetStart(),
-            mergedBlocks.GetEnd());
+        ab.MergedBlobsSpecificInfo->BlockRange =
+            TBlockRange32::MakeClosedInterval(
+                mergedBlocks.GetStart(), mergedBlocks.GetEnd());
         ab.MergedBlobsSpecificInfo->SkippedBlocksCount =
             mergedBlocks.GetSkipped();
 

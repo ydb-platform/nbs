@@ -20,8 +20,7 @@ struct IBlobsIndexVisitor
     virtual bool Visit(
         ui64 commitId,
         ui64 blobId,
-        const NProto::TBlobMeta& blobMeta,
-        const TStringBuf blockMask) = 0;
+        const NProto::TBlobMeta& blobMeta, const TStringBuf blockMask) = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

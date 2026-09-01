@@ -3,6 +3,8 @@
 #include "part2_database.h"
 #include "part2_state.h"
 
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
+
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
@@ -84,11 +86,11 @@ TPartitionState MakeState(size_t blockCount = 2048)
         std::move(threadSafeState));
 }
 
-NProto::TBlobMeta MakeMixedBlobMeta(
+NProto::TBlobMeta2 MakeMixedBlobMeta(
     const TVector<ui32>& blocks,
     const TVector<ui64>& commitIds = {})
 {
-    NProto::TBlobMeta meta;
+    NProto::TBlobMeta2 meta;
     auto& mixedBlocks = *meta.MutableMixedBlocks();
     for (ui32 blockIndex: blocks) {
         mixedBlocks.AddBlocks(blockIndex);
@@ -99,13 +101,15 @@ NProto::TBlobMeta MakeMixedBlobMeta(
     return meta;
 }
 
-NProto::TBlobMeta MakeMergedBlobMeta(ui32 start, ui32 end, ui32 skipped = 0)
+NProto::TBlobMeta2 MakeMergedBlobMeta(ui32 start, ui32 end, ui32 skipped = 0)
 {
-    NProto::TBlobMeta meta;
+    NProto::TBlobMeta2 meta;
     auto& mergedBlocks = *meta.MutableMergedBlocks();
     mergedBlocks.SetStart(start);
     mergedBlocks.SetEnd(end);
-    mergedBlocks.SetSkipped(skipped);
+    TBlockMask skipMask;
+    skipMask.Set(0, skipped);
+    SetSkippedBlockIds(mergedBlocks, skipMask);
     return meta;
 }
 
@@ -114,8 +118,8 @@ struct TMixedAndMergedBlobsSetup
     TPartialBlobId MixedBlobId;
     TPartialBlobId MergedBlobId;
     ui64 DeletionCommitId = 0;
-    NProto::TBlobMeta MixedBlobMeta;
-    NProto::TBlobMeta MergedBlobMeta;
+    NProto::TBlobMeta2 MixedBlobMeta;
+    NProto::TBlobMeta2 MergedBlobMeta;
 };
 
 TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
@@ -159,12 +163,12 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
 
 struct TMergedBlobVisitor final
     : public IBlocksIndexVisitor
-    , public IBlobsVisitor
+    , public IBlobsVisitor2
 {
     TPartialBlobId BlobId;
     bool Found = false;
 
-    bool Visit(const TPartialBlobId& blobId, NProto::TBlobMeta blobMeta) override
+    bool Visit(const TPartialBlobId& blobId, NProto::TBlobMeta2 blobMeta) override
     {
         Y_UNUSED(blobMeta);
 
@@ -625,11 +629,11 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                     !HasMixedBlock(db, 2, setup.MixedBlobId.CommitId()));
                 UNIT_ASSERT(!HasMergedBlob(db, setup.MergedBlobId, 10, 13));
 
-                TMaybe<NProto::TBlobMeta> mixedBlobMeta;
+                TMaybe<NProto::TBlobMeta2> mixedBlobMeta;
                 UNIT_ASSERT(db.ReadBlobMeta(setup.MixedBlobId, mixedBlobMeta));
                 UNIT_ASSERT(!mixedBlobMeta.Defined());
 
-                TMaybe<NProto::TBlobMeta> mergedBlobMeta;
+                TMaybe<NProto::TBlobMeta2> mergedBlobMeta;
                 UNIT_ASSERT(
                     db.ReadBlobMeta(setup.MergedBlobId, mergedBlobMeta));
                 UNIT_ASSERT(!mergedBlobMeta.Defined());

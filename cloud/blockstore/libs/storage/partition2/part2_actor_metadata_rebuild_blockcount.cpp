@@ -1,6 +1,7 @@
 #include "part2_actor.h"
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
 
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
@@ -54,7 +55,7 @@ public:
     bool Visit(
         ui64 commitId,
         ui64 blobId,
-        const NProto::TBlobMeta& blobMeta,
+        const NProto::TBlobMeta2& blobMeta,
         const TStringBuf blockMask) override
     {
         Args.LastReadBlobId = MakePartialBlobId(commitId, blobId);
@@ -77,7 +78,7 @@ private:
     void OnBlob(
         ui64 commitId,
         ui64 blobId,
-        const NProto::TBlobMeta& blobMeta,
+        const NProto::TBlobMeta2& blobMeta,
         const TStringBuf blockMask)
     {
         Y_UNUSED(blockMask);
@@ -91,7 +92,7 @@ private:
         } else {
             auto delta =
                 blobMeta.GetMergedBlocks().GetEnd() - blobMeta.GetMergedBlocks().GetStart() + 1;
-            delta -= blobMeta.GetMergedBlocks().GetSkipped();
+            delta -= GetSkippedBlockCount(blobMeta.GetMergedBlocks());
             Args.MergedBlockCount += delta;
         }
     }

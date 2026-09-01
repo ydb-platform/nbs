@@ -3,6 +3,8 @@
 #include "part2_database.h"
 #include "part2_state.h"
 
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
+
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
@@ -23,15 +25,15 @@ namespace {
 TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
-    const NProto::TBlobMeta::TMixedBlocks& originalMixedBlocks,
-    const NProto::TBlobMeta::TMixedBlocks& recreatedMixedBlocks)
+    const NProto::TBlobMeta2::TMixedBlocks& originalMixedBlocks,
+    const NProto::TBlobMeta2::TMixedBlocks& recreatedMixedBlocks)
 {
     // Check that blocks from recreated blob meta are present in the original
     // blob meta and that their commit ids are the same.
     // Some blocks may be missing in recreated blob meta because we delete some
     // blocks from mixed index on compaction.
 
-    auto getCommitId = [&](const NProto::TBlobMeta::TMixedBlocks& mixedBlocks,
+    auto getCommitId = [&](const NProto::TBlobMeta2::TMixedBlocks& mixedBlocks,
                            size_t i) -> ui64
     {
         return i < mixedBlocks.CommitIdsSize() ? mixedBlocks.GetCommitIds(i)
@@ -150,13 +152,26 @@ TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
 }
 
 TVerifyBlocksMetaResult VerifyMergedBlocksMeta(
-    const NProto::TBlobMeta::TMergedBlocks& originalMergedBlocks,
-    const NProto::TBlobMeta::TMergedBlocks& recreatedMergedBlocks)
+    const NProto::TBlobMeta2::TMergedBlocks& originalMergedBlocks,
+    const NProto::TBlobMeta2::TMergedBlocks& recreatedMergedBlocks)
 {
+    bool skippedBlocksMatch;
+    if (originalMergedBlocks.GetSkippedBlockIds() &&
+        recreatedMergedBlocks.GetSkippedBlockIds())
+    {
+        skippedBlocksMatch =
+            originalMergedBlocks.GetSkippedBlockIds() ==
+            recreatedMergedBlocks.GetSkippedBlockIds();
+    } else {
+        skippedBlocksMatch =
+            GetSkippedBlockCount(originalMergedBlocks) ==
+            GetSkippedBlockCount(recreatedMergedBlocks);
+    }
+
     bool ok =
         originalMergedBlocks.GetStart() == recreatedMergedBlocks.GetStart() &&
         originalMergedBlocks.GetEnd() == recreatedMergedBlocks.GetEnd() &&
-        originalMergedBlocks.GetSkipped() == recreatedMergedBlocks.GetSkipped();
+        skippedBlocksMatch;
 
     if (!ok) {
         auto error = MakeError(E_ARGUMENT, "Mismatched merged blocks");
@@ -173,8 +188,8 @@ TVerifyBlocksMetaResult VerifyMergedBlocksMeta(
 TVerifyBlocksMetaResult VerifyRecreatedBlobMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
-    const NProto::TBlobMeta& blobMeta,
-    const NProto::TBlobMeta& recreatedBlobMeta)
+    const NProto::TBlobMeta2& blobMeta,
+    const NProto::TBlobMeta2& recreatedBlobMeta)
 {
     if (blobMeta.HasMixedBlocks() != recreatedBlobMeta.HasMixedBlocks() ||
         blobMeta.HasMergedBlocks() != recreatedBlobMeta.HasMergedBlocks())
@@ -209,7 +224,7 @@ bool PrepareCleanupTransaction(
     TRequestScope timer(*args.RequestInfo);
 
     THashSet<TPartialBlobId, TPartialBlobIdHash> blobIdsToRemoveFromQueue;
-    THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash> blobMetas;
+    THashMap<TPartialBlobId, NProto::TBlobMeta2, TPartialBlobIdHash> blobMetas;
 
     bool ready = true;
 
@@ -222,7 +237,7 @@ bool PrepareCleanupTransaction(
             continue;
         }
 
-        TMaybe<NProto::TBlobMeta> blobMeta;
+        TMaybe<NProto::TBlobMeta2> blobMeta;
         ++args.ReadBlobMetasCount;
         if (db.ReadBlobMeta(item.BlobId, blobMeta)) {
             Y_ABORT_UNLESS(
@@ -362,7 +377,8 @@ void ExecuteCleanupTransaction(
             if (!IsDeletionMarker(item.BlobId)) {
                 // Mins for block counts are needed due to some inconsistencies
                 // caused by NBS-1422
-                ui64 delta = blockRange.Size() - mergedBlocks.GetSkipped();
+                ui64 delta = blockRange.Size() -
+                    GetSkippedBlockCount(mergedBlocks);
                 state.DecrementMergedBlocksCount(
                     Min(delta, state.GetMergedBlocksCount()));
             }

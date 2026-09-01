@@ -18,8 +18,7 @@ void ReadBlobInfo(
     ui64 tabletId,
     const TOutputIndex& outputIndex,
     TVector<TBlockMask>& blockMasks,
-    TVector<NProto::TBlobMeta>& blobMetas,
-    bool& ready)
+    TVector<NProto::TBlobMeta>& blobMetas, bool& ready)
 {
     TMaybe<TBlockMask> mask;
     TMaybe<NProto::TBlobMeta> meta;
@@ -44,8 +43,7 @@ void ReadBlobMeta(
     const TPartialBlobId& blobId,
     ui64 tabletId,
     const TOutputIndex& outputIndex,
-    TVector<NProto::TBlobMeta>& blobMetas,
-    bool& ready)
+    TVector<NProto::TBlobMeta>& blobMetas, bool& ready)
 {
     TMaybe<NProto::TBlobMeta> meta;
     if (!db.ReadBlobMeta(blobId, meta)) {

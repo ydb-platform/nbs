@@ -146,7 +146,7 @@ public:
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,
-        IBlobsVisitor& blobsVisitor,
+        IBlobsVisitor2& blobsVisitor,
         const TBlockRange32& readRange,
         bool precharge,
         ui32 maxBlocksInBlob,
@@ -171,13 +171,13 @@ public:
 
     void WriteBlobMeta(
         const TPartialBlobId& blobId,
-        const NProto::TBlobMeta& blobMeta);
+        const NProto::TBlobMeta2& blobMeta);
 
     void DeleteBlobMeta(const TPartialBlobId& blobId);
 
     bool ReadBlobMeta(
         const TPartialBlobId& blobId,
-        TMaybe<NProto::TBlobMeta>& blobMeta);
+        TMaybe<NProto::TBlobMeta2>& blobMeta);
 
     bool ReadNewBlobs(
         TVector<TPartialBlobId>& blobIds,
@@ -194,7 +194,7 @@ public:
     bool ReadBlobInfo(
         const TPartialBlobId& blobId,
         TMaybe<TBlockMask>& blockMask,
-        TMaybe<NProto::TBlobMeta>& blobMeta);
+        TMaybe<NProto::TBlobMeta2>& blobMeta);
 
     bool FindBlocksInBlobsIndex(
         IExtendedBlocksIndexVisitor& visitor,
@@ -219,7 +219,7 @@ public:
     void WriteL0Blob(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
-        const NProto::TBlobMeta& blobMeta);
+        const NProto::TBlobMeta2& blobMeta);
 
     void DeleteL0Blob(
         const TPartialBlobId& blobId,
@@ -232,7 +232,7 @@ public:
         ui64 maxCommitId = Max());
 
     bool FindBlocksInL0Index(
-        IBlobsVisitor& blobsVisitor,
+        IBlobsVisitor2& blobsVisitor,
         IBlocksIndexVisitor& blocksIndexVisitor,
         const TBlockRange32& blockRange,
         ui64 minCommitId = 0,
@@ -245,7 +245,7 @@ public:
     void WriteL1Blob(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
-        const NProto::TBlobMeta& blobMeta);
+        const NProto::TBlobMeta2& blobMeta);
 
     void DeleteL1Blob(
         const TPartialBlobId& blobId,
@@ -258,7 +258,7 @@ public:
         ui64 maxCommitId = Max());
 
     bool FindBlocksInL1Index(
-        IBlobsVisitor& blobsVisitor,
+        IBlobsVisitor2& blobsVisitor,
         IBlocksIndexVisitor& blocksIndexVisitor,
         const TBlockRange32& blockRange,
         ui64 minCommitId = 0,

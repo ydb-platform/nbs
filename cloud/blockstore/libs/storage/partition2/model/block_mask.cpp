@@ -77,4 +77,40 @@ TBlockMask GetFullBlockMask(ui32 blockCount)
     return mask;
 }
 
+void SetSkippedBlockIds(
+    NProto::TBlobMeta2::TMergedBlocks& mergedBlocks,
+    const TBlockMask& skipMask)
+{
+    const auto serialized = BlockMaskAsString(skipMask);
+    mergedBlocks.SetSkippedBlockIds(serialized.data(), serialized.size());
+}
+
+TBlockMask GetSkippedBlockMask(
+    const NProto::TBlobMeta2::TMergedBlocks& mergedBlocks)
+{
+    return BlockMaskFromString(mergedBlocks.GetSkippedBlockIds());
+}
+
+ui32 GetSkippedBlockCount(
+    const NProto::TBlobMeta2::TMergedBlocks& mergedBlocks)
+{
+    if (mergedBlocks.GetSkippedBlockIds()) {
+        return GetSkippedBlockMask(mergedBlocks).Count();
+    }
+
+    const auto& unknownFields =
+        mergedBlocks.GetReflection()->GetUnknownFields(mergedBlocks);
+    for (int i = 0; i < unknownFields.field_count(); ++i) {
+        const auto& field = unknownFields.field(i);
+        if (field.number() == 3 &&
+            field.type() == NProtoBuf::UnknownField::TYPE_VARINT)
+        {
+            Y_ABORT_UNLESS(field.varint() <= MaxBlocksCount);
+            return static_cast<ui32>(field.varint());
+        }
+    }
+
+    return 0;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

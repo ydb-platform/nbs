@@ -15779,8 +15779,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     blockRanges[i].End,
                     blobMeta.GetMergedBlocks().GetEnd());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    0,
-                    blobMeta.GetMergedBlocks().GetSkipped());
+                    0, blobMeta.GetMergedBlocks().GetSkipped());
             }
 
             UNIT_ASSERT_VALUES_EQUAL(

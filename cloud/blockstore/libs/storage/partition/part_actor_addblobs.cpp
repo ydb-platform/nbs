@@ -282,7 +282,7 @@ private:
         auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
         mergedBlocks.SetStart(blob.BlockRange.Start);
         mergedBlocks.SetEnd(blob.BlockRange.End);
-        mergedBlocks.SetSkipped(skipped);
+        mergedBlocks.SetSkipped(blob.SkipMask.Count());
 
         for (ui32 checksum: blob.Checksums) {
             blobMeta.AddBlockChecksums(checksum);

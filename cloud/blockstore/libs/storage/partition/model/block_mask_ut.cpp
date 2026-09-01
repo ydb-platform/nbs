@@ -52,6 +52,7 @@ Y_UNIT_TEST_SUITE(TBlockMaskTest)
             UNIT_ASSERT(IsBlockMaskFull(mask, i));
         }
     }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

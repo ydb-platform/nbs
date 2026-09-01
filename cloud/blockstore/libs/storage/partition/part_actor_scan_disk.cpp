@@ -54,8 +54,7 @@ public:
     bool Visit(
         ui64 commitId,
         ui64 blobId,
-        const NProto::TBlobMeta& blobMeta,
-        const TStringBuf blockMask) override
+        const NProto::TBlobMeta& blobMeta, const TStringBuf blockMask) override
     {
         Y_UNUSED(blobMeta);
         Y_UNUSED(blockMask);

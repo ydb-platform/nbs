@@ -197,7 +197,7 @@ struct TPartitionSchema
         struct BlobMeta
             : public Column<3, NKikimr::NScheme::NTypeIds::String>
         {
-            using Type = NProto::TBlobMeta;
+            using Type = NProto::TBlobMeta2;
         };
 
         struct BlockMask
@@ -450,7 +450,7 @@ struct TPartitionSchema
         struct BlobMeta
             : public Column<5, NKikimr::NScheme::NTypeIds::String>
         {
-            using Type = NProto::TBlobMeta;
+            using Type = NProto::TBlobMeta2;
         };
 
         using TKey = TableKey<RangeEnd, BlobCommitId, BlobId>;
@@ -489,7 +489,7 @@ struct TPartitionSchema
         struct BlobMeta
             : public Column<5, NKikimr::NScheme::NTypeIds::String>
         {
-            using Type = NProto::TBlobMeta;
+            using Type = NProto::TBlobMeta2;
         };
 
         using TKey = TableKey<RangeEnd, BlobCommitId, BlobId>;

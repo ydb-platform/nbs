@@ -19,8 +19,8 @@ struct TVerifyBlocksMetaResult
 TVerifyBlocksMetaResult VerifyRecreatedBlobMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
-    const NProto::TBlobMeta& blobMeta,
-    const NProto::TBlobMeta& recreatedBlobMeta);
+    const NProto::TBlobMeta2& blobMeta,
+    const NProto::TBlobMeta2& recreatedBlobMeta);
 
 bool PrepareCleanupTransaction(
     const ui64 tabletId,

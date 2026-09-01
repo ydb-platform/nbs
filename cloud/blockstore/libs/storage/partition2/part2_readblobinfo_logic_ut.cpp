@@ -2,6 +2,8 @@
 
 #include "part2_database.h"
 
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
+
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -48,13 +50,15 @@ void AssertOutputIndex(
     }
 }
 
-NProto::TBlobMeta MakeMergedBlobMeta(ui32 start, ui32 end, ui32 skipped)
+NProto::TBlobMeta2 MakeMergedBlobMeta(ui32 start, ui32 end, ui32 skipped)
 {
-    NProto::TBlobMeta meta;
+    NProto::TBlobMeta2 meta;
     auto& mergedBlocks = *meta.MutableMergedBlocks();
     mergedBlocks.SetStart(start);
     mergedBlocks.SetEnd(end);
-    mergedBlocks.SetSkipped(skipped);
+    TBlockMask skipMask;
+    skipMask.Set(0, skipped);
+    SetSkippedBlockIds(mergedBlocks, skipMask);
     return meta;
 }
 
@@ -133,7 +137,7 @@ Y_UNIT_TEST_SUITE(TReadBlobsInfoTest)
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         TPartialBlobId sharedBlob;
-        NProto::TBlobMeta sharedBlobMeta;
+        NProto::TBlobMeta2 sharedBlobMeta;
         TBlockMask sharedBlockMask;
 
         sharedBlobMeta = MakeMergedBlobMeta(10, 20, 3);
@@ -153,7 +157,7 @@ Y_UNIT_TEST_SUITE(TReadBlobsInfoTest)
             {sharedBlob});
 
         TVector<TBlockMask> blockMasks(1);
-        TVector<NProto::TBlobMeta> blobMetas(1);
+        TVector<NProto::TBlobMeta2> blobMetas(1);
 
         executor.ReadTx(
             [&](TPartitionDatabaseWithCounters db)

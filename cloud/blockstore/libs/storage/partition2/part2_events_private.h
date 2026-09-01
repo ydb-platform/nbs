@@ -171,7 +171,7 @@ struct TAffectedBlob
     struct TMergedBlobsSpecificInfo
     {
         TBlockRange32 BlockRange;
-        ui32 SkippedBlocksCount = 0;
+        TString SkippedBlockIds;
         ui64 CommitId = 0;
     };
 
@@ -191,9 +191,9 @@ struct TAffectedBlob
 
     // Filled only if a flag is set. BlobMeta is needed only to do some extra
     // consistency checks.
-    TMaybe<NProto::TBlobMeta> BlobMeta;
+    TMaybe<NProto::TBlobMeta2> BlobMeta;
 
-    TMaybe<NProto::TBlobMeta> RecreatedBlobMeta;
+    TMaybe<NProto::TBlobMeta2> RecreatedBlobMeta;
 };
 
 using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
@@ -428,7 +428,7 @@ struct TEvPartitionPrivate
     struct TCompactionReadBlobInfoResponse
     {
         TVector<TBlockMask> BlockMasksForBlobs;
-        TVector<NProto::TBlobMeta> BlobMetasForBlobs;
+        TVector<NProto::TBlobMeta2> BlobMetasForBlobs;
     };
 
     //

@@ -482,9 +482,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
     IBlocksIndexVisitor& visitor,
     IBlobsVisitor& blobsVisitor,
     const TBlockRange32& readRange,
-    bool precharge,
-    ui32 maxBlocksInBlob,
-    ui64 maxCommitId)
+    bool precharge, ui32 maxBlocksInBlob, ui64 maxCommitId)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
@@ -596,8 +594,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
     struct TNoOpBlobsVisitor final: public IBlobsVisitor
     {
         bool Visit(
-            const TPartialBlobId& blobId,
-            NProto::TBlobMeta blobMeta) override
+            const TPartialBlobId& blobId, NProto::TBlobMeta blobMeta) override
         {
             Y_UNUSED(blobId, blobMeta);
             return true;
@@ -723,8 +720,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 
 template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteBlobMeta(
-    const TPartialBlobId& blobId,
-    const NProto::TBlobMeta& blobMeta)
+    const TPartialBlobId& blobId, const NProto::TBlobMeta& blobMeta)
 {
     using TTable = TPartitionSchema::BlobsIndex;
 
@@ -880,8 +876,7 @@ static EIndexProcResult FindBlocksInBlobIndex(
     const ui32 maxBlocksInBlob,
     const TPartialBlobId& blobId,
     const NProto::TBlobMeta& blobMeta,
-    const TBlockMask& blockMask,
-    const TBlockRange32& blockRange)
+    const TBlockMask& blockMask, const TBlockRange32& blockRange)
 {
     auto visit = [&](ui32 blockIndex,
                      ui64 commitId,

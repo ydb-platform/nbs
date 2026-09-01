@@ -156,7 +156,8 @@ TVerifyBlocksMetaResult VerifyMergedBlocksMeta(
     bool ok =
         originalMergedBlocks.GetStart() == recreatedMergedBlocks.GetStart() &&
         originalMergedBlocks.GetEnd() == recreatedMergedBlocks.GetEnd() &&
-        originalMergedBlocks.GetSkipped() == recreatedMergedBlocks.GetSkipped();
+        originalMergedBlocks.GetSkipped() ==
+            recreatedMergedBlocks.GetSkipped();
 
     if (!ok) {
         auto error = MakeError(E_ARGUMENT, "Mismatched merged blocks");
@@ -294,8 +295,7 @@ namespace {
 bool ShouldSkipCleanupDueToCheckpoint(
     const TCleanupQueueItem& item,
     const NProto::TBlobMeta& blobMeta,
-    ui64 minCheckpointCommitId,
-    ui64 maxCheckpointCommitId)
+    ui64 minCheckpointCommitId, ui64 maxCheckpointCommitId)
 {
     if (item.CommitId < minCheckpointCommitId) {
         // The blob was added to the cleanup queue before any checkpoint.
@@ -423,7 +423,8 @@ void ExecuteCleanupTransaction(
             if (!IsDeletionMarker(item.BlobId)) {
                 // Mins for block counts are needed due to some inconsistencies
                 // caused by NBS-1422
-                ui64 delta = blockRange.Size() - mergedBlocks.GetSkipped();
+                ui64 delta =
+                    blockRange.Size() - mergedBlocks.GetSkipped();
                 state.DecrementMergedBlocksCount(
                     Min(delta, state.GetMergedBlocksCount()));
             }

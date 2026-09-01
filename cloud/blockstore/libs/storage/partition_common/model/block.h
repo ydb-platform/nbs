@@ -84,6 +84,14 @@ struct IBlobsVisitor
         NProto::TBlobMeta blobMeta) = 0;
 };
 
+struct IBlobsVisitor2
+{
+    virtual ~IBlobsVisitor2() = default;
+
+    virtual bool Visit(
+        const TPartialBlobId& blobId, NProto::TBlobMeta2 blobMeta) = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IBlocksIndexVisitor

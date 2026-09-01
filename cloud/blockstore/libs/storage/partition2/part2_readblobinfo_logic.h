@@ -23,6 +23,6 @@ bool ReadBlobsInfo(
     const TBlobId2IndexMap& blobsToOutputIndices,
     ui64 tabletId,
     TVector<TBlockMask>& blockMasks,
-    TVector<NProto::TBlobMeta>& blobMetas);
+    TVector<NProto::TBlobMeta2>& blobMetas);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

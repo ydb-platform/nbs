@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 
@@ -155,10 +156,10 @@ struct TBlockVisitor final
     }
 };
 
-TMaybe<NProto::TBlobMeta> ReadBlobMeta(TTestExecutor& executor,
+TMaybe<NProto::TBlobMeta2> ReadBlobMeta(TTestExecutor& executor,
                                        const TPartialBlobId& blobId)
 {
-    TMaybe<NProto::TBlobMeta> blobMeta;
+    TMaybe<NProto::TBlobMeta2> blobMeta;
     executor.ReadTx([&](TPartitionDatabase db)
                     { UNIT_ASSERT(db.ReadBlobMeta(blobId, blobMeta)); });
     return blobMeta;
@@ -219,7 +220,7 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(11,
                                  mergedBlobMeta->GetMergedBlocks().GetEnd());
         UNIT_ASSERT_VALUES_EQUAL(
-            1, mergedBlobMeta->GetMergedBlocks().GetSkipped());
+            1, GetSkippedBlockCount(mergedBlobMeta->GetMergedBlocks()));
 
         const auto mixedBlockMask = ReadBlockMask(executor, mixedBlobId);
         UNIT_ASSERT(mixedBlockMask.Defined());

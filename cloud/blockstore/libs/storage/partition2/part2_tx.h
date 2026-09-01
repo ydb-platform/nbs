@@ -250,7 +250,7 @@ struct TTxPartition
 
         TBlockMarks BlockMarks;
         TVector<ui64> BlockMarkCommitIds;
-        THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash> BlobId2Meta;
+        THashMap<TPartialBlobId, NProto::TBlobMeta2, TPartialBlobIdHash> BlobId2Meta;
 
         TVector<IProfileLog::TBlockInfo> BlockInfos;
 
@@ -531,7 +531,7 @@ struct TTxPartition
         const size_t BlobMetaCount;
 
         TVector<TBlockMask> BlockMasks;
-        TVector<NProto::TBlobMeta> BlobMetas;
+        TVector<NProto::TBlobMeta2> BlobMetas;
 
         TCompactionReadBlobInfo(
                 TRequestInfoPtr requestInfo,
@@ -678,7 +678,7 @@ struct TTxPartition
 
         TVector<TCleanupQueueItem> CleanupQueue;
 
-        TVector<NProto::TBlobMeta> BlobsMeta;
+        TVector<NProto::TBlobMeta2> BlobsMeta;
 
         ui64 ReadBlobMetasCount = 0;
 

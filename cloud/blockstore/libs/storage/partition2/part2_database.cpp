@@ -2,6 +2,8 @@
 
 #include "part2_schema.h"
 
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
+
 #include <util/generic/algorithm.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
@@ -85,11 +87,11 @@ std::pair<ui16, ui8> SplitBlobOffsetAndCompactionRangeCount(ui32 value)
 
 #define COUNT_METHOD_CALL Counters(__PRETTY_FUNCTION__);
 
-struct TNoOpBlobsVisitor final: public IBlobsVisitor
+struct TNoOpBlobsVisitor final: public IBlobsVisitor2
 {
     bool Visit(
         const TPartialBlobId& blobId,
-        NProto::TBlobMeta blobMeta) override
+        NProto::TBlobMeta2 blobMeta) override
     {
         Y_UNUSED(blobId, blobMeta);
         return true;
@@ -508,7 +510,7 @@ void TPartitionDatabaseImpl<TCounters>::DeleteMergedBlocks(
 template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
     IBlocksIndexVisitor& visitor,
-    IBlobsVisitor& blobsVisitor,
+    IBlobsVisitor2& blobsVisitor,
     const TBlockRange32& readRange,
     bool precharge,
     ui32 maxBlocksInBlob,
@@ -564,10 +566,10 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                 const auto skipMask = BlockMaskFromString(
                     it.template GetValueOrDefault<TTable::SkipMask>());
 
-                NProto::TBlobMeta blobMeta;
+                NProto::TBlobMeta2 blobMeta;
                 blobMeta.MutableMergedBlocks()->SetStart(range.Start);
                 blobMeta.MutableMergedBlocks()->SetEnd(range.End);
-                blobMeta.MutableMergedBlocks()->SetSkipped(skipMask.Count());
+                SetSkippedBlockIds(*blobMeta.MutableMergedBlocks(), skipMask);
                 blobMeta.MutableMergedBlocks()->SetCommitId(commitId);
 
                 if (!blobsVisitor.Visit(blobId, std::move(blobMeta))) {
@@ -745,7 +747,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteBlobMeta(
     const TPartialBlobId& blobId,
-    const NProto::TBlobMeta& blobMeta)
+    const NProto::TBlobMeta2& blobMeta)
 {
     using TTable = TPartitionSchema::BlobsIndex;
 
@@ -765,7 +767,7 @@ void TPartitionDatabaseImpl<TCounters>::DeleteBlobMeta(const TPartialBlobId& blo
 template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::ReadBlobMeta(
     const TPartialBlobId& blobId,
-    TMaybe<NProto::TBlobMeta>& meta)
+    TMaybe<NProto::TBlobMeta2>& meta)
 {
     COUNT_METHOD_CALL;
     using TTable = TPartitionSchema::BlobsIndex;
@@ -864,7 +866,7 @@ template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::ReadBlobInfo(
     const TPartialBlobId& blobId,
     TMaybe<TBlockMask>& blockMask,
-    TMaybe<NProto::TBlobMeta>& blobMeta)
+    TMaybe<NProto::TBlobMeta2>& blobMeta)
 {
     COUNT_METHOD_CALL;
     using TTable = TPartitionSchema::BlobsIndex;
@@ -900,7 +902,7 @@ static EIndexProcResult FindBlocksInBlobIndex(
     IExtendedBlocksIndexVisitor& visitor,
     const ui32 maxBlocksInBlob,
     const TPartialBlobId& blobId,
-    const NProto::TBlobMeta& blobMeta,
+    const NProto::TBlobMeta2& blobMeta,
     const TBlockMask& blockMask,
     const TBlockRange32& blockRange)
 {
@@ -1179,7 +1181,7 @@ template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteL0Blob(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
-    const NProto::TBlobMeta& blobMeta)
+    const NProto::TBlobMeta2& blobMeta)
 {
     using TTable = TPartitionSchema::L0Index;
 
@@ -1211,7 +1213,7 @@ template <typename TTable, typename TCounters>
 static bool FindBlocksInLevelIndex(
     TPartitionDatabaseImpl<TCounters>& db,
     IBlocksIndexVisitor& visitor,
-    IBlobsVisitor& blobsVisitor,
+    IBlobsVisitor2& blobsVisitor,
     const TBlockRange32& blockRange,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -1315,7 +1317,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL0Index(
 
 template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL0Index(
-    IBlobsVisitor& blobsVisitor,
+    IBlobsVisitor2& blobsVisitor,
     IBlocksIndexVisitor& blocksIndexVisitor,
     const TBlockRange32& blockRange,
     ui64 minCommitId,
@@ -1339,7 +1341,7 @@ template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteL1Blob(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
-    const NProto::TBlobMeta& blobMeta)
+    const NProto::TBlobMeta2& blobMeta)
 {
     using TTable = TPartitionSchema::L1Index;
 
@@ -1385,7 +1387,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL1Index(
 
 template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::FindBlocksInL1Index(
-    IBlobsVisitor& blobsVisitor,
+    IBlobsVisitor2& blobsVisitor,
     IBlocksIndexVisitor& blocksIndexVisitor,
     const TBlockRange32& blockRange,
     ui64 minCommitId,

@@ -110,7 +110,7 @@ class TCompactionBlockVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
     , public IMixedBlocksIndexVisitor
-    , public IBlobsVisitor
+    , public IBlobsVisitor2
 {
 private:
     TTxPartition::TRangeCompaction& Args;
@@ -201,7 +201,7 @@ public:
 
     bool Visit(
         const TPartialBlobId& blobId,
-        NProto::TBlobMeta blobMeta) override
+        NProto::TBlobMeta2 blobMeta) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
 
@@ -217,8 +217,8 @@ public:
             TBlockRange32::MakeClosedInterval(
                 mergedBlocks.GetStart(),
                 mergedBlocks.GetEnd());
-        ab.MergedBlobsSpecificInfo->SkippedBlocksCount =
-            mergedBlocks.GetSkipped();
+        ab.MergedBlobsSpecificInfo->SkippedBlockIds =
+            mergedBlocks.GetSkippedBlockIds();
         ab.MergedBlobsSpecificInfo->CommitId = mergedBlocks.GetCommitId();
 
         return true;
@@ -691,7 +691,7 @@ void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId)
             auto* mergedBlocks = meta.MutableMergedBlocks();
             mergedBlocks->SetStart(info.BlockRange.Start);
             mergedBlocks->SetEnd(info.BlockRange.End);
-            mergedBlocks->SetSkipped(info.SkippedBlocksCount);
+            mergedBlocks->SetSkippedBlockIds(info.SkippedBlockIds);
             mergedBlocks->SetCommitId(info.CommitId);
             continue;
         }

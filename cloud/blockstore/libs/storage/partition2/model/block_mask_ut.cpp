@@ -52,6 +52,29 @@ Y_UNIT_TEST_SUITE(TBlockMaskTest)
             UNIT_ASSERT(IsBlockMaskFull(mask, i));
         }
     }
+
+    Y_UNIT_TEST(ShouldStoreSkippedBlockIdsInBlobMeta)
+    {
+        TBlockMask mask;
+        mask.Set(1);
+        mask.Set(100);
+        mask.Set(MaxBlocksCount - 1);
+
+        NProto::TBlobMeta2 meta;
+        SetSkippedBlockIds(*meta.MutableMergedBlocks(), mask);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3, GetSkippedBlockCount(meta.GetMergedBlocks()));
+        UNIT_ASSERT(mask == GetSkippedBlockMask(meta.GetMergedBlocks()));
+    }
+
+    Y_UNIT_TEST(ShouldReadLegacySkippedBlockCount)
+    {
+        NProto::TBlobMeta2::TMergedBlocks mergedBlocks;
+        UNIT_ASSERT(mergedBlocks.ParseFromString(TString("\x18\x11", 2)));
+
+        UNIT_ASSERT_VALUES_EQUAL(17, GetSkippedBlockCount(mergedBlocks));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

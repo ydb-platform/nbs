@@ -3,6 +3,8 @@
 #include "part2_database.h"
 #include "part2_state.h"
 
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
+
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
@@ -747,7 +749,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         const auto& mergedBlocks = recreatedMeta->GetMergedBlocks();
         UNIT_ASSERT_VALUES_EQUAL(blockRange.Start, mergedBlocks.GetStart());
         UNIT_ASSERT_VALUES_EQUAL(blockRange.End, mergedBlocks.GetEnd());
-        UNIT_ASSERT_VALUES_EQUAL(skipMask.Count(), mergedBlocks.GetSkipped());
+        UNIT_ASSERT_VALUES_EQUAL(
+            skipMask.Count(), GetSkippedBlockCount(mergedBlocks));
     }
 
     // PrepareRangeCompaction + CompleteRangeCompaction: fully-available mixed
@@ -887,7 +890,10 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         ab.MergedBlobsSpecificInfo.ConstructInPlace();
         ab.MergedBlobsSpecificInfo->BlockRange =
             TBlockRange32::MakeClosedInterval(10, 20);
-        ab.MergedBlobsSpecificInfo->SkippedBlocksCount = 11;
+        TBlockMask skipMask;
+        skipMask.Set(0, 11);
+        ab.MergedBlobsSpecificInfo->SkippedBlockIds =
+            TString(BlockMaskAsString(skipMask));
         ab.MergedBlobsSpecificInfo->CommitId = 42;
         args.AffectedBlobs.emplace(blobId, std::move(ab));
 
@@ -902,7 +908,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         const auto& mergedBlocks = recreatedMeta->GetMergedBlocks();
         UNIT_ASSERT_VALUES_EQUAL(10u, mergedBlocks.GetStart());
         UNIT_ASSERT_VALUES_EQUAL(20u, mergedBlocks.GetEnd());
-        UNIT_ASSERT_VALUES_EQUAL(11u, mergedBlocks.GetSkipped());
+        UNIT_ASSERT_VALUES_EQUAL(11u, GetSkippedBlockCount(mergedBlocks));
         UNIT_ASSERT_VALUES_EQUAL(42u, mergedBlocks.GetCommitId());
     }
 

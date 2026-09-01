@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition2/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
 #include <cloud/blockstore/libs/storage/partition2/model/fresh_blob_test.h>
 #include <cloud/blockstore/libs/storage/partition2/part2.h>
 #include <cloud/blockstore/libs/storage/partition2/part2_events_private.h>
@@ -15258,7 +15259,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                     blobMeta.GetMergedBlocks().GetEnd());
                 UNIT_ASSERT_VALUES_EQUAL(
                     0,
-                    blobMeta.GetMergedBlocks().GetSkipped());
+                    GetSkippedBlockCount(blobMeta.GetMergedBlocks()));
             }
 
             UNIT_ASSERT_VALUES_EQUAL(

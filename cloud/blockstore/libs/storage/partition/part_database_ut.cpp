@@ -31,21 +31,13 @@ struct TTestBlockVisitor final
     TStringBuilder Result;
     THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> BlobToRange;
 
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
-    {
-        BlobToRange[blobId] = blockRange;
-
-        return true;
-    }
-
     bool Visit(
-        TBlockRange32 blockRange,
-        const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) override
+        const TPartialBlobId& blobId, NProto::TBlobMeta blobMeta) override
     {
-        Y_UNUSED(skippedBlocksCount);
-
-        return Visit(blockRange, blobId);
+        const auto& mergedBlocks = blobMeta.GetMergedBlocks();
+        BlobToRange[blobId] = TBlockRange32::MakeClosedInterval(
+            mergedBlocks.GetStart(), mergedBlocks.GetEnd());
+        return true;
     }
 
     bool Visit(
@@ -118,8 +110,7 @@ struct TTestBlobVisitor final
     bool Visit(
         ui64 commitId,
         ui64 blobId,
-        const NProto::TBlobMeta& blobMeta,
-        const TStringBuf blockMask) override
+        const NProto::TBlobMeta& blobMeta, const TStringBuf blockMask) override
     {
         Y_UNUSED(commitId);
         Y_UNUSED(blobId);
@@ -586,35 +577,35 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.InitSchema();
         });
 
-        auto minCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta blobMeta;
-            auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
-            mergedBlocks.SetStart(0);
-            mergedBlocks.SetEnd(1023);
-            db.WriteBlobMeta(
-                executor.MakeBlobId(),
-                blobMeta);
-        });
+        auto minCommitId = executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                NProto::TBlobMeta blobMeta;
+                auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
+                mergedBlocks.SetStart(0);
+                mergedBlocks.SetEnd(1023);
+                db.WriteBlobMeta(executor.MakeBlobId(), blobMeta);
+            });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta blobMeta;
-            auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
-            mergedBlocks.SetStart(1024);
-            mergedBlocks.SetEnd(2047);
-            db.WriteBlobMeta(
-                executor.MakeBlobId(),
-                blobMeta);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                NProto::TBlobMeta blobMeta;
+                auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
+                mergedBlocks.SetStart(1024);
+                mergedBlocks.SetEnd(2047);
+                db.WriteBlobMeta(executor.MakeBlobId(), blobMeta);
+            });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta blobMeta;
-            auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
-            mergedBlocks.SetStart(2048);
-            mergedBlocks.SetEnd(3071);
-            db.WriteBlobMeta(
-                executor.MakeBlobId(),
-                blobMeta);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                NProto::TBlobMeta blobMeta;
+                auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
+                mergedBlocks.SetStart(2048);
+                mergedBlocks.SetEnd(3071);
+                db.WriteBlobMeta(executor.MakeBlobId(), blobMeta);
+            });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
             TVector<TPartialBlobId> newBlobs;
@@ -900,32 +891,36 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         skipMask2.Set(10, 20);
         skipMask2.Set(31, skipMask2.Size());
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta meta;
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                NProto::TBlobMeta meta;
 
-            auto* mb = meta.MutableMergedBlocks();
-            mb->SetStart(range1.Start);
-            mb->SetEnd(range1.End);
-            mb->SetSkipped(5);
-            blob1 = executor.MakeBlobId();
-            db.WriteBlobMeta(blob1, meta);
-            db.WriteMergedBlocks(blob1, range1, skipMask1);
-        });
+                auto* mb = meta.MutableMergedBlocks();
+                mb->SetStart(range1.Start);
+                mb->SetEnd(range1.End);
+                mb->SetSkipped(skipMask1.Count());
+                blob1 = executor.MakeBlobId();
+                db.WriteBlobMeta(blob1, meta);
+                db.WriteMergedBlocks(blob1, range1, skipMask1);
+            });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta meta;
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                NProto::TBlobMeta meta;
 
-            auto* mb = meta.MutableMergedBlocks();
-            mb->SetStart(range2.Start);
-            mb->SetEnd(range2.End);
-            mb->SetSkipped(10);
-            meta.AddBlockChecksums(111);
-            meta.AddBlockChecksums(222);
-            meta.AddBlockChecksums(333);
-            blob2 = executor.MakeBlobId();
-            db.WriteBlobMeta(blob2, meta);
-            db.WriteMergedBlocks(blob2, range2, skipMask2);
-        });
+                auto* mb = meta.MutableMergedBlocks();
+                mb->SetStart(range2.Start);
+                mb->SetEnd(range2.End);
+                mb->SetSkipped(skipMask2.Count());
+                meta.AddBlockChecksums(111);
+                meta.AddBlockChecksums(222);
+                meta.AddBlockChecksums(333);
+                blob2 = executor.MakeBlobId();
+                db.WriteBlobMeta(blob2, meta);
+                db.WriteMergedBlocks(blob2, range2, skipMask2);
+            });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
             TTestBlockVisitorWithBlobOffset visitor;

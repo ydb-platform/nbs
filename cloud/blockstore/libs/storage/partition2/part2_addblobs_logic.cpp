@@ -1,6 +1,7 @@
 #include "part2_addblobs_logic.h"
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
 
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
@@ -391,7 +392,7 @@ private:
         }
 
         // write blob meta
-        NProto::TBlobMeta blobMeta;
+        NProto::TBlobMeta2 blobMeta;
 
         auto& mixedBlocks = *blobMeta.MutableMixedBlocks();
         mixedBlocks.MutableBlocks()->Reserve(blob.Blocks.size());
@@ -462,12 +463,12 @@ private:
         Y_ABORT_UNLESS(skipped < blob.BlockRange.Size());
 
         // write blob meta
-        NProto::TBlobMeta blobMeta;
+        NProto::TBlobMeta2 blobMeta;
 
         auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
         mergedBlocks.SetStart(blob.BlockRange.Start);
         mergedBlocks.SetEnd(blob.BlockRange.End);
-        mergedBlocks.SetSkipped(skipped);
+        SetSkippedBlockIds(mergedBlocks, blob.SkipMask);
         mergedBlocks.SetCommitId(blob.CommitId);
 
         for (ui32 checksum: blob.Checksums) {
@@ -535,7 +536,7 @@ private:
         }
 
         // write blob meta
-        NProto::TBlobMeta blobMeta;
+        NProto::TBlobMeta2 blobMeta;
 
         auto& mixedBlocks = *blobMeta.MutableMixedBlocks();
         mixedBlocks.MutableBlocks()->Reserve(blob.Blocks.size());
@@ -622,9 +623,9 @@ private:
     {
         static_assert(TLevel == 0 || TLevel == 1, "Invalid level");
 
-        NProto::TBlobMeta blobMeta;
+        NProto::TBlobMeta2 blobMeta;
 
-        NProto::TBlobMeta::TMixedBlocks* levelBlocks;
+        NProto::TBlobMeta2::TMixedBlocks* levelBlocks;
         if constexpr (TLevel == 0) {
             levelBlocks = blobMeta.MutableL0Blocks();
         } else {
@@ -882,7 +883,7 @@ private:
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                NProto::TBlobMeta blobMeta;
+                NProto::TBlobMeta2 blobMeta;
                 if (kv.second.BlobMeta) {
                     blobMeta = kv.second.BlobMeta.GetRef();
                 } else if (kv.second.RecreatedBlobMeta) {

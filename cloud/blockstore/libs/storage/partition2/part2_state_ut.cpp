@@ -549,11 +549,11 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                     const auto blockRange =
                         TBlockRange32::MakeOneBlock(blockIndex);
 
-                    NProto::TBlobMeta l0BlobMeta;
+                    NProto::TBlobMeta2 l0BlobMeta;
                     l0BlobMeta.MutableL0Blocks()->AddBlocks(blockIndex);
                     db.WriteL0Blob(blobId, blockRange, l0BlobMeta);
 
-                    NProto::TBlobMeta l1BlobMeta;
+                    NProto::TBlobMeta2 l1BlobMeta;
                     l1BlobMeta.MutableL1Blocks()->AddBlocks(blockIndex);
                     db.WriteL1Blob(blobId, blockRange, l1BlobMeta);
                 };

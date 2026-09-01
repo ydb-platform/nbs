@@ -89,8 +89,7 @@ TPartitionState MakeState(size_t blockCount = 2048)
 }
 
 NProto::TBlobMeta MakeMixedBlobMeta(
-    const TVector<ui32>& blocks,
-    const TVector<ui64>& commitIds = {})
+    const TVector<ui32>& blocks, const TVector<ui64>& commitIds = {})
 {
     NProto::TBlobMeta meta;
     auto& mixedBlocks = *meta.MutableMixedBlocks();
@@ -168,18 +167,9 @@ struct TMergedBlobVisitor final
     bool Found = false;
 
     bool Visit(
-        TBlockRange32 blockRange,
-        const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) override
+        const TPartialBlobId& blobId, NProto::TBlobMeta blobMeta) override
     {
-        Y_UNUSED(skippedBlocksCount);
-
-        return Visit(blockRange, blobId);
-    }
-
-    bool Visit(TBlockRange32 blockRange, const TPartialBlobId& blobId) override
-    {
-        Y_UNUSED(blockRange);
+        Y_UNUSED(blobMeta);
 
         if (blobId == BlobId) {
             Found = true;
