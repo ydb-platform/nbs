@@ -110,6 +110,8 @@ public:
     {
         auto allocResult = Storage.Alloc(size);
 
+        SetCounters();
+
         if (HasError(allocResult.Error)) {
             ReportWriteBackCacheCorruptionError(Sprintf(
                 "%s Storage::Alloc failed with an error: %s",
