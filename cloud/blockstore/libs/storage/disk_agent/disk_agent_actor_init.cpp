@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/io_request_parser.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
+#include <cloud/blockstore/libs/storage/disk_agent/journalled_device.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -170,7 +171,17 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         }
     }
 
-    StartJournalledDeviceTcpServer(ctx);
+    if (State) {
+        THashMap<TString, IJournalledDevicePtr> devices;
+
+        for (const auto& deviceId: State->GetDeviceIds()) {
+            devices.emplace(
+                deviceId,
+                CreateJournalledDevice(deviceId, State->GetDeviceClient()));
+        }
+
+        StartJournalledDeviceTcpServer(ctx, std::move(devices));
+    }
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Ready to work");
 
