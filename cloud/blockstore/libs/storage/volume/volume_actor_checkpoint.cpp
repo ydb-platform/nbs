@@ -440,8 +440,6 @@ void TCheckpointActor<TMethod>::ReplyAndDie(const TActorContext& ctx)
             RequestInfo->CallContext->LWOrbit,
             TraceInfo.ReceiveTime,
             GetCycleCount());
-        response->Record.MutableDeprecatedTrace()->CopyFrom(
-            response->Record.GetHeaders().GetTrace());
     }
 
     LWTRACK(

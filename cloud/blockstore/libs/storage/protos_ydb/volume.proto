@@ -8,7 +8,6 @@ import "cloud/blockstore/libs/storage/protos/volume.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/volume.proto";
 import "cloud/storage/core/protos/error.proto";
-import "cloud/storage/core/protos/trace.proto";
 
 import "contrib/ydb/core/protos/base.proto";
 import "contrib/ydb/core/protos/blockstore_config.proto";
@@ -147,17 +146,13 @@ message TBlobPiece
 
 message TDescribeBlocksResponse
 {
+    reserved 4, 5;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     repeated TFreshBlockRange FreshBlockRanges = 2;
     repeated TBlobPiece BlobPieces = 3;
-
-    // Request traces. Deprecated. Use Headers.Trace instead.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 4;
-
-    // Throttler delay. Deprecated. Use Headers.Throttler.Delay instead.
-    uint64 DeprecatedThrottlerDelay = 5;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -262,13 +257,12 @@ message TGetScanDiskStatusRequest
 
 message TGetScanDiskStatusResponse
 {
+    reserved 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     TScanDiskProgress Progress = 2;
-
-    // Request traces. Deprecated. Use Headers.Trace instead.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

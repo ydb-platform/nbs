@@ -148,7 +148,6 @@ void TGetCompactionStatusActionActor::HandleGetCompactionStatusResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    msg->Record.ClearDeprecatedTrace();
     msg->Record.MutableHeaders()->ClearTrace();
 
     TString response;

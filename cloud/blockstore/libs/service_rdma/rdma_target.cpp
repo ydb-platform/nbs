@@ -71,7 +71,6 @@ void FillResponse(const TCallContextPtr& callContext, TResponse& response)
 {
     const ui64 postponeTime =
         callContext->Time(EProcessingStage::Postponed).MicroSeconds();
-    response.SetDeprecatedThrottlerDelay(postponeTime);
     response.MutableHeaders()->MutableThrottler()->SetDelay(postponeTime);
 
     const ui64 shapingTime =
@@ -293,7 +292,6 @@ private:
                             // TODO: consider variable length proto size
                             // or switch from lwtrace to open telemetry like
                             // solution to avoid sending traces between nodes
-                            response.MutableDeprecatedTrace()->Clear();
                             response.MutableHeaders()->ClearTrace();
                         }
 
@@ -396,7 +394,6 @@ private:
                             // TODO: consider variable length proto size
                             // or switch from lwtrace to open telemetry like
                             // solution to avoid sending traces between nodes
-                            response.MutableDeprecatedTrace()->Clear();
                             response.MutableHeaders()->ClearTrace();
                         }
 
@@ -475,7 +472,6 @@ private:
                     // TODO: consider variable length proto size
                     // or switch from lwtrace to open telemetry like
                     // solution to avoid sending traces between nodes
-                    response.MutableDeprecatedTrace()->Clear();
                     response.MutableHeaders()->ClearTrace();
                 }
 
