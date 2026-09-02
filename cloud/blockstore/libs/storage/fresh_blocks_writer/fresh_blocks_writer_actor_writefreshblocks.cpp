@@ -31,7 +31,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         return;
     }
 
-    if (auto error = MakeFreshHardLimitExceededError(
+    if (auto error = CheckFreshHardLimits(
             SharedState->UnflushedFreshBlobByteCount.load(),
             SharedState->UnflushedFreshBlocksCount.load() *
                 PartitionConfig.GetBlockSize(),
@@ -40,8 +40,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         HasError(error))
     {
         for (auto& r: requestsInBuffer) {
-            auto response =
-                CreateWriteBlocksResponse(r.Data.ReplyLocal, std::move(error));
+            auto response = CreateWriteBlocksResponse(r.Data.ReplyLocal, error);
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -141,7 +140,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
     TRequestInfoPtr requestInfo,
     TBlockRange32 writeRange)
 {
-    if (auto error = MakeFreshHardLimitExceededError(
+    if (auto error = CheckFreshHardLimits(
             SharedState->UnflushedFreshBlobByteCount.load(),
             SharedState->UnflushedFreshBlocksCount.load() *
                 PartitionConfig.GetBlockSize(),

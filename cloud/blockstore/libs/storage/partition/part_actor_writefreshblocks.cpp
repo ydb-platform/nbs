@@ -40,7 +40,7 @@ void TPartitionActor::WriteFreshBlocks(
         return;
     }
 
-    if (auto error = MakeFreshHardLimitExceededError(
+    if (auto error = CheckFreshHardLimits(
             State->GetUnflushedFreshBlobByteCount(),
             static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
                 State->GetBlockSize(),
@@ -49,8 +49,7 @@ void TPartitionActor::WriteFreshBlocks(
         HasError(error))
     {
         for (auto& r: requestsInBuffer) {
-            auto response =
-                CreateWriteBlocksResponse(r.Data.ReplyLocal, std::move(error));
+            auto response = CreateWriteBlocksResponse(r.Data.ReplyLocal, error);
 
             LWTRACK(
                 ResponseSent_Partition,
@@ -462,7 +461,7 @@ void TPartitionActor::ZeroFreshBlocks(
         TabletID(),
         "All small writes should be handled by TFreshBlockWriter");
 
-    if (auto error = MakeFreshHardLimitExceededError(
+    if (auto error = CheckFreshHardLimits(
             State->GetUnflushedFreshBlobByteCount(),
             static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
                 State->GetBlockSize(),
