@@ -21,12 +21,12 @@ PEERDIR(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/fmdtest/configs/nfs-storage.txt
+    cloud/filestore/tests/fastshard/fmdtest/configs/nfs-storage.txt
 )
 
 SET(
     NFS_SERVICE_CONFIG_PATCH
-    cloud/filestore/tests/fmdtest/configs/vhost-sidechannel.txt
+    cloud/filestore/tests/fastshard/fmdtest/configs/vhost-sidechannel.txt
 )
 
 SET(USE_FAST_SHARD_PORT yes)
