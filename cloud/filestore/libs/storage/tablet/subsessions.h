@@ -29,6 +29,14 @@ struct TSubSession
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TSubSessionUpdateResult
+{
+    std::optional<NActors::TActorId> StalePipeServer;
+    std::optional<NActors::TActorId> StaleOwner;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 ui64 MakeSubSessionOwnerGeneration(
     ui32 tabletGeneration,
     ui32 ownerGeneration);
@@ -50,14 +58,14 @@ public:
         , MaxSeenRwSeqNo(maxSeenRwSeqNo)
     {}
 
-    std::optional<TSessionPipeInfo> AddSubSession(
+    TSubSessionUpdateResult AddSubSession(
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
         const NActors::TActorId& pipeServer,
         ui32 tabletGeneration);
 
-    std::optional<TSessionPipeInfo> UpdateSubSession(
+    TSubSessionUpdateResult UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
