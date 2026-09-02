@@ -19,6 +19,7 @@ def _chunk(
     timestamp: int,
     *,
     chunk_filename: str | None = None,
+    **attributes: object,
 ) -> dict:
     return {
         "name": "chunk-event",
@@ -26,6 +27,7 @@ def _chunk(
         "value": {
             "chunk_index": index,
             "nchunks": total,
+            **attributes,
             **(
                 {"chunk_filename": chunk_filename} if chunk_filename is not None else {}
             ),
@@ -161,6 +163,52 @@ def test_missing_chunk_filename_is_a_wildcard_when_routing(tmp_path: Path) -> No
     assert len(chunks[(0, 2)].attempts) == 1
     assert chunks[(0, 2)].attempts[0].start.name == "same"
     assert chunks[(0, 2)].attempts[0].finish.name == "same"
+
+
+def test_missing_chunk_filename_merges_chunk_snapshots(tmp_path: Path) -> None:
+    source = _load_trace(
+        tmp_path,
+        [
+            _chunk(0, 1, 1, metrics={"suite_start_timestamp": 1}),
+            _chunk(
+                0,
+                1,
+                2,
+                chunk_filename="chunk-0",
+                metrics={"suite_finish_timestamp": 2},
+            ),
+        ],
+    )
+
+    assert len(source.chunks) == 1
+    chunk = source.chunks[0]
+    assert chunk.key == (0, 1)
+    assert chunk.filename == "chunk-0"
+    assert chunk.record is not None
+    assert chunk.record.metrics == {
+        "suite_start_timestamp": 1,
+        "suite_finish_timestamp": 2,
+    }
+    assert source.matching_chunks(0, 1) == [chunk]
+
+
+def test_missing_chunk_filename_does_not_bridge_conflicting_filenames(
+    tmp_path: Path,
+) -> None:
+    source = _load_trace(
+        tmp_path,
+        [
+            _chunk(0, 1, 1),
+            _chunk(0, 1, 2, chunk_filename="first"),
+            _chunk(0, 1, 3, chunk_filename="second"),
+        ],
+    )
+
+    assert sorted(chunk.filename for chunk in source.chunks) == [
+        "",
+        "first",
+        "second",
+    ]
 
 
 def test_out_of_order_finishes_match_known_type_and_path(tmp_path: Path) -> None:
