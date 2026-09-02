@@ -546,6 +546,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(UseNonreplicatedRdmaActor,                 bool,      false           )\
     xxx(UseRdma,                                   bool,      false           )\
     xxx(NonReplicatedDontSuspendDevices,           bool,      false           )\
+    xxx(QueryAvailableStorageForResumingDevicesEnabled, bool, false           )\
     xxx(AddClientRetryTimeoutIncrement,            TDuration, MSeconds(100)   )\
     xxx(MaxNonReplicatedDiskDeallocationRequests,  ui32,      16              )\
     xxx(BalancerActionDelayInterval,               TDuration, Seconds(3)      )\

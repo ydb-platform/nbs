@@ -693,6 +693,7 @@ public:
     bool GetUseRdma() const;
 
     bool GetNonReplicatedDontSuspendDevices() const;
+    bool GetQueryAvailableStorageForResumingDevicesEnabled() const;
     TDuration GetAddClientRetryTimeoutIncrement() const;
 
     void Dump(IOutputStream& out) const;

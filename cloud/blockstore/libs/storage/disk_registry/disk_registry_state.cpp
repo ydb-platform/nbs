@@ -7569,7 +7569,13 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
-        if (DeviceList.IsSuspendedDevice(device.GetDeviceUUID())) {
+        const bool isSuspended =
+            StorageConfig
+                    ->GetQueryAvailableStorageForResumingDevicesEnabled()
+                ? DeviceList.IsSuspendedAndNotResumingDevice(
+                      device.GetDeviceUUID())
+                : DeviceList.IsSuspendedDevice(device.GetDeviceUUID());
+        if (isSuspended) {
             continue;
         }
 
