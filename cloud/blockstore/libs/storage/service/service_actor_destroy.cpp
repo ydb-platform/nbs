@@ -283,7 +283,16 @@ void TDestroyVolumeActor::HandleWaitReadyResponse(
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    if (HasError(error)) {
+    if (error.GetCode() == E_TRY_AGAIN) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Volume %s is waiting for allocation: %s",
+            DiskId.Quote().c_str(),
+            error.GetMessage().Quote().c_str());
+
+        ReplyAndDie(ctx, error);
+    } else if (HasError(error)) {
         LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
             "Volume %s WaitReady error %s",
             DiskId.Quote().c_str(),

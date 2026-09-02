@@ -38,6 +38,16 @@ ui64 GetBlocks(const NKikimrBlockStore::TVolumeConfig& config)
     return config.GetPartitions(0).GetBlockCount();
 }
 
+bool IsLocalDiskAllocationRetry(
+    const TStorageConfig& config,
+    const NProto::TError& error,
+    NProto::EStorageMediaKind mediaKind)
+{
+    return config.GetLocalDiskAsyncDeallocationEnabled() &&
+        error.GetCode() == E_TRY_AGAIN &&
+        IsDiskRegistryLocalMediaKind(mediaKind);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool ValidateDevices(
@@ -280,20 +290,31 @@ void TVolumeActor::HandleAllocateDiskIfNeeded(
     const TEvVolumePrivate::TEvAllocateDiskIfNeeded::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (UpdateVolumeConfigInProgress) {
-        return;
-    }
-
-    if (HasError(StorageAllocationResult)) {
-        return;
-    }
-
     DiskAllocationScheduled = false;
+
+    if (UpdateVolumeConfigInProgress) {
+        ScheduleAllocateDiskIfNeeded(ctx);
+        return;
+    }
 
     Y_UNUSED(ev);
 
     Y_ABORT_UNLESS(State);
     const auto& config = State->GetMeta().GetVolumeConfig();
+    const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+        config.GetStorageMediaKind());
+
+    ClearStorageAllocationResultIfDiskAllocated();
+
+    if (HasError(StorageAllocationResult) &&
+        !IsLocalDiskAllocationRetry(
+            *Config,
+            StorageAllocationResult,
+            mediaKind))
+    {
+        return;
+    }
+
     const auto blocks = GetBlocks(config);
     auto expectedSize = blocks * config.GetBlockSize();
     auto actualSize = GetSize(State->GetMeta().GetDevices());
@@ -342,6 +363,52 @@ void TVolumeActor::ScheduleAllocateDiskIfNeeded(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TVolumeActor::ReplyToPendingWaitReadyRequests(
+    const TActorContext& ctx)
+{
+    auto it = PendingRequests.begin();
+    while (it != PendingRequests.end()) {
+        if (it->Event->GetTypeRewrite() !=
+            TEvVolume::EvWaitReadyRequest)
+        {
+            ++it;
+            continue;
+        }
+
+        NCloud::Reply(
+            ctx,
+            *it->RequestInfo,
+            std::make_unique<TEvVolume::TEvWaitReadyResponse>(
+                StorageAllocationResult));
+        it = PendingRequests.erase(it);
+    }
+}
+
+void TVolumeActor::ClearStorageAllocationResultIfDiskAllocated()
+{
+    if (!State) {
+        return;
+    }
+
+    const auto& config = State->GetMeta().GetVolumeConfig();
+    const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+        config.GetStorageMediaKind());
+    if (!IsLocalDiskAllocationRetry(
+            *Config,
+            StorageAllocationResult,
+            mediaKind))
+    {
+        return;
+    }
+
+    const ui64 expectedSize = GetBlocks(config) * config.GetBlockSize();
+    if (expectedSize <= GetSize(State->GetMeta().GetDevices())) {
+        StorageAllocationResult.Clear();
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TVolumeActor::HandleAllocateDiskError(
     const TActorContext& ctx,
     NProto::TError error)
@@ -372,9 +439,7 @@ void TVolumeActor::HandleAllocateDiskError(
     const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
         GetNewestConfig().GetStorageMediaKind());
     const bool localDiskAllocationRetry =
-        Config->GetLocalDiskAsyncDeallocationEnabled() &&
-        error.GetCode() == E_TRY_AGAIN &&
-        IsDiskRegistryLocalMediaKind(mediaKind);
+        IsLocalDiskAllocationRetry(*Config, error, mediaKind);
 
     if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED && !localDiskAllocationRetry)
     {
@@ -392,6 +457,11 @@ void TVolumeActor::HandleAllocateDiskError(
         FormatError(error).c_str());
 
     StorageAllocationResult = std::move(error);
+
+    if (localDiskAllocationRetry) {
+        ReplyToPendingWaitReadyRequests(ctx);
+        ScheduleAllocateDiskIfNeeded(ctx);
+    }
 }
 
 void TVolumeActor::HandleAllocateDiskResponse(
@@ -690,6 +760,8 @@ void TVolumeActor::CompleteUpdateDevices(
     const TActorContext& ctx,
     TTxVolume::TUpdateDevices& args)
 {
+    ClearStorageAllocationResultIfDiskAllocated();
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
