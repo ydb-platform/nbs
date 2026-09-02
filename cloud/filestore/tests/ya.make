@@ -19,6 +19,7 @@ RECURSE_FOR_TESTS(
     directory_handles
     dirtree
     endpoints
+    fastshard
     fio
     fio_index
     fio_index_migration
