@@ -14,6 +14,7 @@ struct TCreateRootKmsClientParams
     TString RootCertsFile;
     TString CertChainFile;
     TString PrivateKeyFile;
+    TDuration RequestTimeout;
 };
 
 IRootKmsClientPtr CreateRootKmsClient(
