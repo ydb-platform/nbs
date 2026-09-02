@@ -6195,7 +6195,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool firstCompactionRequestCaptured = false;
         bool compactionResultObserved = false;
 
-        runtime->SetObserverFunc(
+        auto observer = runtime->AddObserver(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
@@ -6203,7 +6203,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         if (!firstCompactionRequestCaptured) {
                             firstCompactionRequestCaptured = true;
                             firstCompactionRequest.reset(event.Release());
-                            return TTestActorRuntime::EEventAction::DROP;
+                            return;
                         }
                         break;
                     }
@@ -6237,8 +6237,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
@@ -6254,15 +6252,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT(compactionResultObserved);
 
-        auto response = partition.RemoteHttpInfo(BuildRemoteHttpQuery(
-            TestTabletId,
-            {{"action", "describe"}, {"range", "0"}}));
-        UNIT_ASSERT_C(
-            response->Html.Contains("<td>BlobCount</td><td>3</td>"),
-            response->Html);
-        UNIT_ASSERT_C(
-            response->Html.Contains("<td>BlockCount</td><td>1018</td>"),
-            response->Html);
+        const auto counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(1018, counters->Counters.BlockCount);
     }
 
     Y_UNIT_TEST(ShouldPreserveSkippedCountersForMixedCompactionResults)
