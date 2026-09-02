@@ -114,15 +114,17 @@ void TStatsServiceActor::RegisterServiceVolumeCounters(
     Y_ABORT_UNLESS(!chain.empty());
 
     if (!volume.ServiceVolumeCounters) {
+        // Initial registration: create a new counter subgroup.
         volume.ServiceVolumeCounters = RegisterChain(head, chain);
         volume.PerfCounters.Register(volume.ServiceVolumeCounters);
     } else {
-        auto parent = head;
-        for (size_t i = 0; i + 1 < chain.size(); ++i) {
-            parent = parent->GetSubgroup(chain[i].first, chain[i].second);
-        }
-
+        // Re-registration: reattach the existing subgroup to preserve accumulated counter values.
         const auto& [name, value] = chain.back();
+
+        auto parentChain = chain;
+        parentChain.pop_back();
+
+        const auto parent = RegisterChain(head, parentChain);
         parent->RegisterSubgroup(name, value, volume.ServiceVolumeCounters);
     }
 

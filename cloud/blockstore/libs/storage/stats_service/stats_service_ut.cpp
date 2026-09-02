@@ -2107,7 +2107,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-    namespace {
+namespace
+{
 
     using TCounterGroupPtr = TIntrusivePtr<NMonitoring::TDynamicCounters>;
 
