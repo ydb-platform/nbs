@@ -6173,6 +6173,108 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoTestIncrementalCompaction(std::move(config), NProto::STORAGE_MEDIA_HYBRID, true);
     }
 
+    void DoShouldPreserveSkippedCountersWhenCompactionCreatesTwoBlobs(
+        bool compactToMixed)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+        config.SetHDDMaxBlobsPerRange(3);
+        config.SetMaxSkippedBlobsDuringCompactionHDD(1);
+        config.SetIncrementalCompactionEnabled(true);
+        config.SetTargetCompactionBytesPerOp(64_KB);
+        if (compactToMixed) {
+            config.SetCompactionMergedBlobThresholdHDD(1_MB);
+        }
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        std::unique_ptr<IEventHandle> firstCompactionRequest;
+        bool firstCompactionRequestCaptured = false;
+        bool compactionResultObserved = false;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest: {
+                        if (!firstCompactionRequestCaptured) {
+                            firstCompactionRequestCaptured = true;
+                            firstCompactionRequest.reset(event.Release());
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode != EAddBlobMode::ADD_COMPACTION_RESULT ||
+                            compactionResultObserved)
+                        {
+                            break;
+                        }
+
+                        compactionResultObserved = true;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            compactToMixed ? 2 : 0,
+                            msg->MixedBlobs.size());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            compactToMixed ? 0 : 2,
+                            msg->MergedBlobs.size());
+
+                        const auto& compactionInfos = compactToMixed
+                            ? msg->MixedBlobCompactionInfos
+                            : msg->MergedBlobCompactionInfos;
+                        UNIT_ASSERT_VALUES_EQUAL(2, compactionInfos.size());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            1,
+                            compactionInfos[0].BlobsSkippedByCompaction);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            0,
+                            compactionInfos[1].BlobsSkippedByCompaction);
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024));
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 5));
+        partition.WriteBlocks(TBlockRange32::WithLength(10, 5));
+
+        UNIT_ASSERT(firstCompactionRequest);
+
+        partition.ZeroBlocks(TBlockRange32::WithLength(20, 6));
+
+        runtime->Send(firstCompactionRequest.release());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT(compactionResultObserved);
+
+        auto response = partition.RemoteHttpInfo(BuildRemoteHttpQuery(
+            TestTabletId,
+            {{"action", "describe"}, {"range", "0"}}));
+        UNIT_ASSERT_C(
+            response->Html.Contains("<td>BlobCount</td><td>3</td>"),
+            response->Html);
+        UNIT_ASSERT_C(
+            response->Html.Contains("<td>BlockCount</td><td>1018</td>"),
+            response->Html);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveSkippedCountersForMixedCompactionResults)
+    {
+        DoShouldPreserveSkippedCountersWhenCompactionCreatesTwoBlobs(true);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveSkippedCountersForMergedCompactionResults)
+    {
+        DoShouldPreserveSkippedCountersWhenCompactionCreatesTwoBlobs(false);
+    }
+
     Y_UNIT_TEST(ShouldNotCompactIncrementallyIfSsdDiskGarbageLevelIsTooHigh)
     {
         auto config = DefaultConfig();
