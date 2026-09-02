@@ -9,7 +9,11 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/generic/strbuf.h>
 #include <util/stream/output.h>
+
+#include <memory>
+#include <optional>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -33,21 +37,96 @@ using TPoolKindToMediaKindMapping =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Immediate Control Board controls for read-write storage settings.
+// TStorageConfig reads an explicitly set ICB value before the corresponding
+// protobuf value without modifying the proto. A control set has one of these
+// modes:
+//  - config-independent: register one set per board and share it between
+//    TStorageConfig instances; its defaults mean "no ICB override"
+//  - config-bound: create it for one TStorageConfig; copy construction may
+//    share it while copying that config's raw proto. Its defaults match the
+//    original proto values
+// Default construction creates a config-independent set. The two-argument
+// TStorageConfig constructor creates a private config-bound set.
+class TStorageConfigControls
+{
+public:
+    // Create a config-independent control set with no active overrides.
+    TStorageConfigControls();
+    ~TStorageConfigControls();
+
+    TStorageConfigControls(const TStorageConfigControls&) = delete;
+    TStorageConfigControls& operator=(const TStorageConfigControls&) = delete;
+
+    // Register every read-write field control. Repeated registration on the
+    // same board is a no-op; a different board must not be used.
+    void Register(NKikimr::TControlBoard& controlBoard);
+
+    // Return an explicit ICB override for a known read-write field. An empty
+    // result means "no override" - the caller must use its configuration proto
+    // value.
+    std::optional<i64> GetOverride(TStringBuf name) const;
+
+    // Restore a registered field's ICB control to its initial value. For a
+    // config-independent instance, the initial value means "no override". For a
+    // config-bound instance, it equals the field value from the configuration
+    // proto. Return false for an unknown or unregistered field.
+    bool RestoreDefault(TStringBuf name);
+
+private:
+    friend class TStorageConfig;
+
+    struct TImpl;
+
+    // Non-null implementation containing all read-write field controls, their
+    // configuration-binding policy, and the registered board address.
+    std::unique_ptr<TImpl> Impl;
+
+    // Create the private per-config control set used by the two-argument
+    // TStorageConfig constructor. ICB defaults are read from the supplied
+    // proto.
+    explicit TStorageConfigControls(
+        const NProto::TStorageServiceConfig& storageServiceConfig);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageConfig
 {
 private:
     struct TImpl;
     std::unique_ptr<TImpl> Impl;
 
+    const TStorageConfigControls::TImpl* ControlsImpl() const;
+
 public:
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
         NFeatures::TFeaturesConfigPtr featuresConfig);
+
+    // Use the supplied config-independent controls for ICB overrides. If
+    // controls is null, create config-bound controls from storageServiceConfig,
+    // as the two-argument constructor does.
+    TStorageConfig(
+        NProto::TStorageServiceConfig storageServiceConfig,
+        NFeatures::TFeaturesConfigPtr featuresConfig,
+        TStorageConfigControlsPtr controls);
+
+    // Create a raw-proto copy that shares Features and the live ICB controls.
+    TStorageConfig(const TStorageConfig& other);
+    TStorageConfig& operator=(const TStorageConfig&) = delete;
+
     ~TStorageConfig();
+
+    // Return reusable config-independent controls. Return null for
+    // config-bound controls, including controls shared internally by copy
+    // construction.
+    TStorageConfigControlsPtr GetStorageConfigControls() const;
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
-    void SetVolumePreemptionType(NProto::EVolumePreemptionType volumePreemptionType);
+    void SetVolumePreemptionType(
+        NProto::EVolumePreemptionType volumePreemptionType);
 
     void Register(NKikimr::TControlBoard& controlBoard);
 
