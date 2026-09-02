@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 import time
 import uuid
 
@@ -1103,3 +1104,35 @@ def test_client_should_not_crash_on_shutdown_while_listing_endpoints():
     errors = process_recipe_err_files(log_files["stderr_file"])
     if errors:
         raise RuntimeError("Recipe found errors in the log files: " + "\n".join(errors))
+
+
+def test_should_destroy_with_confirmation():
+    client, _ = __init_test()
+
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
+    cmd = [
+        binary_path, "destroy",
+        "--filesystem", "fs0",
+        "--server-address", "localhost",
+        "--server-port", os.getenv("NFS_SERVER_PORT"),
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w+") as confirmation:
+        confirmation.write("not-fs0")
+        confirmation.flush()
+        confirmation.seek(0)
+
+        result = common.execute(cmd, stdin=confirmation, check_exit_code=False)
+
+    assert result.returncode != 0
+
+    # a failed confirmation should leave the filesystem intact
+    client.describe("fs0")
+    assert "fs0" in client.list_filestores()
+
+    client.destroy("fs0")
+    # client.destroy does the confirmation under the hood, and the filesystem
+    # should actually be destroyed
+    assert "fs0" not in client.list_filestores()
