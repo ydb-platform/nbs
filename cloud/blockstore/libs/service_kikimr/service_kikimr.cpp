@@ -246,7 +246,10 @@ struct THandler
 {
     TActorId SelfId;
     TLog Log;
-    std::atomic<ui64> Cookie{0};
+    // A zero cookie usually means that a responder did not copy the request
+    // cookie. Should not issue it, so such a response cannot complete an
+    // unrelated request by accident.
+    std::atomic<ui64> Cookie{1};
 
     explicit THandler(TLog log)
         : Log(std::move(log))
@@ -399,12 +402,12 @@ public:
         : ActorSystem(std::move(actorSystem))
         , Config(config)
         , Log(ActorSystem->CreateLog("KIKIMR_SERVICE"))
-    {
-        Handlers.resize(Config.GetPermanentActorCount());
-    }
+    {}
 
     void Start() override
     {
+        Y_ABORT_UNLESS(Handlers.empty(), "KikimrService already started");
+        Handlers.resize(Config.GetPermanentActorCount());
         for (auto& handler: Handlers) {
             handler = std::make_shared<THandler>(Log);
             auto actorId =

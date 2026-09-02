@@ -158,11 +158,9 @@ public:
     {
         auto state = ExtractRequest(ev->Cookie);
         if (!state) {
-            LOG_TRACE_S(
-                ctx,
-                TBlockStoreComponents::SERVICE_PROXY,
-                GetBlockStoreRequestName(T::Request)
-                    << " response received for unknown cookie: " << ev->Cookie);
+            ReportServiceProxyReceivedUnknownCookie(
+                {{"request", GetBlockStoreRequestName(T::Request)},
+                 {"cookie", ev->Cookie}});
             return;
         }
 
