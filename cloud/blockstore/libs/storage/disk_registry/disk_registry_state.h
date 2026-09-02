@@ -426,6 +426,7 @@ public:
         NProto::EVolumeIOMode IOMode = {};
         TInstant IOModeTs;
         bool MuteIOErrors = false;
+        bool CanAllocateAfterSecureErase = false;
     };
 
     struct TAllocateCheckpointResult: public TAllocateDiskResult

@@ -2981,10 +2981,26 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
         if (isNewDisk) {
             Disks.erase(params.DiskId);
 
-            if (!params.MasterDiskId && !isShadowDiskAllocation) {
+            // Keep the SchemeShard volume while a local allocation is waiting
+            // for secure erase: the Volume tablet will retry the allocation.
+            const bool shouldDestroyVolume =
+                !StorageConfig->GetLocalDiskAsyncDeallocationEnabled() ||
+                !result->CanAllocateAfterSecureErase;
+            const bool canDestroyVolume =
+                !params.MasterDiskId && !isShadowDiskAllocation;
+            const bool isBroken = AnyOf(
+                BrokenDisks,
+                [&] (const auto& info)
+                {
+                    return info.DiskId == params.DiskId;
+                });
+
+            if (canDestroyVolume && shouldDestroyVolume) {
                 // failed to allocate storage for the new volume, need to
                 // destroy this volume
                 AddToBrokenDisks(now, db, params.DiskId);
+            } else if (canDestroyVolume && isBroken) {
+                DeleteBrokenDisks(db, {params.DiskId});
             }
         }
     };
@@ -3073,6 +3089,13 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     auto allocatedDevices = DeviceList.AllocateDevices(params.DiskId, query);
 
     if (!allocatedDevices) {
+        result->CanAllocateAfterSecureErase =
+            IsDiskRegistryLocalMediaKind(params.MediaKind) &&
+            CanAllocateLocalDiskAfterSecureErase(
+                params.AgentIds,
+                params.PoolName,
+                requestedSize);
+
         onError();
 
         return MakeError(E_BS_DISK_ALLOCATION_FAILED, TStringBuilder() <<
@@ -5101,32 +5124,23 @@ void TDiskRegistryState::DeleteBrokenDisks(
     TDiskRegistryDatabase& db,
     TVector<TDiskId> ids)
 {
+    SortUnique(ids);
+
     for (const auto& id: ids) {
         db.DeleteBrokenDisk(id);
     }
 
-    Sort(ids);
     SortBy(BrokenDisks, [] (const auto& d) {
         return d.DiskId;
     });
-
-    TVector<TBrokenDiskInfo> newList;
-
-    std::set_difference(
-        BrokenDisks.begin(),
-        BrokenDisks.end(),
-        ids.begin(),
-        ids.end(),
-        std::back_inserter(newList),
-        TOverloaded {
-            [] (const TBrokenDiskInfo& lhs, const auto& rhs) {
-                return lhs.DiskId < rhs;
-            },
-            [] (const auto& lhs, const auto& rhs) {
-                return lhs < rhs.DiskId;
-            }});
-
-    BrokenDisks.swap(newList);
+    EraseIf(
+        BrokenDisks,
+        [&] (const auto& brokenDisk) {
+            return std::binary_search(
+                ids.begin(),
+                ids.end(),
+                brokenDisk.DiskId);
+        });
 }
 
 ui64 TDiskRegistryState::UpdateAndReallocateDisk(
