@@ -1391,7 +1391,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             }
 
             const size_t index = GetRandomAllocation(false);
-            const auto& allocation = Allocations[index];
+            auto& allocation = Allocations[index];
 
             if (RandomNumber(2u) == 0) {
                 const ui32 crc =
