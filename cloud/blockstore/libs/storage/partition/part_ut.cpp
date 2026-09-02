@@ -5936,6 +5936,463 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldPassNewCompactionCountersToAddBlobs)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetUseNewCompactionMapCounters(true);
+        config.SetSplitCompactionTxEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        bool addBlobsRequestObserved = false;
+        ui32 blocksCountCompactedInRange = 0;
+        ui32 blobsFullyCompactedForRange = 0;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvAddBlobsRequest)
+                {
+                    const auto* msg =
+                        event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                    if (msg->Mode == ADD_COMPACTION_RESULT) {
+                        addBlobsRequestObserved = true;
+
+                        const auto collect = [&](const auto& compactionInfos)
+                        {
+                            for (const auto& info: compactionInfos) {
+                                blocksCountCompactedInRange +=
+                                    info.BlocksCountCompactedInRange;
+                                blobsFullyCompactedForRange +=
+                                    info.BlobsFullyCompactedForRange;
+                            }
+                        };
+
+                        collect(msg->MixedBlobCompactionInfos);
+                        collect(msg->MergedBlobCompactionInfos);
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.Compaction();
+
+        UNIT_ASSERT(addBlobsRequestObserved);
+        UNIT_ASSERT_VALUES_EQUAL(3, blocksCountCompactedInRange);
+        UNIT_ASSERT_VALUES_EQUAL(3, blobsFullyCompactedForRange);
+    }
+
+    Y_UNIT_TEST(ShouldAccountForConcurrentWritesInCompactionMapCounters)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetUseNewCompactionMapCounters(true);
+        config.SetSplitCompactionTxEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        bool interceptCompactionAddBlobs = true;
+        TAutoPtr<IEventHandle> compactionAddBlobsRequest;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvAddBlobsRequest)
+                {
+                    const auto* msg =
+                        event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                    if (msg->Mode == ADD_COMPACTION_RESULT &&
+                        interceptCompactionAddBlobs)
+                    {
+                        interceptCompactionAddBlobs = false;
+                        compactionAddBlobsRequest = event.Release();
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendCompactionRequest();
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT(compactionAddBlobsRequest);
+
+        partition.WriteBlocks(1, 11);
+
+        runtime->Send(compactionAddBlobsRequest.Release());
+
+        auto compactionResponse = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, compactionResponse->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(11),
+            GetBlockContent(partition.ReadBlocks(1)));
+
+        const auto counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(2, counters->Counters.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(4, counters->Counters.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.UsedBlockCount);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreAlreadyCompactedBlobsInCompactionMapCounters)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetCleanupThreshold(1);
+        config.SetUseNewCompactionMapCounters(true);
+        config.SetSplitCompactionTxEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        struct TCompactionCounters
+        {
+            ui32 Blocks = 0;
+            ui32 Blobs = 0;
+        };
+
+        TVector<TCompactionCounters> compactionCounters;
+        bool cleanupRequestDropped = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        const auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode != ADD_COMPACTION_RESULT) {
+                            break;
+                        }
+
+                        TCompactionCounters counters;
+                        const auto collect = [&](const auto& compactionInfos)
+                        {
+                            for (const auto& info: compactionInfos) {
+                                counters.Blocks +=
+                                    info.BlocksCountCompactedInRange;
+                                counters.Blobs +=
+                                    info.BlobsFullyCompactedForRange;
+                            }
+                        };
+
+                        collect(msg->MixedBlobCompactionInfos);
+                        collect(msg->MergedBlobCompactionInfos);
+                        compactionCounters.push_back(counters);
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvCleanupRequest:
+                        cleanupRequestDropped = true;
+                        return true;
+                }
+
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+
+        partition.Compaction();
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT(cleanupRequestDropped);
+
+        partition.WriteBlocks(1, 11);
+        partition.Compaction();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, compactionCounters.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(3, compactionCounters[0].Blocks);
+        UNIT_ASSERT_VALUES_EQUAL(3, compactionCounters[0].Blobs);
+
+        UNIT_ASSERT_VALUES_EQUAL(4, compactionCounters[1].Blocks);
+        UNIT_ASSERT_VALUES_EQUAL(2, compactionCounters[1].Blobs);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(11),
+            GetBlockContent(partition.ReadBlocks(1)));
+
+        const auto counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->Counters.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.UsedBlockCount);
+
+        const auto response = partition.StatPartition();
+        const auto& stats = response->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(6, stats.GetMergedBlobsCount());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreAlreadyCompactedBlocksInCompactionMapCounters)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);   // disable FreshBlocks
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetCleanupThreshold(1);
+        config.SetUseNewCompactionMapCounters(true);
+        config.SetSplitCompactionTxEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config, 2 * MaxBlocksCount);
+
+        struct TCompactionCounters
+        {
+            ui32 Blocks = 0;
+            ui32 Blobs = 0;
+        };
+
+        TVector<TCompactionCounters> compactionCounters;
+        bool cleanupRequestDropped = false;
+
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        const auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode != ADD_COMPACTION_RESULT) {
+                            break;
+                        }
+
+                        TCompactionCounters counters;
+                        const auto collect = [&](const auto& compactionInfos)
+                        {
+                            for (const auto& info: compactionInfos) {
+                                counters.Blocks +=
+                                    info.BlocksCountCompactedInRange;
+                                counters.Blobs +=
+                                    info.BlobsFullyCompactedForRange;
+                            }
+                        };
+
+                        collect(msg->MixedBlobCompactionInfos);
+                        collect(msg->MergedBlobCompactionInfos);
+                        compactionCounters.push_back(counters);
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvCleanupRequest:
+                        cleanupRequestDropped = true;
+                        return true;
+                }
+
+                return false;
+            });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto writeRange = TBlockRange32::WithLength(
+            MaxBlocksCount / 2,
+            MaxBlocksCount);
+        partition.WriteBlocks(writeRange, 1);
+
+        partition.Compaction(0);
+        partition.Compaction(0);
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT(cleanupRequestDropped);
+
+        partition.Compaction(0);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, compactionCounters.size());
+        for (const auto& counters: compactionCounters) {
+            UNIT_ASSERT_VALUES_EQUAL(MaxBlocksCount / 2, counters.Blocks);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.Blobs);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlocksContent(1, writeRange.Size()),
+            GetBlocksContent(partition.ReadBlocks(writeRange)));
+
+        const auto firstRangeCounters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            firstRangeCounters->Counters.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxBlocksCount / 2,
+            firstRangeCounters->Counters.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxBlocksCount / 2,
+            firstRangeCounters->Counters.UsedBlockCount);
+
+        const auto secondRangeCounters =
+            partition.GetCompactionCounters(MaxBlocksCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            secondRangeCounters->Counters.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxBlocksCount / 2,
+            secondRangeCounters->Counters.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxBlocksCount / 2,
+            secondRangeCounters->Counters.UsedBlockCount);
+
+        const auto response = partition.StatPartition();
+        const auto& stats = response->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotCountMixedBlobAsFullyCompactedWhenItContainsNewerBlocks)
+    {
+        auto config = DefaultConfig();
+        config.SetReadBlockMaskOnCompactionOptimizationEnabled(true);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetUseNewCompactionMapCounters(true);
+
+        auto runtime = PrepareTestActorRuntime(config, 2 * MaxBlocksCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(0, MaxBlocksCount),
+            'A');
+        partition.WriteBlocks(0, '0');
+
+        std::unique_ptr<IEventHandle> writeBlobRequest;
+        bool interceptWriteBlobRequest = true;
+
+        ui64 compactionCommitId = 0;
+        TVector<TVector<ui64>> mixedBlobBlockCommitIds;
+        ui32 blocksCountCompactedInRange = 0;
+        ui32 blobsFullyCompactedForRange = 0;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvWriteBlobRequest &&
+                    interceptWriteBlobRequest)
+                {
+                    writeBlobRequest.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvAddBlobsRequest)
+                {
+                    const auto* msg =
+                        event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+
+                    if (msg->Mode == ADD_FLUSH_RESULT) {
+                        for (const auto& blob: msg->FreshBlobs) {
+                            mixedBlobBlockCommitIds.emplace_back();
+                            for (const auto& block: blob.Blocks) {
+                                mixedBlobBlockCommitIds.back().push_back(
+                                    block.CommitId);
+                            }
+                        }
+                    } else if (msg->Mode == ADD_COMPACTION_RESULT) {
+                        compactionCommitId = msg->CommitId;
+
+                        const auto collect = [&](const auto& compactionInfos)
+                        {
+                            for (const auto& info: compactionInfos) {
+                                blocksCountCompactedInRange +=
+                                    info.BlocksCountCompactedInRange;
+                                blobsFullyCompactedForRange +=
+                                    info.BlobsFullyCompactedForRange;
+                            }
+                        };
+
+                        collect(msg->MixedBlobCompactionInfos);
+                        collect(msg->MergedBlobCompactionInfos);
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendWriteBlocksRequest(1, '1');
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT(writeBlobRequest);
+        interceptWriteBlobRequest = false;
+
+        partition.SendCompactionRequest();
+        runtime->DispatchEvents({}, 10ms);
+
+        partition.WriteBlocks(2, '2');
+        partition.Flush();
+        partition.TrimFreshLog();
+
+        runtime->SendAsync(writeBlobRequest.release());
+
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        UNIT_ASSERT(compactionCommitId);
+
+        bool mixedBlobStraddlesCompactionCommit = false;
+        for (const auto& commitIds: mixedBlobBlockCommitIds) {
+            bool hasVisibleBlock = false;
+            bool hasNewerBlock = false;
+            for (const ui64 commitId: commitIds) {
+                hasVisibleBlock |= commitId <= compactionCommitId;
+                hasNewerBlock |= commitId > compactionCommitId;
+            }
+            mixedBlobStraddlesCompactionCommit |=
+                hasVisibleBlock && hasNewerBlock;
+        }
+
+        UNIT_ASSERT(mixedBlobStraddlesCompactionCommit);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxBlocksCount + 1,
+            blocksCountCompactedInRange);
+        UNIT_ASSERT_VALUES_EQUAL(1, blobsFullyCompactedForRange);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('0'),
+            GetBlockContent(partition.ReadBlocks(0)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('1'),
+            GetBlockContent(partition.ReadBlocks(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('2'),
+            GetBlockContent(partition.ReadBlocks(2)));
+
+        const auto counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(2, counters->Counters.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxBlocksCount + 1,
+            counters->Counters.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxBlocksCount,
+            counters->Counters.UsedBlockCount);
+
+        const auto statsResponse = partition.StatPartition();
+        const auto& stats = statsResponse->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+    }
+
     Y_UNIT_TEST(ShouldProduceSparseMergedBlobsUponCompaction)
     {
         auto config = DefaultConfig();

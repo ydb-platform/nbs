@@ -52,6 +52,8 @@ struct TRangeCompactionInfo
     const TBlockMask ZeroBlobSkipMask;
     const ui32 BlobsSkippedByCompaction;
     const ui32 BlocksSkippedByCompaction;
+    ui16 BlocksCountCompactedInRange = 0;
+    ui16 BlobsFullyCompactedForRange = 0;
     TVector<std::optional<ui32>> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
 
@@ -83,6 +85,10 @@ struct TRangeCompactionInfo
 };
 
 void ApplyChecksumFixups(TRangeCompactionInfo& rc);
+
+void UpdateCompactionMapCounters(
+    ui64 commitId,
+    TRangeCompactionInfo& rangeCompactionInfo);
 
 ////////////////////////////////////////////////////////////////////////////////
 

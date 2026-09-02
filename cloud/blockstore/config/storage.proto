@@ -1689,4 +1689,8 @@ message TStorageServiceConfig
     // If true, QueryAvailableStorage includes suspended devices that are
     // resuming after secure erase.
     optional bool QueryAvailableStorageForResumingDevicesEnabled = 528;
+
+    // Use the number of blobs and blocks processed by compaction to update the
+    // compaction map instead of the number skipped by incremental compaction.
+    optional bool UseNewCompactionMapCounters = 529;
 }

@@ -86,6 +86,7 @@ void FillRangeCompactionInfos(
                 continue;
             }
             ab->BlockMask = blockMask;
+            ab->BlockMaskWasRead = true;
         }
     }
 }
@@ -765,6 +766,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         const TVector<std::optional<ui32>>& blockChecksums,
         ui32 blobsSkipped,
         ui32 blocksSkipped,
+        ui16 blocksCountCompactedInRange,
+        ui16 blobsFullyCompactedForRange,
         EChannelDataKind channelDataKind)
     {
         while (skipMask.Get(range.End - range.Start)) {
@@ -785,7 +788,11 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 range,
                 skipMask,
                 std::move(ensuredBlockChecksums));
-            mergedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
+            mergedBlobCompactionInfos.push_back(
+                {blobsSkipped,
+                 blocksSkipped,
+                 blocksCountCompactedInRange,
+                 blobsFullyCompactedForRange});
         } else if (channelDataKind == EChannelDataKind::Mixed) {
             TVector<ui32> blockIndices(Reserve(range.Size()));
             for (auto blockIndex = range.Start; blockIndex <= range.End;
@@ -800,7 +807,11 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 std::move(blockIndices),
                 std::move(ensuredBlockChecksums),
                 0);   // unknown blob alignment
-            mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
+            mixedBlobCompactionInfos.push_back(
+                {blobsSkipped,
+                 blocksSkipped,
+                 blocksCountCompactedInRange,
+                 blobsFullyCompactedForRange});
         } else {
             LOG_ERROR(
                 ctx,
@@ -812,6 +823,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
     };
 
     for (auto& rc: RangeCompactionInfos) {
+        UpdateCompactionMapCounters(CommitId, rc);
+
         if (rc.DataBlobId) {
             addBlob(
                 rc.DataBlobId,
@@ -820,16 +833,22 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockChecksums,
                 rc.BlobsSkippedByCompaction,
                 rc.BlocksSkippedByCompaction,
+                rc.BlocksCountCompactedInRange,
+                rc.BlobsFullyCompactedForRange,
                 rc.ChannelDataKind);
         }
 
         if (rc.ZeroBlobId) {
             ui32 blobsSkipped = 0;
             ui32 blocksSkipped = 0;
+            ui16 blocksCountCompactedInRange = 0;
+            ui16 blobsFullyCompactedForRange = 0;
 
             if (!rc.DataBlobId) {
                 blobsSkipped = rc.BlobsSkippedByCompaction;
                 blocksSkipped = rc.BlocksSkippedByCompaction;
+                blocksCountCompactedInRange = rc.BlocksCountCompactedInRange;
+                blobsFullyCompactedForRange = rc.BlobsFullyCompactedForRange;
             }
 
             addBlob(
@@ -839,6 +858,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockChecksums,
                 blobsSkipped,
                 blocksSkipped,
+                blocksCountCompactedInRange,
+                blobsFullyCompactedForRange,
                 rc.ChannelDataKind);
         }
 

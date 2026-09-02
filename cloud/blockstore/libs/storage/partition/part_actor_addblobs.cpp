@@ -62,13 +62,17 @@ private:
     const ui64 DeletionCommitId;
     const ui32 MaxBlocksInBlob;
     const bool UseFlushCommitIdAsTrimFreshLogToCommitId;
+    const bool UseNewCompactionMapCounters;
     TChildLogTitle LogTitle;
 
     struct TRangeInfo
     {
         TRangeStat Stat;
+        bool Initialized = false;
         ui32 BlobsSkippedByCompaction = 0;
         ui32 BlocksSkippedByCompaction = 0;
+        ui16 BlocksCountCompactedInRange = 0;
+        ui16 BlobsFullyCompactedForRange = 0;
     };
 
     TDenseHash<ui32, TRangeInfo> CompactionCounters{
@@ -84,6 +88,7 @@ public:
             ui64 deletionCommitId,
             ui32 maxBlocksInBlob,
             bool useFlushCommitIdAsTrimFreshLogToCommitId,
+            bool useNewCompactionMapCounters,
             TChildLogTitle logTitle)
         : State(state)
         , Args(args)
@@ -93,16 +98,13 @@ public:
         , MaxBlocksInBlob(maxBlocksInBlob)
         , UseFlushCommitIdAsTrimFreshLogToCommitId(
               useFlushCommitIdAsTrimFreshLogToCommitId)
+        , UseNewCompactionMapCounters(useNewCompactionMapCounters)
         , LogTitle(std::move(logTitle))
     {}
 
     void Execute(const TActorContext& ctx, TPartitionDatabase& db)
     {
-        if (Args.Mode == ADD_COMPACTION_RESULT) {
-            Y_ABORT_UNLESS(
-                Args.MixedBlobs.size() ==
-                Args.MixedBlobCompactionInfos.size());
-        }
+        InitCompactionCounters();
 
         for (ui32 i = 0; i < Args.MixedBlobs.size(); ++i) {
             const auto& blob = Args.MixedBlobs[i];
@@ -111,22 +113,6 @@ public:
             if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT) {
                 UpdateUsedBlocks(db, blob);
             }
-
-            if (Args.Mode == ADD_COMPACTION_RESULT) {
-                const auto& cm = State.GetCompactionMap();
-                const auto blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
-                auto& rangeInfo = CompactionCounters[blockIndex];
-                rangeInfo.BlobsSkippedByCompaction =
-                    Args.MixedBlobCompactionInfos[i].BlobsSkippedByCompaction;
-                rangeInfo.BlocksSkippedByCompaction =
-                    Args.MixedBlobCompactionInfos[i].BlocksSkippedByCompaction;
-            }
-        }
-
-        if (Args.Mode == ADD_COMPACTION_RESULT) {
-            Y_ABORT_UNLESS(
-                Args.MergedBlobs.size() ==
-                Args.MergedBlobCompactionInfos.size());
         }
 
         for (ui32 i = 0; i < Args.MergedBlobs.size(); ++i) {
@@ -135,18 +121,6 @@ public:
             UpdateCompactionCounters(blob);
             if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT) {
                 UpdateUsedBlocks(db, blob);
-            }
-
-            if (Args.Mode == ADD_COMPACTION_RESULT) {
-                const auto& cm = State.GetCompactionMap();
-                const auto blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
-                Y_DEBUG_ABORT_UNLESS(
-                    blockIndex == cm.GetRangeStart(blob.BlockRange.End));
-                auto& rangeInfo = CompactionCounters[blockIndex];
-                rangeInfo.BlobsSkippedByCompaction =
-                    Args.MergedBlobCompactionInfos[i].BlobsSkippedByCompaction;
-                rangeInfo.BlocksSkippedByCompaction =
-                    Args.MergedBlobCompactionInfos[i].BlocksSkippedByCompaction;
             }
         }
 
@@ -209,7 +183,8 @@ private:
                 break;
             default:
                 Y_ABORT(
-                    "Unexpected index kind: %u", static_cast<ui32>(indexKind));
+                    "Unexpected index kind: %u",
+                    static_cast<ui32>(indexKind));
         }
 
         // Deletion markers do not have a data channel.
@@ -238,6 +213,54 @@ private:
                 Y_ABORT(
                     "Unexpected blob channel data kind: %u",
                     static_cast<ui32>(countersKind));
+        }
+    }
+
+    void UpdateCompactionInfo(
+        ui32 blockIndex,
+        const TBlobCompactionInfo& compactionInfo)
+    {
+        auto& rangeInfo = CompactionCounters[blockIndex];
+        rangeInfo.BlobsSkippedByCompaction +=
+            compactionInfo.BlobsSkippedByCompaction;
+        rangeInfo.BlocksSkippedByCompaction +=
+            compactionInfo.BlocksSkippedByCompaction;
+
+        TCompactionMap::UpdateCompactionCounter(
+            rangeInfo.BlocksCountCompactedInRange +
+                compactionInfo.BlocksCountCompactedInRange,
+            &rangeInfo.BlocksCountCompactedInRange);
+        TCompactionMap::UpdateCompactionCounter(
+            rangeInfo.BlobsFullyCompactedForRange +
+                compactionInfo.BlobsFullyCompactedForRange,
+            &rangeInfo.BlobsFullyCompactedForRange);
+    }
+
+    void InitCompactionCounters()
+    {
+        if (Args.Mode != ADD_COMPACTION_RESULT) {
+            return;
+        }
+
+        Y_ABORT_UNLESS(
+            Args.MixedBlobs.size() == Args.MixedBlobCompactionInfos.size());
+        Y_ABORT_UNLESS(
+            Args.MergedBlobs.size() == Args.MergedBlobCompactionInfos.size());
+
+        const auto& cm = State.GetCompactionMap();
+
+        for (ui32 i = 0; i < Args.MixedBlobs.size(); ++i) {
+            const auto blockIndex =
+                cm.GetRangeStart(BlockIndex(Args.MixedBlobs[i], 0));
+            UpdateCompactionInfo(blockIndex, Args.MixedBlobCompactionInfos[i]);
+        }
+
+        for (ui32 i = 0; i < Args.MergedBlobs.size(); ++i) {
+            const auto& blob = Args.MergedBlobs[i];
+            const auto blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
+            Y_DEBUG_ABORT_UNLESS(
+                blockIndex == cm.GetRangeStart(blob.BlockRange.End));
+            UpdateCompactionInfo(blockIndex, Args.MergedBlobCompactionInfos[i]);
         }
     }
 
@@ -494,8 +517,25 @@ private:
         const auto& cm = State.GetCompactionMap();
         auto& rangeInfo = CompactionCounters[blockIndex];
 
-        if (!rangeInfo.Stat.BlobCount && Args.Mode != ADD_COMPACTION_RESULT) {
-            rangeInfo.Stat = cm.Get(blockIndex);
+        if (!rangeInfo.Initialized) {
+            if (Args.Mode != ADD_COMPACTION_RESULT ||
+                UseNewCompactionMapCounters)
+            {
+                rangeInfo.Stat = cm.Get(blockIndex);
+            }
+
+            if (Args.Mode == ADD_COMPACTION_RESULT &&
+                UseNewCompactionMapCounters)
+            {
+                rangeInfo.Stat.BlobCount -=
+                    Min(rangeInfo.Stat.BlobCount,
+                        rangeInfo.BlobsFullyCompactedForRange);
+                rangeInfo.Stat.BlockCount -=
+                    Min(rangeInfo.Stat.BlockCount,
+                        rangeInfo.BlocksCountCompactedInRange);
+            }
+
+            rangeInfo.Initialized = true;
         }
 
         return rangeInfo.Stat;
@@ -582,6 +622,15 @@ private:
     void UpdateCompactionMap(TPartitionDatabase& db)
     {
         for (const auto& kv: CompactionCounters) {
+            ui32 blobCount = kv.second.Stat.BlobCount;
+            ui32 blockCount = kv.second.Stat.BlockCount;
+            if (Args.Mode == ADD_COMPACTION_RESULT &&
+                !UseNewCompactionMapCounters)
+            {
+                blobCount += kv.second.BlobsSkippedByCompaction;
+                blockCount += kv.second.BlocksSkippedByCompaction;
+            }
+
             const auto usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
                 Min(static_cast<ui64>(
@@ -604,18 +653,10 @@ private:
                     newlyZeroedBlocksDiff,
                 0L)));
 
-            db.WriteCompactionMap(
-                kv.first,
-                kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                kv.second.Stat.BlockCount +
-                    kv.second.BlocksSkippedByCompaction);
-            State.GetCompactionMap().Update(
-                kv.first,
-                kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
-                usedBlockCount,
-                newlyZeroedBlocks,
-                Args.Mode == ADD_COMPACTION_RESULT);
+            db.WriteCompactionMap(kv.first, blobCount, blockCount);
+            State.GetCompactionMap().Update(kv.first, blobCount, blockCount,
+                                            usedBlockCount, newlyZeroedBlocks,
+                                            Args.Mode == ADD_COMPACTION_RESULT);
         }
     }
 
@@ -855,6 +896,7 @@ void TPartitionActor::ExecuteAddBlobs(
         State->GetMaxBlocksInBlob(),
         Config
             ->GetWaitForFreshWritesBeforeFlushEnabled(),   // useFlushCommitIdAsTrimFreshLogToCommitId
+        Config->GetUseNewCompactionMapCounters(),
         LogTitle.GetChild(GetCycleCount()));
     executor.Execute(ctx, db);
 }
