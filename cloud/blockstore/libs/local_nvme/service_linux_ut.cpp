@@ -372,6 +372,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
                 DeviceId: 0x400
                 Model: "Test NVMe 2"
                 FirmwareRev: "FW4243"
+                DeviceState: NVME_DEVICE_STATE_MAINTENANCE
             }
             Devices {
                 SerialNumber: "NVME_2"
@@ -506,6 +507,8 @@ struct TFixture: public TFixtureBase
 
             // chop "0000:"
             device.SetPCIAddress(src.GetPCIAddress().substr(5));
+
+            device.SetDeviceState(src.GetDeviceState());
         }
 
         // Add some noise
@@ -523,7 +526,7 @@ struct TFixture: public TFixtureBase
         return devices;
     }
 
-    void SetProviderReady()
+    void SetProviderReady() const
     {
         DeviceProvider->ListNVMeDevicesImpl.SetValue(
             [&] { return MakeFuture(CreateDeviceList()); });
@@ -1701,6 +1704,16 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
         auto counters = rootGroup->FindSubgroup("component", "local_nvme");
         UNIT_ASSERT(counters);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            counters->GetCounter("DevicesInOnlineState")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("DevicesInOfflineState")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("DevicesInMaintenanceState")->Val());
 
         for (const auto& d: Devices) {
             auto deviceGroup =

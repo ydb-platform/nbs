@@ -6,6 +6,18 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/local_nvm
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum ENVMeDeviceState
+{
+    // The device is operational and available for use.
+    NVME_DEVICE_STATE_ONLINE = 0;
+
+    // The device is marked for maintenance.
+    NVME_DEVICE_STATE_MAINTENANCE = 1;
+
+    // The device has failed or is unreachable.
+    NVME_DEVICE_STATE_OFFLINE = 2;
+}
+
 message TNVMeDevice
 {
     // Serial number.
@@ -34,6 +46,9 @@ message TNVMeDevice
 
     // Firmware revision of NVMe.
     string FirmwareRev = 9;
+
+    // NVMe device state.
+    ENVMeDeviceState DeviceState = 10;
 }
 
 // List of NVMe devices.

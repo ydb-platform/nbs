@@ -18,10 +18,42 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type deviceState int32
+
+const (
+	DeviceStateActive         deviceState = deviceState(pb.EDeviceState_DEVICE_STATE_ACTIVE)
+	DeviceStateInactive       deviceState = deviceState(pb.EDeviceState_DEVICE_STATE_INACTIVE)
+	DeviceStateDecommissioned deviceState = deviceState(pb.EDeviceState_DEVICE_STATE_DECOMMISSIONED)
+)
+
+func (s *deviceState) UnmarshalYAML(node *yaml.Node) error {
+	var value string
+	if err := node.Decode(&value); err != nil {
+		return err
+	}
+
+	switch value {
+	case "active":
+		*s = DeviceStateActive
+	case "decommissioned":
+		*s = DeviceStateDecommissioned
+	case "inactive":
+		*s = DeviceStateInactive
+	default:
+		return fmt.Errorf(
+			"unknown device state %q: expected active, inactive or decommissioned",
+			value,
+		)
+	}
+
+	return nil
+}
+
 type device struct {
-	PCIeAddress  string `yaml:"pci"`
-	SerialNumber string `yaml:"serial"`
-	OwnerId      string `yaml:"owner"`
+	PCIeAddress  string      `yaml:"pci"`
+	SerialNumber string      `yaml:"serial"`
+	OwnerId      string      `yaml:"owner"`
+	State        deviceState `yaml:"state"`
 }
 
 type config struct {
@@ -73,6 +105,7 @@ func loadDevices(path string) (map[string][]*pb.TDevice, error) {
 		devices[d.OwnerId] = append(devices[d.OwnerId], &pb.TDevice{
 			PCIeAddress:  d.PCIeAddress,
 			SerialNumber: d.SerialNumber,
+			State:        pb.EDeviceState(d.State),
 		})
 	}
 	return devices, nil
