@@ -1391,8 +1391,17 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             }
 
             const size_t index = GetRandomAllocation(false);
-            UNIT_ASSERT(!HasError(RingBuffer->Commit(Allocations[index].Ptr)));
-            Allocations[index].Committed = true;
+            const auto& allocation = Allocations[index];
+
+            if (RandomNumber(2u) == 0) {
+                const ui32 crc =
+                    Crc32c(allocation.Data.data(), allocation.Data.size());
+                UNIT_ASSERT(!HasError(RingBuffer->Commit(allocation.Ptr, crc)));
+            } else {
+                UNIT_ASSERT(!HasError(RingBuffer->Commit(allocation.Ptr)));
+            }
+
+            allocation.Committed = true;
             --IncompleteAllocationCount;
 
             Check();
