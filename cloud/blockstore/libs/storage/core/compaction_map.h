@@ -53,7 +53,7 @@ public:
     TCompactionMap(ui32 rangeSize, ICompactionPolicyPtr policy);
     ~TCompactionMap();
 
-    static void UpdateCompactionCounter(ui32 source, ui16* target)
+    static void UpdateCompactionCounter(ui64 source, ui16* target)
     {
         *target = source > Max<ui16>() ? Max<ui16>() : source;
     }

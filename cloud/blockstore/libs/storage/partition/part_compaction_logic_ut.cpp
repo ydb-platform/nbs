@@ -191,6 +191,16 @@ TPrepareCompleteResult RunPrepareAndComplete(
         rangeCompactionInfos,
         0);
 
+    for (auto& [blobId, ab]: rangeCompactionInfos.back().AffectedBlobs) {
+        if (blobsToReadBlockMasks.contains(blobId)) {
+            ab.BlockMask = TBlockMask{};
+            ab.BlockMaskWasRead = true;
+        }
+    }
+    UpdateCompactionMapCounters(
+        compactionCommitId,
+        rangeCompactionInfos.back());
+
     return {
         ready,
         std::move(rangeCompactionInfos),
@@ -368,6 +378,133 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT(blobsToReadBlockMasks.empty());
     }
 
+    Y_UNIT_TEST(ShouldIgnoreAlreadyCompactedDataInCompactionMapCounters)
+    {
+        TAffectedBlobs affectedBlobs;
+
+        auto addBlob = [&] (
+            const TPartialBlobId& blobId,
+            TVector<ui16> offsets,
+            TBlockMask blockMask,
+            bool alreadyInCleanupQueue)
+        {
+            TAffectedBlob blob;
+            blob.MinCommitIdInCompactionRange = CommitId;
+            blob.MaxCommitIdInCompactionRange = CommitId;
+            blob.Offsets = std::move(offsets);
+            if (!alreadyInCleanupQueue) {
+                blob.BlockMask = blockMask;
+                blob.BlockMaskWasRead = true;
+            }
+            blob.BlobAlreadyInCleanupQueue = alreadyInCleanupQueue;
+            affectedBlobs.emplace(blobId, std::move(blob));
+        };
+
+        addBlob(
+            TPartialBlobId(1, 1, 3, 2 * DefaultBlockSize, 1, 0),
+            {0, 1},
+            TBlockMask{},
+            true);   // already in cleanup queue
+
+        TBlockMask fullyCompactedMask;
+        fullyCompactedMask.Set(0);
+        fullyCompactedMask.Set(1);
+        addBlob(
+            TPartialBlobId(1, 1, 3, 2 * DefaultBlockSize, 2, 0),
+            {0, 1},
+            fullyCompactedMask,
+            false);   // every block in this range is already compacted
+
+        TBlockMask partiallyCompactedMask;
+        partiallyCompactedMask.Set(1);
+        addBlob(
+            TPartialBlobId(1, 1, 3, 3 * DefaultBlockSize, 3, 0),
+            {0, 1, 2},
+            partiallyCompactedMask,
+            false);   // only offsets 0 and 2 are newly compacted
+
+        TAffectedBlob fullyAvailableBlob;
+        fullyAvailableBlob.MinCommitIdInCompactionRange = CommitId;
+        fullyAvailableBlob.MaxCommitIdInCompactionRange = CommitId;
+        fullyAvailableBlob.Offsets = {0, 1};
+        fullyAvailableBlob.BlockMask = GetFullBlockMask(MaxBlocksCount);
+        affectedBlobs.emplace(
+            TPartialBlobId(1, 1, 3, 2 * DefaultBlockSize, 4, 0),
+            std::move(fullyAvailableBlob));
+
+        TRangeCompactionInfo rangeCompactionInfo(
+            TBlockRange32::MakeClosedInterval(0, 7),
+            {},   // originalBlobId
+            {},   // dataBlobId
+            {},   // dataBlobSkipMask
+            {},   // zeroBlobId
+            {},   // zeroBlobSkipMask
+            0,    // blobsSkippedByCompaction
+            0,    // blocksSkippedByCompaction
+            {},   // blockChecksums
+            EChannelDataKind::Merged,
+            {},   // blobContent
+            {},   // zeroBlocks
+            std::move(affectedBlobs),
+            {},   // affectedBlocks
+            {});  // checksumFixups
+
+        UpdateCompactionMapCounters(CommitId, rangeCompactionInfo);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            rangeCompactionInfo.BlocksCountCompactedInRange);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            rangeCompactionInfo.BlobsFullyCompactedForRange);
+    }
+
+    Y_UNIT_TEST(ShouldNotCountDeletionMarkerOffsetsAsCompactedBlocks)
+    {
+        const TPartialBlobId deletionMarker(
+            1,
+            1,
+            3,
+            0,   // blobSize
+            1,
+            0);
+
+        TAffectedBlob blob;
+        blob.MinCommitIdInCompactionRange = CommitId;
+        blob.MaxCommitIdInCompactionRange = CommitId;
+        blob.Offsets = {0};
+        blob.BlockMask = GetFullBlockMask(MaxBlocksCount);
+
+        TAffectedBlobs affectedBlobs;
+        affectedBlobs.emplace(deletionMarker, std::move(blob));
+
+        TRangeCompactionInfo rangeCompactionInfo(
+            TBlockRange32::MakeClosedInterval(0, 7),
+            {},   // originalBlobId
+            {},   // dataBlobId
+            {},   // dataBlobSkipMask
+            {},   // zeroBlobId
+            {},   // zeroBlobSkipMask
+            0,    // blobsSkippedByCompaction
+            0,    // blocksSkippedByCompaction
+            {},   // blockChecksums
+            EChannelDataKind::Merged,
+            {},   // blobContent
+            {},   // zeroBlocks
+            std::move(affectedBlobs),
+            {},   // affectedBlocks
+            {});  // checksumFixups
+
+        UpdateCompactionMapCounters(CommitId, rangeCompactionInfo);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            rangeCompactionInfo.BlocksCountCompactedInRange);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            rangeCompactionInfo.BlobsFullyCompactedForRange);
+    }
+
     // PrepareRangeCompaction: a blob spanning two compaction ranges has
     // CompactionRangeCount > 1 and must go into blobsToReadBlockMasks even
     // when optimization is enabled.
@@ -419,8 +556,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT(blobsToReadBlockMasks.contains(blobId));
     }
 
-    // PrepareRangeCompaction: a blob already in the cleanup queue gets a full
-    // block mask assigned in-place and is NOT put into blobsToReadBlockMasks.
+    // PrepareRangeCompaction: a blob already in the cleanup queue is flagged
+    // in-place and is NOT put into blobsToReadBlockMasks.
     Y_UNIT_TEST(PrepareSkipsBlockMasksForCleanupQueueBlob)
     {
         auto state = MakeState();
@@ -768,6 +905,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(blockRange.Start, mergedBlocks.GetStart());
         UNIT_ASSERT_VALUES_EQUAL(blockRange.End, mergedBlocks.GetEnd());
         UNIT_ASSERT_VALUES_EQUAL(skipMask.Count(), mergedBlocks.GetSkipped());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, result.RangeCompactionInfos[0].BlobsFullyCompactedForRange);
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockRange.Size() - skipMask.Count(),
+            result.RangeCompactionInfos[0].BlocksCountCompactedInRange);
     }
 
     // PrepareRangeCompaction + CompleteRangeCompaction: fully-available mixed
@@ -811,6 +953,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(
             blockIndices.size(),
             mixedBlocks.CommitIdsSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, result.RangeCompactionInfos[0].BlobsFullyCompactedForRange);
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockIndices.size(),
+            result.RangeCompactionInfos[0].BlocksCountCompactedInRange);
 
         for (size_t i = 0; i < blockIndices.size(); ++i) {
             UNIT_ASSERT_VALUES_EQUAL(blockIndices[i], mixedBlocks.GetBlocks(i));
@@ -893,6 +1040,10 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(1, ab.CompactionRangeCount);
         UNIT_ASSERT(ab.MaxCommitIdInCompactionRange > compactionCommitId);
         UNIT_ASSERT(!ab.RecreatedBlobMeta);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, result.RangeCompactionInfos[0].BlobsFullyCompactedForRange);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, result.RangeCompactionInfos[0].BlocksCountCompactedInRange);
     }
 }
 

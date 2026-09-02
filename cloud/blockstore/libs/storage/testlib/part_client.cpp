@@ -310,6 +310,13 @@ TPartitionClient::CreateTrimFreshLogRequest()
         TEvPartitionCommonPrivate::TEvTrimFreshLogRequest>();
 }
 
+std::unique_ptr<TEvPartitionPrivate::TEvGetCompactionCountersRequest>
+TPartitionClient::CreateGetCompactionCountersRequest(ui32 blockIndex)
+{
+    return std::make_unique<
+        TEvPartitionPrivate::TEvGetCompactionCountersRequest>(blockIndex);
+}
+
 std::unique_ptr<TEvPartitionPrivate::TEvMetadataRebuildBlockCountRequest>
 TPartitionClient::CreateMetadataRebuildBlockCountRequest(
     TPartialBlobId blobId,

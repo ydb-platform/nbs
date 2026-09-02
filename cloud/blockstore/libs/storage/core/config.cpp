@@ -735,6 +735,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MixedBlocksFilterAllowedCpuTimePerSecond,   TDuration,  MSeconds(10)  )\
     xxx(CheckpointAwareCleanupEnabled,              bool,       false         )\
     xxx(UseBlobChannelDataKindForCounters,          bool,       false         )\
+    xxx(UseNewCompactionMapCounters,                bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

@@ -231,6 +231,16 @@ void AssertRangeStatEqual(const TRangeStat& expected, const TRangeStat& actual)
 
 Y_UNIT_TEST_SUITE(TCompactionMapTest)
 {
+    Y_UNIT_TEST(ShouldSaturateCompactionCountersFromUi64)
+    {
+        ui16 counter = 0;
+
+        TCompactionMap::UpdateCompactionCounter(
+            static_cast<ui64>(Max<ui32>()) + 1, &counter);
+
+        UNIT_ASSERT_VALUES_EQUAL(Max<ui16>(), counter);
+    }
+
     Y_UNIT_TEST(ShouldBeEmptyAtStart)
     {
         TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5));

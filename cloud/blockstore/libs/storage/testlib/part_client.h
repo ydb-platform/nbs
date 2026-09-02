@@ -163,6 +163,9 @@ public:
             std::forward<TArgs>(args)...);
     }
 
+    std::unique_ptr<TEvPartitionPrivate::TEvGetCompactionCountersRequest>
+    CreateGetCompactionCountersRequest(ui32 blockIndex);
+
     std::unique_ptr<TEvPartitionPrivate::TEvMetadataRebuildBlockCountRequest>
     CreateMetadataRebuildBlockCountRequest(
         TPartialBlobId blobId,

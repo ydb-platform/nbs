@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
+#include <cloud/blockstore/libs/storage/core/compaction_policy.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
@@ -152,6 +153,9 @@ struct TAffectedBlob
     TVector<ui16> Offsets;
 
     TMaybe<TBlockMask> BlockMask;
+    // False when a full mask was synthesized for a blob that is fully
+    // available for compaction.
+    bool BlockMaskWasRead = false;
 
     bool BlobAlreadyInCleanupQueue = false;
 
@@ -172,6 +176,20 @@ struct TBlobCompactionInfo
 {
     const ui32 BlobsSkippedByCompaction = 0;
     const ui32 BlocksSkippedByCompaction = 0;
+
+    const ui16 BlocksCountCompactedInRange = 0;
+    const ui16 BlobsFullyCompactedForRange = 0;
+
+    TBlobCompactionInfo(
+        ui32 blobsSkippedByCompaction,
+        ui32 blocksSkippedByCompaction,
+        ui16 blocksCountCompactedInRange,
+        ui16 blobsFullyCompactedForRange)
+        : BlobsSkippedByCompaction(blobsSkippedByCompaction)
+        , BlocksSkippedByCompaction(blocksSkippedByCompaction)
+        , BlocksCountCompactedInRange(blocksCountCompactedInRange)
+        , BlobsFullyCompactedForRange(blobsFullyCompactedForRange)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,6 +213,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(AddBlobs,                  __VA_ARGS__)                                \
     xxx(Flush,                     __VA_ARGS__)                                \
     xxx(Compaction,                __VA_ARGS__)                                \
+    xxx(GetCompactionCounters,     __VA_ARGS__)                                \
     xxx(CompactionReadBlobInfo,    __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
     xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
@@ -366,6 +385,30 @@ struct TEvPartitionPrivate
 
     struct TCompactionResponse
     {
+    };
+
+    //
+    // GetCompactionCounters
+    //
+
+    struct TGetCompactionCountersRequest
+    {
+        ui32 BlockIndex = 0;
+
+        explicit TGetCompactionCountersRequest(ui32 blockIndex)
+            : BlockIndex(blockIndex)
+        {}
+    };
+
+    struct TGetCompactionCountersResponse
+    {
+        TRangeStat Counters;
+
+        TGetCompactionCountersResponse() = default;
+
+        explicit TGetCompactionCountersResponse(TRangeStat counters)
+            : Counters(std::move(counters))
+        {}
     };
 
     //

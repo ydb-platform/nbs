@@ -969,6 +969,8 @@ public:
     [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
 
     [[nodiscard]] bool GetUseBlobChannelDataKindForCounters() const;
+
+    [[nodiscard]] bool GetUseNewCompactionMapCounters() const;
 };
 
 ui64 GetAllocationUnit(
