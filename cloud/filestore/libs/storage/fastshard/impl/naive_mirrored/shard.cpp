@@ -307,6 +307,7 @@ public:
         ui32 flags,
         const NProto::TSetNodeAttrRequest::TUpdate& update,
         NProto::TNodeAttr* attr,
+        TVector<ui64>* pageClusterIdsToDeallocate,
         TWriteContext& writeContext)
     {
         TNodeTableSlot slot{};
@@ -336,9 +337,12 @@ public:
         }
         if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
             if (slot.Size > update.GetSize()) {
-                //
-                // TODO(#5894): deallocate pages and delete them from page index
-                //
+                for (ui64 offset = AlignUp(update.GetSize(), PageClusterSize);
+                        offset < slot.Size; offset += PageClusterSize)
+                {
+                    const ui64 pageClusterId = offset / PageClusterSize;
+                    pageClusterIdsToDeallocate->push_back(pageClusterId);
+                }
             }
 
             slot.Size = update.GetSize();
@@ -987,9 +991,6 @@ silk::LogLevel LogLevel(const NProto::TError& e)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-//
-// TODO(#5895) - implement layout dump
-//
 
 struct TComponentLayout
 {
@@ -1363,15 +1364,21 @@ public:
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
 
+        NProto::TError error;
+
         {
             std::lock_guard g(Mutex);
             wcg.Init();
 
-            auto error = Nodes.UpdateNode(
+            TVector<ui64> pageClusterIdsToDeallocate;
+            TVector<ui64> storagePageClusterIdsToDeallocate;
+
+            error = Nodes.UpdateNode(
                 request.GetNodeId(),
                 request.GetFlags(),
                 request.GetUpdate(),
                 response.MutableNode(),
+                &pageClusterIdsToDeallocate,
                 writeContext);
             if (HasError(error)) {
                 SILK_LOG(
@@ -1379,15 +1386,68 @@ public:
                     "[%s] SetNodeAttr::Nodes.UpdateNode error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
-                *response.MutableError() = std::move(error);
+                pageClusterIdsToDeallocate.clear();
+            }
+
+            for (ui64 pageClusterId: pageClusterIdsToDeallocate) {
+                lc.PageClusterIds.push_back(pageClusterId);
+
+                TNodePageClusterSlot slot{};
+                error = PageIndex.Delete(
+                    {
+                        .NodeId = request.GetNodeId(),
+                        .PageClusterId = pageClusterId,
+                    },
+                    writeContext,
+                    &slot);
+
+                if (error.GetCode() == E_FS_NOENT) {
+                    //
+                    // This page cluster is not allocated.
+                    //
+
+                    lc.StoragePageClusterIds.push_back(
+                        InvalidStoragePageClusterId);
+                    continue;
+                }
+
+                if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "[%s] SetNodeAttr::PageIndex.Delete error=%s",
+                        lc.Describe().c_str(),
+                        FormatError(error).c_str());
+                    break;
+                }
+
+                storagePageClusterIdsToDeallocate.push_back(
+                    slot.StoragePageClusterId);
+                lc.StoragePageClusterIds.push_back(slot.StoragePageClusterId);
+            }
+
+            if (!HasError(error)) {
+                error = PageAllocator.Deallocate(
+                    lc,
+                    storagePageClusterIdsToDeallocate,
+                    writeContext);
+                if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "[%s] SetNodeAttr::PageAllocator.Deallocate error=%s",
+                        lc.Describe().c_str(),
+                        FormatError(error).c_str());
+                }
             }
         }
 
         auto pages = CollectPages(writeContext);
-        auto error = Storage->WriteLogRecord(
-            std::move(writeContext.Headers),
-            std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+        if (!HasError(error)) {
+            error = Storage->WriteLogRecord(
+                std::move(writeContext.Headers),
+                std::move(writeContext.PageGroups),
+                writeContext.Lsn);
+        }
+
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),

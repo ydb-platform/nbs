@@ -949,3 +949,178 @@ TEST(NaiveMirroredShardTest, DeallocatesPagesUponUnlink)
         EXPECT_EQ(0ULL, stats.UsedPageCount);
     }
 }
+
+TEST(NaiveMirroredShardTest, DeallocatesPagesUponTruncate)
+{
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
+    TStorageFixture fx;
+
+    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
+
+    const TString file1 = "file1";
+    const ui32 mode = 0644;
+    const ui64 uid = 111;
+    const ui64 gid = 222;
+
+    const ui32 createHandleFlags = ProtoFlag(TCreateHandleRequest::E_CREATE) |
+                                   ProtoFlag(TCreateHandleRequest::E_READ) |
+                                   ProtoFlag(TCreateHandleRequest::E_WRITE);
+
+    ui64 nodeId = 0;
+    ui64 handle = 0;
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.SetFlags(createHandleFlags);
+        request.SetMode(mode);
+        request.SetUid(uid);
+        request.SetGid(gid);
+        auto f = shard->CreateHandle(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        handle = response.GetHandle();
+        EXPECT_TRUE(handle != 0);
+        nodeId = response.GetNodeAttr().GetId();
+        EXPECT_TRUE(nodeId != 0);
+    }
+
+    const auto expectedData = GenerateValidateData(4_KB);
+
+    //
+    // 4 pages, 3 clusters, 1 skipped cluster.
+    // Actual page usage - 2 x 8 = 16.
+    //
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(32_KB);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(40_KB);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(96_KB);
+        *request.MutableBuffer() = expectedData;
+        auto f = shard->WriteData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    //
+    // Truncating the file to 32KiB - only 1 allocated cluster should remain.
+    //
+
+    {
+        TSetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        const ui32 flags = ProtoFlag(TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        request.SetFlags(flags);
+        auto* update = request.MutableUpdate();
+        update->SetSize(32_KB);
+        auto f = shard->SetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TFileSystemShardStats stats;
+        auto f = shard->CollectStats(&stats);
+        auto e = f.GetValueSync();
+        EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
+        EXPECT_EQ(1ULL, stats.UsedNodeCount);
+        EXPECT_EQ(1ULL, stats.UsedNameCount);
+        EXPECT_EQ(1ULL, stats.UsedHandleCount);
+        EXPECT_EQ(8ULL, stats.UsedPageCount);
+    }
+
+    //
+    // Resizing the node back to the original size and checking that we see
+    // zeroes past the 32KiB offset now.
+    //
+
+    {
+        TSetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        const ui32 flags = ProtoFlag(TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        request.SetFlags(flags);
+        auto* update = request.MutableUpdate();
+        update->SetSize(100_KB);
+        auto f = shard->SetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TFileSystemShardStats stats;
+        auto f = shard->CollectStats(&stats);
+        auto e = f.GetValueSync();
+        EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
+        EXPECT_EQ(1ULL, stats.UsedNodeCount);
+        EXPECT_EQ(1ULL, stats.UsedNameCount);
+        EXPECT_EQ(1ULL, stats.UsedHandleCount);
+        EXPECT_EQ(8ULL, stats.UsedPageCount);
+    }
+
+    {
+        const ui64 readOffset = 0;
+        const ui64 readLength = 100_KB;
+
+        TString fullExpectedData(readLength, 0);
+
+        // const auto expectedOffsets = {0UL, 32_KB, 40_KB, 96_KB};
+        const auto expectedOffsets = {0UL};
+
+        for (const ui64 offset: expectedOffsets) {
+            memcpy(
+                fullExpectedData.begin() + offset,
+                expectedData.data(),
+                expectedData.size());
+        }
+
+        TReadDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(readOffset);
+        request.SetLength(readLength);
+        auto f = shard->ReadData(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(fullExpectedData, response.GetBuffer());
+        // Cerr << "E: " << fullExpectedData << Endl;
+        // Cerr << "A: " << response.GetBuffer() << Endl;
+    }
+}
