@@ -4,7 +4,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NStorage {
 
 class TCountersPrinter: public NMonitoring::ICountableConsumer
 {
@@ -37,4 +37,4 @@ public:
         const NMonitoring::TDynamicCounters* snapshot) override;
 };
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NStorage
