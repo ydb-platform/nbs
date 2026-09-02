@@ -222,7 +222,6 @@ void TIndexTabletActor::CompleteTx_DestroySession(
         return;
     }
 
-    UnregisterSessionByPipeServer(args.SessionId);
     DeleteUnconfirmedDataForSession(args.SessionId, ctx);
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
