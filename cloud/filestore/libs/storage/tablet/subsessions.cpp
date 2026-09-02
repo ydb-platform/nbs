@@ -37,7 +37,7 @@ ui32 ExtractSubSessionOwnerGeneration(ui64 ownerGeneration)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::optional<TSessionPipeInfo> TSubSessions::AddSubSession(
+TSubSessionUpdateResult TSubSessions::AddSubSession(
     ui64 seqNo,
     bool readOnly,
     const NActors::TActorId& owner,
@@ -62,14 +62,18 @@ std::optional<TSessionPipeInfo> TSubSessions::AddSubSession(
             [] (const auto& a, const auto& b) {
                 return a.SeqNo < b.SeqNo;
             });
-        auto ans = loSeqNo->PipeInfo;
+        // The evicted subsession is a fully separate, older mount: both its
+        // pipe server binding and its owner actor are stale.
+        TSubSessionUpdateResult result;
+        result.StalePipeServer = loSeqNo->PipeInfo.PipeServer;
+        result.StaleOwner = loSeqNo->PipeInfo.Owner;
         SubSessions.erase(loSeqNo);
-        return ans;
+        return result;
     }
     return {};
 }
 
-std::optional<TSessionPipeInfo> TSubSessions::UpdateSubSession(
+TSubSessionUpdateResult TSubSessions::UpdateSubSession(
     ui64 seqNo,
     bool readOnly,
     const NActors::TActorId& owner,
@@ -87,17 +91,30 @@ std::optional<TSessionPipeInfo> TSubSessions::UpdateSubSession(
         });
     if (subsession != SubSessions.end()) {
         subsession->ReadOnly = readOnly;
-        if (subsession->PipeInfo.Owner != owner) {
-            auto toKill = subsession->PipeInfo;
-            subsession->PipeInfo.Owner = owner;
-            subsession->PipeInfo.PipeServer = pipeServer;
+
+        // Owner and PipeServer change independently on reconnect.
+        const bool ownerChanged = subsession->PipeInfo.Owner != owner;
+        const bool pipeServerChanged =
+            subsession->PipeInfo.PipeServer != pipeServer;
+        if (!ownerChanged && !pipeServerChanged) {
+            return {};
+        }
+
+        TSubSessionUpdateResult result;
+        result.StalePipeServer = subsession->PipeInfo.PipeServer;
+        if (ownerChanged) {
+            result.StaleOwner = subsession->PipeInfo.Owner;
+        }
+
+        subsession->PipeInfo.Owner = owner;
+        subsession->PipeInfo.PipeServer = pipeServer;
+        if (ownerChanged) {
             subsession->OwnerGeneration = MakeSubSessionOwnerGeneration(
                 tabletGeneration,
                 ExtractSubSessionOwnerGeneration(
                     subsession->OwnerGeneration) + 1);
-            return toKill;
         }
-        return {};
+        return result;
     }
     return AddSubSession(seqNo, readOnly, owner, pipeServer, tabletGeneration);
 }

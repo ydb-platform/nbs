@@ -848,6 +848,8 @@ public:
         const TString& clientId,
         const TString& sessionId,
         ui64 SeqNo) const;
+    TSession* FindSessionByPipeServer(
+        const NActors::TActorId& pipeServer) const;
 
     NActors::TActorId RecoverSession(
         TSession* session,
