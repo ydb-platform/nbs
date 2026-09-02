@@ -523,9 +523,6 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         return;
     }
 
-    UnregisterSessionByPipeServer(args.SessionId);
-    RegisterSessionByPipeServer(args.PipeServerId, args.SessionId);
-
     auto response = std::make_unique<TResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));
     response->Record.SetSessionState(session->GetSessionState());
