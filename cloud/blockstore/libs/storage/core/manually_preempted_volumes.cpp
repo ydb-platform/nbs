@@ -12,8 +12,8 @@
 
 #include <util/folder/path.h>
 #include <util/generic/hash.h>
-#include <util/stream/str.h>
 #include <util/stream/file.h>
+#include <util/stream/str.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -44,7 +44,8 @@ NProto::TError InitializeFromFile(
         } catch (...) {
             return MakeError(
                 E_INVALID_STATE,
-                TStringBuilder() << "failed to initialize preempted volumes"
+                TStringBuilder()
+                    << "failed to initialize preempted volumes"
                     << " file with error: " << CurrentExceptionMessage());
         }
     }
@@ -67,7 +68,7 @@ NProto::TError InitializeFromFile(
 void TManuallyPreemptedVolumes::AddVolume(const TString& diskId, TInstant now)
 {
     Volumes[diskId] = {now};
-};
+}
 
 void TManuallyPreemptedVolumes::RemoveVolume(const TString& diskId)
 {
@@ -84,8 +85,8 @@ ui32 TManuallyPreemptedVolumes::GetSize() const
     return Volumes.size();
 }
 
-std::optional<TManuallyPreemptedVolumeInfo> TManuallyPreemptedVolumes::GetVolume(
-    const TString& diskId) const
+std::optional<TManuallyPreemptedVolumeInfo>
+TManuallyPreemptedVolumes::GetVolume(const TString& diskId) const
 {
     if (auto it = Volumes.find(diskId); it != Volumes.end()) {
         return it->second;
@@ -105,17 +106,15 @@ TVector<TString> TManuallyPreemptedVolumes::GetVolumes() const
 TString TManuallyPreemptedVolumes::Serialize() const
 {
     NJsonWriter::TBuf result;
-    auto list = result
-        .BeginObject()
-        .WriteKey("Volumes")
-        .BeginList();
+    auto list = result.BeginObject().WriteKey("Volumes").BeginList();
     for (const auto& p: Volumes) {
         ui64 mcsUpdate = p.second.LastUpdate.MicroSeconds();
         list.BeginObject()
-            .WriteKey("DiskId").WriteString(p.first)
-            .WriteKey("Timestamp").WriteULongLong(mcsUpdate)
+            .WriteKey("DiskId")
+            .WriteString(p.first)
+            .WriteKey("Timestamp")
+            .WriteULongLong(mcsUpdate)
             .EndObject();
-
     };
     list.EndList().EndObject();
     return result.Str();
@@ -124,9 +123,9 @@ TString TManuallyPreemptedVolumes::Serialize() const
 NProto::TError TManuallyPreemptedVolumes::Deserialize(const TString& input)
 {
     try {
-        if (std::ranges::all_of(input, [](const unsigned char ch ){
-                return std::isspace(ch);
-            }))
+        if (std::ranges::all_of(
+                input,
+                [](const unsigned char ch) { return std::isspace(ch); }))
         {
             return {};
         }
@@ -169,9 +168,8 @@ TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes(
         criticalEventsStorage.emplace_back(
             GetCriticalEventForManuallyPreemptedVolumesFileError());
         STORAGE_ERROR(
-            TStringBuilder()
-                << "Failed to load manually preempted volumes: "
-                << status.GetMessage());
+            TStringBuilder() << "Failed to load manually preempted volumes: "
+                             << status.GetMessage());
         return result;
     }
 
@@ -198,9 +196,9 @@ TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes(
     TVector<TString>& criticalEventsStorage)
 {
     return CreateManuallyPreemptedVolumes(
-        !storageConfig->GetDisableManuallyPreemptedVolumesTracking() ?
-            storageConfig->GetManuallyPreemptedVolumesFile() :
-            "",
+        !storageConfig->GetDisableManuallyPreemptedVolumesTracking()
+            ? storageConfig->GetManuallyPreemptedVolumesFile()
+            : "",
         log,
         criticalEventsStorage);
 }
