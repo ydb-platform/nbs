@@ -36,6 +36,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Requests are handled in one of two ways. Without permanent actors, every
+// request gets its own TRequestActor. Otherwise, requests are distributed among
+// a fixed pool of THandlerActor instances. In the latter case request state is
+// registered and the request is sent on the calling thread, while responses and
+// timeouts are processed by the permanent actors on actor-system threads.
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
     struct T##name##Method                                                     \
     {                                                                          \
@@ -212,6 +218,8 @@ private:
                 << " request wakeup timer hit");
 
         if constexpr (IsWriteRequest(T::Request)) {
+            // Write requests are a special case: do not time them out because
+            // TVolumeActor already protects against overlapping requests.
             ReportServiceProxyWakeupTimerHit(
                 {{"disk", DiskId}, {"RequestId", CallContext->RequestId}});
             return;
@@ -229,18 +237,19 @@ private:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
+// Bridges calls arriving on service threads with replies handled by an actor.
+// It is separate from THandlerActor because the actor system owns and may
+// destroy the actor independently, while TKikimrService may still be entered by
+// a request thread. Shared ownership keeps the request-tracking state alive for
+// both sides.
 struct THandler
 {
     TActorId SelfId;
     TLog Log;
-    const std::shared_ptr<std::atomic<bool>> PoolClosed;
     std::atomic<ui64> Cookie{0};
 
-    THandler(TLog log, std::shared_ptr<std::atomic<bool>> poolClosed)
+    explicit THandler(TLog log)
         : Log(std::move(log))
-        , PoolClosed(std::move(poolClosed))
     {}
 
 #define BLOCKSTORE_SEND_REQUEST(name, ...)                                     \
@@ -252,18 +261,6 @@ struct THandler
         TPromise<NProto::T##name##Response> response,                          \
         TDuration requestTimeout)                                              \
     {                                                                          \
-        if (PoolClosed->load(std::memory_order_acquire)) {                     \
-            NProto::T##name##Response rejected;                                \
-            rejected.MutableError()->SetCode(E_REJECTED);                      \
-            try {                                                              \
-                response.SetValue(std::move(rejected));                        \
-            } catch (...) {                                                    \
-                STORAGE_ERROR(                                                 \
-                    "Couldn't set E_REJECTED to response: "                    \
-                    << CurrentExceptionMessage());                             \
-            }                                                                  \
-            return;                                                            \
-        }                                                                      \
         const ui64 cookie = Cookie.fetch_add(1, std::memory_order_relaxed);    \
         name##Handler.SendRequest(                                             \
             actorSystem,                                                       \
@@ -301,8 +298,6 @@ struct THandler
 
     void RejectRequests()
     {
-        PoolClosed->store(true, std::memory_order_release);
-
 #define BLOCKSTORE_REJECT_REQUESTS(name, ...)                                  \
     name##Handler.RejectRequests(Log);                                         \
 // BLOCKSTORE_REJECT_REQUESTS
@@ -320,6 +315,8 @@ class THandlerActor final: public TActor<THandlerActor>
     using TThis = THandlerActor;
 
 private:
+    // Shared with TKikimrService because the actor and service have independent
+    // lifetimes and are owned by different subsystems.
     std::shared_ptr<THandler> Impl;
 
 public:
@@ -388,6 +385,9 @@ private:
     TLog Log;
 
     using THandlerPtr = std::shared_ptr<THandler>;
+
+    // The actors are independent and each can handle every storage request
+    // type. Concurrent callers are assigned to them round-robin.
     TVector<THandlerPtr> Handlers;
 
     std::atomic<ui32> HandlerSelector{0};
@@ -405,9 +405,8 @@ public:
 
     void Start() override
     {
-        auto poolClosed = std::make_shared<std::atomic<bool>>(false);
         for (auto& handler: Handlers) {
-            handler = std::make_shared<THandler>(Log, poolClosed);
+            handler = std::make_shared<THandler>(Log);
             auto actorId =
                 ActorSystem->Register(std::make_unique<THandlerActor>(handler));
             handler->SelfId = actorId;
@@ -415,7 +414,13 @@ public:
     }
 
     void Stop() override
-    {}
+    {
+        for (const auto& handler: Handlers) {
+            if (handler) {
+                handler->RejectRequests();
+            }
+        }
+    }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -473,6 +478,11 @@ private:
             const ui32 handlerIdx =
                 HandlerSelector.fetch_add(1, std::memory_order_relaxed);
             auto& handler = Handlers[handlerIdx % Handlers.size()];
+
+            // The request is not sent to THandlerActor in the usual actor
+            // fashion. Instead, the current service thread calls the shared
+            // handler directly; it records the request and sends it to the
+            // storage service using THandlerActor as the reply recipient.
             handler->SendRequest(
                 *ActorSystem,
                 std::move(ctx),

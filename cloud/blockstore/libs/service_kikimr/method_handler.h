@@ -28,6 +28,10 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Tracks in-flight requests of one method type for a permanent handler actor.
+// SendRequest may be called concurrently from arbitrary service threads, while
+// responses and timeouts arrive on actor-system threads. Lock protects the
+// request map and coordinates dispatch with actor shutdown.
 template <typename T>
 class TMethodHandler final
 {
@@ -43,6 +47,11 @@ class TMethodHandler final
         TCallContextPtr CallContext;
         TString DiskId;
         NActors::TSchedulerCookieHolder TimeoutCookie;
+
+        // Set until SendRequest has finished sending the request and scheduling
+        // its timeout. RejectRequests leaves such a request in the map so the
+        // dispatching thread can safely finish and reject it in FinishDispatch.
+        // Access after publication is protected by Lock.
         bool Dispatching = true;
 
         TRequestState(
@@ -58,13 +67,16 @@ class TMethodHandler final
     using TRequestStatePtr = std::shared_ptr<TRequestState>;
 
 private:
-    THashMap<ui64, TRequestStatePtr> Requests;
     TAdaptiveLock Lock;
+    THashMap<ui64, TRequestStatePtr> Requests;
     bool Closed = false;
 
 public:
     // TEvWakeup reserves zero as its default, untagged value.
     static constexpr ui64 TimeoutTag = static_cast<ui64>(T::Request) + 1;
+
+    TMethodHandler() = default;
+    ~TMethodHandler() = default;
 
     void SendRequest(
         NCloud::IActorSystem& actorSystem,
@@ -196,6 +208,8 @@ public:
                 << " request wakeup timer hit");
 
         if constexpr (IsWriteRequest(T::Request)) {
+            // Write requests are a special case: do not time them out because
+            // TVolumeActor already protects against overlapping requests.
             ReportServiceProxyWakeupTimerHit(
                 {{"disk", state->DiskId},
                  {"RequestId", state->CallContext->RequestId}});
@@ -251,7 +265,7 @@ private:
         }
     }
 
-    TRequestStatePtr FindRequest(ui64 cookie)
+    TRequestStatePtr FindRequest(ui64 cookie) const
     {
         with_lock (Lock) {
             auto it = Requests.find(cookie);
@@ -272,7 +286,7 @@ private:
         return request;
     }
 
-    void CompleteRequest(
+    static void CompleteRequest(
         const NActors::TActorContext& ctx,
         TRequestState& state,
         TResponseProto&& response)

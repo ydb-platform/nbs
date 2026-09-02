@@ -424,6 +424,7 @@ Y_UNIT_TEST_SUITE(TKikimrServiceTest)
             });
         }
 
+        service->Stop();
         actorSystem->Stop();
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
