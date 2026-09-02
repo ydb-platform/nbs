@@ -1295,23 +1295,13 @@ bool TVolumeState::IsVolumeOperationRestricted() const
 
 bool TVolumeState::IsCreateCheckpointOperationRestricted() const
 {
-    if (CreateLeaderRequestInProgress || !CreateFollowerRequests.empty()) {
+    const bool createFollowerRequestInProgress =
+        !CreateFollowerRequests.empty();
+    if (CreateLeaderRequestInProgress || createFollowerRequestInProgress) {
         return true;
     }
 
-    for (const auto& follower: FollowerDisks) {
-        if (follower.State != TFollowerDiskInfo::EState::Error) {
-            return true;
-        }
-    }
-
-    for (const auto& leader: LeaderDisks) {
-        if (leader.State == TLeaderDiskInfo::EState::Following) {
-            return true;
-        }
-    }
-
-    return false;
+    return HasActiveLink();
 }
 
 bool TVolumeState::CanPreemptClient(
@@ -1539,6 +1529,23 @@ void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& block
     // local mounted client has read only access
     return !LocalMountClientId.empty() &&
             LocalMountClientId != ReadWriteAccessClientId;
+}
+
+[[nodiscard]] bool TVolumeState::HasActiveLink() const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.State != TFollowerDiskInfo::EState::Error) {
+            return true;
+        }
+    }
+
+    for (const auto& leader: LeaderDisks) {
+        if (leader.State == TLeaderDiskInfo::EState::Following) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

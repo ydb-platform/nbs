@@ -913,6 +913,8 @@ private:
     void UpdateLeadershipStatus();
 
     [[nodiscard]] bool IsVolumeClientMigrationInProgress() const;
+
+    [[nodiscard]] bool HasActiveLink() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

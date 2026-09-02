@@ -2661,6 +2661,40 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT(!volumeState.IsCreateCheckpointOperationRestricted());
         UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
     }
+
+    Y_UNIT_TEST(ShouldNotRestrictOperationsForCheckpointWithoutData)
+    {
+        auto volumeState = CreateVolumeState();
+        auto& store = volumeState.GetCheckpointStore();
+
+        const auto& request = store.MakeCreateCheckpointRequest(
+            "checkpoint",
+            TInstant::Now(),
+            ECheckpointRequestType::CreateWithoutData,
+            ECheckpointType::Normal,
+            false);
+
+        UNIT_ASSERT(!store.HasCheckpointCreationRequest());
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+
+        store.SetCheckpointRequestSaved(request.RequestId);
+        UNIT_ASSERT(!store.HasCheckpointCreationRequest());
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+
+        store.SetCheckpointRequestInProgress(request.RequestId);
+        UNIT_ASSERT(!store.HasCheckpointCreationRequest());
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+
+        store.SetCheckpointRequestFinished(
+            request.RequestId,
+            true,
+            {},
+            EShadowDiskState::None);
+
+        UNIT_ASSERT(!store.HasCheckpointCreationRequest());
+        UNIT_ASSERT(store.GetCheckpointsWithData().empty());
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

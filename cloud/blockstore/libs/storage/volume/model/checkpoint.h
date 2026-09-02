@@ -189,6 +189,8 @@ public:
 
     [[nodiscard]] bool IsRequestInProgress() const;
     [[nodiscard]] bool IsCheckpointBeingCreated() const;
+    // CreateWithoutData requests are intentionally ignored because they do not
+    // retain checkpoint data and therefore do not restrict volume operations.
     [[nodiscard]] bool HasCheckpointCreationRequest() const;
     [[nodiscard]] bool DoesCheckpointBlockingWritesExist() const;
 
