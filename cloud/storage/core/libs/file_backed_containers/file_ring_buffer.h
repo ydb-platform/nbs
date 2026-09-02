@@ -134,8 +134,8 @@ public:
      * entry. If there is a need to augment the allocation with additional data,
      * GetTag/SetTag can be used.
      *
-     * An error is returned if there is no incomplete allocation correponding to
-     * the provided pointer or the buffer is corrupted.
+     * An error is returned if there is no incomplete allocation corresponding
+     * to the provided pointer or the buffer is corrupted.
      *
      * Note: the checksum is not validated, the calling code has responsibility
      * to provide the correct Crc32c checksum. Passing an incorrect checksum may
