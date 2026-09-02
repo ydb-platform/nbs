@@ -110,6 +110,7 @@ message TRdmaClient
 
     // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 7].
+    // 0 means infinite retries.
     uint32 QpRnrRetryCount = 19;
 
     // Sets the "timeout" parameter in the "ibv_qp_attr" for
@@ -120,6 +121,15 @@ message TRdmaClient
 
     // Sets the "min_rnr_timer" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 31].
+    // IBTA spec actually defines it as a lookup table (in microseconds).
+    // 0 - 655360 | 8 - 160   | 16 - 2560  | 24 - 40960
+    // 1 - 10     | 9 - 480   | 17 - 3840  | 25 - 61410
+    // 2 - 20     | 10 - 640  | 18 - 5120  | 26 - 81920
+    // 3 - 30     | 11 - 960  | 19 - 7680  | 27 - 122880
+    // 4 - 40     | 12 - 1280 | 20 - 10240 | 28 - 163840
+    // 5 - 60     | 13 - 1920 | 21 - 15360 | 29 - 245760
+    // 6 - 80     | 14 - 2560 | 22 - 20480 | 30 - 327680
+    // 7 - 120    | 15 - 3840 | 23 - 30720 | 31 - 491520
     uint32 QpMinRnrTimer = 21;
 
     // Use memory windows to invalidate request buffers after completion.
