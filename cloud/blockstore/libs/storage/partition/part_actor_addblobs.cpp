@@ -130,8 +130,13 @@ public:
         UpdateUsedFreshBlocks(db);
 
         for (const auto& blob: Args.FreshBlobs) {
-            ProcessNewBlob(ctx, db, blob);
-            UpdateCompactionCounters(blob);
+            bool isInCleanupQueue = ProcessNewBlob(ctx, db, blob);
+            // Doesn't increment compaction counters for blobs in cleanup queue,
+            // because they can be delted before any compaction and no one will
+            // decrement them.
+            if (!isInCleanupQueue) {
+                UpdateCompactionCounters(blob);
+            }
         }
 
         if (Args.Mode == ADD_COMPACTION_RESULT) {
@@ -396,7 +401,8 @@ private:
         State.ConfirmedBlobsAdded(db, Args.CommitId);
     }
 
-    void ProcessNewBlob(
+    // return true if blob is already in cleanup queue
+    bool ProcessNewBlob(
         const TActorContext& ctx,
         TPartitionDatabase& db,
         const TAddFreshBlob& blob)
@@ -450,25 +456,34 @@ private:
             blockMask.Set(blobOffset);
         }
 
+        // we don't mask overwritten blocks yet, to allow compaction to
+        // decrement counters correctly.
+        TBlockMask blockMaskAfterOverwrittenBlocks = blockMask;
         // mask overwritten blocks (there could be multiple block versions)
         ui16 blobOffset = 0;
         for (const auto& block: blob.Blocks) {
             ui64 lastCommitId = OverwrittenBlocks[block.BlockIndex];
             if (lastCommitId > block.CommitId) {
-                blockMask.Set(blobOffset);
+                blockMaskAfterOverwrittenBlocks.Set(blobOffset);
             }
             ++blobOffset;
         }
 
-        db.WriteBlockMask(blob.BlobId, blockMask);
-
-        if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
+        if (IsBlockMaskFull(blockMaskAfterOverwrittenBlocks, MaxBlocksInBlob))
+        {
+            // If blob is already totally overwritten, it can be deleted before
+            // any compaction, so we should persist full block mask here, to
+            // follow the invariant fullBlockMask -> blob is in cleanup queue
+            // and should be deleted eventually.
+            blockMask = blockMaskAfterOverwrittenBlocks;
             // blob already could be garbage, but we should keep it
             // as there could be active readers (or even checkpoint)
             db.WriteCleanupQueue(blob.BlobId, DeletionCommitId);
             State.GetCleanupQueue().Add(
                 {blob.BlobId, DeletionCommitId, blobMeta});
         }
+
+        db.WriteBlockMask(blob.BlobId, blockMask);
 
         // move blocks from FreshBlocks to MixedBlocks
         blobOffset = 0;
@@ -496,6 +511,8 @@ private:
             blob.BlobId,
             EChannelDataKind::Mixed,
             blob.Blocks.size());
+
+        return IsBlockMaskFull(blockMask, MaxBlocksInBlob);
     }
 
     void ProcessOverwrittenBlocks(const TAddFreshBlob& blob)
