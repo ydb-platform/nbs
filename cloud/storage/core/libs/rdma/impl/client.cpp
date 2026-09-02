@@ -704,7 +704,6 @@ public:
 
     void SetNegotiatedProtocolVersion(int negotiatedProtocolVersion);
     int GetNegotiatedProtocolVersion() const;
-    int InitialProtocolVersion() const;
     ui32 GetNegotiatedEagerRequestBytes() const;
 
 private:
@@ -766,8 +765,6 @@ TClientEndpoint::TClientEndpoint(
     , SendBuffers(Config.BufferPool)
     , RecvBuffers(Config.BufferPool)
 {
-    NegotiatedProtocolVersion = InitialProtocolVersion();
-
     // user data attached to connection events
     Connection->context = this;
 
@@ -821,7 +818,7 @@ void TClientEndpoint::CreateQP()
     if (ResetConfig) {
         Config = *OriginalConfig;
         ResetConfig = false;
-        NegotiatedProtocolVersion = InitialProtocolVersion();
+        NegotiatedProtocolVersion = RDMA_PROTO_VERSION;
         NegotiatedEagerRequestBytes = 0;
     }
 
@@ -2072,13 +2069,6 @@ void TClientEndpoint::SetNegotiatedProtocolVersion(
 int TClientEndpoint::GetNegotiatedProtocolVersion() const
 {
     return NegotiatedProtocolVersion;
-}
-
-int TClientEndpoint::InitialProtocolVersion() const
-{
-    return OriginalConfig->MaxEagerRequestBytes > 0
-        ? RDMA_PROTO_VERSION
-        : RDMA_PROTO_VERSION_2;
 }
 
 ui32 TClientEndpoint::GetNegotiatedEagerRequestBytes() const
