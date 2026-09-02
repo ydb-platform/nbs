@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/weighted_percentile.h>
 
@@ -111,7 +112,11 @@ void TStatsServiceActor::RegisterServiceVolumeCounters(
             ->GetSubgroup("host", "cluster");
 
     const auto chain = BuildVolumeChain(volume.VolumeInfo);
-    Y_ABORT_UNLESS(!chain.empty());
+    STORAGE_VERIFY_C(
+        !chain.empty(),
+        TWellKnownEntityTypes::DISK,
+        volume.VolumeInfo.GetDiskId(),
+        "BuildVolumeChain returned an empty chain");
 
     if (!volume.ServiceVolumeCounters) {
         // Initial registration: create a new counter subgroup.

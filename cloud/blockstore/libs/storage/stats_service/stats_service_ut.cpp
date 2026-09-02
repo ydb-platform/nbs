@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
-#include <cloud/storage/core/libs/api/user_stats.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
@@ -15,6 +14,7 @@
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 
 #include <cloud/storage/core/config/features.pb.h>
+#include <cloud/storage/core/libs/api/user_stats.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <library/cpp/monlib/metrics/metric_registry.h>
@@ -2107,413 +2107,412 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace
+namespace {
+
+using TCounterGroupPtr = TIntrusivePtr<NMonitoring::TDynamicCounters>;
+
+using TCounterPath = std::initializer_list<std::pair<TString, TString>>;
+
+struct TServiceVolumeLabels {
+    TString CloudId = DefaultCloudId;
+    TString FolderId = DefaultFolderId;
+    TString type = "ssd";
+};
+
+// never creates missing groups.
+TCounterGroupPtr FindCounterGroup(
+    TCounterGroupPtr group,
+    TCounterPath path)
 {
+    for (const auto& [name, value]: path) {
+        if (!group) {
+            return {};
+        }
 
-    using TCounterGroupPtr = TIntrusivePtr<NMonitoring::TDynamicCounters>;
+        group = group->FindSubgroup(name, value);
+    }
 
-    using TCounterPath = std::initializer_list<std::pair<TString, TString>>;
+    return group;
+}
 
-    struct TServiceVolumeLabels {
-        TString CloudId = DefaultCloudId;
-        TString FolderId = DefaultFolderId;
-        TString type = "ssd";
-    };
+void AssertScalarCounter(
+    const TCounterGroupPtr& group,
+    const TString name,
+    ui64 expectedValue,
+    bool derivative = false)
+{
+    UNIT_ASSERT(group);
 
-    // never creates missing groups.
-    TCounterGroupPtr FindCounterGroup(
-        TCounterGroupPtr group,
-        TCounterPath path)
+    auto counter = group->FindCounter(name);
+    UNIT_ASSERT_C(counter, name);
+
+    UNIT_ASSERT_VALUES_EQUAL(counter->Val(), expectedValue);
+    UNIT_ASSERT_VALUES_EQUAL(counter->ForDerivative(), derivative);
+}
+
+// Check both scalar counters and nested request/histogram counters.
+void AssertPublishedVolumeCounters(
+    const TCounterGroupPtr& group,
+    ui64 latestValue,
+    ui64 accumulatedValue)
+{
+    // Expiring partition counter.
+    AssertScalarCounter(group, "IORequestsQueued", latestValue);
+
+    // Permanent partition counter.
+    AssertScalarCounter(group, "MixedBytesCount", latestValue * 100);
+
+    // Expired and permanent volume-self counters.
+    AssertScalarCounter(group, "LongRunningReadBlob", latestValue);
+    AssertScalarCounter(group, "MaxUsedQuota", latestValue);
+
+    // Cumulative scalar counter.
+    AssertScalarCounter(group, "UsedQuota", accumulatedValue, true);
+
+    auto readCounters = FindCounterGroup(group, {{"request", "ReadBlocks"}});
+    AssertScalarCounter(readCounters, "Count", accumulatedValue, true);
+
+    auto histogramGroup = FindCounterGroup(
+        readCounters,
+        {{"histogram", "ThrottlerDelay"}});
+
+    UNIT_ASSERT(histogramGroup);
+
+    auto histogram = histogramGroup->FindHistogram("ThrottlerDelay");
+    UNIT_ASSERT(histogram);
+
+    auto snapshot = histogram->Snapshot();
+    ui64 samples = 0;
+    for (ui64 i = 0; i < snapshot->Count(); ++i) {
+        samples += snapshot->Value(i);
+    }
+
+    UNIT_ASSERT_VALUES_EQUAL(samples, accumulatedValue);
+}
+
+// Reads the actor's actual user-metric supplier without JSON encoders.
+class TServiceVolumeUserMetricsProbe final
+    : public NMonitoring::IMetricConsumer
+{
+private:
+    TServiceVolumeLabels ExpectedLabels;
+    THashMap<TString, TString> CurrentLabels;
+    TString CurrentMetricName;
+
+public:
+    THashSet<TString> Names;
+    bool HasMaxUsedQuota = false;
+    i64 MaxUsedQuota = 0;
+
+    explicit TServiceVolumeUserMetricsProbe(TServiceVolumeLabels expectedLabels)
+        : ExpectedLabels(std::move(expectedLabels))
+    {}
+
+    void OnStreamBegin() override {}
+    void OnStreamEnd() override {}
+    void OnCommonTime(TInstant) override {}
+
+    void OnMetricBegin(NMonitoring::EMetricType) override
     {
+        CurrentLabels.clear();
+        CurrentMetricName.clear();
+    }
+
+    void OnMetricEnd() override {}
+    void OnLabelsBegin() override {}
+
+    void OnLabel(TStringBuf name, TStringBuf value) override
+    {
+        CurrentLabels.emplace(TString(name), TString(value));
+    }
+
+    void AssertLabel(TStringBuf name, const TString& expected)
+    {
+        const auto it = CurrentLabels.find(TString(name));
+        UNIT_ASSERT_C(
+            it != CurrentLabels.end(),
+            TStringBuilder() << "Missing user metric label: " << name);
+        UNIT_ASSERT_VALUES_EQUAL(it->second, expected);
+    }
+
+    void OnLabelsEnd() override
+    {
+        AssertLabel("service", "compute");
+        AssertLabel("project", ExpectedLabels.CloudId);
+        AssertLabel("cluster", ExpectedLabels.FolderId);
+        AssertLabel("disk", DefaultDiskId);
+
+        CurrentMetricName = CurrentLabels.at("name");
+
+        // A second registration must not produce duplicate metrics
+        UNIT_ASSERT_C(
+            Names.insert(CurrentMetricName).second,
+            CurrentMetricName);
+    }
+
+    void OnInt64(TInstant, i64 value) override
+    {
+        if (CurrentMetricName ==
+            "disk.io_quota_utilization_percentage_burst")
+        {
+            HasMaxUsedQuota = true;
+            MaxUsedQuota = value;
+        }
+    }
+
+    void OnDouble(TInstant, double) override {}
+    void OnUint64(TInstant, ui64) override {}
+
+    void OnHistogram(
+        TInstant,
+        NMonitoring::IHistogramSnapshotPtr) override
+    {}
+
+    void OnLogHistogram(
+        TInstant,
+        NMonitoring::TLogHistogramSnapshotPtr) override
+    {}
+
+    void OnSummaryDouble(
+        TInstant,
+        NMonitoring::ISummaryDoubleSnapshotPtr) override
+    {}
+};
+
+NProto::TStorageServiceConfig MakeRegistrationTestConfig()
+{
+    NProto::TStorageServiceConfig config;
+    config.SetUsePullSchemeForVolumeStatistics(false);
+    return config;
+}
+
+struct TServiceVolumeCountersTestEnv
+{
+    TTestBasicRuntime Runtime;
+    TTestEnv Env;
+    TActorId Edge;
+    NCloud::NStorage::IUserMetricsSupplierPtr UserCounters;
+    ui64 LastCookie = 0;
+
+    TServiceVolumeCountersTestEnv()
+        : Env(
+            Runtime,
+            MakeRegistrationTestConfig(),
+            NYdbStats::CreateVolumesStatsUploaderStub()),
+        Edge(Runtime.AllocateEdgeActor())
+    {
+        // Register the receiver before dispatching the stats actor's bootstrap event
+        Runtime.RegisterService(
+            NCloud::NStorage::MakeStorageUserStatsId(),
+            Edge);
+
+        auto event = Runtime.GrabEdgeEventRethrow<
+            NCloud::NStorage::TEvUserStats::TEvUserStatsProviderCreate>(
+                Edge,
+                TDuration::Seconds(5));
+
+        UNIT_ASSERT(event);
+        UserCounters = event->Get()->Provider;
+        UNIT_ASSERT(UserCounters);
+
+        RegisterVolume(Runtime, DefaultDiskId);
+    }
+
+    template <typename TEvent>
+    void SendAndDispatch(std::unique_ptr<TEvent> event)
+    {
+        const ui64 cookie = ++LastCookie;
+        const auto sender = Edge;
+        bool delivered = false;
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            [cookie, sender, &delivered](IEventHandle& ev) {
+                if (ev.GetTypeRewrite() == TEvent::EventType &&
+                    ev.Sender == sender &&
+                    ev.Cookie == cookie)
+                {
+                    delivered = true;
+                    return true;
+                }
+                return false;
+            });
+
+        Runtime.Send(
+            new IEventHandle(
+                MakeStorageStatsServiceId(),
+                sender,
+                event.release(),
+                0,
+                cookie),
+            0);
+
+        Runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(delivered);
+    }
+
+    void Flush()
+    {
+        SendAndDispatch(std::make_unique<TEvents::TEvWakeup>());
+    }
+
+    // "value" is the latest gauge value and an increment for cumulative counters.
+    // Pass zero when disabling publication.
+    void Publish(EVolumeTestOptions options, ui64 value)
+    {
+        auto diskCounters = CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
+
+        auto volumeCounters = CreateVolumeSelfCounters(
+            EPublishingPolicy::Repl,
+            EHistogramCounterOption::ReportMultipleCounters);
+
+        diskCounters->Simple.IORequestsQueued.Set(value);
+        diskCounters->Simple.MixedBytesCount.Set(value * 100);
+        diskCounters->RequestCounters.ReadBlocks.Count = value;
+        diskCounters->RequestCounters.ReadBlocks.Total.Increment(
+            100,
+            value);
+
+        volumeCounters->Simple.LongRunningReadBlob.Set(value);
+        volumeCounters->Simple.MaxUsedQuota.Set(value);
+        volumeCounters->Cumulative.UsedQuota.Increment(value);
+        volumeCounters->ThrottlerDelayRequestCounters.ReadBlocks.Increment(
+            100,
+            value);
+
+        SendDiskStats(
+            Runtime,
+            DefaultDiskId,
+            false,
+            std::move(diskCounters),
+            std::move(volumeCounters),
+            options,
+            0);
+
+        Flush();
+    }
+
+    TCounterGroupPtr FindVolume(
+        const TServiceVolumeLabels& labels = {})
+    {
+        return FindCounterGroup(
+            Runtime.GetAppData(0).Counters,
+            {
+                {"counters", "blockstore"},
+                {"component", "service_volume"},
+                {"host", "cluster"},
+                {"volume", DefaultDiskId},
+                {"cloud", labels.CloudId},
+                {"folder", labels.FolderId},
+                {"type", labels.type},
+            });
+    }
+
+    void AssertDetached()
+    {
+        // The IsLocalMount branch without host=cluster is intentionally outside the scope of this check
+        auto volume = FindCounterGroup(
+            Runtime.GetAppData(0).Counters,
+            {
+                {"counters", "blockstore"},
+                {"component", "service_volume"},
+                {"host", "cluster"},
+                {"volume", DefaultDiskId},
+            });
+
+        UNIT_ASSERT(!volume);
+    }
+
+    // This fixture has one volume. Verify that no obsolete label branches
+    // or duplicate paths remain at any level below host=cluster.
+    TCounterGroupPtr AssertOnlyVolume(
+        const TServiceVolumeLabels& labels = {})
+    {
+        auto group = FindCounterGroup(
+            Runtime.GetAppData(0).Counters,
+            {
+                {"counters", "blockstore"},
+                {"component", "service_volume"},
+                {"host", "cluster"},
+            });
+
+        UNIT_ASSERT(group);
+
+        const TCounterPath path = {
+            {"volume", DefaultDiskId},
+            {"cloud", labels.CloudId},
+            {"folder", labels.FolderId},
+            {"type", labels.type},
+        };
+
         for (const auto& [name, value]: path) {
-            if (!group) {
-                return {};
-            }
+            size_t count = 0;
+
+            group->EnumerateSubgroups(
+                [&](const TString& childName, const TString& childValue) {
+                    ++count;
+                    UNIT_ASSERT_VALUES_EQUAL(name, childName);
+                    UNIT_ASSERT_VALUES_EQUAL(value, childValue);
+                });
+
+            UNIT_ASSERT_VALUES_EQUAL(1, count);
 
             group = group->FindSubgroup(name, value);
+            UNIT_ASSERT(group);
         }
 
         return group;
     }
 
-    void AssertScalarCounter(
-        const TCounterGroupPtr& group,
-        const TString name,
-        ui64 expectedValue,
-        bool derivative = false)
+    void UpdateConfig(
+        const TServiceVolumeLabels& labels,
+        NProto::EStorageMediaKind mediaKind = NProto::STORAGE_MEDIA_SSD)
     {
-        UNIT_ASSERT(group);
+        NProto::TVolume config;
+        config.SetDiskId(DefaultDiskId);
+        config.SetCloudId(labels.CloudId);
+        config.SetFolderId(labels.FolderId);
+        config.SetStorageMediaKind(mediaKind);
+        config.SetPartitionsCount(1);
 
-        auto counter = group->FindCounter(name);
-        UNIT_ASSERT_C(counter, name);
-
-        UNIT_ASSERT_VALUES_EQUAL(counter->Val(), expectedValue);
-        UNIT_ASSERT_VALUES_EQUAL(counter->ForDerivative(), derivative);
-    }
-
-    // Check both scalar counters and nested request/histogram counters.
-    void AssertPublishedVolumeCounters(
-        const TCounterGroupPtr& group,
-        ui64 latestValue,
-        ui64 accumulatedValue)
-    {
-        // Expiring partition counter.
-        AssertScalarCounter(group, "IORequestsQueued", latestValue);
-
-        // Permanent partition counter.
-        AssertScalarCounter(group, "MixedBytesCount", latestValue * 100);
-
-        // Expired and permanent volume-self counters.
-        AssertScalarCounter(group, "LongRunningReadBlob", latestValue);
-        AssertScalarCounter(group, "MaxUsedQuota", latestValue);
-
-        // Cumulative scalar counter.
-        AssertScalarCounter(group, "UsedQuota", accumulatedValue, true);
-
-        auto readCounters = FindCounterGroup(group, {{"request", "ReadBlocks"}});
-        AssertScalarCounter(readCounters, "Count", accumulatedValue, true);
-
-        auto histogramGroup = FindCounterGroup(
-            readCounters,
-            {{"histogram", "ThrottlerDelay"}});
-
-        UNIT_ASSERT(histogramGroup);
-
-        auto histogram = histogramGroup->FindHistogram("ThrottlerDelay");
-        UNIT_ASSERT(histogram);
-
-        auto snapshot = histogram->Snapshot();
-        ui64 samples = 0;
-        for (ui64 i = 0; i < snapshot->Count(); ++i) {
-            samples += snapshot->Value(i);
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL(samples, accumulatedValue);
-    }
-
-    // Reads the actor's actual user-metric supplier without JSON encoders.
-    class TServiceVolumeUserMetricsProbe final
-        : public NMonitoring::IMetricConsumer
-    {
-    private:
-        TServiceVolumeLabels ExpectedLabels;
-        THashMap<TString, TString> CurrentLabels;
-        TString CurrentMetricName;
-
-    public:
-        THashSet<TString> Names;
-        bool HasMaxUsedQuota = false;
-        i64 MaxUsedQuota = 0;
-
-        explicit TServiceVolumeUserMetricsProbe(TServiceVolumeLabels expectedLabels)
-            : ExpectedLabels(std::move(expectedLabels))
-        {}
-
-        void OnStreamBegin() override {}
-        void OnStreamEnd() override {}
-        void OnCommonTime(TInstant) override {}
-
-        void OnMetricBegin(NMonitoring::EMetricType) override
-        {
-            CurrentLabels.clear();
-            CurrentMetricName.clear();
-        }
-
-        void OnMetricEnd() override {}
-        void OnLabelsBegin() override {}
-
-        void OnLabel(TStringBuf name, TStringBuf value) override
-        {
-            CurrentLabels.emplace(TString(name), TString(value));
-        }
-
-        void AssertLabel(TStringBuf name, const TString& expected)
-        {
-            const auto it = CurrentLabels.find(TString(name));
-            UNIT_ASSERT_C(
-                it != CurrentLabels.end(),
-                TStringBuilder() << "Missing user metric label: " << name);
-            UNIT_ASSERT_VALUES_EQUAL(it->second, expected);
-        }
-
-        void OnLabelsEnd() override
-        {
-            AssertLabel("service", "compute");
-            AssertLabel("project", ExpectedLabels.CloudId);
-            AssertLabel("cluster", ExpectedLabels.FolderId);
-            AssertLabel("disk", DefaultDiskId);
-
-            CurrentMetricName = CurrentLabels.at("name");
-
-            // A second registration must not produce duplicate metrics
-            UNIT_ASSERT_C(
-                Names.insert(CurrentMetricName).second,
-                CurrentMetricName);
-        }
-
-        void OnInt64(TInstant, i64 value) override
-        {
-            if (CurrentMetricName ==
-                "disk.io_quota_utilization_percentage_burst")
-            {
-                HasMaxUsedQuota = true;
-                MaxUsedQuota = value;
-            }
-        }
-
-        void OnDouble(TInstant, double) override {}
-        void OnUint64(TInstant, ui64) override {}
-
-        void OnHistogram(
-            TInstant,
-            NMonitoring::IHistogramSnapshotPtr) override
-        {}
-
-        void OnLogHistogram(
-            TInstant,
-            NMonitoring::TLogHistogramSnapshotPtr) override
-        {}
-
-        void OnSummaryDouble(
-            TInstant,
-            NMonitoring::ISummaryDoubleSnapshotPtr) override
-        {}
-    };
-
-    NProto::TStorageServiceConfig MakeRegistrationTestConfig()
-    {
-        NProto::TStorageServiceConfig config;
-        config.SetUsePullSchemeForVolumeStatistics(false);
-        return config;
-    }
-
-    struct TServiceVolumeCountersTestEnv
-    {
-        TTestBasicRuntime Runtime;
-        TTestEnv Env;
-        TActorId Edge;
-        NCloud::NStorage::IUserMetricsSupplierPtr UserCounters;
-        ui64 LastCookie = 0;
-
-        TServiceVolumeCountersTestEnv()
-            : Env(
-                Runtime,
-                MakeRegistrationTestConfig(),
-                NYdbStats::CreateVolumesStatsUploaderStub()),
-            Edge(Runtime.AllocateEdgeActor())
-        {
-            // Register the receiver before dispatching the stats actor's bootstrap event
-            Runtime.RegisterService(
-                NCloud::NStorage::MakeStorageUserStatsId(),
-                Edge);
-
-            auto event = Runtime.GrabEdgeEventRethrow<
-                NCloud::NStorage::TEvUserStats::TEvUserStatsProviderCreate>(
-                    Edge,
-                    TDuration::Seconds(5));
-
-            UNIT_ASSERT(event);
-            UserCounters = event->Get()->Provider;
-            UNIT_ASSERT(UserCounters);
-
-            RegisterVolume(Runtime, DefaultDiskId);
-        }
-
-        template <typename TEvent>
-        void SendAndDispatch(std::unique_ptr<TEvent> event)
-        {
-            const ui64 cookie = ++LastCookie;
-            const auto sender = Edge;
-            bool delivered = false;
-
-            TDispatchOptions options;
-            options.FinalEvents.emplace_back(
-                [cookie, sender, &delivered](IEventHandle& ev) {
-                    if (ev.GetTypeRewrite() == TEvent::EventType &&
-                        ev.Sender == sender &&
-                        ev.Cookie == cookie)
-                    {
-                        delivered = true;
-                        return true;
-                    }
-                    return false;
-                });
-
-            Runtime.Send(
-                new IEventHandle(
-                    MakeStorageStatsServiceId(),
-                    sender,
-                    event.release(),
-                    0,
-                    cookie),
-                0);
-
-            Runtime.DispatchEvents(options, TDuration::Seconds(5));
-            UNIT_ASSERT(delivered);
-        }
-
-        void Flush()
-        {
-            SendAndDispatch(std::make_unique<TEvents::TEvWakeup>());
-        }
-
-        // "value" is the latest gauge value and an increment for cumulative counters.
-        // Pass zero when disabling publication.
-        void Publish(EVolumeTestOptions options, ui64 value)
-        {
-            auto diskCounters = CreatePartitionDiskCounters(
-                EPublishingPolicy::Repl,
-                EHistogramCounterOption::ReportMultipleCounters);
-
-            auto volumeCounters = CreateVolumeSelfCounters(
-                EPublishingPolicy::Repl,
-                EHistogramCounterOption::ReportMultipleCounters);
-
-            diskCounters->Simple.IORequestsQueued.Set(value);
-            diskCounters->Simple.MixedBytesCount.Set(value * 100);
-            diskCounters->RequestCounters.ReadBlocks.Count = value;
-            diskCounters->RequestCounters.ReadBlocks.Total.Increment(
-                100,
-                value);
-
-            volumeCounters->Simple.LongRunningReadBlob.Set(value);
-            volumeCounters->Simple.MaxUsedQuota.Set(value);
-            volumeCounters->Cumulative.UsedQuota.Increment(value);
-            volumeCounters->ThrottlerDelayRequestCounters.ReadBlocks.Increment(
-                100,
-                value);
-
-            SendDiskStats(
-                Runtime,
+        SendAndDispatch(
+            std::make_unique<TEvStatsService::TEvVolumeConfigUpdated>(
                 DefaultDiskId,
-                false,
-                std::move(diskCounters),
-                std::move(volumeCounters),
-                options,
-                0);
+                std::move(config)));
+    }
 
-            Flush();
+    void AssertUserCounters(
+        bool registered,
+        ui64 expectedMaxUsedQuota = 0,
+        const TServiceVolumeLabels& labels = {})
+    {
+        TServiceVolumeUserMetricsProbe probe(labels);
+        UserCounters->Accept(Runtime.GetCurrentTime(), &probe);
+
+        if (!registered) {
+            UNIT_ASSERT(probe.Names.empty());
+            UNIT_ASSERT(!probe.HasMaxUsedQuota);
+            return;
         }
 
-        TCounterGroupPtr FindVolume(
-            const TServiceVolumeLabels& labels = {})
+        UNIT_ASSERT_VALUES_EQUAL(probe.Names.size(), 4);
+
+        for (const auto* name: {
+                "disk.io_quota_utilization_percentage",
+                "disk.io_quota_utilization_percentage_burst",
+                "disk.read_throttler_delay",
+                "disk.write_throttler_delay"})
+
         {
-            return FindCounterGroup(
-                Runtime.GetAppData(0).Counters,
-                {
-                    {"counters", "blockstore"},
-                    {"component", "service_volume"},
-                    {"host", "cluster"},
-                    {"volume", DefaultDiskId},
-                    {"cloud", labels.CloudId},
-                    {"folder", labels.FolderId},
-                    {"type", labels.type},
-                });
+            UNIT_ASSERT_C(probe.Names.contains(name), name);
         }
 
-        void AssertDetached()
-        {
-            // The IsLocalMount branch without host=cluster is intentionally outside the scope of this check
-            auto volume = FindCounterGroup(
-                Runtime.GetAppData(0).Counters,
-                {
-                    {"counters", "blockstore"},
-                    {"component", "service_volume"},
-                    {"host", "cluster"},
-                    {"volume", DefaultDiskId},
-                });
-
-            UNIT_ASSERT(!volume);
-        }
-
-        // This fixture has one volume. Verify that no obsolete label branches
-        // or duplicate paths remain at any level below host=cluster.
-        TCounterGroupPtr AssertOnlyVolume(
-            const TServiceVolumeLabels& labels = {})
-        {
-            auto group = FindCounterGroup(
-                Runtime.GetAppData(0).Counters,
-                {
-                    {"counters", "blockstore"},
-                    {"component", "service_volume"},
-                    {"host", "cluster"},
-                });
-
-            UNIT_ASSERT(group);
-
-            const TCounterPath path = {
-                {"volume", DefaultDiskId},
-                {"cloud", labels.CloudId},
-                {"folder", labels.FolderId},
-                {"type", labels.type},
-            };
-
-            for (const auto& [name, value]: path) {
-                size_t count = 0;
-
-                group->EnumerateSubgroups(
-                    [&](const TString& childName, const TString& childValue) {
-                        ++count;
-                        UNIT_ASSERT_VALUES_EQUAL(name, childName);
-                        UNIT_ASSERT_VALUES_EQUAL(value, childValue);
-                    });
-
-                UNIT_ASSERT_VALUES_EQUAL(1, count);
-
-                group = group->FindSubgroup(name, value);
-                UNIT_ASSERT(group);
-            }
-
-            return group;
-        }
-
-        void UpdateConfig(
-            const TServiceVolumeLabels& labels,
-            NProto::EStorageMediaKind mediaKind = NProto::STORAGE_MEDIA_SSD)
-        {
-            NProto::TVolume config;
-            config.SetDiskId(DefaultDiskId);
-            config.SetCloudId(labels.CloudId);
-            config.SetFolderId(labels.FolderId);
-            config.SetStorageMediaKind(mediaKind);
-            config.SetPartitionsCount(1);
-
-            SendAndDispatch(
-                std::make_unique<TEvStatsService::TEvVolumeConfigUpdated>(
-                    DefaultDiskId,
-                    std::move(config)));
-        }
-
-        void AssertUserCounters(
-            bool registered,
-            ui64 expectedMaxUsedQuota = 0,
-            const TServiceVolumeLabels& labels = {})
-        {
-            TServiceVolumeUserMetricsProbe probe(labels);
-            UserCounters->Accept(Runtime.GetCurrentTime(), &probe);
-
-            if (!registered) {
-                UNIT_ASSERT(probe.Names.empty());
-                UNIT_ASSERT(!probe.HasMaxUsedQuota);
-                return;
-            }
-
-            UNIT_ASSERT_VALUES_EQUAL(probe.Names.size(), 4);
-
-            for (const auto* name: {
-                    "disk.io_quota_utilization_percentage",
-                    "disk.io_quota_utilization_percentage_burst",
-                    "disk.read_throttler_delay",
-                    "disk.write_throttler_delay"})
-
-            {
-                UNIT_ASSERT_C(probe.Names.contains(name), name);
-            }
-
-            UNIT_ASSERT(probe.HasMaxUsedQuota);
-            UNIT_ASSERT_VALUES_EQUAL(probe.MaxUsedQuota, expectedMaxUsedQuota);
-        }
-    };
+        UNIT_ASSERT(probe.HasMaxUsedQuota);
+        UNIT_ASSERT_VALUES_EQUAL(probe.MaxUsedQuota, expectedMaxUsedQuota);
+    }
+};
 
 }  // namespace
 
