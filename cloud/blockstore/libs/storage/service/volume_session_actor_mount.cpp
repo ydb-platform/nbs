@@ -121,6 +121,7 @@ TEvInternalMountVolumeResponsePtr CreateInternalMountResponse(
         response->Record.SetInactiveClientsTimeout(
             static_cast<ui32>(Config.GetClientRemountPeriod().MilliSeconds()));
         response->Record.SetServiceVersionInfo(Config.GetServiceVersionInfo());
+        response->Record.SetTabletHost(volumeInfo.TabletHost);
     }
 
     return response;
@@ -417,6 +418,7 @@ private:
     // Most recent error code from suboperation (add client, start volume)
     NProto::TError Error;
     ui64 VolumeTabletId = 0;
+    TString TabletHost;
     NProto::TVolume Volume;
     bool VolumeStarted = false;
     NProto::EVolumeMountMode MountMode;
@@ -921,7 +923,8 @@ void TMountRequestActor::NotifyAndDie(const TActorContext& ctx)
         VolumeStarted,
         Params.BindingType,
         Params.PreemptionSource,
-        VolumeSessionRestartRequired);
+        VolumeSessionRestartRequired,
+        std::move(TabletHost));
 
     NCloud::Send(ctx, Params.SessionActorId, std::move(notification));
 
@@ -939,6 +942,7 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
 
     Error = error;
     Volume = msg->Record.GetVolume();
+    TabletHost = msg->Record.GetTabletHost();
 
     if (SUCCEEDED(error.GetCode())) {
         AddClientRequestCompleted = true;
@@ -1518,6 +1522,9 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
     const bool hadLocalStart = msg->HadLocalStart;
 
     VolumeInfo->TabletId = msg->VolumeTabletId;
+    if (msg->TabletHost) {
+        VolumeInfo->TabletHost = msg->TabletHost;
+    }
 
     TStringBuilder mountStr =
         TStringBuilder() <<

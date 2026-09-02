@@ -14,6 +14,7 @@
 
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -43,6 +44,7 @@ std::unique_ptr<TEvVolume::TEvAddClientResponse> CreateAddClientResponse(
     response->Record.SetClientId(std::move(clientId));
     response->Record.SetForceTabletRestart(forceTabletRestart);
     response->Record.SetVolumeClientMigrationInProgress(volumeClientMigrationInProgress);
+    response->Record.SetTabletHost(FQDNHostName());
 
     const auto& volumeConfig = state.GetMeta().GetVolumeConfig();
     auto* volumeInfo = response->Record.MutableVolume();

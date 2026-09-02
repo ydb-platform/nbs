@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "connection.h"
 #include "host_endpoint.h"
 
 #include <cloud/blockstore/libs/client/public.h>
@@ -26,9 +27,11 @@ struct ICellManager: public IStartable
         : Config(std::move(config))
     {}
 
-    [[nodiscard]] virtual TResultOrError<TCellHostEndpoint> GetCellEndpoint(
+    [[nodiscard]] virtual TCellConnectionFuture CreateConnection(
         const TString& cellId,
-        const NClient::TClientAppConfigPtr& clientConfig) = 0;
+        const TString& fqdn,
+        const NClient::TClientAppConfigPtr& clientConfig,
+        ICellConnectionObserverPtr observer) = 0;
 
     [[nodiscard]] virtual TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,

@@ -1,7 +1,8 @@
 #pragma once
 
 #include "bootstrap.h"
-#include "cell.h"
+#include "connection.h"
+#include "host_pool.h"
 
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
@@ -33,16 +34,18 @@ struct TCellManager: public ICellManager
 {
     const TBootstrap Bootstrap;
 
-    THashMap<TString, ICellPtr> Cells;
+    THashMap<TString, TCellHostPoolPtr> Pools;
 
     TCellManager(TCellsConfigPtr config, TBootstrap bootstrap);
 
     void Start() override;
     void Stop() override;
 
-    TResultOrError<TCellHostEndpoint> GetCellEndpoint(
+    [[nodiscard]] TCellConnectionFuture CreateConnection(
         const TString& cellId,
-        const NClient::TClientAppConfigPtr& clientConfig) override;
+        const TString& fqdn,
+        const NClient::TClientAppConfigPtr& clientConfig,
+        ICellConnectionObserverPtr observer) override;
 
     [[nodiscard]] TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,

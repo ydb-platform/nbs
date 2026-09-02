@@ -14,13 +14,19 @@ struct TCellManagerStub: public ICellManager
         : ICellManager(nullptr)
     {}
 
-    [[nodiscard]] TResultOrError<TCellHostEndpoint> GetCellEndpoint(
+    [[nodiscard]] TCellConnectionFuture CreateConnection(
         const TString& cellId,
-        const NClient::TClientAppConfigPtr& clientConfig) override
+        const TString& fqdn,
+        const NClient::TClientAppConfigPtr& clientConfig,
+        ICellConnectionObserverPtr observer) override
     {
         Y_UNUSED(cellId);
+        Y_UNUSED(fqdn);
         Y_UNUSED(clientConfig);
-        return MakeError(E_NOT_IMPLEMENTED, "not implemented");
+        Y_UNUSED(observer);
+
+        return NThreading::MakeFuture(TResultOrError<ICellConnectionPtr>(
+            MakeError(E_NOT_IMPLEMENTED, "not implemented")));
     }
 
     [[nodiscard]] TDescribeVolumeFuture DescribeVolume(

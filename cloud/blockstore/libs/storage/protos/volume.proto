@@ -146,6 +146,9 @@ message TAddClientResponse
     // at the VM migration begin.
     bool VolumeClientMigrationInProgress = 8;
 
+    // Host the volume tablet is running on.
+    string TabletHost = 9;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
