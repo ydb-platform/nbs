@@ -327,9 +327,20 @@ def _chunks(events: Sequence[_Event]) -> tuple[Chunk, ...]:
         timestamps = _attempt_timestamps(test_attempts)
         return (Chunk(None, None, "", None, attempts, timestamps),) if tests else ()
 
+    filenames: dict[tuple[int, int], set[str]] = defaultdict(set)
+    for event in chunk_events:
+        identity = event.chunk_identity
+        if identity is not None and identity[2]:
+            filenames[identity[:2]].add(identity[2])
+
     chunks: dict[tuple[int, int, str] | None, list[_Event]] = {}
     for event in chunk_events:
-        chunks.setdefault(event.chunk_identity, []).append(event)
+        identity = event.chunk_identity
+        if identity is not None and not identity[2]:
+            known_filenames = filenames[identity[:2]]
+            if len(known_filenames) == 1:
+                identity = (*identity[:2], next(iter(known_filenames)))
+        chunks.setdefault(identity, []).append(event)
     assigned: dict[tuple[int, int, str] | None, list[_AttemptEvents]] = defaultdict(
         list
     )
@@ -358,7 +369,7 @@ def _chunks(events: Sequence[_Event]) -> tuple[Chunk, ...]:
         matching = assigned[identity]
         attempts = _attempts(matching)
         timestamps = _attempt_timestamps(matching)
-        key = event.chunk_identity
+        key = identity
         result.append(
             Chunk(
                 key[0] if key is not None else None,
