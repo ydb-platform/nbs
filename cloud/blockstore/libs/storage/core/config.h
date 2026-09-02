@@ -901,6 +901,10 @@ public:
     [[nodiscard]] ui32 GetSSDMaxMixedBlocksPerUnit() const;
 
     [[nodiscard]] ui32 GetHDDMaxMixedBlocksPerUnit() const;
+
+    [[nodiscard]] bool GetUseBlobChannelDataKindForCounters() const;
+
+    [[nodiscard]] bool GetUseNewCompactionMapCounters() const;
 };
 
 ui64 GetAllocationUnit(

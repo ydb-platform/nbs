@@ -102,6 +102,62 @@ void ApplyChecksumFixups(TRangeCompactionInfo& rc)
     }
 }
 
+void UpdateCompactionMapCounters(
+    ui64 commitId,
+    TRangeCompactionInfo& rangeCompactionInfo)
+{
+    rangeCompactionInfo.BlocksCountCompactedInRange = 0;
+    rangeCompactionInfo.BlobsFullyCompactedForRange = 0;
+
+    for (const auto& [blobId, ab]: rangeCompactionInfo.AffectedBlobs) {
+        Y_ABORT_UNLESS(ab.MinCommitIdInCompactionRange <= commitId);
+
+        if (ab.BlobAlreadyInCleanupQueue) {
+            continue;
+        }
+
+        Y_ABORT_UNLESS(ab.BlockMask);
+        const auto& blockMask = ab.BlockMask.GetRef();
+
+        TBlockMask blocksCompactedInRange;
+        TBlockMask mixedBlocksCompactedInRange;
+        for (const ui16 blobOffset: ab.Offsets) {
+            // A mask is not read only when the blob is fully available and
+            // has no blocks compacted by an earlier compaction.
+            if (!ab.BlockMaskWasRead || !blockMask.Get(blobOffset)) {
+                blocksCompactedInRange.Set(blobOffset);
+                if (ab.IndexKind == EChannelDataKind::Mixed) {
+                    mixedBlocksCompactedInRange.Set(blobOffset);
+                }
+            }
+        }
+
+        const ui64 compactedOffsetsCount = blocksCompactedInRange.Count();
+        if (!compactedOffsetsCount) {
+            continue;
+        }
+
+        const ui64 mixedBlocksCompactedInRangeCount = mixedBlocksCompactedInRange.Count();
+
+        if (!IsDeletionMarker(blobId)) {
+            TCompactionMap::UpdateCompactionCounter(
+                rangeCompactionInfo.BlocksCountCompactedInRange +
+                    compactedOffsetsCount,
+                &rangeCompactionInfo.BlocksCountCompactedInRange);
+            TCompactionMap::UpdateCompactionCounter(
+                rangeCompactionInfo.MixedBlockCountCompactedInRange +
+                    mixedBlocksCompactedInRangeCount,
+                &rangeCompactionInfo.MixedBlockCountCompactedInRange);
+        }
+
+        if (ab.MaxCommitIdInCompactionRange <= commitId) {
+            TCompactionMap::UpdateCompactionCounter(
+                rangeCompactionInfo.BlobsFullyCompactedForRange + 1,
+                &rangeCompactionInfo.BlobsFullyCompactedForRange);
+        }
+    }
+}
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
