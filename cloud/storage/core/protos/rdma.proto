@@ -110,7 +110,7 @@ message TRdmaClient
 
     // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 7].
-    // 0 means infinite retries.
+    // 7 means infinite retries.
     uint32 QpRnrRetryCount = 19;
 
     // Sets the "timeout" parameter in the "ibv_qp_attr" for
