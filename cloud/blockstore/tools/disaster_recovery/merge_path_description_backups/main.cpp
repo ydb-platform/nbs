@@ -50,12 +50,12 @@ bool LoadPathDescriptionBackup(
 
     TNullOutput warningStream;
 
-    if(IsUtf(fileContent)){
-        if(TryParseFromTextFormat(
-            input,
-            *backupProto,
-            EParseFromTextFormatOption::AllowUnknownField,
-            &warningStream))
+    if (IsUtf(fileContent)) {
+        if (TryParseFromTextFormat(
+                input,
+                *backupProto,
+                EParseFromTextFormatOption::AllowUnknownField,
+                &warningStream))
         {
             return true;
         }
