@@ -10,33 +10,6 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool HasHigherMixedBlocksCompactionPriority(
-    const TRangeStat& statL,
-    const TRangeStat& statR,
-    ui64 usedBlocksThreshold)
-{
-    const bool lUsedBlocksThresholdReached =
-        statL.UsedBlockCount >= usedBlocksThreshold;
-    const bool rUsedBlocksThresholdReached =
-        statR.UsedBlockCount >= usedBlocksThreshold;
-    return std::tie(
-               lUsedBlocksThresholdReached,
-               statL.MixedBlockCount,
-               statL.UsedBlockCount) >
-           std::tie(
-               rUsedBlocksThresholdReached,
-               statR.MixedBlockCount,
-               statR.UsedBlockCount);
-}
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
 const float COMPACTED_RANGE_SCORE = -1000;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,15 +56,23 @@ struct TCompactionMap::TImpl
     {
         ui64 UsedBlocksThreshold;
 
+        explicit TCompareByMixedBlockCount(ui64 usedBlocksThreshold)
+            : UsedBlocksThreshold(usedBlocksThreshold)
+        {}
+
         template <typename T1, typename T2>
         bool Compare(const T1& l, const T2& r) const
         {
             const auto& groupL = static_cast<const TGroupNode&>(l);
             const auto& groupR = static_cast<const TGroupNode&>(r);
 
-            return HasHigherMixedBlocksCompactionPriority(
-                groupL.Stats[groupL.RangeWithMaxMixedBlockCount],
-                groupR.Stats[groupR.RangeWithMaxMixedBlockCount],
+            const auto& bestRangeL =
+                groupL.Stats[groupL.RangeWithMaxMixedBlockCount];
+            const auto& bestRangeR =
+                groupR.Stats[groupR.RangeWithMaxMixedBlockCount];
+
+            return bestRangeL.HasHigherMixedBlocksCompactionPriority(
+                bestRangeR,
                 UsedBlocksThreshold);
         }
     };
@@ -138,6 +119,8 @@ struct TCompactionMap::TImpl
         ui16 GarbageBlockCount = 0;
         ui16 GarbageIgnoringZeroed = 0;
 
+        // Index of the range in group with the highest priority according to
+        // the TRangeStat::HasHigherMixedBlocksCompactionPriority.
         ui32 RangeWithMaxMixedBlockCount = 0;
 
         ui32 Range = 0;
@@ -157,6 +140,8 @@ struct TCompactionMap::TImpl
 
     const ui32 RangeSize;
     const ICompactionPolicyPtr Policy;
+    const ui64 UsedBlocksThresholdForMixedBlocksCompaction =
+        Policy->GetUsedBlocksThresholdForMixedBlocksCompaction();
 
     TGroupList Groups;
     TGroupByBlockIndexTree GroupByBlockIndex;
@@ -165,7 +150,7 @@ struct TCompactionMap::TImpl
     TGroupByGarbageIgnoringZeroedTree GroupByGarbageIgnoringZeroed;
 
     TCompareByMixedBlockCount CompareByMixedBlockCount{
-        Policy->GetUsedBlocksThresholdForMixedBlocksCompaction()};
+        UsedBlocksThresholdForMixedBlocksCompaction};
     TGroupByMixedBlockCountTree GroupByMixedBlockCount{
         CompareByMixedBlockCount};
 
@@ -300,10 +285,9 @@ struct TCompactionMap::TImpl
                 group->Stats[group->RangeWithMaxMixedBlockCount];
             const auto& curStat = group->Stats[i];
 
-            if (HasHigherMixedBlocksCompactionPriority(
-                    curStat,
+            if (curStat.HasHigherMixedBlocksCompactionPriority(
                     maxStat,
-                    Policy->GetUsedBlocksThresholdForMixedBlocksCompaction()))
+                    UsedBlocksThresholdForMixedBlocksCompaction))
             {
                 group->RangeWithMaxMixedBlockCount = i;
             }
@@ -419,25 +403,23 @@ struct TCompactionMap::TImpl
             }
 
             const auto& newStat = group->Stats[index];
-            if (HasHigherMixedBlocksCompactionPriority(
-                    newStat,
+            if (newStat.HasHigherMixedBlocksCompactionPriority(
                     prev,
-                    Policy->GetUsedBlocksThresholdForMixedBlocksCompaction()))
+                    UsedBlocksThresholdForMixedBlocksCompaction))
             {
-                if (HasHigherMixedBlocksCompactionPriority(
-                        newStat,
-                        group->Stats[group->RangeWithMaxMixedBlockCount],
-                        Policy
-                            ->GetUsedBlocksThresholdForMixedBlocksCompaction()))
+                const auto& bestRange =
+                    group->Stats[group->RangeWithMaxMixedBlockCount];
+                if (newStat.HasHigherMixedBlocksCompactionPriority(
+                        bestRange,
+                        UsedBlocksThresholdForMixedBlocksCompaction))
                 {
                     group->RangeWithMaxMixedBlockCount = index;
                 }
             } else if (
                 index == group->RangeWithMaxMixedBlockCount &&
-                HasHigherMixedBlocksCompactionPriority(
-                    prev,
+                prev.HasHigherMixedBlocksCompactionPriority(
                     newStat,
-                    Policy->GetUsedBlocksThresholdForMixedBlocksCompaction()))
+                    UsedBlocksThresholdForMixedBlocksCompaction))
             {
                 // The selected range's mixed/used block tuple decreased,
                 // so recalculate the group maximum.
@@ -819,7 +801,7 @@ TVector<TCompactionCounter> TCompactionMap::GetTopByMixedBlockCount(
     size_t count) const
 {
     const ui64 usedBlocksThreshold =
-        Impl->Policy->GetUsedBlocksThresholdForMixedBlocksCompaction();
+        Impl->UsedBlocksThresholdForMixedBlocksCompaction;
     TVector<TCompactionCounter> result(
         Reserve(Impl->Groups.Size() * GroupSize));
     for (const auto& group: Impl->Groups) {
@@ -839,8 +821,7 @@ TVector<TCompactionCounter> TCompactionMap::GetTopByMixedBlockCount(
         result,
         [&](const auto& l, const auto& r)
         {
-            return HasHigherMixedBlocksCompactionPriority(
-                l.Stat,
+            return l.Stat.HasHigherMixedBlocksCompactionPriority(
                 r.Stat,
                 usedBlocksThreshold);
         });

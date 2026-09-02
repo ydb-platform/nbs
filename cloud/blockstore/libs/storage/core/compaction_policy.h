@@ -92,6 +92,28 @@ struct TRangeStat
     {
         return UsedBlockCount + NewlyZeroedBlocks;
     }
+
+    [[nodiscard]] bool HasHigherMixedBlocksCompactionPriority(
+        const TRangeStat& stat,
+        ui64 usedBlocksThreshold) const
+    {
+        // If there are not enough used blocks, compaction will result in small
+        // blob, which is especially bad for hdds. So we priorites ranges with
+        // enough used blocks, although they can have a lot of mixed blocks.
+        const bool lUsedBlocksThresholdReached =
+            UsedBlockCount >= usedBlocksThreshold;
+        const bool rUsedBlocksThresholdReached =
+            stat.UsedBlockCount >= usedBlocksThreshold;
+
+        return std::tie(
+                   lUsedBlocksThresholdReached,
+                   MixedBlockCount,
+                   UsedBlockCount) >
+               std::tie(
+                   rUsedBlocksThresholdReached,
+                   stat.MixedBlockCount,
+                   stat.UsedBlockCount);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

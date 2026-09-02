@@ -80,10 +80,14 @@ public:
     TCompactionCounter GetTopByGarbageIgnoringZeroed() const;
     TCompactionCounter GetTopByMixedBlockCount() const;
 
-    TVector<TCompactionCounter> GetTop(size_t count) const;
-    TVector<TCompactionCounter> GetTopByGarbageBlockCount(size_t count) const;
-    TVector<TCompactionCounter> GetTopByGarbageIgnoringZeroed(size_t count) const;
-    TVector<TCompactionCounter> GetTopByMixedBlockCount(size_t count) const;
+    // Returns `count` ranges with the highest priority according to the
+    // corresponding compaction trigger type.
+    [[nodiscard]] TVector<TCompactionCounter> GetTop(size_t count) const;
+    [[nodiscard]] TVector<TCompactionCounter> GetTopByGarbageBlockCount(size_t count) const;
+    [[nodiscard]] TVector<TCompactionCounter> GetTopByGarbageIgnoringZeroed(size_t count) const;
+    // Ranges with insufficient used or mixed blocks are excluded.
+    [[nodiscard]] TVector<TCompactionCounter> GetTopByMixedBlockCount(size_t count) const;
+
     TVector<ui32> GetNonEmptyRanges() const;
     ui32 GetNonEmptyRangeCount() const;
     ui32 GetRangeStart(ui32 blockIndex) const;
