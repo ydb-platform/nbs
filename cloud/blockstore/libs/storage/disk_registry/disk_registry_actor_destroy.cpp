@@ -198,13 +198,12 @@ void TDiskRegistryActor::HandleListBrokenDisks(
     BLOCKSTORE_DISK_REGISTRY_COUNTER(ListBrokenDisks);
 
     TVector<TString> diskIds;
-    for (const auto& bdi: State->GetBrokenDisks()) {
-        diskIds.push_back(bdi.DiskId);
+    for (const auto& [diskId, tsToDestroy]: State->GetBrokenDisks()) {
+        diskIds.push_back(diskId);
     }
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvListBrokenDisksResponse>(
-        std::move(diskIds)
-    );
-    Sort(response->DiskIds.begin(), response->DiskIds.end());
+    auto response =
+        std::make_unique<TEvDiskRegistryPrivate::TEvListBrokenDisksResponse>(
+            std::move(diskIds));
 
     NCloud::Send(ctx, ev->Sender, std::move(response));
 }
@@ -243,9 +242,9 @@ void TDiskRegistryActor::HandleDestroyBrokenDisks(
 
     BrokenDisksDestructionStartTs = ctx.Now();
 
-    for (const auto& info: State->GetBrokenDisks()) {
-        if (info.TsToDestroy < BrokenDisksDestructionStartTs) {
-            DisksBeingDestroyed.push_back(info.DiskId);
+    for (const auto& [diskId, tsToDestroy]: State->GetBrokenDisks()) {
+        if (tsToDestroy < BrokenDisksDestructionStartTs) {
+            DisksBeingDestroyed.push_back(diskId);
         }
     }
 
@@ -259,14 +258,9 @@ void TDiskRegistryActor::HandleDestroyBrokenDisks(
         ctx,
         SelfId(),
         LogTitle,
-        CreateRequestInfo(
-            SelfId(),
-            0,
-            MakeIntrusive<TCallContext>()
-        ),
+        CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
         Config,
-        DisksBeingDestroyed
-    );
+        DisksBeingDestroyed);
     Actors.insert(actor);
 }
 
