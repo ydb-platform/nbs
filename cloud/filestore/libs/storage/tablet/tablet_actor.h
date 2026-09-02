@@ -929,7 +929,6 @@ private:
 
     void UpdateLogTag();
 
-    bool HasBlocksLeft(ui64 prevSize, ui64 newSize, ui32 quotaId) const;
     bool HasSpaceLeft(ui64 prevSize, ui64 newSize, ui32 quotaId) const;
     bool HasNodesLeft(ui32 quotaId) const;
 

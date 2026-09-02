@@ -655,11 +655,6 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
             args.Error = ErrorNoSpaceLeft();
             return true;
         }
-
-        if (!HasSpaceLeft(0, args.Attrs.GetSize(), quotaId)) {
-            args.Error = ErrorNoSpaceLeft();
-            return true;
-        }
     }
 
     // TODO: AccessCheck

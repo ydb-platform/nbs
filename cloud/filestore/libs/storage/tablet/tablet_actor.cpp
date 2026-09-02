@@ -1896,14 +1896,13 @@ void TIndexTabletActor::UpdateLogTag()
     }
 }
 
-bool TIndexTabletActor::HasBlocksLeft(
+bool TIndexTabletActor::HasSpaceLeft(
     ui64 prevSize,
     ui64 newSize,
     ui32 quotaId) const
 {
-    const ui64 blocksRequired = static_cast<ui64>(Max<i64>(
-        0,
-        GetBlocksDifference(prevSize, newSize, GetBlockSize())));
+    const ui64 blocksRequired = static_cast<ui64>(
+        Max<i64>(0, GetBlocksDifference(prevSize, newSize, GetBlockSize())));
 
     if (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
         if (GetUsedBlocksCount() + blocksRequired > GetBlocksCount()) {
@@ -1951,14 +1950,6 @@ bool TIndexTabletActor::HasBlocksLeft(
     }
 
     return true;
-}
-
-bool TIndexTabletActor::HasSpaceLeft(
-    ui64 prevSize,
-    ui64 newSize,
-    ui32 quotaId) const
-{
-    return HasBlocksLeft(prevSize, newSize, quotaId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
