@@ -165,6 +165,58 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotDestroyVolumeWaitingForAllocation)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        ui32 destroyVolumeRequests = 0;
+        runtime.SetObserverFunc(
+            [&] (TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvWaitReadyRequest: {
+                        auto response = std::make_unique<
+                            TEvVolume::TEvWaitReadyResponse>(
+                                MakeError(
+                                    E_TRY_AGAIN,
+                                    "disk allocation is pending"));
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+
+                    case TEvSSProxy::EvModifyVolumeRequest:
+                        ++destroyVolumeRequests;
+                        break;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.SendDestroyVolumeRequest(DefaultDiskId, true);
+        {
+            auto response = service.RecvDestroyVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "disk allocation is pending",
+                response->GetErrorReason());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, destroyVolumeRequests);
+        service.DescribeVolume();
+    }
+
     Y_UNIT_TEST(ShouldOnlyDestroyDisksWithSpecificDiskIdPrefixes)
     {
         TTestEnv env;

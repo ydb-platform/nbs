@@ -382,6 +382,10 @@ void TVolumeActor::CompleteUpdateConfig(
         RegisterVolume(ctx);
     }
 
+    // The allocated devices are committed to the volume metadata now. We can
+    // safely clear the storage allocation result.
+    ClearStorageAllocationResultForLocalDisk();
+
     HasPerformanceProfileModifications =
         State->HasPerformanceProfileModifications(*Config);
 

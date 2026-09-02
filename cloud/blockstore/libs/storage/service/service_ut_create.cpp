@@ -1596,6 +1596,16 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         service.DescribeVolume();
 
+        error.SetCode(E_TRY_AGAIN);
+
+        service.SendDestroyVolumeRequest(DefaultDiskId, true);
+        {
+            auto response = service.RecvDestroyVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
+        }
+
+        service.DescribeVolume();
+
         error.SetCode(E_BS_RESOURCE_EXHAUSTED);
 
         service.SendDestroyVolumeRequest(DefaultDiskId, true);
