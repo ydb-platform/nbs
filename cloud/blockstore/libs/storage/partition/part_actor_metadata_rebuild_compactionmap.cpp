@@ -195,7 +195,7 @@ private:
             TPtr& ev, const TActorContext& ctx)
     {
         const auto* msg = ev->Get();
-        if (HasError(msg)) {
+        if (HasError(msg->Error)) {
             if (GetErrorKind(msg->Error) == EErrorKind::ErrorRetriable) {
                 ScheduleRetry(ctx);
             } else {

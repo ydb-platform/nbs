@@ -74,7 +74,7 @@ private:
         ui32 MixedBlockCountSkippedByCompaction = 0;
         ui16 BlocksCountCompactedInRange = 0;
         ui16 BlobsFullyCompactedForRange = 0;
-        ui32 MixedBlockCountCompactedInRange = 0;
+        ui16 MixedBlockCountCompactedInRange = 0;
     };
 
     TDenseHash<ui32, TRangeInfo> CompactionCounters{
@@ -164,60 +164,6 @@ public:
     }
 
 private:
-    void IncrementBlobCounters(
-        const TPartialBlobId& blobId,
-        EChannelDataKind indexKind,
-        ui64 blocksCount)
-    {
-        // Deletion markers contribute to blob totals, but not block totals.
-        if (IsDeletionMarker(blobId)) {
-            blocksCount = 0;
-        }
-
-        switch (indexKind) {
-            case EChannelDataKind::Mixed:
-                State.IncrementMixedIndexBlobsCount(1);
-                State.IncrementMixedIndexBlocksCount(blocksCount);
-                break;
-            case EChannelDataKind::Merged:
-                State.IncrementMergedIndexBlobsCount(1);
-                State.IncrementMergedIndexBlocksCount(blocksCount);
-                break;
-            default:
-                Y_ABORT(
-                    "Unexpected index kind: %u",
-                    static_cast<ui32>(indexKind));
-        }
-
-        // Deletion markers do not have a data channel.
-        if (IsDeletionMarker(blobId) &&
-            State.ShouldUseBlobChannelDataKindForCounters())
-        {
-            return;
-        }
-
-        // If channel-based counters are enabled, use the channel data kind
-        // otherwise use the index kind
-        const auto countersKind =
-            State.ShouldUseBlobChannelDataKindForCounters()
-                ? State.GetChannelDataKind(blobId.Channel())
-                : indexKind;
-        switch (countersKind) {
-            case EChannelDataKind::Mixed:
-                State.IncrementMixedBlobsCount(1);
-                State.IncrementMixedBlocksCount(blocksCount);
-                break;
-            case EChannelDataKind::Merged:
-                State.IncrementMergedBlobsCount(1);
-                State.IncrementMergedBlocksCount(blocksCount);
-                break;
-            default:
-                Y_ABORT(
-                    "Unexpected blob channel data kind: %u",
-                    static_cast<ui32>(countersKind));
-        }
-    }
-
     void UpdateCompactionInfo(
         ui32 blockIndex,
         const TBlobCompactionInfo& compactionInfo)
@@ -227,6 +173,8 @@ private:
             compactionInfo.BlobsSkippedByCompaction;
         rangeInfo.BlocksSkippedByCompaction +=
             compactionInfo.BlocksSkippedByCompaction;
+        rangeInfo.MixedBlockCountSkippedByCompaction +=
+            compactionInfo.MixedBlockCountSkippedByCompaction;
 
         TCompactionMap::UpdateCompactionCounter(
             rangeInfo.BlocksCountCompactedInRange +
@@ -539,6 +487,9 @@ private:
                 rangeInfo.Stat.BlockCount -=
                     Min(rangeInfo.Stat.BlockCount,
                         rangeInfo.BlocksCountCompactedInRange);
+                rangeInfo.Stat.MixedBlockCount -=
+                    Min(rangeInfo.Stat.MixedBlockCount,
+                        rangeInfo.MixedBlockCountCompactedInRange);
             }
 
             rangeInfo.Initialized = true;

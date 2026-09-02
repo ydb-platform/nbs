@@ -180,7 +180,7 @@ struct TBlobCompactionInfo
 
     const ui16 BlocksCountCompactedInRange = 0;
     const ui16 BlobsFullyCompactedForRange = 0;
-    const ui32 MixedBlockCountCompactedInRange = 0;
+    const ui16 MixedBlockCountCompactedInRange = 0;
 
     TBlobCompactionInfo(
         ui32 blobsSkippedByCompaction,
@@ -188,7 +188,7 @@ struct TBlobCompactionInfo
         ui32 mixedBlockCountSkippedByCompaction,
         ui16 blocksCountCompactedInRange,
         ui16 blobsFullyCompactedForRange,
-        ui32 mixedBlockCountCompactedInRange)
+        ui16 mixedBlockCountCompactedInRange)
         : BlobsSkippedByCompaction(blobsSkippedByCompaction)
         , BlocksSkippedByCompaction(blocksSkippedByCompaction)
         , MixedBlockCountSkippedByCompaction(mixedBlockCountSkippedByCompaction)

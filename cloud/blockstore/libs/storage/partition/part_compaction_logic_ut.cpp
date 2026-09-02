@@ -504,6 +504,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             {},   // zeroBlobSkipMask
             0,    // blobsSkippedByCompaction
             0,    // blocksSkippedByCompaction
+            0,    // mixedBlockCountSkippedByCompaction
             {},   // blockChecksums
             EChannelDataKind::Merged,
             {},   // blobContent
@@ -550,6 +551,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             {},   // zeroBlobSkipMask
             0,    // blobsSkippedByCompaction
             0,    // blocksSkippedByCompaction
+            0,    // mixedBlockCountSkippedByCompaction
             {},   // blockChecksums
             EChannelDataKind::Merged,
             {},   // blobContent

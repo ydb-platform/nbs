@@ -769,7 +769,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         ui32 mixedBlocksSkipped,
         ui16 blocksCountCompactedInRange,
         ui16 blobsFullyCompactedForRange,
-        ui32 mixedBlockCountCompactedInRange,
+        ui16 mixedBlockCountCompactedInRange,
         EChannelDataKind channelDataKind)
     {
         while (skipMask.Get(range.End - range.Start)) {
@@ -853,7 +853,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
 
             ui16 blocksCountCompactedInRange = 0;
             ui16 blobsFullyCompactedForRange = 0;
-            ui32 mixedBlockCountCompactedInRange = 0;
+            ui16 mixedBlockCountCompactedInRange = 0;
 
             if (!rc.DataBlobId) {
                 blobsSkipped = rc.BlobsSkippedByCompaction;
