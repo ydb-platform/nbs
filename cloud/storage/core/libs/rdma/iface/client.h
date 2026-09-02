@@ -44,10 +44,10 @@ struct TClientConfig
     ui32 RecvQueueSize = 0;
     TDuration ResolveTimeout = TDuration::Seconds(10);
     TDuration FlushTimeout = TDuration::Seconds(10);
-    ui8 QpRetryCount = 7;       // QpRetryCount * QpTimeout = ~470ms
-    ui8 QpRnrRetryCount = 7;    // inf
     ui8 QpTimeout = 14;         // ~67ms
+    ui8 QpRetryCount = 7;       // QpTimeout * QpRetryCount = ~470ms
     ui8 QpMinRnrTimer = 12;     // ~640us
+    ui8 QpRnrRetryCount = 7;    // inf
     bool UseMemoryWindows = false;
     ui32 MemoryWindowsPoolSize = 0;
 
