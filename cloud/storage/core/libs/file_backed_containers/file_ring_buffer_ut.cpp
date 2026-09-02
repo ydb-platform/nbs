@@ -1306,6 +1306,185 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         }
     }
 
+    struct TRandomizedTestWithIncompleteAllocationsBootstrap
+    {
+        static constexpr ui64 BufferSize = 1024;
+        static constexpr ui64 MaxAllocSize = 256;
+
+        const EFileRingBufferVersion Version;
+
+        TTempFileHandle FileHandle;
+        std::unique_ptr<TFileRingBuffer> RingBuffer;
+
+        struct TAllocation
+        {
+            TString Data;
+            const char* Ptr = nullptr;
+            bool Committed = false;
+        };
+
+        TVector<TAllocation> Allocations;
+        size_t IncompleteAllocationCount = 0;
+
+        TRandomizedTestWithIncompleteAllocationsBootstrap(
+            EFileRingBufferVersion version)
+            : Version(version)
+        {
+            Recreate();
+        }
+
+        void Recreate()
+        {
+            RingBuffer = std::make_unique<TFileRingBuffer>(
+                FileHandle.GetName(),
+                BufferSize,
+                0,
+                Version);
+
+            UNIT_ASSERT(RingBuffer->Validate());
+            UNIT_ASSERT(!RingBuffer->IsCorrupted());
+
+            IncompleteAllocationCount = 0;
+
+            EraseIf(
+                Allocations,
+                [](const TAllocation& alloc) { return !alloc.Committed; });
+
+            size_t index = 0;
+
+            auto visitResult = RingBuffer->Visit(
+                [&](ui32 checksum, ui32 tag, TStringBuf entry)
+                {
+                    Y_UNUSED(checksum);
+                    Y_UNUSED(tag);
+                    UNIT_ASSERT(index < Allocations.size());
+                    Allocations[index].Ptr = entry.data();
+                    index++;
+                });
+
+            UNIT_ASSERT(!HasError(visitResult));
+            UNIT_ASSERT_VALUES_EQUAL(Allocations.size(), index);
+
+            Check();
+        }
+
+        void Alloc()
+        {
+            const auto size = RandomNumber(MaxAllocSize) + 1;
+            auto data = GenerateData(static_cast<ui32>(size));
+            auto allocation = RingBuffer->Alloc(size);
+            UNIT_ASSERT(!HasError(allocation.Error));
+            if (allocation.AllocationPtr) {
+                data.copy(allocation.AllocationPtr, data.size());
+                Allocations.push_back(
+                    {std::move(data), allocation.AllocationPtr, false});
+                ++IncompleteAllocationCount;
+            }
+
+            Check();
+        }
+
+        void Commit()
+        {
+            if (IncompleteAllocationCount == 0) {
+                return;
+            }
+
+            const size_t index = GetRandomAllocation(false);
+            UNIT_ASSERT(!HasError(RingBuffer->Commit(Allocations[index].Ptr)));
+            Allocations[index].Committed = true;
+            --IncompleteAllocationCount;
+
+            Check();
+        }
+
+        void Free()
+        {
+            if (Allocations.size() == IncompleteAllocationCount) {
+                return;
+            }
+
+            const size_t index = GetRandomAllocation(true);
+            if (index != Allocations.size()) {
+                UNIT_ASSERT(
+                    !HasError(RingBuffer->Free(Allocations[index].Ptr)));
+                Allocations.erase(Allocations.begin() + index);
+            }
+
+            Check();
+        }
+
+        size_t GetRandomAllocation(bool committed)
+        {
+            if (committed) {
+                Y_ABORT_UNLESS(Allocations.size() > IncompleteAllocationCount);
+            } else {
+                Y_ABORT_UNLESS(IncompleteAllocationCount > 0);
+            }
+
+            size_t index = RandomNumber(Allocations.size());
+            for (size_t i = 0; i < Allocations.size(); ++i) {
+                if (Allocations[index].Committed == committed) {
+                    return index;
+                }
+                index = (index + 1) % Allocations.size();
+            }
+
+            return index;
+        }
+
+        TString DumpReference()
+        {
+            TStringBuilder res;
+            for (const auto& allocation: Allocations) {
+                if (allocation.Committed) {
+                    if (!res.empty()) {
+                        res += ", ";
+                    }
+                    res += allocation.Data;
+                }
+            }
+            return res;
+        }
+
+        void Check()
+        {
+            UNIT_ASSERT_VALUES_EQUAL(DumpReference(), Dump(*RingBuffer));
+            UNIT_ASSERT_VALUES_EQUAL(Allocations.size(), RingBuffer->Size());
+            UNIT_ASSERT_VALUES_EQUAL(Allocations.empty(), RingBuffer->Empty());
+        }
+    };
+
+    FILE_RING_BUFFER_TEST(RandomizedTestWithIncompleteAllocations)
+    {
+        constexpr size_t numIterations = 10000;
+        constexpr ui32 recreateProbability = 10;
+        constexpr ui32 allocProbability = 30;
+        constexpr ui32 commitProbability = 40;
+        constexpr ui32 freeProbability = 20;
+
+        TRandomizedTestWithIncompleteAllocationsBootstrap b(ver);
+
+        for (size_t i = 0; i < numIterations; ++i) {
+            const ui32 action = static_cast<ui32>(RandomNumber(
+                recreateProbability + allocProbability + commitProbability +
+                freeProbability));
+
+            if (action < recreateProbability) {
+                b.Recreate();
+            } else if (action < recreateProbability + allocProbability) {
+                b.Alloc();
+            } else if (
+                action <
+                recreateProbability + allocProbability + commitProbability)
+            {
+                b.Commit();
+            } else {
+                b.Free();
+            }
+        }
+    }
+
     FILE_RING_BUFFER_TEST(AllocShouldReturnExtendedStatus)
     {
         const auto f = TTempFileHandle();
