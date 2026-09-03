@@ -4,10 +4,33 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const THashMap<TString, TSecureErase>&
-TSecureEraseState::GetSecureErases() const
+TVector<TString> TSecureEraseState::GetDevicesToErase() const
 {
-    return SecureErases;
+    TVector<TString> devices;
+    devices.reserve(SecureErases.size());
+
+    for (const auto& [deviceId, erase]: SecureErases) {
+        if (erase.Status == ESecureEraseStatus::Wait) {
+            devices.push_back(deviceId);
+        }
+    }
+
+    return devices;
+}
+
+TVector<TRequestInfoPtr> TSecureEraseState::GetRequests() const
+{
+    TVector<TRequestInfoPtr> requests;
+
+    for (const auto& entry: SecureErases) {
+        const auto& erase = entry.second;
+        requests.insert(
+            requests.end(),
+            erase.Requests.begin(),
+            erase.Requests.end());
+    }
+
+    return requests;
 }
 
 TSecureErase* TSecureEraseState::Find(const TString& deviceId)

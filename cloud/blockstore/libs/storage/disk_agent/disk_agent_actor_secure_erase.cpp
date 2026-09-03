@@ -10,22 +10,23 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TDiskAgentActor::CanStartSecureErase(const TString& uuid) const
-{
-    return SecureEraseState.CanStart(
-        uuid,
-        State->GetDeviceName(uuid),
-        AgentConfig->GetMaxParallelSecureErasesAllowed());
-}
-
-void TDiskAgentActor::SecureErase(
+bool TDiskAgentActor::SecureErase(
     const NActors::TActorContext& ctx,
     const TString& deviceId)
 {
+    const auto& deviceName = State->GetDeviceName(deviceId);
+    if (!SecureEraseState.CanStart(
+            deviceId,
+            deviceName,
+            AgentConfig->GetMaxParallelSecureErasesAllowed()))
+    {
+        return false;
+    }
+
     LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
         "Start secure erase for " << deviceId.Quote());
 
-    SecureEraseState.Start(deviceId, State->GetDeviceName(deviceId));
+    SecureEraseState.Start(deviceId, deviceName);
 
     auto* actorSystem = ctx.ActorSystem();
     auto replyTo = ctx.SelfID;
@@ -48,7 +49,7 @@ void TDiskAgentActor::SecureErase(
         reply(MakeError(E_REJECTED, TStringBuilder()
                 << "SecureErase with inflight ios present for device "
                 << deviceId));
-        return;
+        return true;
     }
 
     try {
@@ -70,6 +71,8 @@ void TDiskAgentActor::SecureErase(
 
         reply(MakeError(e.GetCode(), e.what()));
     }
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -128,9 +131,7 @@ void TDiskAgentActor::HandleSecureEraseDevice(
     }
     erase.Status = ESecureEraseStatus::Wait;
 
-    if (CanStartSecureErase(deviceId)) {
-        SecureErase(ctx, deviceId);
-    } else {
+    if (!SecureErase(ctx, deviceId)) {
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
@@ -174,12 +175,8 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
     erase.Requests.clear();
 
     // erase next device
-    for (const auto& [deviceUUID, erase]: SecureEraseState.GetSecureErases()) {
-        if (erase.Status == ESecureEraseStatus::Wait &&
-            CanStartSecureErase(deviceUUID))
-        {
-            SecureErase(ctx, deviceUUID);
-        }
+    for (const auto& deviceUUID: SecureEraseState.GetDevicesToErase()) {
+        SecureErase(ctx, deviceUUID);
     }
 }
 

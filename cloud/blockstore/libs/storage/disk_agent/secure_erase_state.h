@@ -8,6 +8,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -41,8 +42,8 @@ private:
 public:
     TSecureEraseState() = default;
 
-    [[nodiscard]] const THashMap<TString, TSecureErase>&
-    GetSecureErases() const;
+    [[nodiscard]] TVector<TString> GetDevicesToErase() const;
+    [[nodiscard]] TVector<TRequestInfoPtr> GetRequests() const;
 
     [[nodiscard]] TSecureErase* Find(const TString& deviceId);
     [[nodiscard]] const TSecureErase* Find(const TString& deviceId) const;

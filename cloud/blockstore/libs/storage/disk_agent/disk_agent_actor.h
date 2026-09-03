@@ -168,9 +168,7 @@ private:
     void RenderDevices(IOutputStream& out) const;
     void RenderNVMeDevices(IOutputStream& out) const;
 
-    bool CanStartSecureErase(const TString& uuid) const;
-
-    void SecureErase(
+    bool SecureErase(
         const NActors::TActorContext& ctx,
         const TString& deviceId);
 
