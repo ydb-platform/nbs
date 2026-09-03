@@ -67,9 +67,8 @@ void WriteFile(TString filePath, TString data, const TActorContext& ctx)
             LOG_WARN_S(
                 ctx,
                 TBlockStoreComponents::SERVICE,
-                "ServiceActorSyncManuallyPreemptedVolumes: failed to delete "
-                "temporary file: "
-                    << CurrentExceptionMessage());
+                "ServiceActorSyncManuallyPreemptedVolumes: failed to delete temporary file: "
+                << CurrentExceptionMessage());
         }
     }
 }
