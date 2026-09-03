@@ -1295,15 +1295,6 @@ void TIndexTabletActor::HandleForcedOperation(
         ranges.erase(ranges.begin(), b);
     }
 
-    if (ranges.empty()) {
-        replyError(MakeError(S_FALSE, "no ranges found"));
-        return;
-    }
-
-    if (ranges.size() > Max<ui32>()) {
-        replyError(MakeError(E_ARGUMENT, "too many ranges to process"));
-    }
-
     auto response = std::make_unique<TResponse>();
     response->Record.SetRangeCount(ranges.size());
     auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
