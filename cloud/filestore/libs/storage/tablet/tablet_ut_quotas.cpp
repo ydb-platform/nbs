@@ -170,6 +170,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
+        tablet.SetQuota(1, 1_GB, 10);
 
         auto dirId =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
@@ -204,6 +205,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
+        tablet.SetQuota(1, 1_GB, 10);
 
         auto dirId =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
@@ -333,7 +335,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         UNIT_ASSERT_VALUES_EQUAL(100u, usages[0].GetUsedBytes());
     }
 
-    Y_UNIT_TEST(ShouldNotTrackUsageForUnknownQuotaId)
+    Y_UNIT_TEST(ShouldRejectAttachingToUnknownQuotaId)
     {
         TTestEnv env;
 
@@ -344,15 +346,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         tablet.InitSession("client", "session");
 
         // quota 99 is never defined via SetQuota - attaching a directory to
-        // it and creating nodes under it should not produce a usage entry,
-        // since there's no quota definition to attribute the usage to
+        // it is rejected, same as attaching to any other nonexistent quota
         auto dirId =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
-        tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(99));
-        CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
-
-        auto usages = tablet.ListQuotas()->Record.GetUsages();
-        UNIT_ASSERT_VALUES_EQUAL(0, usages.size());
+        tablet.AssertSetNodeAttrFailed(TSetNodeAttrArgs(dirId).SetQuotaId(99));
     }
 
     Y_UNIT_TEST(ShouldRemoveUsageWhenQuotaIsDeleted)
@@ -442,6 +439,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
+        tablet.SetQuota(1, 1_GB, 10);
+        tablet.SetQuota(2, 2_GB, 20);
 
         auto dirId =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));

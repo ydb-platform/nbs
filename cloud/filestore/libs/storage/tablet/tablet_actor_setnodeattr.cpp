@@ -147,6 +147,11 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
         } else if (args.Node->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
             args.Error = ErrorIsNotDirectory(args.NodeId);
             return true;
+        } else if (!FindQuota(newQuotaId)) {
+            args.Error = ErrorInvalidArgument(
+                TStringBuilder()
+                << "quota " << newQuotaId << " does not exist");
+            return true;
         } else {
             TVector<INodeIndexTabletDatabase::TNodeRef> refs;
             // 1 entry is enough to prove the directory is non-empty

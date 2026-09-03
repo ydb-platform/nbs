@@ -154,6 +154,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
         auto& service = *fixture.Service;
         const auto& fsId = fixture.FsId;
 
+        SetQuota(service, fsId, 42, 1_GB, 100);
+
         auto headers = service.InitSession(fsId, "client");
 
         const auto dirId =
@@ -218,6 +220,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
     {
         auto& service = *fixture.Service;
         const auto& fsId = fixture.FsId;
+
+        SetQuota(service, fsId, 42, 1_GB, 100);
 
         auto headers = service.InitSession(fsId, "client");
 
