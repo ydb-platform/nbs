@@ -881,10 +881,16 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     affectedBlob.Offsets.end(),
                     blob.Offsets.begin(),
                     blob.Offsets.end());
-                affectedBlob.AffectedBlocks.insert(
-                    affectedBlob.AffectedBlocks.end(),
-                    blob.AffectedBlocks.begin(),
-                    blob.AffectedBlocks.end());
+                if (affectedBlob.MixedBlobsSpecificInfo) {
+                    auto& visitedBlocksInserted =
+                        affectedBlob.MixedBlobsSpecificInfo->AllVisitedBlocks;
+                    auto& visitedBlocksForBlob =
+                        blob.MixedBlobsSpecificInfo->AllVisitedBlocks;
+                    visitedBlocksInserted.insert(
+                        visitedBlocksInserted.end(),
+                        visitedBlocksForBlob.begin(),
+                        visitedBlocksForBlob.end());
+                }
 
                 affectedBlob.BlockMask.GetRef() |= blockMask;
             }

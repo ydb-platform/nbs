@@ -124,13 +124,13 @@ TTxPartition::TRangeCompaction MakeArgs()
         TBlockRange32::MakeClosedInterval(0, 7));
 }
 
-TAffectedBlob MakeFullyAvailableMixedBlob(
-    TVector<TAffectedBlock> affectedBlocks)
+TAffectedBlob MakeFullyAvailableMixedBlob(TVector<TAffectedBlock> visitedBlocks)
 {
     TAffectedBlob ab;
     ab.CompactionRangeCount = 1;
     ab.MaxCommitIdInCompactionRange = CommitId;
-    ab.AffectedBlocks = std::move(affectedBlocks);
+    ab.MixedBlobsSpecificInfo.ConstructInPlace();
+    ab.MixedBlobsSpecificInfo->AllVisitedBlocks = std::move(visitedBlocks);
     return ab;
 }
 
@@ -238,7 +238,7 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
 
         args.MarkBlock(0, CommitId, mixedBlobId, 0, true);
         args.MarkBlock(1, CommitId, mixedBlobId, 1, true);
-        args.MarkBlock(2, CommitId, mergedBlobId, 0, true);
+        args.MarkBlock(2, CommitId, mergedBlobId, 0, false);
 
         args.AffectedBlobs[mixedBlobId].IndexKind =
             EChannelDataKind::Mixed;
@@ -264,6 +264,59 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
         UNIT_ASSERT_VALUES_EQUAL(mixedBlobId, args.BlockMarks[0].BlobId);
         UNIT_ASSERT_VALUES_EQUAL(mixedBlobId, args.BlockMarks[1].BlobId);
         UNIT_ASSERT(!args.BlockMarks[2].CommitId);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveOtherVersionsOfSkippedMixedBlobBlocks)
+    {
+        auto state = MakeState();
+        auto config = MakeStorageConfig(
+            0,   // diskPrefixLength
+            0);  // targetCompactionBytesPerOp
+
+        const TPartialBlobId skippedBlobId(
+            1,
+            1,
+            3,
+            DefaultBlockSize,
+            1,
+            0);
+        const TPartialBlobId preservedBlobId(
+            1,
+            1,
+            3,
+            DefaultBlockSize,
+            2,
+            0);
+
+        auto args = MakeArgs();
+        args.MarkBlock(0, 20, skippedBlobId, 0, true);
+        args.MarkBlock(0, 10, preservedBlobId, 0, true);
+
+        auto& skippedBlob = args.AffectedBlobs.at(skippedBlobId);
+        skippedBlob.IndexKind = EChannelDataKind::Mixed;
+        skippedBlob.MixedBlobsSpecificInfo.ConstructInPlace();
+        skippedBlob.MixedBlobsSpecificInfo->AllVisitedBlocks.push_back(
+            {.BlockIndex = 0, .CommitId = 20});
+
+        auto& preservedBlob = args.AffectedBlobs.at(preservedBlobId);
+        preservedBlob.IndexKind = EChannelDataKind::Mixed;
+        preservedBlob.MixedBlobsSpecificInfo.ConstructInPlace();
+        preservedBlob.MixedBlobsSpecificInfo->AllVisitedBlocks.push_back(
+            {.BlockIndex = 0, .CommitId = 10});
+
+        args.BlobsSkipped = 2;
+        args.BlocksSkipped = 3;
+
+        ApplyBlobsSkipping(*config, 1, state, args);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, args.BlobsSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(4, args.BlocksSkipped);
+        UNIT_ASSERT(!args.AffectedBlobs.contains(skippedBlobId));
+        UNIT_ASSERT(args.AffectedBlobs.contains(preservedBlobId));
+        UNIT_ASSERT_VALUES_EQUAL(1, args.AffectedBlocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, args.AffectedBlocks[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(10, args.AffectedBlocks[0].CommitId);
+        UNIT_ASSERT(!args.BlockMarks[0].CommitId);
     }
 }
 
@@ -417,6 +470,58 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT(ready);
         UNIT_ASSERT_VALUES_EQUAL(1, blobsToReadBlockMasks.size());
         UNIT_ASSERT(blobsToReadBlockMasks.contains(blobId));
+    }
+
+    Y_UNIT_TEST(PrepareCountsUnskippedMergedBlocksInCompactionRange)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        const auto blobRange = TBlockRange32::MakeClosedInterval(100, 104);
+        TBlockMask skipMask;
+        skipMask.Set(1);
+        skipMask.Set(3);
+
+        TPartialBlobId blobId;
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                blobId = executor.MakeBlobId(blobRange.Size());
+                db.WriteMergedBlocks(blobId, blobRange, skipMask);
+            });
+
+        TTxPartition::TRangeCompaction args(
+            0,
+            TBlockRange32::MakeClosedInterval(101, 103));
+        THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
+        THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        bool ready = true;
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                PrepareRangeCompaction(
+                    *MakeStorageConfig(),
+                    0,
+                    MakeCommitId(0, 100),
+                    TTestExecutor::TabletId,
+                    true,
+                    false,   // useRecreatedBlobMetasOnCleanup
+                    ready,
+                    db,
+                    state,
+                    args,
+                    blobsToReadBlockMasks,
+                    blobsToReadBlobMetas);
+            });
+
+        UNIT_ASSERT(ready);
+        UNIT_ASSERT(args.AffectedBlobs.contains(blobId));
+        const auto& info =
+            args.AffectedBlobs.at(blobId).MergedBlobsSpecificInfo;
+        UNIT_ASSERT(info);
+        UNIT_ASSERT_VALUES_EQUAL(1, info->BlocksInRange);
     }
 
     // PrepareRangeCompaction: a blob already in the cleanup queue gets a full
@@ -893,6 +998,115 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(1, ab.CompactionRangeCount);
         UNIT_ASSERT(ab.MaxCommitIdInCompactionRange > compactionCommitId);
         UNIT_ASSERT(!ab.RecreatedBlobMeta);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            result.RangeCompactionInfos[0].BlobsSkippedByCompaction);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            result.RangeCompactionInfos[0].BlocksSkippedByCompaction);
+    }
+
+    Y_UNIT_TEST(PrepareAccountsMixedBlobWithoutBlocksVisibleToCompaction)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        const auto compactionCommitId = MakeCommitId(0, 100);
+        TPartialBlobId blobId;
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                blobId = executor.MakeBlobId(2);
+                state.WriteMixedBlock(
+                    db,
+                    TMixedBlock(blobId, MakeCommitId(0, 101), 0, 0, 1));
+                state.WriteMixedBlock(
+                    db,
+                    TMixedBlock(blobId, MakeCommitId(0, 102), 1, 1, 1));
+            });
+
+        auto args = MakeArgs();
+        THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
+        THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        bool ready = true;
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                PrepareRangeCompaction(
+                    *MakeStorageConfig(),
+                    0,
+                    compactionCommitId,
+                    TTestExecutor::TabletId,
+                    true,
+                    false,   // useRecreatedBlobMetasOnCleanup
+                    ready,
+                    db,
+                    state,
+                    args,
+                    blobsToReadBlockMasks,
+                    blobsToReadBlobMetas);
+            });
+
+        UNIT_ASSERT(ready);
+        UNIT_ASSERT(!args.AffectedBlobs.contains(blobId));
+        UNIT_ASSERT_VALUES_EQUAL(1, args.BlobsSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(2, args.BlocksSkipped);
+        UNIT_ASSERT(blobsToReadBlockMasks.empty());
+        UNIT_ASSERT(blobsToReadBlobMetas.empty());
+    }
+}
+
+Y_UNIT_TEST_SUITE(TAccountSkippedBlobsAndBlocksTest)
+{
+    Y_UNIT_TEST(ShouldAddMixedAndMergedCommitIdSkipsToExistingCounters)
+    {
+        const auto activeMixedBlobId = TPartialBlobId(1, 0);
+        const auto skippedMixedBlobId = TPartialBlobId(2, 0);
+        const auto skippedMergedBlobId = TPartialBlobId(3, 0);
+
+        TAffectedBlobs affectedBlobs;
+        auto& activeMixedBlob = affectedBlobs[activeMixedBlobId];
+        activeMixedBlob.MinCommitIdInCompactionRange = CommitId - 1;
+        activeMixedBlob.MixedBlobsSpecificInfo.ConstructInPlace();
+        activeMixedBlob.MixedBlobsSpecificInfo->AllVisitedBlocks = {
+            {.BlockIndex = 1, .CommitId = CommitId - 1},
+            {.BlockIndex = 2, .CommitId = CommitId},
+            {.BlockIndex = 3, .CommitId = CommitId + 1},
+            {.BlockIndex = 4, .CommitId = CommitId + 2},
+        };
+
+        TAffectedBlobs blobsSkippedByCommitId;
+        auto& skippedMixedBlob =
+            blobsSkippedByCommitId[skippedMixedBlobId];
+        skippedMixedBlob.IndexKind = EChannelDataKind::Mixed;
+        skippedMixedBlob.MixedBlobsSpecificInfo.ConstructInPlace();
+        skippedMixedBlob.MixedBlobsSpecificInfo->AllVisitedBlocks = {
+            {.BlockIndex = 5, .CommitId = CommitId + 1},
+            {.BlockIndex = 6, .CommitId = CommitId + 1},
+            {.BlockIndex = 7, .CommitId = CommitId + 2},
+        };
+
+        auto& skippedMergedBlob =
+            blobsSkippedByCommitId[skippedMergedBlobId];
+        skippedMergedBlob.IndexKind = EChannelDataKind::Merged;
+        skippedMergedBlob.MergedBlobsSpecificInfo.ConstructInPlace();
+        skippedMergedBlob.MergedBlobsSpecificInfo->BlocksInRange = 4;
+
+        ui32 blobsSkipped = 5;
+        ui32 blocksSkipped = 7;
+
+        AccountSkippedBlobsAndBlocks(
+            CommitId,
+            TTestExecutor::TabletId,
+            affectedBlobs,
+            blobsSkippedByCommitId,
+            blobsSkipped,
+            blocksSkipped);
+
+        UNIT_ASSERT_VALUES_EQUAL(7, blobsSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(16, blocksSkipped);
     }
 }
 

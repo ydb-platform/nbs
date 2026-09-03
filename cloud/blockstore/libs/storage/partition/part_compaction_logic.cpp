@@ -174,6 +174,17 @@ public:
         ab.MinCommitIdInCompactionRange =
             std::min(commitId, ab.MinCommitIdInCompactionRange);
 
+        ab.CompactionRangeCount = compactionRangeCount;
+        ab.IndexKind = EChannelDataKind::Mixed;
+
+        // track all visited blocks  for mixed blobs to restore compaction map
+        // counters correctly
+        if (!ab.MixedBlobsSpecificInfo) {
+            ab.MixedBlobsSpecificInfo.ConstructInPlace();
+        }
+        ab.MixedBlobsSpecificInfo->AllVisitedBlocks.push_back(
+            {blockIndex, commitId});
+
         if (commitId > MaxCommitId) {
             return true;
         }
@@ -188,9 +199,6 @@ public:
                 << ", expected: " << ab.CompactionRangeCount
                 << ", actual: " << compactionRangeCount);
 
-        ab.CompactionRangeCount = compactionRangeCount;
-        ab.IndexKind = EChannelDataKind::Mixed;
-
         Args.MarkBlock(
             blockIndex,
             commitId,
@@ -203,7 +211,7 @@ public:
     bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) override
+        const TBlockMask& skipMask) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
         ab.MaxCommitIdInCompactionRange = blobId.CommitId();
@@ -214,25 +222,40 @@ public:
 
         ab.MergedBlobsSpecificInfo.ConstructInPlace();
         ab.MergedBlobsSpecificInfo->BlockRange = blockRange;
-        ab.MergedBlobsSpecificInfo->SkippedBlocksCount = skippedBlocksCount;
+        ab.MergedBlobsSpecificInfo->SkippedBlocksCount = skipMask.Count();
+
+        const ui32 start = Max(blockRange.Start, Args.BlockRange.Start);
+        const ui32 end = Min(blockRange.End, Args.BlockRange.End);
+
+        for (ui32 i = 0; i < end - start + 1; ++i) {
+            const ui32 blobOffset = start - blockRange.Start + i;
+            if (!skipMask.Get(blobOffset)) {
+                ab.MergedBlobsSpecificInfo->BlocksInRange++;
+            }
+        }
 
         ab.IndexKind = EChannelDataKind::Merged;
         return true;
     }
 
-    void Finish()
+    // Returns blobs that doesn't have any blocks in the compaction range with
+    // available commit id.
+    THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash> Finish()
     {
-        TVector<TPartialBlobId> blobIdsToDelete;
+        THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>
+            blobsToDelete;
 
-        for (const auto& [blobId, ab]: Args.AffectedBlobs) {
+        for (auto& [blobId, ab]: Args.AffectedBlobs) {
             if (ab.MinCommitIdInCompactionRange > MaxCommitId) {
-                blobIdsToDelete.push_back(blobId);
+                blobsToDelete.emplace(blobId, std::move(ab));
             }
         }
 
-        for (const auto& blobId: blobIdsToDelete) {
+        for (const auto& [blobId, _]: blobsToDelete) {
             Args.AffectedBlobs.erase(blobId);
         }
+
+        return blobsToDelete;
     }
 };
 
@@ -667,7 +690,7 @@ void ApplyBlobsSkipping(
         ApplyMixedBlocksSkipping(blobsToSkip, args);
     }
 
-    args.BlobsSkipped = blobsToSkip.size();
+    args.BlobsSkipped += blobsToSkip.size();
     for (const auto& [blobId, skippedBlockCount]: blobsToSkip) {
         args.BlocksSkipped += skippedBlockCount;
 
@@ -678,25 +701,35 @@ void ApplyBlobsSkipping(
         }
     }
 
-    THashSet<ui32> skippedBlockIndices;
+    TAffectedBlocks skippedBlocks;
 
     for (const auto& x: blobsToSkip) {
         auto ab = args.AffectedBlobs.find(x.first);
         Y_ABORT_UNLESS(ab != args.AffectedBlobs.end());
-        for (const auto& affectedBlock: ab->second.AffectedBlocks) {
-            // we can actually add extra indices to skippedBlockIndices,
-            // but it does not cause data corruption - the important thing
-            // is to ensure that all skipped indices are added, not that
-            // all non-skipped are preserved
-            skippedBlockIndices.insert(affectedBlock.BlockIndex);
+        if (ab->second.MixedBlobsSpecificInfo) {
+            for (const auto& affectedBlock:
+                 ab->second.MixedBlobsSpecificInfo->AllVisitedBlocks)
+            {
+                // we can actually add extra indices to skippedBlockIndices,
+                // but it does not cause data corruption - the important thing
+                // is to ensure that all skipped indices are added, not that
+                // all non-skipped are preserved
+
+                skippedBlocks.push_back(
+                    {affectedBlock.BlockIndex, affectedBlock.CommitId});
+            }
         }
         args.AffectedBlobs.erase(ab);
     }
 
+    Sort(skippedBlocks);
+
     if (blobsToSkip.size()) {
         TAffectedBlocks affectedBlocks;
         for (const auto& b: args.AffectedBlocks) {
-            if (!skippedBlockIndices.contains(b.BlockIndex)) {
+            const bool isSkipped =
+                BinarySearch(skippedBlocks.begin(), skippedBlocks.end(), b);
+            if (!isSkipped) {
                 affectedBlocks.push_back(b);
             }
         }
@@ -733,10 +766,76 @@ void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId)
 
         auto& meta = ab.RecreatedBlobMeta.ConstructInPlace();
         auto* mixedBlocks = meta.MutableMixedBlocks();
-        for (const auto& affectedBlock: ab.AffectedBlocks) {
+        Y_ABORT_UNLESS(ab.MixedBlobsSpecificInfo);
+        for (const auto& affectedBlock:
+             ab.MixedBlobsSpecificInfo->AllVisitedBlocks)
+        {
             mixedBlocks->AddBlocks(affectedBlock.BlockIndex);
             mixedBlocks->AddCommitIds(affectedBlock.CommitId);
         }
+    }
+}
+
+void AccountSkippedBlobsAndBlocks(
+    const ui64 commitId,
+    const ui64 tabletId,
+    const TAffectedBlobs& affectedBlobs,
+    const TAffectedBlobs& blobsSkippedByCommitId,
+    ui32& blobsSkipped,
+    ui32& blocksSkipped,
+    ui32& mixedBlocksSkipped)
+{
+    // We account blobs and blocks whose commit id is greater than the commit id
+    // of the range compaction. So they are visible for compaction map.
+    blobsSkipped += blobsSkippedByCommitId.size();
+    for (const auto& [blobId, ab]: blobsSkippedByCommitId) {
+        switch (*ab.IndexKind) {
+            case EChannelDataKind::Mixed:
+
+                STORAGE_VERIFY(
+                    ab.MixedBlobsSpecificInfo,
+                    TWellKnownEntityTypes::TABLET,
+                    tabletId);
+
+                blocksSkipped +=
+                    ab.MixedBlobsSpecificInfo->AllVisitedBlocks.size();
+
+                mixedBlocksSkipped +=
+                    ab.MixedBlobsSpecificInfo->AllVisitedBlocks.size();
+
+                break;
+            case EChannelDataKind::Merged:
+                blocksSkipped += ab.MergedBlobsSpecificInfo->BlocksInRange;
+                break;
+            default:
+                STORAGE_VERIFY_C(
+                    false,
+                    TWellKnownEntityTypes::TABLET,
+                    tabletId,
+                    TStringBuilder() << "Unknown channel data kind: "
+                                     << static_cast<ui32>(*ab.IndexKind));
+        }
+    }
+
+    for (const auto& [blobId, ab]: affectedBlobs) {
+        // We filling AllVisitedBlocks only for mixed blobs, merged blobs all
+        // have the same commit id, so all blocks with commit id greater than
+        // the commit id of the range compaction already added to skipped
+        // blocks.
+        if (!ab.MixedBlobsSpecificInfo) {
+            continue;
+        }
+        for (const auto& affectedBlock:
+             ab.MixedBlobsSpecificInfo->AllVisitedBlocks)
+        {
+            if (affectedBlock.CommitId > commitId) {
+                ++blocksSkipped;
+                ++mixedBlocksSkipped;
+            }
+        }
+
+        blobsSkipped +=
+            static_cast<ui32>(ab.MaxCommitIdInCompactionRange > commitId);
     }
 }
 
@@ -768,10 +867,9 @@ void PrepareRangeCompaction(
         visitor,
         args.BlockRange,
         true,   // precharge
-        state.GetMaxBlocksInBlob(),
-        commitId);
+        state.GetMaxBlocksInBlob());
 
-    visitor.Finish();
+    auto blobsSkippedByCommitId = visitor.Finish();
 
     if (ready && maxSkippedBlobs > 0) {
         ApplyBlobsSkipping(
@@ -794,6 +892,15 @@ void PrepareRangeCompaction(
         state,
         blobsToReadBlockMasks,
         blobsToReadBlobMetas);
+
+    AccountSkippedBlobsAndBlocks(
+        commitId,
+        tabletId,
+        args.AffectedBlobs,
+        blobsSkippedByCommitId,
+        args.BlobsSkipped,
+        args.BlocksSkipped,
+        args.MixedBlocksSkipped);
 }
 
 void CompleteRangeCompaction(
