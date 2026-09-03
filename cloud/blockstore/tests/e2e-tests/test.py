@@ -99,60 +99,12 @@ def init(
     return env, run
 
 
-def remove_nbd_module(timeout=20):
-    deadline = time.monotonic() + timeout
-    attempts = 0
-    result = None
-
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-
-        try:
-            result = subprocess.run(
-                ["rmmod", "nbd"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=remaining,
-            )
-        except subprocess.TimeoutExpired:
-            logging.error(
-                "Timed out removing nbd module after %d attempts",
-                attempts + 1,
-            )
-            raise
-
-        attempts += 1
-
-        if result.returncode == 0:
-            if attempts > 1:
-                logging.info(
-                    "Removed nbd module after %d attempts",
-                    attempts,
-                )
-            return
-
-        time.sleep(min(1, max(0, deadline - time.monotonic())))
-
-    assert result is not None
-    logging.error(
-        "Failed to remove nbd module after %d attempts, "
-        "stdout: %s, stderr: %s",
-        attempts,
-        result.stdout,
-        result.stderr,
-    )
-    result.check_returncode()
-
-
 def cleanup_after_test(env: LocalLoadTest):
     try:
+        subprocess.check_call(["rmmod", "nbd"], timeout=20)
+    finally:
         if env is not None:
             env.tear_down()
-    finally:
-        remove_nbd_module()
 
 
 def log_called_process_error(exc):
@@ -359,8 +311,6 @@ def test_resize_device(nbd_netlink):
     runtime = request_timeout * 2
     nbs_downtime = request_timeout + 2
     mount_dir = None
-    volume_created = False
-    endpoint_started = False
 
     env, run = init(
         nbd_netlink=nbd_netlink,
@@ -379,7 +329,6 @@ def test_resize_device(nbd_netlink):
             str(block_size),
         )
         assert result.returncode == 0
-        volume_created = True
 
         result = run(
             "startendpoint",
@@ -394,7 +343,6 @@ def test_resize_device(nbd_netlink):
             nbd_device,
         )
         assert result.returncode == 0
-        endpoint_started = True
 
         result = common.execute(
             ["blockdev", "--getsize64", nbd_device],
@@ -411,14 +359,13 @@ def test_resize_device(nbd_netlink):
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
 
-        mount_path = Path("/tmp/mount")
-        mount_path.mkdir(parents=True, exist_ok=True)
+        mount_dir = Path("/tmp/mount")
+        mount_dir.mkdir(parents=True, exist_ok=True)
         result = common.execute(
-            ["mount", nbd_device, str(mount_path)],
+            ["mount", nbd_device, str(mount_dir)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT)
         assert result.returncode == 0
-        mount_dir = mount_path
 
         new_volume_size = 2 * volume_size
         result = run(
@@ -473,33 +420,26 @@ def test_resize_device(nbd_netlink):
         log_called_process_error(e)
         raise
     finally:
-        try:
-            if mount_dir is not None:
-                common.execute(
-                    ["umount", str(mount_dir)],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT)
-        finally:
-            try:
-                if endpoint_started:
-                    result = run(
-                        "stopendpoint",
-                        "--socket",
-                        socket_path,
-                    )
-                    result.check_returncode()
-            finally:
-                try:
-                    if volume_created:
-                        result = run(
-                            "destroyvolume",
-                            "--disk-id",
-                            volume_name,
-                            input=volume_name,
-                        )
-                        result.check_returncode()
-                finally:
-                    cleanup_after_test(env)
+        if mount_dir is not None:
+            result = common.execute(
+                ["umount", str(mount_dir)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT)
+
+        run(
+            "stopendpoint",
+            "--socket",
+            socket_path,
+        )
+
+        result = run(
+            "destroyvolume",
+            "--disk-id",
+            volume_name,
+            input=volume_name,
+        )
+
+        cleanup_after_test(env)
 
 
 def test_do_not_restore_endpoint_with_missing_volume():
