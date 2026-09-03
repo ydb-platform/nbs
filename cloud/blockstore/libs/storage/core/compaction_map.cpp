@@ -5,7 +5,6 @@
 #include <util/generic/algorithm.h>
 #include <util/generic/intrlist.h>
 
-#include <algorithm>
 #include <array>
 
 namespace NCloud::NBlockStore::NStorage {
