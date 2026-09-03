@@ -11,6 +11,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsSsdDirectMirror3Of5GroupMediaKind(NProto::EStorageMediaKind mediaKind);
 bool IsDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind);
 bool IsBlobStorageMediaKind(NProto::EStorageMediaKind mediaKind);
 bool IsReliableDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind);

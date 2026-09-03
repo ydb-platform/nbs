@@ -137,6 +137,7 @@ private:
     TDynamicCounterPtr SsdMirror3;
     TDynamicCounterPtr SsdLocal;
     TDynamicCounterPtr HddLocal;
+    TDynamicCounterPtr SsdDirectMirror3Of5Group;
 
 public:
     explicit TSufferCounters(
