@@ -4021,6 +4021,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldEnqueuePendingForcedCompaction)
     {
+        using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
+
         TTestEnv env(testEnvConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -4060,9 +4062,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(request);
 
-        tablet.SendForcedRangeOperationRequest(
+        auto pendingRequest = tablet.CreateForcedRangeOperationRequest(
             ::xrange(1, 2, 1),
             TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction);
+        const auto operationId = pendingRequest->OperationId;
+        tablet.SendRequest(std::move(pendingRequest));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        auto statusRequest =
+            std::make_unique<TEvIndexTablet::TEvForcedOperationStatusRequest>();
+        statusRequest->Record.SetOperationId(operationId);
+        tablet.SendRequest(std::move(statusRequest));
+
+        auto status = tablet.RecvForcedOperationStatusResponse();
+        UNIT_ASSERT_C(SUCCEEDED(status->GetStatus()), status->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(TStatus::E_PENDING),
+            static_cast<int>(status->Record.GetStatus()));
+
         env.GetRuntime().Send(request.Release(), 1 /* node index */);
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
 

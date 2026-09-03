@@ -1214,6 +1214,7 @@ void TIndexTabletActor::HandleForcedOperationStatus(
     const auto& request = ev->Get()->Record;
 
     using TResponse = TEvIndexTablet::TEvForcedOperationStatusResponse;
+    using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
     auto response = std::make_unique<TResponse>();
 
     const auto* state = FindForcedRangeOperation(request.GetOperationId());
@@ -1221,11 +1222,19 @@ void TIndexTabletActor::HandleForcedOperationStatus(
         response->Record.SetRangeCount(state->RangesToCompact.size());
         response->Record.SetProcessedRangeCount(state->Current);
         response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
-    } else {
+        response->Record.SetStatus(
+            state->Current < state->RangesToCompact.size()
+                ? TStatus::E_RUNNING
+                : TStatus::E_COMPLETED);
+    } else if (IsForcedRangeOperationPending(request.GetOperationId())) {
+        response->Record.SetStatus(TStatus::E_PENDING);
+    }
+    else {
+        response->Record.SetStatus(TStatus::E_UNKNOWN);
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,
             TStringBuilder() << "forced operation with id "
-                << request.GetOperationId() << "not found"));
+                             << request.GetOperationId() << "not found"));
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));

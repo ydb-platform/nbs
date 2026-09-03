@@ -1514,7 +1514,8 @@ private:
 public:
     TString EnqueueForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
-        TVector<ui32> ranges);
+        TVector<ui32> ranges,
+        TString operationId = {});
     TMaybe<TPendingForcedRangeOperation> DequeueForcedRangeOperation();
 
     void StartForcedRangeOperation(
@@ -1547,6 +1548,8 @@ public:
     {
         return ForcedRangeOperationState.Defined();
     }
+
+    bool IsForcedRangeOperationPending(const TString& operationId) const;
 
     //
     // Truncate operations
