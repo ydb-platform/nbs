@@ -150,6 +150,8 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
                     SelfId(),
                     batchSize,
                     State->GetLastCommitId(),
+                    State->GetMixedIndexBlocksCount(),
+                    State->GetMergedIndexBlocksCount(),
                     State->GetMixedBlocksCount(),
                     State->GetMergedBlocksCount(),
                     Config->GetCompactionRetryTimeout()));

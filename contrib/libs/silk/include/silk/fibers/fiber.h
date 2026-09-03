@@ -107,9 +107,6 @@ public:
      */
     struct Options
     {
-        /** Return the cpu_set_t with every CPU set - the cpuMask default. */
-        static cpu_set_t defaultCpuMask() noexcept;
-
         // Per-fiber stack size in bytes. Must be a multiple of the system page size.
         // The pool also reserves two guard pages adjacent to each stack.
         uint32_t fiberStackSize = 64 * 1024;
@@ -138,30 +135,38 @@ public:
         // being flushed to the kernel.
         uint32_t ioUringFlushTimeout = 100'000;
 
-        // Derived in initialize() from ioUringFlushTimeout; users do not set this.
-        uint64_t ioUringFlushTimeoutCycles = 0;
-
         // Scheduler park backoff (nanoseconds). The dispatch loop spins for up to
-        // spinThresholdNs after going idle; past that it parks on the eventfd with
-        // an exponential backoff starting at initialWaitNs and capped at maxWaitNs.
+        // spinThresholdNs after going idle; past that it parks with an exponential
+        // backoff starting at initialWaitNs and capped at maxWaitNs. Timed parks
+        // cover sleep deadlines and the deferred-SQE retry; outside the prefix a
+        // rammed-out park has no timeout - wakeups are doorbell-driven, and the
+        // pre-park backlog sweep ensures none is lost. maxWaitNs is also the width
+        // adaptation window: the backlog age that grows the prefix and the
+        // wait-outcome window that shrinks it.
         uint32_t initialWaitNs = 1'000;
         uint32_t maxWaitNs = 10'000'000;
         uint32_t spinThresholdNs = 20'000;
+
+        // The nanosecond knobs above in TSC cycles - derived by initialize, any
+        // input values are overwritten. backlogAgeCycles is maxWaitNs, the backlog
+        // age and width-adaptation window.
+        uint64_t ioUringFlushTimeoutCycles = 0;
+        uint64_t backlogAgeCycles = 0;
+        uint64_t spinThresholdCycles = 0;
 
         // Allocate per-CPU latency profilers.
         bool enableProfiler = false;
 
         // Disable work-stealing. Set to study the effect of work-stealing in
-        // isolation (e.g. head-of-line blocking benchmarks).
-        // Production should leave this off.
+        // isolation (e.g. head-of-line blocking benchmarks). Stealing distributes
+        // the work behind every width transition, so this also pins the processor
+        // prefix at full width. Production should leave this off.
         bool disableWorkStealing = false;
 
-        // Restrict scheduler and worker threads to the CPUs whose bit is set
-        // here, intersected with the affinity mask of the thread calling
-        // initialize. All CPUs are set by default, admitting the whole affinity
-        // mask; clear the bits of CPUs to reserve (CPU_CLR). The intersection
-        // must be non-empty.
-        cpu_set_t cpuMask = defaultCpuMask();
+        // Disable CPU-width adaptation, pinning the processor prefix at full width
+        // while stealing stays active. Set to measure static-width baselines under
+        // a fixed CPU set. Production should leave this off.
+        bool disableCpuAdjust = false;
 
         // Optional per-fiber context-switch hooks. fiberResume fires on the
         // thread about to run the fiber, immediately before control enters it
@@ -176,7 +181,18 @@ public:
         // excluded) and io_uring rings.
         MemoryMapCallback * accountMemoryMapped = nullptr;
         MemoryMapCallback * accountMemoryUnmapped = nullptr;
+
+        // Restrict scheduler and worker threads to the CPUs whose bit is set
+        // here, intersected with the affinity mask of the thread calling
+        // initialize. All CPUs are set by default, admitting the whole affinity
+        // mask; clear the bits of CPUs to reserve (CPU_CLR). The intersection
+        // must be non-empty. Consumed by initialize; rides the struct tail, no
+        // steady-state reader.
+        cpu_set_t cpuMask = defaultCpuMask();
     };
+
+    /** Return the cpu_set_t with every CPU set - the cpuMask default. */
+    static cpu_set_t defaultCpuMask() noexcept;
 
     /**
      * Initialize the scheduler and start per-CPU scheduler threads.
@@ -585,6 +601,44 @@ public:
     static void accept(int fd, sockaddr * addr, socklen_t * addrlen, int flags, uint64_t * acceptedFd, IoFuture * future) noexcept;
 
     /**
+     * Blocking splice: move up to @p len bytes from @p fdIn to @p fdOut without copying
+     * through user space. As with splice(2), at least one descriptor must refer to a pipe.
+     * Offsets apply to seekable files; pass -1 for a pipe or a socket.
+     *
+     * @param fdIn         Source descriptor.
+     * @param offsetIn     Byte offset within @p fdIn, or -1 for a pipe or a socket.
+     * @param fdOut        Destination descriptor.
+     * @param offsetOut    Byte offset within @p fdOut, or -1 for a pipe or a socket.
+     * @param len          Maximum number of bytes to move.
+     * @param flags        splice(2) flags (e.g. SPLICE_F_MOVE, SPLICE_F_MORE).
+     * @param bytesSpliced If not null, receives the number of bytes moved (0 means end of input).
+     * @return             0 on success, or a errno on failure.
+     */
+    static int splice(
+        int fdIn, int64_t offsetIn, int fdOut, int64_t offsetOut, uint64_t len, uint32_t flags, uint64_t * bytesSpliced = nullptr) noexcept
+    {
+        IoFuture future;
+        splice(fdIn, offsetIn, fdOut, offsetOut, len, flags, bytesSpliced, &future);
+        return future.wait();
+    }
+
+    /**
+     * Async splice. Returns immediately; the caller must wait on @p future for the result.
+     * See the blocking overload for the parameter meanings.
+     *
+     * @param future Completion handle; wait() returns 0 on success or a errno on failure.
+     */
+    static void splice(
+        int fdIn,
+        int64_t offsetIn,
+        int fdOut,
+        int64_t offsetOut,
+        uint64_t len,
+        uint32_t flags,
+        uint64_t * bytesSpliced,
+        IoFuture * future) noexcept;
+
+    /**
      * Completion handle for an async sleep submitted via sleep().
      */
     class SleepFuture : public FiberFuture
@@ -653,7 +707,7 @@ private:
 
     struct StealCandidate
     {
-        uint32_t processorNumber;
+        uint16_t processorNumber;
         uint64_t costCycles;
     };
 
@@ -695,6 +749,13 @@ private:
     static void runScheduler(ProcessorState * processor) noexcept;
     static bool runServiceLoop(ProcessorState * processor, uint64_t waitNs, CpuTimer * timer) noexcept;
     static bool runStealLoop(ProcessorState * processor, uint64_t idleSinceCycles, CpuTimer * timer) noexcept;
+    static bool parkProcessor(ProcessorState * processor, uint64_t waitNs, bool deadlineBounded, CpuTimer * timer) noexcept;
+    static bool startProcessor(ProcessorState * producer, uint16_t prefixCount, uint64_t nowCycles) noexcept;
+    static bool sweepBacklog(ProcessorState * processor) noexcept;
+    static void adjustPrefix(ProcessorState * processor, uint64_t nowCycles) noexcept;
+    static void adjustPrefixSlow(ProcessorState * processor, uint64_t nowCycles, uint16_t prefixCount) noexcept;
+    static void growPrefix(ProcessorState * producer, ProcessorState * target) noexcept;
+    static void growPrefixSlow(ProcessorState * producer, ProcessorState * target, uint16_t prefixCount) noexcept;
     static bool handleReadyQueue(ProcessorState * processor, CpuTimer * timer) noexcept;
     static bool handleCompletionQueue(ProcessorState * processor) noexcept;
     static bool handleCompletionQueueSlow(ProcessorState * processor) noexcept;
@@ -703,7 +764,7 @@ private:
     static bool handleCancelQueue(ProcessorState * processor) noexcept;
     static void handleCancelQueueSlow(ProcessorState * processor, SleepFuture * cancelEntry) noexcept;
     static bool handleExpiredWaiters(ProcessorState * processor) noexcept;
-    static void handleExpiredWaitersSlow(ProcessorState * processor, SleepFuture * sleepFuture, uint64_t now) noexcept;
+    static void handleExpiredWaitersSlow(ProcessorState * processor, SleepFuture * sleepFuture, uint64_t nowCycles) noexcept;
     static void runFiber(Fiber * fiber, CpuTimer * timer) noexcept;
     static void runThreadWorker() noexcept;
 

@@ -113,6 +113,7 @@ struct TBootstrap
     {
         State = std::make_unique<TWriteBackCacheState>(
             Processor,
+            Storage,
             Timer,
             Stats->GetWriteBackCacheStateStats(),
             Stats->GetWriteDataRequestManagerStats(),
@@ -120,7 +121,7 @@ struct TBootstrap
             FlushBatchLimits,
             "[test]");
 
-        return State->Init(Storage);
+        return !HasError(State->Init());
     }
 
     void UpdateStats() const
@@ -150,8 +151,10 @@ struct TBootstrap
         auto cachedData =
             State->GetCachedData(nodeId, offset, byteCount, pin);
 
+        UNIT_ASSERT(cachedData);
+
         TStringBuilder out;
-        for (const auto& part: cachedData.Parts) {
+        for (const auto& part: cachedData->Parts) {
             if (!out.empty()) {
                 out << ", ";
             }
@@ -163,7 +166,7 @@ struct TBootstrap
     TString GetFrontFlushBatch(ui64 nodeId) const
     {
         TStringBuilder out;
-        State->VisitUnflushedRequestsFromFrontFlushBatch(
+        auto success = State->VisitUnflushedRequestsFromFrontFlushBatch(
             nodeId,
             [&out](const TCachedWriteDataRequest* entry)
             {
@@ -173,6 +176,7 @@ struct TBootstrap
                 out << entry->GetOffset() << ":" << entry->GetBuffer();
                 return true;
             });
+        UNIT_ASSERT(success);
         return out;
     }
 

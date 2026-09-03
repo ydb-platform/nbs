@@ -8,6 +8,8 @@ by blockstore-disk-agent from the [example](../../example) NBS setup.
 
 ## Prerequisites
 
+* Linux 5.17 or newer.
+  There is no runtime fallback - the whole setup below needs a newer kernel.
 * the local filestore setup is up and running as described in
   [README.md](README.md) - its ydbd will also serve as the storage node for
   NBS, do not start a second one
@@ -15,6 +17,13 @@ by blockstore-disk-agent from the [example](../../example) NBS setup.
 
 ```bash
 ./ya make --build=profile -- cloud/blockstore/buildall
+```
+
+* `configurefastshards.py` drives NBS through `blockstore-client`:
+
+```bash
+ln -svf ../../blockstore/buildall/cloud/blockstore/apps/client/blockstore-client \
+    cloud/filestore/bin/
 ```
 
 ## 1. Enable the fastshard runtime
@@ -49,8 +58,11 @@ cd example
 
 # start the disk agents (keep the tab open); the port override is needed
 # because agent 0 would otherwise collide with filestore-vhost on 29012
-IC_PORT=29600 ./4-start_disk_agent.sh
+IC_PORT=30100 ./4-start_disk_agent.sh
 ```
+
+Agent N gets interconnect port `IC_PORT + N*100`, so the base must keep all
+five clear of the journalled device ports 29900..29904.
 
 ## 3. Create the filesystem and configure fastshards
 
@@ -58,7 +70,7 @@ IC_PORT=29600 ./4-start_disk_agent.sh
 cd cloud/filestore/bin
 
 ./initctl.sh create
-./configurefastshards.py
+./configurefastshards.py --file-shard-count 4
 ./initctl.sh mount
 ```
 
@@ -68,10 +80,18 @@ the trailing shards of the filesystem into persistent fastshards - shard k
 mirrors across the k-th device of every replica of the volume. Run it with
 `--help` for the knobs (shard counts, ports, volume geometry).
 
+When re-running the script, destroying `fastshard0` marks its devices dirty;
+they only become allocatable again after the DiskRegistry finishes their
+secure erase (~1 min).
+
 ## Notes
 
 * the `fastshard0` volume must never be mounted - fastshards write to its
   devices directly over the journalled device protocol
+* restarting the disk agents drops their device acquisitions
+  (`AcquireRequired: true`) - restart filestore-server afterwards, or the
+  fastshards keep stale sessions and every request fails with
+  `E_BS_INVALID_SESSION`
 * monitoring: filestore-server http://localhost:8767, nbsd
   http://localhost:8766/blockstore/service, disk agents
   http://localhost:9100..9104/blockstore/disk_agent

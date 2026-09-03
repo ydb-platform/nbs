@@ -27,6 +27,8 @@ jobs:
                     'cloud/blockstore/tools/csi_driver/',
                     'cloud/blockstore/tests/csi_driver/',
                     'cloud/filestore/libs/storage/fastshard/',
+                    'cloud/filestore/tests/fastshard/',
+                    'doc/filestore/design/storage/fastshard/',
                     '.github/',
                 ];
 

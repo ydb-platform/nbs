@@ -52,6 +52,10 @@ void TVolumeActor::CompleteUpdateLeader(
     const TActorContext& ctx,
     TTxVolume::TUpdateLeader& args)
 {
+    if (args.Leader.State == TLeaderDiskInfo::EState::Following) {
+        State->FinishCreateLeaderRequest();
+    }
+
     auto response =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
             MakeError(S_OK));
@@ -120,6 +124,20 @@ void TVolumeActor::CreateLeaderLink(
                 MakeError(S_ALREADY)));
         return;
     }
+
+    if (State->IsVolumeOperationRestricted()) {
+        // Link propagation retries E_REJECTED responses with backoff.
+        auto response =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
+                MakeError(
+                    E_REJECTED,
+                    "CreateVolumeLink is not allowed while another exclusive "
+                    "volume operation is in progress on the follower volume"));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
+    State->StartCreateLeaderRequest();
 
     auto leaderInfo = TLeaderDiskInfo{
         .Link = std::move(link),

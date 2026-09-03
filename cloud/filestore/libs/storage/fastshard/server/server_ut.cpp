@@ -189,6 +189,59 @@ TEST(ServerTest, CreateNodeAndGetAttr)
     EXPECT_EQ(result, 0);
 }
 
+TEST(ServerTest, ClientReportsErrorWhenConnectionBreaks)
+{
+    int result = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            NCloud::NFileStore::NProtoPrivate::TMemFastShardConfig cfg;
+            cfg.SetCreateNodeUponAccess(true);
+            auto shard = CreateMemFileSystemShard(1, cfg);
+
+            TServerFixture fixture;
+            fixture.StartServer(shard);
+
+            TClient client;
+            auto endpoint = client.Connect("localhost", fixture.Port);
+            EXPECT_NE(endpoint, nullptr);
+
+            {
+                TRequest req;
+                req.SetFileSystemId("test-fs");
+                auto* body = req.MutableCreateNode();
+                body->SetNodeId(1);
+                body->MutableFile()->SetMode(0644);
+                body->SetName("hello.txt");
+                auto resp = endpoint->Send(req);
+                EXPECT_TRUE(resp.HasCreateNode());
+            }
+
+            fixture.StopServer();
+
+            //
+            // The connection is dead - Send must report E_UNAVAILABLE instead
+            // of aborting the process, and every subsequent Send on this
+            // endpoint must fail fast with the same code.
+            //
+
+            for (ui32 i = 0; i < 2; ++i) {
+                TRequest req;
+                req.SetFileSystemId("test-fs");
+                auto* body = req.MutableGetNodeAttr();
+                body->SetNodeId(1);
+                body->SetName("hello.txt");
+                auto resp = endpoint->Send(req);
+                EXPECT_TRUE(resp.HasError());
+                EXPECT_EQ(NCloud::E_UNAVAILABLE, resp.GetError().GetCode());
+            }
+
+            return 0;
+        },
+        0);
+
+    EXPECT_EQ(result, 0);
+}
+
 TEST(ServerTest, UnknownShardReturnsEmptyResponse)
 {
     int result = FiberScheduler::run(

@@ -14,6 +14,7 @@ SRCS(
     ydb_admin.cpp
     ydb_benchmark.cpp
     ydb_cluster.cpp
+    ydb_database_attribute.cpp
     ydb_debug.cpp
     ydb_dynamic_config.cpp
     ydb_latency.cpp
@@ -60,6 +61,7 @@ PEERDIR(
     contrib/ydb/public/lib/ydb_cli/dump/files
     contrib/ydb/public/lib/ydb_cli/import
     contrib/ydb/public/lib/ydb_cli/topic
+    contrib/ydb/public/sdk/cpp/src/client/cms
     contrib/ydb/public/sdk/cpp/src/client/config
     contrib/ydb/public/sdk/cpp/src/client/coordination
     contrib/ydb/public/sdk/cpp/src/client/debug

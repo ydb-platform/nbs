@@ -6,6 +6,8 @@ LOG_FILE="${NVME_LOOP_LOG_FILE:-/var/log/nvme-loop.log}"
 CONFIG_DIR="${NVME_LOOP_CONFIG_DIR:-/etc/nvme-loop}"
 DEVICES_DIR="${NVME_LOOP_DEVICES_DIR:-/opt/nvme-loop/devices}"
 IMAGES_DIR="${NVME_LOOP_IMAGES_DIR:-/opt/nvme-loop/images}"
+UDEV_RULES_FILE="/etc/udev/rules.d/70-nvme-loop-access.rules"
+NVME_ACCESS_GROUP="disk"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
@@ -30,6 +32,21 @@ log "Configuration loaded: target=$TARGET_NAME, namespaces=$NUM_NAMESPACES, size
 
 log ""
 log "=== Setting up single NVMe-loop target with $NUM_NAMESPACES namespaces ==="
+
+if [[ "$USER_NAME" != "" ]]; then
+    log "Configuring persistent NVMe access for '$USER_NAME'..."
+
+    usermod -a -G "$NVME_ACCESS_GROUP" "$USER_NAME"
+
+    cat > "$UDEV_RULES_FILE" << EOF
+# Make this NVMe-loop controller and its namespace nodes accessible to the disk group.
+# The kernel still enforces privilege checks for restricted NVMe commands.
+SUBSYSTEM=="nvme", KERNEL=="nvme[0-9]*", ATTR{subsysnqn}=="${TARGET_NAME}", GROUP:="${NVME_ACCESS_GROUP}", MODE:="0660"
+SUBSYSTEM=="block", KERNEL=="nvme[0-9]*n[0-9]*", ENV{DEVTYPE}=="disk", ATTRS{subsysnqn}=="${TARGET_NAME}", GROUP:="${NVME_ACCESS_GROUP}", MODE:="0660"
+EOF
+    chmod 0644 "$UDEV_RULES_FILE"
+    udevadm control --reload-rules
+fi
 
 mkdir -p $DEVICES_DIR
 chmod a+rw $DEVICES_DIR
@@ -180,22 +197,18 @@ fi
 log "Symbolic links stored in: $DEVICES_DIR"
 
 if [[ "$USER_NAME" != "" ]]; then
-    log "Configuring access for '$USER_NAME'..."
+    log "Applying NVMe access for '$USER_NAME'..."
 
-    GROUP=disk
+    chown "$USER_NAME:$NVME_ACCESS_GROUP" "/dev/$NVME_NAME"
 
-    usermod -a -G $GROUP "$USER_NAME"
-
-    chown $USER_NAME:$GROUP "/dev/$NVME_NAME"
-
-    chown $USER_NAME:$GROUP "$DEVICES_DIR"
+    chown "$USER_NAME:$NVME_ACCESS_GROUP" "$DEVICES_DIR"
     chmod 755 "$DEVICES_DIR"
 
     for link in "$DEVICES_DIR"/*; do
-        chown $USER_NAME:$GROUP "$link"
+        chown "$USER_NAME:$NVME_ACCESS_GROUP" "$link"
 
         DEV=$(realpath $link)
-        chown $USER_NAME:$GROUP "$DEV"
+        chown "$USER_NAME:$NVME_ACCESS_GROUP" "$DEV"
     done
 fi
 

@@ -8,8 +8,6 @@ import "cloud/filestore/public/api/protos/node.proto";
 import "cloud/filestore/public/api/protos/quota.proto";
 import "cloud/filestore/config/storage.proto";
 
-import "contrib/ydb/core/protos/base.proto";
-
 package NCloud.NFileStore.NProtoPrivate;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos";
@@ -416,6 +414,17 @@ message TDescribeDataRequest
     uint64 Length = 6;
 }
 
+// Copy of NKikimrProto.TLogoBlobID from contrib/ydb/core/protos/base.proto.
+// Kept local to avoid a dependency on ydb core protos. Wire-compatible with
+// the original - checked by static assertions in
+// cloud/filestore/libs/storage/core/blob_id.cpp.
+message TFileStoreBlobID
+{
+    fixed64 RawX1 = 1;
+    fixed64 RawX2 = 2;
+    fixed64 RawX3 = 3;
+}
+
 // Represents actual data - for the data that is not stored in data channels as
 // blobs yet.
 message TFreshDataRange
@@ -440,7 +449,7 @@ message TRangeInBlob
 message TBlobPiece
 {
     // Blob id.
-    NKikimrProto.TLogoBlobID BlobId = 1;
+    TFileStoreBlobID BlobId = 1;
 
     // Group id.
     uint32 BSGroupId = 2;
@@ -537,7 +546,7 @@ message TGenerateBlobIdsRequest
 message TGeneratedBlob
 {
     // Blob id.
-    NKikimrProto.TLogoBlobID BlobId = 1;
+    TFileStoreBlobID BlobId = 1;
 
     // Offset
     uint64 Offset = 2;
@@ -591,7 +600,7 @@ message TAddDataRequest
     uint64 Length = 6;
 
     // Blob ids to be added. Ordered by the offset in the original data.
-    repeated NKikimrProto.TLogoBlobID BlobIds = 7;
+    repeated TFileStoreBlobID BlobIds = 7;
 
     // Commit id.
     uint64 CommitId = 8;

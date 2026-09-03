@@ -12,7 +12,9 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
     xxx(AcquireDevices, __VA_ARGS__)                                           \
     xxx(ReleaseDevices, __VA_ARGS__)                                           \
     xxx(ReadPages, __VA_ARGS__)                                                \
-    xxx(WriteLogRecord, __VA_ARGS__)
+    xxx(WriteLogRecord, __VA_ARGS__)                                           \
+    xxx(ReadJournalTail, __VA_ARGS__)                                          \
+    xxx(AdvanceLsnLowWatermark, __VA_ARGS__)
 
 // SN_METHODS
 

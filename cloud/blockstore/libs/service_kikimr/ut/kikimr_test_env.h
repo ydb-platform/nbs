@@ -6,6 +6,8 @@
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 
+#include <atomic>
+
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -18,6 +20,7 @@ private:
     NActors::TActorId Sender;
 
     TProgramShouldContinue ProgramShouldContinue;
+    std::atomic<ui64> RegistrationCount{0};
 
 public:
     TTestActorSystem();
@@ -62,6 +65,11 @@ public:
 
     bool Send(NActors::IEventHandlePtr event) override;
 
+    void Schedule(
+        TDuration delta,
+        NActors::IEventHandlePtr event,
+        NActors::ISchedulerCookie* cookie) override;
+
     TProgramShouldContinue& GetProgramShouldContinue() override;
 
     //
@@ -72,6 +80,8 @@ public:
 
     void RegisterTestService(NActors::IActorPtr serviceActor);
     void RegisterTestAuthorizer(NActors::IActorPtr authorizer);
+
+    ui64 GetRegistrationCount() const;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

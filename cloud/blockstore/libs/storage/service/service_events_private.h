@@ -128,6 +128,7 @@ struct TEvServicePrivate
         const NProto::EVolumeBinding BindingType;
         const NProto::EPreemptionSource PreemptionSource;
         const bool VolumeSessionRestartRequired;
+        const TString TabletHost;
 
         TMountRequestProcessed(
                 NProto::TVolume volume,
@@ -138,7 +139,8 @@ struct TEvServicePrivate
                 bool hadLocalStart,
                 NProto::EVolumeBinding bindingType,
                 NProto::EPreemptionSource preemptionSource,
-                bool volumeSessionRestartRequired)
+                bool volumeSessionRestartRequired,
+                TString tabletHost)
             : Volume(std::move(volume))
             , MountStartTick(mountStartTick)
             , Request(std::move(request))
@@ -148,6 +150,7 @@ struct TEvServicePrivate
             , BindingType(bindingType)
             , PreemptionSource(preemptionSource)
             , VolumeSessionRestartRequired(volumeSessionRestartRequired)
+            , TabletHost(std::move(tabletHost))
         {}
     };
 

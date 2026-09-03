@@ -84,7 +84,7 @@ def nbs_server_start(kikimr_cluster, configurator, storage):
     return nbs, server_app_config, storage
 
 
-def data_count_by_channels(nbs_client_binary_path, nbs_port):
+def data_count_by_indexes(nbs_client_binary_path, nbs_port):
     partition_info = check_output([
         nbs_client_binary_path, "ExecuteAction",
         "--action", "getpartitioninfo",
@@ -96,11 +96,11 @@ def data_count_by_channels(nbs_client_binary_path, nbs_port):
     if "Stats" not in json_data:
         return 0, 0, 0, 0, 0
     stats = json_data["Stats"]
-    fresh_blocks = 0 if "FreshBlocksCount" not in stats else stats["FreshBlocksCount"]
-    mixed_blocks = 0 if "MixedBlocksCount" not in stats else stats["MixedBlocksCount"]
-    mixed_blobs = 0 if "MixedBlobsCount" not in stats else stats["MixedBlobsCount"]
-    merged_blocks = 0 if "MergedBlocksCount" not in stats else stats["MergedBlocksCount"]
-    merged_blobs = 0 if "MergedBlobsCount" not in stats else stats["MergedBlobsCount"]
+    fresh_blocks = stats.get("FreshBlocksCount", 0)
+    mixed_blocks = stats.get("MixedIndexBlocksCount", 0)
+    mixed_blobs = stats.get("MixedIndexBlobsCount", 0)
+    merged_blocks = stats.get("MergedIndexBlocksCount", 0)
+    merged_blobs = stats.get("MergedIndexBlobsCount", 0)
     return fresh_blocks, mixed_blocks, mixed_blobs, merged_blocks, merged_blobs
 
 
@@ -156,7 +156,7 @@ def check_data(nbs_client_binary_path,
                expected_merged_blobs,
                written_data):
     fresh_blocks, mixed_blocks, mixed_blobs, merged_blocks, merged_blobs = \
-        data_count_by_channels(nbs_client_binary_path, nbs_port)
+        data_count_by_indexes(nbs_client_binary_path, nbs_port)
 
     logging.info(f"fresh_blocks={fresh_blocks}")
     logging.info(f"mixed_blocks={mixed_blocks} -> expected={expected_mixed_blocks}")

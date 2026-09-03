@@ -1896,8 +1896,14 @@ void TIndexTabletActor::UpdateLogTag()
     }
 }
 
-bool TIndexTabletActor::HasBlocksLeft(ui64 blocksRequired) const
+bool TIndexTabletActor::HasSpaceLeft(
+    ui64 prevSize,
+    ui64 newSize,
+    ui32 quotaId) const
 {
+    const ui64 blocksRequired = static_cast<ui64>(
+        Max<i64>(0, GetBlocksDifference(prevSize, newSize, GetBlockSize())));
+
     if (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
         if (GetUsedBlocksCount() + blocksRequired > GetBlocksCount()) {
             return false;
@@ -1922,43 +1928,83 @@ bool TIndexTabletActor::HasBlocksLeft(ui64 blocksRequired) const
         }
     }
 
-    return true;
-}
+    if (quotaId != 0 && newSize > prevSize) {
+        const auto* quota = FindQuota(quotaId);
+        if (quota && quota->GetMaxBytes()) {
+            ui64 usedBytes = 0;
+            if (const auto* usage = FindQuotaUsage(quotaId)) {
+                usedBytes = usage->UsedBytes;
+            }
 
-bool TIndexTabletActor::HasSpaceLeft(ui64 prevSize, ui64 newSize) const
-{
-    return HasBlocksLeft(
-        static_cast<ui64>(Max<i64>(
-            0,
-            GetBlocksDifference(prevSize, newSize, GetBlockSize()))));
+            const auto& aggregateUsages = CachedAggregateStats.GetQuotaUsages();
+            if (const auto it = aggregateUsages.find(quotaId);
+                it != aggregateUsages.end())
+            {
+                usedBytes = Max(usedBytes, it->second.GetUsedBytes());
+            }
+
+            if (usedBytes + (newSize - prevSize) > quota->GetMaxBytes()) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::HasNodesLeft() const
+bool TIndexTabletActor::HasNodesLeft(ui32 quotaId) const
 {
     if (!GetFileSystem().GetStrictFileSystemSizeEnforcementEnabled()) {
-        return GetUsedNodesCount() < GetNodesCount();
+        if (GetUsedNodesCount() >= GetNodesCount()) {
+            return false;
+        }
+    } else {
+        // A new way to count available nodes uses the count aggregated
+        // across all shards.
+
+        if (Metrics->AggregateUsedNodesCount < 0) {
+            ReportCounterIsNegative(
+                TStringBuilder() << "FileSystem: " << GetFileSystemId()
+                                 << ". TMetrics::AggregateUsedNodesCount "
+                                    "should always be positive.");
+            return false;
+        }
+
+        // It makes sense for shardless filesystems, as it eliminates 15s
+        // delay in AggregateUsedNodesCount calculation.
+        const ui64 usedNodes = Max<ui64>(
+            static_cast<ui64>(Metrics->AggregateUsedNodesCount.load()),
+            GetUsedNodesCount());
+
+        if (usedNodes >= GetNodesCount()) {
+            return false;
+        }
     }
 
-    // A new way to count available nodes uses the count aggregated across all
-    // shards.
+    if (quotaId != 0) {
+        const auto* quota = FindQuota(quotaId);
+        if (quota && quota->GetMaxNodes()) {
+            ui64 usedNodes = 0;
+            if (const auto* usage = FindQuotaUsage(quotaId)) {
+                usedNodes = usage->UsedNodes;
+            }
 
-    if (Metrics->AggregateUsedNodesCount < 0) {
-        ReportCounterIsNegative(
-            TStringBuilder() << "FileSystem: " << GetFileSystemId()
-                             << ". TMetrics::AggregateUsedNodesCount should "
-                                "always be positive.");
-        return false;
+            const auto& aggregateUsages = CachedAggregateStats.GetQuotaUsages();
+            if (const auto it = aggregateUsages.find(quotaId);
+                it != aggregateUsages.end())
+            {
+                usedNodes = Max(usedNodes, it->second.GetUsedNodes());
+            }
+
+            if (usedNodes + 1 > quota->GetMaxNodes()) {
+                return false;
+            }
+        }
     }
 
-    // It makes sense for shardless filesystems, as it eliminates 15s delay
-    // in AggregateUsedNodesCount calculation.
-    const ui64 usedNodes = Max<ui64>(
-        static_cast<ui64>(Metrics->AggregateUsedNodesCount.load()),
-        GetUsedNodesCount());
-
-    return usedNodes < GetNodesCount();
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

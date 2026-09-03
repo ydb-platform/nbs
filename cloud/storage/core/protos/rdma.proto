@@ -126,6 +126,6 @@ message TRdmaClient
     bool UseMemoryWindows = 22;
 
     // Size of the memory windows pool. If not specified or 0, will be set to
-    // SendQueueSize * 2.
+    // RecvQueueSize * 2.
     uint32 MemoryWindowsPoolSize = 23;
 }

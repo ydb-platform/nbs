@@ -58,7 +58,7 @@ NProto::TUnconfirmedData BuildUnconfirmedData(
     data.SetOffset(offset);
     data.SetLength(end - offset);
     for (const auto& blob: generateResponse.GetBlobs()) {
-        *data.AddBlobIds() = blob.GetBlobId();
+        Convert(blob.GetBlobId(), *data.AddBlobIds());
     }
     return data;
 }
@@ -145,7 +145,11 @@ bool TIndexTabletActor::ValidateAddDataRequest(
         args.Error = ErrorInvalidTarget(args.NodeId);
         return true;
     }
-    if (!HasSpaceLeft(args.Node->Attrs.GetSize(), args.ByteRange.End())) {
+    if (!HasSpaceLeft(
+            args.Node->Attrs.GetSize(),
+            args.ByteRange.End(),
+            args.Node->Attrs.GetQuotaId()))
+    {
         args.Error = ErrorNoSpaceLeft();
         return true;
     }

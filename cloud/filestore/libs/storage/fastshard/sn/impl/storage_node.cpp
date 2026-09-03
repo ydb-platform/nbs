@@ -430,6 +430,24 @@ public:
         return resp;
     }
 
+    NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
+        NCloud::NProto::TReadJournalTailRequest request) override
+    {
+        // WriteLogRecord writes in place, so the journal is always empty and
+        // there is never anything to replay.
+        Y_UNUSED(request);
+        return {};
+    }
+
+    NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override
+    {
+        // Every page is already at its final location, so the watermark can be
+        // advanced to any value without doing anything.
+        Y_UNUSED(request);
+        return {};
+    }
+
 private:
     const TString Path;
     TFileHandle File;

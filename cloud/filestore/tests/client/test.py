@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 import time
 import uuid
 
@@ -428,6 +429,33 @@ def test_write_ls_rm_ls():
     return ret
 
 
+def test_read_write_by_node_id():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    data_file = os.path.join(common.output_path(), "data.txt")
+    with open(data_file, "w") as f:
+        f.write("0123456789")
+
+    # create the file by path, then write/read it by node id
+    client.touch("fs0", "/file")
+    node_id = json.loads(client.stat("fs0", "/file"))["Id"]
+
+    client.write("fs0", None, "--data", data_file, node=node_id)
+
+    # read back by node id and by path - must be identical
+    out = client.read("fs0", None, "--length", "10", node=node_id) + b"\n"
+    out += client.read("fs0", "/file", "--length", "10") + b"\n"
+
+    client.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
 def test_set_node_attr():
     client, results_path = __init_test()
     client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
@@ -479,6 +507,12 @@ def test_set_node_attr_quota_id():
     result = json.dumps(__process_stat(stat))
     result += "\n"
 
+    client.execute_action("setquota", {
+        "FileSystemId": "fs0",
+        "QuotaId": 42,
+        "MaxBytes": 1024 * 1024 * 1024,
+        "MaxNodes": 100,
+    })
     client.set_node_attr("fs0", node_id, "--quota-id", 42)
 
     out = client.stat("fs0", "/aaa")
@@ -1076,3 +1110,35 @@ def test_client_should_not_crash_on_shutdown_while_listing_endpoints():
     errors = process_recipe_err_files(log_files["stderr_file"])
     if errors:
         raise RuntimeError("Recipe found errors in the log files: " + "\n".join(errors))
+
+
+def test_should_destroy_with_confirmation():
+    client, _ = __init_test()
+
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    binary_path = common.binary_path("cloud/filestore/apps/client/filestore-client")
+    cmd = [
+        binary_path, "destroy",
+        "--filesystem", "fs0",
+        "--server-address", "localhost",
+        "--server-port", os.getenv("NFS_SERVER_PORT"),
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w+") as confirmation:
+        confirmation.write("not-fs0")
+        confirmation.flush()
+        confirmation.seek(0)
+
+        result = common.execute(cmd, stdin=confirmation, check_exit_code=False)
+
+    assert result.returncode != 0
+
+    # a failed confirmation should leave the filesystem intact
+    client.describe("fs0")
+    assert "fs0" in client.list_filestores()
+
+    client.destroy("fs0")
+    # client.destroy does the confirmation under the hood, and the filesystem
+    # should actually be destroyed
+    assert "fs0" not in client.list_filestores()

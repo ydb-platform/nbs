@@ -5,6 +5,7 @@
 
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/core/blob_id.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
@@ -1020,7 +1021,7 @@ public:
         request->Record.SetOffset(offset);
         request->Record.SetLength(length);
         for (const auto& blobId: blobIds) {
-            NKikimr::LogoBlobIDFromLogoBlobID(
+            LogoBlobIDFromLogoBlobID(
                 blobId,
                 request->Record.MutableBlobIds()->Add());
         }

@@ -6,6 +6,7 @@
 #include <cloud/storage/core/libs/auth/authorizer.h>
 
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <contrib/ydb/library/actors/core/scheduler_cookie.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -79,6 +80,8 @@ TActorId TTestActorSystem::Register(
 {
     Y_UNUSED(executorName);
 
+    RegistrationCount.fetch_add(1, std::memory_order_relaxed);
+
     auto actorId = Runtime->Register(actor.release());
     Runtime->EnableScheduleForActor(actorId);
 
@@ -95,6 +98,17 @@ bool TTestActorSystem::Send(IEventHandlePtr event)
 {
     Runtime->Send(event.release());
     return true;
+}
+
+void TTestActorSystem::Schedule(
+    TDuration delta,
+    IEventHandlePtr event,
+    ISchedulerCookie* cookie)
+{
+    if (cookie) {
+        cookie->Detach();
+    }
+    Runtime->Schedule(event.release(), delta);
 }
 
 TProgramShouldContinue& TTestActorSystem::GetProgramShouldContinue()
@@ -119,6 +133,11 @@ void TTestActorSystem::RegisterTestAuthorizer(IActorPtr authorizer)
     Runtime->RegisterService(
         MakeAuthorizerServiceId(),
         Register(std::move(authorizer)));
+}
+
+ui64 TTestActorSystem::GetRegistrationCount() const
+{
+    return RegistrationCount.load(std::memory_order_relaxed);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

@@ -37,6 +37,7 @@ public:
         : Stats(CreateWriteBackCacheStats())
         , State(
               *this,
+              CreateTestStorage(Stats),
               std::make_shared<TTestTimer>(),
               Stats->GetWriteBackCacheStateStats(),
               Stats->GetWriteDataRequestManagerStats(),
@@ -44,7 +45,7 @@ public:
               TFlushBatchLimits{},
               "[tag]")
     {
-        State.Init(CreateTestStorage(Stats));
+        State.Init();
 
         Write(2, "ABCD");
         Write(10, "IJKL");
@@ -85,8 +86,16 @@ public:
             }
         }
 
+        auto cachedData = State.GetCachedData(
+            1,
+            request->GetOffset(),
+            request->GetLength(),
+            {});
+
+        UNIT_ASSERT(cachedData);
+
         TReadResponseBuilder builder(*request);
-        builder.AugmentResponseWithCachedData(response, State, /* pin = */ {});
+        builder.AugmentResponseWithCachedData(response, *cachedData);
 
         return result.substr(0, response.GetLength());
     }

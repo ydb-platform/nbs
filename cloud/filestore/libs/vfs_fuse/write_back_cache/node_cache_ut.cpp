@@ -173,7 +173,7 @@ struct TBootstrap
         *request->MutableBuffer() = std::move(data);
 
         auto res = RequestManager.AddRequest(std::move(request));
-        return std::get<1>(std::move(res));
+        return std::move(res.CachedRequest);
     }
 
     TString GetCachedData(

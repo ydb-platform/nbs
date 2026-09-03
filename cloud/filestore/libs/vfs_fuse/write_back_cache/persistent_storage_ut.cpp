@@ -41,7 +41,7 @@ struct TBootstrap
 
     NProto::TError Initialize()
     {
-        auto res = CreateFileRingBufferPersistentStorage(
+        Storage = CreateFileRingBufferPersistentStorage(
             Stats,
             {.FilePath = TempFile.GetName(),
              .DataCapacity = DefaultCapacity,
@@ -49,12 +49,7 @@ struct TBootstrap
             Log,
             "[tag]");
 
-        if (HasError(res)) {
-            return res.GetError();
-        }
-
-        Storage = res.ExtractResult();
-        return {};
+        return MakeError(Storage->IsCorrupted() ? E_FAIL : S_OK);
     }
 
     void Deinitialize()
@@ -78,7 +73,7 @@ struct TBootstrap
         char* ptr = allocationResult.GetResult();
         if (ptr != nullptr) {
             data.copy(ptr, data.size());
-            Storage->Commit();
+            UNIT_ASSERT(!HasError(Storage->Commit(ptr)));
         }
         return ptr;
     }
@@ -89,15 +84,35 @@ struct TBootstrap
         return HasError(allocationResult);
     }
 
-    void Free(const void* ptr) const
+    const char* BeginAlloc(const TString& data) const
     {
-        Storage->Free(ptr);
+        auto allocationResult = Storage->Alloc(data.size());
+        if (HasError(allocationResult)) {
+            return nullptr;
+        }
+
+        char* ptr = allocationResult.GetResult();
+        if (ptr != nullptr) {
+            data.copy(ptr, data.size());
+        }
+        return ptr;
+    }
+
+    void EndAlloc(const char* ptr)
+    {
+        UNIT_ASSERT(ptr != nullptr);
+        UNIT_ASSERT(!HasError(Storage->Commit(ptr)));
+    }
+
+    NProto::TError Free(const void* ptr) const
+    {
+        return Storage->Free(ptr);
     }
 
     TString Dump() const
     {
         TString res;
-        Storage->Visit(
+        auto visitResult = Storage->Visit(
             [&res](ui32 tag, TStringBuf entry)
             {
                 Y_UNUSED(tag);
@@ -106,7 +121,7 @@ struct TBootstrap
                 }
                 res.append(entry);
             });
-
+        UNIT_ASSERT(!HasError(visitResult));
         return res;
     }
 };
@@ -157,7 +172,7 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount->Get());
     }
 
-    Y_UNIT_TEST(ShouldThrowOnDoubleFree)
+    Y_UNIT_TEST(ShouldReturnErrorOnDoubleFree)
     {
         TBootstrap b;
 
@@ -170,11 +185,11 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         const auto* ptr2 = b.Alloc("567890");
         UNIT_ASSERT(ptr2);
 
-        b.Free(ptr2);
-        UNIT_ASSERT_EXCEPTION(b.Free(ptr2), yexception);
+        UNIT_ASSERT(!HasError(b.Free(ptr2)));
+        UNIT_ASSERT(HasError(b.Free(ptr2)));
 
-        b.Free(ptr1);
-        UNIT_ASSERT_EXCEPTION(b.Free(ptr1), yexception);
+        UNIT_ASSERT(!HasError(b.Free(ptr1)));
+        UNIT_ASSERT(HasError(b.Free(ptr1)));
     }
 
     Y_UNIT_TEST(ShouldValidateAllocationSize)
@@ -245,8 +260,15 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
         UNIT_ASSERT(!HasError(b.Initialize()));
         UNIT_ASSERT(b.Storage->Empty());
 
-        const auto* ptr1 = b.Alloc("1234");
+        const auto* ptr1 = b.BeginAlloc("1234");
         UNIT_ASSERT(ptr1);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
+        auto rawUsed = stats.RawUsedByteCount->Get();
+        UNIT_ASSERT_LT(0, rawUsed);
+
+        b.EndAlloc(ptr1);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(rawUsed, stats.RawUsedByteCount->Get());
 
         const auto* ptr2 = b.Alloc("567890");
         UNIT_ASSERT(ptr2);
@@ -255,7 +277,7 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(2, stats.EntryMaxCount->Get());
-        UNIT_ASSERT_LT(0, stats.RawUsedByteCount->Get());
+        UNIT_ASSERT_LT(rawUsed, stats.RawUsedByteCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(maxByteCount, stats.RawUsedByteCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultCapacity,

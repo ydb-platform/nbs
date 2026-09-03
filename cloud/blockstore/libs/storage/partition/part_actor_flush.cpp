@@ -262,7 +262,8 @@ void TFlushActor::NotifyCompleted(
     auto ev = std::make_unique<TEvent>(
         error,
         std::move(FlushedFreshBlobCommitIds),
-        std::move(FlushedCommitIdsFromChannel));
+        std::move(FlushedCommitIdsFromChannel),
+        BlocksCount);
 
     ev->ExecCycles = RequestInfo->GetExecCycles();
     ev->TotalCycles = RequestInfo->GetTotalCycles();
@@ -795,6 +796,8 @@ void TPartitionActor::HandleFlushCompleted(
         if (FreshBlocksWriter) {
             SharedState->UnflushedFreshBlobByteCount.fetch_sub(
                 flushedFreshBlobByteCount);
+            SharedState->UnflushedFreshBlocksCount.fetch_sub(
+                msg->FlushedBlocksCount);
         }
     }
 

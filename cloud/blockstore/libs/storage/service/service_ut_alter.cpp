@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 
 #include <util/generic/size_literals.h>
@@ -975,7 +976,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldUseExactDiskIdMatchOnAlterVolume)
+    Y_UNIT_TEST(ShouldDisableExactDiskIdMatchOnAlterVolumeRequests)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -991,7 +992,10 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             "test_folder",
             "test_cloud");
 
-        bool exactDiskIdMatch = false;
+        bool describeRequestObserved = false;
+        bool statRequestObserved = false;
+        bool describeExactDiskIdMatch = true;
+        bool statExactDiskIdMatch = true;
 
         runtime.SetEventFilter(
             [&](auto& runtime, TAutoPtr<IEventHandle>& event)
@@ -1001,7 +1005,16 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         auto& msg =
                             *event->Get<TEvSSProxy::TEvDescribeVolumeRequest>();
-                        exactDiskIdMatch = msg.ExactDiskIdMatch;
+                        describeRequestObserved = true;
+                        describeExactDiskIdMatch = msg.ExactDiskIdMatch;
+                        break;
+                    }
+                    case TEvService::EvStatVolumeRequest: {
+                        const auto& msg =
+                            *event->Get<TEvService::TEvStatVolumeRequest>();
+                        statRequestObserved = true;
+                        statExactDiskIdMatch =
+                            msg.Record.GetHeaders().GetExactDiskIdMatch();
                         break;
                     }
                 }
@@ -1011,7 +1024,38 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         service.AlterVolume(DefaultDiskId, "project", "folder", "cloud");
 
-        UNIT_ASSERT_VALUES_EQUAL(true, exactDiskIdMatch);
+        UNIT_ASSERT_VALUES_EQUAL(true, describeRequestObserved);
+        UNIT_ASSERT_VALUES_EQUAL(false, describeExactDiskIdMatch);
+        UNIT_ASSERT_VALUES_EQUAL(true, statRequestObserved);
+        UNIT_ASSERT_VALUES_EQUAL(false, statExactDiskIdMatch);
+    }
+
+    Y_UNIT_TEST(ShouldAlterAndResizeSecondaryDiskUsingPrimaryDiskId)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnvWithAllowVersionInModifyScheme(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const auto secondaryDiskId = GetSecondaryDiskId(DefaultDiskId);
+        service.CreateVolume(
+            secondaryDiskId,
+            DefaultBlocksCount,
+            DefaultBlockSize,
+            "test_folder",
+            "test_cloud");
+
+        service.AlterVolume(DefaultDiskId, "project", "folder", "cloud");
+        service.ResizeVolume(DefaultDiskId, DefaultBlocksCount * 2);
+
+        auto response = service.DescribeVolume(secondaryDiskId, true);
+        const auto& volume = response->Record.GetVolume();
+        UNIT_ASSERT_VALUES_EQUAL(secondaryDiskId, volume.GetDiskId());
+        UNIT_ASSERT_VALUES_EQUAL("project", volume.GetProjectId());
+        UNIT_ASSERT_VALUES_EQUAL("folder", volume.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL("cloud", volume.GetCloudId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultBlocksCount * 2,
+            volume.GetBlocksCount());
     }
 }
 

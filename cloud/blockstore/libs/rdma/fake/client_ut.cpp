@@ -17,6 +17,7 @@
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/actors/core/scheduler_cookie.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -109,6 +110,17 @@ struct TTestActorSystem
         Runtime.SendAsync(event.release());
 
         return true;
+    }
+
+    void Schedule(
+        TDuration delta,
+        IEventHandlePtr event,
+        ISchedulerCookie* cookie) override
+    {
+        if (cookie) {
+            cookie->Detach();
+        }
+        Runtime.Schedule(event.release(), delta);
     }
 
     TProgramShouldContinue& GetProgramShouldContinue() override

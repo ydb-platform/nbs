@@ -5423,7 +5423,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto& blobPieces = response->Record.GetBlobPieces();
         /*
         for (const auto& p: blobPieces) {
-            Cerr << NKikimr::LogoBlobIDFromLogoBlobID(p.GetBlobId())
+            Cerr << LogoBlobIDFromLogoBlobID(p.GetBlobId())
                 << " " << p.GetBSGroupId() << Endl;
 
             for (const auto& r: p.GetRanges()) {
@@ -5436,7 +5436,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(2, blobPieces.size());
 
         const auto blobId0 =
-            NKikimr::LogoBlobIDFromLogoBlobID(blobPieces[0].GetBlobId());
+            LogoBlobIDFromLogoBlobID(blobPieces[0].GetBlobId());
         UNIT_ASSERT_VALUES_EQUAL(tabletId, blobId0.TabletID());
         UNIT_ASSERT_VALUES_EQUAL(2, blobId0.Generation());
         UNIT_ASSERT_VALUES_EQUAL(4, blobId0.Step());
@@ -5470,7 +5470,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             blobPieces[0].GetRanges(1).GetLength());
 
         const auto blobId1 =
-            NKikimr::LogoBlobIDFromLogoBlobID(blobPieces[1].GetBlobId());
+            LogoBlobIDFromLogoBlobID(blobPieces[1].GetBlobId());
         UNIT_ASSERT_VALUES_EQUAL(tabletId, blobId1.TabletID());
         UNIT_ASSERT_VALUES_EQUAL(2, blobId1.Generation());
         UNIT_ASSERT_VALUES_EQUAL(11, blobId1.Step());
@@ -5553,7 +5553,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(1, blobPieces.size());
 
         const auto blobId0 =
-            NKikimr::LogoBlobIDFromLogoBlobID(blobPieces[0].GetBlobId());
+            LogoBlobIDFromLogoBlobID(blobPieces[0].GetBlobId());
         UNIT_ASSERT_VALUES_EQUAL(tabletId, blobId0.TabletID());
         UNIT_ASSERT_VALUES_EQUAL(2, blobId0.Generation());
         UNIT_ASSERT_VALUES_EQUAL(6, blobId0.Step());

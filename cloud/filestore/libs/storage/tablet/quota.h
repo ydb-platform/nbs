@@ -25,6 +25,7 @@ public:
 
     [[nodiscard]] const NProto::TQuota* FindQuota(ui32 quotaId) const;
     [[nodiscard]] TVector<NProto::TQuota> GetQuotas() const;
+    [[nodiscard]] ui32 GetQuotaCount() const;
 
     void LoadUsage(const TQuotaUsage& usage);
 

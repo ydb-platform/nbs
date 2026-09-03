@@ -92,7 +92,9 @@ int main(int argc, char** argv)
                 {.Address = config.GetAddress(),
                  .RootCertsFile = config.GetRootCertsFile(),
                  .CertChainFile = config.GetCertChainFile(),
-                 .PrivateKeyFile = config.GetPrivateKeyFile()});
+                 .PrivateKeyFile = config.GetPrivateKeyFile(),
+                 .RequestTimeout =
+                     TDuration::MilliSeconds(config.GetRequestTimeout())});
         }
 
         return NCloud::NBlockStore::CreateRootKmsClientStub();

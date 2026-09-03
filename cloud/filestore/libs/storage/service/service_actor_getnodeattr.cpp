@@ -1,7 +1,9 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -11,6 +13,8 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NActors;
 
 using namespace NKikimr;
+
+LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 
 namespace {
 
@@ -33,6 +37,7 @@ private:
     // Stats for reporting
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
+    ITraceSerializerPtr TraceSerializer;
 
     const bool DisableMultiTabletForwarding;
 
@@ -42,6 +47,7 @@ public:
         NProto::TGetNodeAttrRequest getNodeAttrRequest,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
+        ITraceSerializerPtr traceSerializer,
         bool disableMultiTabletForwarding);
 
     void Bootstrap(const TActorContext& ctx);
@@ -74,12 +80,14 @@ TGetNodeAttrActor::TGetNodeAttrActor(
         NProto::TGetNodeAttrRequest getNodeAttrRequest,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
+        ITraceSerializerPtr traceSerializer,
         bool disableMultiTabletForwarding)
     : RequestInfo(std::move(requestInfo))
     , GetNodeAttrRequest(std::move(getNodeAttrRequest))
     , LogTag(GetNodeAttrRequest.GetFileSystemId())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
+    , TraceSerializer(std::move(traceSerializer))
     , DisableMultiTabletForwarding(disableMultiTabletForwarding)
 {
 }
@@ -92,6 +100,11 @@ void TGetNodeAttrActor::Bootstrap(const TActorContext& ctx)
 
 void TGetNodeAttrActor::GetNodeAttrInLeader(const TActorContext& ctx)
 {
+    FILESTORE_TRACK(
+        RequestReceived_ServiceWorker,
+        RequestInfo->CallContext,
+        "GetNodeAttrInLeader");
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
@@ -102,6 +115,10 @@ void TGetNodeAttrActor::GetNodeAttrInLeader(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
     request->Record = GetNodeAttrRequest;
+    request->CallContext = RequestInfo->CallContext;
+    TraceSerializer->BuildTraceRequest(
+        *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
+        request->CallContext->LWOrbit);
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -109,6 +126,11 @@ void TGetNodeAttrActor::GetNodeAttrInLeader(const TActorContext& ctx)
 
 void TGetNodeAttrActor::GetNodeAttrInShard(const TActorContext& ctx)
 {
+    FILESTORE_TRACK(
+        RequestReceived_ServiceWorker,
+        RequestInfo->CallContext,
+        "GetNodeAttrInShard");
+
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
@@ -124,6 +146,10 @@ void TGetNodeAttrActor::GetNodeAttrInShard(const TActorContext& ctx)
         LeaderResponse.GetNode().GetShardFileSystemId());
     request->Record.SetNodeId(RootNodeId);
     request->Record.SetName(LeaderResponse.GetNode().GetShardNodeName());
+    request->CallContext = RequestInfo->CallContext;
+    TraceSerializer->BuildTraceRequest(
+        *request->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
+        request->CallContext->LWOrbit);
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -141,6 +167,11 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
         HandleError(ctx, *msg->Record.MutableError());
         return;
     }
+
+    FILESTORE_TRACK(
+        ResponseSent_ServiceWorker,
+        RequestInfo->CallContext,
+        LeaderResponded ? "GetNodeAttrInShard" : "GetNodeAttrInLeader");
 
     if (LeaderResponded) {
         LOG_DEBUG(
@@ -199,6 +230,11 @@ void TGetNodeAttrActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
+    FILESTORE_TRACK(
+        ResponseSent_ServiceWorker,
+        RequestInfo->CallContext,
+        LeaderResponded ? "GetNodeAttrInShard" : "GetNodeAttrInLeader");
+
     auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(
         std::move(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -303,6 +339,7 @@ void TStorageServiceActor::HandleGetNodeAttr(
         std::move(msg->Record),
         session->RequestStats,
         ProfileLog,
+        TraceSerializer,
         disableMultiTabletForwarding);
 
     NCloud::Register(ctx, std::move(actor));

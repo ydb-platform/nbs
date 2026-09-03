@@ -4,6 +4,11 @@
 
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 
+#include <util/generic/vector.h>
+
+#include <latch>
+#include <thread>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,6 +32,280 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             previousValue));
         UNIT_ASSERT_VALUES_EQUAL(0, AtomicGet(previousValue));
         UNIT_ASSERT(config->GetHiveProxyFallbackMode());
+    }
+
+    Y_UNIT_TEST(ShouldSetAndRestoreConfigBoundControlsViaIcb)
+    {
+        // Verify that ICB overrides all configurations when one configuration
+        // default equals the ICB value and the other two defaults differ.
+        NProto::TStorageServiceConfig firstProto;
+        firstProto.SetWriteBlobThreshold(100);
+        auto first = std::make_shared<TStorageConfig>(
+            firstProto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+        UNIT_ASSERT(!first->GetStorageConfigControls());
+
+        NProto::TStorageServiceConfig secondProto;
+        secondProto.SetWriteBlobThreshold(200);
+        auto second = std::make_shared<TStorageConfig>(
+            secondProto,
+            std::make_shared<NFeatures::TFeaturesConfig>(),
+            nullptr);
+        UNIT_ASSERT(!second->GetStorageConfigControls());
+
+        NProto::TStorageServiceConfig thirdProto;
+        thirdProto.SetWriteBlobThreshold(300);
+        auto third = std::make_shared<TStorageConfig>(
+            thirdProto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+        UNIT_ASSERT(!third->GetStorageConfigControls());
+
+        NKikimr::TControlBoard controlBoard;
+        first->Register(controlBoard);
+        second->Register(controlBoard);
+        third->Register(controlBoard);
+
+        TAtomic previousValue = {};
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_WriteBlobThreshold",
+            200,
+            previousValue));
+        UNIT_ASSERT_VALUES_EQUAL(100, AtomicGet(previousValue));
+        UNIT_ASSERT_VALUES_EQUAL(200, first->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(200, third->GetWriteBlobThreshold());
+
+        controlBoard.RestoreDefault("BlockStore_WriteBlobThreshold");
+        UNIT_ASSERT_VALUES_EQUAL(100, first->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(300, third->GetWriteBlobThreshold());
+    }
+
+    Y_UNIT_TEST(ShouldSetAndRestoreConfigIndependentControlsViaIcb)
+    {
+        // Verify that ICB overrides all configurations when one configuration
+        // default equals the ICB value and the other two defaults differ.
+        auto controls = std::make_shared<TStorageConfigControls>();
+        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT(!controls->RestoreDefault("WriteBlobThreshold"));
+
+        NKikimr::TControlBoard controlBoard;
+        controls->Register(controlBoard);
+        controls->Register(controlBoard);
+
+        NProto::TStorageServiceConfig firstProto;
+        firstProto.SetWriteBlobThreshold(100);
+        auto first = std::make_shared<TStorageConfig>(
+            firstProto,
+            std::make_shared<NFeatures::TFeaturesConfig>(),
+            controls);
+        UNIT_ASSERT(first->GetStorageConfigControls() == controls);
+
+        NProto::TStorageServiceConfig secondProto;
+        secondProto.SetWriteBlobThreshold(200);
+        auto second = std::make_shared<TStorageConfig>(
+            secondProto,
+            std::make_shared<NFeatures::TFeaturesConfig>(),
+            controls);
+        UNIT_ASSERT(second->GetStorageConfigControls() == controls);
+
+        NProto::TStorageServiceConfig thirdProto;
+        thirdProto.SetWriteBlobThreshold(300);
+        auto third = std::make_shared<TStorageConfig>(
+            thirdProto,
+            std::make_shared<NFeatures::TFeaturesConfig>(),
+            controls);
+        UNIT_ASSERT(third->GetStorageConfigControls() == controls);
+
+        UNIT_ASSERT_VALUES_EQUAL(100, first->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(300, third->GetWriteBlobThreshold());
+
+        TAtomic previousValue = {};
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_WriteBlobThreshold",
+            200,
+            previousValue));
+
+        const auto override = controls->GetOverride("WriteBlobThreshold");
+        UNIT_ASSERT(override);
+        UNIT_ASSERT_VALUES_EQUAL(200, *override);
+        UNIT_ASSERT_VALUES_EQUAL(200, first->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(200, third->GetWriteBlobThreshold());
+
+        UNIT_ASSERT(controls->RestoreDefault("WriteBlobThreshold"));
+        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT_VALUES_EQUAL(100, first->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(300, third->GetWriteBlobThreshold());
+        UNIT_ASSERT(!controls->RestoreDefault("UnknownField"));
+    }
+
+    Y_UNIT_TEST(ShouldRegisterConfigIndependentControlsConcurrently)
+    {
+        auto controls = std::make_shared<TStorageConfigControls>();
+        NKikimr::TControlBoard controlBoard;
+
+        constexpr int ThreadCount = 4;
+        std::latch start{ThreadCount + 1};
+        TVector<std::thread> threads;
+        for (int i = 0; i != ThreadCount; ++i) {
+            threads.emplace_back(
+                [&]
+                {
+                    start.arrive_and_wait();
+                    controls->Register(controlBoard);
+                });
+        }
+
+        start.arrive_and_wait();
+        for (auto& thread: threads) {
+            thread.join();
+        }
+
+        TAtomic previousValue = {};
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_WriteBlobThreshold",
+            100,
+            previousValue));
+
+        const auto override = controls->GetOverride("WriteBlobThreshold");
+        UNIT_ASSERT(override);
+        UNIT_ASSERT_VALUES_EQUAL(100, *override);
+    }
+
+    Y_UNIT_TEST(ShouldCopyConfigAndShareControlsViaIcb)
+    {
+        const auto test = [](TStorageConfigControlsPtr controls) {
+            NProto::TStorageServiceConfig proto;
+            proto.SetWriteBlobThreshold(100);
+            proto.SetVolumePreemptionType(NProto::PREEMPTION_NONE);
+
+            NKikimr::TControlBoard controlBoard;
+            TStorageConfigPtr copy;
+            {
+                auto source = std::make_shared<TStorageConfig>(
+                    proto,
+                    std::make_shared<NFeatures::TFeaturesConfig>(),
+                    controls);
+                source->Register(controlBoard);
+
+                TAtomic previousValue = {};
+                UNIT_ASSERT(!controlBoard.SetValue(
+                    "BlockStore_WriteBlobThreshold",
+                    200,
+                    previousValue));
+
+                copy = std::make_shared<TStorageConfig>(*source);
+                UNIT_ASSERT_VALUES_EQUAL(200, copy->GetWriteBlobThreshold());
+                UNIT_ASSERT(copy->GetStorageConfigControls() == controls);
+
+                source->SetVolumePreemptionType(
+                    NProto::PREEMPTION_MOVE_MOST_HEAVY);
+                UNIT_ASSERT(
+                    copy->GetVolumePreemptionType() == NProto::PREEMPTION_NONE);
+            }
+
+            TAtomic previousValue = {};
+            UNIT_ASSERT(!controlBoard.SetValue(
+                "BlockStore_WriteBlobThreshold",
+                300,
+                previousValue));
+            UNIT_ASSERT_VALUES_EQUAL(200, AtomicGet(previousValue));
+            UNIT_ASSERT_VALUES_EQUAL(300, copy->GetWriteBlobThreshold());
+
+            controlBoard.RestoreDefault("BlockStore_WriteBlobThreshold");
+            UNIT_ASSERT_VALUES_EQUAL(100, copy->GetWriteBlobThreshold());
+        };
+
+        test(std::make_shared<TStorageConfigControls>());
+        test(nullptr);
+    }
+
+    Y_UNIT_TEST(ShouldMergeConfigBoundControlsViaIcb)
+    {
+        NProto::TStorageServiceConfig globalConfigProto;
+        globalConfigProto.SetMaxMigrationIoDepth(4);
+        auto globalConfig = std::make_shared<TStorageConfig>(
+            globalConfigProto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        NKikimr::TControlBoard controlBoard;
+        globalConfig->Register(controlBoard);
+
+        TAtomic previousValue = {};
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_MaxMigrationIoDepth",
+            8,
+            previousValue));
+
+        NProto::TStorageServiceConfig patch;
+        patch.SetMaxMigrationIoDepth(1);
+        auto config = TStorageConfig::Merge(globalConfig, patch);
+
+        UNIT_ASSERT_UNEQUAL(config, globalConfig);
+        UNIT_ASSERT(!config->GetStorageConfigControls());
+        UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            config->GetStorageConfigProto().GetMaxMigrationIoDepth());
+
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_MaxMigrationIoDepth",
+            16,
+            previousValue));
+        UNIT_ASSERT_VALUES_EQUAL(16, globalConfig->GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
+
+        controlBoard.RestoreDefault("BlockStore_MaxMigrationIoDepth");
+        UNIT_ASSERT_VALUES_EQUAL(4, globalConfig->GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
+    }
+
+    Y_UNIT_TEST(ShouldMergeConfigIndependentControlsViaIcb)
+    {
+        auto controls = std::make_shared<TStorageConfigControls>();
+        NKikimr::TControlBoard controlBoard;
+        controls->Register(controlBoard);
+
+        NProto::TStorageServiceConfig globalConfigProto;
+        globalConfigProto.SetMaxMigrationIoDepth(4);
+        auto globalConfig = std::make_shared<TStorageConfig>(
+            globalConfigProto,
+            std::make_shared<NFeatures::TFeaturesConfig>(),
+            controls);
+
+        TAtomic previousValue = {};
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_MaxMigrationIoDepth",
+            8,
+            previousValue));
+
+        NProto::TStorageServiceConfig patch;
+        patch.SetMaxMigrationIoDepth(1);
+        auto config = TStorageConfig::Merge(globalConfig, patch);
+
+        UNIT_ASSERT_UNEQUAL(config, globalConfig);
+        UNIT_ASSERT(config->GetStorageConfigControls() == controls);
+        UNIT_ASSERT_VALUES_EQUAL(8, config->GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(
+            8,
+            config->GetStorageConfigProto().GetMaxMigrationIoDepth());
+
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_MaxMigrationIoDepth",
+            16,
+            previousValue));
+        UNIT_ASSERT_VALUES_EQUAL(16, globalConfig->GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(16, config->GetMaxMigrationIoDepth());
+
+        UNIT_ASSERT(controls->RestoreDefault("MaxMigrationIoDepth"));
+        UNIT_ASSERT_VALUES_EQUAL(4, globalConfig->GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            config->GetStorageConfigProto().GetMaxMigrationIoDepth());
     }
 
     Y_UNIT_TEST(ShouldOverrideConfigFields)

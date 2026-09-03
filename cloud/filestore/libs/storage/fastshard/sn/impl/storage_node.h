@@ -13,6 +13,8 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
  *
  * Semantics:
  *   - AcquireDevices and ReleaseDevices are stubbed and return S_OK.
+ *   - There is no journal, so ReadJournalTail returns an empty record
+ *     list and AdvanceLsnLowWatermark is a no-op; both return S_OK.
  *   - WriteLogRecord writes every page in every TDevicePageGroup
  *     straight to `path` at offset (FirstPageNo + i) * pageSize, where
  *     pageSize is the size of the first Content entry of that group.

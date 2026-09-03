@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
+#include <cloud/blockstore/libs/storage/core/compaction_policy.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
@@ -195,6 +196,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(AddBlobs,                  __VA_ARGS__)                                \
     xxx(Flush,                     __VA_ARGS__)                                \
     xxx(Compaction,                __VA_ARGS__)                                \
+    xxx(GetCompactionCounters,     __VA_ARGS__)                                \
     xxx(CompactionReadBlobInfo,    __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
     xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
@@ -241,11 +243,15 @@ using TReadBlocksRequests = TVector<TReadBlocksRequest>;
 
 struct TBlockCountRebuildState
 {
-    ui64 MixedBlocks = 0;
-    ui64 MergedBlocks = 0;
+    ui64 MixedIndexBlocks = 0;
+    ui64 MergedIndexBlocks = 0;
+    ui64 MixedChannelBlocks = 0;
+    ui64 MergedChannelBlocks = 0;
 
-    ui64 InitialMixedBlocks = 0;
-    ui64 InitialMergedBlocks = 0;
+    ui64 InitialMixedIndexBlocks = 0;
+    ui64 InitialMergedIndexBlocks = 0;
+    ui64 InitialMixedChannelBlocks = 0;
+    ui64 InitialMergedChannelBlocks = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -362,6 +368,30 @@ struct TEvPartitionPrivate
 
     struct TCompactionResponse
     {
+    };
+
+    //
+    // GetCompactionCounters
+    //
+
+    struct TGetCompactionCountersRequest
+    {
+        ui32 BlockIndex = 0;
+
+        explicit TGetCompactionCountersRequest(ui32 blockIndex)
+            : BlockIndex(blockIndex)
+        {}
+    };
+
+    struct TGetCompactionCountersResponse
+    {
+        TRangeStat Counters;
+
+        TGetCompactionCountersResponse() = default;
+
+        explicit TGetCompactionCountersResponse(TRangeStat counters)
+            : Counters(std::move(counters))
+        {}
     };
 
     //
@@ -703,20 +733,21 @@ struct TEvPartitionPrivate
     // FlushCompleted
     //
 
-    struct TFlushCompleted
-        : TOperationCompleted
+    struct TFlushCompleted: TOperationCompleted
     {
         TVector<ui64> FlushedFreshBlobCommitIds;
         TFlushedCommitIds FlushedCommitIdsFromChannel;
+        ui64 FlushedBlocksCount = 0;
 
         TFlushCompleted(
             TVector<ui64> flushedFreshBlobCommitIds,
-            TFlushedCommitIds flushedCommitIdsFromChannel)
+            TFlushedCommitIds flushedCommitIdsFromChannel,
+            ui64 flushedBlocksCount)
             : FlushedFreshBlobCommitIds(std::move(flushedFreshBlobCommitIds))
             , FlushedCommitIdsFromChannel(
                   std::move(flushedCommitIdsFromChannel))
-        {
-        }
+            , FlushedBlocksCount(flushedBlocksCount)
+        {}
     };
 
     //

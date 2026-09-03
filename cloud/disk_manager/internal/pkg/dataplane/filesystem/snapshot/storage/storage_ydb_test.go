@@ -175,7 +175,6 @@ func TestDeleteFilesystemSnapshot(t *testing.T) {
 	deleting, err := f.storage.DeletingFilesystemSnapshot(
 		f.ctx,
 		snapshotMeta.ID,
-		"delete",
 	)
 	require.NoError(t, err)
 	require.NotNil(t, deleting)
@@ -185,7 +184,6 @@ func TestDeleteFilesystemSnapshot(t *testing.T) {
 	deleting2, err := f.storage.DeletingFilesystemSnapshot(
 		f.ctx,
 		snapshotMeta.ID,
-		"delete",
 	)
 	require.NoError(t, err)
 	require.NotNil(t, deleting2)
@@ -206,7 +204,6 @@ func TestDeleteNonexistingFilesystemSnapshot(t *testing.T) {
 	deleting, err := f.storage.DeletingFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		"delete",
 	)
 	require.NoError(t, err)
 	require.NotNil(t, deleting)
@@ -244,10 +241,10 @@ func TestGetFilesystemSnapshotsToDelete(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot1", "delete1")
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot1")
 	require.NoError(t, err)
 
-	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot2", "delete2")
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot2")
 	require.NoError(t, err)
 
 	// Get snapshots to delete
@@ -301,7 +298,7 @@ func TestCheckFilesystemSnapshotAlive(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mark for deletion
-	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot", "delete")
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot")
 	require.NoError(t, err)
 
 	// Should not be alive
@@ -341,7 +338,7 @@ func TestCheckFilesystemSnapshotReady(t *testing.T) {
 	err = f.storage.CheckFilesystemSnapshotReady(f.ctx, "snapshot")
 	require.NoError(t, err)
 
-	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot", "delete")
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot")
 	require.NoError(t, err)
 
 	err = f.storage.CheckFilesystemSnapshotReady(f.ctx, "snapshot")
@@ -416,11 +413,11 @@ func TestLockUnlockFilesystemSnapshot(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
-	// Create snapshot
+	snapshotID := t.Name()
 	_, err := f.storage.CreateFilesystemSnapshot(
 		f.ctx,
 		FilesystemSnapshotMeta{
-			ID:           "snapshot",
+			ID:           snapshotID,
 			CreateTaskID: "create",
 			Filesystem: &types.Filesystem{
 				ZoneId:       "zone",
@@ -430,67 +427,554 @@ func TestLockUnlockFilesystemSnapshot(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Lock snapshot
-	locked, err := f.storage.LockFilesystemSnapshot(f.ctx, "snapshot", "lock1")
+	err = f.storage.LockFilesystemSnapshot(f.ctx, snapshotID, "lock1")
 	require.NoError(t, err)
-	require.True(t, locked)
 
-	// Try to lock again with different task ID - should fail
-	locked, err = f.storage.LockFilesystemSnapshot(f.ctx, "snapshot", "lock2")
-	require.Error(t, err)
-	require.False(t, locked)
-	require.ErrorIs(t, err, errors.NewEmptyRetriableError())
+	err = f.storage.LockFilesystemSnapshot(f.ctx, snapshotID, "lock2")
+	require.NoError(t, err)
 
-	// Try to delete locked snapshot - should fail
-	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot", "delete1")
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, snapshotID)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errors.NewEmptyRetriableError())
 
-	// Unlock with wrong task ID - should succeed (unlock is idempotent)
-	err = f.storage.UnlockFilesystemSnapshot(f.ctx, "snapshot", "lock2")
+	err = f.storage.UnlockFilesystemSnapshot(f.ctx, snapshotID, "lock2")
 	require.NoError(t, err)
 
-	// Check still locked
-	meta, err := f.storage.GetFilesystemSnapshotMeta(f.ctx, "snapshot")
-	require.NoError(t, err)
-	require.Equal(t, "lock1", meta.LockTaskID)
+	// Unlocking one task does not remove the other task's lock.
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, snapshotID)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errors.NewEmptyRetriableError())
 
-	// Unlock with correct task ID
-	err = f.storage.UnlockFilesystemSnapshot(f.ctx, "snapshot", "lock1")
+	err = f.storage.UnlockFilesystemSnapshot(f.ctx, snapshotID, "lock1")
 	require.NoError(t, err)
 
-	// Check unlocked
-	meta, err = f.storage.GetFilesystemSnapshotMeta(f.ctx, "snapshot")
-	require.NoError(t, err)
-	require.Empty(t, meta.LockTaskID)
-
-	// Now deletion should succeed after unlock
 	deleting, err := f.storage.DeletingFilesystemSnapshot(
 		f.ctx,
-		"snapshot",
-		"delete1",
+		snapshotID,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, deleting)
 
-	// Try to lock snapshot that is deleting - should return false
-	locked, err = f.storage.LockFilesystemSnapshot(f.ctx, "snapshot", "lock3")
+	err = f.storage.LockFilesystemSnapshot(f.ctx, snapshotID, "lock3")
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+	require.True(t, errors.IsSilent(err))
+
+	err = f.storage.UnlockFilesystemSnapshot(f.ctx, snapshotID, "lock3")
 	require.NoError(t, err)
-	require.False(t, locked)
 }
 
-func TestLockNonexistingFilesystemSnapshot(t *testing.T) {
+func TestLockUnlockFilesystemSnapshotAreIdempotent(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
-	// Lock non-existing snapshot - should succeed but return false
-	locked, err := f.storage.LockFilesystemSnapshot(
+	snapshotID := t.Name()
+	const lockTaskID = "lock"
+	_, err := f.storage.CreateFilesystemSnapshot(
 		f.ctx,
-		"nonexisting",
+		FilesystemSnapshotMeta{
+			ID:           snapshotID,
+			CreateTaskID: "create",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "fs",
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	err = f.storage.LockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		lockTaskID,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.LockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		lockTaskID,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.UnlockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		lockTaskID,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.UnlockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		lockTaskID,
+	)
+	require.NoError(t, err)
+
+	// Repeated locking by the same task creates one lock, and repeated unlocking
+	// is a no-op, so deletion is allowed.
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, snapshotID)
+	require.NoError(t, err)
+}
+
+func TestFilesystemSnapshotAdditionalLockIsIdempotent(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	snapshotID := t.Name()
+	const firstLockTaskID = "lock-1"
+	const secondLockTaskID = "lock-2"
+	_, err := f.storage.CreateFilesystemSnapshot(
+		f.ctx,
+		FilesystemSnapshotMeta{
+			ID:           snapshotID,
+			CreateTaskID: "create",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "fs",
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	err = f.storage.LockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		firstLockTaskID,
+	)
+	require.NoError(t, err)
+
+	for i := 0; i < 2; i++ {
+		err = f.storage.LockFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+			secondLockTaskID,
+		)
+		require.NoError(t, err)
+	}
+
+	err = f.storage.UnlockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		firstLockTaskID,
+	)
+	require.NoError(t, err)
+
+	deleting, err := f.storage.DeletingFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+	)
+	require.Nil(t, deleting)
+	require.ErrorIs(t, err, errors.NewEmptyRetriableError())
+
+	err = f.storage.UnlockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		secondLockTaskID,
+	)
+	require.NoError(t, err)
+
+	// Repeated locking by the second task must require only one unlock before
+	// the snapshot is unlocked.
+	deleting, err = f.storage.DeletingFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, deleting)
+}
+
+func TestEmptyFilesystemSnapshotLockTaskIDIsRejected(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	snapshotID := t.Name()
+	_, err := f.storage.CreateFilesystemSnapshot(
+		f.ctx,
+		FilesystemSnapshotMeta{
+			ID:           snapshotID,
+			CreateTaskID: "create",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "fs",
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	err = f.storage.LockFilesystemSnapshot(f.ctx, snapshotID, "")
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+
+	err = f.storage.UnlockFilesystemSnapshot(f.ctx, snapshotID, "")
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+
+	// Invalid lock operations must not create a lock.
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, snapshotID)
+	require.NoError(t, err)
+}
+
+func TestConcurrentFilesystemSnapshotLockPromotionAndIdempotentLock(
+	t *testing.T,
+) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	const attempts = 10
+	for i := 0; i < attempts; i++ {
+		snapshotID := fmt.Sprintf("%s-%d", t.Name(), i)
+		firstLockTaskID := fmt.Sprintf("lock-1-%d", i)
+		secondLockTaskID := fmt.Sprintf("lock-2-%d", i)
+
+		_, err := f.storage.CreateFilesystemSnapshot(
+			f.ctx,
+			FilesystemSnapshotMeta{
+				ID:           snapshotID,
+				CreateTaskID: "create",
+				Filesystem: &types.Filesystem{
+					ZoneId:       "zone",
+					FilesystemId: "fs",
+				},
+			},
+		)
+		require.NoError(t, err, "attempt %v", i)
+
+		err = f.storage.LockFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+			firstLockTaskID,
+		)
+		require.NoError(t, err, "attempt %v", i)
+
+		err = f.storage.LockFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+			secondLockTaskID,
+		)
+		require.NoError(t, err, "attempt %v", i)
+
+		start := make(chan struct{})
+		unlockResultCh := make(chan error, 1)
+		lockResultCh := make(chan error, 1)
+
+		go func() {
+			<-start
+			unlockResultCh <- f.storage.UnlockFilesystemSnapshot(
+				f.ctx,
+				snapshotID,
+				firstLockTaskID,
+			)
+		}()
+		go func() {
+			<-start
+			lockResultCh <- f.storage.LockFilesystemSnapshot(
+				f.ctx,
+				snapshotID,
+				secondLockTaskID,
+			)
+		}()
+
+		close(start)
+		require.NoError(t, <-unlockResultCh, "attempt %v", i)
+		require.NoError(t, <-lockResultCh, "attempt %v", i)
+
+		deleting, err := f.storage.DeletingFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+		)
+		require.Nil(t, deleting, "attempt %v", i)
+		require.ErrorIs(
+			t,
+			err,
+			errors.NewEmptyRetriableError(),
+			"attempt %v",
+			i,
+		)
+
+		// A concurrent idempotent lock must not duplicate the promoted lock. One
+		// unlock removes it.
+		err = f.storage.UnlockFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+			secondLockTaskID,
+		)
+		require.NoError(t, err, "attempt %v", i)
+
+		deleting, err = f.storage.DeletingFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+		)
+		require.NoError(t, err, "attempt %v", i)
+		require.NotNil(t, deleting, "attempt %v", i)
+	}
+}
+
+func TestDeleteFilesystemSnapshotAfterLastUnlock(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	snapshotID := t.Name()
+	const firstLockTaskID = "lock-1"
+	const secondLockTaskID = "lock-2"
+	_, err := f.storage.CreateFilesystemSnapshot(
+		f.ctx,
+		FilesystemSnapshotMeta{
+			ID:           snapshotID,
+			CreateTaskID: "create",
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: "fs",
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	err = f.storage.LockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		firstLockTaskID,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.LockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		secondLockTaskID,
+	)
+	require.NoError(t, err)
+
+	err = f.storage.UnlockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		firstLockTaskID,
+	)
+	require.NoError(t, err)
+
+	// Deletion remains blocked until every task unlocks the snapshot.
+	deleting, err := f.storage.DeletingFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+	)
+	require.Nil(t, deleting)
+	require.ErrorIs(t, err, errors.NewEmptyRetriableError())
+
+	err = f.storage.UnlockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		secondLockTaskID,
+	)
+	require.NoError(t, err)
+
+	deleting, err = f.storage.DeletingFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, deleting)
+}
+
+func TestConcurrentLockFilesystemSnapshotAndDelete(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	type deleteResult struct {
+		meta *FilesystemSnapshotMeta
+		err  error
+	}
+
+	const attempts = 10
+	for i := 0; i < attempts; i++ {
+		snapshotID := fmt.Sprintf("%s-%d", t.Name(), i)
+		lockTaskID := fmt.Sprintf("lock-%v", i)
+		_, err := f.storage.CreateFilesystemSnapshot(
+			f.ctx,
+			FilesystemSnapshotMeta{
+				ID:           snapshotID,
+				CreateTaskID: "create",
+				Filesystem: &types.Filesystem{
+					ZoneId:       "zone",
+					FilesystemId: "fs",
+				},
+			},
+		)
+		require.NoError(t, err, "attempt %v", i)
+
+		start := make(chan struct{})
+		lockResultCh := make(chan error, 1)
+		deleteResultCh := make(chan deleteResult, 1)
+
+		go func() {
+			<-start
+			lockResultCh <- f.storage.LockFilesystemSnapshot(
+				f.ctx,
+				snapshotID,
+				lockTaskID,
+			)
+		}()
+		go func() {
+			<-start
+			meta, err := f.storage.DeletingFilesystemSnapshot(
+				f.ctx,
+				snapshotID,
+			)
+			deleteResultCh <- deleteResult{meta: meta, err: err}
+		}()
+
+		close(start)
+		lockErr := <-lockResultCh
+		deleteResult := <-deleteResultCh
+
+		if deleteResult.err == nil {
+			// Deletion serialized first, so the snapshot can no longer be locked.
+			// Unlocking it remains an idempotent no-op.
+			require.NotNil(t, deleteResult.meta, "attempt %v", i)
+			require.ErrorIs(
+				t,
+				lockErr,
+				errors.NewEmptyNonRetriableError(),
+				"attempt %v",
+				i,
+			)
+
+			err = f.storage.UnlockFilesystemSnapshot(
+				f.ctx,
+				snapshotID,
+				lockTaskID,
+			)
+			require.NoError(t, err, "attempt %v", i)
+			continue
+		}
+
+		// Locking serialized first, so deletion must wait for that lock.
+		require.Nil(t, deleteResult.meta, "attempt %v", i)
+		require.ErrorIs(
+			t,
+			deleteResult.err,
+			errors.NewEmptyRetriableError(),
+			"attempt %v",
+			i,
+		)
+		require.NoError(t, lockErr, "attempt %v", i)
+
+		err = f.storage.UnlockFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+			lockTaskID,
+		)
+		require.NoError(t, err, "attempt %v", i)
+
+		deleting, err := f.storage.DeletingFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+		)
+		require.NoError(t, err, "attempt %v", i)
+		require.NotNil(t, deleting, "attempt %v", i)
+	}
+}
+
+func TestConcurrentUnlockAndDeleteFilesystemSnapshotWithSecondLockHolder(
+	t *testing.T,
+) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	const attempts = 10
+	for i := 0; i < attempts; i++ {
+		snapshotID := fmt.Sprintf("%s-%d", t.Name(), i)
+		firstLockTaskID := fmt.Sprintf("lock-1-%v", i)
+		secondLockTaskID := fmt.Sprintf("lock-2-%v", i)
+		_, err := f.storage.CreateFilesystemSnapshot(
+			f.ctx,
+			FilesystemSnapshotMeta{
+				ID:           snapshotID,
+				CreateTaskID: "create",
+				Filesystem: &types.Filesystem{
+					ZoneId:       "zone",
+					FilesystemId: "fs",
+				},
+			},
+		)
+		require.NoError(t, err, "attempt %v", i)
+
+		err = f.storage.LockFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+			firstLockTaskID,
+		)
+		require.NoError(t, err)
+
+		err = f.storage.LockFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+			secondLockTaskID,
+		)
+		require.NoError(t, err, "attempt %v", i)
+
+		start := make(chan struct{})
+		unlockResultCh := make(chan error, 1)
+		deleteResultCh := make(chan error, 1)
+
+		go func() {
+			<-start
+			unlockResultCh <- f.storage.UnlockFilesystemSnapshot(
+				f.ctx,
+				snapshotID,
+				firstLockTaskID,
+			)
+		}()
+		go func() {
+			<-start
+			_, err := f.storage.DeletingFilesystemSnapshot(
+				f.ctx,
+				snapshotID,
+			)
+			deleteResultCh <- err
+		}()
+
+		close(start)
+		require.NoError(t, <-unlockResultCh, "attempt %v", i)
+		require.ErrorIs(
+			t,
+			<-deleteResultCh,
+			errors.NewEmptyRetriableError(),
+			"attempt %v",
+			i,
+		)
+
+		err = f.storage.UnlockFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+			secondLockTaskID,
+		)
+		require.NoError(t, err, "attempt %v", i)
+
+		deleting, err := f.storage.DeletingFilesystemSnapshot(
+			f.ctx,
+			snapshotID,
+		)
+		require.NoError(t, err, "attempt %v", i)
+		require.NotNil(t, deleting, "attempt %v", i)
+	}
+}
+
+func TestLockUnlockNonexistingFilesystemSnapshot(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	snapshotID := t.Name()
+
+	err := f.storage.LockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
+		"lock",
+	)
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+	require.True(t, errors.IsSilent(err))
+
+	err = f.storage.UnlockFilesystemSnapshot(
+		f.ctx,
+		snapshotID,
 		"lock",
 	)
 	require.NoError(t, err)
-	require.False(t, locked)
 }
 
 func TestListFilesystemSnapshots(t *testing.T) {
@@ -549,7 +1033,7 @@ func TestListFilesystemSnapshots(t *testing.T) {
 	require.True(t, snapshots.Has("snapshot2"))
 
 	// Mark one for deletion
-	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot1", "delete")
+	_, err = f.storage.DeletingFilesystemSnapshot(f.ctx, "snapshot1")
 	require.NoError(t, err)
 
 	// Should only list the ready one

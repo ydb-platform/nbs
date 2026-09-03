@@ -320,22 +320,7 @@ struct TVerbs
 
     TString GetPeer(rdma_cm_id *id) override
     {
-        auto* addr = rdma_get_peer_addr(id);
-        char host[NI_MAXHOST];
-
-        int err = getnameinfo(
-            addr,
-            sizeof(sockaddr_storage),
-            host,
-            sizeof(host),
-            NULL,   // serv
-            0,      // servlen
-            0);     // flags
-
-        if (err) {
-            return PrintAddress(addr);
-        }
-        return TString(host);
+        return PrintAddress(rdma_get_peer_addr(id));
     }
 
     void Listen(rdma_cm_id* id, int backlog) override

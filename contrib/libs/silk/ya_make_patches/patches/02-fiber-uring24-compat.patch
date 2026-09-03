@@ -1,11 +1,28 @@
 --- a/src/fibers/fiber.cpp
 +++ b/src/fibers/fiber.cpp
-@@ -665,7 +665,7 @@
+@@ -42,6 +42,16 @@
+ #include <sys/mman.h>
+ #include <sys/uio.h>
  
-         timer->reset(simpleCounters[SCHEDULER_IDLE_TIME], number);
++// liburing 2.4 predates the kernel's no-iowait API - define the constants so
++// the runtime feature check compiles. A kernel without the feature never sets
++// the feature bit, so the enter flag stays unused there.
++#ifndef IORING_FEAT_NO_IOWAIT
++#    define IORING_FEAT_NO_IOWAIT (1U << 17)
++#endif
++#ifndef IORING_ENTER_NO_IOWAIT
++#    define IORING_ENTER_NO_IOWAIT (1U << 7)
++#endif
++
+ namespace silk
+ {
  
--        int r = ::io_uring_enter2(ring.ring_fd, 0, 1, IORING_ENTER_GETEVENTS | IORING_ENTER_EXT_ARG, &arg, sizeof(arg));
-+        int r = ::io_uring_enter2(ring.ring_fd, 0, 1, IORING_ENTER_GETEVENTS | IORING_ENTER_EXT_ARG, reinterpret_cast<sigset_t *>(&arg), sizeof(arg));
-         if (r < 0)
-         {
-             // io_uring_enter2 returns -errno directly; it does not set errno.
+@@ -489,7 +499,7 @@
+ 
+     bool parkExpired = false;
+ 
+-    int r = ::io_uring_enter2(ring.ring_fd, 0, 1, parkEnterFlags, &arg, sizeof(arg));
++    int r = ::io_uring_enter2(ring.ring_fd, 0, 1, parkEnterFlags, reinterpret_cast<sigset_t *>(&arg), sizeof(arg));
+     if (r < 0)
+     {
+         // io_uring_enter2 returns -errno directly; it does not set errno.

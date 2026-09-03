@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     auth_provider_kikimr.cpp
+    method_handler.cpp
     service_kikimr.cpp
 )
 

@@ -67,7 +67,8 @@ public:
 
         if (HasError(result)) {
             Cout << FormatError(result.GetError()) << Endl;
-            return true;
+            ProgramShouldContinue.ShouldStop(1);
+            return false;
         }
 
         Cout << result.GetOutput() << Endl;

@@ -151,8 +151,7 @@ public:
             bool writeZeroesEnabled,
             ui32 optimalIoSize,
             void* cookie,
-            const TVhostCallbacks& callbacks,
-            bool readOnly)
+            const TVhostCallbacks& callbacks)
         : VhdQueues(std::move(vhdQueues))
         , SocketPath(std::move(socketPath))
         , DeviceName(std::move(deviceName))
@@ -178,9 +177,6 @@ public:
         }
         if (writeZeroesEnabled) {
             VhdBdevInfo.features |= VHD_BDEV_F_WRITE_ZEROES;
-        }
-        if (readOnly) {
-            VhdBdevInfo.features |= VHD_BDEV_F_READONLY;
         }
     }
 
@@ -377,8 +373,7 @@ public:
         ui32 optimalIoSize,
         TVector<IVhostQueuePtr> queues,
         void* cookie,
-        const TVhostCallbacks& callbacks,
-        bool readOnly) override
+        const TVhostCallbacks& callbacks) override
     {
         Y_ABORT_UNLESS(!queues.empty());
 
@@ -400,8 +395,7 @@ public:
             writeZeroesEnabled,
             optimalIoSize,
             cookie,
-            callbacks,
-            readOnly);
+            callbacks);
     }
 };
 

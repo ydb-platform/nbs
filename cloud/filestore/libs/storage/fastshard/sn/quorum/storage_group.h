@@ -2,6 +2,9 @@
 
 #include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
 
+#include <cloud/storage/core/libs/common/timer.h>
+
+#include <util/datetime/base.h>
 #include <util/generic/buffer.h>
 #include <util/generic/vector.h>
 
@@ -58,6 +61,21 @@ struct TStorageDevice
 };
 
 /**
+ * Retry policy for the requests which a storage group sends to its storage
+ * nodes. Retriable errors (see GetErrorKind) are retried with a backoff which
+ * grows by BackoffIncrement after each failed attempt of the same request:
+ * BackoffIncrement after the first error, 2 * BackoffIncrement after the
+ * second one, etc. When the time passed since the start of the first attempt
+ * till the last error reaches TotalTimeout, the last error is propagated to
+ * the caller.
+ */
+struct TStorageGroupRetryPolicy
+{
+    TDuration TotalTimeout = TDuration::Minutes(5);
+    TDuration BackoffIncrement = TDuration::MilliSeconds(500);
+};
+
+/**
  * Returns an IStorageGroup which mirrors each write into all storage nodes and
  * reads from one of the nodes selecting it in a round-robin manner. The
  * implementation is naive in the sense that it does no crash recovery and is
@@ -65,9 +83,25 @@ struct TStorageDevice
  * there's also no real m/n write / k/n read quorum here - it's just always
  * n/n for writes, 1/n for reads.
  *
+ * @param devices - Storage devices to mirror the data across.
+ * @param retryPolicy - Retry policy for storage node requests.
+ * @param timer - Time source for the retry deadline checks and backoff
+ *                sleeps. Production callers should pass the timer returned
+ *                by CreateFiberTimer(). Tests can pass TTestTimer to make
+ *                retries deterministic.
  * @return - The constructed group.
  */
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
-    TVector<TStorageDevice> devices);
+    TVector<TStorageDevice> devices,
+    TStorageGroupRetryPolicy retryPolicy,
+    ITimerPtr timer);
+
+/**
+ * Returns an ITimer which sleeps by suspending the calling silk fiber, so
+ * backoffs do not block the fiber scheduler threads.
+ *
+ * @return - The constructed timer.
+ */
+ITimerPtr CreateFiberTimer();
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

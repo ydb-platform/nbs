@@ -275,6 +275,7 @@ private:
     TLeaderDisks LeaderDisks;
     TString PrincipalDiskId;   // Set when in ELeadershipStatus::Outdated
     ELeadershipStatus LeadershipStatus = ELeadershipStatus::Principal;
+    bool CreateLeaderRequestInProgress = false;
 
     struct TLaggingAgentMigrationInfo
     {
@@ -850,6 +851,8 @@ public:
 
     TCreateFollowerRequestInfo& AccessCreateFollowerRequestInfo(
         const TLeaderFollowerLink& link);
+    TCreateFollowerRequestInfo* FindCreateFollowerRequestInfo(
+        const TLeaderFollowerLink& link);
     void DeleteCreateFollowerRequestInfo(const TLeaderFollowerLink& link);
 
     std::optional<TFollowerDiskInfo> FindFollower(
@@ -857,6 +860,9 @@ public:
     void AddOrUpdateFollower(TFollowerDiskInfo follower);
     void RemoveFollower(const TLeaderFollowerLink& link);
     const TFollowerDisks& GetAllFollowers() const;
+
+    void StartCreateLeaderRequest();
+    void FinishCreateLeaderRequest();
 
     std::optional<TLeaderDiskInfo> FindLeader(
         const TLeaderFollowerLink& link) const;
@@ -878,6 +884,16 @@ public:
 
     void UpdateScrubberCounters(TScrubbingInfo counters);
 
+    // Volume configuration and link operations must not overlap with disk
+    // copying, checkpoint creation, snapshot fill, or checkpoints whose data
+    // is still present.
+    bool IsVolumeOperationRestricted() const;
+
+    // Checkpoint creation must not overlap with link creation or disk copying.
+    // Other checkpoint requests are serialized by the checkpoint queue;
+    // existing checkpoints and snapshot fill do not conflict with creation.
+    bool IsCreateCheckpointOperationRestricted() const;
+
 private:
     bool CanPreemptClient(
         const TString& oldClientId,
@@ -897,6 +913,8 @@ private:
     void UpdateLeadershipStatus();
 
     [[nodiscard]] bool IsVolumeClientMigrationInProgress() const;
+
+    [[nodiscard]] bool HasActiveLink() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

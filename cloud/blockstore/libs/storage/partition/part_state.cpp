@@ -41,6 +41,51 @@ double BPFeature(const TBackpressureFeatureConfig& c, double x)
     return (1 - nx) + nx * c.MaxValue;
 }
 
+void InitializeMixedMergedBlobsAndBlocksCounts(
+    const TPartitionChannelsState& channelsState,
+    NProto::TPartitionStats& stats,
+    bool useBlobChannelDataKindForCounters)
+{
+    const bool indexCountersInitialized =
+        (stats.GetMixedBlobsCount() || stats.GetMergedBlobsCount()) &&
+        (stats.GetMixedBlocksCount() || stats.GetMergedBlocksCount());
+
+    // if index counters are not set, initialize them from old channel counters.
+    if (!indexCountersInitialized) {
+        stats.SetMixedIndexBlobsCount(stats.GetMixedBlobsCount());
+        stats.SetMergedIndexBlobsCount(stats.GetMergedBlobsCount());
+        stats.SetMixedIndexBlocksCount(stats.GetMixedBlocksCount());
+        stats.SetMergedIndexBlocksCount(stats.GetMergedBlocksCount());
+    }
+
+    // If channel counters are dissabled and index counters are set, that means
+    // that feature was rolled back, so we need to reset the counters to the
+    // index counters.
+    if (!useBlobChannelDataKindForCounters && indexCountersInitialized) {
+        stats.SetMixedBlobsCount(stats.GetMixedIndexBlobsCount());
+        stats.SetMergedBlobsCount(stats.GetMergedIndexBlobsCount());
+        stats.SetMixedBlocksCount(stats.GetMixedIndexBlocksCount());
+        stats.SetMergedBlocksCount(stats.GetMergedIndexBlocksCount());
+        return;
+    }
+
+    // If there are no channels with kind mixed, all blobs from mixed index
+    // table were written to merged channel. If there are some mixed channels,
+    // we are trying to use them for mixed blobs.
+    if (useBlobChannelDataKindForCounters &&
+        !channelsState.GetChannelsByKind(
+            [](EChannelDataKind kind)
+            { return kind == EChannelDataKind::Mixed; }))
+    {
+        stats.SetMergedBlobsCount(
+            stats.GetMergedBlobsCount() + stats.GetMixedBlobsCount());
+        stats.SetMixedBlobsCount(0);
+        stats.SetMergedBlocksCount(
+            stats.GetMergedBlocksCount() + stats.GetMixedBlocksCount());
+        stats.SetMixedBlocksCount(0);
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,7 +112,8 @@ TPartitionState::TPartitionState(
         ui64 tabletId,
         const std::optional<TMixedBlocksFilterConfig>
             mixedBlocksFilterConfig,
-        bool checkpointAwareCleanupEnabled)
+        bool checkpointAwareCleanupEnabled,
+        bool useBlobChannelDataKindForCounters)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -85,6 +131,7 @@ TPartitionState::TPartitionState(
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
+    , UseBlobChannelDataKindForCounters(useBlobChannelDataKindForCounters)
     , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
@@ -118,8 +165,12 @@ TPartitionState::TPartitionState(
         }
     }
     InitChannels();
-}
 
+    InitializeMixedMergedBlobsAndBlocksCounts(
+        *this,
+        AccessStats(),
+        UseBlobChannelDataKindForCounters);
+}
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
 {
     Y_DEBUG_ABORT_UNLESS(Config.GetBlocksCount() <= Max<ui32>());

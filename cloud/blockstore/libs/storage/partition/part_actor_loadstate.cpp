@@ -269,7 +269,8 @@ void TPartitionActor::CompleteLoadState(
         SharedState,
         TabletID(),
         mixedBlocksFilterConfig,
-        IsCheckpointAwareCleanupEnabled());
+        IsCheckpointAwareCleanupEnabled(),
+        Config->GetUseBlobChannelDataKindForCounters());
 
     CreateFreshBlocksCompanionClient();
 

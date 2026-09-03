@@ -39,7 +39,6 @@ struct TStorageOptions
     bool DropDiscardRequests = false;
     ui32 MaxZeroBlocksSubRequestSize = 0;
     ui32 OptimalIoSize = 0;
-    bool ReadOnly = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

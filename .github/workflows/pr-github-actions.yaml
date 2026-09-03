@@ -41,11 +41,6 @@ defaults:
   run:
     shell: bash
 
-env:
-  allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name,
-    'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
-  large_tests: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'large-tests'))  && 'true' || inputs.large_tests == 'yes' }}
-
 concurrency:
   group: >-
     ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{
@@ -58,6 +53,14 @@ concurrency:
       ) && 'tests' || 'ignored'
     }}
   cancel-in-progress: true
+
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: http.version
+  GIT_CONFIG_VALUE_0: HTTP/1.1
+  allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name,
+    'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
+  large_tests: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'large-tests'))  && 'true' || inputs.large_tests == 'yes' }}
 
 jobs:
   check-running-allowed:

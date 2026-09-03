@@ -1,9 +1,15 @@
 name: Nightly rebuild of all index files
+
 on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
   workflow_call:
+
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: http.version
+  GIT_CONFIG_VALUE_0: HTTP/1.1
 
 jobs:
   index:

@@ -2,10 +2,13 @@
 
 #include <cloud/filestore/libs/storage/fastshard/ipc/ipc.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <silk/fibers/fiber.h>
 
 #include <util/generic/scope.h>
 #include <util/generic/string.h>
+#include <util/string/builder.h>
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -28,6 +31,7 @@ namespace {
 struct TEndpoint: IEndpoint
 {
     int Fd;
+    bool Broken = false;
 
     explicit TEndpoint(int fd)
         : Fd(fd)
@@ -40,28 +44,61 @@ struct TEndpoint: IEndpoint
 
     TResponse Send(const TRequest& req) override
     {
+        if (Broken) {
+            return ErrorResponse("endpoint is broken", 0 /* err */);
+        }
+
         TString reqBuf;
         Y_PROTOBUF_SUPPRESS_NODISCARD req.SerializeToString(&reqBuf);
 
         ui32 lenBe = htonl(static_cast<ui32>(reqBuf.size()));
         int r = SendAll(Fd, &lenBe, sizeof(lenBe));
-        // TODO(#5894): don't abort, return error in resp instead
-        Y_ABORT_UNLESS(r == 0, "send length failed: %d", r);
+        if (r != 0) {
+            return BreakEndpoint("send length failed", r);
+        }
+
         r = SendAll(Fd, reqBuf.data(), reqBuf.size());
-        Y_ABORT_UNLESS(r == 0, "send body failed: %d", r);
+        if (r != 0) {
+            return BreakEndpoint("send body failed", r);
+        }
 
         ui32 respLenBe = 0;
         r = RecvAll(Fd, &respLenBe, sizeof(respLenBe));
-        Y_ABORT_UNLESS(r == 0, "recv length failed: %d", r);
+        if (r != 0) {
+            return BreakEndpoint("recv length failed", r);
+        }
         ui32 respLen = ntohl(respLenBe);
 
         TString respBuf;
         respBuf.ReserveAndResize(respLen);
         r = RecvAll(Fd, respBuf.begin(), respLen);
-        Y_ABORT_UNLESS(r == 0, "recv body failed: %d", r);
+        if (r != 0) {
+            return BreakEndpoint("recv body failed", r);
+        }
 
         TResponse resp;
         Y_PROTOBUF_SUPPRESS_NODISCARD resp.ParseFromString(respBuf);
+        return resp;
+    }
+
+private:
+    TResponse BreakEndpoint(const char* op, int err)
+    {
+        //
+        // A partial send/recv loses the message framing, so no other request
+        // may reuse this connection - all subsequent Send calls fail fast.
+        //
+
+        Broken = true;
+        return ErrorResponse(op, err);
+    }
+
+    static TResponse ErrorResponse(const char* op, int err)
+    {
+        TResponse resp;
+        *resp.MutableError() = MakeError(
+            E_UNAVAILABLE,
+            TStringBuilder() << op << ": " << err);
         return resp;
     }
 };

@@ -104,6 +104,14 @@ bool TActorSystem::Send(IEventHandlePtr ev)
     return ActorSystem->Send(ev.release());
 }
 
+void TActorSystem::Schedule(
+    TDuration delta,
+    IEventHandlePtr ev,
+    ISchedulerCookie* cookie)
+{
+    ActorSystem->Schedule(delta, ev.release(), cookie);
+}
+
 TLog TActorSystem::CreateLog(const TString& componentName)
 {
     if (LogBackend) {

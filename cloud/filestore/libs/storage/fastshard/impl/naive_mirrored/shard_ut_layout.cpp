@@ -109,8 +109,11 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
 {
     TStorageFixture fx;
 
-    auto shard =
-        CreateNaiveMirroredFileSystemShard(ShardNo, fx.Factory, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        fx.Factory,
+        fx.Config);
 
     //
     // Json test.

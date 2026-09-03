@@ -160,8 +160,11 @@ TEST(NaiveMirroredShardErrorTest, CreatesHandles)
 
     TStorageFixture fx;
 
-    auto shard =
-        CreateNaiveMirroredFileSystemShard(ShardNo, fx.Factory, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        fx.Factory,
+        fx.Config);
 
     const TString file1 = "file1";
     const ui32 mode = 0644;

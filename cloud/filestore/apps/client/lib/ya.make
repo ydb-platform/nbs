@@ -2,6 +2,7 @@ LIBRARY(filestore-apps-client-lib)
 
 SRCS(
     add_cluster_node.cpp
+    alter.cpp
     app.cpp
     bootstrap.cpp
     command.cpp

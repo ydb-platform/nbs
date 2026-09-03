@@ -1,5 +1,7 @@
 #include "persistent_storage.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -9,6 +11,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
+#include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -42,12 +45,10 @@ public:
         , LogTag(std::move(logTag))
     {
         SetCounters();
-    }
 
-    NProto::TError Init()
-    {
         if (Storage.IsCorrupted()) {
-            return MakeError(E_FAIL, "Data structure is corrupted");
+            // Reporting corrupted state is handled by TFileRingBuffer
+            return;
         }
 
         NJsonWriter::TBuf json;
@@ -65,9 +66,8 @@ public:
             .EndObject();
 
         STORAGE_INFO(
-            LogTag << " WriteBackCache has been initialized " << json.Str());
-
-        return {};
+            LogTag << " WriteBackCache storage has been initialized "
+                   << json.Str());
     }
 
     bool Empty() const override
@@ -75,7 +75,12 @@ public:
         return Storage.Empty();
     }
 
-    void Visit(const TVisitor& visitor) override
+    bool IsCorrupted() const override
+    {
+        return Storage.IsCorrupted();
+    }
+
+    NProto::TError Visit(const TVisitor& visitor) override
     {
         auto visitResult = Storage.Visit(
             [&visitor](ui32 checksum, ui32 tag, TStringBuf entry)
@@ -84,11 +89,16 @@ public:
                 visitor(tag, {entry.data(), entry.size()});
             });
 
-        // TODO(#1751): To be resolved in
-        // https://github.com/ydb-platform/nbs/pull/6867
-        Y_UNUSED(visitResult);
-
         SetCounters();
+
+        if (HasError(visitResult)) {
+            ReportWriteBackCacheCorruptionError(Sprintf(
+                "%s Storage::Visit failed with an error: %s",
+                LogTag.c_str(),
+                FormatError(visitResult).c_str()));
+        }
+
+        return visitResult;
     }
 
     ui64 GetMaxSupportedAllocationByteCount() const override
@@ -99,38 +109,80 @@ public:
     TResultOrError<char*> Alloc(size_t size) override
     {
         auto allocResult = Storage.Alloc(size);
+
+        SetCounters();
+
         if (HasError(allocResult.Error)) {
+            ReportWriteBackCacheCorruptionError(Sprintf(
+                "%s Storage::Alloc failed with an error: %s",
+                LogTag.c_str(),
+                FormatError(allocResult.Error).c_str()));
             return allocResult.Error;
-        } else {
-            return allocResult.AllocationPtr;
         }
+
+        return allocResult.AllocationPtr;
     }
 
-    void Commit() override
+    NProto::TError Commit(const void* ptr) override
     {
-        auto res = Storage.Commit();
-        Y_ENSURE(
-            !HasError(res),
-            "Failed to commit allocation: " << FormatError(res));
+        auto commitResult = Storage.Commit(ptr);
+
         SetCounters();
+
+        if (HasError(commitResult)) {
+            ReportWriteBackCacheCorruptionError(Sprintf(
+                "%s Storage::Commit failed with an error: %s",
+                LogTag.c_str(),
+                FormatError(commitResult).c_str()));
+        }
+
+        return commitResult;
     }
 
-    void Free(const void* ptr) override
+    NProto::TError Commit(const void* ptr, ui32 crc32c) override
     {
-        auto res = Storage.Free(ptr);
-        Y_ENSURE(
-            !HasError(res),
-            "Failed to free pointer " << ptr << ": " << FormatError(res));
+        auto commitResult = Storage.Commit(ptr, crc32c);
+
         SetCounters();
+
+        if (HasError(commitResult)) {
+            ReportWriteBackCacheCorruptionError(Sprintf(
+                "%s Storage::Commit failed with an error: %s",
+                LogTag.c_str(),
+                FormatError(commitResult).c_str()));
+        }
+
+        return commitResult;
     }
 
-    void SetTag(const void* ptr, ui32 tag) override
+    NProto::TError Free(const void* ptr) override
+    {
+        auto freeResult = Storage.Free(ptr);
+
+        SetCounters();
+
+        if (HasError(freeResult)) {
+            ReportWriteBackCacheCorruptionError(Sprintf(
+                "%s Storage::Free failed with an error: %s",
+                LogTag.c_str(),
+                FormatError(freeResult).c_str()));
+        }
+
+        return freeResult;
+    }
+
+    NProto::TError SetTag(const void* ptr, ui32 tag) override
     {
         auto setTagResult = Storage.SetTag(ptr, tag);
 
-        // TODO(#1751): To be resolved in
-        // https://github.com/ydb-platform/nbs/pull/6867
-        Y_UNUSED(setTagResult);
+        if (HasError(setTagResult)) {
+            ReportWriteBackCacheCorruptionError(Sprintf(
+                "%s Storage::SetTag failed with an error: %s",
+                LogTag.c_str(),
+                FormatError(setTagResult).c_str()));
+        }
+
+        return setTagResult;
     }
 
     void UpdateStats() const override
@@ -157,24 +209,17 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IPersistentStoragePtr> CreateFileRingBufferPersistentStorage(
+IPersistentStoragePtr CreateFileRingBufferPersistentStorage(
     IPersistentStorageStatsPtr stats,
     TPersistentStorageConfig config,
     TLog log,
     TString logTag)
 {
-    auto storage = std::make_shared<TFileRingBufferStorage>(
+    return std::make_shared<TFileRingBufferStorage>(
         std::move(stats),
         std::move(config),
         std::move(log),
         std::move(logTag));
-
-    auto error = storage->Init();
-    if (HasError(error)) {
-        return error;
-    }
-
-    return static_cast<IPersistentStoragePtr>(storage);
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

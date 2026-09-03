@@ -10419,6 +10419,94 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoShouldRejectRequestsWhenVolumeIsKilled(true, true);
     }
 
+    void DoShouldRejectDuplicateWriteBlocksLocalWhenVolumeIsKilled(bool rebootSysTablet)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetOverlappingRequestsPolicy(NProto::EOverlappingRequestsPolicy::ORP_ENABLE);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        volume.AddClient(clientInfo);
+
+        const auto range = TBlockRange64::WithLength(0, 1024);
+        const TString originalBlockContent = GetBlockContent(1);
+        const TString duplicateBlockContent = GetBlockContent(2);
+
+        ui32 droppedResponseCount = 0;
+
+        auto dropPartitionResponses =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksLocalResponse) {
+                ++droppedResponseCount;
+                return true;
+            }
+
+            return false;
+        };
+
+        auto oldFilter = runtime->SetEventFilter(dropPartitionResponses);
+        volume.SendWriteBlocksLocalRequest(
+            range,
+            clientInfo.GetClientId(),
+            originalBlockContent);
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]()
+        {
+            return droppedResponseCount == 1;
+        };
+
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, droppedResponseCount);
+
+        runtime->SetEventFilter(oldFilter);
+
+        constexpr ui32 DuplicateCount = 3;
+
+        for (ui32 i = 0; i < DuplicateCount; ++i) {
+            volume.SendWriteBlocksLocalRequest(
+                range,
+                clientInfo.GetClientId(),
+                duplicateBlockContent);
+        }
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        if (rebootSysTablet) {
+            volume.RebootSysTablet();
+        } else {
+            volume.RebootTablet();
+        }
+
+        for (ui32 i = 0; i < DuplicateCount + 1; ++i) {
+            auto response = volume.RecvWriteBlocksLocalResponse(TDuration::Seconds(1));
+
+            UNIT_ASSERT_C(response, "Request did not receive a response");
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectDuplicateWriteBlocksLocalWhenVolumeUserActorIsKilled)
+    {
+        DoShouldRejectDuplicateWriteBlocksLocalWhenVolumeIsKilled(false);
+    }
+
+    Y_UNIT_TEST(ShouldRejectDuplicateWriteBlocksLocalWhenVolumeSysActorIsKilled)
+    {
+        DoShouldRejectDuplicateWriteBlocksLocalWhenVolumeIsKilled(true);
+    }
+
     Y_UNIT_TEST(ShouldHandleAllocationErrorsWhenUpdatingConfig)
     {
         NProto::TStorageServiceConfig config;

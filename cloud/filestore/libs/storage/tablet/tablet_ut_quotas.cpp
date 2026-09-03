@@ -1,5 +1,6 @@
 #include "tablet.h"
 
+#include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/testlib/helpers.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -91,6 +92,41 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         UNIT_ASSERT_VALUES_EQUAL(200u, quota.GetMaxNodes());
     }
 
+    Y_UNIT_TEST(ShouldRejectSetQuotaPastMaxQuotasLimit)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        for (ui32 i = 1; i <= MaxQuotas; ++i) {
+            tablet.SetQuota(i, 1_GB, 100);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxQuotas,
+            tablet.ListQuotas()->Record.QuotasSize());
+
+        // a brand new QuotaId past the limit is rejected
+        tablet.AssertSetQuotaFailed(MaxQuotas + 1, 1_GB, 100);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxQuotas,
+            tablet.ListQuotas()->Record.QuotasSize());
+
+        // updating an already-existing QuotaId is still allowed at the limit
+        auto quota = tablet.SetQuota(1, 2_GB, 200)->Record.GetQuota();
+        UNIT_ASSERT_VALUES_EQUAL(2_GB, quota.GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(200u, quota.GetMaxNodes());
+
+        // freeing up a slot by deleting one allows a new QuotaId again
+        tablet.DeleteQuota(1);
+        tablet.SetQuota(MaxQuotas + 1, 1_GB, 100);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxQuotas,
+            tablet.ListQuotas()->Record.QuotasSize());
+    }
+
     Y_UNIT_TEST(ShouldRejectZeroQuotaId)
     {
         TTestEnv env;
@@ -134,6 +170,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
+        tablet.SetQuota(1, 1_GB, 10);
 
         auto dirId =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
@@ -168,6 +205,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
+        tablet.SetQuota(1, 1_GB, 10);
 
         auto dirId =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
@@ -297,7 +335,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         UNIT_ASSERT_VALUES_EQUAL(100u, usages[0].GetUsedBytes());
     }
 
-    Y_UNIT_TEST(ShouldNotTrackUsageForUnknownQuotaId)
+    Y_UNIT_TEST(ShouldRejectAttachingToUnknownQuotaId)
     {
         TTestEnv env;
 
@@ -308,15 +346,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         tablet.InitSession("client", "session");
 
         // quota 99 is never defined via SetQuota - attaching a directory to
-        // it and creating nodes under it should not produce a usage entry,
-        // since there's no quota definition to attribute the usage to
+        // it is rejected, same as attaching to any other nonexistent quota
         auto dirId =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
-        tablet.SetNodeAttr(TSetNodeAttrArgs(dirId).SetQuotaId(99));
-        CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
-
-        auto usages = tablet.ListQuotas()->Record.GetUsages();
-        UNIT_ASSERT_VALUES_EQUAL(0, usages.size());
+        tablet.AssertSetNodeAttrFailed(TSetNodeAttrArgs(dirId).SetQuotaId(99));
     }
 
     Y_UNIT_TEST(ShouldRemoveUsageWhenQuotaIsDeleted)
@@ -406,6 +439,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
+        tablet.SetQuota(1, 1_GB, 10);
+        tablet.SetQuota(2, 2_GB, 20);
 
         auto dirId =
             CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));

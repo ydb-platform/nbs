@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/tablet/model/monpage_helpers.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
 
 #include <cloud/storage/core/libs/common/simple_template.h>
@@ -96,17 +97,6 @@ void DumpDirViewerPage(IOutputStream& out, ui64 tabletId, ui32 nodeId)
         {"JS", NResource::Find("js/dir-viewer.js")},
         {"TABLET_ID", ToString(tabletId)},
         {"ROOT_NODE_ID", ToString(nodeId)}}, out);
-}
-
-TString JsonError(const NProto::TError& e)
-{
-    TStringStream ss;
-    NJsonWriter::TBuf writer(NJsonWriter::HEM_DONT_ESCAPE_HTML, &ss);
-    writer.BeginObject();
-    writer.WriteKey("error");
-    writer.WriteString(FormatError(e));
-    writer.EndObject();
-    return ss.Str();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

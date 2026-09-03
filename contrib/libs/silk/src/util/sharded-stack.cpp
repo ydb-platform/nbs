@@ -1,6 +1,7 @@
 #include <silk/util/sharded-stack.h>
 
 #include <silk/util/assert.h>
+#include <silk/util/platform.h>
 #include <silk/util/sanitizers.h>
 
 #include <new>
@@ -44,6 +45,12 @@ ShardedStackBase::~ShardedStackBase() noexcept
 
 void ShardedStackBase::push(StackEntry * entry) noexcept
 {
+    // On libc versions which do not register rseq for new threads the calling
+    // thread may reach this point unregistered - rseq_cpu_start would then
+    // return 0 regardless of the actual CPU and the critical section below
+    // would run without kernel restart protection.
+    ensureRseqRegistered();
+
     for (;;)
     {
         uint32_t cpu = rseq_cpu_start();
@@ -117,6 +124,12 @@ void ShardedStackBase::flush(ProcessorState * state) noexcept
 
 StackEntry * ShardedStackBase::pop() noexcept
 {
+    // On libc versions which do not register rseq for new threads the calling
+    // thread may reach this point unregistered - rseq_cpu_start would then
+    // return 0 regardless of the actual CPU and the critical section below
+    // would run without kernel restart protection.
+    ensureRseqRegistered();
+
     for (;;)
     {
         uint32_t cpu = rseq_cpu_start();

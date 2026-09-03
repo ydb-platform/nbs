@@ -1121,7 +1121,19 @@ private:
         TInstant timestamp,
         TDiskId& affectedDisk);
 
-    bool RestartDeviceMigration(
+    // Returns whether 'deviceId' is retained until the volume acknowledges a
+    // finished migration.
+    bool IsDeviceRetainedForMigrationAck(
+        const TDiskState& disk,
+        const TDeviceId& deviceId) const;
+
+    bool IsActiveMigrationTarget(
+        const TDiskState& disk,
+        const TDeviceId& deviceId) const;
+
+    // Restarts an active migration targeting 'targetId' by rescheduling its
+    // source. Does nothing if 'targetId' is not an active migration target.
+    void TryRestartDeviceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
@@ -1279,7 +1291,7 @@ private:
         const TString& diskId,
         TVector<TDeviceId> uuids);
 
-    void RemoveDeviceFromPendingCleanup(
+    TDiskId RemoveDeviceFromPendingCleanup(
         TDiskRegistryDatabase& db,
         const TDeviceId& deviceId);
 
