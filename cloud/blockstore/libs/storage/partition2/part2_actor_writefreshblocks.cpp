@@ -462,15 +462,12 @@ void TPartitionActor::WriteFreshBlocks(
         State->GetFreshBlockCount() * State->GetBlockSize();
     if (freshByteCount >= Config->GetFreshByteCountHardLimit()) {
         for (auto& r: requestsInBuffer) {
-            ui32 flags = 0;
-            SetProtoFlag(flags, NProto::EF_SILENT);
             auto response = CreateWriteBlocksResponse(
                 r.Data.ReplyLocal,
                 MakeError(
                     E_REJECTED,
                     TStringBuilder() << "FreshByteCountHardLimit exceeded: "
-                                     << freshByteCount,
-                    flags));
+                                     << freshByteCount));
 
             LWTRACK(
                 ResponseSent_Partition,

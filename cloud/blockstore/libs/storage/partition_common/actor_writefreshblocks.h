@@ -55,9 +55,7 @@ inline NProto::TError CheckFreshHardLimits(
         return {};
     }
 
-    ui32 flags = 0;
-    SetProtoFlag(flags, NProto::EF_SILENT);
-    return MakeError(E_REJECTED, std::move(message), flags);
+    return MakeError(E_REJECTED, std::move(message));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

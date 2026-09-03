@@ -10283,8 +10283,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             E_REJECTED,
             response->GetStatus(),
             response->GetErrorReason());
-        UNIT_ASSERT(
-            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
 
         partition.Flush();
 
@@ -10318,9 +10316,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             E_REJECTED,
             zeroResponse->GetStatus(),
             zeroResponse->GetErrorReason());
-        UNIT_ASSERT(HasProtoFlag(
-            zeroResponse->GetError().GetFlags(),
-            NProto::EF_SILENT));
         UNIT_ASSERT_STRING_CONTAINS(
             zeroResponse->GetErrorReason(),
             "FreshLogicalBlocksByteCountHardLimit");
@@ -10331,9 +10326,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             E_REJECTED,
             writeResponse->GetStatus(),
             writeResponse->GetErrorReason());
-        UNIT_ASSERT(HasProtoFlag(
-            writeResponse->GetError().GetFlags(),
-            NProto::EF_SILENT));
         UNIT_ASSERT_STRING_CONTAINS(
             writeResponse->GetErrorReason(),
             "FreshLogicalBlocksByteCountHardLimit");
@@ -14890,8 +14882,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             E_REJECTED,
             response->GetStatus(),
             response->GetErrorReason());
-        UNIT_ASSERT(
-            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
 
         partition.Flush();
 
@@ -16692,8 +16682,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             E_REJECTED,
             response->GetStatus(),
             response->GetErrorReason());
-        UNIT_ASSERT(
-            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
 
         partition.Drain();
     }
