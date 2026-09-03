@@ -1045,6 +1045,10 @@ void TStorageServiceActor::HandleReadData(
 
     FILESTORE_TRACK(RequestReceived_Service, msg->CallContext, "ReadData");
 
+    if (TryHandleControlNamespaceReadData(ctx, ev)) {
+        return;
+    }
+
     const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);

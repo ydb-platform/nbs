@@ -341,6 +341,7 @@ public:
     ui64 GetShardBalancerPrecisionBytes() const;
 
     bool GetDirectoryCreationInShardsEnabled() const;
+    bool GetEnableControlNamespace() const;
 
     ui32 GetMaxShardManagementRequestsInFlight() const;
 
