@@ -1,6 +1,6 @@
 name: Orchestrator Proxy
 run-name: ${{ format('Orchestrator Proxy ({0} {1})', github.event_name, inputs.run_heavy == 'yes' && 'heavy' || 'light') }}
-      
+
 on:
   workflow_dispatch:
     inputs:
@@ -45,6 +45,11 @@ on:
 
 concurrency:
   group: orchestrator-proxy
+
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: http.version
+  GIT_CONFIG_VALUE_0: HTTP/1.1
 
 jobs:
   

@@ -1,6 +1,6 @@
 name: Orchestrator (heavy)
 run-name: Orchestrator (heavy)
-      
+
 on:
   # schedule:
   #   - cron: '1,16,31,46 * * * *'
@@ -9,6 +9,11 @@ on:
 concurrency:
   group: orchestrator-heavy
   cancel-in-progress: true
+
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: http.version
+  GIT_CONFIG_VALUE_0: HTTP/1.1
 
 jobs:
   orchestrator:

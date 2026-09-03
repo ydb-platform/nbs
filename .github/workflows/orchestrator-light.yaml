@@ -1,6 +1,6 @@
 name: Orchestrator (light)
 run-name: Orchestrator (light)
-      
+
 on:
   schedule:
     - cron: '5,20,35,50 * * * *'
@@ -9,6 +9,11 @@ on:
 concurrency:
   group: orchestrator-light
   cancel-in-progress: true
+
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: http.version
+  GIT_CONFIG_VALUE_0: HTTP/1.1
 
 jobs:
   orchestrator:
