@@ -81,10 +81,10 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(BufferPool.MaxFreeChunks, BufferPool.MaxFreeChunks);
                 ENTRY(ResolveTimeout, ResolveTimeout.ToString());
                 ENTRY(FlushTimeout, FlushTimeout.ToString());
-                ENTRY(QpRetryCount, static_cast<ui32>(QpRetryCount));
-                ENTRY(QpRnrRetryCount, static_cast<ui32>(QpRnrRetryCount));
                 ENTRY(QpTimeout, static_cast<ui32>(QpTimeout));
+                ENTRY(QpRetryCount, static_cast<ui32>(QpRetryCount));
                 ENTRY(QpMinRnrTimer, static_cast<ui32>(QpMinRnrTimer));
+                ENTRY(QpRnrRetryCount, static_cast<ui32>(QpRnrRetryCount));
                 ENTRY(UseMemoryWindows, UseMemoryWindows);
                 ENTRY(MemoryWindowsPoolSize, MemoryWindowsPoolSize);
             }

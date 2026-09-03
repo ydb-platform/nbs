@@ -13,6 +13,25 @@ namespace NCloud::NStorage::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define SET(param, ...)                            \
+    if (const auto& value = config.Get##param()) { \
+        result.param = __VA_ARGS__(value);         \
+    }
+
+// for fields explicitly marked optional
+#define SET_OPTIONAL(param, ...)                  \
+    if (config.Has##param()) {                    \
+        const auto& value = config.Get##param();  \
+        result.param = __VA_ARGS__(value);        \
+    }
+
+#define SET_NESTED(param1, param2, ...)                           \
+    if (const auto& value = config.Get##param1().Get##param2()) { \
+        result.param1.param2 = __VA_ARGS__(value);                \
+    }
+
+////////////////////////////////////////////////////////////////////////////////
+
 inline EWaitMode ConvertRdmaWaitMode(NProto::EWaitMode mode)
 {
     switch (mode) {
@@ -36,16 +55,6 @@ inline TClientConfig CreateClientConfig(const NProto::TRdmaClient& config)
     result.SendQueueSize = 0;
     result.RecvQueueSize = 0;
 
-#define SET(param, ...)                            \
-    if (const auto& value = config.Get##param()) { \
-        result.param = __VA_ARGS__(value);         \
-    }
-
-#define SET_NESTED(param1, param2, ...)                           \
-    if (const auto& value = config.Get##param1().Get##param2()) { \
-        result.param1.param2 = __VA_ARGS__(value);                \
-    }
-
     SET(QueueSize);
     SET(MaxBufferSize);
     SET(WaitMode, ConvertRdmaWaitMode);
@@ -62,12 +71,13 @@ inline TClientConfig CreateClientConfig(const NProto::TRdmaClient& config)
     SET(RecvQueueSize);
     SET(ResolveTimeout, TDuration::MilliSeconds);
     SET(FlushTimeout, TDuration::MilliSeconds);
-    SET(QpRetryCount);
-    SET(QpRnrRetryCount);
-    SET(QpTimeout);
-    SET(QpMinRnrTimer);
     SET(UseMemoryWindows);
     SET(MemoryWindowsPoolSize);
+
+    SET_OPTIONAL(QpRetryCount);
+    SET_OPTIONAL(QpRnrRetryCount);
+    SET_OPTIONAL(QpTimeout);
+    SET_OPTIONAL(QpMinRnrTimer);
 
     SET_NESTED(BufferPool, ChunkSize);
     SET_NESTED(BufferPool, MaxChunkAlloc);
@@ -80,9 +90,6 @@ inline TClientConfig CreateClientConfig(const NProto::TRdmaClient& config)
     if (result.RecvQueueSize == 0 && result.QueueSize > 0) {
         result.RecvQueueSize = result.QueueSize;
     }
-
-#undef SET_NESTED
-#undef SET
 
     return result;
 }
@@ -97,16 +104,6 @@ inline TServerConfig CreateServerConfig(const NProto::TRdmaServer& config)
     TServerConfig result;
     result.SendQueueSize = 0;
     result.RecvQueueSize = 0;
-
-#define SET(param, ...)                            \
-    if (const auto& value = config.Get##param()) { \
-        result.param = __VA_ARGS__(value);         \
-    }
-
-#define SET_NESTED(param1, param2, ...)                           \
-    if (const auto& value = config.Get##param1().Get##param2()) { \
-        result.param1.param2 = __VA_ARGS__(value);                \
-    }
 
     SET(Backlog);
     SET(QueueSize);
@@ -123,10 +120,11 @@ inline TServerConfig CreateServerConfig(const NProto::TRdmaServer& config)
     SET(SendQueueSize);
     SET(RecvQueueSize);
     SET(StrictValidation);
-    SET(QpRetryCount);
-    SET(QpRnrRetryCount);
-    SET(QpTimeout);
-    SET(QpMinRnrTimer);
+
+    SET_OPTIONAL(QpRetryCount);
+    SET_OPTIONAL(QpRnrRetryCount);
+    SET_OPTIONAL(QpTimeout);
+    SET_OPTIONAL(QpMinRnrTimer);
 
     SET_NESTED(BufferPool, ChunkSize);
     SET_NESTED(BufferPool, MaxChunkAlloc);
@@ -140,9 +138,6 @@ inline TServerConfig CreateServerConfig(const NProto::TRdmaServer& config)
         result.RecvQueueSize = result.QueueSize;
     }
 
-#undef SET_NESTED
-#undef SET
-
     return result;
 }
 
@@ -150,5 +145,10 @@ inline TServerConfigPtr CreateServerConfigPtr(const NProto::TRdmaServer& config)
 {
     return std::make_shared<TServerConfig>(CreateServerConfig(config));
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+#undef SET_NESTED
+#undef SET
 
 }   // namespace NCloud::NStorage::NRdma
