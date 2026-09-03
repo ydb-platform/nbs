@@ -315,6 +315,12 @@ func (t *restoreFilesystemShardTask) Run(
 		return err
 	}
 
+	taskID := execCtx.GetTaskID()
+	err = t.storage.LockFilesystemSnapshot(ctx, t.snapshotID(), taskID)
+	if err != nil {
+		return err
+	}
+
 	client, err := t.factory.NewClient(ctx, t.request.GetShard().GetZoneId())
 	if err != nil {
 		return err
@@ -336,7 +342,11 @@ func (t *restoreFilesystemShardTask) Run(
 		return err
 	}
 
-	return nil
+	return t.storage.UnlockFilesystemSnapshot(
+		ctx,
+		t.snapshotID(),
+		taskID,
+	)
 }
 
 func (t *restoreFilesystemShardTask) Cancel(
@@ -348,6 +358,7 @@ func (t *restoreFilesystemShardTask) Cancel(
 		return nil
 	}
 
+	taskID := execCtx.GetTaskID()
 	client, err := t.factory.NewClient(ctx, t.request.GetShard().GetZoneId())
 	if err != nil {
 		return err
@@ -359,7 +370,11 @@ func (t *restoreFilesystemShardTask) Cancel(
 		return err
 	}
 
-	return nil
+	return t.storage.UnlockFilesystemSnapshot(
+		ctx,
+		t.snapshotID(),
+		taskID,
+	)
 }
 
 func (t *restoreFilesystemShardTask) GetMetadata(
