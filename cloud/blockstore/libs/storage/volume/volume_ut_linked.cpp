@@ -29,19 +29,18 @@ using namespace NTestVolume;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class ECheckpointBehaviour
-{
-    None,
-    CreateBeforeLink,
-    CreateAfterLink,
-    CreateThenDelete,
-};
-
 enum class ERebootBehaviour
 {
     RebootLeader,
     RebootFollower,
     RebootBoth,
+};
+
+enum class ECheckpointBeforeLink
+{
+    None,
+    DataPresent,
+    Deleted,
 };
 
 namespace {
@@ -738,9 +737,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         TFixture& fixture,
         NProto::EStorageMediaKind leaderMediaType,
         NProto::EStorageMediaKind followerMediaType,
-        ECheckpointBehaviour checkpoint,
         bool isMultipartition = false,
-        bool verifySourcePartitionStopped = false)
+        bool verifySourcePartitionStopped = false,
+        ECheckpointBeforeLink checkpoint = ECheckpointBeforeLink::None)
     {
         TActorId latestSourcePartitionActor;
         TActorId migrationSourcePartitionActor;
@@ -864,8 +863,11 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 'a');
         }
 
-        if (checkpoint == ECheckpointBehaviour::CreateBeforeLink) {
+        if (checkpoint != ECheckpointBeforeLink::None) {
             fixture.CreateCheckpoint(leaderMediaType);
+        }
+        if (checkpoint == ECheckpointBeforeLink::Deleted) {
+            fixture.DeleteCheckpoint();
         }
 
         // Link volumes
@@ -876,7 +878,21 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             .FollowerDiskId = "vol2",
             .FollowerShardId = "su2"};
         {
-            auto response = volume1.LinkLeaderVolumeToFollower(link);
+            volume1.SendLinkLeaderVolumeToFollowerRequest(link);
+            auto response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
+
+            if (checkpoint == ECheckpointBeforeLink::DataPresent) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_TRY_AGAIN,
+                    response->GetStatus(),
+                    response->GetErrorReason());
+                return;
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
             link.LinkUUID = response->Record.GetLinkUUID();
 
             UNIT_ASSERT_EQUAL(
@@ -888,15 +904,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             volume1.ReconnectPipe();
             volume1.AddClient(clientInfo1);
         };
-
-        if (checkpoint == ECheckpointBehaviour::CreateAfterLink) {
-            fixture.CreateCheckpoint(leaderMediaType);
-        }
-
-        if (checkpoint == ECheckpointBehaviour::CreateThenDelete) {
-            fixture.CreateCheckpoint(leaderMediaType);
-            fixture.DeleteCheckpoint();
-        }
 
         // Send WriteBlocks and ZeroBlocks to leader during migration
         size_t writtenBlockCount = 0;
@@ -923,12 +930,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             // when the volume was restarted.
             volume1.ReconnectPipe();
             volume1.WaitReady();
-        }
-
-        if (checkpoint == ECheckpointBehaviour::CreateBeforeLink ||
-            checkpoint == ECheckpointBehaviour::CreateAfterLink)
-        {
-            fixture.WaitCheckpointReady();
         }
 
         // Check volumes content match.
@@ -959,8 +960,29 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         DoShouldPrepareFollowerVolume(
             *this,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectLinkWhileCheckpointDataIsPresent, TFixture)
+    {
+        DoShouldPrepareFollowerVolume(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD,
-            ECheckpointBehaviour::None);
+            false,
+            false,
+            ECheckpointBeforeLink::DataPresent);
+    }
+
+    Y_UNIT_TEST_F(ShouldPrepareFollowerVolumeAfterCheckpointDeletion, TFixture)
+    {
+        DoShouldPrepareFollowerVolume(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD,
+            false,
+            false,
+            ECheckpointBeforeLink::Deleted);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_NRD, TFixture)
@@ -968,8 +990,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         DoShouldPrepareFollowerVolume(
             *this,
             NProto::STORAGE_MEDIA_SSD,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            ECheckpointBehaviour::None);
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_NRD_NRD, TFixture)
@@ -977,8 +998,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         DoShouldPrepareFollowerVolume(
             *this,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            ECheckpointBehaviour::None);
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_MIRROR, TFixture)
@@ -986,8 +1006,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         DoShouldPrepareFollowerVolume(
             *this,
             NProto::STORAGE_MEDIA_SSD,
-            NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            ECheckpointBehaviour::None);
+            NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_MIRROR_SSD, TFixture)
@@ -995,8 +1014,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         DoShouldPrepareFollowerVolume(
             *this,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            NProto::STORAGE_MEDIA_SSD,
-            ECheckpointBehaviour::None);
+            NProto::STORAGE_MEDIA_SSD);
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_MultiPartition_NRD, TFixture)
@@ -1005,7 +1023,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            ECheckpointBehaviour::None,
             true);
     }
 
@@ -1015,7 +1032,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD,
-            ECheckpointBehaviour::None,
             true);
     }
 
@@ -1026,50 +1042,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             NProto::STORAGE_MEDIA_SSD,
             NProto::STORAGE_MEDIA_SSD);
         */
-    }
-
-    Y_UNIT_TEST_F(
-        ShouldPrepareFollowerVolume_NRD_SSD_WithCheckpointBefore,
-        TFixture)
-    {
-        DoShouldPrepareFollowerVolume(
-            *this,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            NProto::STORAGE_MEDIA_SSD,
-            ECheckpointBehaviour::CreateBeforeLink);
-    }
-
-    Y_UNIT_TEST_F(
-        ShouldPrepareFollowerVolume_NRD_SSD_WithCheckpointAfter,
-        TFixture)
-    {
-        DoShouldPrepareFollowerVolume(
-            *this,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            NProto::STORAGE_MEDIA_SSD,
-            ECheckpointBehaviour::CreateAfterLink);
-    }
-
-    Y_UNIT_TEST_F(
-        ShouldPrepareFollowerVolume_NRD_SSD_WithCheckpointCreateThenDelete,
-        TFixture)
-    {
-        DoShouldPrepareFollowerVolume(
-            *this,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            NProto::STORAGE_MEDIA_SSD,
-            ECheckpointBehaviour::CreateThenDelete);
-    }
-
-    Y_UNIT_TEST_F(
-        ShouldPrepareFollowerVolume_SSD_NRD_WithCheckpointAfter,
-        TFixture)
-    {
-        DoShouldPrepareFollowerVolume(
-            *this,
-            NProto::STORAGE_MEDIA_SSD,
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            ECheckpointBehaviour::CreateAfterLink);
     }
 
     void DoShouldPrepareFollowerVolumeWithReboot(
@@ -1334,7 +1306,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             NProto::STORAGE_MEDIA_SSD,
-            ECheckpointBehaviour::None,
             false,   // isMultipartition
             true     // verifySourcePartitionStopped
         );
@@ -1346,7 +1317,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
             NProto::STORAGE_MEDIA_SSD,
-            ECheckpointBehaviour::None,
             false,   // isMultipartition
             true     // verifySourcePartitionStopped
         );
