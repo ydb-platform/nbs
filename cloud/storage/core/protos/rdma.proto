@@ -56,18 +56,23 @@ message TRdmaServer
 
     // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 7].
-    uint32 QpRetryCount = 18;
+    optional uint32 QpRetryCount = 18;
+
     // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 7].
-    uint32 QpRnrRetryCount = 19;
+    // 7 means infinite retries.
+    optional uint32 QpRnrRetryCount = 19;
+
     // Sets the "timeout" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 31].
     // The resulting timeout is calculated as 4096*2^{QpTimeout} microseconds.
     // 0 means infinite timeout.
-    uint32 QpTimeout = 20;
+    optional uint32 QpTimeout = 20;
+
     // Sets the "min_rnr_timer" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 31].
-    uint32 QpMinRnrTimer = 21;
+    // See TRdmaClient::QpMinRnrTimer comment for the value reference
+    optional uint32 QpMinRnrTimer = 21;
 }
 
 message TRdmaClient
@@ -106,18 +111,18 @@ message TRdmaClient
 
     // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 7].
-    uint32 QpRetryCount = 18;
+    optional uint32 QpRetryCount = 18;
 
     // Sets the "retry_cnt" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 7].
     // 7 means infinite retries.
-    uint32 QpRnrRetryCount = 19;
+    optional uint32 QpRnrRetryCount = 19;
 
     // Sets the "timeout" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 31].
     // The resulting timeout is calculated as 4096*2^{QpTimeout} microseconds.
     // 0 means infinite timeout.
-    uint32 QpTimeout = 20;
+    optional uint32 QpTimeout = 20;
 
     // Sets the "min_rnr_timer" parameter in the "ibv_qp_attr" for
     // "ibv_modify_qp()" function. Valid values are in range [0, 31].
@@ -130,7 +135,7 @@ message TRdmaClient
     // 5 - 60     | 13 - 960  | 21 - 15360 | 29 - 245760
     // 6 - 80     | 14 - 1280 | 22 - 20480 | 30 - 327680
     // 7 - 120    | 15 - 1920 | 23 - 30720 | 31 - 491520
-    uint32 QpMinRnrTimer = 21;
+    optional uint32 QpMinRnrTimer = 21;
 
     // Use memory windows to invalidate request buffers after completion.
     bool UseMemoryWindows = 22;
