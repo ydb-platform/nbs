@@ -32,7 +32,8 @@ void WriteFile(TString filePath, TString data, const TActorContext& ctx)
         TFileLock lock(tmpFilePath);
 
         if (lock.TryAcquire()) {
-            Y_DEFER {
+            Y_DEFER
+            {
                 lock.Release();
             };
 
@@ -43,32 +44,32 @@ void WriteFile(TString filePath, TString data, const TActorContext& ctx)
         } else {
             auto message = TStringBuilder()
                 << "failed to acquire lock on file: " << tmpFilePath;
+
             error = MakeError(E_IO, std::move(message));
         }
     } catch (...) {
         error = MakeError(E_FAIL, CurrentExceptionMessage());
     }
 
-    if (!SUCCEEDED(error.GetCode()))
-    {
-
+    if (HasError(error)) {
         LOG_ERROR_S(
-            ctx,
+                ctx,
             TBlockStoreComponents::SERVICE,
             TStringBuilder()
                 << "Failed to write manually preempted volumes: "
                 << error);
+
         ReportManuallyPreemptedVolumesFileError(error.GetMessage());
 
         try {
             tmpFilePath.DeleteIfExists();
         } catch (...) {
-            LOG_WARN_S(ctx,
+            LOG_WARN_S(
+                ctx,
                 TBlockStoreComponents::SERVICE,
                 "ServiceActorSyncManuallyPreemptedVolumes: failed to delete temporary file: "
                 << CurrentExceptionMessage());
         }
-
     }
 }
 
