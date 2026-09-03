@@ -917,7 +917,8 @@ message TStorageConfig
     // background task that destroys the deferred nodes.
     optional uint32 MaxDeferredNodeDestructionsPerTx = 543;
 
-    // Limits the number of shards used for nodes created in one directory.
+    // Limits the number of shards used for nodes created in one directory
+    // when ShardBalancerPolicy is SBP_WEIGHTED_DETERMINISTIC.
     // Zero means that all shards are used.
     optional uint32 ShardsPerDirectoryCount = 544;
 }

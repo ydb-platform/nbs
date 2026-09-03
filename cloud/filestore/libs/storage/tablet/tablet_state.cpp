@@ -136,6 +136,13 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
     // It's a protection from division by zero in a shard balancer.
     const ui32 blockSize = GetBlockSize() ? GetBlockSize() : DefaultBlockSize;
 
+    // The restriction should apply only when directories are distributed across
+    // shards.
+    const ui32 shardsPerDirectoryCount =
+        config.GetDirectoryCreationInShardsEnabled()
+            ? config.GetShardsPerDirectoryCount()
+            : 0;
+
     if (config.GetShardBalancerPolicy() == NProto::SBP_WEIGHTED_DETERMINISTIC &&
         !config.GetStrictFileSystemSizeEnforcementEnabled())
     {
@@ -157,7 +164,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
             config.GetMaxFileBlocks(),
             config.GetShardBalancerDesiredFreeSpaceReserve(),
             config.GetShardBalancerMinFreeSpaceReserve(),
-            config.GetShardsPerDirectoryCount(),
+            shardsPerDirectoryCount,
             TVector<TString>(fileShardIds.begin(), fileShardIds.end()));
 
         THashSet<TString> fileShardIdSet(
@@ -179,7 +186,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
         config.GetMaxFileBlocks(),
         config.GetShardBalancerDesiredFreeSpaceReserve(),
         config.GetShardBalancerMinFreeSpaceReserve(),
-        config.GetShardsPerDirectoryCount(),
+        shardsPerDirectoryCount,
         std::move(balancerShardIds));
 }
 

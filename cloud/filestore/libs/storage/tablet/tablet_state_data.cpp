@@ -1575,15 +1575,10 @@ NProto::TError TIndexTabletState::SelectShard(
 
     // ShardNo is used as a hint to the shard balancer. The balancer uses this
     // hint to calculate a set of shards for parentNodeId.
-    auto e = balancer->SelectShard(
+    return balancer->SelectShard(
         fileSize,
         shardId,
         ExtractShardNo(parentNodeId) /*hint*/);
-    if (HasError(e)) {
-        return e;
-    }
-
-    return e;
 }
 
 NProto::TError TIndexTabletState::UpdateShardBalancer(

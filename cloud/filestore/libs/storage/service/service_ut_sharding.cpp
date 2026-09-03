@@ -6170,7 +6170,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         for (ui64 i = 0; i < shardCount; ++i) {
             const auto& shardStats = stats.GetShardStats(i);
             const ui64 shardSize = shardStats.GetUsedBlocksCount() * blockSize;
-            if ( dir2Shards.contains(i+1) || dir4Shards.contains(i+1) ) {
+            if (dir2Shards.contains(i + 1) || dir4Shards.contains(i + 1)) {
                 minShardSize = Min<ui64>(minShardSize, shardSize);
                 maxShardSize = Max<ui64>(maxShardSize, shardSize);
             } else {
@@ -6179,6 +6179,54 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         UNIT_ASSERT_LE(static_cast<double>(maxShardSize) / minShardSize, 1.6);
+    }
+
+    Y_UNIT_TEST(
+        ShouldIgnoreDirectoryRestrictionWhenDirectoryCreationInShardsDisabled)
+    {
+        constexpr ui64 blockSize = 4_KB;
+        constexpr ui64 shardCount = 8;
+        constexpr ui64 fsSize = 4_MB + 100_KB;
+        const ui64 shardAllocationUnit = fsSize / shardCount;
+
+        NProto::TStorageConfig config;
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        config.SetShardBalancerPolicy(NProto::SBP_WEIGHTED_DETERMINISTIC);
+        config.SetDirectoryCreationInShardsEnabled(false);
+        config.SetShardsPerDirectoryCount(4);
+
+        TTestEnv env({}, config);
+        const ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateFileStore(fsId, fsSize / blockSize);
+        WaitForTabletStart(service);
+
+        const auto headers = service.InitSession(fsId, "client");
+        const auto directory = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        const ui64 directoryId = directory->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(directoryId));
+
+        TSet<ui32> usedShards;
+        for (ui32 i = 0; i < shardCount; ++i) {
+            const auto response = service.CreateHandle(
+                headers,
+                fsId,
+                directoryId,
+                TStringBuilder() << "file" << i,
+                TCreateHandleArgs::CREATE);
+            usedShards.insert(
+                ExtractShardNo(response->Record.GetNodeAttr().GetId()));
+        }
+
+        const TSet<ui32> expectedShards = {1, 2, 3, 4, 5, 6, 7, 8};
+        UNIT_ASSERT_VALUES_EQUAL(expectedShards, usedShards);
     }
 
     SERVICE_TEST(ShouldAddExplicitShardCountAutomaticallyUponResize)

@@ -185,7 +185,7 @@ public:
 // a shard with score N is selected N + 1 times during a complete traversal.
 //
 // For each hint, the traversal is limited to ShardsPerDirectoryCount shards
-// immediately following the hinted shard. The shard list is treated as
+// starting with the shard at hint % Metas.size(). The shard list is treated as
 // circular, and each normalized hint has an independent traversal state.
 //
 // For example, five shards with scores {0, 2, 4, 3, 1} are visited according

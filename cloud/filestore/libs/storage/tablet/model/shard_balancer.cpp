@@ -357,7 +357,7 @@ void TShardBalancerWeightedDeterministic::CalcNextShard()
 
 void TShardBalancerWeightedDeterministic::UpdateIterators()
 {
-    // With empty Metas, the balancer does not make any sense and
+    // When Metas is empty, the balancer does not make any sense and
     // SelectShard returns an error.
     if (Metas.empty()) {
         return;
