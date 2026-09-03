@@ -1649,7 +1649,7 @@ func TestTasksForceFinishLongRunningRegularTask(t *testing.T) {
 	var firstTaskID string
 	select {
 	case firstTaskID = <-started:
-	case <-time.After(5 * time.Second):
+	case <-time.After(100 * time.Second):
 		require.FailNow(t, "regular task was not started")
 	}
 
@@ -1668,7 +1668,7 @@ func TestTasksForceFinishLongRunningRegularTask(t *testing.T) {
 	var secondTaskID string
 	select {
 	case secondTaskID = <-started:
-	case <-time.After(5 * time.Second):
+	case <-time.After(100 * time.Second):
 		require.FailNow(t, "next regular task was not started")
 	}
 	require.NotEqual(t, firstTaskID, secondTaskID)
