@@ -25,7 +25,11 @@ using TDevicePoolConfigs = THashMap<TString, NProto::TDevicePoolConfig>;
 
 class TDeviceList
 {
+public:
     using TDeviceId = TString;
+    using TEraseIdempotencyKey = ui64;
+
+private:
     using TDiskId = TString;
     using TNodeId = ui32;
 
@@ -64,7 +68,7 @@ private:
     THashMap<TDeviceId, NProto::TDeviceConfig> AllDevices;
     THashMap<TNodeId, TNodeDevices> NodeDevices;
     THashMap<TDeviceId, TDiskId> AllocatedDevices;
-    THashSet<TDeviceId> DirtyDevices;
+    THashMap<TDeviceId, TEraseIdempotencyKey> DirtyDevices;
     THashMap<TDeviceId, NProto::TSuspendedDevice> SuspendedDevices;
     THashMap<NProto::EDevicePoolKind, TVector<TString>> PoolKind2PoolNames;
     THashMap<TString, ui32> PoolName2DeviceCount;
@@ -163,6 +167,8 @@ public:
     void MarkDeviceAsDirty(const TDeviceId& uuid);
 
     [[nodiscard]] bool IsDirtyDevice(const TDeviceId& uuid) const;
+    [[nodiscard]] TEraseIdempotencyKey GetEraseIdempotencyKey(
+        const TDeviceId& deviceId) const;
     [[nodiscard]] NProto::EDeviceState GetDeviceState(const TDeviceId& uuid) const;
 
     void SuspendDevice(const TDeviceId& ids);

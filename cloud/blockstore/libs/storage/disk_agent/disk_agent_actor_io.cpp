@@ -204,7 +204,7 @@ void TDiskAgentActor::PerformIO(
         deviceUUID.c_str(),
         clientId.c_str());
 
-    if (SecureErasePendingRequests.contains(deviceUUID)) {
+    if (SecureEraseState.IsInProgress(deviceUUID)) {
         const bool isHealthCheckRead =
             IsReadDeviceMethod<TMethod> && clientId == CheckHealthClientId;
         const bool isBackgroundOpsRead =

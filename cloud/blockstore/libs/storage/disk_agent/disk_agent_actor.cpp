@@ -235,14 +235,13 @@ void TDiskAgentActor::HandlePoisonPill(
 
     State->StopTarget();
 
-    for (auto& [uuid, pendingRequests]: SecureErasePendingRequests) {
-        for (auto& requestInfo: pendingRequests) {
+    for (const auto& [uuid, erase]: SecureEraseState.GetSecureErases()) {
+        for (auto& requestInfo: erase.Requests) {
             NCloud::Reply(
                 ctx,
                 *requestInfo,
                 std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
-                    MakeError(E_REJECTED, "DiskAgent is dead")
-                ));
+                    MakeError(E_REJECTED, "DiskAgent is dead")));
         }
     }
 

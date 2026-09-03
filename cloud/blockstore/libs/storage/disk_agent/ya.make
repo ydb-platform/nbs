@@ -27,6 +27,7 @@ SRCS(
     journalled_device.cpp
     rdma_target.cpp
     recent_blocks_tracker.cpp
+    secure_erase_state.cpp
     spdk_initializer.cpp
     storage_initializer.cpp
     storage_with_stats.cpp

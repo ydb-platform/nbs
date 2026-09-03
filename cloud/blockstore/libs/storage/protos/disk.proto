@@ -1168,6 +1168,10 @@ message TSecureEraseDeviceRequest
     THeaders Headers = 1;
 
     string DeviceUUID = 2;
+
+    // If a request contains a key and an erase with the same key has already
+    // completed, the result of that erase is returned immediately.
+    uint64 IdempotencyKey = 3;
 }
 
 message TSecureEraseDeviceResponse

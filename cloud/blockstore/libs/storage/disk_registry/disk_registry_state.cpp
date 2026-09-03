@@ -4174,6 +4174,12 @@ TVector<NProto::TDeviceConfig> TDiskRegistryState::GetDirtyDevices() const
     return DeviceList.GetDirtyDevices();
 }
 
+TDeviceList::TEraseIdempotencyKey
+TDiskRegistryState::GetEraseIdempotencyKey(const TDeviceId& deviceId) const
+{
+    return DeviceList.GetEraseIdempotencyKey(deviceId);
+}
+
 bool TDiskRegistryState::IsKnownDevice(const TString& uuid) const
 {
     return std::any_of(

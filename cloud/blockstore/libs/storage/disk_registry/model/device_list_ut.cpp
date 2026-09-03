@@ -91,6 +91,23 @@ TDevicePoolConfigs CreateDevicePoolConfigs(
 
 Y_UNIT_TEST_SUITE(TDeviceListTest)
 {
+    Y_UNIT_TEST(ShouldKeepEraseIdempotencyKeyWhileDeviceIsDirty)
+    {
+        TDeviceList deviceList(
+            {"uuid"},
+            {},
+            {},
+            false,
+            false);
+
+        const auto key = deviceList.GetEraseIdempotencyKey("uuid");
+        deviceList.MarkDeviceAsDirty("uuid");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            key,
+            deviceList.GetEraseIdempotencyKey("uuid"));
+    }
+
     Y_UNIT_TEST(ShouldAllocateSingleDevice)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
