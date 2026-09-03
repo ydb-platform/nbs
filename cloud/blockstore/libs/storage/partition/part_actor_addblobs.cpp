@@ -116,9 +116,9 @@ public:
                 const auto& cm = State.GetCompactionMap();
                 const auto blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
                 auto& rangeInfo = CompactionCounters[blockIndex];
-                rangeInfo.BlobsSkippedByCompaction =
+                rangeInfo.BlobsSkippedByCompaction +=
                     Args.MixedBlobCompactionInfos[i].BlobsSkippedByCompaction;
-                rangeInfo.BlocksSkippedByCompaction =
+                rangeInfo.BlocksSkippedByCompaction +=
                     Args.MixedBlobCompactionInfos[i].BlocksSkippedByCompaction;
             }
         }
@@ -143,9 +143,9 @@ public:
                 Y_DEBUG_ABORT_UNLESS(
                     blockIndex == cm.GetRangeStart(blob.BlockRange.End));
                 auto& rangeInfo = CompactionCounters[blockIndex];
-                rangeInfo.BlobsSkippedByCompaction =
+                rangeInfo.BlobsSkippedByCompaction +=
                     Args.MergedBlobCompactionInfos[i].BlobsSkippedByCompaction;
-                rangeInfo.BlocksSkippedByCompaction =
+                rangeInfo.BlocksSkippedByCompaction +=
                     Args.MergedBlobCompactionInfos[i].BlocksSkippedByCompaction;
             }
         }
