@@ -221,7 +221,7 @@ void TIndexTabletActor::HandleForcedTabletOperation(
         }
 
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedRangeOperationResponse>(error);
+            TEvIndexTabletPrivate::TEvForcedTabletOperationResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
