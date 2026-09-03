@@ -87,6 +87,12 @@ public:
 
         auto response = RunCompaction();
 
+        // Nothing to process
+        if (response.GetError().GetCode() == S_FALSE) {
+            Cerr << "Command canceled: " << response.GetError();
+            return true;
+        }
+
         while (true) {
             NProtoPrivate::TForcedOperationStatusRequest statusRequest;
             statusRequest.SetFileSystemId(FileSystemId);

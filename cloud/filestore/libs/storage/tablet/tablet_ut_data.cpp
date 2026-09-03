@@ -3933,6 +3933,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction);
     }
 
+    TABLET_TEST(ShouldRespondToForcedRangeOperationWithEmptyRanges)
+    {
+        TTestEnv env(testEnvConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto response = tablet.ForcedOperation(
+            NProtoPrivate::TForcedOperationRequest::E_COMPACTION);
+        UNIT_ASSERT(response->Record.GetOperationId().empty());
+        UNIT_ASSERT_VALUES_EQUAL(response->Record.GetError().GetCode(), S_FALSE);
+    }
+
     TABLET_TEST(ShouldRetryForcedCompaction)
     {
         TTestEnv env(testEnvConfig);
