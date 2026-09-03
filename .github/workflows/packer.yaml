@@ -1,6 +1,7 @@
 name: Build VM Image
 run-name: Build VM Image ${{ github.event.workflow_run.event }} update_image_id:${{ inputs.update_image_id }} pooled:${{ inputs.update_pooled_image_ids }} runner_version:${{ inputs.update_runner_version }}
   image_id:${{ inputs.image_id }} build_image:${{ inputs.build_image }} check_vm_creation:${{ inputs.check_vm_creation }}
+
 on:
   # schedule:
   #   - cron: "0 5 * * *"
@@ -95,6 +96,11 @@ defaults:
 concurrency:
   group: packer-build-vm-image
   cancel-in-progress: false
+
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: http.version
+  GIT_CONFIG_VALUE_0: HTTP/1.1
 
 jobs:
   build:
