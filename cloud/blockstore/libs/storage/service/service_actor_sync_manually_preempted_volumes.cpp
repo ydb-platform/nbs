@@ -32,7 +32,8 @@ void WriteFile(TString filePath, TString data, const TActorContext& ctx)
         TFileLock lock(tmpFilePath);
 
         if (lock.TryAcquire()) {
-            Y_DEFER {
+            Y_DEFER
+            {
                 lock.Release();
             };
 
@@ -43,6 +44,7 @@ void WriteFile(TString filePath, TString data, const TActorContext& ctx)
         } else {
             auto message = TStringBuilder()
                 << "failed to acquire lock on file: " << tmpFilePath;
+
             error = MakeError(E_IO, std::move(message));
         }
     } catch (...) {
@@ -50,12 +52,13 @@ void WriteFile(TString filePath, TString data, const TActorContext& ctx)
     }
 
     if (HasError(error)) {
-
         LOG_ERROR_S(
-            ctx,
+                ctx,
             TBlockStoreComponents::SERVICE,
             TStringBuilder()
-                << "Failed to write manually preempted volumes: " << error);
+                << "Failed to write manually preempted volumes: "
+                << error);
+
         ReportManuallyPreemptedVolumesFileError(error.GetMessage());
 
         try {
