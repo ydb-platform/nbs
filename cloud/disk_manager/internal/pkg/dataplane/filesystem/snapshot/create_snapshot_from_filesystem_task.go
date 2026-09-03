@@ -176,13 +176,12 @@ func (t *createSnapshotFromFilesystemTask) Run(
 
 func (t *createSnapshotFromFilesystemTask) Cancel(
 	ctx context.Context,
-	execCtx tasks.ExecutionContext,
+	_ tasks.ExecutionContext,
 ) error {
 
 	_, err := t.storage.DeletingFilesystemSnapshot(
 		ctx,
 		t.request.GetSnapshotId(),
-		execCtx.GetTaskID(),
 	)
 	return err
 }
