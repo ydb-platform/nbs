@@ -3,6 +3,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/digest/crc32c/crc32c.h>
 #include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -634,7 +635,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         ptr[0] = 'a';
         ptr[1] = 'b';
         ptr[2] = 'c';
-        UNIT_ASSERT(!HasError(rb.Commit()));
+        UNIT_ASSERT(!HasError(rb.Commit(ptr)));
         UNIT_ASSERT(rb.SetMetadata("123").Updated);
 
         rb.SetCorrupted();
@@ -664,7 +665,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(HasError(rb.Free(ptr)));
         UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
 
-        UNIT_ASSERT(HasError(rb.Commit()));
+        UNIT_ASSERT(HasError(rb.Commit(ptr)));
         UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
 
         UNIT_ASSERT(HasError(rb.GetTag(ptr).Error));
@@ -695,14 +696,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             frontAllocationPtr[0] = 'a';
             frontAllocationPtr[1] = 'b';
             frontAllocationPtr[2] = 'c';
-            UNIT_ASSERT(!HasError(RingBuffer.Commit()));
+            UNIT_ASSERT(!HasError(RingBuffer.Commit(frontAllocationPtr)));
 
             secondAllocationPtr = RingBuffer.Alloc(3).AllocationPtr;
             UNIT_ASSERT(secondAllocationPtr != nullptr);
             secondAllocationPtr[0] = 'd';
             secondAllocationPtr[1] = 'e';
             secondAllocationPtr[2] = 'f';
-            UNIT_ASSERT(!HasError(RingBuffer.Commit()));
+            UNIT_ASSERT(!HasError(RingBuffer.Commit(secondAllocationPtr)));
         }
 
         void Corrupt(ui64 ofs)
@@ -1069,13 +1070,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(!HasError(alloc1.Error));
         UNIT_ASSERT(alloc1.AllocationPtr != nullptr);
         data1.copy(alloc1.AllocationPtr, data1.size());
-        UNIT_ASSERT(!HasError(rb.Commit()));
+        UNIT_ASSERT(!HasError(rb.Commit(alloc1.AllocationPtr)));
 
         auto alloc2 = rb.Alloc(data2.size());
         UNIT_ASSERT(!HasError(alloc2.Error));
         UNIT_ASSERT(alloc2.AllocationPtr != nullptr);
         data2.copy(alloc2.AllocationPtr, data2.size());
-        UNIT_ASSERT(!HasError(rb.Commit()));
+        UNIT_ASSERT(!HasError(rb.Commit(alloc2.AllocationPtr)));
 
         UNIT_ASSERT_VALUES_EQUAL(data1, rb.Front().Data);
         UNIT_ASSERT(rb.PopFront().Removed);
@@ -1084,39 +1085,412 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_VALUES_EQUAL("", rb.Front().Data);
     }
 
-    FILE_RING_BUFFER_TEST(ShouldDropNotCommittedEntry)
+    FILE_RING_BUFFER_TEST(ShouldNotAccessIncompleteAllocations)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        TFileRingBuffer rb(f.GetName(), len, 0, ver);
+
+        TString data = "vasya";
+
+        auto ptr = rb.Alloc(data.size()).AllocationPtr;
+        UNIT_ASSERT(ptr != nullptr);
+        data.copy(ptr, data.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, rb.Free(ptr).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, rb.GetTag(ptr).Error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, rb.SetTag(ptr, 0).GetCode());
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldSupportMultipleIncompleteAllocations)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 128;
+        TFileRingBuffer rb(f.GetName(), len, 0, ver);
+
+        const TString data1 = "one";
+        const TString data2 = "two";
+        const TString data3 = "three";
+
+        auto* ptr1 = rb.Alloc(data1.size()).AllocationPtr;
+        auto* ptr2 = rb.Alloc(data2.size()).AllocationPtr;
+        auto* ptr3 = rb.Alloc(data3.size()).AllocationPtr;
+
+        UNIT_ASSERT(ptr1 != nullptr);
+        UNIT_ASSERT(ptr2 != nullptr);
+        UNIT_ASSERT(ptr3 != nullptr);
+
+        data1.copy(ptr1, data1.size());
+        data2.copy(ptr2, data2.size());
+        data3.copy(ptr3, data3.size());
+
+        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb));
+
+        // Allocations may be committed in a different order from allocation.
+        UNIT_ASSERT(!HasError(rb.Commit(ptr2)));
+        UNIT_ASSERT_VALUES_EQUAL("two", Dump(rb));
+
+        UNIT_ASSERT(!HasError(rb.Commit(ptr1)));
+        UNIT_ASSERT_VALUES_EQUAL("one, two", Dump(rb));
+
+        // Removing committed entries must not discard an incomplete entry at
+        // the front of the remaining allocation range.
+        UNIT_ASSERT(!HasError(rb.Free(ptr1)));
+        UNIT_ASSERT(!HasError(rb.Free(ptr2)));
+        UNIT_ASSERT_VALUES_EQUAL("", Dump(rb));
+
+        UNIT_ASSERT(!HasError(rb.Commit(ptr3)));
+        UNIT_ASSERT_VALUES_EQUAL("three", Dump(rb));
+        UNIT_ASSERT_VALUES_EQUAL(data3, rb.Front().Data);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldNotPopFrontIncompleteAllocation)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 128;
+        TFileRingBuffer rb(f.GetName(), len, 0, ver);
+
+        const TString data1 = "one";
+        const TString data2 = "two";
+
+        auto* ptr1 = rb.Alloc(data1.size()).AllocationPtr;
+        auto* ptr2 = rb.Alloc(data2.size()).AllocationPtr;
+
+        UNIT_ASSERT(ptr1 != nullptr);
+        UNIT_ASSERT(ptr2 != nullptr);
+
+        data1.copy(ptr1, data1.size());
+        data2.copy(ptr2, data2.size());
+
+        UNIT_ASSERT(!HasError(rb.Commit(ptr2)));
+
+        UNIT_ASSERT_VALUES_EQUAL("two", Dump(rb));
+
+        auto frontResult = rb.Front();
+        UNIT_ASSERT(!HasError(frontResult.Error));
+        UNIT_ASSERT(frontResult.Data.empty());
+
+        auto popFrontResult = rb.PopFront();
+        UNIT_ASSERT(!popFrontResult.Removed);
+        UNIT_ASSERT(HasError(popFrontResult.Error));
+
+        UNIT_ASSERT_VALUES_EQUAL("two", Dump(rb));
+
+        UNIT_ASSERT(!HasError(rb.Commit(ptr1)));
+
+        UNIT_ASSERT_VALUES_EQUAL("one, two", Dump(rb));
+        UNIT_ASSERT_VALUES_EQUAL("one", rb.Front().Data);
+
+        UNIT_ASSERT(rb.PopFront().Removed);
+
+        UNIT_ASSERT_VALUES_EQUAL("two", Dump(rb));
+        UNIT_ASSERT_VALUES_EQUAL("two", rb.Front().Data);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldCommitWithPrecomputedChecksum)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        const TString data = "precomputed checksum";
+        const ui32 checksum = Crc32c(data.data(), data.size());
+        const ui32 badChecksum = checksum ^ 1;
+
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            auto alloc = rb.Alloc(data.size());
+
+            UNIT_ASSERT(!HasError(alloc.Error));
+            UNIT_ASSERT(alloc.AllocationPtr != nullptr);
+            data.copy(alloc.AllocationPtr, data.size());
+            UNIT_ASSERT(!HasError(rb.Commit(alloc.AllocationPtr, checksum)));
+
+            ui32 visitedChecksum = 0;
+            UNIT_ASSERT(!HasError(rb.Visit(
+                [&](ui32 crc32, ui32, TStringBuf entry)
+                {
+                    visitedChecksum = crc32;
+                    UNIT_ASSERT_VALUES_EQUAL(data, entry);
+                })));
+            UNIT_ASSERT_VALUES_EQUAL(checksum, visitedChecksum);
+        }
+
+        {
+            // A caller-provided checksum must produce an entry that survives
+            // validation when the ring buffer is reopened.
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            UNIT_ASSERT(!rb.IsCorrupted());
+            UNIT_ASSERT_VALUES_EQUAL(data, rb.Front().Data);
+        }
+
+        // Bad checksum
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            auto alloc = rb.Alloc(data.size());
+
+            UNIT_ASSERT(!HasError(alloc.Error));
+            UNIT_ASSERT(alloc.AllocationPtr != nullptr);
+            data.copy(alloc.AllocationPtr, data.size());
+            UNIT_ASSERT(!HasError(rb.Commit(alloc.AllocationPtr, badChecksum)));
+
+            ui32 visitedChecksum = 0;
+            UNIT_ASSERT(!HasError(rb.Visit(
+                [&](ui32 crc32, ui32, TStringBuf entry)
+                {
+                    visitedChecksum = crc32;
+                    UNIT_ASSERT_VALUES_EQUAL(data, entry);
+                })));
+            UNIT_ASSERT_VALUES_EQUAL(badChecksum, visitedChecksum);
+        }
+
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            UNIT_ASSERT(rb.IsCorrupted());
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldDropNotCommittedEntries)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 64;
 
         TString data1 = "vasya";
         TString data2 = "ivan";
+        TString data3 = "peter";
 
         {
             TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            UNIT_ASSERT(rb.Empty());
 
             auto alloc1 = rb.Alloc(data1.size());
-            UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
+            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+            UNIT_ASSERT(!rb.Empty());
             UNIT_ASSERT(!HasError(alloc1.Error));
             UNIT_ASSERT(alloc1.AllocationPtr != nullptr);
             data1.copy(alloc1.AllocationPtr, data1.size());
-            UNIT_ASSERT(!HasError(rb.Commit()));
-            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
 
             auto alloc2 = rb.Alloc(data2.size());
-            UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
+            UNIT_ASSERT_VALUES_EQUAL(2, rb.Size());
+            UNIT_ASSERT(!rb.Empty());
             UNIT_ASSERT(!HasError(alloc2.Error));
             UNIT_ASSERT(alloc2.AllocationPtr != nullptr);
             data2.copy(alloc2.AllocationPtr, data2.size());
+            UNIT_ASSERT(!HasError(rb.Commit(alloc2.AllocationPtr)));
+            UNIT_ASSERT_VALUES_EQUAL(2, rb.Size());
+
+            auto alloc3 = rb.Alloc(data3.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, rb.Size());
+            UNIT_ASSERT(!rb.Empty());
+            UNIT_ASSERT(!HasError(alloc3.Error));
+            UNIT_ASSERT(alloc3.AllocationPtr != nullptr);
+            data3.copy(alloc3.AllocationPtr, data3.size());
         }
 
         {
             TFileRingBuffer rb(f.GetName(), len, 0, ver);
             UNIT_ASSERT_VALUES_EQUAL(1, rb.Size());
-            UNIT_ASSERT_VALUES_EQUAL(data1, rb.Front().Data);
+            UNIT_ASSERT(!rb.Empty());
+            UNIT_ASSERT_VALUES_EQUAL(data2, rb.Front().Data);
             UNIT_ASSERT(rb.PopFront().Removed);
 
             UNIT_ASSERT_VALUES_EQUAL("", rb.Front().Data);
+
+            UNIT_ASSERT(rb.Empty());
+            auto alloc4 = rb.Alloc(data1.size());
+            UNIT_ASSERT(!rb.Empty());
+            UNIT_ASSERT(!HasError(alloc4.Error));
+        }
+
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            UNIT_ASSERT(rb.Empty());
+        }
+    }
+
+    struct TRandomizedTestWithIncompleteAllocationsBootstrap
+    {
+        static constexpr ui64 BufferSize = 1024;
+        static constexpr ui64 MaxAllocSize = 256;
+
+        const EFileRingBufferVersion Version;
+
+        TTempFileHandle FileHandle;
+        std::unique_ptr<TFileRingBuffer> RingBuffer;
+
+        struct TAllocation
+        {
+            TString Data;
+            const char* Ptr = nullptr;
+            bool Committed = false;
+        };
+
+        TVector<TAllocation> Allocations;
+        size_t IncompleteAllocationCount = 0;
+
+        TRandomizedTestWithIncompleteAllocationsBootstrap(
+            EFileRingBufferVersion version)
+            : Version(version)
+        {
+            Recreate();
+        }
+
+        void Recreate()
+        {
+            RingBuffer = std::make_unique<TFileRingBuffer>(
+                FileHandle.GetName(),
+                BufferSize,
+                0,
+                Version);
+
+            UNIT_ASSERT(RingBuffer->Validate());
+            UNIT_ASSERT(!RingBuffer->IsCorrupted());
+
+            IncompleteAllocationCount = 0;
+
+            EraseIf(
+                Allocations,
+                [](const TAllocation& alloc) { return !alloc.Committed; });
+
+            size_t index = 0;
+
+            auto visitResult = RingBuffer->Visit(
+                [&](ui32 checksum, ui32 tag, TStringBuf entry)
+                {
+                    Y_UNUSED(checksum);
+                    Y_UNUSED(tag);
+                    UNIT_ASSERT(index < Allocations.size());
+                    Allocations[index].Ptr = entry.data();
+                    index++;
+                });
+
+            UNIT_ASSERT(!HasError(visitResult));
+            UNIT_ASSERT_VALUES_EQUAL(Allocations.size(), index);
+
+            Check();
+        }
+
+        void Alloc()
+        {
+            const auto size = RandomNumber(MaxAllocSize) + 1;
+            auto data = GenerateData(static_cast<ui32>(size));
+            auto allocation = RingBuffer->Alloc(size);
+            UNIT_ASSERT(!HasError(allocation.Error));
+            if (allocation.AllocationPtr) {
+                data.copy(allocation.AllocationPtr, data.size());
+                Allocations.push_back(
+                    {std::move(data), allocation.AllocationPtr, false});
+                ++IncompleteAllocationCount;
+            }
+
+            Check();
+        }
+
+        void Commit()
+        {
+            if (IncompleteAllocationCount == 0) {
+                return;
+            }
+
+            const size_t index = GetRandomAllocation(false);
+            auto& allocation = Allocations[index];
+
+            if (RandomNumber(2u) == 0) {
+                const ui32 crc =
+                    Crc32c(allocation.Data.data(), allocation.Data.size());
+                UNIT_ASSERT(!HasError(RingBuffer->Commit(allocation.Ptr, crc)));
+            } else {
+                UNIT_ASSERT(!HasError(RingBuffer->Commit(allocation.Ptr)));
+            }
+
+            allocation.Committed = true;
+            --IncompleteAllocationCount;
+
+            Check();
+        }
+
+        void Free()
+        {
+            if (Allocations.size() == IncompleteAllocationCount) {
+                return;
+            }
+
+            const size_t index = GetRandomAllocation(true);
+            if (index != Allocations.size()) {
+                UNIT_ASSERT(
+                    !HasError(RingBuffer->Free(Allocations[index].Ptr)));
+                Allocations.erase(Allocations.begin() + index);
+            }
+
+            Check();
+        }
+
+        size_t GetRandomAllocation(bool committed)
+        {
+            if (committed) {
+                Y_ABORT_UNLESS(Allocations.size() > IncompleteAllocationCount);
+            } else {
+                Y_ABORT_UNLESS(IncompleteAllocationCount > 0);
+            }
+
+            size_t index = RandomNumber(Allocations.size());
+            for (size_t i = 0; i < Allocations.size(); ++i) {
+                if (Allocations[index].Committed == committed) {
+                    return index;
+                }
+                index = (index + 1) % Allocations.size();
+            }
+
+            return index;
+        }
+
+        TString DumpReference()
+        {
+            TStringBuilder res;
+            for (const auto& allocation: Allocations) {
+                if (allocation.Committed) {
+                    if (!res.empty()) {
+                        res += ", ";
+                    }
+                    res += allocation.Data;
+                }
+            }
+            return res;
+        }
+
+        void Check()
+        {
+            UNIT_ASSERT_VALUES_EQUAL(DumpReference(), Dump(*RingBuffer));
+            UNIT_ASSERT_VALUES_EQUAL(Allocations.size(), RingBuffer->Size());
+            UNIT_ASSERT_VALUES_EQUAL(Allocations.empty(), RingBuffer->Empty());
+        }
+    };
+
+    FILE_RING_BUFFER_TEST(RandomizedTestWithIncompleteAllocations)
+    {
+        constexpr size_t numIterations = 10000;
+        constexpr ui32 recreateProbability = 10;
+        constexpr ui32 allocProbability = 30;
+        constexpr ui32 commitProbability = 40;
+        constexpr ui32 freeProbability = 20;
+
+        TRandomizedTestWithIncompleteAllocationsBootstrap b(ver);
+
+        for (size_t i = 0; i < numIterations; ++i) {
+            const ui32 action = static_cast<ui32>(RandomNumber(
+                recreateProbability + allocProbability + commitProbability +
+                freeProbability));
+
+            if (action < recreateProbability) {
+                b.Recreate();
+            } else if (action < recreateProbability + allocProbability) {
+                b.Alloc();
+            } else if (
+                action <
+                recreateProbability + allocProbability + commitProbability)
+            {
+                b.Commit();
+            } else {
+                b.Free();
+            }
         }
     }
 
@@ -1134,24 +1508,19 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(alloc2.AllocationPtr == nullptr);
         UNIT_ASSERT(HasError(alloc2.Error));
 
-        // Alloc without commit
         auto alloc3 = rb.Alloc(1);
         UNIT_ASSERT(alloc3.AllocationPtr != nullptr);
         UNIT_ASSERT(!HasError(alloc3.Error));
+        UNIT_ASSERT(!HasError(rb.Commit(alloc3.AllocationPtr)));
 
-        auto alloc4 = rb.Alloc(1);
-        UNIT_ASSERT(alloc4.AllocationPtr == nullptr);
-        UNIT_ASSERT(HasError(alloc4.Error));
-        UNIT_ASSERT(!HasError(rb.Commit()));
-
-        // Commit without alloc
-        UNIT_ASSERT(HasError(rb.Commit()));
+        // Already committed
+        UNIT_ASSERT(HasError(rb.Commit(alloc3.AllocationPtr)));
 
         rb.SetCorrupted();
 
-        auto alloc5 = rb.Alloc(2);
-        UNIT_ASSERT(alloc5.AllocationPtr == nullptr);
-        UNIT_ASSERT(HasError(alloc5.Error));
+        auto alloc4 = rb.Alloc(2);
+        UNIT_ASSERT(alloc4.AllocationPtr == nullptr);
+        UNIT_ASSERT(HasError(alloc4.Error));
     }
 
     FILE_RING_BUFFER_TEST(ShouldSupportRandomDeletion)
@@ -1170,7 +1539,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             auto res = rb->Alloc(data.size());
             UNIT_ASSERT(res.AllocationPtr != nullptr);
             data.copy(res.AllocationPtr, data.size());
-            UNIT_ASSERT(!HasError(rb->Commit()));
+            UNIT_ASSERT(!HasError(rb->Commit(res.AllocationPtr)));
             return res.AllocationPtr;
         };
 
@@ -1234,7 +1603,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         UNIT_ASSERT(rb->PopFront().Removed);
 
-        UNIT_ASSERT(!HasError(rb->Commit()));
+        UNIT_ASSERT(!HasError(rb->Commit(alloc.AllocationPtr)));
 
         UNIT_ASSERT_VALUES_EQUAL(data, rb->Front().Data);
 
@@ -1262,12 +1631,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             auto* ptr1 = rb->Alloc(data1.size()).AllocationPtr;
             UNIT_ASSERT(ptr1 != nullptr);
             data1.copy(ptr1, data1.size());
-            UNIT_ASSERT(!HasError(rb->Commit()));
+            UNIT_ASSERT(!HasError(rb->Commit(ptr1)));
 
             auto* ptr2 = rb->Alloc(data2.size()).AllocationPtr;
             UNIT_ASSERT(ptr2 != nullptr);
             data2.copy(ptr2, data2.size());
-            UNIT_ASSERT(!HasError(rb->Commit()));
+            UNIT_ASSERT(!HasError(rb->Commit(ptr2)));
 
             UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr1).Tag);
             UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr2).Tag);
@@ -1310,7 +1679,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             auto* ptr5 = rb->Alloc(data1.size()).AllocationPtr;
             UNIT_ASSERT(ptr5 != nullptr);
             data1.copy(ptr5, data1.size());
-            UNIT_ASSERT(!HasError(rb->Commit()));
+            UNIT_ASSERT(!HasError(rb->Commit(ptr5)));
 
             UNIT_ASSERT_VALUES_EQUAL(0, rb->GetTag(ptr5).Tag);
         };
@@ -1330,12 +1699,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(ptr1 != nullptr);
         ptr1[0] = 'a';
         ptr1[1] = 'b';
-        UNIT_ASSERT(!HasError(rb.Commit()));
+        UNIT_ASSERT(!HasError(rb.Commit(ptr1)));
 
         auto ptr2 = rb.Alloc(1).AllocationPtr;
         UNIT_ASSERT(ptr2 != nullptr);
         ptr2[0] = 'c';
-        UNIT_ASSERT(!HasError(rb.Commit()));
+        UNIT_ASSERT(!HasError(rb.Commit(ptr2)));
 
         UNIT_ASSERT(AlignDown(ptr1, sizeof(ui64)) == ptr1);
         UNIT_ASSERT(AlignDown(ptr2, sizeof(ui64)) == ptr2);

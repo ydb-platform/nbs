@@ -110,6 +110,8 @@ public:
     {
         auto allocResult = Storage.Alloc(size);
 
+        SetCounters();
+
         if (HasError(allocResult.Error)) {
             ReportWriteBackCacheCorruptionError(Sprintf(
                 "%s Storage::Alloc failed with an error: %s",
@@ -121,9 +123,25 @@ public:
         return allocResult.AllocationPtr;
     }
 
-    NProto::TError Commit() override
+    NProto::TError Commit(const void* ptr) override
     {
-        auto commitResult = Storage.Commit();
+        auto commitResult = Storage.Commit(ptr);
+
+        SetCounters();
+
+        if (HasError(commitResult)) {
+            ReportWriteBackCacheCorruptionError(Sprintf(
+                "%s Storage::Commit failed with an error: %s",
+                LogTag.c_str(),
+                FormatError(commitResult).c_str()));
+        }
+
+        return commitResult;
+    }
+
+    NProto::TError Commit(const void* ptr, ui32 crc32c) override
+    {
+        auto commitResult = Storage.Commit(ptr, crc32c);
 
         SetCounters();
 

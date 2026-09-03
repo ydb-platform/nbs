@@ -85,9 +85,6 @@ public:
      * Additionally, TPushBackResult::Error is set if allocation has failed for
      * any reason other than insufficient capacity, for example, buffer
      * corruption or invalid argument.
-     *
-     * Note: only one allocation is possible at a time. Calling PushBack while
-     * an allocation made by Alloc is not committed will return an error.
      */
     [[nodiscard]] TPushBackResult PushBack(TStringBuf data);
 
@@ -104,8 +101,8 @@ public:
      * reason other than insufficient capacity, for example, buffer corruption
      * or invalid argument.
      *
-     * Note: only one allocation is possible at a time. Repeated Alloc will
-     * return an error.
+     * Note: methods Front() and PopFront() should not be called while an
+     * allocation is in progress.
      */
     [[nodiscard]] TAllocResult Alloc(size_t size);
 
@@ -117,10 +114,34 @@ public:
      * entry. If there is a need to augment the allocation with additional data,
      * GetTag/SetTag can be used.
      *
-     * An error is returned if there is no incomplete allocation or the buffer
-     * is corrupted.
+     * An error is returned if there is no incomplete allocation corresponding
+     * to the provided pointer or the buffer is corrupted.
      */
-    [[nodiscard]] NProto::TError Commit();
+    [[nodiscard]] NProto::TError Commit(const void* ptr);
+
+    /**
+     * Completes the previously made allocation using checksum provided by
+     * caller and making the allocation visible.
+     *
+     * Since TFileRingBuffer is non-thread safe, it requires external
+     * synchronization and executing its methods under a lock. Calculating
+     * checksums inside Commit() consumes some time and it will prevent other
+     * threads from using TFileRingBuffer. The purpose of this method is to make
+     * multi-threaded work with TFileRingBuffer more efficient by reducing the
+     * time spent inside the lock.
+     *
+     * Once committed, it is not allowed to modify the contents of the allocated
+     * entry. If there is a need to augment the allocation with additional data,
+     * GetTag/SetTag can be used.
+     *
+     * An error is returned if there is no incomplete allocation corresponding
+     * to the provided pointer or the buffer is corrupted.
+     *
+     * Note: the checksum is not validated, the calling code has responsibility
+     * to provide the correct Crc32c checksum. Passing an incorrect checksum may
+     * lead to a corruption error.
+     */
+    [[nodiscard]] NProto::TError Commit(const void* ptr, ui32 crc32c);
 
     /**
      * Frees a memory block that was previously allocated and committed.
@@ -162,7 +183,8 @@ public:
      * Gets the front allocation of the buffer.
      *
      * TFrontResult::Data contains the contents of the front allocation or
-     * empty value if the buffer is empty or corrupted.
+     * empty value if the buffer is empty, the front allocation is not committed
+     * or the buffer is corrupted.
      *
      * Additionally, TFrontResult::Error is set on corruption.
      */
@@ -172,20 +194,22 @@ public:
      * Frees the front allocation.
      *
      * TPopFrontResult::Removed is true if the front allocation has been
-     * successfully freed or false if the buffer is empty or corrupted.
+     * successfully freed or false otherwise.
      *
-     * Additionally, TFrontResult::Error is set on corruption.
+     * TFrontResult::Error is set if the front allocation is incomplete or the
+     * buffer is corrupted.
      */
     [[nodiscard]] TPopFrontResult PopFront();
 
     /**
-     * Returns the number of visible allocations in the buffer.
+     * Returns the number of all allocations in the buffer (including
+     * incomplete ones).
      * The behavior is unspecified if the buffer is corrupted.
      */
     [[nodiscard]] ui64 Size() const;
 
     /**
-     * Checks if the buffer is empty.
+     * Checks if the buffer has no visible and incomplete allocations.
      * The behavior is unspecified if the buffer is corrupted.
      */
     [[nodiscard]] bool Empty() const;

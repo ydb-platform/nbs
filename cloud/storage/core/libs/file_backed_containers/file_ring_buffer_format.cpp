@@ -174,9 +174,26 @@ public:
             return false;
         }
 
-        eh->DataSize = header.DataSize | (header.Tag << TagShift) |
-                       (header.FreeFlag ? FreeFlagMask : 0);
-        eh->Checksum = header.DataChecksum;
+        const ui32 dataSize = header.DataSize | (header.Tag << TagShift) |
+                              (header.FreeFlag ? FreeFlagMask : 0);
+
+        // In V5 format it is allowed for a entry with FreeFlag set to have an
+        // invalid checksum - we need to ensure that fields are visible in the
+        // correct order.
+        //
+        // A compiler-only fence is sufficient here because there is no
+        // concurrent access to the memory and we just need to ensure
+        // that a compiler does not reorder writes.
+        //
+        if (header.FreeFlag) {
+            eh->DataSize = dataSize;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
+            eh->Checksum = header.DataChecksum;
+        } else {
+            eh->Checksum = header.DataChecksum;
+            std::atomic_signal_fence(std::memory_order_seq_cst);
+            eh->DataSize = dataSize;
+        }
         return true;
     }
 
