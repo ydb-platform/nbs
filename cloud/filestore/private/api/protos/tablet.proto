@@ -966,6 +966,11 @@ message TRenameNodeInDestinationRequest
     // Passing the whole original request might be an overkill but it actually
     // may help with debugging.
     NProto.TRenameNodeRequest OriginalRequest = 8;
+
+    // QuotaId of the source parent directory, at the time the rename was
+    // initiated - carried over so the destination tablet can decide whether
+    // the move crosses a quota domain without a round trip back to source.
+    uint32 OldParentQuotaId = 9;
 }
 
 message TRenameNodeInDestinationResponse
