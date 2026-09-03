@@ -172,7 +172,7 @@ void TDiskAgentActor::HandleInitAgentCompleted(
     }
 
     if (State) {
-        THashMap<TString, IJournalledDevicePtr> devices;
+        THashMap<TString, NJournalled::IJournalledDevicePtr> devices;
 
         for (const auto& deviceId: State->GetDeviceIds()) {
             devices.emplace(
