@@ -406,7 +406,7 @@ func (s *storageYDB) lockFilesystemSnapshot(
 			return err
 		}
 
-		return task_errors.NewNonRetriableErrorf(
+		return task_errors.NewSilentNonRetriableErrorf(
 			"filesystem snapshot with id %v is not found",
 			snapshotID,
 		)
@@ -419,7 +419,7 @@ func (s *storageYDB) lockFilesystemSnapshot(
 			return err
 		}
 
-		return task_errors.NewNonRetriableErrorf(
+		return task_errors.NewSilentNonRetriableErrorf(
 			"can't lock filesystem snapshot with id %v and status %v",
 			snapshotID,
 			filesystemSnapshotStatusToString(state.status),

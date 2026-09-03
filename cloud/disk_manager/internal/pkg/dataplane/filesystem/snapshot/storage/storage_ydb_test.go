@@ -457,6 +457,7 @@ func TestLockUnlockFilesystemSnapshot(t *testing.T) {
 
 	err = f.storage.LockFilesystemSnapshot(f.ctx, snapshotID, "lock3")
 	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+	require.True(t, errors.IsSilent(err))
 
 	err = f.storage.UnlockFilesystemSnapshot(f.ctx, snapshotID, "lock3")
 	require.NoError(t, err)
@@ -966,6 +967,7 @@ func TestLockUnlockNonexistingFilesystemSnapshot(t *testing.T) {
 		"lock",
 	)
 	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+	require.True(t, errors.IsSilent(err))
 
 	err = f.storage.UnlockFilesystemSnapshot(
 		f.ctx,
