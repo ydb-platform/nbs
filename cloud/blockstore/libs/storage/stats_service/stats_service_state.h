@@ -146,6 +146,14 @@ struct TVolumeStatsInfo
     bool IsLocalMount = false;
     NMonitoring::TDynamicCounters::TCounterPtr IsLocalMountCounter;
 
+    // ServiceVolumeCounters is retained across detach/reattach cycles to
+    // preserve accumulated values and references held by expiring counters.
+    // Valid states:
+    // null,     false - the subgroup has never been registered.
+    // non-null, true  - the subgroup is attached and user counters are
+    //                   registered.
+    // non-null, false - the subgroup is detached but retained for reattachment.
+    // The null, true state is invalid.
     bool ServiceVolumeCountersRegistered = false;
     TIntrusivePtr<NMonitoring::TDynamicCounters> ServiceVolumeCounters;
 

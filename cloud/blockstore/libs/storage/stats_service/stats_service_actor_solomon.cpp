@@ -111,26 +111,37 @@ void TStatsServiceActor::RegisterServiceVolumeCounters(
             ->GetSubgroup("component", "service_volume")
             ->GetSubgroup("host", "cluster");
 
-    const auto chain = BuildVolumeChain(volume.VolumeInfo);
+    auto chain = BuildVolumeChain(volume.VolumeInfo);
     STORAGE_VERIFY_C(
         !chain.empty(),
         TWellKnownEntityTypes::DISK,
         volume.VolumeInfo.GetDiskId(),
         "BuildVolumeChain returned an empty chain");
 
+    const auto leaf = chain.back();
+    chain.pop_back();
+
+    const auto parent = RegisterChain(head, chain);
+
     if (!volume.ServiceVolumeCounters) {
         // Initial registration: create a new counter subgroup.
-        volume.ServiceVolumeCounters = RegisterChain(head, chain);
+        volume.ServiceVolumeCounters =
+            parent->GetSubgroup(leaf.first, leaf.second);
         volume.PerfCounters.Register(volume.ServiceVolumeCounters);
     } else {
-        // Re-registration: reattach the existing subgroup to preserve accumulated counter values.
-        const auto& [name, value] = chain.back();
+        // Re-registration: reattach the existing subgroup to preserve
+        // accumulated counter values
+        const auto existing = parent->FindSubgroup(leaf.first, leaf.second);
 
-        auto parentChain = chain;
-        parentChain.pop_back();
-
-        const auto parent = RegisterChain(head, parentChain);
-        parent->RegisterSubgroup(name, value, volume.ServiceVolumeCounters);
+        if (!existing) {
+            parent->RegisterSubgroup(leaf.first, leaf.second,
+                                     volume.ServiceVolumeCounters);
+        } else if (existing != volume.ServiceVolumeCounters) {
+            // The path is occupied by an unexpected subgroup.
+            // Restore the subgroup owned by this volume.
+            parent->ReplaceSubgroup(leaf.first, leaf.second,
+                                    volume.ServiceVolumeCounters);
+        }
     }
 
     NUserCounter::RegisterServiceVolume(
@@ -151,12 +162,14 @@ void TStatsServiceActor::UnregisterServiceVolumeCounters(
     if (!counters) {
         return;
     }
-    if (!volume.ServiceVolumeCounters) {
-        return;
-    }
     if (!volume.ServiceVolumeCountersRegistered) {
         return;
     }
+
+    STORAGE_VERIFY_C(
+        volume.ServiceVolumeCounters, TWellKnownEntityTypes::DISK,
+        volume.VolumeInfo.GetDiskId(),
+        "Registered service volume counters have no retained subgroup");
 
     auto head =
         counters->GetSubgroup("counters", "blockstore")
@@ -325,8 +338,8 @@ void TStatsServiceActor::HandleVolumeConfigUpdated(
     auto *volume = State.GetVolume(msg->DiskId);
     if (!volume) {
         LOG_WARN(ctx, TBlockStoreComponents::STATS_SERVICE,
-            "Volume %s not found",
-            msg->DiskId.Quote().data());
+                 "Volume %s not found", msg->DiskId.Quote().data());
+
         return;
     }
 
@@ -335,6 +348,9 @@ void TStatsServiceActor::HandleVolumeConfigUpdated(
          volume->VolumeInfo.GetFolderId() != msg->Config.GetFolderId() ||
          volume->VolumeInfo.GetStorageMediaKind() !=
              msg->Config.GetStorageMediaKind());
+
+    const bool wasServiceVolumeCountersRegistered =
+        volume->ServiceVolumeCountersRegistered;
 
     if (updateCounters) {
         UnregisterIsLocalMountCounter(AppData(ctx)->Counters, *volume);
@@ -345,7 +361,10 @@ void TStatsServiceActor::HandleVolumeConfigUpdated(
 
     if (updateCounters) {
         RegisterIsLocalMountCounter(AppData(ctx)->Counters, *volume);
-        RegisterServiceVolumeCounters(AppData(ctx)->Counters, *volume);
+
+        if (wasServiceVolumeCountersRegistered) {
+            RegisterServiceVolumeCounters(AppData(ctx)->Counters, *volume);
+        }
     }
 }
 

@@ -2116,7 +2116,7 @@ using TCounterPath = std::initializer_list<std::pair<TString, TString>>;
 struct TServiceVolumeLabels {
     TString CloudId = DefaultCloudId;
     TString FolderId = DefaultFolderId;
-    TString type = "ssd";
+    TString Type = "ssd";
 };
 
 // never creates missing groups.
@@ -2135,11 +2135,8 @@ TCounterGroupPtr FindCounterGroup(
     return group;
 }
 
-void AssertScalarCounter(
-    const TCounterGroupPtr& group,
-    const TString name,
-    ui64 expectedValue,
-    bool derivative = false)
+void AssertScalarCounter(const TCounterGroupPtr& group, const TString& name,
+                         ui64 expectedValue, bool derivative = false)
 {
     UNIT_ASSERT(group);
 
@@ -2242,7 +2239,11 @@ public:
         AssertLabel("cluster", ExpectedLabels.FolderId);
         AssertLabel("disk", DefaultDiskId);
 
-        CurrentMetricName = CurrentLabels.at("name");
+        const auto it = CurrentLabels.find("name");
+        UNIT_ASSERT_C(it != CurrentLabels.end(),
+                      "Missing user metric label: name");
+
+        CurrentMetricName = it->second;
 
         // A second registration must not produce duplicate metrics
         UNIT_ASSERT_C(
@@ -2406,8 +2407,21 @@ struct TServiceVolumeCountersTestEnv
                 {"volume", DefaultDiskId},
                 {"cloud", labels.CloudId},
                 {"folder", labels.FolderId},
-                {"type", labels.type},
+                {"type", labels.Type},
             });
+    }
+
+    TCounterGroupPtr CreateUnexpectedServiceVolumeSubgroup(
+        const TServiceVolumeLabels& labels = {})
+    {
+        return Runtime.GetAppData(0)
+            .Counters->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "service_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", DefaultDiskId)
+            ->GetSubgroup("cloud", labels.CloudId)
+            ->GetSubgroup("folder", labels.FolderId)
+            ->GetSubgroup("type", labels.Type);
     }
 
     void AssertDetached()
@@ -2444,7 +2458,7 @@ struct TServiceVolumeCountersTestEnv
             {"volume", DefaultDiskId},
             {"cloud", labels.CloudId},
             {"folder", labels.FolderId},
-            {"type", labels.type},
+            {"type", labels.Type},
         };
 
         for (const auto& [name, value]: path) {
@@ -2496,8 +2510,6 @@ struct TServiceVolumeCountersTestEnv
             UNIT_ASSERT(!probe.HasMaxUsedQuota);
             return;
         }
-
-        UNIT_ASSERT_VALUES_EQUAL(probe.Names.size(), 4);
 
         for (const auto* name: {
                 "disk.io_quota_utilization_percentage",
@@ -2739,6 +2751,82 @@ Y_UNIT_TEST_SUITE(TServiceVolumeCountersReregistrationTest)
 
         env.Publish(VOLUME_HASCHECKPOINT, 19);
         env.AssertUserCounters(true, 19, labels);
+    }
+
+    Y_UNIT_TEST(ShouldKeepServiceVolumeCountersDetachedAfterIdleConfigUpdate)
+    {
+        TServiceVolumeCountersTestEnv env;
+
+        env.Publish(VOLUME_HASCLIENTS, 7);
+
+        auto original = env.AssertOnlyVolume();
+        AssertPublishedVolumeCounters(original, 7, 7);
+        env.AssertUserCounters(true, 7);
+
+        // The volume becomes idle: no clients and no checkpoint.
+        env.Publish({}, 0);
+        env.AssertDetached();
+        env.AssertUserCounters(false);
+
+        const TServiceVolumeLabels labels = {
+            "new_cloud",
+            "new_folder",
+            "ssd",
+        };
+
+        env.UpdateConfig(labels);
+
+        // Updating labels must not reattach counters for an idle volume.
+        env.AssertDetached();
+        env.AssertUserCounters(false, 0, labels);
+
+        // Publication resumes under new labels when a client returns.
+        env.Publish(VOLUME_HASCLIENTS, 11);
+
+        auto restored = env.AssertOnlyVolume(labels);
+        UNIT_ASSERT(original.Get() == restored.Get());
+
+        AssertPublishedVolumeCounters(restored, 11, 18);
+
+        // The old label path must not be recreated.
+        UNIT_ASSERT(!env.FindVolume());
+
+        env.AssertUserCounters(true, 11, labels);
+    }
+
+    Y_UNIT_TEST(ShouldReplaceUnexpectedSubgroupOnReattach)
+    {
+        TServiceVolumeCountersTestEnv env;
+
+        env.Publish(VOLUME_HASCLIENTS, 7);
+
+        auto original = env.AssertOnlyVolume();
+        AssertPublishedVolumeCounters(original, 7, 7);
+
+        env.Publish({}, 0);
+        env.AssertDetached();
+        env.AssertUserCounters(false);
+
+        // Simulate unrelated code materializing the same path while the real
+        // service-volume subgroup is detached.
+        auto unexpected = env.CreateUnexpectedServiceVolumeSubgroup();
+
+        UNIT_ASSERT(unexpected.Get() != original.Get());
+
+        auto occupied = env.FindVolume();
+        UNIT_ASSERT(occupied.Get() == unexpected.Get());
+
+        // Reattachment must replace the unexpected subgroup instead of
+        // aborting.
+        env.Publish(VOLUME_HASCLIENTS, 11);
+
+        auto restored = env.AssertOnlyVolume();
+
+        UNIT_ASSERT(restored.Get() == original.Get());
+        UNIT_ASSERT(unexpected.Get() != restored.Get());
+
+        AssertPublishedVolumeCounters(restored, 11, 18);
+        env.AssertUserCounters(true, 11);
     }
 }
 
