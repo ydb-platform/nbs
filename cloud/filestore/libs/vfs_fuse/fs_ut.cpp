@@ -1015,22 +1015,82 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
     }
 
-    Y_UNIT_TEST(ShouldHandleReadDirInvalidHandles)
+    void DoShouldHandleReadDirInvalidHandles(
+        TBootstrap& bootstrap,
+        ui64 expectedBadDirectoryHandleEvents)
     {
-        TBootstrap bootstrap;
+        bootstrap.Service->ListNodesHandler = [&](auto, auto)
+        {
+            return MakeFuture(NProto::TListNodesResponse());
+        };
+
         bootstrap.Start();
         Y_DEFER {
             bootstrap.Stop();
         };
 
+        auto badHandleCounter =
+            bootstrap.Counters
+                ->GetSubgroup("component", TString{MetricsComponent})
+                ->GetCounter("AppCriticalEvents/BadDirectoryHandle", true);
+
         const ui64 nodeId = 123;
+        const ui64 unknownHandleId = 100500;
 
-        auto read = bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, 100500);
-        UNIT_ASSERT(read.Wait(WaitTimeout));
-        UNIT_ASSERT(read.HasException());
+        auto read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            unknownHandleId);
+        UNIT_ASSERT_EXCEPTION(read.GetValue(WaitTimeout), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedBadDirectoryHandleEvents,
+            badHandleCounter->Val());
 
-        auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, 100500);
+        auto fsyncdir = bootstrap.Fuse->SendRequest<TFsyncDirRequest>(
+            nodeId,
+            unknownHandleId,
+            false /* no data sync */);
+        UNIT_ASSERT_EXCEPTION(fsyncdir.GetValue(WaitTimeout), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * expectedBadDirectoryHandleEvents,
+            badHandleCounter->Val());
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        const auto handleId = handle.GetValue();
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(read.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * expectedBadDirectoryHandleEvents,
+            badHandleCounter->Val());
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+
+        close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
+            nodeId,
+            unknownHandleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * expectedBadDirectoryHandleEvents,
+            badHandleCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldHandleReadDirInvalidHandles)
+    {
+        TBootstrap bootstrap;
+        DoShouldHandleReadDirInvalidHandles(
+            bootstrap,
+            0 /* expectedBadDirectoryHandleEvents */);
+    }
+
+    Y_UNIT_TEST(ShouldReportBadDirectoryHandleWhenHandleStorageIsEnabled)
+    {
+        auto bootstrap = TBootstrap::CreateWithHandleStorage();
+        DoShouldHandleReadDirInvalidHandles(
+            bootstrap,
+            1 /* expectedBadDirectoryHandleEvents */);
     }
 
     Y_UNIT_TEST(ShouldHandleReadDirPaging)

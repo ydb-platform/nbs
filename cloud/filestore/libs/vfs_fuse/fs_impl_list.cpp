@@ -3,6 +3,8 @@
 #include "fs_directory_content_format.h"
 #include "fs_directory_handle.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 #include <util/generic/cast.h>
 
 #include <sys/stat.h>
@@ -10,30 +12,6 @@
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool CheckDirectoryHandle(
-    fuse_req_t req,
-    fuse_ino_t ino,
-    const TDirectoryHandle& handle,
-    TLog& Log,
-    const char* funcName)
-{
-    if (handle.Index != ino) {
-        STORAGE_ERROR("request #" << fuse_req_unique(req)
-            << " consistency violation: " << funcName
-            << " (handle.Index != ino) : "  <<
-            "(" << handle.Index << " != " << ino << ")");
-
-        return false;
-    }
-    return true;
-}
-
-} // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -79,14 +57,9 @@ void TFileSystem::ReadDir(
         << " size:" << size
         << " fh:" << fi->fh);
 
-    auto handle = DirectoryHandleCache->FindHandle(fi->fh);
+    auto handle =
+        ValidateAndGetDirectoryHandle(*callContext, req, ino, fi->fh);
     if (!handle) {
-        ReplyError(*callContext, ErrorInvalidHandle(fi->fh), req, EBADF);
-        return;
-    }
-
-    if (!CheckDirectoryHandle(req, ino, *handle, Log, __func__)) {
-        ReplyError(*callContext, ErrorInvalidHandle(fi->fh), req, EBADF);
         return;
     }
 
@@ -278,24 +251,39 @@ void TFileSystem::ReleaseDir(
     ReplyError(*callContext, {}, req, 0);
 }
 
-bool TFileSystem::ValidateDirectoryHandle(
+std::shared_ptr<TDirectoryHandle> TFileSystem::ValidateAndGetDirectoryHandle(
     TCallContext& callContext,
     fuse_req_t req,
     fuse_ino_t ino,
     uint64_t fh)
 {
+    auto replyBadHandle = [&]()
+    {
+        if (DirectoryHandleCache->IsPersistent()) {
+            ReportBadDirectoryHandle(
+                TStringBuilder() << callContext.LogString()
+                                 << " EBADF was sent to the guest, fh: " << fh
+                                 << " ino: " << ino);
+        }
+        ReplyError(callContext, ErrorInvalidHandle(fh), req, EBADF);
+    };
+
     auto handle = DirectoryHandleCache->FindHandle(fh);
     if (!handle) {
-        ReplyError(callContext, ErrorInvalidHandle(fh), req, EBADF);
-        return false;
+        replyBadHandle();
+        return nullptr;
     }
 
-    if (!CheckDirectoryHandle(req, ino, *handle, Log, __func__)) {
-        ReplyError(callContext, ErrorInvalidHandle(fh), req, EBADF);
-        return false;
+    if (handle->Index != ino) {
+        STORAGE_ERROR(
+            callContext.LogString()
+            << " consistency violation: (handle.Index != ino) : ("
+            << handle->Index << " != " << ino << ")");
+        replyBadHandle();
+        return nullptr;
     }
 
-    return true;
+    return handle;
 }
 
 }   // namespace NCloud::NFileStore::NFuse
