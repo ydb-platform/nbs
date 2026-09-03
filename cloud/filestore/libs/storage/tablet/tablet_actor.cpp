@@ -1204,7 +1204,7 @@ void TIndexTabletActor::HandleForcedOperation(
     }
 
     if (ranges.size() > Max<ui32>()) {
-        replyError(MakeError(E_FAIL, "too many ranges to process"));
+        replyError(MakeError(E_ARGUMENT, "too many ranges to process"));
     }
 
     auto response = std::make_unique<TResponse>();
