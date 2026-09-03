@@ -502,7 +502,8 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
             args.Request,
             args.ChildRef->ShardId,
             args.ChildRef->ShardNodeName,
-            args.NewParentShardId);
+            args.NewParentShardId,
+            args.ParentNode->Attrs.GetQuotaId());
 
     WriteOpLogEntry(*db, args.OpLogEntry);
 
@@ -860,7 +861,8 @@ MakeRenameNodeInDestinationRequest(
     NProto::TRenameNodeRequest originalRequest,
     TString sourceNodeShardId,
     TString sourceNodeShardNodeName,
-    TString newParentShardId)
+    TString newParentShardId,
+    ui32 oldParentQuotaId)
 {
     NProtoPrivate::TRenameNodeInDestinationRequest request;
     auto& headers = *request.MutableHeaders();
@@ -873,6 +875,7 @@ MakeRenameNodeInDestinationRequest(
     request.SetFlags(originalRequest.GetFlags());
     request.SetSourceNodeShardId(std::move(sourceNodeShardId));
     request.SetSourceNodeShardNodeName(std::move(sourceNodeShardNodeName));
+    request.SetOldParentQuotaId(oldParentQuotaId);
     *request.MutableOriginalRequest() = std::move(originalRequest);
     return request;
 }
