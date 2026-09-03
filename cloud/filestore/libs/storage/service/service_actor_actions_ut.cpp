@@ -1352,6 +1352,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
     Y_UNIT_TEST(ShouldRunForcedOperation)
     {
+        using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
+
         NProto::TStorageConfig config;
         config.SetCompactionThreshold(1000);
         TTestEnv env({}, config);
@@ -1437,6 +1439,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 1177944066,
                 response.GetLastProcessedRangeId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(TStatus::E_RUNNING),
+                static_cast<int>(response.GetStatus()));
         }
 
         UNIT_ASSERT(completion);
@@ -1469,6 +1474,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 jsonResponse->Record.GetOutput(), &response).ok());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetProcessedRangeCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(TStatus::E_COMPLETED),
+                static_cast<int>(response.GetStatus()));
         }
 
         env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());

@@ -1525,6 +1525,9 @@ public:
 
         TInstant StartTime = TInstant::Now();
         ui32 Current = 0;
+        NProtoPrivate::TForcedOperationStatusResponse::EStatus Status =
+            NProtoPrivate::TForcedOperationStatusResponse::E_UNKNOWN;
+        NProto::TError Error;
 
         TForcedRangeOperationState(
                 TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
@@ -1564,7 +1567,8 @@ private:
 public:
     TString EnqueueForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
-        TVector<ui32> ranges);
+        TVector<ui32> ranges,
+        TString operationId = {});
     TMaybe<TPendingForcedRangeOperation> DequeueForcedRangeOperation();
 
     void StartForcedRangeOperation(
@@ -1575,9 +1579,10 @@ public:
     void AbortForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges,
-        TString operationId);
+        TString operationId,
+        const NProto::TError& error);
 
-    void CompleteForcedRangeOperation();
+    void CompleteForcedRangeOperation(const NProto::TError& error);
 
     const TForcedRangeOperationState* GetForcedRangeOperationState() const
     {
@@ -1597,6 +1602,8 @@ public:
     {
         return ForcedRangeOperationState.Defined();
     }
+
+    bool IsForcedRangeOperationPending(const TString& operationId) const;
 
     //
     // Truncate operations
