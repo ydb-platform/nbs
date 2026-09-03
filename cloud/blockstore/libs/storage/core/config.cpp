@@ -180,6 +180,22 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
         }})                                                                   )\
     xxx(ShapingThrottlerConfig,           NProto::TShapingThrottlerConfig, {} )\
+/* Safety-critical section of settings that must not be changed at runtime. */ \
+    xxx(FlushToDevNull,                                      bool, false      )\
+    xxx(AcquireNonReplicatedDevices,                         bool, false      )\
+    xxx(NonReplicatedDontSuspendDevices,                     bool, false      )\
+    xxx(NonReplicatedVolumeDirectAcquireEnabled,             bool, false      )\
+    xxx(DisableUsingIntermediateWriteBuffer,                 bool, false      )\
+    xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled, bool, false      )\
+    xxx(UseRecreatedBlobMetasOnCleanup,                      bool, false      )\
+    xxx(WaitForFreshWritesBeforeFlushEnabled,                bool, false      )\
+    xxx(OverlappingRequestsPolicy,                                             \
+        NProto::EOverlappingRequestsPolicy,                                    \
+        NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
+    xxx(RequestSplitterPolicy,                                                 \
+        NProto::ERequestSplitterPolicy,                                        \
+        NProto::ERequestSplitterPolicy::RSP_ENABLE                            )\
+/* Safety-critical section end.                                              */\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
@@ -258,7 +274,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(PipeClientMinRetryTime,        TDuration, Seconds(1)                  )\
     xxx(PipeClientMaxRetryTime,        TDuration, Seconds(4)                  )\
     xxx(FlushBlobSizeThreshold,        ui32,      4_MB                        )\
-    xxx(FlushToDevNull,                bool,      false                       )\
     xxx(CompactionRetryTimeout,        TDuration, Seconds(1)                  )\
     xxx(CleanupRetryTimeout,           TDuration, Seconds(1)                  )\
     xxx(MaxReadWriteRangeSize,         ui64,      4_GB                        )\
@@ -438,7 +453,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(NonReplicatedAgentDisconnectRecoveryInterval,  TDuration,  Minutes(1) )\
     xxx(NonReplicatedAgentTimeoutGrowthFactor,         double,     2          )\
                                                                                \
-    xxx(AcquireNonReplicatedDevices,                bool,       false         )\
     xxx(VolumePreemptionType,                                                  \
         NProto::EVolumePreemptionType,                                         \
         NProto::PREEMPTION_NONE                                               )\
@@ -546,7 +560,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RdmaTargetPort,                            ui32,      10020           )\
     xxx(UseNonreplicatedRdmaActor,                 bool,      false           )\
     xxx(UseRdma,                                   bool,      false           )\
-    xxx(NonReplicatedDontSuspendDevices,           bool,      false           )\
     xxx(QueryAvailableStorageForResumingDevicesEnabled, bool, false           )\
     xxx(AddClientRetryTimeoutIncrement,            TDuration, MSeconds(100)   )\
     xxx(MaxNonReplicatedDiskDeallocationRequests,  ui32,      16              )\
@@ -591,7 +604,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
                                                                                \
     xxx(UseDirectCopyRange,                             bool,      false         )\
-    xxx(NonReplicatedVolumeDirectAcquireEnabled,        bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
     xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
     xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\
@@ -611,7 +623,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
-    xxx(DisableUsingIntermediateWriteBuffer,                   bool, false       )\
     xxx(ScrubbingResyncPolicy,                                                    \
         NProto::EResyncPolicy,                                                    \
         NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                           )\
@@ -676,7 +687,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RetryAcquireReleaseDiskInitialDelay,  TDuration,   MSeconds(100)      )\
     xxx(RetryAcquireReleaseDiskMaxDelay,      TDuration,   Seconds(5)         )\
                                                                                \
-    xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled, bool,   false    )\
     xxx(EnableDataIntegrityValidationForYdbBasedDisks,       bool,   false    )\
                                                                                \
     xxx(TrimFreshLogTimeout,                  TDuration,   Seconds(0)         )\
@@ -710,12 +720,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
     xxx(MaxInFlightCmsRequests,               ui32,        0                  )\
-    xxx(OverlappingRequestsPolicy,                                             \
-        NProto::EOverlappingRequestsPolicy,                                    \
-        NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
-    xxx(RequestSplitterPolicy,                                                 \
-        NProto::ERequestSplitterPolicy,                                        \
-        NProto::ERequestSplitterPolicy::RSP_ENABLE                            )\
     xxx(VolumeBalancerMaxInProgress,          ui64,        0                  )\
     xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
         bool,                                                                  \
@@ -726,12 +730,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
     xxx(SplitByCompactionRangeMaxBlobCount,         ui64,       0             )\
     xxx(VerifyRecreatedBlobMetasOnCleanup,          bool,       false         )\
-    xxx(UseRecreatedBlobMetasOnCleanup,             bool,       false         )\
                                                                                \
     xxx(AllowGentlePreemptionForRebindVolumesAction,    bool,   false         )\
                                                                                \
     xxx(MixedBlocksFilterEnabled,                   bool,       false         )\
-    xxx(WaitForFreshWritesBeforeFlushEnabled,       bool,       false         )\
     xxx(MixedBlocksFilterRangesToLoadPerTx,         ui64,       100           )\
     xxx(MixedBlocksFilterAllowedCpuTimePerSecond,   TDuration,  MSeconds(10)  )\
     xxx(CheckpointAwareCleanupEnabled,              bool,       false         )\
