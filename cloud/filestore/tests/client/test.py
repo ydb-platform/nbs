@@ -507,6 +507,12 @@ def test_set_node_attr_quota_id():
     result = json.dumps(__process_stat(stat))
     result += "\n"
 
+    client.execute_action("setquota", {
+        "FileSystemId": "fs0",
+        "QuotaId": 42,
+        "MaxBytes": 1024 * 1024 * 1024,
+        "MaxNodes": 100,
+    })
     client.set_node_attr("fs0", node_id, "--quota-id", 42)
 
     out = client.stat("fs0", "/aaa")
