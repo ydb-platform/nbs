@@ -10202,6 +10202,65 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             response->GetErrorReason());
     }
 
+    Y_UNIT_TEST(
+        ShouldRejectSmallWritesAndZerosAfterReachingFreshLogicalBlocksByteCountHardLimit)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
+        config.SetFlushThreshold(4_MB);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.ZeroBlocks(TBlockRange32::MakeOneBlock(0));
+        partition.ZeroBlocks(TBlockRange32::MakeOneBlock(1));
+
+        partition.SendZeroBlocksRequest(TBlockRange32::MakeOneBlock(2));
+        auto zeroResponse = partition.RecvZeroBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            zeroResponse->GetStatus(),
+            zeroResponse->GetErrorReason());
+        UNIT_ASSERT(HasProtoFlag(
+            zeroResponse->GetError().GetFlags(),
+            NProto::EF_SILENT));
+        UNIT_ASSERT_STRING_CONTAINS(
+            zeroResponse->GetErrorReason(),
+            "FreshLogicalBlocksByteCountHardLimit");
+
+        partition.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(2), 1);
+        auto writeResponse = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            writeResponse->GetStatus(),
+            writeResponse->GetErrorReason());
+        UNIT_ASSERT(HasProtoFlag(
+            writeResponse->GetError().GetFlags(),
+            NProto::EF_SILENT));
+        UNIT_ASSERT_STRING_CONTAINS(
+            writeResponse->GetErrorReason(),
+            "FreshLogicalBlocksByteCountHardLimit");
+
+        partition.Flush();
+
+        partition.SendZeroBlocksRequest(2);
+        zeroResponse = partition.RecvZeroBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            zeroResponse->GetStatus(),
+            zeroResponse->GetErrorReason());
+
+        partition.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(3), 1);
+        writeResponse = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            writeResponse->GetStatus(),
+            writeResponse->GetErrorReason());
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyScanDiskWithoutBrokenBlobs)
     {
         constexpr ui32 blockCount = 1024 * 1024;

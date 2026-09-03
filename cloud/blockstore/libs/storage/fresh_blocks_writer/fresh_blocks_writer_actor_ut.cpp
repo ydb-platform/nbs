@@ -1021,6 +1021,73 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             response->GetErrorReason());
     }
 
+    Y_UNIT_TEST(
+        ShouldRejectSmallWritesAndZerosAfterReachingFreshLogicalBlocksByteCountHardLimit)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlocksWriterEnabled(true);
+        config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
+        config.SetFlushThreshold(4_MB);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        // The previous write becomes garbage and should not be accounted in
+        // the unflushed fresh bytes count.
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 2);
+        // Zero block should be accounted in the unflushed fresh bytes count.
+        fbwClient.ZeroBlocks(TBlockRange32::MakeOneBlock(1));
+
+        fbwClient.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(2), 1);
+        auto writeResponse = fbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            writeResponse->GetStatus(),
+            writeResponse->GetErrorReason());
+        UNIT_ASSERT(HasProtoFlag(
+            writeResponse->GetError().GetFlags(),
+            NProto::EF_SILENT));
+        UNIT_ASSERT_STRING_CONTAINS(
+            writeResponse->GetErrorReason(),
+            "FreshLogicalBlocksByteCountHardLimit");
+
+        fbwClient.SendZeroBlocksRequest(3);
+        auto zeroResponse = fbwClient.RecvZeroBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            zeroResponse->GetStatus(),
+            zeroResponse->GetErrorReason());
+        UNIT_ASSERT(HasProtoFlag(
+            zeroResponse->GetError().GetFlags(),
+            NProto::EF_SILENT));
+        UNIT_ASSERT_STRING_CONTAINS(
+            writeResponse->GetErrorReason(),
+            "FreshLogicalBlocksByteCountHardLimit");
+
+        partition.Flush();
+
+        fbwClient.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(2), 1);
+        writeResponse = fbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            writeResponse->GetStatus(),
+            writeResponse->GetErrorReason());
+
+        fbwClient.SendZeroBlocksRequest(3);
+        zeroResponse = fbwClient.RecvZeroBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            zeroResponse->GetStatus(),
+            zeroResponse->GetErrorReason());
+    }
+
     Y_UNIT_TEST(ShouldNotTrimInProgressWrites)
     {
         TMyTestEnv testEnv;

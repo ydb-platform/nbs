@@ -7,7 +7,13 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <util/generic/string.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -27,6 +33,31 @@ NActors::IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
     }
     return std::make_unique<TEvService::TEvWriteBlocksResponse>(
         std::forward<T>(args)...);
+}
+
+inline NProto::TError CheckFreshHardLimits(
+    ui64 freshByteCount,
+    ui64 freshLogicalBlocksByteCount,
+    ui64 freshByteCountHardLimit,
+    ui64 freshLogicalBlocksByteCountHardLimit)
+{
+    TString message;
+    if (freshByteCount >= freshByteCountHardLimit) {
+        message = TStringBuilder()
+                  << "FreshByteCountHardLimit exceeded: " << freshByteCount;
+    } else if (
+        freshLogicalBlocksByteCount >= freshLogicalBlocksByteCountHardLimit)
+    {
+        message = TStringBuilder()
+                  << "FreshLogicalBlocksByteCountHardLimit exceeded: "
+                  << freshLogicalBlocksByteCount;
+    } else {
+        return {};
+    }
+
+    ui32 flags = 0;
+    SetProtoFlag(flags, NProto::EF_SILENT);
+    return MakeError(E_REJECTED, std::move(message), flags);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -295,7 +295,8 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::CompactionIgnoringZeroedScore>(),
         MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
-        MakeMeta<&TSimpleDiskCounters::GarbageCompactionExecTimePerSecondLimit>(),
+        MakeMeta<
+            &TSimpleDiskCounters::GarbageCompactionExecTimePerSecondLimit>(),
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),
