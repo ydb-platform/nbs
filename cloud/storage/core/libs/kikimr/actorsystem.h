@@ -10,8 +10,15 @@
 #include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/library/actors/util/should_continue.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/ptr.h>
 #include <util/generic/strbuf.h>
+
+namespace NActors {
+
+class ISchedulerCookie;
+
+}   // namespace NActors
 
 namespace NCloud {
 
@@ -32,6 +39,11 @@ struct IActorSystem
         NActors::IEventBasePtr event) = 0;
 
     virtual bool Send(NActors::IEventHandlePtr ev) = 0;
+
+    virtual void Schedule(
+        TDuration delta,
+        NActors::IEventHandlePtr ev,
+        NActors::ISchedulerCookie* cookie) = 0;
 
     virtual TProgramShouldContinue& GetProgramShouldContinue() = 0;
 };

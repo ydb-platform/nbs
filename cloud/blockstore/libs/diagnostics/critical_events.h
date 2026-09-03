@@ -106,6 +106,7 @@ using TCritEventParams =
     xxx(RdmaMessageTypeMismatch)                                               \
     xxx(BlockChecksumAbsent)                                                   \
     xxx(CleanupBlobMetaBlocksMismatch)                                         \
+    xxx(ServiceProxyReceivedUnknownCookie)                                     \
     xxx(Bug) /* General software bug event.                                    \
                 Used for non-specialized or unclassified errors. */            \
     // BLOCKSTORE_IMPOSSIBLE_EVENTS
