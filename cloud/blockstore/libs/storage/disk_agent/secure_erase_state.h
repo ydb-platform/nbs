@@ -10,6 +10,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,6 +27,7 @@ struct TSecureErase
 {
     TString DeviceName;
     ESecureEraseStatus Status = ESecureEraseStatus::Wait;
+    ui32 Generation = 0;
     ui64 IdempotencyKey = 0;
     TDeque<TRequestInfoPtr> Requests;
     NProto::TError Error;
@@ -38,25 +41,34 @@ private:
     THashMap<TString, TSecureErase> SecureErases;
     THashSet<TString> DevicesInProgress;
     THashSet<TString> DevicesNamesInProgress;
+    ui32 CurrentGeneration = 0;
 
 public:
     TSecureEraseState() = default;
 
     [[nodiscard]] TVector<TString> GetDevicesToErase() const;
     [[nodiscard]] TVector<TRequestInfoPtr> GetRequests() const;
+    [[nodiscard]] std::optional<NProto::TError> HandleRequest(
+        const TString& deviceId,
+        ui32 generation,
+        ui64 idempotencyKey);
 
     [[nodiscard]] TSecureErase* Find(const TString& deviceId);
     [[nodiscard]] const TSecureErase* Find(const TString& deviceId) const;
     TSecureErase& GetOrAdd(const TString& deviceId);
 
     [[nodiscard]] bool IsInProgress(const TString& deviceId) const;
-    [[nodiscard]] bool CanStart(const TString& deviceId,
-                                const TString& deviceName,
-                                ui32 maxParallelSecureErases) const;
+    [[nodiscard]] bool CanStart(
+        const TString& deviceId,
+        const TString& deviceName,
+        ui32 maxParallelSecureErases) const;
 
     void Start(const TString& deviceId, const TString& deviceName);
-    TSecureErase& Complete(const TString& deviceId,
-                           const NProto::TError& error);
+    TSecureErase& Complete(
+        const TString& deviceId,
+        const NProto::TError& error);
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage

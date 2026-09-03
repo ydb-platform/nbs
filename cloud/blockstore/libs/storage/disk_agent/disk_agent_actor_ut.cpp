@@ -3908,6 +3908,36 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(2, AtomicGet(spdk->SecureEraseCount));
     }
 
+    Y_UNIT_TEST(ShouldRejectSecureEraseRequestFromOutdatedGeneration)
+    {
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(DiskAgentConfig({"foo", "bar"}))
+            .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.SendSecureEraseDeviceRequest("foo", 0, 2);
+        auto response = diskAgent.RecvSecureEraseDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
+
+        diskAgent.SendSecureEraseDeviceRequest("bar", 0, 1);
+        response = diskAgent.RecvSecureEraseDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            response->Record.GetError().GetCode());
+
+        diskAgent.SendSecureEraseDeviceRequest("bar", 0, 0);
+        response = diskAgent.RecvSecureEraseDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
+
+        diskAgent.SendSecureEraseDeviceRequest("bar", 0, 1);
+        response = diskAgent.RecvSecureEraseDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldRejectSecureEraseRequestsOnPoisonPill)
     {
         TTestBasicRuntime runtime;

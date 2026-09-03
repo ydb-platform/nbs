@@ -108,22 +108,20 @@ void TDiskAgentActor::HandleSecureEraseDevice(
         TBlockStoreComponents::DISK_AGENT,
         "Secure erase device " << deviceId.Quote());
 
-    auto& erase = SecureEraseState.GetOrAdd(deviceId);
-
-    const bool eraseWithThisIdempotencyKeyAlreadyCompleted =
-        request.GetIdempotencyKey() != 0 &&
-        erase.IdempotencyKey == request.GetIdempotencyKey() &&
-        erase.Status == ESecureEraseStatus::Completed;
-    if (eraseWithThisIdempotencyKeyAlreadyCompleted) {
+    if (auto error = SecureEraseState.HandleRequest(
+            deviceId,
+            request.GetGeneration(),
+            request.GetIdempotencyKey()))
+    {
         NCloud::Reply(
             ctx,
             *ev,
             std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
-                erase.Error));
+                std::move(*error)));
         return;
     }
 
-    erase.IdempotencyKey = request.GetIdempotencyKey();
+    auto& erase = SecureEraseState.GetOrAdd(deviceId);
     erase.Requests.emplace_back(
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
     if (SecureEraseState.IsInProgress(deviceId)) {

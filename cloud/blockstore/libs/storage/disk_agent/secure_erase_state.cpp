@@ -1,5 +1,7 @@
 #include "secure_erase_state.h"
 
+#include <util/string/builder.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,6 +35,38 @@ TVector<TRequestInfoPtr> TSecureEraseState::GetRequests() const
     return requests;
 }
 
+std::optional<NProto::TError> TSecureEraseState::HandleRequest(
+    const TString& deviceId,
+    ui32 generation,
+    ui64 idempotencyKey)
+{
+    if (generation != 0 && generation < CurrentGeneration) {
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Secure erase request generation " << generation
+                << " is less than current generation " << CurrentGeneration);
+    }
+
+    CurrentGeneration = generation;
+    if (generation == 0) {
+        idempotencyKey = 0;
+    }
+
+    auto& erase = GetOrAdd(deviceId);
+    const bool eraseWithThisIdempotencyKeyAlreadyCompleted =
+        generation != 0 && erase.Generation == generation &&
+        erase.IdempotencyKey == idempotencyKey &&
+        erase.Status == ESecureEraseStatus::Completed;
+    if (eraseWithThisIdempotencyKeyAlreadyCompleted) {
+        return erase.Error;
+    }
+
+    erase.Generation = generation;
+    erase.IdempotencyKey = idempotencyKey;
+    return std::nullopt;
+}
+
 TSecureErase* TSecureEraseState::Find(const TString& deviceId)
 {
     return SecureErases.FindPtr(deviceId);
@@ -53,9 +87,10 @@ bool TSecureEraseState::IsInProgress(const TString& deviceId) const
     return DevicesInProgress.contains(deviceId);
 }
 
-bool TSecureEraseState::CanStart(const TString& deviceId,
-                                 const TString& deviceName,
-                                 ui32 maxParallelSecureErases) const
+bool TSecureEraseState::CanStart(
+    const TString& deviceId,
+    const TString& deviceName,
+    ui32 maxParallelSecureErases) const
 {
     const auto* erase = Find(deviceId);
     return erase && erase->Status == ESecureEraseStatus::Wait &&
@@ -64,8 +99,9 @@ bool TSecureEraseState::CanStart(const TString& deviceId,
            DevicesInProgress.size() < maxParallelSecureErases;
 }
 
-void TSecureEraseState::Start(const TString& deviceId,
-                              const TString& deviceName)
+void TSecureEraseState::Start(
+    const TString& deviceId,
+    const TString& deviceName)
 {
     auto* erase = Find(deviceId);
     Y_ABORT_UNLESS(erase);
@@ -82,8 +118,9 @@ void TSecureEraseState::Start(const TString& deviceId,
     erase->Status = ESecureEraseStatus::InProgress;
 }
 
-TSecureErase& TSecureEraseState::Complete(const TString& deviceId,
-                                          const NProto::TError& error)
+TSecureErase& TSecureEraseState::Complete(
+    const TString& deviceId,
+    const NProto::TError& error)
 {
     auto* erase = Find(deviceId);
     Y_ABORT_UNLESS(erase);

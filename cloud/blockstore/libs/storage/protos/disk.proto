@@ -1172,6 +1172,9 @@ message TSecureEraseDeviceRequest
     // If a request contains a key and an erase with the same key has already
     // completed, the result of that erase is returned immediately.
     uint64 IdempotencyKey = 3;
+
+    // Disk Registry tablet generation.
+    uint32 Generation = 4;
 }
 
 message TSecureEraseDeviceResponse

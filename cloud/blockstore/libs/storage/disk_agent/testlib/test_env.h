@@ -273,12 +273,14 @@ public:
 
     auto CreateSecureEraseDeviceRequest(
         TString uuid,
-        ui64 idempotencyKey = 0)
+        ui64 idempotencyKey = 0,
+        ui32 generation = 0)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
 
         request->Record.SetDeviceUUID(std::move(uuid));
         request->Record.SetIdempotencyKey(idempotencyKey);
+        request->Record.SetGeneration(generation);
 
         return request;
     }

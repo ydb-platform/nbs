@@ -19,8 +19,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
     void ShouldSecureEraseUnitImpl(
         NProto::EDiskAgentBackendType backend,
         ui64 totalSize,
+        ui64 firstIdempotencyKey,
         ui64 secondIdempotencyKey,
-        ui64 expectedEraseCount)
+        ui64 expectedEraseCount,
+        ui32 generation)
     {
         const ui32 blockSize = 4_KB;
         const ui64 totalBlockCount = totalSize / blockSize;
@@ -136,16 +138,15 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         // erase
 
         diskAgent.ReleaseDevices(TVector{uuid}, sessionId);
-        const ui64 idempotencyKey = 42;
         auto secureErase = [&] (ui64 key) {
-            diskAgent.SendSecureEraseDeviceRequest(uuid, key);
+            diskAgent.SendSecureEraseDeviceRequest(uuid, key, generation);
             auto response = diskAgent.RecvSecureEraseDeviceResponse(TDuration::Max());
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
                 response->GetError().GetCode());
         };
 
-        secureErase(idempotencyKey);
+        secureErase(firstIdempotencyKey);
         secureErase(secondIdempotencyKey);
 
         diskAgent.AcquireDevices(
@@ -197,8 +198,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         ShouldSecureEraseUnitImpl(
             NProto::DISK_AGENT_BACKEND_AIO,
             5_GB,
-            42,
-            1);
+            /* firstIdempotencyKey */ 42,
+            /* secondIdempotencyKey */ 42,
+            /* expectedEraseCount */ 1,
+            /* generation */ 1);
     }
 
     Y_UNIT_TEST(ShouldSecureErase5GiBUnitIoUring)
@@ -206,8 +209,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         ShouldSecureEraseUnitImpl(
             NProto::DISK_AGENT_BACKEND_IO_URING,
             5_GB,
-            42,
-            1);
+            /* firstIdempotencyKey */ 42,
+            /* secondIdempotencyKey */ 42,
+            /* expectedEraseCount */ 1,
+            /* generation */ 1);
     }
 
     Y_UNIT_TEST(ShouldSecureEraseAgainAfterIdempotencyKeyChanged)
@@ -215,8 +220,32 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         ShouldSecureEraseUnitImpl(
             NProto::DISK_AGENT_BACKEND_AIO,
             4_MB,
-            43,
-            2);
+            /* firstIdempotencyKey */ 42,
+            /* secondIdempotencyKey */ 43,
+            /* expectedEraseCount */ 2,
+            /* generation */ 1);
+    }
+
+    Y_UNIT_TEST(ShouldUseZeroIdempotencyKeyWithGeneration)
+    {
+        ShouldSecureEraseUnitImpl(
+            NProto::DISK_AGENT_BACKEND_AIO,
+            4_MB,
+            /* firstIdempotencyKey */ 0,
+            /* secondIdempotencyKey */ 0,
+            /* expectedEraseCount */ 1,
+            /* generation */ 1);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreIdempotencyKeyWithoutGeneration)
+    {
+        ShouldSecureEraseUnitImpl(
+            NProto::DISK_AGENT_BACKEND_AIO,
+            4_MB,
+            /* firstIdempotencyKey */ 42,
+            /* secondIdempotencyKey */ 42,
+            /* expectedEraseCount */ 2,
+            /* generation */ 0);
     }
 }
 

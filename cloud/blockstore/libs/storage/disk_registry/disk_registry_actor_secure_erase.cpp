@@ -51,6 +51,7 @@ private:
 
     const TChildLogTitle LogTitle;
     const TActorId Owner;
+    const ui32 Generation;
     const TRequestInfoPtr Request;
     const TDuration RequestTimeout;
 
@@ -65,6 +66,7 @@ public:
     TSecureEraseActor(
         const TLogTitle& logTitle,
         const TActorId& owner,
+        ui32 generation,
         TRequestInfoPtr request,
         TDuration requestTimeout,
         TString poolName,
@@ -107,6 +109,7 @@ private:
 TSecureEraseActor::TSecureEraseActor(
         const TLogTitle& logTitle,
         const TActorId& owner,
+        ui32 generation,
         TRequestInfoPtr request,
         TDuration requestTimeout,
         TString poolName,
@@ -116,6 +119,7 @@ TSecureEraseActor::TSecureEraseActor(
           GetCycleCount(),
           {{"pool", TStringBuf(poolName)}}))
     , Owner(owner)
+    , Generation(generation)
     , Request(std::move(request))
     , RequestTimeout(requestTimeout)
     , PoolName(std::move(poolName))
@@ -134,6 +138,7 @@ void TSecureEraseActor::Bootstrap(const TActorContext& ctx)
 
         auto request = std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
         request->Record.SetDeviceUUID(device.GetDeviceUUID());
+        request->Record.SetGeneration(Generation);
         if (const auto* key =
                 EraseIdempotencyKeys.FindPtr(device.GetDeviceUUID()))
         {
@@ -483,6 +488,7 @@ void TDiskRegistryActor::HandleSecureErase(
         ctx,
         LogTitle,
         ctx.SelfID,
+        Executor()->Generation(),
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         msg->RequestTimeout,
         msg->PoolName,
