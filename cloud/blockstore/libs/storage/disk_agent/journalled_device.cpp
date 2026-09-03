@@ -2,8 +2,8 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
-
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/journalled_device/journalled_device.h>
 
 #include <util/generic/hash_set.h>
 #include <util/string/builder.h>
@@ -127,7 +127,7 @@ NProto::TError ValidateReadPagesRequest(
 ////////////////////////////////////////////////////////////////////////////////
 
 class TJournalledDevice final
-    : public IJournalledDevice
+    : public NJournalled::IJournalledDevice
     , public std::enable_shared_from_this<TJournalledDevice>
 {
 private:
@@ -141,6 +141,9 @@ public:
         : DeviceUUID(std::move(deviceUUID))
         , DeviceClient(std::move(deviceClient))
     {}
+
+    void Start() override {}
+    void Stop() override {}
 
     // IJournalledDevice
 
@@ -315,7 +318,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IJournalledDevicePtr CreateJournalledDevice(
+NJournalled::IJournalledDevicePtr CreateJournalledDevice(
     TString deviceUUID,
     TDeviceClientPtr deviceClient)
 {

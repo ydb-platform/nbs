@@ -3,6 +3,7 @@
 #include "journalled_device.h"
 
 #include <cloud/storage/core/libs/coroutine/executor.h>
+#include <cloud/storage/core/libs/journalled_device/journalled_device.h>
 #include <cloud/storage/core/libs/journalled_device_tcp_server/server.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
