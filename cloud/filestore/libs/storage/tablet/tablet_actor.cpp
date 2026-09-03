@@ -1137,9 +1137,17 @@ void TIndexTabletActor::HandleForcedOperation(
     const TActorContext& ctx)
 {
     const auto& request = ev->Get()->Record;
+
+    using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
+
+    auto replyError = [&](NProto::TError error)
+    {
+        auto response = std::make_unique<TResponse>(std::move(error));
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
     using EMode = TEvIndexTabletPrivate::EForcedRangeOperationMode;
     EMode mode{};
-    NProto::TError e;
     switch (request.GetOpType()) {
         case NProtoPrivate::TForcedOperationRequest::E_COMPACTION: {
             mode = EMode::Compaction;
@@ -1157,43 +1165,44 @@ void TIndexTabletActor::HandleForcedOperation(
         }
 
         default: {
-            e = MakeError(E_ARGUMENT, "unsupported mode");
+            replyError(MakeError(E_ARGUMENT, "unsupported mode"));
+            return;
         }
     }
 
-    if (e.GetCode() == S_OK && IsForcedRangeOperationRunning()) {
+    if (IsForcedRangeOperationRunning()) {
         const auto currentMode = GetForcedRangeOperationState()->Mode;
+        NProto::TError error;
         if (currentMode == mode) {
-            e = MakeError(S_ALREADY, "already launched");
+            error = MakeError(S_ALREADY, "already launched");
         } else {
-            e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
+            error = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
                 << static_cast<int>(mode)
                 << " != " << static_cast<int>(currentMode));
         }
+        replyError(std::move(error));
+        return;
     }
 
-    using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
-    auto code = e.GetCode();
-    auto response = std::make_unique<TResponse>(std::move(e));
-    if (code == S_OK) {
-        TVector<ui32> ranges;
-        if (mode == EMode::DeleteZeroCompactionRanges) {
-            ranges = GenerateForceDeleteZeroCompactionRanges();
-        } else {
-            ranges = request.GetProcessAllRanges()
-                ? GetAllCompactionRanges()
-                : GetNonEmptyCompactionRanges();
-        }
-        const auto* b =
-            LowerBound(ranges.begin(), ranges.end(), request.GetMinRangeId());
-        if (b != ranges.begin()) {
-            ranges.erase(ranges.begin(), b);
-        }
-        response->Record.SetRangeCount(ranges.size());
-        auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
-        response->Record.SetOperationId(std::move(operationId));
-        EnqueueForcedRangeOperationIfNeeded(ctx);
+    TVector<ui32> ranges;
+    if (mode == EMode::DeleteZeroCompactionRanges) {
+        ranges = GenerateForceDeleteZeroCompactionRanges();
+    } else {
+        ranges = request.GetProcessAllRanges()
+            ? GetAllCompactionRanges()
+            : GetNonEmptyCompactionRanges();
     }
+    const auto* b =
+        LowerBound(ranges.begin(), ranges.end(), request.GetMinRangeId());
+    if (b != ranges.begin()) {
+        ranges.erase(ranges.begin(), b);
+    }
+
+    auto response = std::make_unique<TResponse>();
+    response->Record.SetRangeCount(ranges.size());
+    auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
+    response->Record.SetOperationId(std::move(operationId));
+    EnqueueForcedRangeOperationIfNeeded(ctx);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
