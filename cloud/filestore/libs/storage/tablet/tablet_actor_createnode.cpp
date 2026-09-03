@@ -608,13 +608,6 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     args.CommitId = GetCurrentCommitId();
 
-    // Validate there are enough free inodes. The restriction is not enforced if
-    // the request comes from the main FS to the shard.
-    if (!HasNodesLeft() && !behaveAsShard) {
-        args.Error = ErrorNoSpaceLeft();
-        return true;
-    }
-
     // validate parent node exists
     if (!ReadNode(*db, args.ParentNodeId, args.CommitId, args.ParentNode)) {
         return false;   // not ready
@@ -652,8 +645,16 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
 
     if (!behaveAsShard) {
         // args.ParentNode is only a real parent when behaveAsShard is false.
-        args.Attrs.SetQuotaId(args.ParentNode->Attrs.GetQuotaId());
-        args.Request.SetQuotaId(args.ParentNode->Attrs.GetQuotaId());
+        // The restriction is not enforced if the request comes from the
+        // main FS to the shard.
+        const ui32 quotaId = args.ParentNode->Attrs.GetQuotaId();
+        args.Attrs.SetQuotaId(quotaId);
+        args.Request.SetQuotaId(quotaId);
+
+        if (!HasNodesLeft(quotaId)) {
+            args.Error = ErrorNoSpaceLeft();
+            return true;
+        }
     }
 
     // TODO: AccessCheck

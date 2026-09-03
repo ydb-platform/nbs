@@ -934,9 +934,8 @@ private:
 
     void UpdateLogTag();
 
-    bool HasBlocksLeft(ui64 blocksRequired) const;
-    bool HasSpaceLeft(ui64 prevSize, ui64 newSize) const;
-    bool HasNodesLeft() const;
+    bool HasSpaceLeft(ui64 prevSize, ui64 newSize, ui32 quotaId) const;
+    bool HasNodesLeft(ui32 quotaId) const;
 
     std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabase(
         NKikimr::NTable::TDatabase& database);
