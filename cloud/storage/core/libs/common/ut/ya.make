@@ -29,6 +29,7 @@ SRCS(
     guarded_sglist_ut.cpp
     history_ut.cpp
     lru_cache_ut.cpp
+    media_ut.cpp
     ring_buffer_ut.cpp
     scheduler_ut.cpp
     scoped_handle_ut.cpp

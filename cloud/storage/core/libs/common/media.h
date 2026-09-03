@@ -11,6 +11,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsNbs2MediaKind(NProto::EStorageMediaKind mediaKind);
 bool IsDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind);
 bool IsBlobStorageMediaKind(NProto::EStorageMediaKind mediaKind);
 bool IsReliableDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind);

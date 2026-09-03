@@ -241,6 +241,30 @@ void TCreateVolumeActor::CreateVolumeImpl(
 {
     NKikimrBlockStore::TVolumeConfig config;
 
+    if (IsNbs2MediaKind(GetStorageMediaKind())) {
+        config.SetBlockSize(GetBlockSize());
+        config.SetDiskId(Request.GetDiskId());
+        config.SetStorageMediaKind(GetStorageMediaKind());
+        config.SetTabletVersion(Nbs2TabletVersion);
+        config.SetStoragePoolName(Request.GetStoragePoolName());
+        config.AddPartitions()->SetBlockCount(Request.GetBlocksCount());
+        config.SetCreationTs(ctx.Now().MicroSeconds());
+
+        auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
+            std::move(config));
+
+        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+            "Sending createvolume request for nbs2 volume %s",
+            Request.GetDiskId().Quote().c_str());
+
+        NCloud::Send(
+            ctx,
+            MakeSSProxyServiceId(),
+            std::move(request),
+            RequestInfo->Cookie);
+        return;
+    }
+
     config.SetBlockSize(GetBlockSize());
     const auto maxBlocksInBlob = CalculateMaxBlocksInBlob(
         Config->GetMaxBlobSize(),
@@ -500,6 +524,48 @@ STFUNC(TCreateVolumeActor::StateWork)
     }
 }
 
+NProto::TError ValidateNbs2CreateVolumeRequest(
+    const NProto::TCreateVolumeRequest& request)
+{
+    if (!request.GetStoragePoolName()) {
+        return MakeError(
+            E_ARGUMENT,
+            "StoragePoolName is required for ssd-nbs2 disks");
+    }
+
+    if (request.GetBaseDiskId()) {
+        return MakeError(
+            E_ARGUMENT,
+            "overlay disks are not supported for ssd-nbs2 disks");
+    }
+
+    if (request.GetPlacementGroupId()) {
+        return MakeError(
+            E_ARGUMENT,
+            "PlacementGroupId is not supported for ssd-nbs2 disks");
+    }
+
+    if (request.AgentIdsSize()) {
+        return MakeError(
+            E_ARGUMENT,
+            "AgentIds are not supported for ssd-nbs2 disks");
+    }
+
+    if (request.GetPartitionsCount() > 1) {
+        return MakeError(
+            E_ARGUMENT,
+            "multiple partitions are not supported for ssd-nbs2 disks");
+    }
+
+    if (request.GetEncryptionSpec().GetMode() != NProto::NO_ENCRYPTION) {
+        return MakeError(
+            E_ARGUMENT,
+            "encryption is not supported for ssd-nbs2 disks");
+    }
+
+    return MakeError(S_OK);
+}
+
 NProto::TError ValidateCreateVolumeRequest(
     const TStorageConfig& config,
     const NProto::TCreateVolumeRequest& request)
@@ -520,7 +586,10 @@ NProto::TError ValidateCreateVolumeRequest(
         }
     }
 
-    if (request.GetTabletVersion() > MaxSupportedTabletVersion) {
+    const auto mediaKind = request.GetStorageMediaKind();
+    if (!IsNbs2MediaKind(mediaKind) &&
+        request.GetTabletVersion() > MaxSupportedTabletVersion)
+    {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder() << "bad tablet version: "
@@ -552,7 +621,6 @@ NProto::TError ValidateCreateVolumeRequest(
                 << config.GetMaxPartitionsPerVolume());
     }
 
-    const auto mediaKind = request.GetStorageMediaKind();
     const auto maxBlocks = ComputeMaxBlocks(config, mediaKind, 0);
     if (request.GetBlocksCount() > maxBlocks) {
         return MakeError(
@@ -572,7 +640,18 @@ NProto::TError ValidateCreateVolumeRequest(
         return vbsError;
     }
 
-    if (!IsDiskRegistryMediaKind(mediaKind)) {
+    if (IsNbs2MediaKind(mediaKind)) {
+        return ValidateNbs2CreateVolumeRequest(request);
+    } else if (IsDiskRegistryMediaKind(mediaKind)) {
+        const ui64 volumeSize = request.GetBlockSize() * request.GetBlocksCount();
+        const ui64 unit = GetAllocationUnit(config, mediaKind);
+
+        if (volumeSize % unit != 0) {
+            return MakeError(
+                E_ARGUMENT, TStringBuilder()
+                    << "volume size should be divisible by " << unit);
+        }
+    } else {
         if (request.GetPlacementGroupId()) {
             return MakeError(
                 E_ARGUMENT,
@@ -589,15 +668,6 @@ NProto::TError ValidateCreateVolumeRequest(
             return MakeError(
                 E_ARGUMENT,
                 "AgentIds not allowed for replicated disks");
-        }
-    } else {
-        const ui64 volumeSize = request.GetBlockSize() * request.GetBlocksCount();
-        const ui64 unit = GetAllocationUnit(config, mediaKind);
-
-        if (volumeSize % unit != 0) {
-            return MakeError(
-                E_ARGUMENT, TStringBuilder()
-                    << "volume size should be divisible by " << unit);
         }
     }
 

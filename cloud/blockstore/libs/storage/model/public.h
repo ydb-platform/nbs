@@ -36,6 +36,7 @@ constexpr ui16 InvalidBlobOffset = 0xFFFFu;
 constexpr ui16 ZeroBlobOffset = InvalidBlobOffset - 1;
 
 constexpr ui32 MaxSupportedTabletVersion = 2;
+constexpr ui32 Nbs2TabletVersion = 3;
 
 ////////////////////////////////////////////////////////////////////////////////
 
