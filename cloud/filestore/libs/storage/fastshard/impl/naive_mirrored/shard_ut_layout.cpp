@@ -221,6 +221,18 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
             << html.Str();
     }
 
+    //
+    // The stats section: the collect button, the loader and the script
+    // driving them must make it into the page.
+    //
+
+    EXPECT_TRUE(html.Str().Contains("fsl-stats-btn")) << html.Str();
+    EXPECT_TRUE(html.Str().Contains("fsl-stats-loader")) << html.Str();
+    EXPECT_TRUE(html.Str().Contains("function fslCollectStats()"))
+        << html.Str();
+    EXPECT_TRUE(html.Str().Contains("action=fastShardStatsJson")
+        || html.Str().Contains("fastShardStatsJson")) << html.Str();
+
     EXPECT_TRUE(html.Str().Contains("Storage Groups")) << html.Str();
     EXPECT_TRUE(html.Str().Contains("<td>E_SG_MIRROR</td>")) << html.Str();
     for (ui32 i = 1; i <= 3; ++i) {

@@ -1101,7 +1101,10 @@ void DumpLayoutComponentsHtml(
 
     OutputTemplate(
         NResource::Find("fastshard/html/layout.html"),
-        {{"STYLE", NResource::Find("fastshard/css/layout.css")}},
+        {
+            {"STYLE", NResource::Find("fastshard/css/layout.css")},
+            {"SCRIPT", NResource::Find("fastshard/js/layout.js")},
+        },
         {
             {"COMPONENTS", std::move(componentRows)},
             {"DEVICES", std::move(deviceRows)},

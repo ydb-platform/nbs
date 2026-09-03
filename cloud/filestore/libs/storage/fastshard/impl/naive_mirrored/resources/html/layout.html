@@ -27,6 +27,16 @@
     </tbody>
 </table>
 
+<h3>Stats</h3>
+
+<p>
+    <button id="fsl-stats-btn" onclick="fslCollectStats()">
+        Collect stats
+    </button>
+    <span id="fsl-stats-loader" class="fsl-loader" hidden></span>
+</p>
+<div id="fsl-stats-result"></div>
+
 <h3>Storage Groups</h3>
 
 <table class="fsl-table">
@@ -51,3 +61,5 @@
         {{ endfor }}
     </tbody>
 </table>
+
+<script>{{ SCRIPT }}</script>
