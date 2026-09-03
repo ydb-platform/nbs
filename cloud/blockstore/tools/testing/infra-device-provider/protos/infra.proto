@@ -13,10 +13,17 @@ service TInfraService
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EDeviceState {
+    DEVICE_STATE_ACTIVE = 0;
+    DEVICE_STATE_INACTIVE = 1;
+    DEVICE_STATE_DECOMMISSIONED = 2;
+}
+
 message TDevice
 {
     string PCIeAddress = 1;
     string SerialNumber = 2;
+    EDeviceState State = 3;
 }
 
 message TListDevicesRequest
