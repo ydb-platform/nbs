@@ -1,0 +1,4126 @@
+diff --git a/contrib/ydb/core/cms/console/configs_dispatcher_ut.cpp b/contrib/ydb/core/cms/console/configs_dispatcher_ut.cpp
+index 62b1b62ee196d48ae6cd491f3e56f96806619f01..53dcf2e4133f7d9418b90c4adad943adc98442dd 100644
+--- a/contrib/ydb/core/cms/console/configs_dispatcher_ut.cpp
++++ b/contrib/ydb/core/cms/console/configs_dispatcher_ut.cpp
+@@ -1,4 +1,5 @@
+ #include "configs_dispatcher.h"
++#include "console.h"
+ #include "ut_helpers.h"
+ 
+ #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
+@@ -13,6 +14,7 @@
+ #include <library/cpp/protobuf/json/json2proto.h>
+ 
+ #include <util/system/hostname.h>
++#include <util/string/subst.h>
+ 
+ #include <contrib/ydb/core/protos/netclassifier.pb.h>
+ 
+@@ -276,6 +278,62 @@ private:
+     TDeque<TAutoPtr<IEventHandle>> EventsQueue;
+ };
+ 
++// End-node subscriber: subscribes to the opaque kind PrivateDatabaseConfigItem
++// and reads the ALREADY-PARSED TUtPrivateDatabaseConfig from the notification's
++// OpaqueConfigs - it does not touch the opaque string itself; the dispatcher parsed it.
++class TPrivateDatabaseConfigSubscriber : public TActorBootstrapped<TPrivateDatabaseConfigSubscriber>
++{
++public:
++    // No trust to the runtime.SetObserverFunc() - fires multiple times per delivery
++    // for ES_PRIVATE events that share a numeric id with other unrelated private events;
++    // ev->Sender + ev->Recipient filter not help.
++    std::atomic<int> parsedCnt{0};
++    std::atomic<int> resetCnt{0};
++
++    TPrivateDatabaseConfigSubscriber(TActorId sink)
++        : Sink(sink)
++    {}
++
++    void Bootstrap(const TActorContext &ctx) {
++        Become(&TThis::StateWork);
++        ctx.Send(MakeConfigsDispatcherID(ctx.SelfID.NodeId()),
++            new TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest(
++                (ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem, ctx.SelfID));
++    }
++
++    void Handle(TEvConsole::TEvConfigNotificationRequest::TPtr &ev, const TActorContext &ctx) {
++        auto &rec = ev->Get()->Record;
++        const auto &opaqueConfigs = ev->Get()->OpaqueConfigs;
++
++        if (auto it = opaqueConfigs.find((ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem);
++            it != opaqueConfigs.end() && it->second)
++        {
++            NKikimrOpaqueConfigUt::TUtPrivateDatabaseConfig impl;
++            impl.CopyFrom(*it->second);                 // descriptor-checked, no RTTI
++            auto *event = new TEvPrivate::TEvParsedPrivateDatabaseConfig;
++            event->SecretPort = impl.GetSecretPort();
++            parsedCnt++;
++            ctx.Send(Sink, event);
++        } else {
++            // Notification arrived for our subscribed kind but no parsed
++            // opaque payload — section is absent / was cleared. Forward
++            // it as a distinguishable event so tests can assert it.
++            resetCnt++;
++            ctx.Send(Sink, new TEvPrivate::TEvResetPrivateDatabaseConfig);
++        }
++        ctx.Send(ev->Sender, new TEvConsole::TEvConfigNotificationResponse(rec), 0, ev->Cookie);
++    }
++
++    STFUNC(StateWork) {
++        switch (ev->GetTypeRewrite()) {
++            HFunc(TEvConsole::TEvConfigNotificationRequest, Handle);
++            IgnoreFunc(TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse);
++        }
++    }
++private:
++    TActorId Sink;
++};
++
+ TActorId AddSubscriber(TTenantTestRuntime &runtime, TVector<ui32> kinds, bool hold = false)
+ {
+     auto aid = runtime.Register(new TTestSubscriber(runtime.Sender, std::move(kinds), hold));
+@@ -1476,60 +1534,20 @@ selector_config: []
+ 
+ Y_UNIT_TEST_SUITE(TConfigsDispatcherOpaqueConfigTests) {
+ 
+-    // End-node subscriber: subscribes to the opaque kind PrivateDatabaseConfigItem
+-    // and reads the already-parsed TUtPrivateDatabaseConfig from the notification's OpaqueConfigs
+-    class TPrivateDatabaseConfigSubscriber : public TActorBootstrapped<TPrivateDatabaseConfigSubscriber> {
+-        TActorId Sink;
+-    public:
+-        // No trust to the runtime.SetObserverFunc() - fires multiple times per delivery
+-        // for ES_PRIVATE events that share a numeric id with other unrelated private events;
+-        // ev->Sender + ev->Recipient filter not help.
+-        std::atomic<int> parsedCnt{0};
+-        std::atomic<int> resetCnt{0};
+-
+-        TPrivateDatabaseConfigSubscriber(TActorId sink)
+-            : Sink(sink)
+-        {}
+-
+-        void Bootstrap(const TActorContext &ctx) {
+-            Become(&TThis::StateWork);
+-            ctx.Send(MakeConfigsDispatcherID(ctx.SelfID.NodeId()),
+-                new TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest(
+-                    (ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem, ctx.SelfID));
+-        }
+-
+-        void Handle(TEvConsole::TEvConfigNotificationRequest::TPtr &ev, const TActorContext &ctx) {
+-            auto &rec = ev->Get()->Record;
+-            const auto &opaqueConfigs = ev->Get()->OpaqueConfigs;
+-
+-            if (auto it = opaqueConfigs.find((ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem);
+-                it != opaqueConfigs.end() && it->second)
+-            {
+-                NKikimrOpaqueConfigUt::TUtPrivateDatabaseConfig impl;
+-                impl.CopyFrom(*it->second);                 // descriptor-checked, no RTTI
+-                auto *event = new TEvPrivate::TEvParsedPrivateDatabaseConfig;
+-                event->SecretPort = impl.GetSecretPort();
+-                parsedCnt++;
+-                ctx.Send(Sink, event);
+-            } else {
+-                // Notification arrived for subscribed kind but no parsed
+-                // opaque payload — section became absent / was cleared
+-                resetCnt++;
+-                ctx.Send(Sink, new TEvPrivate::TEvResetPrivateDatabaseConfig);
+-            }
+-            ctx.Send(ev->Sender, new TEvConsole::TEvConfigNotificationResponse(rec), 0, ev->Cookie);
+-        }
+-
+-        STFUNC(StateWork) {
+-            switch (ev->GetTypeRewrite()) {
+-                HFunc(TEvConsole::TEvConfigNotificationRequest, Handle);
+-                IgnoreFunc(TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse);
+-            }
+-        }
+-    };
++    TTenantTestConfig TenantTestConfig()
++    {
++        // need real SchemeShard for CreateTenant; tenant is created dynamically,
++        // so remove the pre-existing subdomain and static slot that would otherwise
++        // be started before the path exists and cause a VERIFY failure.
++        TTenantTestConfig res = DefaultConsoleTestConfig();
++        res.FakeSchemeShard = false;
++        res.Domains[0].Subdomains.clear();
++        res.Nodes[0].TenantPoolConfig.StaticSlots.clear();
++        return res;
++    }
+ 
+     void DoTestDispatcherParseAndSendOpaquePrivateDatabaseConfig(bool withParser) {
+-        const TString mainYaml0 = R"(
++        const TString mainConfig0 = R"(
+ ---
+ metadata:
+   kind: MainConfig
+@@ -1540,7 +1558,7 @@ config:
+   feature_flags:
+     database_yaml_config_allowed: true
+ )";
+-        const TString mainYaml1 = R"(
++        const TString mainConfig1 = R"(
+ ---
+ metadata:
+   kind: MainConfig
+@@ -1553,14 +1571,14 @@ config:
+   private_database_config:
+     secret_port: 666
+ )";
+-        const TString databaseYamlTemplate = R"(
++        const TString dbConfigTemplate = R"(
+ ---
+ metadata:
+   kind: DatabaseConfig
+   database: "/dc-1/users/tenant-1"
+   version: VERSION
+ config:
+-  private_database_config:
++  private_database_config: INHERIT
+     secret_port: VALUE
+ )";
+ 
+@@ -1571,7 +1589,8 @@ config:
+         label->SetValue(TENANT1_1_NAME);
+         appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
+ 
+-        TTenantTestConfig testConfig = DefaultConsoleTestConfig();
++        TTenantTestConfig testConfig = TenantTestConfig();
++
+         if (withParser) {
+             auto parser = std::bind(NKikimr::NYaml::DefaultOpaqueConfigParser<NKikimrOpaqueConfigUt::TUtPrivateDatabaseConfig>, std::placeholders::_1, true);
+             testConfig.OpaqueConfigParsers[(ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem] = parser;
+@@ -1579,17 +1598,19 @@ config:
+ 
+         TTenantTestRuntime runtime(testConfig, appcfg);
+ 
++        CheckCreateTenant(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, {{"hdd", 1}});
++
+         // The end-node consumer subscribes to the private kind.
+         auto subscriber = new TPrivateDatabaseConfigSubscriber(runtime.Sender);
+         TActorId subscriberId = runtime.Register(subscriber);
+         runtime.EnableScheduleForActor(subscriberId, true);
+ 
+         // Init cluster with main config without private_database_config
+-        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, mainYaml0);
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, mainConfig0);
+ 
+         // No private_database_config yet.
+         // The subscriber must report nothing.
+-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
++        DrainAllEvents<TEvPrivate::TEvParsedPrivateDatabaseConfig>(runtime);
+         UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
+ 
+         // The OpaqueConfig marker makes the cluster accept config.private_database_config
+@@ -1598,51 +1619,66 @@ config:
+         // YAML for the injected parser.
+ 
+         // Set the opaque section in the main config.
+-        //  withParser: The subscriber reports secret_port read from the dispatcher-parsed config.
++        //  withParser: The subscriber reports secret_port read from the dispatcher-parsed
++        //              main config.
+         // !withParser: The subscriber must report nothing.
+         {
+             subscriber->parsedCnt = 0;
+-            CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, mainYaml1);
++            CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, mainConfig1);
+             TAutoPtr<IEventHandle> handle;
+             if (withParser) {
+-                auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++                auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::MilliSeconds(100));
+                 UNIT_ASSERT_C(ev, "No PrivateDatabaseConfig received and processed by subscriber");
+                 UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 666);
+                 UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 1);
+             }
+             else {
+-                runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
++                DrainAllEvents<TEvPrivate::TEvParsedPrivateDatabaseConfig>(runtime);
+                 UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
+             }
+         }
+ 
+-        // Set the opaque section in the database config.
+-        //  withParser: The subscriber reports secret_port read from the dispatcher-parsed config.
+-        // !withParser: The subscriber must report nothing.
+-        // Run several times to ensure opaque-only change is passed to subscriber.
+-        subscriber->parsedCnt = 0;
+-        for (int i = 0; i < 5; i++ ) {
+-            auto databaseYaml = databaseYamlTemplate;
+-
+-            SubstGlobal(databaseYaml, "VERSION", ToString(i));
+-            SubstGlobal(databaseYaml, "VALUE", ToString(i+1));
+-
+-            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, databaseYaml);
++        // Checks both without and with !inherit marker
++        int dbVersion = 0;
++        TString inherit = "";
++        for (int x = 0; x < 2; x++)
++        {
++            // Set the opaque section in the database config.
++            //  withParser: The subscriber reports secret_port read from the dispatcher-parsed
++            //              database config.
++            // !withParser: The subscriber must report nothing.
++            // Run several times to ensure opaque-only change is passed to subscriber.
++            subscriber->parsedCnt = 0;
++            for (int i = 0; i < 5; i++ )
+             {
+-                TAutoPtr<IEventHandle> handle;
+-                if (withParser) {
+-                    auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
+-                    UNIT_ASSERT_C(ev, "No PrivateDatabaseConfig received and processed by subscriber");
+-                    UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), i+1);
+-                    UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, i+1);
+-                }
+-                else {
+-                    runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+-                    UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
++                Cerr << Endl << ">>>>> "
++                     << (inherit ? "WITH" : "WITHOUT") << " !inherit" << Endl;
++
++                auto dbConfig = dbConfigTemplate;
++
++                SubstGlobal(dbConfig, "INHERIT", inherit);
++                SubstGlobal(dbConfig, "VERSION", ToString(dbVersion++));
++                SubstGlobal(dbConfig, "VALUE", ToString(dbVersion));
++
++                CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, dbConfig);
++                {
++                    TAutoPtr<IEventHandle> handle;
++                    if (withParser) {
++                        auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::MilliSeconds(100));
++                        UNIT_ASSERT_C(ev, "No PrivateDatabaseConfig received and processed by subscriber");
++                        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), i+1);
++                        UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, dbVersion);
++                    }
++                    else {
++                        DrainAllEvents<TEvPrivate::TEvParsedPrivateDatabaseConfig>(runtime);
++                        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
++                    }
+                 }
+             }
++            UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), withParser ? 5 : 0);
++
++            inherit = "!inherit";
+         }
+-        UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), withParser ? 5 : 0);
+     }
+ 
+     Y_UNIT_TEST(TestDispatcherOmitsOpaquePrivateDatabaseConfigWithoutParser) {
+@@ -1662,8 +1698,8 @@ config:
+     //   absent -> non-empty          (re-added via database yaml - dispatch, parsed)
+     //   non-empty -> non-empty       (mutated via database yaml - dispatch, parsed)
+     Y_UNIT_TEST(TestOpaquePrivateDatabaseConfigEdgeCases) {
+-        // No private_database_config - opaque section absent.
+-        const TString mainYamlAbsent = R"(
++        // No private_database_config — opaque section absent.
++        const TString mainConfigAbsent = R"(
+ ---
+ metadata:
+   kind: MainConfig
+@@ -1675,7 +1711,7 @@ config:
+     database_yaml_config_allowed: true
+ )";
+         // With private_database_config.secret_port = VALUE.
+-        const TString mainYamlWithOpaque = R"(
++        const TString mainConfigWithOpaque = R"(
+ ---
+ metadata:
+   kind: MainConfig
+@@ -1688,7 +1724,7 @@ config:
+   private_database_config:
+     secret_port: VALUE
+ )";
+-        const TString databaseYamlTemplate = R"(
++        const TString dbConfigTemplate = R"(
+ ---
+ metadata:
+   kind: DatabaseConfig
+@@ -1737,17 +1773,17 @@ config:
+             return 0;
+         };
+ 
+-        int mainVersion = 0;
++        ui64 mainVersion = 0;
+ 
+         // Case 1: absent -> absent (initial state). No opaque dispatch
+         // expected. There may be an initial subscription notification that
+         // arrives empty — observed via subscriber->resetQuan.
+         subscriber->parsedCnt = 0;
+         subscriber->resetCnt = 0;
+-        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlAbsent, mainVersion++, 0));
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainConfigAbsent, mainVersion++, 0));
+         {
+             TAutoPtr<IEventHandle> handle;
+-            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvResetPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvResetPrivateDatabaseConfig>(handle, TDuration::MilliSeconds(100));
+             UNIT_ASSERT_C(ev, "absent -> absent must produce the initial reset notification");
+         }
+         UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
+@@ -1757,10 +1793,10 @@ config:
+         // Case 2: absent -> non-empty (added). Expect one parsed event.
+         subscriber->parsedCnt = 0;
+         subscriber->resetCnt = 0;
+-        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlWithOpaque, mainVersion++, 666));
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainConfigWithOpaque, mainVersion++, 666));
+         {
+             TAutoPtr<IEventHandle> handle;
+-            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::MilliSeconds(100));
+             UNIT_ASSERT_C(ev, "absent -> non-empty must dispatch a parsed opaque config");
+             UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 666);
+         }
+@@ -1773,9 +1809,9 @@ config:
+         // path also does not fire. Expect zero new events.
+         subscriber->parsedCnt = 0;
+         subscriber->resetCnt = 0;
+-        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlWithOpaque, mainVersion++, 666));
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainConfigWithOpaque, mainVersion++, 666));
+         {
+-            UNIT_ASSERT_VALUES_EQUAL_C(pollOneOfEither(TDuration::Seconds(1)), 0u,
++            UNIT_ASSERT_VALUES_EQUAL_C(pollOneOfEither(TDuration::MilliSeconds(100)), 0u,
+                                       "identical opaque must not redispatch");
+         }
+         UNIT_ASSERT_VALUES_EQUAL_C(subscriber->parsedCnt.load(), 0, "identical opaque must not redispatch");
+@@ -1785,10 +1821,10 @@ config:
+         // expect exactly one parsed event carrying the new value.
+         subscriber->parsedCnt = 0;
+         subscriber->resetCnt = 0;
+-        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlWithOpaque, mainVersion++, 777));
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainConfigWithOpaque, mainVersion++, 777));
+         {
+             TAutoPtr<IEventHandle> handle;
+-            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::MilliSeconds(100));
+             UNIT_ASSERT_C(ev, "non-empty A -> non-empty B must dispatch a parsed opaque config");
+             UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 777);
+         }
+@@ -1799,25 +1835,23 @@ config:
+         // and no parsed event.
+         subscriber->parsedCnt = 0;
+         subscriber->resetCnt = 0;
+-        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainYamlAbsent, mainVersion++, 0));
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, subst(mainConfigAbsent, mainVersion++, 0));
+         {
+             TAutoPtr<IEventHandle> handle;
+-            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvResetPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvResetPrivateDatabaseConfig>(handle, TDuration::MilliSeconds(100));
+             UNIT_ASSERT_C(ev, "non-empty -> absent must dispatch a reset notification");
+         }
+         UNIT_ASSERT_VALUES_EQUAL(subscriber->parsedCnt.load(), 0);
+         UNIT_ASSERT_VALUES_EQUAL(subscriber->resetCnt.load(), 1);
+ 
+-        int databaseVersion = 0;
+-
+         // Case 6: absent -> non-empty via database yaml. The opaque
+         // section reappears with a different value.
+         subscriber->parsedCnt = 0;
+         subscriber->resetCnt = 0;
+-        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, subst(databaseYamlTemplate, databaseVersion++, 888));
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, subst(dbConfigTemplate, 0, 888));
+         {
+             TAutoPtr<IEventHandle> handle;
+-            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::MilliSeconds(100));
+             UNIT_ASSERT_C(ev, "absent -> non-empty (via db yaml) must dispatch parsed opaque config");
+             UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 888);
+         }
+@@ -1827,10 +1861,10 @@ config:
+         // Case 7: non-empty(888) -> non-empty(999) via database yaml.
+         subscriber->parsedCnt = 0;
+         subscriber->resetCnt = 0;
+-        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, subst(databaseYamlTemplate, databaseVersion++, 999));
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, subst(dbConfigTemplate, 1, 999));
+         {
+             TAutoPtr<IEventHandle> handle;
+-            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::Seconds(1));
++            auto ev = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(handle, TDuration::MilliSeconds(100));
+             UNIT_ASSERT_C(ev, "non-empty A -> non-empty B (via db yaml) must dispatch parsed opaque config");
+             UNIT_ASSERT_VALUES_EQUAL(ev->SecretPort, 999);
+         }
+@@ -1839,4 +1873,349 @@ config:
+     }
+ }
+ 
++Y_UNIT_TEST_SUITE(TConfigsDispatcherDatabaseConfigSelectorsTests) {
++
++    TTenantTestConfig DatabaseSelectorsTestConfig()
++    {
++        // need real SchemeShard for CreateTenant; tenant is created dynamically,
++        // so remove the pre-existing subdomain and static slot that would otherwise
++        // be started before the path exists and cause a VERIFY failure.
++        TTenantTestConfig res = DefaultConsoleTestConfig();
++        res.FakeSchemeShard = false;
++        res.Domains[0].Subdomains.clear();
++        res.Nodes[0].TenantPoolConfig.StaticSlots.clear();
++        return res;
++    }
++
++    const TString PermissiveTenantAttribute = TString(NConsole::TENANT_ATTR_ALLOW_DATABASE_CONFIG_SELECTORS);
++
++    Y_UNIT_TEST(TestEndToEndSelectorsResolution) {
++        const TString mainConfig = R"(
++---
++metadata:
++  kind: MainConfig
++  cluster: ""
++  version: 0
++config:
++  yaml_config_enabled: true
++  feature_flags:
++    database_yaml_config_allowed: true
++  private_database_config:
++    secret_port: 0
++)";
++
++        const TString dbConfigTemplate = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: 0
++
++config:
++  feature_flags: INHERIT
++    enable_external_hive: false
++  private_database_config: INHERIT
++    secret_port: 1
++
++allowed_labels:
++  node_type:
++    type: string
++
++selector_config:
++
++- description: node type a
++  selector:
++    node_type: a
++  config:
++    feature_flags: INHERIT
++      enable_external_hive: true
++    private_database_config: INHERIT
++      secret_port: 2
++
++- description: node type b
++  selector:
++    node_type: b
++  config:
++    feature_flags: INHERIT
++      enable_external_hive: true
++    private_database_config: INHERIT
++      secret_port: 3
++)";
++        // Checks both without and with !inherit marker
++        TString inherit = "";
++        const TMap<TString, std::pair<int, bool>> expectedLabelValue = {
++            // { node_type, { secret_port, enable_external_hive } }
++            // node_type "-" - no label at all
++            {"-", {1, false}},
++            {"" , {1, false}},
++            {"a", {2, true }},
++            {"b", {3, true }},
++            {"x", {1, false}},
++        };
++        for (int x = 0; x < 2; x++)
++        {
++            for ( const auto& lv: expectedLabelValue )
++            {
++                Cerr << Endl << ">>>>> "
++                    << (inherit ? "WITH" : "WITHOUT") << " !inherit"
++                    << ", node_type = '" << lv.first << "'" << Endl;
++
++                auto dbConfig = dbConfigTemplate;
++                SubstGlobal(dbConfig, "INHERIT", inherit);
++
++                NKikimrConfig::TAppConfig appcfg;
++                auto *label = appcfg.AddLabels();
++                label->SetName("tenant");
++                label->SetValue(TENANT1_1_NAME);
++                if (lv.first != "-") {
++                  label = appcfg.AddLabels();
++                  label->SetName("node_type");
++                  label->SetValue(lv.first);
++                }
++                appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
++
++                TTenantTestConfig testConfig = DatabaseSelectorsTestConfig();
++
++                auto parser = std::bind(
++                    NKikimr::NYaml::DefaultOpaqueConfigParser<NKikimrOpaqueConfigUt::TUtPrivateDatabaseConfig>,
++                    std::placeholders::_1, true);
++                testConfig.OpaqueConfigParsers[(ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem] = parser;
++
++                TTenantTestRuntime runtime(testConfig, appcfg);
++                CheckCreateTenant(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, {{"hdd", 1}});
++
++                auto flagsSubscriber = new TTestSubscriber(runtime.Sender, {(ui32)NKikimrConsole::TConfigItem::FeatureFlagsItem}, false);
++                TActorId flagsSubscriberId = runtime.Register(flagsSubscriber);
++                runtime.EnableScheduleForActor(flagsSubscriberId, true);
++
++                auto opaqueSubscriber = new TPrivateDatabaseConfigSubscriber(runtime.Sender);
++                TActorId opaqueSubscriberId = runtime.Register(opaqueSubscriber);
++                runtime.EnableScheduleForActor(opaqueSubscriberId, true);
++
++                CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, mainConfig);
++                // Let subscribers receive initial config
++                DrainAllEvents<TEvPrivate::TEvGotNotification,
++                              TEvPrivate::TEvParsedPrivateDatabaseConfig>(runtime);
++
++                CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS,
++                    PermissiveTenantAttribute, "true");
++                opaqueSubscriber->parsedCnt = 0;
++                opaqueSubscriber->resetCnt = 0;
++                CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, dbConfig);
++                {
++                    TAutoPtr<IEventHandle> handleFlags;
++                    TAutoPtr<IEventHandle> handleOpaque;
++
++                    auto evFlags  = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvGotNotification>(
++                        handleFlags, TDuration::MilliSeconds(100));
++                    auto evOpaque = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(
++                        handleOpaque, TDuration::MilliSeconds(100));
++
++                    UNIT_ASSERT_C(evFlags, "Database config with selectors must be dispatched for 'feature_flags'");
++                    UNIT_ASSERT(evFlags->Config.HasFeatureFlags());
++                    UNIT_ASSERT(evFlags->Config.GetFeatureFlags().HasEnableExternalHive());
++                    UNIT_ASSERT_VALUES_EQUAL(evFlags->Config.GetFeatureFlags().GetEnableExternalHive(), lv.second.second);
++
++                    UNIT_ASSERT_C(evOpaque, "Database config with selectors must be dispatched for 'private_database_config");
++                    UNIT_ASSERT_VALUES_EQUAL(evOpaque->SecretPort, lv.second.first);
++                }
++                UNIT_ASSERT_VALUES_EQUAL(opaqueSubscriber->parsedCnt.load(), 1);
++                UNIT_ASSERT_VALUES_EQUAL(opaqueSubscriber->resetCnt.load(), 0);
++            }
++
++            inherit = "!inherit";
++        }
++    }
++
++    Y_UNIT_TEST(TestSelectorsKeepWorkingForCurrentConfigAfterDisabled) {
++
++        const TString mainConfig = R"(
++---
++metadata:
++  kind: MainConfig
++  cluster: ""
++  version: 0
++config:
++  yaml_config_enabled: true
++  feature_flags:
++    database_yaml_config_allowed: true
++    enable_external_hive: false
++  private_database_config:
++    secret_port: 1
++)";
++
++        NKikimrConfig::TAppConfig appcfg;
++        auto *label = appcfg.AddLabels();
++        label->SetName("tenant");
++        label->SetValue(TENANT1_1_NAME);
++        label = appcfg.AddLabels();
++        label->SetName("node_type");
++        label->SetValue("a");
++        appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
++
++        TTenantTestConfig testConfig = DatabaseSelectorsTestConfig();
++
++        auto parser = std::bind(
++            NKikimr::NYaml::DefaultOpaqueConfigParser<NKikimrOpaqueConfigUt::TUtPrivateDatabaseConfig>,
++            std::placeholders::_1, true);
++        testConfig.OpaqueConfigParsers[(ui32)NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem] = parser;
++
++        TTenantTestRuntime runtime(testConfig, appcfg);
++        CheckCreateTenant(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, {{"hdd", 1}});
++
++        auto flagsSubscriber = new TTestSubscriber(runtime.Sender, {(ui32)NKikimrConsole::TConfigItem::FeatureFlagsItem}, false);
++        TActorId flagsSubscriberId = runtime.Register(flagsSubscriber);
++        runtime.EnableScheduleForActor(flagsSubscriberId, true);
++
++        auto opaqueSubscriber = new TPrivateDatabaseConfigSubscriber(runtime.Sender);
++        TActorId opaqueSubscriberId = runtime.Register(opaqueSubscriber);
++        runtime.EnableScheduleForActor(opaqueSubscriberId, true);
++
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, mainConfig);
++        // Let subscribers receive initial config
++        DrainAllEvents<TEvPrivate::TEvGotNotification,
++                       TEvPrivate::TEvParsedPrivateDatabaseConfig>(runtime);
++
++        const TString dbConfigTemplate = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: 0
++
++config:
++  feature_flags: !inherit
++      enable_external_hive: true
++  private_database_config: !inherit
++    secret_port: 2
++
++selector_config:
++
++- description:
++  selector: {}
++  config:
++    private_database_config: !inherit
++      secret_port: 666
++
++- description:
++  selector:
++    node_type: a
++  config:
++    private_database_config: !inherit
++      secret_port: VALUE
++)";
++        int dbVersion = 0;
++        TString dbConfigWithSelectors, dbConfig;
++
++        /**
++         * Enable selectors and set database config with selectors
++         */
++        dbConfigWithSelectors = dbConfigTemplate;
++        SubstGlobal(dbConfigWithSelectors, "VERSION", ToString(dbVersion++));
++        SubstGlobal(dbConfigWithSelectors, "VALUE", "3");
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS,
++            PermissiveTenantAttribute, "true");
++
++        opaqueSubscriber->parsedCnt = 0;
++        opaqueSubscriber->resetCnt = 0;
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, dbConfigWithSelectors);
++        CheckDatabaseConfigReplacedWith(runtime, TENANT1_1_NAME, dbConfigWithSelectors);
++        {
++            TAutoPtr<IEventHandle> handleFlags;
++            TAutoPtr<IEventHandle> handleOpaque;
++
++            auto evFlags  = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvGotNotification>(
++                handleFlags, TDuration::MilliSeconds(100));
++            auto evOpaque = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(
++                handleOpaque, TDuration::MilliSeconds(100));
++
++            UNIT_ASSERT_C(evFlags, "Database config with selectors must be dispatched for 'feature_flags'");
++            UNIT_ASSERT(evFlags->Config.HasFeatureFlags());
++            UNIT_ASSERT(evFlags->Config.GetFeatureFlags().HasEnableExternalHive());
++            UNIT_ASSERT_VALUES_EQUAL(evFlags->Config.GetFeatureFlags().GetEnableExternalHive(), true);
++
++            UNIT_ASSERT_C(evOpaque, "Database config with selectors must be dispatched for 'private_database_config'");
++            UNIT_ASSERT_VALUES_EQUAL(evOpaque->SecretPort, 3);
++        }
++        UNIT_ASSERT_VALUES_EQUAL(opaqueSubscriber->parsedCnt.load(), 1);
++        UNIT_ASSERT_VALUES_EQUAL(opaqueSubscriber->resetCnt.load(), 0);
++
++        /**
++         * Disable selectors and try to set database config with selectors.
++         * No config must be applied and dispatched
++         */
++        dbConfig = dbConfigTemplate;
++        SubstGlobal(dbConfig, "VERSION", ToString(dbVersion));
++        SubstGlobal(dbConfig, "VALUE", "4");
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS,
++            PermissiveTenantAttribute, "");
++
++        opaqueSubscriber->parsedCnt = 0;
++        opaqueSubscriber->resetCnt = 0;
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST, dbConfig);
++        {
++            TAutoPtr<IEventHandle> handleFlags;
++            TAutoPtr<IEventHandle> handleOpaque;
++
++            auto evFlags  = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvGotNotification>(
++                handleFlags, TDuration::MilliSeconds(100));
++            auto evOpaque = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(
++                handleOpaque, TDuration::MilliSeconds(100));
++
++            UNIT_ASSERT_C(!evFlags, "No config must be dispatched for 'feature_flags'");
++            UNIT_ASSERT_C(!evOpaque, "Database config with selectors must be dispatched for 'private_database_config'");
++        }
++        UNIT_ASSERT_VALUES_EQUAL(opaqueSubscriber->parsedCnt.load(), 0);
++        UNIT_ASSERT_VALUES_EQUAL(opaqueSubscriber->resetCnt.load(), 0);
++
++        /**
++         * Ensure database config with selectors survives system restart
++         * after selectors has been disabled
++         */
++
++        // Restart Console
++        GracefulRestartTablet(runtime, MakeConsoleID(), runtime.AllocateEdgeActor(0));
++
++        // Ensure stored config is the same as before restart (with selectors)
++        CheckDatabaseConfigReplacedWith(runtime, TENANT1_1_NAME, dbConfigWithSelectors);
++
++        // Ensure incoming config is the same as before restart (with selectors):
++        //  - re-create subscribers so they re-subscribe to the ConfigsDispatcher
++        //    and receive unchanged config
++        runtime.Send(new IEventHandle(flagsSubscriberId, TActorId(), new TEvents::TEvPoisonPill));
++        runtime.Send(new IEventHandle(opaqueSubscriberId, TActorId(), new TEvents::TEvPoisonPill));
++        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(100));
++
++        flagsSubscriber = new TTestSubscriber(runtime.Sender, {(ui32)NKikimrConsole::TConfigItem::FeatureFlagsItem}, false);
++        flagsSubscriberId = runtime.Register(flagsSubscriber);
++        runtime.EnableScheduleForActor(flagsSubscriberId, true);
++
++        opaqueSubscriber = new TPrivateDatabaseConfigSubscriber(runtime.Sender);
++        opaqueSubscriberId = runtime.Register(opaqueSubscriber);
++        runtime.EnableScheduleForActor(opaqueSubscriberId, true);
++
++        opaqueSubscriber->parsedCnt = 0;
++        opaqueSubscriber->resetCnt = 0;
++        {
++            TAutoPtr<IEventHandle> handleFlags;
++            TAutoPtr<IEventHandle> handleOpaque;
++
++            auto evFlags  = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvGotNotification>(
++                handleFlags, TDuration::MilliSeconds(100));
++            auto evOpaque = runtime.GrabEdgeEventRethrow<TEvPrivate::TEvParsedPrivateDatabaseConfig>(
++                handleOpaque, TDuration::MilliSeconds(100));
++
++            UNIT_ASSERT_C(evFlags, "Database config with selectors must be dispatched for 'feature_flags'");
++            UNIT_ASSERT(evFlags->Config.HasFeatureFlags());
++            UNIT_ASSERT(evFlags->Config.GetFeatureFlags().HasEnableExternalHive());
++            UNIT_ASSERT_VALUES_EQUAL(evFlags->Config.GetFeatureFlags().GetEnableExternalHive(), true);
++
++            UNIT_ASSERT_C(evOpaque, "Database config with selectors must be dispatched for 'private_database_config'");
++            UNIT_ASSERT_VALUES_EQUAL(evOpaque->SecretPort, 3);
++        }
++        UNIT_ASSERT_VALUES_EQUAL(opaqueSubscriber->parsedCnt.load(), 1);
++        UNIT_ASSERT_VALUES_EQUAL(opaqueSubscriber->resetCnt.load(), 0);
++    }
++}
++
+ } // namespace NKikimr
+diff --git a/contrib/ydb/core/cms/console/console.h b/contrib/ydb/core/cms/console/console.h
+index 85e7a90c867c5c78b5bc90db182d4b748c855d6d..73947b73314c682f6607e9fc2a0d51edb3eea4c9 100644
+--- a/contrib/ydb/core/cms/console/console.h
++++ b/contrib/ydb/core/cms/console/console.h
+@@ -10,12 +10,19 @@
+ #include <contrib/ydb/public/api/protos/ydb_cms.pb.h>
+ #include <contrib/ydb/public/api/protos/draft/ydb_dynamic_config.pb.h>
+ 
++#include <util/generic/strbuf.h>
+ #include <util/generic/hash.h>
+ 
+ #include <memory>
+ 
+ namespace NKikimr::NConsole {
+ 
++// Tenant UserAttribute that enables the usage of database YAML config selectors.
++// Values: (according to TryFromString<bool>() function logic - IsTrue()/IsFalse())
++//  - "true", "yes", "on", "1"            - enabled
++//  - "false", "no", "off", "0", (absent) - disabled
++constexpr TStringBuf TENANT_ATTR_ALLOW_DATABASE_CONFIG_SELECTORS = "allow_database_config_selectors";
++
+ namespace TEvConsole {
+     enum EEv {
+         // requests
+diff --git a/contrib/ydb/core/cms/console/console__alter_tenant.cpp b/contrib/ydb/core/cms/console/console__alter_tenant.cpp
+index 8f1a7b8f8a706e341c23f2c7bfbc2104b550f2ad..3addb9325bfc61b9ab2c5af88eed1ccc168081c6 100644
+--- a/contrib/ydb/core/cms/console/console__alter_tenant.cpp
++++ b/contrib/ydb/core/cms/console/console__alter_tenant.cpp
+@@ -1,6 +1,8 @@
+ #include "console_tenants_manager.h"
+ #include "console_impl.h"
+ 
++#include <contrib/ydb/core/tx/schemeshard/schemeshard_user_attr_limits.h>
++
+ namespace NKikimr::NConsole {
+ 
+ class TTenantsManager::TTxAlterTenant : public TTransactionBase<TTenantsManager> {
+@@ -207,7 +209,7 @@ public:
+             if (!Self->FeatureFlags.GetEnableScaleRecommender()) {
+                 return Error(Ydb::StatusIds::UNSUPPORTED, "Feature flag EnableScaleRecommender is off", ctx);
+             }
+-            
++
+             const auto& policies = rec.scale_recommender_policies();
+             if (policies.policies().size() > 1) {
+                 return Error(Ydb::StatusIds::BAD_REQUEST, "Currently, no more than one policy is supported at a time", ctx);
+@@ -243,16 +245,33 @@ public:
+                 }
+             }
+         }
+-        
++
+         // Check attributes.
+         THashSet<TString> attrNames;
+         for (const auto& [key, value] : rec.alter_attributes()) {
++
+             if (!key)
+                return Error(Ydb::StatusIds::BAD_REQUEST,
+                              "Attribute name shouldn't be empty", ctx);
++
++            if (key.size() > NSchemeShard::TUserAttributesLimits::MaxNameLen) {
++                return Error(Ydb::StatusIds::BAD_REQUEST,
++                    Sprintf("Key '%s' is too long, max: " PRIu32 ", actual: " PRIu32,
++                        key.data(), NSchemeShard::TUserAttributesLimits::MaxNameLen, key.size()),
++                    ctx);
++            }
++
++            if (value.size() > NSchemeShard::TUserAttributesLimits::MaxValueLen) {
++                return Error(Ydb::StatusIds::BAD_REQUEST,
++                    Sprintf("Value for key '%s' is too long, max: " PRIu32 ", actual: " PRIu32,
++                        key.data(), NSchemeShard::TUserAttributesLimits::MaxValueLen, value.size()),
++                    ctx);
++            }
++
+             if (attrNames.contains(key))
+                 return Error(Ydb::StatusIds::BAD_REQUEST,
+                              Sprintf("Multiple attributes with name '%s'", key.data()), ctx);
++
+             attrNames.insert(key);
+         }
+ 
+@@ -326,6 +345,11 @@ public:
+             Self->DbUpdateTenantAlterIdempotencyKey(Tenant, Tenant->AlterIdempotencyKey, txc, ctx);
+         }
+ 
++        // Attributes with empty values are kept forever as tombstones
++        // to self-heal divergence with subdomain if subdomain AlterUserAttributes
++        // request didn't reach SchemeShard (due to Console restart
++        // right after persisting updated Tenant->Attributes in local db
++        // but before sending request into subdomain, etc)
+         if (!rec.alter_attributes().empty()) {
+             for (const auto& [key, value] : rec.alter_attributes()) {
+                 const auto it = attributeMap.find(key);
+diff --git a/contrib/ydb/core/cms/console/console_configs_manager.cpp b/contrib/ydb/core/cms/console/console_configs_manager.cpp
+index 1403a635789a3a0a21a46c193337279139f4cbbe..ef0f1f9448debb40fa1d9a4ecc5cd3d4e80a0d47 100644
+--- a/contrib/ydb/core/cms/console/console_configs_manager.cpp
++++ b/contrib/ydb/core/cms/console/console_configs_manager.cpp
+@@ -3,6 +3,7 @@
+ #include "configs_dispatcher.h"
+ #include "console_audit.h"
+ #include "console_configs_provider.h"
++#include "console_tenants_manager.h"
+ #include "console_impl.h"
+ #include "http.h"
+ 
+@@ -190,7 +191,27 @@ void TConfigsManager::ValidateDatabaseConfig(TUpdateDatabaseConfigOpContext& opC
+                 ythrow yexception() << errors.front();
+             }
+ 
+-            // TODO: validate databaseConfig.AllowedLabels & databaseConfig.Selectors too
++            if (!databaseConfig.Selectors.empty() || !databaseConfig.AllowedLabels.empty()) {
++                if (!IsDatabaseConfigSelectorsAllowed(opCtx.TargetDatabase)) {
++                    ythrow yexception()
++                        << "Database config 'selector_config' and 'allowed_labels' are not allowed for database '"
++                        << opCtx.TargetDatabase << "'";
++                }
++
++                if (databaseConfig.AllowedLabels.contains("tenant")) {
++                    ythrow yexception()
++                        << "'tenant' label is forbidden (not applicable) for database configs";
++                }
++
++                for (const auto& selector : databaseConfig.Selectors) {
++                    if (selector.Selector.In.contains("tenant")
++                        || selector.Selector.NotIn.contains("tenant"))
++                    {
++                        ythrow yexception()
++                            << "'tenant' label is forbidden (not applicable) for database configs";
++                    }
++                }
++            }
+ 
+             auto tree = NFyaml::TDocument::Parse(MainYamlConfig);
+             NYamlConfig::AppendDatabaseConfig(tree, databaseTree);
+@@ -224,6 +245,29 @@ void TConfigsManager::ValidateDatabaseConfig(TUpdateDatabaseConfigOpContext& opC
+     }
+ }
+ 
++
++bool TConfigsManager::IsDatabaseConfigSelectorsAllowed(const TString& database) const
++{
++    auto* tm = Self.TenantsManager;
++    auto tenant = tm ? tm->GetTenant(database) : nullptr;
++
++    if (!tenant) {
++        return false;
++    }
++
++    for (const auto& attr : tenant->Attributes.GetUserAttributes()) {
++        if (attr.GetKey() == TENANT_ATTR_ALLOW_DATABASE_CONFIG_SELECTORS) {
++            bool value = false;
++            if (TryFromString<bool>(attr.GetValue(), value) && value) {
++                return true;
++            }
++        }
++    }
++
++    return false;
++}
++
++
+ void TConfigsManager::Bootstrap(const TActorContext &ctx)
+ {
+     LOG_DEBUG(ctx, NKikimrServices::CMS_CONFIGS, "TConfigsManager::Bootstrap");
+diff --git a/contrib/ydb/core/cms/console/console_configs_manager.h b/contrib/ydb/core/cms/console/console_configs_manager.h
+index 0aaf3abe24016633051b5e86017961d2001424b4..34ccbad5c3445d187eb9e1dae66b67fc170f9095 100644
+--- a/contrib/ydb/core/cms/console/console_configs_manager.h
++++ b/contrib/ydb/core/cms/console/console_configs_manager.h
+@@ -89,6 +89,7 @@ public:
+ 
+     void ReplaceDatabaseConfigMetadata(const TString &config, bool force, TUpdateDatabaseConfigOpContext& opCtx);
+     void ValidateDatabaseConfig(TUpdateDatabaseConfigOpContext& opCtx);
++    bool IsDatabaseConfigSelectorsAllowed(const TString& database) const;
+ 
+     void SendInReply(const TActorId& sender, const TActorId& icSession, std::unique_ptr<IEventBase> ev, ui64 cookie = 0);
+ 
+@@ -219,7 +220,7 @@ private:
+         };
+ 
+         constexpr bool HasBypassAuth = std::is_same_v<
+-            std::decay_t<T>, 
++            std::decay_t<T>,
+             typename TEvConsole::TEvGetAllConfigsRequest::TPtr
+         > || std::is_same_v<
+             std::decay_t<T>,
+diff --git a/contrib/ydb/core/cms/console/console_tenants_manager.cpp b/contrib/ydb/core/cms/console/console_tenants_manager.cpp
+index 09531863847e79a7b73f7513f579b51dc83b4cdd..66ea83ba6ea0e34408f021836004fbf23ea30c8a 100644
+--- a/contrib/ydb/core/cms/console/console_tenants_manager.cpp
++++ b/contrib/ydb/core/cms/console/console_tenants_manager.cpp
+@@ -2215,6 +2215,14 @@ void TTenantsManager::FillTenantStatus(TTenant::TPtr tenant, Ydb::Cms::GetDataba
+     if (tenant->ScaleRecommenderPolicies && !tenant->ScaleRecommenderPolicies->policies().empty()) {
+         status.mutable_scale_recommender_policies()->CopyFrom(*tenant->ScaleRecommenderPolicies);
+     }
++
++    for (const auto &attr : tenant->Attributes.GetUserAttributes()) {
++        // Filter out empty-value attributes kept forever as tombstones
++        // (see TTenantsManager::TTxAlterTenant::Execute())
++        if (attr.HasValue()) {
++            (*status.mutable_attributes())[attr.GetKey()] = attr.GetValue();
++        }
++    }
+ }
+ 
+ void TTenantsManager::FillTenantAllocatedSlots(TTenant::TPtr tenant, Ydb::Cms::GetDatabaseStatusResult &status,
+diff --git a/contrib/ydb/core/cms/console/console_ut_configs.cpp b/contrib/ydb/core/cms/console/console_ut_configs.cpp
+index 84605bce9c48a36ac03603821696fdcb0ae4d7ff..702407bf2cf3b25b8ced3c16f96c81152fa1cddf 100644
+--- a/contrib/ydb/core/cms/console/console_ut_configs.cpp
++++ b/contrib/ydb/core/cms/console/console_ut_configs.cpp
+@@ -1,4 +1,5 @@
+ #include "ut_helpers.h"
++#include "console.h"
+ #include "console_configs_manager.h"
+ #include "console_configs_subscriber.h"
+ 
+@@ -16,6 +17,7 @@
+ #include <library/cpp/testing/unittest/registar.h>
+ 
+ #include <util/system/hostname.h>
++#include <util/string/subst.h>
+ 
+ namespace NKikimr {
+ 
+@@ -5139,4 +5141,219 @@ Y_UNIT_TEST_SUITE(TConsoleConfigHelpersTests) {
+     }
+ }
+ 
++Y_UNIT_TEST_SUITE(TConsoleDatabaseConfigSelectorsTests) {
++
++    TTenantTestConfig DatabaseSelectorsTestConfig() {
++        TTenantTestConfig res = DefaultConsoleTestConfig();
++        res.FakeSchemeShard = false;
++        res.Domains[0].Subdomains.clear();
++        res.Nodes[0].TenantPoolConfig.StaticSlots.clear();
++        return res;
++    }
++
++    const TString MainConfigForSelectors = R"(
++---
++metadata:
++  kind: MainConfig
++  cluster: ""
++  version: 0
++config:
++  yaml_config_enabled: true
++  feature_flags:
++    database_yaml_config_allowed: true
++)";
++
++    const TString PermissiveTenantUserAttribute      = TString(NConsole::TENANT_ATTR_ALLOW_DATABASE_CONFIG_SELECTORS);
++    const TString NotAllowedErrorSubstring           = "\\'selector_config\\' and \\'allowed_labels\\' are not allowed";
++    const TString ForbiddenTenantLabelErrorSubstring = "\\'tenant\\' label is forbidden";
++
++    Y_UNIT_TEST(TestAllowDatabaseConfigSelectorsOnlyWithPermissiveTenantUserAttribute) {
++        NKikimrConfig::TAppConfig appcfg;
++        appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
++
++        TTenantTestRuntime runtime(DatabaseSelectorsTestConfig(), appcfg);
++        CheckCreateTenant(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, {{"hdd", 1}});
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, MainConfigForSelectors);
++
++        int dbVersion = 0;
++
++        const TString dbConfigWithSelector = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: VERSION
++config:
++  feature_flags: !inherit
++    enable_external_hive: false
++selector_config:
++- description: compute
++  selector:
++    node_type: compute
++  config:
++    feature_flags: !inherit
++      enable_external_hive: true
++)";
++
++        const TString dbConfigWithAllowedLabels = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: VERSION
++config:
++  feature_flags: !inherit
++    enable_external_hive: false
++allowed_labels:
++  some:
++    type: string
++)";
++
++        // Each check perfomed both with 'runtime apply' logic and 'survives Console restart' logic
++
++        // Database config selectors and allowed_labels must be forbidden without PermissiveTenantUserAttribute
++        for (int i = 0; i < 2; i++) {
++            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST,
++                SubstGlobalCopy(dbConfigWithSelector, "VERSION", ToString(dbVersion).c_str()),
++                NotAllowedErrorSubstring);
++            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST,
++                SubstGlobalCopy(dbConfigWithAllowedLabels, "VERSION", ToString(dbVersion).c_str()),
++                NotAllowedErrorSubstring);
++
++            GracefulRestartTablet(runtime, MakeConsoleID(), runtime.AllocateEdgeActor(0));
++        }
++
++        // Database config selectors and allowed_labels must be permitted with PermissiveTenantUserAttribute = true
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS,
++            PermissiveTenantUserAttribute, "true");
++        for (int i = 0; i < 2; i++) {
++            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS,
++                SubstGlobalCopy(dbConfigWithSelector, "VERSION", ToString(dbVersion++).c_str()));
++            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS,
++                SubstGlobalCopy(dbConfigWithAllowedLabels, "VERSION", ToString(dbVersion++).c_str()));
++
++            GracefulRestartTablet(runtime, MakeConsoleID(), runtime.AllocateEdgeActor(0));
++        }
++
++
++        // Database config selectors and allowed_labels must be forbidden with PermissiveTenantUserAttribute = false
++        // Previous database config with selectors must still be active
++        auto stalledDbConfigWithSelector = SubstGlobalCopy(dbConfigWithSelector, "VERSION", ToString(dbVersion++).c_str());
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, stalledDbConfigWithSelector);
++
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS,
++            PermissiveTenantUserAttribute, "false");
++        for (int i = 0; i < 2; i++) {
++            CheckDatabaseConfigReplacedWith(runtime, TENANT1_1_NAME, stalledDbConfigWithSelector);
++
++            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST,
++                SubstGlobalCopy(dbConfigWithSelector, "VERSION", ToString(dbVersion).c_str()),
++                NotAllowedErrorSubstring);
++            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST,
++                SubstGlobalCopy(dbConfigWithAllowedLabels, "VERSION", ToString(dbVersion).c_str()),
++                NotAllowedErrorSubstring);
++
++            GracefulRestartTablet(runtime, MakeConsoleID(), runtime.AllocateEdgeActor(0));
++        }
++
++        // Database config selectors and allowed_labels must be forbidden when PermissiveTenantUserAttribute deleted
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS,
++            PermissiveTenantUserAttribute, "");
++        for (int i = 0; i < 2; i++) {
++            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST,
++                SubstGlobalCopy(dbConfigWithSelector, "VERSION", ToString(dbVersion).c_str()),
++                NotAllowedErrorSubstring);
++            CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST,
++                SubstGlobalCopy(dbConfigWithAllowedLabels, "VERSION", ToString(dbVersion).c_str()),
++                NotAllowedErrorSubstring);
++
++            GracefulRestartTablet(runtime, MakeConsoleID(), runtime.AllocateEdgeActor(0));
++        }
++    }
++
++    Y_UNIT_TEST(TestRejectTenantLabelInSelectorsAndAllowedLabels) {
++        NKikimrConfig::TAppConfig appcfg;
++        appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
++
++        TTenantTestRuntime runtime(DatabaseSelectorsTestConfig(), appcfg);
++        CheckCreateTenant(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, {{"hdd", 1}});
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS,
++            PermissiveTenantUserAttribute, "true");
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, MainConfigForSelectors);
++
++        const TString dbConfigWithSelector = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: 0
++config:
++  feature_flags: !inherit
++    enable_external_hive: false
++selector_config:
++- description: tenant selector
++  selector:
++    tenant: /some/tenant
++  config:
++    feature_flags: !inherit
++      enable_external_hive: true
++)";
++
++        const TString dbConfigWithAllowedLabels = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: 0
++config:
++  feature_flags: !inherit
++    enable_external_hive: false
++allowed_labels:
++  tenant:
++    type: string
++)";
++
++        // 'tenant' label in selectors must be forbidden
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST, dbConfigWithSelector,
++            ForbiddenTenantLabelErrorSubstring);
++
++        // 'tenant' label in allowed_labels must be forbidden
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::BAD_REQUEST, dbConfigWithAllowedLabels,
++            ForbiddenTenantLabelErrorSubstring);
++    }
++
++    Y_UNIT_TEST(TestImplicitNodeTypeLabelAllowed) {
++        NKikimrConfig::TAppConfig appcfg;
++        appcfg.MutableFeatureFlags()->SetDatabaseYamlConfigAllowed(true);
++
++        TTenantTestRuntime runtime(DatabaseSelectorsTestConfig(), appcfg);
++        CheckCreateTenant(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, {{"hdd", 1}});
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS,
++            PermissiveTenantUserAttribute, "true");
++        CheckReplaceConfig(runtime, Ydb::StatusIds::SUCCESS, MainConfigForSelectors);
++
++        const TString dbConfig = R"(
++---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc-1/users/tenant-1"
++  version: 0
++
++config:
++  feature_flags: !inherit
++    enable_external_hive: false
++
++selector_config:
++
++- description: node_type selector
++  selector:
++    node_type: a
++  config:
++    feature_flags: !inherit
++      enable_external_hive: true
++)";
++        CheckReplaceDatabaseConfig(runtime, Ydb::StatusIds::SUCCESS, dbConfig);
++    }
++}
++
+ } // namespace NKikimr
+diff --git a/contrib/ydb/core/cms/console/console_ut_tenants.cpp b/contrib/ydb/core/cms/console/console_ut_tenants.cpp
+index 7f3629a1978a9c98522806bb1ea895fa1bcdf44b..e1373ca3a9ad3487467b900ef3cc297d219f5c15 100644
+--- a/contrib/ydb/core/cms/console/console_ut_tenants.cpp
++++ b/contrib/ydb/core/cms/console/console_ut_tenants.cpp
+@@ -11,11 +11,15 @@
+ #include <contrib/ydb/core/testlib/tablet_helpers.h>
+ #include <contrib/ydb/core/testlib/tenant_runtime.h>
+ #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
++#include <contrib/ydb/core/tx/schemeshard/schemeshard_user_attr_limits.h>
+ 
+ #include <library/cpp/testing/unittest/registar.h>
+ 
++#include <util/generic/string.h>
+ #include <util/random/random.h>
+ 
++#include <algorithm>
++
+ namespace NKikimr {
+ 
+ using namespace NSchemeShard;
+@@ -2217,7 +2221,7 @@ Y_UNIT_TEST_SUITE(TConsoleTests) {
+                     )"
+                 )
+         );
+-        
++
+         CheckCreateTenant(runtime, Ydb::StatusIds::BAD_REQUEST,
+             TCreateTenantRequest(TENANT1_1_NAME, TCreateTenantRequest::EType::Common)
+                 .WithPools({{"hdd", 1}})
+@@ -2253,6 +2257,78 @@ Y_UNIT_TEST_SUITE(TConsoleTests) {
+                 )
+         );
+     }
++
++    Y_UNIT_TEST(TestDatabaseAttributesValidation) {
++        TTenantTestRuntime runtime(DefaultConsoleTestConfig());
++        CheckCreateTenant(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, {{"hdd", 1}});
++
++        // Empty key
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::BAD_REQUEST,
++            "", "val1");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {});
++
++        // Long key
++        std::string longKey(NSchemeShard::TUserAttributesLimits::MaxNameLen + 1, 'k');;
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::BAD_REQUEST,
++            longKey.c_str(), "val1");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {});
++
++        // Long value
++        std::string longValue(NSchemeShard::TUserAttributesLimits::MaxValueLen + 1, 'v');;
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::BAD_REQUEST,
++            "k", longValue.c_str());
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {});
++    }
++
++    Y_UNIT_TEST(TestDatabaseAttributesManipulation) {
++        TTenantTestRuntime runtime(DefaultConsoleTestConfig());
++        CheckCreateTenant(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, {{"hdd", 1}});
++
++        // No attributes at start
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {});
++
++        // Add first attribute
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, "attr1", "val1");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {{"attr1", "val1"}});
++
++        // Add second
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, "attr2", "val2");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {{"attr1", "val1"}, {"attr2", "val2"}});
++
++        // Add third
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, "attr3", "val3");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {{"attr1", "val1"}, {"attr2", "val2"}, {"attr3", "val3"}});
++
++        // Update one
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, "attr2", "val22");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {{"attr1", "val1"}, {"attr2", "val22"}, {"attr3", "val3"}});
++
++        // Clear one
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, "attr1", "");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {{"attr2", "val22"}, {"attr3", "val3"}});
++
++        // Add a new one
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, "attr4", "val4");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME,
++            {{"attr2", "val22"}, {"attr3", "val3"}, {"attr4", "val4"}});
++
++        // Remove all
++        CheckSetTenantAttributes(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS,
++            {{"attr2", ""}, {"attr3", ""}, {"attr4", ""}});
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {});
++
++        // Add new one
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, "attr1", "val1");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {{"attr1", "val1"}});
++
++        // Update one
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, "attr1", "val11");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {{"attr1", "val11"}});
++
++        // Remove one
++        CheckSetTenantAttribute(runtime, TENANT1_1_NAME, Ydb::StatusIds::SUCCESS, "attr1", "");
++        CheckGetTenantAttributes(runtime, TENANT1_1_NAME, {});
++    }
+ }
+ 
+ } // namespace NKikimr
+diff --git a/contrib/ydb/core/cms/console/ut_helpers.h b/contrib/ydb/core/cms/console/ut_helpers.h
+index 797f28a80c34d739eb9843e63ebb77ab47bca421..46691d515b41a7d5e5441728800235a956240156 100644
+--- a/contrib/ydb/core/cms/console/ut_helpers.h
++++ b/contrib/ydb/core/cms/console/ut_helpers.h
+@@ -13,6 +13,25 @@
+ 
+ namespace NKikimr::NConsole::NUT {
+ 
++template<typename Runtime, typename Event>
++size_t DrainEdgeEvents(Runtime& runtime, TDuration simTimeout = TDuration::MilliSeconds(100))
++{
++    size_t drainedTotal = 0;
++    TAutoPtr<IEventHandle> handle;
++    while (runtime.template GrabEdgeEventRethrow<Event>(handle, simTimeout)) {
++        drainedTotal++;
++    }
++    return drainedTotal;
++}
++
++template<typename... Events, typename Runtime>
++size_t DrainAllEvents(Runtime& runtime, TDuration simTimeout = TDuration::MilliSeconds(100))
++{
++    runtime.DispatchEvents(TDispatchOptions(), simTimeout);
++    size_t drainedTotal = (0 + ... + DrainEdgeEvents<Runtime, Events>(runtime, simTimeout));
++    return drainedTotal;
++}
++
+ inline NKikimrConsole::TUsageScope MakeUsageScope(const TVector<ui32> &nodes)
+ {
+     NKikimrConsole::TUsageScope res;
+diff --git a/contrib/ydb/core/driver_lib/cli_base/cli_cmds_db.cpp b/contrib/ydb/core/driver_lib/cli_base/cli_cmds_db.cpp
+index abd16f6c38bd05e8d64062d7e7428594238a84d9..93d625547dca4ae916fbead3400ae1ac42808ba8 100644
+--- a/contrib/ydb/core/driver_lib/cli_base/cli_cmds_db.cpp
++++ b/contrib/ydb/core/driver_lib/cli_base/cli_cmds_db.cpp
+@@ -1273,7 +1273,7 @@ public:
+ class TClientCommandSchemaUserAttribute: public TClientCommandTree {
+ public:
+     TClientCommandSchemaUserAttribute()
+-        : TClientCommandTree("user-attribute", { "ua" }, "User attribute operations")
++        : TClientCommandTree("attribute", { "user-attribute", "ua" }, "User attribute operations")
+     {
+         AddCommand(std::make_unique<TClientCommandSchemaUserAttributeGet>());
+         AddCommand(std::make_unique<TClientCommandSchemaUserAttributeSet>());
+diff --git a/contrib/ydb/core/testlib/tenant_helpers.h b/contrib/ydb/core/testlib/tenant_helpers.h
+index 3a3fbaf7e02cb16a6dc1e0cb303e48b315c9310a..60d5a443962f949dc518cb078892cfd83d700951 100644
+--- a/contrib/ydb/core/testlib/tenant_helpers.h
++++ b/contrib/ydb/core/testlib/tenant_helpers.h
+@@ -401,7 +401,7 @@ inline void CheckCreateTenant(TTenantTestRuntime &runtime,
+     if (request.PlanResolution) {
+         event->Record.MutableRequest()->mutable_options()->set_plan_resolution(request.PlanResolution);
+     }
+-    
++
+     event->Record.MutableRequest()->mutable_database_quotas()->CopyFrom(request.DatabaseQuotas);
+     event->Record.MutableRequest()->mutable_scale_recommender_policies()->CopyFrom(request.ScaleRecommenderPolicies);
+ 
+@@ -533,6 +533,128 @@ inline void CheckRemoveTenant(TTenantTestRuntime &runtime,
+     CheckRemoveTenant(runtime, path, "", code);
+ }
+ 
++inline void CheckSetTenantAttributes(TTenantTestRuntime &runtime,
++                                    const TString &path,
++                                    const TString &token,
++                                    Ydb::StatusIds::StatusCode code,
++                                    const TMap<TString, TString> &attrs)
++{
++    auto *event = new NConsole::TEvConsole::TEvAlterTenantRequest;
++    event->Record.MutableRequest()->set_path(path);
++    for (const auto& attr : attrs) {
++        (*event->Record.MutableRequest()->mutable_alter_attributes())[attr.first] = attr.second;
++    }
++    if (token)
++        event->Record.SetUserToken(token);
++
++    TAutoPtr<IEventHandle> handle;
++    runtime.SendToConsole(event);
++    auto reply = runtime.GrabEdgeEventRethrow<NConsole::TEvConsole::TEvAlterTenantResponse>(handle);
++    auto &operation = reply->Record.GetResponse().operation();
++
++    if (operation.ready()) {
++        UNIT_ASSERT_VALUES_EQUAL(operation.status(), code);
++    } else {
++        TString id = operation.id();
++        for (;;) {
++            auto check = new NConsole::TEvConsole::TEvGetOperationRequest;
++            check->Record.MutableRequest()->set_id(id);
++            runtime.SendToConsole(check);
++            auto checkReply = runtime.GrabEdgeEventRethrow<NConsole::TEvConsole::TEvGetOperationResponse>(handle);
++            auto &checkOperation = checkReply->Record.GetResponse().operation();
++            if (checkOperation.ready()) {
++                UNIT_ASSERT_VALUES_EQUAL(checkOperation.status(), code);
++                break;
++            }
++
++            TDispatchOptions options;
++            runtime.DispatchEvents(options, TDuration::MilliSeconds(100));
++        }
++    }
++}
++
++inline void CheckSetTenantAttributes(TTenantTestRuntime &runtime,
++                                    const TString &path,
++                                    Ydb::StatusIds::StatusCode code,
++                                    const TMap<TString, TString> &attrs)
++{
++    CheckSetTenantAttributes(runtime, path, "", code, attrs);
++}
++
++inline void CheckSetTenantAttribute(TTenantTestRuntime &runtime,
++                                    const TString &path,
++                                    const TString &token,
++                                    Ydb::StatusIds::StatusCode code,
++                                    const TString &attrName,
++                                    const TString &attrValue)
++{
++    CheckSetTenantAttributes(runtime, path, token, code, {{attrName, attrValue}});
++}
++
++inline void CheckSetTenantAttribute(TTenantTestRuntime &runtime,
++                                    const TString &path,
++                                    Ydb::StatusIds::StatusCode code,
++                                    const TString &attrName,
++                                    const TString &attrValue)
++{
++    CheckSetTenantAttribute(runtime, path, "", code, attrName, attrValue);
++}
++
++inline Ydb::Cms::GetDatabaseStatusResult GetTenantStatusResult(TTenantTestRuntime &runtime,
++                                                               const TString &path)
++{
++    auto *req = new NConsole::TEvConsole::TEvGetTenantStatusRequest;
++    req->Record.MutableRequest()->set_path(path);
++    runtime.SendToConsole(req);
++
++    TAutoPtr<IEventHandle> handle;
++    auto reply = runtime.GrabEdgeEventRethrow<NConsole::TEvConsole::TEvGetTenantStatusResponse>(handle);
++    auto &operation = reply->Record.GetResponse().operation();
++    UNIT_ASSERT_VALUES_EQUAL(operation.status(), Ydb::StatusIds::SUCCESS);
++
++    Ydb::Cms::GetDatabaseStatusResult result;
++    UNIT_ASSERT_C(operation.result().UnpackTo(&result),
++        "Failed to unpack status result for tenant " << path);
++    return result;
++}
++
++inline void CheckGetTenantAttributes(TTenantTestRuntime &runtime,
++                                      const TString &path,
++                                      const TMap<TString, TString> &expectedAttrs)
++{
++    auto result = GetTenantStatusResult(runtime, path);
++    UNIT_ASSERT_VALUES_EQUAL_C(result.attributes_size(), expectedAttrs.size(),
++        "Attribute count mismatch for tenant " << path);
++    for (const auto &[key, expectedValue] : expectedAttrs) {
++        auto it = result.attributes().find(key);
++        UNIT_ASSERT_C(it != result.attributes().end(),
++            "Attribute '" << key << "' is missing for tenant " << path);
++        UNIT_ASSERT_VALUES_EQUAL_C(it->second, expectedValue,
++            "Attribute '" << key << "' value mismatch for tenant " << path);
++    }
++}
++
++inline void CheckGetTenantAttribute(TTenantTestRuntime &runtime,
++                                    const TString &path,
++                                    const TString &attrName,
++                                    const TString &expectedValue)
++{
++    auto result = GetTenantStatusResult(runtime, path);
++    auto it = result.attributes().find(attrName);
++    UNIT_ASSERT_C(it != result.attributes().end(),
++        "Attribute '" << attrName << "' is not set for tenant " << path);
++    UNIT_ASSERT_VALUES_EQUAL(it->second, expectedValue);
++}
++
++inline void CheckTenantAttributeAbsent(TTenantTestRuntime &runtime,
++                                       const TString &path,
++                                       const TString &attrName)
++{
++    auto result = GetTenantStatusResult(runtime, path);
++    UNIT_ASSERT_C(result.attributes().find(attrName) == result.attributes().end(),
++        "Attribute '" << attrName << "' is unexpectedly set for tenant " << path);
++}
++
+ inline void WaitTenantStatus(TTenantTestRuntime &runtime,
+                              const TString &path,
+                              TVector<Ydb::Cms::GetDatabaseStatusResult::State> expected)
+@@ -542,8 +664,8 @@ inline void WaitTenantStatus(TTenantTestRuntime &runtime,
+         req->Record.MutableRequest()->set_path(path);
+         runtime.SendToConsole(req);
+ 
+-        auto ev = runtime.GrabEdgeEventRethrow<NConsole::TEvConsole::TEvGetTenantStatusResponse>(runtime.Sender);
+-        auto &operation = ev->Get()->Record.GetResponse().operation();
++        auto reply = runtime.GrabEdgeEventRethrow<NConsole::TEvConsole::TEvGetTenantStatusResponse>(runtime.Sender);
++        auto &operation = reply->Get()->Record.GetResponse().operation();
+         UNIT_ASSERT_C(operation.status() == Ydb::StatusIds::SUCCESS,
+                 "Unexpected status " << operation.status() << " for tenant " << path);
+ 
+diff --git a/contrib/ydb/library/yaml_config/public/yaml_config.cpp b/contrib/ydb/library/yaml_config/public/yaml_config.cpp
+index b53cbb882c3bd176cea1c6f6264a3f5b358b4638..4f988737d3852eed594a4bbe1265fa7de93df427 100644
+--- a/contrib/ydb/library/yaml_config/public/yaml_config.cpp
++++ b/contrib/ydb/library/yaml_config/public/yaml_config.cpp
+@@ -261,7 +261,7 @@ void Inherit(NFyaml::TMapping& toMap, const NFyaml::TMapping& fromMap) {
+                 toMap.Append(it->Key().Copy().Ref(), it->Value().Copy().Ref());
+             }
+         } else {
+-            toMap.Append(it->Key().Copy().Ref(), it->Value().Copy().Ref());
++            toMap.Append(it->Key().Copy().Ref(),  it->Value().Copy().Ref());
+         }
+     }
+ }
+@@ -351,31 +351,70 @@ void RemoveTags(NFyaml::TDocument& doc) {
+     }
+ }
+ 
+-TDocumentConfig Resolve(
+-    const NFyaml::TDocument& doc,
++void ApplySelectors(
++    NFyaml::TDocument& doc,
+     const TSet<TNamedLabel>& labels)
+ {
+-    TDocumentConfig res{doc.Clone(), NFyaml::TNodeRef{}};
+-    res.first.Resolve();
++    if (!doc.Root()) {
++        return;
++    }
++
++    doc.Resolve();
++
++    auto rootMap = doc.Root().Map();
++
++    if (!rootMap.Has("config")) {
++        return;
++    }
++    if (!rootMap.Has("selector_config")) {
++        return;
++    }
+ 
+-    auto rootMap = res.first.Root().Map();
+     auto config = rootMap.at("config");
+-    if (rootMap.Has("selector_config")) {
+-        auto selectorConfig = rootMap.at("selector_config").Sequence();
++    auto selectorConfig = rootMap.at("selector_config").Sequence();
+ 
+-        for (auto it = selectorConfig.begin(); it != selectorConfig.end(); ++it) {
+-            auto selectorMap = it->Map();
+-            auto desc = selectorMap.at("description").Scalar();
+-            auto selectorNode = selectorMap.at("selector");
+-            auto selector = ParseSelector(selectorNode);
+-            if (Fit(selector, labels)) {
+-                Apply(config, selectorMap.at("config"));
+-            }
++    for (auto it = selectorConfig.begin(); it != selectorConfig.end(); ++it) {
++        auto selectorMap = it->Map();
++        auto desc = selectorMap.at("description").Scalar();
++        auto selectorNode = selectorMap.at("selector");
++        auto selector = ParseSelector(selectorNode);
++        if (Fit(selector, labels)) {
++            Apply(config, selectorMap.at("config"));
+         }
+     }
++}
++
++void DeepCopyTags(NFyaml::TNodeRef node) {
++    if (auto tag = node.Tag()) {
++        node.SetTag(*tag);
++    }
++    switch (node.Type()) {
++        case NFyaml::ENodeType::Mapping:
++            for (auto& pair : node.Map()) {
++                DeepCopyTags(pair.Value());
++            }
++            break;
++        case NFyaml::ENodeType::Sequence:
++            for (auto& item : node.Sequence()) {
++                DeepCopyTags(item);
++            }
++            break;
++        default:
++            break;
++    }
++}
++
++TDocumentConfig Resolve(
++    const NFyaml::TDocument& doc,
++    const TSet<TNamedLabel>& labels)
++{
++    TDocumentConfig res{doc.Clone(), NFyaml::TNodeRef{}};
+ 
++    ApplySelectors(res.first, labels);
+     RemoveTags(res.first);
+ 
++    auto rootMap = res.first.Root().Map();
++    auto config = rootMap.Has("config") ? rootMap.at("config") : res.first.Root();
+     res.second = config;
+ 
+     return res;
+@@ -636,9 +675,57 @@ description: Implicit DatabaseConfig node
+ selector: {}
+ )"));
+     auto node = databaseConfigRoot.Map()["config"].Copy(config);
++    DeepCopyTags(node.Ref());
+     selectors.at(selectors.size() - 1).Map().Append(config.Buildf("config"), node);
+ }
+ 
++void ResolveDatabaseConfig(NFyaml::TDocument& doc, const TSet<TNamedLabel>& labels)
++{
++    auto rootMap = doc.Root().Map();
++
++    bool hasSelectors = rootMap.Has("selector_config");
++    bool hasAllowedLabels = rootMap.Has("allowed_labels");
++
++    if (!hasSelectors && !hasAllowedLabels) {
++        return;
++    }
++
++    // Save existing nodes tags to restore them later
++    std::map<TString, TString> savedTags; // [node path; tag]
++    for (auto it = doc.begin(); it != doc.end(); ++it) {
++        if (auto tag = it->Tag(); tag) {
++            savedTags[it->Path()] = *tag;
++        }
++    }
++
++
++    // Resolve
++    ApplySelectors(doc, labels);
++
++    // Remove selectors and allowed_labels
++    if (hasSelectors) {
++        if (auto pair = rootMap.pair_at_opt("selector_config"); pair) {
++            rootMap.Remove(pair);
++        }
++    }
++    if (hasAllowedLabels) {
++        if (auto pair = rootMap.pair_at_opt("allowed_labels"); pair) {
++            rootMap.Remove(pair);
++        }
++    }
++
++    // Remove all tags
++    RemoveTags(doc);
++
++    // Restore existed nodes tags
++    for (auto it = doc.begin(); it != doc.end(); ++it) {
++        auto tag = savedTags.find(it->Path());
++        if (tag != savedTags.end()) {
++            it->SetTag(tag->second);
++        }
++    }
++}
++
+ ui64 GetVersion(const TString& config) {
+     auto metadata = GetMainMetadata(config);
+     return metadata.Version.value_or(0);
+diff --git a/contrib/ydb/library/yaml_config/public/yaml_config.h b/contrib/ydb/library/yaml_config/public/yaml_config.h
+index 6977d18119d0bb813322a2e8df018727596c7dd3..84547e6312267359d2bab196c8e8350698b4361b 100644
+--- a/contrib/ydb/library/yaml_config/public/yaml_config.h
++++ b/contrib/ydb/library/yaml_config/public/yaml_config.h
+@@ -172,6 +172,15 @@ void AppendVolatileConfigs(NFyaml::TDocument& config, NFyaml::TNodeRef& volatile
+  */
+ void AppendDatabaseConfig(NFyaml::TDocument& config, NFyaml::TDocument& databaseConfig);
+ 
++/**
++ * Resolves per-database config selectors in isolation.
++ * Applies matching selectors from the database config's own selector_config,
++ * strips selector_config and allowed_labels from the document,
++ * and preserves all existed YAML tags on 'config' nodes at all levels for downstream merging.
++ * No-op if the document has no selector_config or allowed_labels.
++ */
++void ResolveDatabaseConfig(NFyaml::TDocument& doc, const TSet<TNamedLabel>& labels);
++
+ /**
+  * Parses config version
+  */
+diff --git a/contrib/ydb/library/yaml_config/public/yaml_config_impl.h b/contrib/ydb/library/yaml_config/public/yaml_config_impl.h
+index 45439ba2b5fef602f925dd88c5d3467ab31418b6..329821cd577bf7553679bd4ef4ec36351f959c0e 100644
+--- a/contrib/ydb/library/yaml_config/public/yaml_config_impl.h
++++ b/contrib/ydb/library/yaml_config/public/yaml_config_impl.h
+@@ -44,4 +44,26 @@ void Combine(
+ 
+ TSelector ParseSelector(const NFyaml::TNodeRef& selectors);
+ 
++/**
++ * Apply all matching selectors for specific set of labels
++ *
++ *  - existing 'config' nodes tags are preserved (if any) at all nested levels
++ *  - tags (if any) of added nodes at any nested level are propagated from selectors into 'config'
++ */
++void ApplySelectors(NFyaml::TDocument& doc, const TSet<TNamedLabel>& labels);
++
++/**
++ * Re-create node tags to prevent dangling references after cross-document copy
++ *
++ *  - fy_node_copy does fyn->tag = fy_token_ref(fyn_from->tag), which only
++ *    increments the refcount on the same tag token; the token's fy_input
++ *    still references the source document's memory (input buffer for
++ *    parser-created tags, or TUserDataHolder-owned TString for SetTag tags)
++ *  - when the source document is destroyed, that backing memory is freed
++ *    and the copied node's tag token becomes a dangling reference
++ *  - this function recursively re-sets every tag via SetTag, which allocates
++ *    a fresh fy_input and TUserDataHolder per node in the target document
++ */
++void DeepCopyTags(NFyaml::TNodeRef node);
++
+ } // namespace NKikimr::NYamlConfig
+diff --git a/contrib/ydb/library/yaml_config/yaml_config.cpp b/contrib/ydb/library/yaml_config/yaml_config.cpp
+index 28ec20c3cb4c0871a0460d88015366e5e603424b..cdb615e7936aaa2ac738fd65644e6bdb2be4c0b8 100644
+--- a/contrib/ydb/library/yaml_config/yaml_config.cpp
++++ b/contrib/ydb/library/yaml_config/yaml_config.cpp
+@@ -52,8 +52,14 @@ void ResolveAndParseYamlConfig(
+             hasMetadata = true;
+         }
+ 
++        TSet<NYamlConfig::TNamedLabel> namedLabels;
++        for (auto& [name, label] : labels) {
++            namedLabels.insert(NYamlConfig::TNamedLabel{name, label});
++        }
++
+         if (databaseYamlConfig) {
+             auto d = NFyaml::TDocument::Parse(*databaseYamlConfig);
++            NYamlConfig::ResolveDatabaseConfig(d, namedLabels);
+             NYamlConfig::AppendDatabaseConfig(tree, d);
+         }
+ 
+@@ -62,11 +68,6 @@ void ResolveAndParseYamlConfig(
+             NYamlConfig::AppendVolatileConfigs(tree, d);
+         }
+ 
+-        TSet<NYamlConfig::TNamedLabel> namedLabels;
+-        for (auto& [name, label] : labels) {
+-            namedLabels.insert(NYamlConfig::TNamedLabel{name, label});
+-        }
+-
+         auto config = NYamlConfig::Resolve(tree, namedLabels);
+ 
+         if (resolvedYamlConfig) {
+diff --git a/contrib/ydb/library/yaml_config/yaml_config_ut.cpp b/contrib/ydb/library/yaml_config/yaml_config_ut.cpp
+index 762111e244e2fc45ff15d4d5420eeb7d991258a7..ff19195c76ef01993e3428d6171a572b499365b6 100644
+--- a/contrib/ydb/library/yaml_config/yaml_config_ut.cpp
++++ b/contrib/ydb/library/yaml_config/yaml_config_ut.cpp
+@@ -1,11 +1,14 @@
+ #include "yaml_config.h"
+ 
+ #include <contrib/ydb/library/yaml_config/yaml_config_parser.h>
++#include <contrib/ydb/library/yaml_config/public/yaml_config_impl.h>
+ 
+ #include <library/cpp/testing/unittest/registar.h>
+ 
+ #include <contrib/ydb/core/protos/key.pb.h>
+ 
++#include <util/string/strip.h>
++
+ using namespace NKikimr;
+ 
+ const char *WholeConfig = R"(---
+@@ -1592,7 +1595,7 @@ Y_UNIT_TEST_SUITE(YamlConfig) {
+         stream << cfg;
+     }
+ 
+-    void AppendDatabaseConfigBase(
++    void CheckAppendDatabaseConfig(
+         const TString mainConfig,
+         const TString databaseConfig)
+     {
+@@ -1690,7 +1693,7 @@ config:
+     some_param_1: false
+ )";
+ 
+-        AppendDatabaseConfigBase(mainConfig, databaseConfig);
++        CheckAppendDatabaseConfig(mainConfig, databaseConfig);
+     }
+ 
+     Y_UNIT_TEST(AppendDatabaseConfigAfterExistingSelectors)
+@@ -1730,7 +1733,7 @@ config:
+     some_param_1: false
+ )";
+ 
+-        AppendDatabaseConfigBase(mainConfig, databaseConfig);
++        CheckAppendDatabaseConfig(mainConfig, databaseConfig);
+     }
+ 
+     Y_UNIT_TEST(GetMetadata) {
+@@ -2062,3 +2065,1851 @@ obj: {value: 2} # comment2
+         }
+     }
+ }
++
++Y_UNIT_TEST_SUITE(ApplySelectors) {
++/**
++ * Tests:
++ *  1. None                   - Successfull no-change resolving with no config
++ *  2. Empty                  - Successfull no-change resolving with empty config
++ *  3. NoSelectors            - Successfull no-change resolving with no selectors
++ *  4. AddToMap               - Selector-based parameters addition to map
++ *  5. AddToList              - Selector-based elements addition to list
++ *  6. ModifyInMap            - Selector-based parameters modification in map
++ *  7. ModifyInList           - Selector-based parameters modification in list
++ *  8. ModifyAbsentInMap      - Edge cases of absent map elements modification with selectors
++ *  9. ModifyAbsentInList     - Edge cases of absent list elements modification with selectors.
++ *                              PAY ATTENTION: has erroneous behavior with '!remove' tag
++ * 10. LabeledSelectors       - Label-respected selector applying
++ * 11. MultipleSelectors      - Multiple selectors layering
++ *
++ * Notes:
++ *  - tests 4-9 performed for all possible parameter types (scalar, list, map)
++ *    with with tags and nested levels
++ */
++
++     Y_UNIT_TEST(None)
++    {
++        const TString config = R"(
++fictive:
++  a: 1
++  b:
++    c: 2
++)";
++
++        // Without and with labels
++        TSet<NYamlConfig::TNamedLabel> labels;
++        for (int i = 0; i < 2; i++)
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, labels);
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(config));
++
++            labels.emplace("some_label", "a");
++        }
++    }
++
++     Y_UNIT_TEST(NoneWithSelectors)
++    {
++        const TString config = R"(
++fictive:
++  a: 1
++  b:
++    c: 2
++selector_config:
++- description: some none
++  selector: {}
++  config:
++    param: 1
++- description: some a
++  selector:
++    some_label: a
++  config:
++    param: 2
++)";
++
++        // Without and with labels
++        TSet<NYamlConfig::TNamedLabel> labels;
++        for (int i = 0; i < 2; i++)
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, labels);
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(config));
++
++            labels.emplace("some_label", "a");
++        }
++    }
++
++     Y_UNIT_TEST(Empty)
++    {
++        const TString config = R"(
++config:
++)";
++        // Without and with labels
++        TSet<NYamlConfig::TNamedLabel> labels;
++        for (int i = 0; i < 2; i++)
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, labels);
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(config));
++
++            labels.emplace("some_label", "a");
++        }
++    }
++
++    Y_UNIT_TEST(NoSelectors)
++    {
++        const TString config = R"(
++config:
++  subconfig_1:
++    param_1: none
++  subconfig_2: !inherit
++    param_2: true
++)";
++        // Without and with labels
++        TSet<NYamlConfig::TNamedLabel> labels;
++        for (int i = 0; i < 2; i++)
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, labels);
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(config));
++
++            labels.emplace("some_label", "a");
++        }
++    }
++
++    Y_UNIT_TEST(AddToMap)
++    {
++        const TString config = R"(
++config:
++  subconfig:
++    field_1: f1
++    map_1:
++      field_1: m1f1
++      map_1:
++        field_1: m1m1f1
++      list_1:
++      - name: a
++        field_1: m1l1af1
++      - name: b
++        field_1: m1l1bf1
++selector_config:
++- description: add to map
++  selector: {}
++  config:
++    subconfig: !inherit
++      field_2: f2
++      map_1: !inherit
++        field_2: m1f2
++        map_1: !inherit
++          field_2: m1m1f2
++        map_2:
++          field_1: m1m2f1
++        list_2:
++        - name: c
++          field_1: m1l2cf1
++        - name: d
++          field_1: m1l2df1
++      list_1:
++      - name: e
++        field_1: l1ef1
++)";
++        const TString expected = R"(
++subconfig:
++  field_1: f1
++  map_1:
++    field_1: m1f1
++    map_1:
++      field_1: m1m1f1
++      field_2: m1m1f2
++    list_1:
++    - name: a
++      field_1: m1l1af1
++    - name: b
++      field_1: m1l1bf1
++    field_2: m1f2
++    map_2:
++      field_1: m1m2f1
++    list_2:
++    - name: c
++      field_1: m1l2cf1
++    - name: d
++      field_1: m1l2df1
++  field_2: f2
++  list_1:
++  - name: e
++    field_1: l1ef1
++)";
++
++        auto doc = NFyaml::TDocument::Parse(config);
++        NYamlConfig::ApplySelectors(doc, {});
++
++        TStringStream resolved;
++        resolved << doc.Root().Map().at("config");
++        UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expected));
++    }
++
++    Y_UNIT_TEST(AddToList)
++    {
++        const TString config = R"(
++config:
++  subconfig:
++    list_1:
++    - name: a
++      field_1: l1af1
++    - name: b
++      field_1: l1bf1
++    list_2:
++    - name: a
++      field_1: l2af1
++    - name: b
++      field_1: l2bf1
++selector_config:
++- description: add to list
++  selector: {}
++  config:
++    subconfig: !inherit
++      list_1: !inherit:name   # existing elements shall be fully replaced
++      - name: a
++        field_1: l1af1-new
++      - name: c
++        field_1: l1cf1
++      list_2: !append         # existing elements shall be kept, duplicates shall be added
++      - name: a
++        field_1: l2af1-new
++      - name: c
++        field_1: l2cf1
++)";
++        const TString expected = R"(
++subconfig:
++  list_1:
++  - name: a
++    field_1: l1af1-new
++  - name: b
++    field_1: l1bf1
++  - name: c
++    field_1: l1cf1
++  list_2:
++  - name: a
++    field_1: l2af1
++  - name: b
++    field_1: l2bf1
++  - name: a
++    field_1: l2af1-new
++  - name: c
++    field_1: l2cf1
++)";
++        auto doc = NFyaml::TDocument::Parse(config);
++        NYamlConfig::ApplySelectors(doc, {});
++
++        TStringStream resolved;
++        resolved << doc.Root().Map().at("config");
++        UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expected));
++    }
++
++    Y_UNIT_TEST(ModifyInMap)
++    {
++        const TString config = R"(
++config:
++  subconfig_1:
++
++    field_1: f1
++    field_2: f2-unchanged
++
++    map_1:
++      field_1: m1f1
++      field_2: m1f2-unchanged
++      map_1:
++        field_1: m1m1f1
++        field_2: m1m1f2-unchanged
++      map_2:
++        field_1: m1m2f1
++        field_2: m1m2f2
++      list_1:
++      - name: a
++        field_1: m1l1af1
++      - name: b
++        field_1: m1l1bf1
++
++    map_2-unchanged:
++      field_1: m2f1-unchanged
++
++    list_1:
++    - name: a
++      field_1: l1af1
++
++  subconfig_2:
++    field_1: f1
++    field_2: f1
++    map_1:
++      field_1: m1f1
++    list_1:
++    - name: a
++      field_1: l1af1
++
++  subconfig_3:
++    field_1: f1
++    field_2: f1
++    map_1:
++      field_1: m1f1
++    list_1:
++    - name: a
++      field_1: l1af1
++
++  subconfig_4:
++    field_1: f1-unchanged
++    field_2: f1-unchanged
++
++selector_config:
++- description:
++  selector: {}
++  config:
++
++    subconfig_1: !inherit       # map:   shall be appended/modified
++
++      field_1: f1-new           # field: shall be replaced
++      field_3: f3-new           # field: shall be added
++
++      map_1: !inherit           # map:   shall be appended/modified
++
++        field_1: m1f1-new       # field: shall be replaced
++        field_3: m1f3-new       # field: shall be added
++
++        map_1: !inherit         # map:   shall be appended/modified
++          field_1: m1m1f1-new   # field: shall be replaced
++          field_3: m1m1f3-new   # field: shall be added
++
++        map_2:                  # map:   shall be replaced
++          field_3: m1m2f3-new
++
++        map_3_1:                # map:   shall be added
++          field_1: m1m31f1-new
++
++        list_1:                 # list:  shall be replaced
++        - name: c
++          field_1: m1l1cf1-new
++
++        list_2_1:               # list:  shall be added
++        - name: a
++          field_1: m1l21af1-new
++
++      list_1:                   # list: shall be replaced
++      - name: d
++        field_1: l1df1-new
++
++      list_2_1:                 # list:  shall be added
++      - name: a
++        field_1: l21af1-new
++
++    subconfig_2:                # map:  shall be replaced
++      field_1: f1-new
++      field_3: f3-new
++
++    subconfig_3:                # map:  shall be replaced
++
++    subconfig_5_1:              # map:  shall be added as not existing
++
++    subconfig_5_2:              # map:  shall be added as not existing
++      field_1: f1-new
++      field_3: f3-new
++)";
++        const TString expected = R"(
++subconfig_1:
++  field_2: f2-unchanged
++  map_1:
++    field_2: m1f2-unchanged
++    map_1:
++      field_2: m1m1f2-unchanged
++      field_1: m1m1f1-new
++      field_3: m1m1f3-new
++    field_1: m1f1-new
++    field_3: m1f3-new
++    map_2:
++      field_3: m1m2f3-new
++    map_3_1:
++      field_1: m1m31f1-new
++    list_1:
++    - name: c
++      field_1: m1l1cf1-new
++    list_2_1:
++    - name: a
++      field_1: m1l21af1-new
++  map_2-unchanged:
++    field_1: m2f1-unchanged
++  field_1: f1-new
++  field_3: f3-new
++  list_1:
++  - name: d
++    field_1: l1df1-new
++  list_2_1:
++  - name: a
++    field_1: l21af1-new
++subconfig_4:
++  field_1: f1-unchanged
++  field_2: f1-unchanged
++subconfig_2:
++  field_1: f1-new
++  field_3: f3-new
++subconfig_3: )" R"(
++subconfig_5_1: )" R"(
++subconfig_5_2:
++  field_1: f1-new
++  field_3: f3-new
++)";
++        auto doc = NFyaml::TDocument::Parse(config);
++        NYamlConfig::ApplySelectors(doc, {});
++
++        TStringStream resolved;
++        resolved << doc.Root().Map().at("config");
++        UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expected));
++    }
++
++    Y_UNIT_TEST(ModifyInList)
++    {
++        const TString config = R"(
++config:
++  subconfig_1:
++
++    list_1:
++    - name: a
++      field_1: l1af1
++      map_1:
++        field_1: l1am1f1
++    - name: b
++      field_1: l1bf1
++      map_1:
++        field_1: l1bm1f1
++    - name: c
++      field_1: l1cf1-unchanged
++      map_1:
++        field_1: l1cm1f1-unchanged
++
++    list_2:
++    - name: a
++      field_1: l2af1
++      map_1:
++        field_1: l2am1f1
++    - name: b
++      field_1: l2bf1
++    - name: c
++      field_1: l2cf1
++
++selector_config:
++- description:
++  selector: {}
++  config:
++    subconfig_1: !inherit
++
++      list_1: !inherit:name       # shall remove/replace existing elements (by key 'name') and append new
++      - name: a                   # shall be replaced
++        field_2: l1af2-new
++        map_1:
++          field_2: l1am1f2-new
++        map_2:
++          field_1: l1am2f1-new
++      - !remove                   # shall be removed ('name: b')
++        name: b
++      - name: d                   # shall be added
++        field_3: l1df3-new
++        map_3:
++          field_1: l1dm3f1-new
++
++      list_2: !append             # shall unconditionally append elements (even duplicates)
++      - name: b
++        field_1: l2bf1
++        map_1:
++          field_1: l2bm1f1
++      - name: d
++        field_1: l2df1
++        map_1:
++          field_1: l2dm1f1
++      - name: e
++        field_1: l2ef1
++        map_1:
++          field_1: l2em1f1
++      - name: a
++        field_1: l2af1
++        map_1:
++          field_1: l2am1f1
++)";
++        const TString expected = R"(
++subconfig_1:
++  list_1:
++  - name: a
++    field_2: l1af2-new
++    map_1:
++      field_2: l1am1f2-new
++    map_2:
++      field_1: l1am2f1-new
++  - name: c
++    field_1: l1cf1-unchanged
++    map_1:
++      field_1: l1cm1f1-unchanged
++  - name: d
++    field_3: l1df3-new
++    map_3:
++      field_1: l1dm3f1-new
++  list_2:
++  - name: a
++    field_1: l2af1
++    map_1:
++      field_1: l2am1f1
++  - name: b
++    field_1: l2bf1
++  - name: c
++    field_1: l2cf1
++  - name: b
++    field_1: l2bf1
++    map_1:
++      field_1: l2bm1f1
++  - name: d
++    field_1: l2df1
++    map_1:
++      field_1: l2dm1f1
++  - name: e
++    field_1: l2ef1
++    map_1:
++      field_1: l2em1f1
++  - name: a
++    field_1: l2af1
++    map_1:
++      field_1: l2am1f1
++)";
++        auto doc = NFyaml::TDocument::Parse(config);
++        NYamlConfig::ApplySelectors(doc, {});
++
++        TStringStream resolved;
++        resolved << doc.Root().Map().at("config");
++        UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expected));
++    }
++
++    Y_UNIT_TEST(ModifyAbsentInMap)
++    {
++        const TString config = R"(
++config:
++  subconfig_1:
++    map_1:
++      field_1: m1f1
++
++selector_config:
++- description:
++  selector: {}
++  config:
++
++    subconfig_1: !inherit
++
++      map_1: !inherit
++
++        map_1: !inherit         # map:   shall be added keeping '!inherit' tag as not existing
++          field_1: m1m1f1-new
++
++        list_1: !inherit:name   # list:  shall be added "as is" with tag '!inherit:name' as not existing
++        - name: a
++          field_1: m1m1l1af1-new
++
++      list_1: !inherit:name     # list:  shall be added "as is" with tag '!inherit:name' as not existing
++      - name: a
++        field_1: l1af1-new
++
++    subconfig_2: !inherit       # map:  shall be added "as is" with tag '!inherit' as not existing
++
++    subconfig_3: !inherit       # map:  shall be added "as is" with tag '!inherit' as not existing
++      field_1: f1-new
++      map_1: !inherit           # map:  shall be added "as is" with tag '!inherit' as not existing
++        field_1: m1f1-new
++)";
++        const TString expected = R"(
++subconfig_1:
++  map_1:
++    field_1: m1f1
++    map_1: !inherit
++      field_1: m1m1f1-new
++    list_1: !inherit:name
++    - name: a
++      field_1: m1m1l1af1-new
++  list_1: !inherit:name
++  - name: a
++    field_1: l1af1-new
++subconfig_2: !inherit )" R"(
++subconfig_3: !inherit
++  field_1: f1-new
++  map_1: !inherit
++    field_1: m1f1-new
++)";
++        // All migrated tags must be removed with NYamlConfig::RemoveTags()
++        const TString expectedAfterRemoveTags = R"(
++subconfig_1:
++  map_1:
++    field_1: m1f1
++    map_1:
++      field_1: m1m1f1-new
++    list_1:
++    - name: a
++      field_1: m1m1l1af1-new
++  list_1:
++  - name: a
++    field_1: l1af1-new
++subconfig_2: )" R"(
++subconfig_3:
++  field_1: f1-new
++  map_1:
++    field_1: m1f1-new
++)";
++
++        auto doc = NFyaml::TDocument::Parse(config);
++        NYamlConfig::ApplySelectors(doc, {});
++
++        {
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expected));
++        }
++
++        {
++            NYamlConfig::RemoveTags(doc);
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedAfterRemoveTags));
++        }
++    }
++
++    Y_UNIT_TEST(ModifyAbsentInList)
++    {
++        const TString config = R"(
++config:
++  subconfig_1:
++
++    list_1:
++    - name: a
++      field_1: l1af1
++      map_1:
++        field_1: l1am1f1
++
++    list_2:
++    - name: a
++      field_1: l2af1
++      map_1:
++        field_1: l2am1f1
++
++selector_config:
++- description:
++  selector: {}
++  config:
++    subconfig_1: !inherit
++
++      list_1: !inherit:name       # shall remove/replace existing elements (by key 'name') and append new
++      - name: a                   # shall be replaced
++        field_1: l1af1-new
++        map_1: !inherit           # shall be added "as is" with tag !inherit as not existing (whole element is replaced)
++          field_1: l1am1f1-new
++      - name: b                   # shall be added
++        field_1: l1bf1-new
++        map_1: !inherit           # shall be added "as is" with tag !inherit as not existing (whole element is replaced)
++          field_1: l1bm1f1-new
++      - !remove                   # shall be added "as is" with tag !remove as not existing
++        name: c
++
++      list_2: !append             # shall unconditionally append elements (even duplicates)
++      - name: a                   # shall be added
++        field_1: l2af1-new
++        map_1: !inherit           # shall be added "as is" with tag !inherit as not existing (whole element is replaced)
++          field_1: l2am1f1-new
++      - name: b                   # shall be added
++        field_1: l2bf1-new
++        map_1: !inherit           # shall be added "as is" with tag !inherit as not existing (whole element is replaced)
++          field_1: l2bm1f1-new
++      - !remove                   # shall be added "as is" with tag !remove as not existing
++        name: c
++
++      list_3: !append             # shall be added "as is" with tag !inherit:name as not existing
++      - name: a
++        field_1: l3af1-new
++        map_1: !inherit           # shall be added "as is" with tag !inherit as not existing
++          field_1: l3am1f1-new
++      - !remove                   # shall be added "as is" with tag !remove as not existing
++        name: c
++
++      list_4: !inherit:name       # shall be added "as is" with tag !inherit:name as not existing
++      - name: a
++        field_1: l4af1-new
++        map_1: !inherit           # shall be added "as is" with tag !inherit as not existing
++          field_1: l4am1f1-new
++      - !remove                   # shall be added "as is" with tag !remove as not existing
++        name: c
++)";
++        const TString expected = R"(
++subconfig_1:
++  list_1:
++  - name: a
++    field_1: l1af1-new
++    map_1: !inherit
++      field_1: l1am1f1-new
++  - name: b
++    field_1: l1bf1-new
++    map_1: !inherit
++      field_1: l1bm1f1-new
++  - !remove
++    name: c
++  list_2:
++  - name: a
++    field_1: l2af1
++    map_1:
++      field_1: l2am1f1
++  - name: a
++    field_1: l2af1-new
++    map_1: !inherit
++      field_1: l2am1f1-new
++  - name: b
++    field_1: l2bf1-new
++    map_1: !inherit
++      field_1: l2bm1f1-new
++  - !remove
++    name: c
++  list_3: !append
++  - name: a
++    field_1: l3af1-new
++    map_1: !inherit
++      field_1: l3am1f1-new
++  - !remove
++    name: c
++  list_4: !inherit:name
++  - name: a
++    field_1: l4af1-new
++    map_1: !inherit
++      field_1: l4am1f1-new
++  - !remove
++    name: c
++)";
++        // All migrated tags must be removed with NYamlConfig::RemoveTags(),
++        // except '!remove' erroneous behavior: 'name:c' shall be added instead do nothing
++        const TString expectedAfterRemoveTags = R"(
++subconfig_1:
++  list_1:
++  - name: a
++    field_1: l1af1-new
++    map_1:
++      field_1: l1am1f1-new
++  - name: b
++    field_1: l1bf1-new
++    map_1:
++      field_1: l1bm1f1-new
++  - name: c)" /* ERROR: 'name:c' has been added instead do nothing */ R"(
++  list_2:
++  - name: a
++    field_1: l2af1
++    map_1:
++      field_1: l2am1f1
++  - name: a
++    field_1: l2af1-new
++    map_1:
++      field_1: l2am1f1-new
++  - name: b
++    field_1: l2bf1-new
++    map_1:
++      field_1: l2bm1f1-new
++  - name: c)" /* ERROR: 'name:c' has been added instead do nothing */ R"(
++  list_3:
++  - name: a
++    field_1: l3af1-new
++    map_1:
++      field_1: l3am1f1-new
++  - name: c)" /* ERROR: 'name:c' has been added instead do nothing */ R"(
++  list_4:
++  - name: a
++    field_1: l4af1-new
++    map_1:
++      field_1: l4am1f1-new
++  - name: c)" /* ERROR: 'name:c' has been added instead do nothing */ R"(
++)";
++        auto doc = NFyaml::TDocument::Parse(config);
++        NYamlConfig::ApplySelectors(doc, {});
++
++        {
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expected));
++        }
++
++        {
++            NYamlConfig::RemoveTags(doc);
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedAfterRemoveTags));
++        }
++    }
++
++    Y_UNIT_TEST(LabeledSelectors)
++    {
++        const TString config = R"(
++config:
++  subconfig_1: !inherit
++    field_1: 1
++    field_2: 2
++    map_1: !inherit
++      field_1: 1
++      field_2: 2
++      list_1: !inherit:name
++      - name: a
++        field_1: 1
++        field_2: 2
++      - name: x
++        field_1: 1
++      - name: y
++        field_1: 1
++    list_1: !append
++    - name: a
++      field_1: 1
++      field_2: 2
++
++selector_config:
++
++- description:
++  selector:
++    type: x
++  config:
++    subconfig_1: !inherit
++      field_1: 1x
++      map_1: !inherit
++        field_1: 1x
++        list_1: !inherit:name
++        - name: a
++          field_1: 1x
++        - !remove
++          name: y
++      list_1: !append
++      - name: a
++        field_1: 1x
++
++- description:
++  selector:
++    type: y
++  config:
++    subconfig_1: !inherit
++      field_1: 1y
++      map_1: !inherit
++        field_1: 1y
++        list_1: !inherit:name
++        - name: a
++          field_1: 1y
++        - !remove
++          name: x
++      list_1: !append
++      - name: a
++        field_1: 1y
++
++- description:
++  selector:
++    type:
++      in:
++      - q
++      - w
++  config:
++    subconfig_1: !inherit
++      field_1: 1qw
++      map_1: !inherit
++        field_1: 1qw
++        list_1: !inherit:name
++        - name: a
++          field_1: 1qw
++        - !remove
++          name: x
++        - !remove
++          name: y
++      list_1: !append
++      - name: a
++        field_1: 1qw
++)";
++        const TString expectedNone = R"(
++subconfig_1: !inherit
++  field_1: 1
++  field_2: 2
++  map_1: !inherit
++    field_1: 1
++    field_2: 2
++    list_1: !inherit:name
++    - name: a
++      field_1: 1
++      field_2: 2
++    - name: x
++      field_1: 1
++    - name: y
++      field_1: 1
++  list_1: !append
++  - name: a
++    field_1: 1
++    field_2: 2
++)";
++        const TString expectedX = R"(
++subconfig_1: !inherit
++  field_2: 2
++  map_1: !inherit
++    field_2: 2
++    list_1: !inherit:name
++    - name: a
++      field_1: 1x
++    - name: x
++      field_1: 1
++    field_1: 1x
++  list_1: !append
++  - name: a
++    field_1: 1
++    field_2: 2
++  - name: a
++    field_1: 1x
++  field_1: 1x
++)";
++        const TString expectedY = R"(
++subconfig_1: !inherit
++  field_2: 2
++  map_1: !inherit
++    field_2: 2
++    list_1: !inherit:name
++    - name: a
++      field_1: 1y
++    - name: y
++      field_1: 1
++    field_1: 1y
++  list_1: !append
++  - name: a
++    field_1: 1
++    field_2: 2
++  - name: a
++    field_1: 1y
++  field_1: 1y
++)";
++        const TString expectedQW = R"(
++subconfig_1: !inherit
++  field_2: 2
++  map_1: !inherit
++    field_2: 2
++    list_1: !inherit:name
++    - name: a
++      field_1: 1qw
++    field_1: 1qw
++  list_1: !append
++  - name: a
++    field_1: 1
++    field_2: 2
++  - name: a
++    field_1: 1qw
++  field_1: 1qw
++)";
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, {});
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedNone));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, {
++                NYamlConfig::TNamedLabel{"type", "x"}});
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedX));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, {
++                NYamlConfig::TNamedLabel{"type", "y"}});
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedY));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, {
++                NYamlConfig::TNamedLabel{"type", "q"}});
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedQW));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, {
++                NYamlConfig::TNamedLabel{"type", "w"}});
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedQW));
++        }
++    }
++
++    Y_UNIT_TEST(MultipleSelectors)
++    {
++        const TString config = R"(
++config:
++  subconfig_1: !inherit
++    field_1: 1
++    field_2: 2
++    map_1: !inherit
++      field_1: 1
++      field_2: 2
++      list_1: !inherit:name
++      - name: a
++        field_1: 1
++        field_2: 2
++      - name: _
++        field_1: 1
++      - name: x
++        field_1: 1
++      - name: y
++        field_1: 1
++    list_1: !append
++    - name: a
++      field_1: 1
++      field_2: 2
++
++selector_config:
++
++- description:  all
++  selector: {}
++  config:
++    subconfig_1: !inherit
++      field_2: 3
++      list_1: !append
++      - name: _
++        field_2: 3
++
++- description:  all
++  selector: {}
++  config:
++    subconfig_1: !inherit
++      map_1: !inherit
++        field_2: 4
++        list_1: !inherit:name
++        - name: a
++          field_2: 4
++        - !remove
++          name: _
++
++- description:  type_1 = x && type_2 = ???
++  selector:
++    type_1: x
++  config:
++    subconfig_1: !inherit
++      field_1: 1x
++      list_1: !append
++      - name: a
++        field_1: 1x
++
++- description:  type_1 = x && type_2 = ???
++  selector:
++    type_1: x
++  config:
++    subconfig_1: !inherit
++      map_1: !inherit
++        field_1: 1x
++        list_1: !inherit:name
++        - name: a
++          field_1: 1x
++        - !remove
++          name: y
++
++- description:  type_1 = ??? && type_2 = y
++  selector:
++    type_2: y
++  config:
++    subconfig_1: !inherit
++      field_1: 1y
++      list_1: !append
++      - name: a
++        field_1: 1y
++
++- description:  type_1 = ??? && type_2 = y
++  selector:
++    type_2: y
++  config:
++    subconfig_1: !inherit
++      map_1: !inherit
++        field_1: 1y
++        list_1: !inherit:name
++        - name: a
++          field_1: 1y
++        - !remove
++          name: x
++
++- description:  type_1 = x && type_2 = y
++  selector:
++    type_1: x
++    type_2: y
++  config:
++    subconfig_1: !inherit
++      field_2: 2xy
++      list_1: !append
++      - name: a
++        field_2: 2xy
++
++- description:  type_1 = x && type_2 = y
++  selector:
++    type_1: x
++    type_2: y
++  config:
++    subconfig_1: !inherit
++      map_1: !inherit
++        field_2: 2xy
++
++- description:  type_1 = x && type_2 != y
++  selector:
++    type_1:
++      in:
++      - o
++      - x
++    type_2:
++      not_in:
++      - y
++      - o
++  config:
++    subconfig_1: !inherit
++      field_3: 3ox
++      list_1: !append
++      - name: a
++        field_3: 3ox
++
++- description:  type_1 = x && type_2 != y
++  selector:
++    type_1:
++      in:
++      - o
++      - x
++    type_2:
++      not_in:
++      - y
++      - o
++  config:
++    subconfig_1: !inherit
++      map_1: !inherit
++        field_3: 3ox
++)";
++        const TString expectedNone = R"(
++subconfig_1: !inherit
++  field_1: 1
++  map_1: !inherit
++    field_1: 1
++    list_1: !inherit:name
++    - name: a
++      field_2: 4
++    - name: x
++      field_1: 1
++    - name: y
++      field_1: 1
++    field_2: 4
++  list_1: !append
++  - name: a
++    field_1: 1
++    field_2: 2
++  - name: _
++    field_2: 3
++  field_2: 3
++)";
++        const TString expectedX = R"(
++subconfig_1: !inherit
++  map_1: !inherit
++    list_1: !inherit:name
++    - name: a
++      field_1: 1x
++    - name: x
++      field_1: 1
++    field_2: 4
++    field_1: 1x
++    field_3: 3ox
++  list_1: !append
++  - name: a
++    field_1: 1
++    field_2: 2
++  - name: _
++    field_2: 3
++  - name: a
++    field_1: 1x
++  - name: a
++    field_3: 3ox
++  field_2: 3
++  field_1: 1x
++  field_3: 3ox
++)";
++        const TString expectedY = R"(
++subconfig_1: !inherit
++  map_1: !inherit
++    list_1: !inherit:name
++    - name: a
++      field_1: 1y
++    - name: y
++      field_1: 1
++    field_2: 4
++    field_1: 1y
++  list_1: !append
++  - name: a
++    field_1: 1
++    field_2: 2
++  - name: _
++    field_2: 3
++  - name: a
++    field_1: 1y
++  field_2: 3
++  field_1: 1y
++)";
++        const TString expectedXY = R"(
++subconfig_1: !inherit
++  map_1: !inherit
++    list_1: !inherit:name
++    - name: a
++      field_1: 1y
++    field_1: 1y
++    field_2: 2xy
++  list_1: !append
++  - name: a
++    field_1: 1
++    field_2: 2
++  - name: _
++    field_2: 3
++  - name: a
++    field_1: 1x
++  - name: a
++    field_1: 1y
++  - name: a
++    field_2: 2xy
++  field_1: 1y
++  field_2: 2xy
++)";
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, {});
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedNone));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, {
++                NYamlConfig::TNamedLabel{"type_1", "x"}});
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedX));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, {
++                NYamlConfig::TNamedLabel{"type_2", "y"}});
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedY));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ApplySelectors(doc, {
++                NYamlConfig::TNamedLabel{"type_1", "x"},
++                NYamlConfig::TNamedLabel{"type_2", "y"}});
++
++            TStringStream resolved;
++            resolved << doc.Root().Map().at("config");
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedXY));
++        }
++    }
++}
++
++Y_UNIT_TEST_SUITE(YamlDatabaseConfigResolve) {
++
++/**
++ * Tests:
++ *  1. Empty                  - Successfull no-change resolving with empty config
++ *  2. NoSelectors            - Successfull no-change resolving with no selectors
++ *  3. DropLabelsAndSelectors - Drop 'allowed_labels' and 'selector_config' sections after resolving
++ *  4. PreserveExistingTags   - Preserve existing elements tags at all levels
++ *  5. SingleSelector         - Single selector applying
++ *  6. MultipleSelectors      - Multiple selectors layering
++ *
++ * Notes:
++ *  - tests 1-4 performed both without and with labels passed into ResolveDatabaseConfig() function
++ */
++
++     Y_UNIT_TEST(Empty)
++    {
++        const TString config = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++)";
++        const TString expected = config;
++
++        // Without and with labels
++        TSet<NYamlConfig::TNamedLabel> labels;
++        for (int i = 0; i < 2; i++)
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, labels);
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expected));
++
++            labels.emplace("type", "a");
++        }
++    }
++
++    Y_UNIT_TEST(NoSelectors)
++    {
++        const TString config = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1:
++    param_1: none
++  subconfig_2: !inherit
++    param_2: true
++)";
++        const TString expected = config;
++
++        // Without and with labels
++        TSet<NYamlConfig::TNamedLabel> labels;
++        for (int i = 0; i < 2; i++)
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, labels);
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expected));
++
++            labels.emplace("type", "a");
++        }
++    }
++
++    Y_UNIT_TEST(ResolveDropLabelsAndSelectors)
++    {
++        const TString config = R"(---
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++
++config:
++  subconfig_1:
++    field_1: none
++  subconfig_2: !inherit
++    field_2: true
++
++allowed_labels:
++  type_1:
++    type: string
++  type_2:
++    type: enum
++    values:
++      ? a
++      ? b
++
++selector_config:
++
++- description: all
++  selector: {}
++  config:
++    subconfig_1: !inherit
++      field_1: all
++
++- description:  type = a
++  selector:
++    type_1: a
++  config:
++    subconfig_1: !inherit
++      field_1: a
++)";
++        // Without and with labels
++        TSet<NYamlConfig::TNamedLabel> labels;
++        for (int i = 0; i < 3; i++)
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {});
++
++            UNIT_ASSERT(!doc.Root().Map().Has("allowed_labels"));
++            UNIT_ASSERT(!doc.Root().Map().Has("selector_config"));
++
++            if (!i) {
++                labels.emplace("type_1", "x");
++            }
++            else {
++                labels.emplace("type_1", "a");
++            }
++        }
++    }
++
++    Y_UNIT_TEST(PreserveExistingTags)
++    {
++        const TString config = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++
++config:
++
++  subconfig_1: !inherit
++    map_1: !inherit
++      field_1: 1
++      list_1: !inherit:name
++      - name: a
++        map_1: !inherit
++          field_1: 1
++      - !remove
++        name: b
++
++    list_1: !inherit:name
++    - name: a
++      map_1: !inherit
++        field_1: 1
++    - !remove
++      name: b
++
++    list_2: !append
++    - name: a
++      map_1:
++        field_1: 1
++    - !remove
++      name: b
++
++selector_config:
++
++- description:
++  selector: {}
++  config:
++
++    subconfig_1: !inherit
++      map_1: !inherit
++        field_1: 2
++        list_1: !append
++        - name: c
++          map_1:
++            field_1: 2
++
++      list_1: !inherit:name
++      - name: a
++        map_1:
++          field_1: 2
++
++      list_2: !append
++      - name: c
++        map_1:
++          field_1: 2
++
++      # all tags of new element shall not be preserved
++      # (except errorneous '!remove', see Y_UNIT_TEST(ModifyAbsentInList))
++
++      list_3: !append
++      - name: a
++        map_1: !inherit
++          field_1: 3
++        list_1: !inherit:name
++        - name: a
++          field_1: 3
++      map_3: !inherit
++        map_1: !inherit
++          field_1: 3
++        list_1: !append
++        - name: c
++          map_1: !inherit
++            field_1: 3
++)";
++        const TString expected = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1: !inherit
++    map_1: !inherit
++      list_1: !inherit:name
++      - name: a
++        map_1: !inherit
++          field_1: 1
++      - !remove
++        name: b
++      - name: c
++        map_1:
++          field_1: 2
++      field_1: 2
++    list_1: !inherit:name
++    - name: a
++      map_1: !inherit
++        field_1: 2
++    - !remove
++      name: b
++    list_2: !append
++    - name: a
++      map_1:
++        field_1: 1
++    - !remove
++      name: b
++    - name: c
++      map_1:
++        field_1: 2
++    list_3:
++    - name: a
++      map_1:
++        field_1: 3
++      list_1:
++      - name: a
++        field_1: 3
++    map_3:
++      map_1:
++        field_1: 3
++      list_1:
++      - name: c
++        map_1:
++          field_1: 3
++)";
++        auto doc = NFyaml::TDocument::Parse(config);
++        NYamlConfig::ResolveDatabaseConfig(doc, {});
++
++        TStringStream resolved;
++        resolved << doc.Root();
++        UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expected));
++    }
++
++    Y_UNIT_TEST(SingleSelector)
++    {
++        const TString config = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++
++config:
++
++  subconfig_1: !inherit
++    field_0: 0
++    field_1: 1
++
++selector_config:
++
++- description:
++  selector:
++    type: x
++  config:
++    subconfig_1: !inherit
++      field_1: 1x
++      field_2: 2x
++
++- description:
++  selector:
++    type: y
++  config:
++    subconfig_1: !inherit
++      field_1: 1y
++      field_2: 2y
++
++- description:
++  selector:
++    type:
++      in:
++      - q
++      - w
++  config:
++    subconfig_1: !inherit
++      field_1: 1qw
++      field_2: 2qw
++)";
++        const TString expectedNone = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1: !inherit
++    field_0: 0
++    field_1: 1
++)";
++        const TString expectedX = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1: !inherit
++    field_0: 0
++    field_1: 1x
++    field_2: 2x
++)";
++        const TString expectedY = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1: !inherit
++    field_0: 0
++    field_1: 1y
++    field_2: 2y
++)";
++        const TString expectedQW = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1: !inherit
++    field_0: 0
++    field_1: 1qw
++    field_2: 2qw
++)";
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {});
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedNone));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {
++                NYamlConfig::TNamedLabel{"type", "x"}});
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedX));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {
++                NYamlConfig::TNamedLabel{"type", "y"}});
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedY));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {
++                NYamlConfig::TNamedLabel{"type", "q"}});
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedQW));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {
++                NYamlConfig::TNamedLabel{"type", "w"}});
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedQW));
++        }
++    }
++
++    Y_UNIT_TEST(MultipleSelectors)
++    {
++        const TString config = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++
++config:
++
++  subconfig_1: !inherit
++    field_0: 0
++    field_1: 1
++    field_2: 2
++
++selector_config:
++
++- description:  all
++  selector: {}
++  config:
++    subconfig_1: !inherit
++      field_1: _
++
++- description:  all
++  selector: {}
++  config:
++    subconfig_1: !inherit
++      field_2: _
++      field_3: _
++      field_4: _
++
++- description:  type_1 = x && type_2 = ???
++  selector:
++    type_1: x
++  config:
++    subconfig_1: !inherit
++      field_1: 1x
++
++- description:  type_1 = x && type_2 = ???
++  selector:
++    type_1: x
++  config:
++    subconfig_1: !inherit
++      field_3: 1x
++
++- description:  type_1 = ??? && type_2 = y
++  selector:
++    type_2: y
++  config:
++    subconfig_1: !inherit
++      field_2: 1y
++
++- description:  type_1 = ??? && type_2 = y
++  selector:
++    type_2: y
++  config:
++    subconfig_1: !inherit
++      field_4: 1y
++
++- description:  type_1 = x && type_2 = y
++  selector:
++    type_1: x
++    type_2: y
++  config:
++    subconfig_1: !inherit
++      field_1: 2xy
++
++- description:  type_1 = x && type_2 = y
++  selector:
++    type_1: x
++    type_2: y
++  config:
++    subconfig_1: !inherit
++      field_4: 2xy
++
++- description:  type_1 = x && type_2 != y
++  selector:
++    type_1:
++      in:
++      - o
++      - x
++    type_2:
++      not_in:
++      - y
++      - o
++  config:
++    subconfig_1: !inherit
++      field_2: 3ox
++
++- description:  type_1 = x && type_2 != y
++  selector:
++    type_1:
++      in:
++      - o
++      - x
++    type_2:
++      not_in:
++      - y
++      - o
++  config:
++    subconfig_1: !inherit
++      field_3: 3ox
++)";
++        const TString expectedNone = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1: !inherit
++    field_0: 0
++    field_1: _
++    field_2: _
++    field_3: _
++    field_4: _
++)";
++        const TString expectedX = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1: !inherit
++    field_0: 0
++    field_4: _
++    field_1: 1x
++    field_2: 3ox
++    field_3: 3ox
++)";
++        const TString expectedY = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1: !inherit
++    field_0: 0
++    field_1: _
++    field_3: _
++    field_2: 1y
++    field_4: 1y
++)";
++        const TString expectedXY = R"(
++metadata:
++  kind: DatabaseConfig
++  database: "/dc/tenant"
++  version: 0
++config:
++  subconfig_1: !inherit
++    field_0: 0
++    field_3: 1x
++    field_2: 1y
++    field_1: 2xy
++    field_4: 2xy
++)";
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {});
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedNone));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {
++                NYamlConfig::TNamedLabel{"type_1", "x"}});
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedX));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {
++                NYamlConfig::TNamedLabel{"type_2", "y"}});
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedY));
++        }
++        {
++            auto doc = NFyaml::TDocument::Parse(config);
++            NYamlConfig::ResolveDatabaseConfig(doc, {
++                NYamlConfig::TNamedLabel{"type_1", "x"},
++                NYamlConfig::TNamedLabel{"type_2", "y"}});
++
++            TStringStream resolved;
++            resolved << doc.Root();
++            UNIT_ASSERT_VALUES_EQUAL(Strip(resolved.Str()), Strip(expectedXY));
++        }
++    }
++}
+diff --git a/contrib/ydb/public/api/protos/ydb_cms.proto b/contrib/ydb/public/api/protos/ydb_cms.proto
+index aa4b0d3809e07815346fc17660ab32e25610666f..4c3033b159c5ff098944e01c25f4d7b8e86ef54b 100644
+--- a/contrib/ydb/public/api/protos/ydb_cms.proto
++++ b/contrib/ydb/public/api/protos/ydb_cms.proto
+@@ -101,7 +101,7 @@ message DatabaseQuotas {
+     // A minimum value of `TtlSettings.run_interval_seconds` that can be specified.
+     // Default is 1800 (15 minutes).
+     uint32 ttl_min_run_internal_seconds = 4;
+-    
++
+     message StorageQuotas {
+         // in theory an arbitrary string, but in practice "hdd" or "ssd"
+         string unit_kind = 1;
+@@ -120,7 +120,7 @@ message ScaleRecommenderPolicies {
+         message TargetTrackingPolicy {
+             oneof target {
+                 // A percentage of compute resources' average CPU utilization.
+-                uint32 average_cpu_utilization_percent = 1 [(Ydb.value) = "[10; 90]"]; 
++                uint32 average_cpu_utilization_percent = 1 [(Ydb.value) = "[10; 90]"];
+             }
+         }
+ 
+@@ -212,6 +212,8 @@ message GetDatabaseStatusResult {
+     DatabaseQuotas database_quotas = 10;
+     // Current scale recommender policies
+     ScaleRecommenderPolicies scale_recommender_policies = 11;
++    // Current database attributes
++    map<string, string> attributes = 13;
+ }
+ 
+ // Change resources allocated for database.
+diff --git a/contrib/ydb/public/lib/ydb_cli/commands/ya.make b/contrib/ydb/public/lib/ydb_cli/commands/ya.make
+index 5a1ab4a656a2941240c2a2cc6757d260096ffce0..42a09baf5d1f5d8abe26a76c823c372f33aa8838 100644
+--- a/contrib/ydb/public/lib/ydb_cli/commands/ya.make
++++ b/contrib/ydb/public/lib/ydb_cli/commands/ya.make
+@@ -14,6 +14,7 @@ SRCS(
+     ydb_admin.cpp
+     ydb_benchmark.cpp
+     ydb_cluster.cpp
++    ydb_database_attribute.cpp
+     ydb_debug.cpp
+     ydb_dynamic_config.cpp
+     ydb_latency.cpp
+@@ -60,6 +61,7 @@ PEERDIR(
+     contrib/ydb/public/lib/ydb_cli/dump/files
+     contrib/ydb/public/lib/ydb_cli/import
+     contrib/ydb/public/lib/ydb_cli/topic
++    contrib/ydb/public/sdk/cpp/src/client/cms
+     contrib/ydb/public/sdk/cpp/src/client/config
+     contrib/ydb/public/sdk/cpp/src/client/coordination
+     contrib/ydb/public/sdk/cpp/src/client/debug
+diff --git a/contrib/ydb/public/lib/ydb_cli/commands/ydb_admin.cpp b/contrib/ydb/public/lib/ydb_cli/commands/ydb_admin.cpp
+index 18be0fb4ece8b678bc18ddb42ee47e1f9cf7586f..cd9b0503d7a2902520384e006a6b8b5c39660164 100644
+--- a/contrib/ydb/public/lib/ydb_cli/commands/ydb_admin.cpp
++++ b/contrib/ydb/public/lib/ydb_cli/commands/ydb_admin.cpp
+@@ -1,5 +1,6 @@
+ #include "ydb_admin.h"
+ 
++#include "ydb_database_attribute.h"
+ #include "ydb_dynamic_config.h"
+ #include "ydb_node_config.h"
+ #include "ydb_storage_config.h"
+@@ -34,6 +35,7 @@ public:
+         AddCommand(std::make_unique<NDynamicConfig::TCommandConfig>(false));
+         AddCommand(std::make_unique<TCommandDatabaseDump>());
+         AddCommand(std::make_unique<TCommandDatabaseRestore>());
++        AddCommand(std::make_unique<TCommandDatabaseAttribute>());
+     }
+ };
+ 
+diff --git a/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.cpp b/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..51abec1f824a15de2527021787018bbd47288f76
+--- /dev/null
++++ b/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.cpp
+@@ -0,0 +1,132 @@
++#include "ydb_database_attribute.h"
++
++#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/cms/cms.h>
++#include <contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/types/status/status.h>
++
++#include <util/string/strip.h>
++
++#include <memory>
++
++namespace NYdb {
++namespace NConsoleClient {
++
++TCommandDatabaseAttribute::TCommandDatabaseAttribute()
++    : TClientCommandTree("attribute", {"attr"}, "Database attributes operations")
++{
++    AddCommand(std::make_unique<TCommandDatabaseAttributeGet>());
++    AddCommand(std::make_unique<TCommandDatabaseAttributeSet>());
++    AddCommand(std::make_unique<TCommandDatabaseAttributeDel>());
++}
++
++TCommandDatabaseAttributeGet::TCommandDatabaseAttributeGet()
++    : TYdbReadOnlyCommand("get", {"list"}, "Get attributes")
++{}
++
++void TCommandDatabaseAttributeGet::Config(TConfig& config) {
++    TYdbCommand::Config(config);
++    config.SetFreeArgsNum(0);
++}
++
++void TCommandDatabaseAttributeGet::Parse(TConfig& config) {
++    TClientCommand::Parse(config);
++}
++
++int TCommandDatabaseAttributeGet::Run(TConfig& config) {
++    auto driver = CreateDriver(config);
++    NCms::TCmsClient client(driver);
++    auto result = client.GetDatabaseStatus(config.Database).GetValueSync();
++    NStatusHelpers::ThrowOnErrorOrPrintIssues(result);
++
++    const auto& attrs = result.GetAttributes();
++    for (const auto& attr : attrs) {
++        Cout << attr.first << ": " << attr.second << Endl;
++    }
++
++    return EXIT_SUCCESS;
++}
++
++TCommandDatabaseAttributeSet::TCommandDatabaseAttributeSet()
++    : TYdbCommand("set", {}, "Set attribute(s)")
++{}
++
++void TCommandDatabaseAttributeSet::Config(TConfig& config) {
++    TYdbCommand::Config(config);
++    config.SetFreeArgsMin(1);
++    SetFreeArgTitle(0, "<ATTRIBUTE>", "NAME=VALUE (non-empty value)");
++}
++
++void TCommandDatabaseAttributeSet::Parse(TConfig& config) {
++    TClientCommand::Parse(config);
++
++    for (size_t i = 0; i < config.ParseResult->GetFreeArgCount(); ++i) {
++        TString attr = config.ParseResult->GetFreeArgs()[i];
++        TVector<TString> items = StringSplitter(attr).Split('=').ToList<TString>();
++
++        if (items.size() != 2) {
++            throw TMisuseException()
++                << "Bad format in attribute '" + attr + "'. NAME=VALUE expected";
++        }
++
++        const auto value = StripString(items.at(1));
++
++        if (value.empty()) {
++            throw TMisuseException()
++                << "Bad attribure '" + attr + "'. Attribute value cannot be empty";
++        }
++
++        Attributes[items.at(0)] = value;
++    }
++}
++
++int TCommandDatabaseAttributeSet::Run(TConfig& config) {
++    auto driver = CreateDriver(config);
++    NCms::TCmsClient client(driver);
++
++    NYdb::NCms::TAttributes attributes;
++    for (const auto& kv : Attributes) {
++        attributes.emplace(kv.first, kv.second);
++    }
++
++    auto settings = NCms::TAlterDatabaseSettings().AlterAttributes(attributes);
++    auto status = client.AlterDatabase(config.Database, settings).GetValueSync();
++    NStatusHelpers::ThrowOnErrorOrPrintIssues(status);
++    return EXIT_SUCCESS;
++}
++
++TCommandDatabaseAttributeDel::TCommandDatabaseAttributeDel()
++    : TYdbCommand("delete", {"del", "remove", "rm"}, "Delete attribute(s)")
++{}
++
++void TCommandDatabaseAttributeDel::Config(TConfig& config) {
++    TYdbCommand::Config(config);
++    config.SetFreeArgsMin(1);
++    SetFreeArgTitle(0, "<ATTRIBUTE>", "NAME");
++}
++
++void TCommandDatabaseAttributeDel::Parse(TConfig& config) {
++    TClientCommand::Parse(config);
++
++    for (size_t i = 0; i < config.ParseResult->GetFreeArgCount(); ++i) {
++        TString key = config.ParseResult->GetFreeArgs()[i];
++
++        Attributes.insert(key);
++    }
++}
++
++int TCommandDatabaseAttributeDel::Run(TConfig& config) {
++    auto driver = CreateDriver(config);
++    NCms::TCmsClient client(driver);
++
++    NYdb::NCms::TAttributes attributes;
++    for (const auto& kv : Attributes) {
++        attributes.emplace(kv, "");
++    }
++
++    auto settings = NCms::TAlterDatabaseSettings().AlterAttributes(attributes);
++    auto status = client.AlterDatabase(config.Database, settings).GetValueSync();
++    NStatusHelpers::ThrowOnErrorOrPrintIssues(status);
++    return EXIT_SUCCESS;
++}
++
++}
++}
+diff --git a/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.h b/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..ca69e4dc40d9af125cffff450c2a404872c09303
+--- /dev/null
++++ b/contrib/ydb/public/lib/ydb_cli/commands/ydb_database_attribute.h
+@@ -0,0 +1,48 @@
++#pragma once
++
++#include "ydb_command.h"
++
++#include <util/generic/set.h>
++#include <util/generic/map.h>
++#include <util/generic/string.h>
++
++namespace NYdb {
++namespace NConsoleClient {
++
++class TCommandDatabaseAttribute : public TClientCommandTree {
++public:
++    TCommandDatabaseAttribute();
++};
++
++class TCommandDatabaseAttributeGet : public TYdbReadOnlyCommand {
++public:
++    TCommandDatabaseAttributeGet();
++    void Config(TConfig& config) override;
++    void Parse(TConfig& config) override;
++    int Run(TConfig& config) override;
++};
++
++class TCommandDatabaseAttributeSet : public TYdbCommand {
++public:
++    TCommandDatabaseAttributeSet();
++    void Config(TConfig& config) override;
++    void Parse(TConfig& config) override;
++    int Run(TConfig& config) override;
++
++private:
++    TMap<TString, TString> Attributes;
++};
++
++class TCommandDatabaseAttributeDel : public TYdbCommand {
++public:
++    TCommandDatabaseAttributeDel();
++    void Config(TConfig& config) override;
++    void Parse(TConfig& config) override;
++    int Run(TConfig& config) override;
++
++private:
++    TSet<TString> Attributes;
++};
++
++}
++}
+diff --git a/contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/cms/cms.h b/contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/cms/cms.h
+index 70091b005f28f038c7b88b966eddd3f963916305..414ad1da7be9adbc900a3190b6534c80c1a43286 100644
+--- a/contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/cms/cms.h
++++ b/contrib/ydb/public/sdk/cpp/include/ydb-cpp-sdk/client/cms/cms.h
+@@ -2,8 +2,11 @@
+ 
+ #include <ydb-cpp-sdk/client/driver/driver.h>
+ 
++#include <map>
++
+ namespace Ydb::Cms {
+     class CreateDatabaseRequest;
++    class AlterDatabaseRequest;
+     class ListDatabasesResult;
+     class GetDatabaseStatusResult;
+ 
+@@ -151,6 +154,7 @@ struct TScaleRecommenderPolicies {
+ };
+ 
+ using TResourcesKind = std::variant<std::monostate, TResources, TSharedResources, TServerlessResources>;
++using TAttributes = std::map<std::string, std::string>;
+ 
+ class TGetDatabaseStatusResult : public TStatus {
+ public:
+@@ -165,6 +169,7 @@ public:
+     const TSchemaOperationQuotas& GetSchemaOperationQuotas() const;
+     const TDatabaseQuotas& GetDatabaseQuotas() const;
+     const TScaleRecommenderPolicies& GetScaleRecommenderPolicies() const;
++    const TAttributes& GetAttributes() const;
+ 
+     // Fills CreateDatabaseRequest proto from this database status
+     void SerializeTo(Ydb::Cms::CreateDatabaseRequest& request) const;
+@@ -179,6 +184,7 @@ private:
+     TSchemaOperationQuotas SchemaOperationQuotas_;
+     TDatabaseQuotas DatabaseQuotas_;
+     TScaleRecommenderPolicies ScaleRecommenderPolicies_;
++    TAttributes Attributes_;
+ };
+ 
+ using TAsyncGetDatabaseStatusResult = NThreading::TFuture<TGetDatabaseStatusResult>;
+@@ -196,6 +202,16 @@ struct TCreateDatabaseSettings : public TOperationRequestSettings<TCreateDatabas
+     FLUENT_SETTING(TScaleRecommenderPolicies, ScaleRecommenderPolicies);
+ };
+ 
++struct TAlterDatabaseSettings : public TOperationRequestSettings<TAlterDatabaseSettings> {
++    TAlterDatabaseSettings() = default;
++
++    // Fills AlterDatabaseRequest proto from this settings
++    void SerializeTo(Ydb::Cms::AlterDatabaseRequest& request) const;
++
++    // Empty value drops the attribute.
++    FLUENT_SETTING(TAttributes, AlterAttributes);
++};
++
+ class TCmsClient {
+ public:
+     explicit TCmsClient(const TDriver& driver, const TCommonClientSettings& settings = TCommonClientSettings());
+@@ -205,6 +221,8 @@ public:
+         const TGetDatabaseStatusSettings& settings = TGetDatabaseStatusSettings());
+     TAsyncStatus CreateDatabase(const std::string& path,
+         const TCreateDatabaseSettings& settings = TCreateDatabaseSettings());
++    TAsyncStatus AlterDatabase(const std::string& path,
++        const TAlterDatabaseSettings& settings = TAlterDatabaseSettings());
+ private:
+     class TImpl;
+     std::shared_ptr<TImpl> Impl_;
+diff --git a/contrib/ydb/public/sdk/cpp/src/client/cms/cms.cpp b/contrib/ydb/public/sdk/cpp/src/client/cms/cms.cpp
+index bd4e5935349c8cdc7ecc41fedb9284b0c30f33f8..fd9f5d1eae9f32045d3b53397d38cd9ef18093cb 100644
+--- a/contrib/ydb/public/sdk/cpp/src/client/cms/cms.cpp
++++ b/contrib/ydb/public/sdk/cpp/src/client/cms/cms.cpp
+@@ -69,26 +69,26 @@ namespace {
+         } else if (std::holds_alternative<std::monostate>(resourcesKind)) {
+             out.clear_resources_kind();
+         }
+-        
++
+         for (const auto& quota : schemaQuotas.LeakyBucketQuotas) {
+             auto protoQuota = out.mutable_schema_operation_quotas()->add_leaky_bucket_quotas();
+             protoQuota->set_bucket_seconds(quota.BucketSeconds);
+             protoQuota->set_bucket_size(quota.BucketSize);
+         }
+-    
++
+         out.mutable_database_quotas()->set_data_size_hard_quota(dbQuotas.DataSizeHardQuota);
+         out.mutable_database_quotas()->set_data_size_soft_quota(dbQuotas.DataSizeSoftQuota);
+         out.mutable_database_quotas()->set_data_stream_shards_quota(dbQuotas.DataStreamShardsQuota);
+         out.mutable_database_quotas()->set_data_stream_reserved_storage_quota(dbQuotas.DataStreamReservedStorageQuota);
+         out.mutable_database_quotas()->set_ttl_min_run_internal_seconds(dbQuotas.TtlMinRunInternalSeconds);
+-    
++
+         for (const auto& quota : dbQuotas.StorageQuotas) {
+             auto protoQuota = out.mutable_database_quotas()->add_storage_quotas();
+             protoQuota->set_unit_kind(quota.UnitKind);
+             protoQuota->set_data_size_hard_quota(quota.DataSizeHardQuota);
+             protoQuota->set_data_size_soft_quota(quota.DataSizeSoftQuota);
+         }
+-    
++
+         for (const auto& policy : scaleRecommenderPolicies.Policies) {
+             auto* protoPolicy = out.mutable_scale_recommender_policies()->add_policies();
+             if (std::holds_alternative<NCms::TTargetTrackingPolicy>(policy.Policy)) {
+@@ -121,7 +121,7 @@ TStorageUnits::TStorageUnits(const Ydb::Cms::StorageUnits& proto)
+     , Count(proto.count())
+ {}
+ 
+-TComputationalUnits::TComputationalUnits(const Ydb::Cms::ComputationalUnits& proto) 
++TComputationalUnits::TComputationalUnits(const Ydb::Cms::ComputationalUnits& proto)
+     : UnitKind(proto.unit_kind())
+     , AvailabilityZone(proto.availability_zone())
+     , Count(proto.count())
+@@ -152,7 +152,7 @@ TSchemaOperationQuotas::TSchemaOperationQuotas(const Ydb::Cms::SchemaOperationQu
+ {}
+ 
+ TDatabaseQuotas::TStorageQuotas::TStorageQuotas(const Ydb::Cms::DatabaseQuotas_StorageQuotas& proto)
+-    : UnitKind(proto.unit_kind()) 
++    : UnitKind(proto.unit_kind())
+     , DataSizeHardQuota(proto.data_size_hard_quota())
+     , DataSizeSoftQuota(proto.data_size_soft_quota())
+ {}
+@@ -190,7 +190,7 @@ TScaleRecommenderPolicy::TScaleRecommenderPolicy(const Ydb::Cms::ScaleRecommende
+     }
+ }
+ 
+-TScaleRecommenderPolicies::TScaleRecommenderPolicies(const Ydb::Cms::ScaleRecommenderPolicies& proto) 
++TScaleRecommenderPolicies::TScaleRecommenderPolicies(const Ydb::Cms::ScaleRecommenderPolicies& proto)
+     : Policies(proto.policies().begin(), proto.policies().end())
+ {}
+ 
+@@ -204,6 +204,7 @@ TGetDatabaseStatusResult::TGetDatabaseStatusResult(TStatus&& status, const Ydb::
+     , SchemaOperationQuotas_(proto.schema_operation_quotas())
+     , DatabaseQuotas_(proto.database_quotas())
+     , ScaleRecommenderPolicies_(proto.scale_recommender_policies())
++    , Attributes_(proto.attributes().begin(), proto.attributes().end())
+ {
+     switch (proto.resources_kind_case()) {
+         case Ydb::Cms::GetDatabaseStatusResult::kRequiredResources:
+@@ -257,11 +258,21 @@ const TScaleRecommenderPolicies& TGetDatabaseStatusResult::GetScaleRecommenderPo
+     return ScaleRecommenderPolicies_;
+ }
+ 
++const TAttributes& TGetDatabaseStatusResult::GetAttributes() const {
++    return Attributes_;
++}
++
+ void TGetDatabaseStatusResult::SerializeTo(Ydb::Cms::CreateDatabaseRequest& request) const {
+     request.set_path(Path_);
+     SerializeToImpl(ResourcesKind_, SchemaOperationQuotas_, DatabaseQuotas_, ScaleRecommenderPolicies_, request);
+ }
+ 
++void TAlterDatabaseSettings::SerializeTo(Ydb::Cms::AlterDatabaseRequest& request) const {
++    for (const auto& [name, value] : AlterAttributes_) {
++        (*request.mutable_alter_attributes())[name] = value;
++    }
++}
++
+ TCreateDatabaseSettings::TCreateDatabaseSettings(const Ydb::Cms::CreateDatabaseRequest& request)
+   : SchemaOperationQuotas_(request.schema_operation_quotas())
+   , DatabaseQuotas_(request.database_quotas())
+@@ -356,6 +367,17 @@ public:
+             &Ydb::Cms::V1::CmsService::Stub::AsyncCreateDatabase,
+             TRpcRequestSettings::Make(settings));
+     }
++
++    TAsyncStatus AlterDatabase(const std::string& path, const TAlterDatabaseSettings& settings) {
++        auto request = MakeOperationRequest<Ydb::Cms::AlterDatabaseRequest>(settings);
++        request.set_path(path);
++        settings.SerializeTo(request);
++
++        return RunSimple<Ydb::Cms::V1::CmsService, Ydb::Cms::AlterDatabaseRequest, Ydb::Cms::AlterDatabaseResponse>(
++            std::move(request),
++            &Ydb::Cms::V1::CmsService::Stub::AsyncAlterDatabase,
++            TRpcRequestSettings::Make(settings));
++    }
+ };
+ 
+ TCmsClient::TCmsClient(const TDriver& driver, const TCommonClientSettings& settings)
+@@ -375,9 +397,16 @@ TAsyncGetDatabaseStatusResult TCmsClient::GetDatabaseStatus(
+ 
+ TAsyncStatus TCmsClient::CreateDatabase(
+     const std::string& path,
+-    const TCreateDatabaseSettings& settings) 
++    const TCreateDatabaseSettings& settings)
+ {
+     return Impl_->CreateDatabase(path, settings);
+ }
+ 
++TAsyncStatus TCmsClient::AlterDatabase(
++    const std::string& path,
++    const TAlterDatabaseSettings& settings)
++{
++    return Impl_->AlterDatabase(path, settings);
++}
++
+ } // namespace NYdb::NCms
