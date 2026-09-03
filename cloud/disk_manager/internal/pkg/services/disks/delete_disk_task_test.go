@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
+	nbs2_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2/mocks"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
@@ -429,4 +430,41 @@ func TestDeleteDiskTaskEstimatedInflightDurationForLocalDisks(t *testing.T) {
 			)
 		})
 	}
+}
+
+func TestDeleteNbs2DiskTaskRun(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbs2Factory := nbs2_mocks.NewFactoryMock()
+	nbs2Client := nbs2_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+
+	task := &deleteDiskTask{
+		storage:     storage,
+		nbs2Factory: nbs2Factory,
+		request: &protos.DeleteDiskRequest{
+			Disk: &types.Disk{DiskId: "disk"},
+		},
+		state: &protos.DeleteDiskTaskState{},
+	}
+
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.DiskMeta{
+		ID:     "disk",
+		ZoneID: "zone",
+		Kind:   "ssd-nbs2",
+	}, nil)
+	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
+
+	nbs2Factory.On("GetClient", ctx, "zone").Return(nbs2Client, nil)
+	nbs2Client.On("Delete", ctx, "disk").Return(nil)
+
+	err := task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	mock.AssertExpectationsForObjects(t, storage, nbs2Factory, nbs2Client, execCtx)
 }

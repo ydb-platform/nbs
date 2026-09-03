@@ -22,6 +22,7 @@ SRCS(
 GO_TEST_SRCS(
     grpc_tls_provider_test.go
     inflight_queue_test.go
+    disk_kind_test.go
 )
 
 END()

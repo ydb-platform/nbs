@@ -9,6 +9,7 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
@@ -22,6 +23,7 @@ type createEmptyDiskTask struct {
 	storage      resources.Storage
 	scheduler    tasks.Scheduler
 	nbsFactory   nbs.Factory
+	nbs2Factory  nbs2.Factory
 	params       *protos.CreateDiskParams
 	state        *protos.CreateEmptyDiskTaskState
 	cellSelector cells.CellSelector
@@ -46,6 +48,10 @@ func (t *createEmptyDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	if common.IsNbs2DiskKind(t.params.Kind) {
+		return t.createEmptyNbs2Disk(ctx, execCtx)
+	}
 
 	client, err := SelectCellForDisk(
 		ctx,
@@ -109,6 +115,64 @@ func (t *createEmptyDiskTask) Run(
 	return t.storage.DiskCreated(ctx, *diskMeta)
 }
 
+func (t *createEmptyDiskTask) createEmptyNbs2Disk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if t.nbs2Factory == nil {
+		return errors.NewNonCancellableErrorf(
+			"nbs2 client is not configured",
+		)
+	}
+
+	zoneID := t.params.Disk.ZoneId
+	client, err := t.nbs2Factory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
+
+	selfTaskID := execCtx.GetTaskID()
+
+	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
+		ID:          t.params.Disk.DiskId,
+		ZoneID:      zoneID,
+		BlocksCount: t.params.BlocksCount,
+		BlockSize:   t.params.BlockSize,
+		Kind:        common.DiskKindToString(t.params.Kind),
+		CloudID:     t.params.CloudId,
+		FolderID:    t.params.FolderId,
+
+		CreateRequest: t.params,
+		CreateTaskID:  selfTaskID,
+		CreatingAt:    time.Now(),
+		CreatedBy:     "", // TODO: Extract CreatedBy from execCtx
+	})
+	if err != nil {
+		return err
+	}
+
+	if diskMeta == nil {
+		return errors.NewNonCancellableErrorf(
+			"id %v is not accepted",
+			t.params.Disk.DiskId,
+		)
+	}
+
+	err = client.Create(ctx, nbs2.CreateDiskParams{
+		ID:              t.params.Disk.DiskId,
+		BlocksCount:     t.params.BlocksCount,
+		BlockSize:       t.params.BlockSize,
+		StoragePoolName: t.params.StoragePoolName,
+	})
+	if err != nil {
+		return err
+	}
+
+	diskMeta.CreatedAt = time.Now()
+	return t.storage.DiskCreated(ctx, *diskMeta)
+}
+
 func (t *createEmptyDiskTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -128,6 +192,28 @@ func (t *createEmptyDiskTask) Cancel(
 
 	if diskMeta == nil {
 		return nil
+	}
+
+	if common.IsNbs2DiskKind(t.params.Kind) ||
+		common.IsNbs2DiskKindString(diskMeta.Kind) {
+
+		if t.nbs2Factory == nil {
+			return errors.NewNonCancellableErrorf(
+				"nbs2 client is not configured",
+			)
+		}
+
+		client, err := t.nbs2Factory.GetClient(ctx, diskMeta.ZoneID)
+		if err != nil {
+			return err
+		}
+
+		err = client.Delete(ctx, diskMeta.ID)
+		if err != nil {
+			return err
+		}
+
+		return t.storage.DiskDeleted(ctx, diskMeta.ID, time.Now())
 	}
 
 	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)

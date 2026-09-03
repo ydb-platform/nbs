@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package Ydb.Nbs.V1;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs2/protos;nbs2_protos";
+
+import "cloud/disk_manager/internal/pkg/clients/nbs2/protos/ydb_nbs.proto";
+
+service NbsService {
+    rpc CreatePartition(Ydb.Nbs.CreatePartitionRequest) returns (Ydb.Nbs.CreatePartitionResponse);
+    rpc DeletePartition(Ydb.Nbs.DeletePartitionRequest) returns (Ydb.Nbs.DeletePartitionResponse);
+}

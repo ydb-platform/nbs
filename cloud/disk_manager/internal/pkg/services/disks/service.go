@@ -44,6 +44,8 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
 	case disk_manager.DiskKind_DISK_KIND_HDD_LOCAL:
 		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
+	case disk_manager.DiskKind_DISK_KIND_SSD_NBS2:
+		return types.DiskKind_DISK_KIND_SSD_NBS2, nil
 	default:
 		return 0, common.NewInvalidArgumentError(
 			"unknown disk kind %v",
@@ -159,18 +161,18 @@ type service struct {
 	cellSelector    cells.CellSelector
 }
 
-func (s *service) getZoneIDForExistingDisk(
+func (s *service) getExistingDiskMeta(
 	ctx context.Context,
 	diskID *disk_manager.DiskId,
-) (string, error) {
+) (*resources.DiskMeta, error) {
 
 	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, diskID.DiskId)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if diskMeta == nil {
-		return "", common.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"no such disk: %v",
 			diskID,
 		)
@@ -178,14 +180,14 @@ func (s *service) getZoneIDForExistingDisk(
 
 	if diskMeta.ZoneID != diskID.ZoneId &&
 		!s.cellSelector.ZoneContainsCell(diskID.ZoneId, diskMeta.ZoneID) {
-		return "", common.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"provided zone ID %v does not match with an actual zone ID %v",
 			diskID.ZoneId,
 			diskMeta.ZoneID,
 		)
 	}
 
-	return diskMeta.ZoneID, nil
+	return diskMeta, nil
 }
 
 func (s *service) prepareCreateDiskParams(
@@ -271,6 +273,12 @@ func (s *service) prepareCreateDiskParams(
 				req.FolderId,
 			)
 		}
+	}
+
+	if common.IsNbs2DiskKind(kind) && len(req.StoragePoolName) == 0 {
+		return nil, common.NewInvalidArgumentError(
+			"storage_pool_name is required for ssd-nbs2 disks",
+		)
 	}
 
 	return &protos.CreateDiskParams{
@@ -425,6 +433,14 @@ func (s *service) CreateDisk(
 		return "", err
 	}
 
+	if common.IsNbs2DiskKind(params.Kind) {
+		if _, ok := req.Src.(*disk_manager.CreateDiskRequest_SrcEmpty); !ok {
+			return "", common.NewInvalidArgumentError(
+				"ssd-nbs2 disks can only be created empty",
+			)
+		}
+	}
+
 	switch src := req.Src.(type) {
 	case *disk_manager.CreateDiskRequest_SrcEmpty:
 		return s.taskScheduler.ScheduleTask(
@@ -531,7 +547,12 @@ func (s *service) ResizeDisk(
 		)
 	}
 
-	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
+	diskMeta, err := s.getExistingDiskMeta(ctx, req.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	err = rejectNbs2DiskOperation(diskMeta.Kind, "resize")
 	if err != nil {
 		return "", err
 	}
@@ -542,7 +563,7 @@ func (s *service) ResizeDisk(
 		"",
 		&protos.ResizeDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: zoneID,
+				ZoneId: diskMeta.ZoneID,
 				DiskId: req.DiskId.DiskId,
 			},
 			Size: uint64(req.Size),
@@ -562,7 +583,12 @@ func (s *service) AlterDisk(
 		)
 	}
 
-	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
+	diskMeta, err := s.getExistingDiskMeta(ctx, req.DiskId)
+	if err != nil {
+		return "", err
+	}
+
+	err = rejectNbs2DiskOperation(diskMeta.Kind, "alter")
 	if err != nil {
 		return "", err
 	}
@@ -573,7 +599,7 @@ func (s *service) AlterDisk(
 		"",
 		&protos.AlterDiskRequest{
 			Disk: &types.Disk{
-				ZoneId: zoneID,
+				ZoneId: diskMeta.ZoneID,
 				DiskId: req.DiskId.DiskId,
 			},
 			CloudId:  req.CloudId,
@@ -592,6 +618,17 @@ func (s *service) AssignDisk(
 			"some of parameters are empty, req=%v",
 			req,
 		)
+	}
+
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, req.DiskId.DiskId)
+	if err != nil {
+		return "", err
+	}
+	if diskMeta != nil {
+		err = rejectNbs2DiskOperation(diskMeta.Kind, "assign")
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return s.taskScheduler.ScheduleTask(
@@ -620,6 +657,17 @@ func (s *service) UnassignDisk(
 			"some of parameters are empty, req=%v",
 			req,
 		)
+	}
+
+	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, req.DiskId.DiskId)
+	if err != nil {
+		return "", err
+	}
+	if diskMeta != nil {
+		err = rejectNbs2DiskOperation(diskMeta.Kind, "unassign")
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return s.taskScheduler.ScheduleTask(
@@ -683,6 +731,12 @@ func (s *service) DescribeDiskModel(
 		return nil, err
 	}
 
+	if common.IsNbs2DiskKind(kind) {
+		return nil, common.NewInvalidArgumentError(
+			"describe model is not supported for ssd-nbs2 disks",
+		)
+	}
+
 	blocksCount, err := getBlocksCountForSize(uint64(req.Size), blockSize)
 	if err != nil {
 		return nil, err
@@ -735,12 +789,17 @@ func (s *service) StatDisk(
 		)
 	}
 
-	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
+	diskMeta, err := s.getExistingDiskMeta(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := s.nbsFactory.GetClient(ctx, zoneID)
+	err = rejectNbs2DiskOperation(diskMeta.Kind, "stat")
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return nil, err
 	}
@@ -773,10 +832,17 @@ func (s *service) MigrateDisk(
 		)
 	}
 
-	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
+	diskMeta, err := s.getExistingDiskMeta(ctx, req.DiskId)
 	if err != nil {
 		return "", err
 	}
+
+	err = rejectNbs2DiskOperation(diskMeta.Kind, "migrate")
+	if err != nil {
+		return "", err
+	}
+
+	zoneID := diskMeta.ZoneID
 
 	dstZoneID := req.DstZoneId
 
@@ -879,12 +945,17 @@ func (s *service) DescribeDisk(
 		)
 	}
 
-	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
+	diskMeta, err := s.getExistingDiskMeta(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := s.nbsFactory.GetClient(ctx, zoneID)
+	err = rejectNbs2DiskOperation(diskMeta.Kind, "describe")
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return nil, err
 	}
@@ -945,6 +1016,17 @@ func (s *service) ListDiskStates(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func rejectNbs2DiskOperation(kind, operation string) error {
+	if common.IsNbs2DiskKindString(kind) {
+		return common.NewInvalidArgumentError(
+			"%s is not supported for ssd-nbs2 disks",
+			operation,
+		)
+	}
+
+	return nil
+}
 
 func NewService(
 	taskScheduler tasks.Scheduler,
