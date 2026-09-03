@@ -324,7 +324,10 @@ void TIndexTabletActor::HandleForcedRangeOperation(
 
     // will lose original request info in case of enqueueing external request
     if (IsForcedRangeOperationRunning()) {
-        EnqueueForcedRangeOperation(msg->Mode, std::move(msg->Ranges));
+        EnqueueForcedRangeOperation(
+            msg->Mode,
+            std::move(msg->Ranges),
+            std::move(msg->OperationId));
         return;
     }
 
