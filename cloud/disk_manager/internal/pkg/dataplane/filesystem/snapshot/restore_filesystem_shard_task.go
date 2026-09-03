@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/config"
@@ -140,16 +141,22 @@ func (t *restoreFilesystemShardTask) restorePage(
 		return nil, err
 	}
 
-	for _, node := range nodes {
-		if node.NodeID == 0 {
-			err = t.restoreChildRef(ctx, client, node)
-		} else {
-			err = t.restoreNode(ctx, client, node)
-		}
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.SetLimit(int(t.config.GetTraversalConfig().GetTraversalWorkersCount()))
 
-		if err != nil {
-			return nil, err
-		}
+	for _, node := range nodes {
+		node := node
+		eg.Go(func() error {
+			if node.NodeID == 0 {
+				return t.restoreChildRef(egCtx, client, node)
+			}
+
+			return t.restoreNode(egCtx, client, node)
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return nil, err
 	}
 
 	return nextPage, nil

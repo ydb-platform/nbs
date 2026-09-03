@@ -808,6 +808,7 @@ func TestFreezeAndUnfreezeTablet(t *testing.T) {
 
 	err = client.FreezeTablet(ctx, filesystemID)
 	require.NoError(t, err)
+	// FreezeTablet must be idempotent.
 	err = client.FreezeTablet(ctx, filesystemID)
 	require.NoError(t, err)
 
@@ -866,6 +867,7 @@ func TestFreezeAndUnfreezeTablet(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, regularNodeID, regularNode.NodeID)
 
+	// UnfreezeTablet must be idempotent.
 	err = client.UnfreezeTablet(ctx, filesystemID)
 	require.NoError(t, err)
 

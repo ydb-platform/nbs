@@ -321,7 +321,6 @@ func TestRestoreFilesystemShardErrors(t *testing.T) {
 	_, err = f.snapshotStorage.DeletingFilesystemSnapshot(
 		f.ctx,
 		deletingSnapshotID,
-		"delete-snapshot",
 	)
 	require.NoError(t, err)
 
