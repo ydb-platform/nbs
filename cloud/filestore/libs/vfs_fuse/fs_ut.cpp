@@ -44,6 +44,7 @@
 #include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
+#include <util/generic/ylimits.h>
 #include <util/random/random.h>
 #include <util/system/file.h>
 
@@ -4511,9 +4512,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         NProto::TQueueEntry createEntry;
         auto* queued = createEntry.MutableQueuedCreateHandleRequest();
-        *queued->MutableRequest() = createRequest;
-        queued->SetHandle(handle);
         queued->SetNodeId(nodeId);
+        queued->SetHandle(handle);
+        queued->SetFlags(createRequest.GetFlags());
         queued->SetOriginalRequestId(
             createRequest.GetHeaders().GetRequestId());
 
@@ -7805,6 +7806,36 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             0,
             counters->GetCounter(
                 "Availability_LastIntervalAvailable")->Val());
+    }
+
+    Y_UNIT_TEST(ShouldKeepHandleOpsQueueEntriesSmall)
+    {
+        // Every queued entry is written to a file, thus its size directly
+        // affects the write amplification of the async handle operations.
+        constexpr ui64 entryHeaderSize = 8;
+        constexpr ui64 requestId = 6'000'000;
+        constexpr ui64 nodeId = Max<ui64>();
+        constexpr ui64 handle = Max<ui64>();
+
+        NProto::TQueueEntry createEntry;
+        auto* queued = createEntry.MutableQueuedCreateHandleRequest();
+        queued->SetNodeId(nodeId);
+        queued->SetHandle(handle);
+        queued->SetFlags(ProtoFlag(NProto::TCreateHandleRequest::E_READ));
+        queued->SetOriginalRequestId(requestId);
+
+        NProto::TQueueEntry destroyEntry;
+        destroyEntry.MutableDestroyHandleRequest()->SetNodeId(nodeId);
+        destroyEntry.MutableDestroyHandleRequest()->SetHandle(handle);
+
+        UNIT_ASSERT_VALUES_EQUAL(27, createEntry.ByteSizeLong());
+        UNIT_ASSERT_VALUES_EQUAL(24, destroyEntry.ByteSizeLong());
+        UNIT_ASSERT_VALUES_EQUAL(
+            35,
+            entryHeaderSize + createEntry.ByteSizeLong());
+        UNIT_ASSERT_VALUES_EQUAL(
+            32,
+            entryHeaderSize + destroyEntry.ByteSizeLong());
     }
 }
 

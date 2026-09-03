@@ -19,16 +19,16 @@ IModuleStatsPtr THandleOpsQueue::GetModuleStats() const
 }
 
 THandleOpsQueue::EResult THandleOpsQueue::AddCreateRequest(
-    const NProto::TCreateHandleRequest& createHandleRequest,
     ui64 nodeId,
     ui64 handle,
+    ui32 flags,
     ui64 originalRequestId)
 {
     NProto::TQueueEntry request;
     auto* queued = request.MutableQueuedCreateHandleRequest();
-    *queued->MutableRequest() = createHandleRequest;
-    queued->SetHandle(handle);
     queued->SetNodeId(nodeId);
+    queued->SetHandle(handle);
+    queued->SetFlags(flags);
     queued->SetOriginalRequestId(originalRequestId);
 
     TString result;
