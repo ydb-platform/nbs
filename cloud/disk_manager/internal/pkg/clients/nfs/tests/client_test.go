@@ -61,17 +61,32 @@ func TestGetFileSystemTopology(t *testing.T) {
 		filesystemID + "_s2",
 	}
 
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	_, err = session.CreateNode(ctx, nfs.Node{
+		ParentNodeID: nfs.RootNodeID,
+		Name:         "testfile",
+		Mode:         0644,
+		Type:         nfs.NODE_KIND_FILE,
+	})
+	require.NoError(t, err)
+
 	topology, err := client.GetFileSystemTopology(ctx, filesystemID)
 	require.NoError(t, err)
 	require.Equal(t, expectedShardIDs, topology.ShardFileSystemIDs)
 	require.Equal(t, filesystemID, topology.MainFileSystemID)
+	require.Zero(t, topology.UsedNodesCount)
 
-	shardTopology, err := client.GetFileSystemTopology(
-		ctx,
-		expectedShardIDs[0],
-	)
-	require.NoError(t, err)
-	require.Equal(t, filesystemID, shardTopology.MainFileSystemID)
+	var usedNodesCount uint64
+	for _, shardID := range expectedShardIDs {
+		shardTopology, err := client.GetFileSystemTopology(ctx, shardID)
+		require.NoError(t, err)
+		require.Equal(t, filesystemID, shardTopology.MainFileSystemID)
+		usedNodesCount += shardTopology.UsedNodesCount
+	}
+	require.Equal(t, uint64(1), usedNodesCount)
 }
 
 func TestDeleteFilesystem(t *testing.T) {

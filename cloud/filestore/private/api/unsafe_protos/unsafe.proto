@@ -99,6 +99,9 @@ message TGetFileSystemTopologyResponse
 
     // Main FileSystem identifier.
     string MainFileSystemId = 10;
+
+    // Number of nodes used by this FileSystem tablet, excluding its shards.
+    uint64 UsedNodesCount = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
