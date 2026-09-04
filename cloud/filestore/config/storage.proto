@@ -916,4 +916,8 @@ message TStorageConfig
     // Limits the number of nodes destroyed by a single transaction of the
     // background task that destroys the deferred nodes.
     optional uint32 MaxDeferredNodeDestructionsPerTx = 543;
+
+    // Whether to expose the hidden ".filestore-ctl" control namespace
+    // directory under the root of kikimr-backed filesystems.
+    optional bool EnableControlNamespace = 544;
 }

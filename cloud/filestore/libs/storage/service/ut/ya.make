@@ -6,6 +6,7 @@ SRCS(
     helpers_ut.cpp
     protobuf_utils_ut.cpp
     service_ut.cpp
+    service_ut_control_namespace.cpp
     service_ut_helpers.cpp
     service_ut_parentless.cpp
     service_ut_quotas.cpp

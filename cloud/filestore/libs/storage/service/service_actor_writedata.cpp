@@ -1000,6 +1000,10 @@ void TStorageServiceActor::HandleWriteData(
 
     FILESTORE_TRACK(RequestReceived_Service, msg->CallContext, "WriteData");
 
+    if (TryHandleControlNamespaceWriteData(ctx, ev)) {
+        return;
+    }
+
     const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);

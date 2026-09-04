@@ -80,6 +80,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ShardBalancerPrecisionBytes,                            ui64,   1_GB  )\
                                                                                \
     xxx(DirectoryCreationInShardsEnabled,                       bool,   false )\
+    xxx(EnableControlNamespace,                                 bool,   false )\
                                                                                \
     xxx(MaxShardManagementRequestsInFlight,                     ui32,   0     )\
                                                                                \
