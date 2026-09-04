@@ -269,6 +269,7 @@ void TSufferCounters::PublishCounters()
     doUpdateCounter(SsdMirror3, NProto::STORAGE_MEDIA_SSD_MIRROR3);
     doUpdateCounter(SsdLocal,   NProto::STORAGE_MEDIA_SSD_LOCAL);
     doUpdateCounter(HddLocal,   NProto::STORAGE_MEDIA_HDD_LOCAL);
+    doUpdateCounter(SsdNbs2,    NProto::STORAGE_MEDIA_SSD_NBS2);
 
     total += UpdateCounter(
         Hdd,

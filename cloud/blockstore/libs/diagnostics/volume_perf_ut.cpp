@@ -491,6 +491,13 @@ void CheckServerSufferCounters(
             UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
             break;
         }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_NBS2: {
+            auto perType = serverGroup
+                ->GetSubgroup("type", "ssd_nbs2")
+                ->GetCounter("DisksSuffer", false);
+            UNIT_ASSERT_VALUES_EQUAL(cnt, perType->Val());
+            break;
+        }
         default: {
             auto perType = serverGroup
                 ->GetSubgroup("type", "hdd")

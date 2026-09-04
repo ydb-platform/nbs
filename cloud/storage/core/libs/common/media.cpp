@@ -4,6 +4,11 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsNbs2MediaKind(NProto::EStorageMediaKind mediaKind)
+{
+    return mediaKind == NProto::STORAGE_MEDIA_SSD_NBS2;
+}
+
 bool IsDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind)
 {
     switch (mediaKind) {
@@ -21,7 +26,7 @@ bool IsDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind)
 
 bool IsBlobStorageMediaKind(NProto::EStorageMediaKind mediaKind)
 {
-    return !IsDiskRegistryMediaKind(mediaKind);
+    return !IsNbs2MediaKind(mediaKind) && !IsDiskRegistryMediaKind(mediaKind);
 }
 
 bool IsReliableDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind)
@@ -85,6 +90,8 @@ TString MediaKindToString(NProto::EStorageMediaKind mediaKind)
             return "hdd_local";
         case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
             return "hdd_nonrepl";
+        case NProto::STORAGE_MEDIA_SSD_NBS2:
+            return "ssd_nbs2";
         default:
             return "unknown";
     }
@@ -117,6 +124,8 @@ TString MediaKindToComputeType(NProto::EStorageMediaKind mediaKind)
             return "network-ssd-mirror3";
         case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
             return "network-hdd-nonreplicated";
+        case NProto::STORAGE_MEDIA_SSD_NBS2:
+            return "network-ssd-nbs2";
         default:
             return "unknown";
     }
@@ -142,6 +151,8 @@ bool ParseMediaKind(const TStringBuf s, NProto::EStorageMediaKind* mediaKind)
         *mediaKind = NProto::STORAGE_MEDIA_HDD_LOCAL;
     } else if (s == "hdd_nonrepl") {
         *mediaKind = NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
+    } else if (s == "ssd_nbs2" || s == "ssd-nbs2") {
+        *mediaKind = NProto::STORAGE_MEDIA_SSD_NBS2;
     } else {
         return false;
     }
