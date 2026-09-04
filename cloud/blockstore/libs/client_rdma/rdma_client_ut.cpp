@@ -158,9 +158,16 @@ struct TTestClientEndpoint: public NRdma::IClientEndpoint
         Y_UNUSED(reqId);
     }
 
+    ui32 StopCount = 0;
+
+    // when initialized, the stop stays pending until the test completes it
+    TPromise<void> StopPromise;
+
     TFuture<void> Stop() override
     {
-        return MakeFuture();
+        ++StopCount;
+        return StopPromise.Initialized() ? StopPromise.GetFuture()
+                                         : MakeFuture();
     }
 
     void TryForceReconnect() override
@@ -383,6 +390,23 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_CANCELLED,
             future.GetValue().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldNotWaitForTheStopWhenDestroyed)
+    {
+        TTestEnv env;
+        env.Client->Endpoint->StopPromise = NewPromise<void>();
+
+        auto endpoint = env.CreateDataEndpoint();
+
+        // reaching the next line at all is the point: the thread destroying an
+        // endpoint may be the only one able to carry the stop out
+        endpoint.reset();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Client->Endpoint->StopCount);
+        UNIT_ASSERT_C(
+            !env.Client->Endpoint->StopPromise.HasValue(),
+            "the stop completed on its own, so the test proves nothing");
     }
 }
 

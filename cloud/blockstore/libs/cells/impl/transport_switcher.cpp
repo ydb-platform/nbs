@@ -14,8 +14,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Owns itself for as long as an attempt is pending: every scheduled retry
-// holds a strong reference. Once the router is gone nothing is scheduled any
-// more, so the switcher is released along with the connection it served.
+// holds a strong reference, and once the router is gone nothing schedules any
+// more.
 class TTransportSwitcher final
     : public std::enable_shared_from_this<TTransportSwitcher>
 {

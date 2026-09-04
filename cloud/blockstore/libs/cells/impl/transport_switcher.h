@@ -32,11 +32,9 @@ using TEndpointFactory =
 // the router over to it as soon as one is ready, retrying with a growing delay
 // until it succeeds.
 //
-// Once the router is gone no further attempt is started, so a released
-// connection stops the retries by itself. An attempt already in flight is not
-// cancelled though: the switcher, and whatever the factory captured, stay
-// alive until that attempt completes. The factory must therefore guarantee
-// that its future completes - failing on a timeout counts.
+// Once the router is gone nothing further is attempted, so a released
+// connection stops the retries by itself - though an attempt already in flight
+// is not cancelled, so the factory's future has to complete eventually.
 //
 // Switching is currently one-way and happens once: nothing here watches the
 // transport afterwards. Health driven switching in both directions is meant to
