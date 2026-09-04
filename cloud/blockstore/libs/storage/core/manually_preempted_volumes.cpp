@@ -124,7 +124,10 @@ TString TManuallyPreemptedVolumes::Serialize() const
 NProto::TError TManuallyPreemptedVolumes::Deserialize(const TString& input)
 {
     try {
-        if (input.empty()) {
+        if (std::ranges::all_of(input, [](const unsigned char ch ){
+                return std::isspace(ch);
+            }))
+        {
             return {};
         }
 
