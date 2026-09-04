@@ -355,6 +355,154 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
         // has to stay comfortably under that too
         service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(fileId).SetSize(1_MB));
     }
+
+    SERVICE_TEST(ShouldRejectRenameAcrossQuotaDomains)
+    {
+        auto& service = *fixture.Service;
+        const auto& fsId = fixture.FsId;
+
+        SetQuota(service, fsId, 1, 1_GB, 100);
+        SetQuota(service, fsId, 2, 1_GB, 100);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto dir1Id =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dir1"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(dir1Id).SetQuotaId(1));
+
+        const auto dir2Id =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dir2"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(dir2Id).SetQuotaId(2));
+
+        service.CreateNode(headers, TCreateNodeArgs::File(dir1Id, "file"));
+
+        // moving a file across a quota boundary is rejected outright, like
+        // a cross-device rename - no usage transfer, no partial recoloring
+        service.AssertRenameNodeFailed(
+            headers,
+            dir1Id,
+            "file",
+            dir2Id,
+            "file",
+            0);
+    }
+
+    SERVICE_TEST(ShouldRejectRenameOfEmptyDirectoryAcrossQuotaDomains)
+    {
+        auto& service = *fixture.Service;
+        const auto& fsId = fixture.FsId;
+
+        SetQuota(service, fsId, 1, 1_GB, 100);
+        SetQuota(service, fsId, 2, 1_GB, 100);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto dir1Id =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dir1"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(dir1Id).SetQuotaId(1));
+
+        const auto dir2Id =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dir2"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(dir2Id).SetQuotaId(2));
+
+        // an ordinary, empty subdirectory - inherits QuotaId 1 at creation,
+        // never itself attached. Even though it's empty, crossing a quota
+        // boundary is rejected outright, same as a non-empty one.
+        service.CreateNode(headers, TCreateNodeArgs::Directory(dir1Id, "subdir"));
+
+        service.AssertRenameNodeFailed(
+            headers,
+            dir1Id,
+            "subdir",
+            dir2Id,
+            "subdir",
+            0);
+    }
+
+    SERVICE_TEST(ShouldAllowRenameWithinTheSameQuotaDomain)
+    {
+        auto& service = *fixture.Service;
+        const auto& fsId = fixture.FsId;
+
+        SetQuota(service, fsId, 1, 1_GB, 100);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto dir1Id =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dir1"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(dir1Id).SetQuotaId(1));
+
+        const auto dir2Id =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dir2"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(dir2Id).SetQuotaId(1));
+
+        service.CreateNode(headers, TCreateNodeArgs::File(dir1Id, "file"));
+
+        // both directories are under the same quota - moving between them
+        // stays within the domain and is allowed
+        service.RenameNode(headers, dir1Id, "file", dir2Id, "file", 0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            service.GetNodeAttr(headers, fsId, dir2Id, "file")
+                ->Record.GetNode()
+                .GetQuotaId());
+    }
+
+    SERVICE_TEST(ShouldAllowMovingAQuotaRootDirectoryAcrossQuotaDomains)
+    {
+        auto& service = *fixture.Service;
+        const auto& fsId = fixture.FsId;
+
+        SetQuota(service, fsId, 1, 1_GB, 100);
+        SetQuota(service, fsId, 2, 1_GB, 100);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto rootAId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "rootA"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(rootAId).SetQuotaId(1));
+        service.CreateNode(headers, TCreateNodeArgs::File(rootAId, "file"));
+
+        const auto dir2Id =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dir2"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(dir2Id).SetQuotaId(2));
+
+        // rootA is itself a quota root (attached, not inherited) - moving it
+        // under a different domain is allowed even though it's non-empty,
+        // and it keeps carrying its own QuotaId
+        service.RenameNode(headers, RootNodeId, "rootA", dir2Id, "rootA", 0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            service.GetNodeAttr(headers, fsId, dir2Id, "rootA")
+                ->Record.GetNode()
+                .GetQuotaId());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

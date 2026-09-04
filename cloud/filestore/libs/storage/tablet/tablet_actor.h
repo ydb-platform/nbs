@@ -117,7 +117,8 @@ MakeRenameNodeInDestinationRequest(
     NProto::TRenameNodeRequest originalRequest,
     TString sourceNodeShardId,
     TString sourceNodeShardNodeName,
-    TString newParentShardId);
+    TString newParentShardId,
+    ui32 oldParentQuotaId);
 
 ////////////////////////////////////////////////////////////////////////////////
 

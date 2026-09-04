@@ -615,6 +615,41 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
         return true;
     }
 
+    // Quota domain crossing is rejected outright, same as a cross-device
+    // rename. EXCHANGE already returned above and is left alone entirely.
+    // The moved node's data never lives on this (destination) tablet - its
+    // QuotaId always comes from SourceNodeAttr, fetched via the same
+    // second-pass mechanism as above.
+    if (!HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
+        const ui32 oldParentQuotaId = args.Request.GetOldParentQuotaId();
+        const ui32 newParentQuotaId = args.NewParentNode->Attrs.GetQuotaId();
+
+        if (oldParentQuotaId != newParentQuotaId) {
+            ui32 childQuotaId;
+            if (args.IsSecondPass) {
+                childQuotaId = args.SourceNodeAttr.GetQuotaId();
+            } else {
+                // Need to fetch the moved node's QuotaId from its shard
+                // before deciding.
+                args.SecondPassRequired = true;
+                return true;
+            }
+
+            // A node whose QuotaId differs from its old parent's is itself
+            // a quota root (attached directly, not inherited) - it keeps
+            // its own QuotaId wherever it's moved, exempt from rejection.
+            const bool isQuotaRoot =
+                childQuotaId != 0 && childQuotaId != oldParentQuotaId;
+
+            if (!isQuotaRoot) {
+                args.Error = ErrorRenameNotSupported(
+                    args.Request.GetOriginalRequest().GetNodeId(),
+                    args.Request.GetNewParentId());
+                return true;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -748,25 +783,31 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
     TTxIndexTablet::TRenameNodeInDestination& args)
 {
     if (args.SecondPassRequired) {
+        // NewChildRef may legitimately be null here - e.g. the second pass
+        // was only needed to fetch the moved node's QuotaId (see
+        // PrepareTx), and there's nothing at the destination path to also
+        // fetch/prepare.
+        TString newChildShardId;
+        TString newChildShardNodeName;
         if (args.NewChildRef) {
-            RegisterGetNodeInfoAndPrepareUnlinkActor(
-                ctx,
-                args.RequestInfo,
-                args.Request,
-                std::move(args.ProfileLogRequest),
-                std::move(args.NewChildRef->ShardId),
-                std::move(args.NewChildRef->ShardNodeName),
-                false /* isLocalRename */);
-            return;
+            newChildShardId = args.NewChildRef->ShardId;
+            newChildShardNodeName = args.NewChildRef->ShardNodeName;
         }
 
-        auto message = ReportChildRefIsNull(TStringBuilder()
-            << "RenameNodeInDestination: " << args.Request.ShortDebugString());
-        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        RegisterGetNodeInfoAndPrepareUnlinkActor(
+            ctx,
+            args.RequestInfo,
+            args.Request,
+            std::move(args.ProfileLogRequest),
+            std::move(newChildShardId),
+            std::move(newChildShardNodeName),
+            false /* isLocalRename */);
+        return;
     }
 
     if (HasError(args.Error)
             && args.IsSecondPass
+            && args.NewChildRef
             && args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE)
     {
         if (args.AbortUnlinkOpLogEntryId) {
