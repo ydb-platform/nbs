@@ -1,0 +1,71 @@
+diff --git a/contrib/ydb/library/fyamlcpp/fyamlcpp.cpp b/contrib/ydb/library/fyamlcpp/fyamlcpp.cpp
+index 3fcf6d51747435fbe1d8e8fd62793c6b0f917a92..e3251a6a57a7f812907951cc5f67cd077cf566c1 100644
+--- a/contrib/ydb/library/fyamlcpp/fyamlcpp.cpp
++++ b/contrib/ydb/library/fyamlcpp/fyamlcpp.cpp
+@@ -973,7 +973,7 @@ std::optional<TString> TNodeOpsBase::Tag(fy_node* node) const {
+ void TNodeOpsBase::SetTag(fy_node* node, const TString& tag) {
+     ENSURE_NODE_NOT_EMPTY(node);
+     auto* str = new TString(std::move(tag));
+-    auto* data = new TUserDataHolder(UserData(node), str);
++    auto* data = new TUserDataHolder(str);
+     SetUserData(node, data);
+     RethrowOnError(fy_node_set_tag(node, str->c_str(), str->length()), node);
+ }
+@@ -992,7 +992,7 @@ bool TNodeOpsBase::HasAnchor(fy_node* node) const {
+ 
+ void TNodeOpsBase::SetAnchor(fy_node* node, const TString& anchor) {
+     auto* str = new TString(anchor);
+-    auto* data = new TUserDataHolder(UserData(node), str);
++    auto* data = new TUserDataHolder(str);
+     SetUserData(node, data);
+     RethrowOnError(fy_node_set_anchor(node, str->c_str(), str->length()), node);
+ }
+diff --git a/contrib/ydb/library/fyamlcpp/fyamlcpp.h b/contrib/ydb/library/fyamlcpp/fyamlcpp.h
+index 3f119e57442bf4c395f27fbefaba595154efe69c..58c4af339986d34f1f3d880f0051b4caf49bf977 100644
+--- a/contrib/ydb/library/fyamlcpp/fyamlcpp.h
++++ b/contrib/ydb/library/fyamlcpp/fyamlcpp.h
+@@ -120,13 +120,11 @@ public:
+ template <class T>
+ class TUserDataHolder : public IBasicUserData {
+ public:
+-    TUserDataHolder(IBasicUserData* next, T* data)
+-        : Next_(next)
+-        , Data_(data)
++    TUserDataHolder(T* data)
++        : Data_(data)
+     {}
+ 
+ private:
+-    std::unique_ptr<IBasicUserData> Next_ = nullptr;
+     std::unique_ptr<T> Data_ = nullptr;
+ };
+ 
+diff --git a/contrib/ydb/library/fyamlcpp/fyamlcpp_ut.cpp b/contrib/ydb/library/fyamlcpp/fyamlcpp_ut.cpp
+index 64a8f4165485064e4d83c754fbc1ebb2acd169fb..481a1ada979fba6999303f706313bcc53119677b 100644
+--- a/contrib/ydb/library/fyamlcpp/fyamlcpp_ut.cpp
++++ b/contrib/ydb/library/fyamlcpp/fyamlcpp_ut.cpp
+@@ -542,4 +542,24 @@ c: bar
+         }
+     }
+ 
++    Y_UNIT_TEST(SetTag) {
++        const char *yaml = R"(
++test:
++  field_1: 1
++  field_2: 2
++)";
++
++        auto doc = NFyaml::TDocument::Parse(yaml);
++
++        auto node = doc.Root().Map().at("test");
++
++        UNIT_ASSERT(node);
++
++        for (int i = 0; i < 10; i++) {
++            auto tag = TString("!tag") + ToString(i);
++            node.SetTag(tag);
++
++            UNIT_ASSERT_VALUES_EQUAL(node.Tag(), tag);
++        }
++    }
+ }
