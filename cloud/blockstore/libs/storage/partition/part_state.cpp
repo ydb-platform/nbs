@@ -145,6 +145,7 @@ TPartitionState::TPartitionState(
           maxBlobsPerUnit)
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
+    , InflightCompactionCounters(tabletId, CompactionMap, UsedBlocks)
     , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , CheckpointAwareCleanupEnabled(checkpointAwareCleanupEnabled)

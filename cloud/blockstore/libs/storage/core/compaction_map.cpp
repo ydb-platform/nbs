@@ -556,7 +556,7 @@ void TCompactionMap::Update(
             usedBlockCount,
             c.Stat.NewlyZeroedBlocks,
             c.Stat.MixedBlockCount,
-            c.Stat.BlobCount < 2   // compacted
+            c.Stat.Compacted
         );
     }
 

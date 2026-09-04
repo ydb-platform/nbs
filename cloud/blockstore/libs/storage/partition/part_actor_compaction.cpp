@@ -881,10 +881,16 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     affectedBlob.Offsets.end(),
                     blob.Offsets.begin(),
                     blob.Offsets.end());
-                affectedBlob.AffectedBlocks.insert(
-                    affectedBlob.AffectedBlocks.end(),
-                    blob.AffectedBlocks.begin(),
-                    blob.AffectedBlocks.end());
+                if (affectedBlob.MixedBlobsSpecificInfo) {
+                    auto& visitedBlocksInserted =
+                        affectedBlob.MixedBlobsSpecificInfo->AllVisitedBlocks;
+                    auto& visitedBlocksForBlob =
+                        blob.MixedBlobsSpecificInfo->AllVisitedBlocks;
+                    visitedBlocksInserted.insert(
+                        visitedBlocksInserted.end(),
+                        visitedBlocksForBlob.begin(),
+                        visitedBlocksForBlob.end());
+                }
 
                 affectedBlob.BlockMask.GetRef() |= blockMask;
             }
@@ -2005,12 +2011,21 @@ void TPartitionActor::HandleCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
 
+    TVector<ui32> rangeIndices;
+    for (auto& range: ranges) {
+        rangeIndices.push_back(range.first);
+    }
+
     if (auto* filter = State->AccessMixedBlocksFilter()) {
-        TVector<ui32> rangeIndices;
-        for (auto& range: ranges) {
-            rangeIndices.push_back(range.first);
-        }
-        filter->CompactionStarted(std::move(rangeIndices), commitId);
+        filter->CompactionStarted(rangeIndices, commitId);
+    }
+
+    if (auto* inflightCompactionCounters =
+            State->AccessInflightCompactionCounters())
+    {
+        inflightCompactionCounters->CompactionStarted(
+            commitId,
+            std::move(rangeIndices));
     }
 
     auto tx = CreateTx<TCompaction>(
@@ -2058,6 +2073,14 @@ void TPartitionActor::HandleCompactionCompleted(
             filter->CompactionFailed();
         } else {
             filter->CompactionFinished();
+        }
+    }
+
+    if (auto* inflightCompactionCounters =
+            State->AccessInflightCompactionCounters())
+    {
+        if (HasError(msg->GetError())) {
+            inflightCompactionCounters->CompactionFailed(commitId);
         }
     }
 
@@ -2144,6 +2167,12 @@ bool TPartitionActor::PrepareCompaction(
 {
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
+
+    if (auto* inflightCompactionCounters =
+            State->AccessInflightCompactionCounters())
+    {
+        inflightCompactionCounters->ClearCountersForCompaction(args.CommitId);
+    }
 
     const bool incrementalCompactionEnabled =
         Config->GetIncrementalCompactionEnabled() ||

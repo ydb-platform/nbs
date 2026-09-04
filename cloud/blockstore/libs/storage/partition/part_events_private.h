@@ -128,6 +128,8 @@ struct TAffectedBlock
 {
     ui32 BlockIndex = 0;
     ui64 CommitId = 0;
+
+    std::strong_ordering operator<=>(const TAffectedBlock&) const = default;
 };
 
 using TAffectedBlocks = TVector<TAffectedBlock>;
@@ -140,6 +142,12 @@ struct TAffectedBlob
     {
         TBlockRange32 BlockRange;
         ui32 SkippedBlocksCount = 0;
+        ui32 BlocksInRange = 0;
+    };
+
+    struct TMixedBlobsSpecificInfo
+    {
+        TAffectedBlocks AllVisitedBlocks;
     };
 
     ui8 CompactionRangeCount = 0;
@@ -148,6 +156,9 @@ struct TAffectedBlob
     // Filled only for merged blobs.
     TMaybe<TMergedBlobsSpecificInfo> MergedBlobsSpecificInfo;
 
+    // Filled only for mixed blobs.
+    TMaybe<TMixedBlobsSpecificInfo> MixedBlobsSpecificInfo;
+
     std::optional<EChannelDataKind> IndexKind;
 
     TVector<ui16> Offsets;
@@ -155,8 +166,6 @@ struct TAffectedBlob
     TMaybe<TBlockMask> BlockMask;
 
     bool BlobAlreadyInCleanupQueue = false;
-
-    TAffectedBlocks AffectedBlocks;
 
     // Filled only if a flag is set. BlobMeta is needed only to do some extra
     // consistency checks.

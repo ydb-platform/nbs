@@ -24,6 +24,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
+#include <cloud/blockstore/libs/storage/partition/model/inflight_compaction_counters.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter_load_state.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
@@ -655,6 +656,8 @@ private:
     ui64 BlockMaskReadDuringCompaction = 0;
     ui32 NewlyZeroedBlocks = 0;
 
+    TInflightCompactionCounters InflightCompactionCounters;
+
 public:
     TOperationState& GetCompactionState(ECompactionType type);
 
@@ -801,6 +804,11 @@ public:
     }
 
     ui32 CalculateNewlyZeroedBlocks(ui32 blockIndex, ui64 usedBlockCount) const;
+
+    TInflightCompactionCounters* AccessInflightCompactionCounters()
+    {
+        return &InflightCompactionCounters;
+    }
 
 private:
     void WriteUsedBlocksToDB(TPartitionDatabase& db, ui32 begin, ui32 end);

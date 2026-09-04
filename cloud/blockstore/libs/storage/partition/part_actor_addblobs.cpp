@@ -72,6 +72,8 @@ private:
         ui32 MixedBlockCountSkippedByCompaction = 0;
     };
 
+    TDenseHash<ui32, TVector<TCompactionCounter*>> InflightCompactionCounters;
+
     TDenseHash<ui32, TRangeInfo> CompactionCounters{
         std::numeric_limits<ui32>::max()};
     TDenseHash<ui32, ui64> OverwrittenBlocks{std::numeric_limits<ui32>::max()};
@@ -501,12 +503,58 @@ private:
         const auto& cm = State.GetCompactionMap();
         auto& rangeInfo = CompactionCounters[blockIndex];
 
-        if (!rangeInfo.Stat.BlobCount && Args.Mode != ADD_COMPACTION_RESULT) {
+        if (!rangeInfo.Stat.BlobCount) {
             rangeInfo.Stat = cm.Get(blockIndex);
         }
 
         return rangeInfo.Stat;
     };
+
+    void IncrementCompactionCounters(
+        ui32 blockIndex,
+        ui32 blockCount,
+        ui32 blobCount,
+        ui32 mixedBlockCount)
+    {
+        auto it = InflightCompactionCounters.find(blockIndex);
+        if (it == InflightCompactionCounters.end()) {
+            const ui32 rangeIdx =
+                State.GetCompactionMap().GetRangeIndex(blockIndex);
+            auto counters = State.AccessInflightCompactionCounters()
+                                ->GetCompactionCounters(rangeIdx);
+            if (counters) {
+                it = InflightCompactionCounters
+                         .insert({blockIndex, std::move(counters)})
+                         .first;
+            }
+        }
+
+        if (it != InflightCompactionCounters.end()) {
+            for (auto& counter: it->second) {
+                TCompactionMap::UpdateCompactionCounter(
+                    counter->Stat.BlockCount + blockCount,
+                    &counter->Stat.BlockCount);
+                TCompactionMap::UpdateCompactionCounter(
+                    counter->Stat.BlobCount + blobCount,
+                    &counter->Stat.BlobCount);
+                TCompactionMap::UpdateCompactionCounter(
+                    counter->Stat.MixedBlockCount + mixedBlockCount,
+                    &counter->Stat.MixedBlockCount);
+            }
+        }
+
+        auto& rangeStat = AccessRangeStat(blockIndex);
+        TCompactionMap::UpdateCompactionCounter(
+            rangeStat.BlockCount + blockCount,
+            &rangeStat.BlockCount
+        );
+        TCompactionMap::UpdateCompactionCounter(
+            rangeStat.BlobCount + blobCount,
+            &rangeStat.BlobCount);
+        TCompactionMap::UpdateCompactionCounter(
+            rangeStat.MixedBlockCount + mixedBlockCount,
+            &rangeStat.MixedBlockCount);
+    }
 
     void UpdateCompactionCounters(const TAddMergedBlob& blob)
     {
@@ -517,20 +565,12 @@ private:
             cm.GetRangeStart(blob.BlockRange.End));
 
         for (const ui64 blockIndex: xrange(range, cm.GetRangeSize())) {
-            auto& rangeStat = AccessRangeStat(blockIndex);
 
-            TCompactionMap::UpdateCompactionCounter(
-                rangeStat.BlobCount + 1,
-                &rangeStat.BlobCount
-            );
-
-            if (IsDeletionMarker(blob.BlobId)) {
-                continue;
-            }
-
-            const auto firstBlock = Max<ui64>(blockIndex, blob.BlockRange.Start);
-            const auto lastBlock =
-                Min<ui64>(blockIndex + cm.GetRangeSize() - 1, blob.BlockRange.End);
+            const auto firstBlock =
+                Max<ui64>(blockIndex, blob.BlockRange.Start);
+            const auto lastBlock = Min<ui64>(
+                blockIndex + cm.GetRangeSize() - 1,
+                blob.BlockRange.End);
             ui32 skipped = 0;
             for (ui64 b = firstBlock; b <= lastBlock; ++b) {
                 auto pos = b - blob.BlockRange.Start;
@@ -538,10 +578,13 @@ private:
                     ++skipped;
                 }
             }
-            TCompactionMap::UpdateCompactionCounter(
-                rangeStat.BlockCount + (lastBlock - firstBlock + 1 - skipped),
-                &rangeStat.BlockCount
-            );
+            const ui32 blockCount = lastBlock - firstBlock + 1 - skipped;
+
+            IncrementCompactionCounters(
+                blockIndex,
+                /*blockCount*/ IsDeletionMarker(blob.BlobId) ? 0 : blockCount,
+                /*blobCount*/ 1,
+                /*mixedBlockCount*/ 0);
         }
     }
 
@@ -560,36 +603,45 @@ private:
     {
         const auto& cm = State.GetCompactionMap();
 
-        ui32 prevBlockIndex = 0;
-        TRangeStat* rangeStat = nullptr;
+        std::optional<ui32> rangeBlockIndex;
+        ui32 blockCountForCurrentRange = 0;
 
         for (size_t i = 0; i < blob.Blocks.size(); ++i) {
             ui32 blockIndex = cm.GetRangeStart(BlockIndex(blob, i));
-            Y_DEBUG_ABORT_UNLESS(prevBlockIndex <= blockIndex);
+            Y_DEBUG_ABORT_UNLESS(rangeBlockIndex <= blockIndex);
 
-            if (i == 0 || prevBlockIndex != blockIndex) {
-                prevBlockIndex = blockIndex;
+            if (!rangeBlockIndex) {
+                rangeBlockIndex = blockIndex;
+            } else if (rangeBlockIndex && *rangeBlockIndex != blockIndex) {
+                IncrementCompactionCounters(
+                    rangeBlockIndex.value(),
+                    /*blockCount*/ blockCountForCurrentRange,
+                    /*blobCount*/ 1,
+                    /*mixedBlockCount*/ blockCountForCurrentRange);
 
-                rangeStat = &AccessRangeStat(blockIndex);
-                TCompactionMap::UpdateCompactionCounter(
-                    rangeStat->BlobCount + 1,
-                    &rangeStat->BlobCount
-                );
+                blockCountForCurrentRange = 0;
+                rangeBlockIndex = blockIndex;
             }
 
             if (!IsDeletionMarker(blob.BlobId)) {
-                TCompactionMap::UpdateCompactionCounter(
-                    rangeStat->BlockCount + 1,
-                    &rangeStat->BlockCount
-                );
-                TCompactionMap::UpdateCompactionCounter(
-                    rangeStat->MixedBlockCount + 1,
-                    &rangeStat->MixedBlockCount);
+                blockCountForCurrentRange++;
             }
         }
+
+        STORAGE_VERIFY_C(
+            rangeBlockIndex,
+            TWellKnownEntityTypes::TABLET,
+            TabletId,
+            "range block index is not set");
+
+        IncrementCompactionCounters(
+            rangeBlockIndex.value(),
+            /*blockCount*/ blockCountForCurrentRange,
+            /*blobCount*/ 1,
+            /*mixedBlockCount*/ blockCountForCurrentRange);
     }
 
-    void UpdateCompactionMap(TPartitionDatabase& db)
+    void RegularUpdateCompactionMap(TPartitionDatabase& db)
     {
         for (const auto& kv: CompactionCounters) {
             const auto usedBlockCount = State.GetUsedBlocks().Count(
@@ -614,6 +666,13 @@ private:
                     newlyZeroedBlocksDiff,
                 0L)));
 
+            if (kv.second.BlocksSkippedByCompaction || kv.second.BlobsSkippedByCompaction) {
+                STORAGE_VERIFY(
+                    Args.Mode == ADD_COMPACTION_RESULT,
+                    TWellKnownEntityTypes::TABLET,
+                    TabletId);
+            }
+
             db.WriteCompactionMap(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
@@ -628,6 +687,50 @@ private:
                 kv.second.Stat.MixedBlockCount +
                     kv.second.MixedBlockCountSkippedByCompaction,
                 Args.Mode == ADD_COMPACTION_RESULT);
+        }
+    }
+
+    void UpdateCompactionMap(TPartitionDatabase& db)
+    {
+        if (Args.Mode != ADD_COMPACTION_RESULT ||
+            InflightCompactionCounters.Empty())
+        {
+            RegularUpdateCompactionMap(db);
+            return;
+        }
+
+        const auto& cm = State.GetCompactionMap();
+
+        i64 newlyZeroedBlocksToDecrement = 0;
+
+        // We should account for blocks and blobs skipped by compaction.
+        for (const auto& kv: CompactionCounters) {
+            IncrementCompactionCounters(
+                kv.first,
+                kv.second.BlocksSkippedByCompaction,
+                kv.second.BlobsSkippedByCompaction,
+                kv.second.MixedBlockCountSkippedByCompaction);
+            auto rangeStat = cm.Get(kv.first);
+            newlyZeroedBlocksToDecrement += rangeStat.NewlyZeroedBlocks;
+        }
+
+        State.SetNewlyZeroedBlocks(
+            static_cast<ui32>(std::max(
+                static_cast<i64>(State.GetNewlyZeroedBlocks()) -
+                    newlyZeroedBlocksToDecrement,
+                0L)));
+
+        auto rangeIndicesToPersist =
+            State.AccessInflightCompactionCounters()->FinishRangeCompaction(
+                Args.CommitId);
+
+        for (const auto& rangeIndex: rangeIndicesToPersist) {
+            const ui32 blockIndex = rangeIndex * cm.GetRangeSize();
+            const auto& rangeStat = cm.Get(blockIndex);
+            db.WriteCompactionMap(
+                blockIndex,
+                rangeStat.BlobCount,
+                rangeStat.BlockCount);
         }
     }
 

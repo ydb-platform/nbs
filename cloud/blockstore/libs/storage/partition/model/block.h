@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "block_mask.h"
+
 #include <cloud/blockstore/libs/common/block_range.h>
 
 #include <cloud/storage/core/libs/common/sglist.h>
@@ -82,7 +84,7 @@ struct IBlobsVisitor
     virtual bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) = 0;
+        const TBlockMask& skipMask) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
