@@ -1,12 +1,15 @@
 #include "shard.h"
 
-#include "page_store.h"
-#include "persistent_bitmap.h"
-#include "persistent_hash_table.h"
-
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/handle_table.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/helpers.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/name_table.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/node_table.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/page_store.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_bitmap.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_hash_table.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/client/client.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
@@ -34,59 +37,6 @@
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-// inode table layout
-
-constexpr ui64 NodeSlotSize = 96;   // bigger than the current slot struct - in
-                                    // order not to drop all data if we decide
-                                    // to add something to the slot struct
-constexpr ui32 PageSize = 4_KB;
-constexpr ui64 NodeTableSize = 512_MB;
-
-struct TNodeTableSlot
-{
-    ui64 Id;
-    ui32 Type;
-    ui32 Mode;
-    ui32 Uid;
-    ui32 Gid;
-    ui64 ATime;
-    ui64 MTime;
-    ui64 CTime;
-    ui64 Size;
-    ui32 Links;
-};
-
-static_assert(sizeof(TNodeTableSlot) <= NodeSlotSize);
-static_assert(NodeSlotSize % alignof(TNodeTableSlot) == 0);
-
-////////////////////////////////////////////////////////////////////////////////
-// name table layout
-
-constexpr ui64 NameSlotSize = 48;
-constexpr ui32 NameCapacity = 36;
-
-struct TNameTableSlot
-{
-    char Name[NameCapacity];
-    ui64 NodeId;
-};
-
-static_assert(sizeof(TNameTableSlot) <= NameSlotSize);
-
-////////////////////////////////////////////////////////////////////////////////
-// handle table layout
-
-constexpr ui64 HandleSlotSize = 16;
-
-struct THandleSlot
-{
-    ui64 Handle;
-    ui64 NodeId;
-};
-
-static_assert(sizeof(THandleSlot) <= HandleSlotSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 // page index layout
@@ -121,505 +71,6 @@ struct TNodePageClusterSlot
 };
 
 static_assert(sizeof(TNodePageClusterSlot) <= NodePageClusterSlotSize);
-
-////////////////////////////////////////////////////////////////////////////////
-
-NProto::TNodeAttr Convert(const TNodeTableSlot& slot)
-{
-    NProto::TNodeAttr attr;
-    attr.SetId(slot.Id);
-    attr.SetType(slot.Type);
-    attr.SetMode(slot.Mode);
-    attr.SetUid(slot.Uid);
-    attr.SetGid(slot.Gid);
-    attr.SetATime(slot.ATime);
-    attr.SetMTime(slot.MTime);
-    attr.SetCTime(slot.CTime);
-    attr.SetSize(slot.Size);
-    attr.SetLinks(slot.Links);
-    return attr;
-}
-
-TNodeTableSlot Convert(const NProto::TNodeAttr& attr)
-{
-    TNodeTableSlot slot{};
-    slot.Id = attr.GetId();
-    slot.Type = attr.GetType();
-    slot.Mode = attr.GetMode();
-    slot.Uid = attr.GetUid();
-    slot.Gid = attr.GetGid();
-    slot.ATime = attr.GetATime();
-    slot.MTime = attr.GetMTime();
-    slot.CTime = attr.GetCTime();
-    slot.Size = attr.GetSize();
-    slot.Links = attr.GetLinks();
-    return slot;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-ui64 RoundUp(ui64 n, ui64 by)
-{
-    return ((n - 1) / by + 1) * by;
-}
-
-ui64 RoundDown(ui64 n, ui64 by)
-{
-    return (n / by) * by;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TWriteContext
-{
-    NProto::TDeviceRequestHeaders Headers;
-    TVector<TPageGroup> PageGroups;
-    ui64 Lsn = 0;
-    bool PagesCollected = false;
-};
-
-TVector<ui64> CollectPages(TWriteContext& writeContext)
-{
-    TVector<ui64> pages;
-    for (const auto& pg: writeContext.PageGroups) {
-        for (ui64 i = 0; i < pg.Content.size(); ++i) {
-            pages.push_back(pg.FirstPageNo + i);
-        }
-    }
-
-    writeContext.PagesCollected = true;
-    return pages;
-}
-
-class TWriteContextGuard
-{
-private:
-    TWriteContext& Context;
-    IPageStore& Store;
-
-public:
-    TWriteContextGuard(TWriteContext& context, IPageStore& store)
-        : Context(context)
-        , Store(store)
-    {
-    }
-
-    ~TWriteContextGuard()
-    {
-        if (!Context.PagesCollected) {
-            auto pages = CollectPages(Context);
-            Store.RollbackPages(pages);
-        }
-
-        // TODO(#5895) - notify storage that this Lsn was skipped
-    }
-
-    // Must be called after shard mutex is taken. Otherwise concurrent shard ops
-    // can race and cause PageStore updates which are not Lsn-ordered.
-    void Init()
-    {
-        Context.Lsn = Store.AllocateLsn();
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-// This data structure is a PoC, it's not really efficient, can be easily
-// optimized.
-
-class TNodeTable
-{
-private:
-    static constexpr ui64 SlotsPerPage = 42;
-    static_assert(SlotsPerPage * NodeSlotSize <= PageSize);
-
-    using THt = TPersistentHashTable<ui64, TNodeTableSlot>;
-    std::unique_ptr<THt> Slots;
-
-public:
-    ui64 Init(
-        const NProtoPrivate::TPersistentFastShardConfig& config,
-        ui64 firstPageNo,
-        IPageStorePtr pageStore)
-    {
-        const ui64 pageCount =
-            Min(RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
-                (NodeTableSize / PageSize) * SlotsPerPage) /
-            SlotsPerPage;
-        const TNodeTableSlot tombstone{.Id = Max<ui64>()};
-        Slots = std::make_unique<THt>(
-            firstPageNo,
-            pageCount,
-            PageSize,
-            NodeSlotSize,
-            tombstone,
-            std::move(pageStore),
-            [](const TNodeTableSlot& s) -> ui64 { return s.Id; },
-            [](const ui64& nodeId) -> ui64 {
-                return CityHash64(
-                    reinterpret_cast<const char*>(&nodeId),
-                    sizeof(nodeId));
-            });
-
-        return pageCount;
-    }
-
-    [[nodiscard]] ui64 GetSlotCount() const
-    {
-        return Slots->GetSlotCount();
-    }
-
-    NProto::TError AllocateNodeId(ui64* nodeId)
-    {
-        while (true) {
-            *nodeId = ShardedId(RandomNumber<ui64>(), 0 /* shardNo */);
-            NProto::TNodeAttr attr;
-            auto error = GetNode(*nodeId, &attr);
-            if (!HasError(error)) {
-                continue;
-            }
-
-            if (error.GetCode() == E_FS_NOENT) {
-                return {};
-            }
-
-            return error;
-        }
-    }
-
-    NProto::TError
-    ResizeNode(ui64 nodeId, ui64 newSize, TWriteContext& writeContext)
-    {
-        TNodeTableSlot slot{};
-        ui64 slotNo = 0;
-        auto error = Slots->Get(writeContext.Lsn, nodeId, &slot, &slotNo);
-        if (HasError(error)) {
-            return error;
-        }
-
-        slot.Size = Max(slot.Size, newSize);
-
-        return Slots
-            ->Update(writeContext.Lsn, slot, slotNo, writeContext.PageGroups);
-    }
-
-    NProto::TError UpdateNode(
-        ui64 nodeId,
-        ui32 flags,
-        const NProto::TSetNodeAttrRequest::TUpdate& update,
-        NProto::TNodeAttr* attr,
-        TVector<ui64>* pageClusterIdsToDeallocate,
-        TWriteContext& writeContext)
-    {
-        TNodeTableSlot slot{};
-        ui64 slotNo = 0;
-        auto error = Slots->Get(writeContext.Lsn, nodeId, &slot, &slotNo);
-        if (HasError(error)) {
-            return error;
-        }
-
-        if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_MODE)) {
-            slot.Mode = update.GetMode();
-        }
-        if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_UID)) {
-            slot.Uid = update.GetUid();
-        }
-        if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_GID)) {
-            slot.Gid = update.GetGid();
-        }
-        if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_ATIME)) {
-            slot.ATime = update.GetATime();
-        }
-        if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_MTIME)) {
-            slot.MTime = update.GetMTime();
-        }
-        if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_CTIME)) {
-            slot.CTime = update.GetCTime();
-        }
-        if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
-            if (slot.Size > update.GetSize()) {
-                for (ui64 offset = AlignUp(update.GetSize(), PageClusterSize);
-                        offset < slot.Size; offset += PageClusterSize)
-                {
-                    const ui64 pageClusterId = offset / PageClusterSize;
-                    pageClusterIdsToDeallocate->push_back(pageClusterId);
-                }
-            }
-
-            slot.Size = update.GetSize();
-        }
-
-        error = Slots->Update(
-            writeContext.Lsn,
-            slot,
-            slotNo,
-            writeContext.PageGroups);
-        if (HasError(error)) {
-            return error;
-        }
-
-        *attr = Convert(slot);
-        return {};
-    }
-
-    NProto::TError PutNode(
-        const NProto::TNodeAttr& attr,
-        TWriteContext& writeContext)
-    {
-        auto slot = Convert(attr);
-        return Slots->Put(writeContext.Lsn, slot, writeContext.PageGroups);
-    }
-
-    NProto::TError DeleteNode(
-        ui64 nodeId,
-        TWriteContext& writeContext,
-        TNodeTableSlot* slot)
-    {
-        return Slots
-            ->Delete(writeContext.Lsn, nodeId, slot, writeContext.PageGroups);
-    }
-
-    NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
-    {
-        TNodeTableSlot slot{};
-        ui64 slotNo = 0;
-        auto error = Slots->Get(0 /* lsn */, nodeId, &slot, &slotNo);
-        if (HasError(error)) {
-            return error;
-        }
-
-        *attr = Convert(slot);
-        return {};
-    }
-
-    [[nodiscard]] NProto::TError CollectStats(
-        TFileSystemShardStats* stats) const
-    {
-        TPersistentHashTableStats slotStats;
-        auto e = Slots->CollectStats(&slotStats);
-        if (HasError(e)) {
-            return e;
-        }
-
-        stats->TotalNodeCount = slotStats.SlotCount;
-        stats->UsedNodeCount = slotStats.ValueCount;
-        return {};
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TNameTable
-{
-private:
-    static constexpr ui64 SlotsPerPage = PageSize / NameSlotSize;
-    static_assert(SlotsPerPage * NameSlotSize <= PageSize);
-
-    using THt = TPersistentHashTable<TStringBuf, TNameTableSlot>;
-    TNameTableSlot Tombstone{};
-    std::unique_ptr<THt> Slots;
-
-public:
-    ui64 Init(
-        const NProtoPrivate::TPersistentFastShardConfig& config,
-        ui64 firstPageNo,
-        IPageStorePtr pageStore)
-    {
-        const ui64 pageCount =
-            Min(RoundUp(config.GetNodesPerGroup(), SlotsPerPage),
-                (NodeTableSize / PageSize) * SlotsPerPage) /
-            SlotsPerPage;
-        // Tombstone key needs to be different from an empty slot key
-        memset(Tombstone.Name, 1, NameCapacity - 1);
-        Tombstone.NodeId = Max<ui64>();
-        Slots = std::make_unique<THt>(
-            firstPageNo,
-            pageCount,
-            PageSize,
-            NameSlotSize,
-            Tombstone,
-            std::move(pageStore),
-            [](const TNameTableSlot& s) -> TStringBuf
-            { return {s.Name, strlen(s.Name)}; },
-            [](const TStringBuf& name) -> ui64
-            { return CityHash64(name.data(), name.size()); });
-
-        return pageCount;
-    }
-
-    [[nodiscard]] ui64 GetSlotCount() const
-    {
-        return Slots->GetSlotCount();
-    }
-
-    NProto::TError
-    Put(const TString& name, ui64 nodeId, TWriteContext& writeContext)
-    {
-        if (name.size() >= NameCapacity) {
-            return ErrorNameTooLong(name);
-        }
-
-        TNameTableSlot slot{};
-        memcpy(slot.Name, name.data(), name.size());
-        memset(slot.Name + name.size(), 0, NameCapacity - name.size());
-        slot.NodeId = nodeId;
-        return Slots->Put(writeContext.Lsn, slot, writeContext.PageGroups);
-    }
-
-    NProto::TError Delete(const TString& name, TWriteContext& writeContext)
-    {
-        TNameTableSlot slot{};
-        return Slots
-            ->Delete(writeContext.Lsn, name, &slot, writeContext.PageGroups);
-    }
-
-    NProto::TError Get(const TString& name, ui64* nodeId) const
-    {
-        ui64 slotNo = 0;
-        TNameTableSlot slot{};
-        auto error = Slots->Get(0 /* lsn */, name.c_str(), &slot, &slotNo);
-        if (HasError(error)) {
-            return error;
-        }
-
-        *nodeId = slot.NodeId;
-        return {};
-    }
-
-    [[nodiscard]] NProto::TError CollectStats(
-        TFileSystemShardStats* stats) const
-    {
-        TPersistentHashTableStats slotStats;
-        auto e = Slots->CollectStats(&slotStats);
-        if (HasError(e)) {
-            return e;
-        }
-
-        stats->TotalNameCount = slotStats.SlotCount;
-        stats->UsedNameCount = slotStats.ValueCount;
-        return {};
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class THandleTable
-{
-private:
-    static constexpr ui64 SlotsPerPage = 256;
-    static_assert(SlotsPerPage * HandleSlotSize <= PageSize);
-
-    using THt = TPersistentHashTable<ui64, THandleSlot>;
-    std::unique_ptr<THt> Slots;
-
-public:
-    ui64 Init(
-        const NProtoPrivate::TPersistentFastShardConfig& config,
-        ui64 firstPageNo,
-        IPageStorePtr pageStore)
-    {
-        const ui64 maxHandlesPerFile = 10;
-        const ui64 pageCount =
-            RoundUp(
-                maxHandlesPerFile * config.GetNodesPerGroup(),
-                SlotsPerPage) /
-            SlotsPerPage;
-        THandleSlot tombstone{};
-        tombstone.Handle = Max<ui64>();
-        Slots = std::make_unique<THt>(
-            firstPageNo,
-            pageCount,
-            PageSize,
-            HandleSlotSize,
-            tombstone,
-            std::move(pageStore),
-            [](const THandleSlot& s) -> ui64 { return s.Handle; },
-            [](const ui64& handle) -> ui64 {
-                return CityHash64(
-                    reinterpret_cast<const char*>(&handle),
-                    sizeof(handle));
-            });
-
-        return pageCount;
-    }
-
-    [[nodiscard]] ui64 GetSlotCount() const
-    {
-        return Slots->GetSlotCount();
-    }
-
-    NProto::TError AllocateHandle(ui64* handle)
-    {
-        while (true) {
-            *handle = ShardedId(RandomNumber<ui64>(), 0 /* shardNo */);
-
-            ui64 slotNo = 0;
-            THandleSlot slot{};
-            auto error = Slots->Get(0 /* lsn */, *handle, &slot, &slotNo);
-
-            if (!HasError(error)) {
-                continue;
-            }
-
-            if (error.GetCode() == E_FS_NOENT) {
-                return {};
-            }
-
-            return error;
-        }
-    }
-
-    NProto::TError Put(THandleSlot v, TWriteContext& writeContext)
-    {
-        return Slots->Put(writeContext.Lsn, v, writeContext.PageGroups);
-    }
-
-    NProto::TError Delete(ui64 handle, TWriteContext& writeContext)
-    {
-        THandleSlot slot{};
-        auto error = Slots->Delete(
-            writeContext.Lsn,
-            handle,
-            &slot,
-            writeContext.PageGroups);
-
-        if (error.GetCode() == E_FS_NOENT) {
-            error = ErrorInvalidHandle(handle);
-        }
-
-        return error;
-    }
-
-    NProto::TError Get(ui64 handle, ui64* nodeId) const
-    {
-        ui64 slotNo = 0;
-        THandleSlot slot{};
-        auto error = Slots->Get(0 /* lsn */, handle, &slot, &slotNo);
-        if (error.GetCode() == E_FS_NOENT) {
-            return ErrorInvalidHandle(handle);
-        }
-
-        if (HasError(error)) {
-            return error;
-        }
-
-        *nodeId = slot.NodeId;
-        return {};
-    }
-
-    [[nodiscard]] NProto::TError CollectStats(
-        TFileSystemShardStats* stats) const
-    {
-        TPersistentHashTableStats slotStats;
-        auto e = Slots->CollectStats(&slotStats);
-        if (HasError(e)) {
-            return e;
-        }
-
-        stats->TotalHandleCount = slotStats.SlotCount;
-        stats->UsedHandleCount = slotStats.ValueCount;
-        return {};
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1157,19 +608,21 @@ public:
         const ui64 nodeTableOffset = firstPageNo * PageSize;
         SILK_INFO("node table offset=%lu", nodeTableOffset);
         const ui64 nodeTablePageCount =
-            Nodes.Init(Config, firstPageNo, PageStore);
+            Nodes.Init(Config.GetNodesPerGroup(), firstPageNo, PageStore);
         firstPageNo += nodeTablePageCount;
 
         const ui64 nameTableOffset = firstPageNo * PageSize;
         SILK_INFO("name table offset=%lu", nameTableOffset);
         const ui64 nameTablePageCount =
-            Names.Init(Config, firstPageNo, PageStore);
+            Names.Init(Config.GetNodesPerGroup(), firstPageNo, PageStore);
         firstPageNo += nameTablePageCount;
 
         const ui64 handleTableOffset = firstPageNo * PageSize;
         SILK_INFO("handle table offset=%lu", handleTableOffset);
+        const ui64 handlesPerFile = 10;
+        const ui64 handlesPerGroup = handlesPerFile * Config.GetNodesPerGroup();
         const ui64 handleTablePageCount =
-            Handles.Init(Config, firstPageNo, PageStore);
+            Handles.Init(handlesPerGroup, firstPageNo, PageStore);
         firstPageNo += handleTablePageCount;
 
         const ui64 pageIndexOffset = firstPageNo * PageSize;
@@ -1370,7 +823,7 @@ public:
             std::lock_guard g(Mutex);
             wcg.Init();
 
-            TVector<ui64> pageClusterIdsToDeallocate;
+            TVector<ui64> pagesToDeallocate;
             TVector<ui64> storagePageClusterIdsToDeallocate;
 
             error = Nodes.UpdateNode(
@@ -1378,7 +831,7 @@ public:
                 request.GetFlags(),
                 request.GetUpdate(),
                 response.MutableNode(),
-                &pageClusterIdsToDeallocate,
+                &pagesToDeallocate,
                 writeContext);
             if (HasError(error)) {
                 SILK_LOG(
@@ -1386,10 +839,21 @@ public:
                     "[%s] SetNodeAttr::Nodes.UpdateNode error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
-                pageClusterIdsToDeallocate.clear();
+                pagesToDeallocate.clear();
             }
 
-            for (ui64 pageClusterId: pageClusterIdsToDeallocate) {
+            Y_DEBUG_ABORT_UNLESS(
+                IsSorted(pagesToDeallocate.begin(), pagesToDeallocate.end()));
+
+            ui64 prevPageClusterId = Max<ui64>();
+            for (ui64 pageNo: pagesToDeallocate) {
+                ui64 pageClusterId = pageNo / PageClusterPageCount;
+                if (pageClusterId == prevPageClusterId) {
+                    continue;
+                }
+
+                prevPageClusterId = pageClusterId;
+
                 lc.PageClusterIds.push_back(pageClusterId);
 
                 TNodePageClusterSlot slot{};
