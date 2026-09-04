@@ -125,7 +125,8 @@ void AccountSkippedBlobsAndBlocks(
     const TAffectedBlobs& affectedBlobs,
     const TAffectedBlobs& blobsSkippedByCommitId,
     ui32& blobsSkipped,
-    ui32& blocksSkipped);
+    ui32& blocksSkipped,
+    ui32& mixedBlocksSkipped);
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -999,7 +999,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT(ab.MaxCommitIdInCompactionRange > compactionCommitId);
         UNIT_ASSERT(!ab.RecreatedBlobMeta);
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            1,
             result.RangeCompactionInfos[0].BlobsSkippedByCompaction);
         UNIT_ASSERT_VALUES_EQUAL(
             1,
@@ -1062,13 +1062,14 @@ Y_UNIT_TEST_SUITE(TAccountSkippedBlobsAndBlocksTest)
 {
     Y_UNIT_TEST(ShouldAddMixedAndMergedCommitIdSkipsToExistingCounters)
     {
-        const auto activeMixedBlobId = TPartialBlobId(1, 0);
-        const auto skippedMixedBlobId = TPartialBlobId(2, 0);
-        const auto skippedMergedBlobId = TPartialBlobId(3, 0);
+        const auto activeMixedBlobId = TPartialBlobId(1, 0, 3, 1024, 0, 0);
+        const auto skippedMixedBlobId = TPartialBlobId(2, 0, 3, 1024, 0, 0);
+        const auto skippedMergedBlobId = TPartialBlobId(3, 0, 3, 1024, 0, 0);
 
         TAffectedBlobs affectedBlobs;
         auto& activeMixedBlob = affectedBlobs[activeMixedBlobId];
         activeMixedBlob.MinCommitIdInCompactionRange = CommitId - 1;
+        activeMixedBlob.MaxCommitIdInCompactionRange = CommitId + 2;
         activeMixedBlob.MixedBlobsSpecificInfo.ConstructInPlace();
         activeMixedBlob.MixedBlobsSpecificInfo->AllVisitedBlocks = {
             {.BlockIndex = 1, .CommitId = CommitId - 1},
@@ -1094,8 +1095,9 @@ Y_UNIT_TEST_SUITE(TAccountSkippedBlobsAndBlocksTest)
         skippedMergedBlob.MergedBlobsSpecificInfo.ConstructInPlace();
         skippedMergedBlob.MergedBlobsSpecificInfo->BlocksInRange = 4;
 
-        ui32 blobsSkipped = 5;
-        ui32 blocksSkipped = 7;
+        ui32 blobsSkipped = 0;
+        ui32 blocksSkipped = 0;
+        ui32 mixedBlocksSkipped = 0;
 
         AccountSkippedBlobsAndBlocks(
             CommitId,
@@ -1103,10 +1105,12 @@ Y_UNIT_TEST_SUITE(TAccountSkippedBlobsAndBlocksTest)
             affectedBlobs,
             blobsSkippedByCommitId,
             blobsSkipped,
-            blocksSkipped);
+            blocksSkipped,
+            mixedBlocksSkipped);
 
-        UNIT_ASSERT_VALUES_EQUAL(7, blobsSkipped);
-        UNIT_ASSERT_VALUES_EQUAL(16, blocksSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(3, blobsSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(9, blocksSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(5, mixedBlocksSkipped);
     }
 }
 

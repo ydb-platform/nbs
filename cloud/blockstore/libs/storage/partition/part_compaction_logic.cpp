@@ -789,6 +789,10 @@ void AccountSkippedBlobsAndBlocks(
     // of the range compaction. So they are visible for compaction map.
     blobsSkipped += blobsSkippedByCommitId.size();
     for (const auto& [blobId, ab]: blobsSkippedByCommitId) {
+        if (IsDeletionMarker(blobId)) {
+            continue;
+        }
+
         switch (*ab.IndexKind) {
             case EChannelDataKind::Mixed:
 
@@ -828,7 +832,8 @@ void AccountSkippedBlobsAndBlocks(
         for (const auto& affectedBlock:
              ab.MixedBlobsSpecificInfo->AllVisitedBlocks)
         {
-            if (affectedBlock.CommitId > commitId) {
+            if (affectedBlock.CommitId > commitId && !IsDeletionMarker(blobId))
+            {
                 ++blocksSkipped;
                 ++mixedBlocksSkipped;
             }

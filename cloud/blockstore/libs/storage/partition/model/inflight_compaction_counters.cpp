@@ -91,6 +91,9 @@ TVector<ui32> TInflightCompactionCounters::FinishRangeCompaction(ui64 commitId)
                          << " not found");
 
     auto& compaction = it->second;
+    for (auto& counter: compaction.CountersForRangeIndices) {
+        counter.Stat.Compacted = true;
+    }
     CompactionMap.Update(compaction.CountersForRangeIndices, &UsedBlocks);
 
     TVector<ui32> rangeIndices = std::move(compaction.RangeIndices);

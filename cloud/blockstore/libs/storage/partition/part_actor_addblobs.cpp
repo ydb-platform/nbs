@@ -565,9 +565,6 @@ private:
             cm.GetRangeStart(blob.BlockRange.End));
 
         for (const ui64 blockIndex: xrange(range, cm.GetRangeSize())) {
-            if (IsDeletionMarker(blob.BlobId)) {
-                continue;
-            }
 
             const auto firstBlock =
                 Max<ui64>(blockIndex, blob.BlockRange.Start);
@@ -581,10 +578,11 @@ private:
                     ++skipped;
                 }
             }
+            const ui32 blockCount = lastBlock - firstBlock + 1 - skipped;
 
             IncrementCompactionCounters(
                 blockIndex,
-                /*blockCount*/ lastBlock - firstBlock + 1 - skipped,
+                /*blockCount*/ IsDeletionMarker(blob.BlobId) ? 0 : blockCount,
                 /*blobCount*/ 1,
                 /*mixedBlockCount*/ 0);
         }
@@ -701,6 +699,10 @@ private:
             return;
         }
 
+        const auto& cm = State.GetCompactionMap();
+
+        i64 newlyZeroedBlocksToDecrement = 0;
+
         // We should account for blocks and blobs skipped by compaction.
         for (const auto& kv: CompactionCounters) {
             IncrementCompactionCounters(
@@ -708,13 +710,20 @@ private:
                 kv.second.BlocksSkippedByCompaction,
                 kv.second.BlobsSkippedByCompaction,
                 kv.second.MixedBlockCountSkippedByCompaction);
+            auto rangeStat = cm.Get(kv.first);
+            newlyZeroedBlocksToDecrement += rangeStat.NewlyZeroedBlocks;
         }
+
+        State.SetNewlyZeroedBlocks(
+            static_cast<ui32>(std::max(
+                static_cast<i64>(State.GetNewlyZeroedBlocks()) -
+                    newlyZeroedBlocksToDecrement,
+                0L)));
 
         auto rangeIndicesToPersist =
             State.AccessInflightCompactionCounters()->FinishRangeCompaction(
                 Args.CommitId);
 
-        const auto& cm = State.GetCompactionMap();
         for (const auto& rangeIndex: rangeIndicesToPersist) {
             const ui32 blockIndex = rangeIndex * cm.GetRangeSize();
             const auto& rangeStat = cm.Get(blockIndex);
