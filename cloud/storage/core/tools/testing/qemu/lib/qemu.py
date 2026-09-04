@@ -199,8 +199,8 @@ class Qemu:
     def set_mount_paths(self, mount_paths):
         self.mount_paths = mount_paths
 
-    def _save_to_file(self):
-        self.qmp.command("migrate", uri="exec:cat > state_file_{}.bin".format(self.seqno))
+    def _migrate_to_uri(self, uri):
+        self.qmp.command("migrate", uri=uri)
 
         status = self.qmp.command("query-migrate")
         logger.info("migrate_status {}".format(json.dumps(status)))
@@ -211,7 +211,10 @@ class Qemu:
 
         if status['status'] != "completed":
             raise QemuException(status['status'])
+        return status
 
+    def _save_to_file(self):
+        self._migrate_to_uri(uri="exec:cat > state_file_{}.bin".format(self.seqno))
         self.qmp.close()
         self.qemu_bin.kill()
 
@@ -243,6 +246,9 @@ class Qemu:
             before_restore()
         self._restore_from_file(id, vhost_socket)
         self.seqno += 1
+
+    def migrate_to_uri(self, socket_uri):
+        return self._migrate_to_uri(socket_uri)
 
     def _create_cmd(self):
         qemu_serial_log = yatest.common.output_path(
