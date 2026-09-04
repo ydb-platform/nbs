@@ -21,6 +21,7 @@ SRCS(
     service_actor_actions.cpp
     service_actor_alterfs.cpp
     service_actor_complete.cpp
+    service_actor_control_namespace.cpp
     service_actor_createfs.cpp
     service_actor_createhandle.cpp
     service_actor_createnode.cpp
@@ -39,6 +40,7 @@ SRCS(
     service_actor_ping.cpp
     service_actor_pingsession.cpp
     service_actor_readdata.cpp
+    service_actor_renamenode.cpp
     service_actor_statfs.cpp
     service_actor_update_stats.cpp
     service_actor_writedata.cpp
