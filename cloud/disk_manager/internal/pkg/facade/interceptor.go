@@ -218,7 +218,7 @@ func (i *interceptor) intercept(
 
 	logging.Debug(
 		ctx,
-		"requestName=%v, userIP=%q received",
+		"requestName=%v, requestIP=%q received",
 		requestName,
 		auth.GetUserIP(ctx),
 	)
