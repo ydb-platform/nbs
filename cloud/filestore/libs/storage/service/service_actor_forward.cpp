@@ -1,4 +1,5 @@
 #include "service_actor.h"
+#include "service_actor_control_namespace.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -204,6 +205,12 @@ void TStorageServiceActor::ForwardRequestToShard(
     bool forceBehaveAsShard,
     ui64 entityId)
 {
+    // Cheap to check before session lookup - only pays for the lookup below
+    // when it's actually needed.
+    const bool isControlNamespaceEntity =
+        !StorageConfig->GetControlNamespaceDirName().empty() &&
+        ClassifyControlNamespaceEntry(entityId) != EControlNamespaceEntry::None;
+
     auto* msg = ev->Get();
 
     const auto& clientId = GetClientId(msg->Record);
@@ -224,6 +231,15 @@ void TStorageServiceActor::ForwardRequestToShard(
         auto response = std::make_unique<typename TMethod::TResponse>(
             ErrorInvalidSession(clientId, sessionId, seqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    if (isControlNamespaceEntity) {
+        return NCloud::Reply(
+            ctx,
+            *ev,
+            BuildControlNamespaceResponse<TMethod>(
+                ev,
+                session->FileStore.GetFileSystemId()));
     }
     const NProto::TFileStore& filestore = session->FileStore;
 

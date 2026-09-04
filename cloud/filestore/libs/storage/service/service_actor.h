@@ -148,22 +148,32 @@ private:
     // answered here and the caller should return
     bool TryHandleControlNamespaceGetNodeAttr(
         const NActors::TActorContext& ctx,
-        const TEvService::TEvGetNodeAttrRequest::TPtr& ev);
+        const TEvService::TEvGetNodeAttrRequest::TPtr& ev,
+        const TSessionInfo* session);
     bool TryHandleControlNamespaceCreateHandle(
         const NActors::TActorContext& ctx,
-        const TEvService::TEvCreateHandleRequest::TPtr& ev);
+        const TEvService::TEvCreateHandleRequest::TPtr& ev,
+        const TSessionInfo* session);
     bool TryHandleControlNamespaceCreateNode(
         const NActors::TActorContext& ctx,
-        const TEvService::TEvCreateNodeRequest::TPtr& ev);
+        const TEvService::TEvCreateNodeRequest::TPtr& ev,
+        const TSessionInfo* session);
     bool TryHandleControlNamespaceReadData(
         const NActors::TActorContext& ctx,
-        const TEvService::TEvReadDataRequest::TPtr& ev);
+        const TEvService::TEvReadDataRequest::TPtr& ev,
+        const TSessionInfo* session);
     bool TryHandleControlNamespaceWriteData(
         const NActors::TActorContext& ctx,
-        const TEvService::TEvWriteDataRequest::TPtr& ev);
+        const TEvService::TEvWriteDataRequest::TPtr& ev,
+        const TSessionInfo* session);
     bool TryHandleControlNamespaceListNodes(
         const NActors::TActorContext& ctx,
-        const TEvService::TEvListNodesRequest::TPtr& ev);
+        const TEvService::TEvListNodesRequest::TPtr& ev,
+        const TSessionInfo* session);
+    // RenameNode resolves its own session - unlike the others, its normal
+    // (non-control) path has no caller-side session lookup to consolidate
+    // with (ForwardRequestToShard does its own internally), so threading one
+    // through here would just add a redundant lookup to every real rename.
     bool TryHandleControlNamespaceRenameNode(
         const NActors::TActorContext& ctx,
         const TEvService::TEvRenameNodeRequest::TPtr& ev);

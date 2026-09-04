@@ -135,6 +135,36 @@ TSessionInfo* TStorageServiceActor::GetAndValidateSession(
     return session;
 }
 
+// Also called from service_actor_control_namespace.cpp.
+template TSessionInfo*
+TStorageServiceActor::GetAndValidateSession<TEvService::TGetNodeAttrMethod>(
+    const NActors::TActorContext& ctx,
+    const TEvService::TGetNodeAttrMethod::TRequest::TPtr& ev);
+template TSessionInfo*
+TStorageServiceActor::GetAndValidateSession<TEvService::TCreateHandleMethod>(
+    const NActors::TActorContext& ctx,
+    const TEvService::TCreateHandleMethod::TRequest::TPtr& ev);
+template TSessionInfo*
+TStorageServiceActor::GetAndValidateSession<TEvService::TCreateNodeMethod>(
+    const NActors::TActorContext& ctx,
+    const TEvService::TCreateNodeMethod::TRequest::TPtr& ev);
+template TSessionInfo*
+TStorageServiceActor::GetAndValidateSession<TEvService::TRenameNodeMethod>(
+    const NActors::TActorContext& ctx,
+    const TEvService::TRenameNodeMethod::TRequest::TPtr& ev);
+template TSessionInfo*
+TStorageServiceActor::GetAndValidateSession<TEvService::TReadDataMethod>(
+    const NActors::TActorContext& ctx,
+    const TEvService::TReadDataMethod::TRequest::TPtr& ev);
+template TSessionInfo*
+TStorageServiceActor::GetAndValidateSession<TEvService::TWriteDataMethod>(
+    const NActors::TActorContext& ctx,
+    const TEvService::TWriteDataMethod::TRequest::TPtr& ev);
+template TSessionInfo*
+TStorageServiceActor::GetAndValidateSession<TEvService::TListNodesMethod>(
+    const NActors::TActorContext& ctx,
+    const TEvService::TListNodesMethod::TRequest::TPtr& ev);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -244,6 +274,25 @@ void TStorageServiceActor::ReplyToXAttrRequest(
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
+
+template void
+TStorageServiceActor::ReplyToXAttrRequest<TEvService::TGetNodeXAttrMethod>(
+    const TActorContext& ctx,
+    const TEvService::TGetNodeXAttrMethod::TRequest::TPtr& ev,
+    std::unique_ptr<TEvService::TGetNodeXAttrMethod::TResponse> response,
+    const TSessionInfo* session);
+template void
+TStorageServiceActor::ReplyToXAttrRequest<TEvService::TListNodeXAttrMethod>(
+    const TActorContext& ctx,
+    const TEvService::TListNodeXAttrMethod::TRequest::TPtr& ev,
+    std::unique_ptr<TEvService::TListNodeXAttrMethod::TResponse> response,
+    const TSessionInfo* session);
+template void
+TStorageServiceActor::ReplyToXAttrRequest<TEvService::TSetNodeXAttrMethod>(
+    const TActorContext& ctx,
+    const TEvService::TSetNodeXAttrMethod::TRequest::TPtr& ev,
+    std::unique_ptr<TEvService::TSetNodeXAttrMethod::TResponse> response,
+    const TSessionInfo* session);
 
 ///////////////////////////////////////////////////////////////////////////////
 

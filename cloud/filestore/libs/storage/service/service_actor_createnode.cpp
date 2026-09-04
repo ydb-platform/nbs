@@ -285,23 +285,18 @@ void TStorageServiceActor::HandleCreateNode(
 {
     auto* msg = ev->Get();
 
-    if (TryHandleControlNamespaceCreateNode(ctx, ev)) {
+    auto* session =
+        GetAndValidateSession<TEvService::TCreateNodeMethod>(ctx, ev);
+    if (!session) {
         return;
     }
 
-    const auto& clientId = GetClientId(msg->Record);
-    const auto& sessionId = GetSessionId(msg->Record);
-    const ui64 seqNo = GetSessionSeqNo(msg->Record);
-
-    auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId ||
-        !session->GetSessionActor(seqNo))
-    {
-        auto response = std::make_unique<TEvService::TEvCreateNodeResponse>(
-            ErrorInvalidSession(clientId, sessionId, seqNo));
-        return NCloud::Reply(ctx, *ev, std::move(response));
+    if (TryHandleControlNamespaceCreateNode(ctx, ev, session)) {
+        return;
     }
 
+    const auto& sessionId = GetSessionId(msg->Record);
+    const ui64 seqNo = GetSessionSeqNo(msg->Record);
     const NProto::TFileStore& filestore = session->FileStore;
 
     auto& headers = *msg->Record.MutableHeaders();
