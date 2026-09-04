@@ -50,6 +50,11 @@ message TCellConfig
 
     // Minimum number of hosts in a cell to have connections to.
     optional uint32 MinCellConnections = 10;
+
+    // While the Transport data endpoint is being set up, serve data over gRPC
+    // instead of waiting for it. The switch to Transport happens as soon as it is
+    // ready and is never undone.
+    optional bool GrpcDataFallbackEnabled = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

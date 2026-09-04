@@ -1,5 +1,7 @@
 #include "connection.h"
 
+#include "endpoint_router.h"
+#include "transport_switcher.h"
 #include "remote_storage.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -152,6 +154,49 @@ TFuture<typename TMethod::TResponse> TControlService::Execute(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+IBlockStorePtr CreateGrpcDataEndpoint(
+    const TBootstrap& bootstrap,
+    const TCellHostConfig& hostConfig,
+    const IBlockStorePtr& controlService)
+{
+    // a channel of its own, so that it dies with the endpoint rather than
+    // being shared by everyone talking to this host
+    const auto securePort = hostConfig.GetSecureGrpcPort();
+    auto endpoint = bootstrap.GrpcClient->CreateDataEndpoint(
+        hostConfig.GetFqdn(),
+        securePort ? securePort : hostConfig.GetGrpcPort(),
+        securePort != 0);
+
+    return endpoint ? std::move(endpoint) : controlService;
+}
+
+// Serves data over gRPC right away and switches over to RDMA as soon as it is
+// up, so that setting up RDMA does not hold the connection back.
+IBlockStorePtr CreateSwitchingDataEndpoint(
+    const TBootstrap& bootstrap,
+    const TCellHostConfig& hostConfig,
+    const IBlockStorePtr& controlService)
+{
+    auto router = CreateEndpointRouter(
+        CreateGrpcDataEndpoint(bootstrap, hostConfig, controlService));
+
+    StartTransportSwitching(
+        router,
+        [bootstrap, hostConfig]
+        {
+            return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
+                bootstrap,
+                hostConfig);
+        },
+        bootstrap.Timer,
+        bootstrap.Scheduler,
+        bootstrap.Logging,
+        hostConfig.GetFqdn(),
+        TTransportSwitcherConfig{});
+
+    return router;
+}
+
 NThreading::TFuture<TResultOrError<IBlockStorePtr>> SetupDataEndpoint(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
@@ -159,22 +204,21 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> SetupDataEndpoint(
 {
     switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_RDMA:
-            return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
-                bootstrap,
-                hostConfig);
-
-        case NProto::CELL_DATA_TRANSPORT_GRPC: {
-            // a channel of its own, so that it dies with the endpoint rather
-            // than being shared by everyone talking to this host
-            const auto securePort = hostConfig.GetSecureGrpcPort();
-            auto endpoint = bootstrap.GrpcClient->CreateDataEndpoint(
-                hostConfig.GetFqdn(),
-                securePort ? securePort : hostConfig.GetGrpcPort(),
-                securePort != 0);
+            if (!hostConfig.GetGrpcDataFallbackEnabled()) {
+                return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
+                    bootstrap,
+                    hostConfig);
+            }
 
             return MakeFuture(TResultOrError<IBlockStorePtr>(
-                endpoint ? std::move(endpoint) : controlService));
-        }
+                CreateSwitchingDataEndpoint(
+                    bootstrap,
+                    hostConfig,
+                    controlService)));
+
+        case NProto::CELL_DATA_TRANSPORT_GRPC:
+            return MakeFuture(TResultOrError<IBlockStorePtr>(
+                CreateGrpcDataEndpoint(bootstrap, hostConfig, controlService)));
 
         default:
             return MakeFuture(TResultOrError<IBlockStorePtr>(MakeError(
