@@ -4,13 +4,11 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     SRCS(
-        page_store.cpp
-        persistent_bitmap.cpp
-        persistent_hash_table.cpp
         shard.cpp
     )
 
     PEERDIR(
+        cloud/filestore/libs/storage/fastshard/impl/model
         cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/resources
         cloud/filestore/libs/storage/fastshard/ipc
 
