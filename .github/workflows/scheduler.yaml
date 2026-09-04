@@ -92,6 +92,9 @@ concurrency:
   
 
 env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: http.version
+  GIT_CONFIG_VALUE_0: HTTP/1.1
   disk_size: ${{ inputs.flavor == 'heavy' && ( vars.POOLED_HEAVY_DISK_SIZE_GB || 2046 ) || ( vars.POOLED_LIGHT_DISK_SIZE_GB || 1023 ) }}
   parent_id: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_PARENT_ID || vars.POOLED_LIGHT_PARENT_ID }}
   preset: ${{ inputs.flavor == 'heavy' && vars.POOLED_HEAVY_VM_PRESET || vars.POOLED_LIGHT_VM_PRESET }}

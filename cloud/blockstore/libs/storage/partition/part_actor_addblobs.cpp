@@ -69,6 +69,7 @@ private:
         TRangeStat Stat;
         ui32 BlobsSkippedByCompaction = 0;
         ui32 BlocksSkippedByCompaction = 0;
+        ui32 MixedBlockCountSkippedByCompaction = 0;
     };
 
     TDenseHash<ui32, TRangeInfo> CompactionCounters{
@@ -116,10 +117,13 @@ public:
                 const auto& cm = State.GetCompactionMap();
                 const auto blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
                 auto& rangeInfo = CompactionCounters[blockIndex];
-                rangeInfo.BlobsSkippedByCompaction =
+                rangeInfo.BlobsSkippedByCompaction +=
                     Args.MixedBlobCompactionInfos[i].BlobsSkippedByCompaction;
-                rangeInfo.BlocksSkippedByCompaction =
+                rangeInfo.BlocksSkippedByCompaction +=
                     Args.MixedBlobCompactionInfos[i].BlocksSkippedByCompaction;
+                rangeInfo.MixedBlockCountSkippedByCompaction +=
+                    Args.MixedBlobCompactionInfos[i]
+                        .MixedBlockCountSkippedByCompaction;
             }
         }
 
@@ -143,10 +147,13 @@ public:
                 Y_DEBUG_ABORT_UNLESS(
                     blockIndex == cm.GetRangeStart(blob.BlockRange.End));
                 auto& rangeInfo = CompactionCounters[blockIndex];
-                rangeInfo.BlobsSkippedByCompaction =
+                rangeInfo.BlobsSkippedByCompaction +=
                     Args.MergedBlobCompactionInfos[i].BlobsSkippedByCompaction;
-                rangeInfo.BlocksSkippedByCompaction =
+                rangeInfo.BlocksSkippedByCompaction +=
                     Args.MergedBlobCompactionInfos[i].BlocksSkippedByCompaction;
+                rangeInfo.MixedBlockCountSkippedByCompaction +=
+                    Args.MergedBlobCompactionInfos[i]
+                        .MixedBlockCountSkippedByCompaction;
             }
         }
 
@@ -188,6 +195,59 @@ public:
     }
 
 private:
+    void IncrementBlobCounters(
+        const TPartialBlobId& blobId,
+        EChannelDataKind indexKind,
+        ui64 blocksCount)
+    {
+        // Deletion markers contribute to blob totals, but not block totals.
+        if (IsDeletionMarker(blobId)) {
+            blocksCount = 0;
+        }
+
+        switch (indexKind) {
+            case EChannelDataKind::Mixed:
+                State.IncrementMixedIndexBlobsCount(1);
+                State.IncrementMixedIndexBlocksCount(blocksCount);
+                break;
+            case EChannelDataKind::Merged:
+                State.IncrementMergedIndexBlobsCount(1);
+                State.IncrementMergedIndexBlocksCount(blocksCount);
+                break;
+            default:
+                Y_ABORT(
+                    "Unexpected index kind: %u", static_cast<ui32>(indexKind));
+        }
+
+        // Deletion markers do not have a data channel.
+        if (IsDeletionMarker(blobId) &&
+            State.ShouldUseBlobChannelDataKindForCounters())
+        {
+            return;
+        }
+
+        // If channel-based counters are enabled, use the channel data kind
+        // otherwise use the index kind
+        const auto countersKind =
+            State.ShouldUseBlobChannelDataKindForCounters()
+                ? State.GetChannelDataKind(blobId.Channel())
+                : indexKind;
+        switch (countersKind) {
+            case EChannelDataKind::Mixed:
+                State.IncrementMixedBlobsCount(1);
+                State.IncrementMixedBlocksCount(blocksCount);
+                break;
+            case EChannelDataKind::Merged:
+                State.IncrementMergedBlobsCount(1);
+                State.IncrementMergedBlocksCount(blocksCount);
+                break;
+            default:
+                Y_ABORT(
+                    "Unexpected blob channel data kind: %u",
+                    static_cast<ui32>(countersKind));
+        }
+    }
+
     void ProcessNewBlob(
         const TActorContext& ctx,
         TPartitionDatabase& db,
@@ -249,10 +309,10 @@ private:
             blob.CompactionRangeCount);
 
         // update counters
-        State.IncrementMixedBlobsCount(1);
-        if (!IsDeletionMarker(blob.BlobId)) {
-            State.IncrementMixedBlocksCount(blob.Blocks.size());
-        }
+        IncrementBlobCounters(
+            blob.BlobId,
+            EChannelDataKind::Mixed,
+            blob.Blocks.size());
     }
 
     void ProcessNewBlob(
@@ -312,10 +372,10 @@ private:
         db.WriteMergedBlocks(blob.BlobId, blob.BlockRange, blob.SkipMask);
 
         // update counters
-        State.IncrementMergedBlobsCount(1);
-        if (!IsDeletionMarker(blob.BlobId)) {
-            State.IncrementMergedBlocksCount(blob.BlockRange.Size() - skipped);
-        }
+        IncrementBlobCounters(
+            blob.BlobId,
+            EChannelDataKind::Merged,
+            blob.BlockRange.Size() - skipped);
 
         State.ConfirmedBlobsAdded(db, Args.CommitId);
     }
@@ -416,10 +476,10 @@ private:
         }
 
         // update counters
-        State.IncrementMixedBlobsCount(1);
-        if (!IsDeletionMarker(blob.BlobId)) {
-            State.IncrementMixedBlocksCount(blob.Blocks.size());
-        }
+        IncrementBlobCounters(
+            blob.BlobId,
+            EChannelDataKind::Mixed,
+            blob.Blocks.size());
     }
 
     void ProcessOverwrittenBlocks(const TAddFreshBlob& blob)
@@ -522,6 +582,9 @@ private:
                     rangeStat->BlockCount + 1,
                     &rangeStat->BlockCount
                 );
+                TCompactionMap::UpdateCompactionCounter(
+                    rangeStat->MixedBlockCount + 1,
+                    &rangeStat->MixedBlockCount);
             }
         }
     }
@@ -562,6 +625,8 @@ private:
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
                 newlyZeroedBlocks,
+                kv.second.Stat.MixedBlockCount +
+                    kv.second.MixedBlockCountSkippedByCompaction,
                 Args.Mode == ADD_COMPACTION_RESULT);
         }
     }

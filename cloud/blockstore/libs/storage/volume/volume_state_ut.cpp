@@ -2603,6 +2603,98 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             UNIT_ASSERT_VALUES_EQUAL(res.Error.GetCode(), E_INVALID_STATE);
         }
     }
+
+    Y_UNIT_TEST(ShouldRestrictOperationsWhileLeaderLinkCreationIsPending)
+    {
+        auto volumeState = CreateVolumeState();
+
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+
+        volumeState.StartCreateLeaderRequest();
+        UNIT_ASSERT(volumeState.IsVolumeOperationRestricted());
+
+        volumeState.FinishCreateLeaderRequest();
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+    }
+
+    Y_UNIT_TEST(ShouldRestrictOperationsUntilCheckpointDataIsDeleted)
+    {
+        auto volumeState = CreateVolumeState();
+        auto& store = volumeState.GetCheckpointStore();
+
+        const auto& request = store.MakeCreateCheckpointRequest(
+            "checkpoint",
+            TInstant::Now(),
+            ECheckpointRequestType::Create,
+            ECheckpointType::Normal,
+            false);
+
+        UNIT_ASSERT(!volumeState.IsCreateCheckpointOperationRestricted());
+        UNIT_ASSERT(volumeState.IsVolumeOperationRestricted());
+
+        store.SetCheckpointRequestInProgress(request.RequestId);
+        store.SetCheckpointRequestSaved(request.RequestId);
+        store.SetCheckpointRequestFinished(
+            request.RequestId,
+            true,
+            {},
+            EShadowDiskState::None);
+
+        UNIT_ASSERT(!volumeState.IsCreateCheckpointOperationRestricted());
+        UNIT_ASSERT(volumeState.IsVolumeOperationRestricted());
+
+        const auto& deleteDataRequest = store.MakeDeleteCheckpointDataRequest(
+            "checkpoint",
+            TInstant::Now());
+        store.SetCheckpointRequestInProgress(deleteDataRequest.RequestId);
+        store.SetCheckpointRequestSaved(deleteDataRequest.RequestId);
+        store.SetCheckpointRequestFinished(
+            deleteDataRequest.RequestId,
+            true,
+            {},
+            EShadowDiskState::None);
+
+        const auto checkpoint = store.GetCheckpoint("checkpoint");
+        UNIT_ASSERT(checkpoint);
+        UNIT_ASSERT(checkpoint->Data == ECheckpointData::DataDeleted);
+        UNIT_ASSERT(store.GetCheckpointsWithData().empty());
+        UNIT_ASSERT(!volumeState.IsCreateCheckpointOperationRestricted());
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+    }
+
+    Y_UNIT_TEST(ShouldNotRestrictOperationsForCheckpointWithoutData)
+    {
+        auto volumeState = CreateVolumeState();
+        auto& store = volumeState.GetCheckpointStore();
+
+        const auto& request = store.MakeCreateCheckpointRequest(
+            "checkpoint",
+            TInstant::Now(),
+            ECheckpointRequestType::CreateWithoutData,
+            ECheckpointType::Normal,
+            false);
+
+        UNIT_ASSERT(!store.HasCheckpointCreationRequest());
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+
+        store.SetCheckpointRequestSaved(request.RequestId);
+        UNIT_ASSERT(!store.HasCheckpointCreationRequest());
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+
+        store.SetCheckpointRequestInProgress(request.RequestId);
+        UNIT_ASSERT(!store.HasCheckpointCreationRequest());
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+
+        store.SetCheckpointRequestFinished(
+            request.RequestId,
+            true,
+            {},
+            EShadowDiskState::None);
+
+        UNIT_ASSERT(!store.HasCheckpointCreationRequest());
+        UNIT_ASSERT(store.GetCheckpointsWithData().empty());
+        UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

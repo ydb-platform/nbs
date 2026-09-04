@@ -91,8 +91,18 @@ class FilestoreCliClient:
             "--filesystem", fs,
         ] + self.__cmd_opts()
 
-        logger.info("destroying filestore: " + " ".join(cmd))
-        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+        # destroy asks to confirm by typing the filesystem id to stdin
+        with tempfile.NamedTemporaryFile(mode="w+") as confirmation:
+            confirmation.write(fs)
+            confirmation.flush()
+            confirmation.seek(0)
+
+            logger.info("destroying filestore: " + " ".join(cmd))
+            return common.execute(
+                cmd,
+                env=self.__env,
+                stdin=confirmation,
+                check_exit_code=self.__check_exit_code).stdout
 
     def mount(self, fs, path, mount_seqno=0, readonly=False):
         cmd = [
@@ -155,6 +165,20 @@ class FilestoreCliClient:
             cmd.append("--force-directory-creation-in-shards")
 
         logger.info("resizing filestore: " + " ".join(cmd))
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def alter(self, fs, cloud, folder, config_version=None):
+        cmd = [
+            self.__binary_path, "alter",
+            "--filesystem", fs,
+            "--cloud", cloud,
+            "--folder", folder,
+        ] + self.__cmd_opts()
+
+        if config_version is not None:
+            cmd += ["--config-version", str(config_version)]
+
+        logger.info("altering filestore: " + " ".join(cmd))
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
     def list_filestores(self):
@@ -481,12 +505,22 @@ class FilestoreCliClient:
     def mkdir(self, cmd):
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    @standard_command("write")
-    def write(self, cmd):
+    def write(self, fs, path=None, *custom_opts, node=None):
+        cmd = [self.__binary_path, "write", "--filesystem", fs]
+        if path is not None:
+            cmd += ["--path", path]
+        if node is not None:
+            cmd += ["--node", str(node)]
+        cmd += self.__cmd_opts() + [*custom_opts]
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    @standard_command("read")
-    def read(self, cmd):
+    def read(self, fs, path=None, *custom_opts, node=None):
+        cmd = [self.__binary_path, "read", "--filesystem", fs]
+        if path is not None:
+            cmd += ["--path", path]
+        if node is not None:
+            cmd += ["--node", str(node)]
+        cmd += self.__cmd_opts() + [*custom_opts]
         return common.execute(cmd).stdout
 
     @standard_command("touch")

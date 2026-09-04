@@ -116,6 +116,11 @@ on:
         description: "sleep_after_tests"
         value: ${{ jobs.build-and-test.outputs.sleep_after_tests }}
 
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: http.version
+  GIT_CONFIG_VALUE_0: HTTP/1.1
+
 jobs:
   build-and-test:
     name: Build and test [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}] [id=${{ inputs.runner_instance_id }} ip=${{ inputs.runner_ipv4 }}]

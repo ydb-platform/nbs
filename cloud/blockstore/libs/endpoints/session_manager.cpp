@@ -878,15 +878,20 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
     IStoragePtr storage;
 
     if (!cellId.empty()) {
-        auto result = CellManager->GetCellEndpoint(
+        auto future = CellManager->CreateConnection(
             cellId,
-            clientConfig);
+            {},   // any live configured host
+            clientConfig,
+            nullptr);
+
+        const auto& result = Executor->WaitFor(future);
         if (HasError(result)) {
             return result.GetError();
         }
 
-        service = result.GetResult().GetService();
-        storage = result.GetResult().GetStorage();
+        auto connection = result.GetResult();
+        service = connection->GetService();
+        storage = connection->GetStorage();
     } else {
         auto future =
             StorageProvider->CreateStorage(volume, clientId, accessMode);

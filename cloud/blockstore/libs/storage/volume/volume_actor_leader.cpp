@@ -145,6 +145,28 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
         }
     }
 
+    if (auto* request = State->FindCreateFollowerRequestInfo(link)) {
+        request->Requests.push_back(requestInfo);
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Link %s creation already in progress",
+            LogTitle.GetWithTime().c_str(),
+            request->Link.Describe().c_str());
+        return;
+    }
+
+    if (State->IsVolumeOperationRestricted()) {
+        auto response =
+            std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
+                MakeError(
+                    E_TRY_AGAIN,
+                    "CreateVolumeLink is not allowed while another exclusive "
+                    "volume operation is in progress on the leader volume"));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
     // Save create link request.
     auto& createFollowerRequest = State->AccessCreateFollowerRequestInfo(link);
     createFollowerRequest.Requests.push_back(requestInfo);

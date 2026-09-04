@@ -43,7 +43,6 @@ type Storage interface {
 	DeletingFilesystemSnapshot(
 		ctx context.Context,
 		snapshotID string,
-		taskID string,
 	) (*FilesystemSnapshotMeta, error)
 
 	GetFilesystemSnapshotsToDelete(
@@ -77,16 +76,22 @@ type Storage interface {
 		ctx context.Context,
 	) (storageSize uint64, err error)
 
+	// LockFilesystemSnapshot prevents deletion while any lock remains. Multiple
+	// callers can lock the same snapshot successfully without waiting for existing
+	// locks to be released; repeated calls with the same taskID are idempotent.
 	LockFilesystemSnapshot(
 		ctx context.Context,
 		snapshotID string,
-		lockTaskID string,
-	) (locked bool, err error)
+		taskID string,
+	) error
 
+	// UnlockFilesystemSnapshot removes the lock owned by taskID. It is
+	// idempotent, including for deleting or missing snapshots; deletion is
+	// unblocked after the last lock is removed.
 	UnlockFilesystemSnapshot(
 		ctx context.Context,
 		snapshotID string,
-		lockTaskID string,
+		taskID string,
 	) error
 
 	GetFilesystemSnapshotMeta(

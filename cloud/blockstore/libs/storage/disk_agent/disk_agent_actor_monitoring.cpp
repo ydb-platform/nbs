@@ -116,6 +116,8 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                     TABLEH() { out << "IOMMU group"; }
                     TABLEH() { out << "VFIO device"; }
                     TABLEH() { out << "NUMA node"; }
+                    TABLEH() { out << "F/W Rev"; }
+                    TABLEH() { out << "State"; }
                 }
 
                 for (const auto& d: devices) {
@@ -130,17 +132,30 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                         TABLED () {
                             if (d.HasIOMMUGroup()) {
                                 out << d.GetIOMMUGroup();
+                            } else {
+                                out << "N/A";
                             }
                         }
                         TABLED () {
                             if (d.HasVfioDevName()) {
                                 out << d.GetVfioDevName();
+                            } else {
+                                out << "N/A";
                             }
                         }
                         TABLED () {
                             if (d.HasNumaNode()) {
                                 out << d.GetNumaNode();
+                            } else {
+                                out << "N/A";
                             }
+                        }
+                        TABLED () {
+                            out << d.GetFirmwareRev();
+                        }
+                        TABLED () {
+                            out << NProto::ENVMeDeviceState_Name(
+                                d.GetDeviceState());
                         }
                     }
                 }

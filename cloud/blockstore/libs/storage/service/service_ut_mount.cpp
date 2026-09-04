@@ -18,6 +18,7 @@
 #include <util/generic/guid.h>
 #include <util/generic/size_literals.h>
 #include <util/string/escape.h>
+#include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -5128,8 +5129,17 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             response->GetErrorReason()
         );
 
-        // Resize volume request updates volume config
-        service.ResizeVolume(DefaultDiskId, DefaultBlocksCount * 2);
+        NPrivateProto::TModifyTagsRequest modifyTagsRequest;
+        modifyTagsRequest.SetDiskId(DefaultDiskId);
+        *modifyTagsRequest.AddTagsToAdd() = "fill-seq-number-test";
+
+        TString input;
+        google::protobuf::util::MessageToJsonString(modifyTagsRequest, &input);
+        auto modifyTagsResponse = service.ExecuteAction("ModifyTags", input);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            modifyTagsResponse->GetStatus(),
+            modifyTagsResponse->GetErrorReason());
 
         service.SendMountVolumeRequest(
             DefaultDiskId,
@@ -5141,8 +5151,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0,  // fillSeqNumber
-            1   // fillGeneration
+            0,   // fillSeqNumber
+            1    // fillGeneration
         );
 
         {
@@ -6370,6 +6380,23 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         }
 
         service.UnmountVolume(DefaultDiskId, sessionId);
+    }
+
+    Y_UNIT_TEST(ShouldReportTabletHostInMountResponse)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+
+        auto response = service.MountVolume();
+        UNIT_ASSERT_C(!HasError(response->GetError()), response->GetError());
+        UNIT_ASSERT_VALUES_EQUAL(
+            FQDNHostName(),
+            response->Record.GetTabletHost());
+
+        service.UnmountVolume(DefaultDiskId, response->Record.GetSessionId());
     }
 }
 

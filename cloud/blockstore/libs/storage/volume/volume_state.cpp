@@ -1058,14 +1058,24 @@ TVolumeState::GetDevicesForAcquireOrRelease() const
 TCreateFollowerRequestInfo& TVolumeState::AccessCreateFollowerRequestInfo(
     const TLeaderFollowerLink& link)
 {
-    for (auto& requestInfo: CreateFollowerRequests) {
-        if (requestInfo.Link.Match(link)) {
-            return requestInfo;
-        }
+    if (auto* requestInfo = FindCreateFollowerRequestInfo(link)) {
+        return *requestInfo;
     }
 
     CreateFollowerRequests.push_back(TCreateFollowerRequestInfo{.Link = link});
     return CreateFollowerRequests.back();
+}
+
+TCreateFollowerRequestInfo* TVolumeState::FindCreateFollowerRequestInfo(
+    const TLeaderFollowerLink& link)
+{
+    for (auto& requestInfo: CreateFollowerRequests) {
+        if (requestInfo.Link.Match(link)) {
+            return &requestInfo;
+        }
+    }
+
+    return nullptr;
 }
 
 void TVolumeState::DeleteCreateFollowerRequestInfo(
@@ -1075,6 +1085,18 @@ void TVolumeState::DeleteCreateFollowerRequestInfo(
         CreateFollowerRequests,
         [&](const TCreateFollowerRequestInfo& requestInfo)
         { return requestInfo.Link.Match(link); });
+}
+
+void TVolumeState::StartCreateLeaderRequest()
+{
+    Y_DEBUG_ABORT_UNLESS(!CreateLeaderRequestInProgress);
+    CreateLeaderRequestInProgress = true;
+}
+
+void TVolumeState::FinishCreateLeaderRequest()
+{
+    Y_DEBUG_ABORT_UNLESS(CreateLeaderRequestInProgress);
+    CreateLeaderRequestInProgress = false;
 }
 
 std::optional<TFollowerDiskInfo> TVolumeState::FindFollower(
@@ -1251,6 +1273,35 @@ void TVolumeState::UpdateScrubberCounters(TScrubbingInfo counters)
     ScrubbingInfo.FixedPartial.insert(
         counters.FixedPartial.begin(),
         counters.FixedPartial.end());
+}
+
+bool TVolumeState::IsVolumeOperationRestricted() const
+{
+    if (IsCreateCheckpointOperationRestricted() ||
+        GetCheckpointStore().HasCheckpointCreationRequest() ||
+        !GetCheckpointStore().GetCheckpointsWithData().empty())
+    {
+        return true;
+    }
+
+    if (const auto& config = Meta.GetVolumeConfig();
+        config.GetFillGeneration() != 0 && !config.GetIsFillFinished())
+    {
+        return true;
+    }
+
+    return false;
+}
+
+bool TVolumeState::IsCreateCheckpointOperationRestricted() const
+{
+    const bool createFollowerRequestInProgress =
+        !CreateFollowerRequests.empty();
+    if (CreateLeaderRequestInProgress || createFollowerRequestInProgress) {
+        return true;
+    }
+
+    return HasActiveLink();
 }
 
 bool TVolumeState::CanPreemptClient(
@@ -1478,6 +1529,23 @@ void TVolumeState::MarkBlocksAsDirtyInCheckpointLight(const TBlockRange64& block
     // local mounted client has read only access
     return !LocalMountClientId.empty() &&
             LocalMountClientId != ReadWriteAccessClientId;
+}
+
+[[nodiscard]] bool TVolumeState::HasActiveLink() const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.State != TFollowerDiskInfo::EState::Error) {
+            return true;
+        }
+    }
+
+    for (const auto& leader: LeaderDisks) {
+        if (leader.State == TLeaderDiskInfo::EState::Following) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

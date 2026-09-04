@@ -285,9 +285,11 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
             // Validate there are enough free inodes. The restriction is not
             // enforced if the request comes from the main FS to the shard.
-            if (!HasNodesLeft() && !behaveAsShard) {
-                args.Error = ErrorNoSpaceLeft();
-                return true;
+            if (!behaveAsShard) {
+                if (!HasNodesLeft(args.QuotaId)) {
+                    args.Error = ErrorNoSpaceLeft();
+                    return true;
+                }
             }
 
             auto shardId = args.RequestShardId;

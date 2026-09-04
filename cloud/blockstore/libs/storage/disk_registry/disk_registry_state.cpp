@@ -6200,7 +6200,12 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
     ApplyDeviceStateChange(db, *agentPtr, *devicePtr, now, affectedDisk);
 
     if (newState == NProto::DEVICE_STATE_ERROR) {
-        RemoveDeviceFromPendingCleanup(db, deviceId);
+        auto cleanupDiskId = RemoveDeviceFromPendingCleanup(db, deviceId);
+        if (!cleanupDiskId.empty()) {
+            Y_DEBUG_ABORT_UNLESS(
+                affectedDisk.empty() || affectedDisk == cleanupDiskId);
+            affectedDisk = std::move(cleanupDiskId);
+        }
     }
 
     return error;
@@ -7564,7 +7569,13 @@ auto TDiskRegistryState::QueryAvailableStorage(
             continue;
         }
 
-        if (DeviceList.IsSuspendedDevice(device.GetDeviceUUID())) {
+        const bool isSuspended =
+            StorageConfig
+                    ->GetQueryAvailableStorageForResumingDevicesEnabled()
+                ? DeviceList.IsSuspendedAndNotResumingDevice(
+                      device.GetDeviceUUID())
+                : DeviceList.IsSuspendedDevice(device.GetDeviceUUID());
+        if (isSuspended) {
             continue;
         }
 
@@ -7706,17 +7717,17 @@ NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
     return PendingCleanup.Insert(diskId, std::move(devicesAllowedToBeCleaned));
 }
 
-void TDiskRegistryState::RemoveDeviceFromPendingCleanup(
+TDiskRegistryState::TDiskId TDiskRegistryState::RemoveDeviceFromPendingCleanup(
     TDiskRegistryDatabase& db,
     const TDeviceId& deviceId)
 {
-    if (!IsDirtyDevice(deviceId) || PendingCleanup.FindDiskId(deviceId).empty())
-    {
-        return;
+    TDiskId diskId = PendingCleanup.EraseDevice(deviceId);
+
+    if (IsDirtyDevice(deviceId)) {
+        db.UpdateDirtyDevice(deviceId, {});
     }
 
-    PendingCleanup.EraseDevice(deviceId);
-    db.UpdateDirtyDevice(deviceId, {});
+    return diskId;
 }
 
 NProto::TError TDiskRegistryState::DeallocateDiskReplicas(

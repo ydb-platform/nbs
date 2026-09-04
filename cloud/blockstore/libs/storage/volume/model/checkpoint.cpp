@@ -232,6 +232,23 @@ bool TCheckpointStore::IsCheckpointBeingCreated() const
     return CheckpointBeingCreated;
 }
 
+bool TCheckpointStore::HasCheckpointCreationRequest() const
+{
+    for (const auto& [_, request]: CheckpointRequests) {
+        const bool isCreationRequest =
+            request.ReqType == ECheckpointRequestType::Create;
+        const bool isPending =
+            request.State == ECheckpointRequestState::Received ||
+            request.State == ECheckpointRequestState::Saved;
+
+        if (isCreationRequest && isPending) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool TCheckpointStore::DoesCheckpointBlockingWritesExist() const
 {
     return CheckpointBlockingWritesBeingCreated ||

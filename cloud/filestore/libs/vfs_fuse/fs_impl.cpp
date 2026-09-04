@@ -487,9 +487,9 @@ void TFileSystem::ProcessHandleOpsQueue()
     } else if (entry.HasQueuedCreateHandleRequest()) {
         const auto& requestInfo = entry.GetQueuedCreateHandleRequest();
         auto request = CreateConfirmCreateHandleRequest(
-            requestInfo.GetRequest(),
             requestInfo.GetNodeId(),
             requestInfo.GetHandle(),
+            requestInfo.GetFlags(),
             requestInfo.GetOriginalRequestId());
 
         STORAGE_DEBUG(

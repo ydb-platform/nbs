@@ -259,6 +259,10 @@ void TStorageServiceActor::HandleCreateHandle(
 {
     auto* msg = ev->Get();
 
+    if (TryHandleControlNamespaceCreateHandle(ctx, ev)) {
+        return;
+    }
+
     if (msg->Record.GetName().empty()) {
         // handle creation by NodeId can be handled directly by the shard
         ForwardRequestToShard<TEvService::TCreateHandleMethod>(

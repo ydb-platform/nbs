@@ -349,4 +349,11 @@ TStorageServiceActor::ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
     bool forceBehaveAsShard,
     ui64 entityId);
 
+template void
+TStorageServiceActor::ForwardRequestToShard<TEvService::TRenameNodeMethod>(
+    const TActorContext& ctx,
+    const TEvService::TRenameNodeMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
+    ui64 entityId);
+
 }   // namespace NCloud::NFileStore::NStorage

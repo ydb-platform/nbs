@@ -76,6 +76,10 @@ on:
         type: string
         default: ""
         description: "Per ya make test attempt timeout in minutes"
+      image_id:
+        type: string
+        default: ""
+        description: "Nebius image id to use for VM"
   workflow_call:
     inputs:
       actions_checkout_ref:
@@ -163,8 +167,15 @@ on:
         type: string
         default: ""
         description: "Per ya make test attempt timeout in minutes"
+      image_id:
+        type: string
+        default: ""
+        description: "Nebius image id to use for VM"
 
 env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: http.version
+  GIT_CONFIG_VALUE_0: HTTP/1.1
   allow_downgrade: ${{ vars.GLOBAL_ALLOW_DOWNGRADE == 'yes' || ((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'allow-downgrade')) || inputs.allow_downgrade == 'yes') }}
 
 jobs:
@@ -210,7 +221,7 @@ jobs:
           vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
           vm_disk_size: ${{ vars.POOLED_HEAVY_DISK_SIZE_GB || '1023' }}
           vm_subnet: ${{ vars.POOLED_HEAVY_SUBNET_ID }}
-          vm_image: ${{ vars.POOLED_HEAVY_IMAGE_ID_2204 }}
+          vm_image: ${{ inputs.image_id != '' && inputs.image_id || vars.POOLED_HEAVY_IMAGE_ID_2204 }}
           vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
           vm_allow_downgrade: ${{ env.allow_downgrade == 'true' && 'yes' || 'no' }}

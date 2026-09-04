@@ -50,14 +50,12 @@ struct IPersistentStorage
      *
      * On failure, returns nullptr if the buffer is full or an error if
      * allocation is not possible due to corruption or invalid argument.
-     *
-     * Note: only one allocation is possible at a time. Repeated Alloc will
-     * return an error.
      */
     [[nodiscard]] virtual TResultOrError<char*> Alloc(size_t size) = 0;
 
     /**
-     * Commits previously allocated memory buffer.
+     * Completes the previously made allocation by calculating checksum and
+     * making the allocation visible.
      *
      * Once committed, it is not allowed to modify the contents of the allocated
      * entry. If there is a need to augment the allocation with additional data,
@@ -66,10 +64,22 @@ struct IPersistentStorage
      * Memory that was allocated but not committed will be lost at buffer
      * recreation.
      *
-     * An error is returned if there is no incomplete allocation or the buffer
-     * is corrupted.
+     * An error is returned if there is no incomplete allocation corresponding
+     * to the provided pointer or the buffer is corrupted.
      */
-    [[nodiscard]] virtual NProto::TError Commit() = 0;
+    [[nodiscard]] virtual NProto::TError Commit(const void* ptr) = 0;
+
+    /**
+     * Commits the previously allocated memory buffer but takes a checksum
+     * provided by the caller instead of calculating it.
+     *
+     * Note: the checksum is not validated, the calling code has responsibility
+     * to provide the correct Crc32c checksum. Passing an incorrect checksum may
+     * lead to a corruption error.
+     */
+    [[nodiscard]] virtual NProto::TError Commit(
+        const void* ptr,
+        ui32 crc32c) = 0;
 
     /**
      * Frees a previously allocated and committed buffer.

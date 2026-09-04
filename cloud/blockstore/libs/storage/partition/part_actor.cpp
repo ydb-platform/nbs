@@ -1496,6 +1496,19 @@ void TPartitionActor::HandleUpdateResourceMetrics(
     State->UpdateWithThreadSafeStats(SharedState->PartStats);
 }
 
+void TPartitionActor::HandleGetCompactionCounters(
+    const TEvPartitionPrivate::TEvGetCompactionCountersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    auto response = std::make_unique<
+        TEvPartitionPrivate::TEvGetCompactionCountersResponse>(
+        State->GetCompactionMap().Get(msg->BlockIndex));
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
 void TPartitionActor::HandleGetFreshChannelsInfo(
     const TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -1509,6 +1522,8 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
 
     SharedState->UnflushedFreshBlobByteCount.store(
         State->GetUnflushedFreshBlobByteCount());
+    SharedState->UnflushedFreshBlocksCount.store(
+        State->GetUnflushedFreshBlocksCount());
 
     response->SharedState = SharedState;
 

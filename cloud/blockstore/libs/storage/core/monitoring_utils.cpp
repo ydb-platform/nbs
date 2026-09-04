@@ -899,31 +899,84 @@ void DumpPartitionStats(
                             << ")";
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Mixed blobs count"; }
-                    TABLED() { out << stats.GetMixedBlobsCount(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Mixed channel blobs count";
+                    }
+                    TABLED () {
+                        out << stats.GetMixedBlobsCount();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Mixed blocks count"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Mixed channel blocks count";
+                    }
+                    TABLED () {
                         out << stats.GetMixedBlocksCount() << " ("
-                            << FormatByteSize(blockSize * stats.GetMixedBlocksCount())
+                            << FormatByteSize(
+                                   blockSize * stats.GetMixedBlocksCount())
                             << ")";
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Merged blobs count"; }
-                    TABLED() { out << stats.GetMergedBlobsCount(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Merged channel blobs count";
+                    }
+                    TABLED () {
+                        out << stats.GetMergedBlobsCount();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Merged blocks count"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Merged channel blocks count";
+                    }
+                    TABLED () {
                         out << stats.GetMergedBlocksCount() << " ("
-                            << FormatByteSize(blockSize * stats.GetMergedBlocksCount())
+                            << FormatByteSize(
+                                   blockSize * stats.GetMergedBlocksCount())
                             << ")";
                     }
                 }
-                TABLER() {
+                TABLER () {
+                    TABLED () {
+                        out << "Mixed index blobs count";
+                    }
+                    TABLED () {
+                        out << stats.GetMixedIndexBlobsCount();
+                    }
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "Mixed index blocks count";
+                    }
+                    TABLED () {
+                        out << stats.GetMixedIndexBlocksCount() << " ("
+                            << FormatByteSize(
+                                   blockSize * stats.GetMixedIndexBlocksCount())
+                            << ")";
+                    }
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "Merged index blobs count";
+                    }
+                    TABLED () {
+                        out << stats.GetMergedIndexBlobsCount();
+                    }
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "Merged index blocks count";
+                    }
+                    TABLED () {
+                        out << stats.GetMergedIndexBlocksCount() << " ("
+                            << FormatByteSize(
+                                   blockSize *
+                                   stats.GetMergedIndexBlocksCount())
+                            << ")";
+                    }
+                }
+                TABLER () {
                     TABLED() { out << "Used blocks count"; }
                     TABLED() {
                         out << stats.GetUsedBlocksCount() << " ("

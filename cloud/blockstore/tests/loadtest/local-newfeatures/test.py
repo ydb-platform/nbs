@@ -595,7 +595,7 @@ def __run_test(test_case):
     server.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
     server.ServerConfig.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
     server.ServerConfig.EndpointStorageDir = endpoint_storage_dir
-    server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
+    server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig(PermanentActorCount=10))
 
     env = LocalLoadTest(
         "",

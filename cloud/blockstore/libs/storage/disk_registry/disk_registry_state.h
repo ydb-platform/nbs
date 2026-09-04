@@ -1291,7 +1291,7 @@ private:
         const TString& diskId,
         TVector<TDeviceId> uuids);
 
-    void RemoveDeviceFromPendingCleanup(
+    TDiskId RemoveDeviceFromPendingCleanup(
         TDiskRegistryDatabase& db,
         const TDeviceId& deviceId);
 

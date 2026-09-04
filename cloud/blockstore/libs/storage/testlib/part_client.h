@@ -155,6 +155,9 @@ public:
     std::unique_ptr<TEvPartitionCommonPrivate::TEvTrimFreshLogRequest>
     CreateTrimFreshLogRequest();
 
+    std::unique_ptr<TEvPartitionPrivate::TEvGetCompactionCountersRequest>
+    CreateGetCompactionCountersRequest(ui32 blockIndex);
+
     template <typename... TArgs>
     std::unique_ptr<TEvPartitionPrivate::TEvCompactionRequest>
     CreateCompactionRequest(TArgs&&... args)

@@ -9,21 +9,41 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EModeType
+{
+    Unknown,
+    Path,
+    Node,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadCommand final
     : public TFileStoreCommand
 {
 private:
+    EModeType Mode = EModeType::Unknown;
     TString Path;
+    ui64 NodeId = 0;
     ui64 Offset;
     ui64 Length;
 
 public:
     TReadCommand()
     {
-        Opts.AddLongOption("path")
-            .Required()
+        const TString PathOptionName = "path";
+        Opts.AddLongOption(PathOptionName)
             .RequiredArgument("PATH")
-            .StoreResult(&Path);
+            .StoreResult(&Path)
+            .Handler0([this] { Mode = EModeType::Path; });
+
+        const TString NodeOptionName = "node";
+        Opts.AddLongOption(NodeOptionName)
+            .RequiredArgument("ID")
+            .StoreResult(&NodeId)
+            .Handler0([this] { Mode = EModeType::Node; });
+
+        Opts.MutuallyExclusive(PathOptionName, NodeOptionName);
 
         Opts.AddLongOption("offset")
             .RequiredArgument("INT")
@@ -38,26 +58,43 @@ public:
 
     bool Execute() override
     {
+        Y_ENSURE(
+            Mode != EModeType::Unknown,
+            "--path or --node must be specified");
+
         auto sessionGuard = CreateSession();
         auto& session = sessionGuard.AccessSession();
 
-        const auto resolved = ResolvePath(session, Path, false);
+        NProto::TNodeAttr node;
+        switch (Mode) {
+            case EModeType::Path:
+                node = ResolvePath(session, Path, false).back().Node;
+                break;
+            case EModeType::Node: {
+                auto attrRequest = CreateRequest<NProto::TGetNodeAttrRequest>();
+                attrRequest->SetNodeId(NodeId);
+
+                auto attrResponse = WaitFor(session.GetNodeAttr(
+                    PrepareCallContext(),
+                    std::move(attrRequest)));
+
+                CheckResponse(attrResponse);
+
+                node = attrResponse.GetNode();
+                break;
+            }
+            case EModeType::Unknown:
+                Y_ABORT("unreachable");
+        }
 
         Y_ENSURE(
-            resolved.back().Node.GetType() != NProto::E_DIRECTORY_NODE,
-            "can't read a directory node"
-        );
-
-        Y_ABORT_UNLESS(resolved.size() >= 2);
-
-        const auto& parent = resolved[resolved.size() - 2];
-
-        static const int flags = ProtoFlag(NProto::TCreateHandleRequest::E_READ);
+            node.GetType() != NProto::E_DIRECTORY_NODE,
+            "can't read a directory node");
 
         auto createRequest = CreateRequest<NProto::TCreateHandleRequest>();
-        createRequest->SetNodeId(parent.Node.GetId());
-        createRequest->SetName(ToString(resolved.back().Name));
-        createRequest->SetFlags(flags);
+        createRequest->SetNodeId(node.GetId());
+        createRequest->SetFlags(
+            ProtoFlag(NProto::TCreateHandleRequest::E_READ));
 
         auto createResponse = WaitFor(session.CreateHandle(
             PrepareCallContext(),
@@ -69,7 +106,7 @@ public:
 
         if (!Length) {
             // TODO pass proper block size
-            Length = AlignUp(resolved.back().Node.GetSize() - Offset, 4_KB);
+            Length = AlignUp(node.GetSize() - Offset, 4_KB);
         }
 
         auto readRequest = CreateRequest<NProto::TReadDataRequest>();

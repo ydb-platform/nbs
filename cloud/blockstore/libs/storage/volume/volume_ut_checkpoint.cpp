@@ -5666,6 +5666,39 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT(seenReleaseShadowDiskForAnyReader);
         UNIT_ASSERT(seenReleaseShadowDiskForAnyWriter);
     }
+
+    Y_UNIT_TEST(ShouldQueueConcurrentCreateCheckpointRequests)
+    {
+        NProto::TStorageServiceConfig config;
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        volume.SendCreateCheckpointRequest("c1");
+        volume.SendCreateCheckpointRequest("c2");
+        volume.SendCreateCheckpointRequest("c1");
+
+        ui32 successCount = 0;
+        ui32 alreadyCount = 0;
+        for (ui32 i = 0; i < 3; ++i) {
+            auto response = volume.RecvCreateCheckpointResponse();
+            switch (response->GetStatus()) {
+                case S_OK:
+                    ++successCount;
+                    break;
+                case S_ALREADY:
+                    ++alreadyCount;
+                    break;
+                default:
+                    UNIT_FAIL(response->GetErrorReason());
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, successCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, alreadyCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

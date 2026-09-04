@@ -47,7 +47,8 @@ void DoUpdate(ui64 diskSize, benchmark::State& state)
                  .MaxReadBandwidth = 15_MB,
                  .MaxWriteIops = 1000,
                  .MaxWriteBandwidth = 15_MB,
-                 .MaxBlobsPerRange = 70}));
+                 .MaxBlobsPerRange = 70},
+                0));
 
         compactionMap.Update(counters, &usedBlocks);
     }
@@ -87,6 +88,8 @@ void DoUpdateRandomized(ui64 diskSize, benchmark::State& state)
         const ui16 statBlockCount =
             static_cast<ui16>(RandomNumber<ui32>(BlocksInRange + 1)); // [0, BlocksInRange]
         const ui16 usedBlockCount = RandomUsedBlockCount(statBlockCount);
+        const ui16 mixedBlockCount = static_cast<ui16>(
+            RandomNumber<ui32>(statBlockCount + 1)); // [0, statBlockCount]
         const float score = 0.1f * RandomNumber<float>(); // [0.0, 0.1]
 
         auto rangeStat = TRangeStat(
@@ -98,6 +101,7 @@ void DoUpdateRandomized(ui64 diskSize, benchmark::State& state)
             0,
             false,
             score);
+        rangeStat.MixedBlockCount = mixedBlockCount;
 
         counters.emplace_back(i * BlocksInRange, rangeStat);
 
@@ -117,7 +121,8 @@ void DoUpdateRandomized(ui64 diskSize, benchmark::State& state)
                  .MaxReadBandwidth = 15_MB,
                  .MaxWriteIops = 1000,
                  .MaxWriteBandwidth = 15_MB,
-                 .MaxBlobsPerRange = 70}));
+                 .MaxBlobsPerRange = 70},
+                0));
 
         compactionMap.Update(counters, &usedBlocks);
     }

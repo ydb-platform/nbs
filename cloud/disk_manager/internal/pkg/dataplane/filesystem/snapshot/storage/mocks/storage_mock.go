@@ -40,10 +40,9 @@ func (s *StorageMock) FilesystemSnapshotCreated(
 func (s *StorageMock) DeletingFilesystemSnapshot(
 	ctx context.Context,
 	snapshotID string,
-	taskID string,
 ) (*storage.FilesystemSnapshotMeta, error) {
 
-	args := s.Called(ctx, snapshotID, taskID)
+	args := s.Called(ctx, snapshotID)
 	return args.Get(0).(*storage.FilesystemSnapshotMeta), args.Error(1)
 }
 
@@ -102,20 +101,20 @@ func (s *StorageMock) GetTotalFilesystemSnapshotStorageSize(ctx context.Context)
 func (s *StorageMock) LockFilesystemSnapshot(
 	ctx context.Context,
 	snapshotID string,
-	lockTaskID string,
-) (locked bool, err error) {
+	taskID string,
+) error {
 
-	args := s.Called(ctx, snapshotID, lockTaskID)
-	return args.Get(0).(bool), args.Error(1)
+	args := s.Called(ctx, snapshotID, taskID)
+	return args.Error(0)
 }
 
 func (s *StorageMock) UnlockFilesystemSnapshot(
 	ctx context.Context,
 	snapshotID string,
-	lockTaskID string,
+	taskID string,
 ) error {
 
-	args := s.Called(ctx, snapshotID, lockTaskID)
+	args := s.Called(ctx, snapshotID, taskID)
 	return args.Error(0)
 }
 

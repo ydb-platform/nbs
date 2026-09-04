@@ -36,23 +36,21 @@ func (t *deleteFilesystemSnapshotTask) Load(request, state []byte) error {
 
 func (t *deleteFilesystemSnapshotTask) deleteFilesystemSnapshot(
 	ctx context.Context,
-	execCtx tasks.ExecutionContext,
 ) error {
 
 	_, err := t.storage.DeletingFilesystemSnapshot(
 		ctx,
 		t.request.SnapshotId,
-		execCtx.GetTaskID(),
 	)
 	return err
 }
 
 func (t *deleteFilesystemSnapshotTask) Run(
 	ctx context.Context,
-	execCtx tasks.ExecutionContext,
+	_ tasks.ExecutionContext,
 ) error {
 
-	err := t.deleteFilesystemSnapshot(ctx, execCtx)
+	err := t.deleteFilesystemSnapshot(ctx)
 	if err != nil {
 		return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 	}
@@ -62,10 +60,10 @@ func (t *deleteFilesystemSnapshotTask) Run(
 
 func (t *deleteFilesystemSnapshotTask) Cancel(
 	ctx context.Context,
-	execCtx tasks.ExecutionContext,
+	_ tasks.ExecutionContext,
 ) error {
 
-	return t.deleteFilesystemSnapshot(ctx, execCtx)
+	return t.deleteFilesystemSnapshot(ctx)
 }
 
 func (t *deleteFilesystemSnapshotTask) GetMetadata(

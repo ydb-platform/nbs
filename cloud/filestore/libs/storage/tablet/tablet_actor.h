@@ -12,6 +12,7 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/core/blob_id.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
@@ -278,7 +279,7 @@ private:
         const auto count = Min<int>(blobIds.size(), flags.size());
         for (int i = 0; i < count; ++i) {
             const auto blobId =
-                NKikimr::LogoBlobIDFromLogoBlobID(blobIds.Get(i));
+                LogoBlobIDFromLogoBlobID(blobIds.Get(i));
             const double share = i < shares.size() ? shares.Get(i) : 0;
             RegisterEvPutResult(
                 ctx,
@@ -708,6 +709,10 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
+    void HandleHttpInfo_FastShardLayoutJson(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
     void HandleHttpInfo_FastShardLayout(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
@@ -929,9 +934,8 @@ private:
 
     void UpdateLogTag();
 
-    bool HasBlocksLeft(ui64 blocksRequired) const;
-    bool HasSpaceLeft(ui64 prevSize, ui64 newSize) const;
-    bool HasNodesLeft() const;
+    bool HasSpaceLeft(ui64 prevSize, ui64 newSize, ui32 quotaId) const;
+    bool HasNodesLeft(ui32 quotaId) const;
 
     std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabase(
         NKikimr::NTable::TDatabase& database);

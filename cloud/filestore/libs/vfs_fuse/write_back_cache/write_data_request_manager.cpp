@@ -432,7 +432,7 @@ auto TWriteDataRequestManager::TryStoreRequestInPersistentStorage(
         memoryOutput.Exhausted(),
         "Buffer is expected to be written completely");
 
-    auto commitResult = PersistentStorage->Commit();
+    auto commitResult = PersistentStorage->Commit(allocationPtr);
     if (HasError(commitResult)) {
         return {.Failed = true};
     }

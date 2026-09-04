@@ -10,6 +10,7 @@ namespace NCloud::NFileStore::NClient {
 ////////////////////////////////////////////////////////////////////////////////
 
 TCommandPtr NewAddClusterNodeCommand();
+TCommandPtr NewAlterCommand();
 TCommandPtr NewCreateCommand();
 TCommandPtr NewDescribeCommand();
 TCommandPtr NewDestroyCommand();
@@ -59,6 +60,7 @@ using TFactoryMap = TMap<TString, TFactoryFunc>;
 static const TMap<TString, TFactoryFunc> Commands = {
     { "acquirelock", NewAcquireLockCommand },
     { "addclusternode", NewAddClusterNodeCommand },
+    { "alter", NewAlterCommand },
     { "create", NewCreateCommand },
     { "createsession", NewCreateSessionCommand },
     { "describe", NewDescribeCommand },

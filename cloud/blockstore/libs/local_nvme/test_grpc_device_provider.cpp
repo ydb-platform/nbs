@@ -32,6 +32,20 @@ struct TTestServiceTrait
     }
 };
 
+auto GetDeviceState(const NTest::NProto::EDeviceState state)
+{
+    switch (state) {
+        case NTest::NProto::DEVICE_STATE_ACTIVE:
+            return NProto::NVME_DEVICE_STATE_ONLINE;
+        case NTest::NProto::DEVICE_STATE_INACTIVE:
+            return NProto::NVME_DEVICE_STATE_OFFLINE;
+        case NTest::NProto::DEVICE_STATE_DECOMMISSIONED:
+            return NProto::NVME_DEVICE_STATE_MAINTENANCE;
+        default:
+            return NProto::NVME_DEVICE_STATE_OFFLINE;
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestGrpcDeviceProvider: ILocalNVMeDeviceProvider
@@ -77,6 +91,7 @@ struct TTestGrpcDeviceProvider: ILocalNVMeDeviceProvider
                         auto& dst = devices.emplace_back();
                         dst.SetPCIAddress(src.GetPCIeAddress());
                         dst.SetSerialNumber(src.GetSerialNumber());
+                        dst.SetDeviceState(GetDeviceState(src.GetState()));
                     }
 
                     return devices;

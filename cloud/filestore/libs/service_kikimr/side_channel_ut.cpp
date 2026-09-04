@@ -1,8 +1,11 @@
 #include "side_channel.h"
 
+#include <cloud/filestore/libs/diagnostics/profile_log.h>
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 
+#include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -47,6 +50,29 @@ struct TTestAsyncEndpoint: public IAsyncEndpoint
         UNIT_ASSERT(Response.Initialized());
         Response.SetValue(std::move(r));
         return true;
+    }
+};
+
+struct TTestProfileLog: public IProfileLog
+{
+    TAdaptiveLock Lock;
+    TVector<TRecord> Records;
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    void Write(TRecord record) override
+    {
+        auto g = Guard(Lock);
+        Records.push_back(std::move(record));
+    }
+
+    void RegisterCounters(NMonitoring::TDynamicCounters& root) override
+    {
+        Y_UNUSED(root);
     }
 };
 
@@ -165,7 +191,10 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
     {
         auto logging = CreateLoggingService("console", { TLOG_DEBUG });
         auto client = std::make_shared<TTestAsyncClient>();
-        auto sideChannel = CreateTCPSideChannel(*logging, client);
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
 
         auto writeResponse = NewPromise<NProto::TWriteDataResponse>();
         bool success = sideChannel->ExecuteRequest(
@@ -228,11 +257,168 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
             readResponse.GetValue().GetBuffer());
     }
 
+    Y_UNIT_TEST(ShouldWriteProfileLogRecords)
+    {
+        auto logging = CreateLoggingService("console", { TLOG_DEBUG });
+        auto client = std::make_shared<TTestAsyncClient>();
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
+
+        //
+        // A request which the side channel refuses to dispatch is served and
+        // profile-logged by the main channel - no record should appear here.
+        //
+
+        auto writeResponse = NewPromise<NProto::TWriteDataResponse>();
+        bool success = sideChannel->ExecuteRequest(
+            CC(),
+            WriteReq(1, 100, TString(1_KB, 'a')),
+            writeResponse);
+        UNIT_ASSERT(!success);
+        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Records.size());
+
+        sideChannel->Update(BackendInfo());
+
+        TConnInfo connInfo;
+        auto e = client->CompleteConnection(&connInfo);
+        UNIT_ASSERT(e);
+
+        success = sideChannel->ExecuteRequest(
+            CC(),
+            WriteReq(1, 100, TString(1_KB, 'a')),
+            writeResponse);
+        UNIT_ASSERT(success);
+        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Records.size());
+
+        timer->AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT(e->Reply(WriteResp(MakeError(S_ALREADY))));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, profileLog->Records.size());
+        {
+            const auto& record = profileLog->Records[0];
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, record.FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(EFileStoreRequest::WriteData),
+                record.Request.GetRequestType());
+            UNIT_ASSERT_VALUES_EQUAL(0, record.Request.GetTimestampMcs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1'000'000,
+                record.Request.GetDurationMcs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_ALREADY,
+                record.Request.GetErrorCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, record.Request.RangesSize());
+            const auto& range = record.Request.GetRanges(0);
+            UNIT_ASSERT_VALUES_EQUAL(1, range.GetHandle());
+            UNIT_ASSERT_VALUES_EQUAL(100, range.GetOffset());
+            UNIT_ASSERT_VALUES_EQUAL(1_KB, range.GetBytes());
+        }
+
+        auto readResponse = NewPromise<NProto::TReadDataResponse>();
+        success = sideChannel->ExecuteRequest(
+            CC(),
+            ReadReq(1, 200, 1_KB),
+            readResponse);
+        UNIT_ASSERT(success);
+
+        timer->AdvanceTime(TDuration::Seconds(3));
+        UNIT_ASSERT(e->Reply(ReadResp(MakeError(S_OK), TString(1_KB, 'b'))));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, profileLog->Records.size());
+        {
+            const auto& record = profileLog->Records[1];
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, record.FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(EFileStoreRequest::ReadData),
+                record.Request.GetRequestType());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1'000'000,
+                record.Request.GetTimestampMcs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                3'000'000,
+                record.Request.GetDurationMcs());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, record.Request.GetErrorCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, record.Request.RangesSize());
+            const auto& range = record.Request.GetRanges(0);
+            UNIT_ASSERT_VALUES_EQUAL(1, range.GetHandle());
+            UNIT_ASSERT_VALUES_EQUAL(200, range.GetOffset());
+            UNIT_ASSERT_VALUES_EQUAL(1_KB, range.GetBytes());
+            UNIT_ASSERT_VALUES_EQUAL(1_KB, range.GetActualBytes());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDropBrokenEndpoints)
+    {
+        auto logging = CreateLoggingService("console", { TLOG_DEBUG });
+        auto client = std::make_shared<TTestAsyncClient>();
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
+
+        sideChannel->Update(BackendInfo());
+
+        TConnInfo connInfo;
+        auto e = client->CompleteConnection(&connInfo);
+        UNIT_ASSERT(e);
+
+        //
+        // A top-level E_UNAVAILABLE response means the connection is broken -
+        // the error should be propagated and the endpoint should not go back
+        // to the pool.
+        //
+
+        auto writeResponse = NewPromise<NProto::TWriteDataResponse>();
+        bool success = sideChannel->ExecuteRequest(
+            CC(),
+            WriteReq(1, 0, TString(1_KB, 'a')),
+            writeResponse);
+        UNIT_ASSERT(success);
+
+        NProtoSrv::TResponse brokenResp;
+        *brokenResp.MutableError() =
+            MakeError(E_UNAVAILABLE, "recv length failed: 104");
+        UNIT_ASSERT(e->Reply(std::move(brokenResp)));
+
+        UNIT_ASSERT(writeResponse.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_UNAVAILABLE,
+            writeResponse.GetValue().GetError().GetCode());
+
+        //
+        // The next request should not reuse the broken endpoint - it should
+        // trigger a new connection attempt instead.
+        //
+
+        auto readResponse = NewPromise<NProto::TReadDataResponse>();
+        success = sideChannel->ExecuteRequest(
+            CC(),
+            ReadReq(1, 0, 1_KB),
+            readResponse);
+        UNIT_ASSERT(success);
+        UNIT_ASSERT(!e->RequestReceived);
+
+        auto e2 = client->CompleteConnection(&connInfo);
+        UNIT_ASSERT(e2);
+        UNIT_ASSERT(e2->RequestReceived);
+
+        UNIT_ASSERT(e2->Reply(ReadResp(MakeError(S_OK), TString(1_KB, 'b'))));
+        UNIT_ASSERT(readResponse.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            readResponse.GetValue().GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldProcessRequestsBeforeConnectionCompletes)
     {
         auto logging = CreateLoggingService("console", { TLOG_DEBUG });
         auto client = std::make_shared<TTestAsyncClient>();
-        auto sideChannel = CreateTCPSideChannel(*logging, client);
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
 
         sideChannel->Update(BackendInfo());
 
@@ -272,7 +458,10 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
     {
         auto logging = CreateLoggingService("console", { TLOG_DEBUG });
         auto client = std::make_shared<TTestAsyncClient>();
-        auto sideChannel = CreateTCPSideChannel(*logging, client);
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
 
         sideChannel->Update(BackendInfo());
 
@@ -329,7 +518,10 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
     {
         auto logging = CreateLoggingService("console", { TLOG_DEBUG });
         auto client = std::make_shared<TTestAsyncClient>();
-        auto sideChannel = CreateTCPSideChannel(*logging, client);
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
 
         sideChannel->Update(BackendInfo());
 
@@ -400,7 +592,10 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
     {
         auto logging = CreateLoggingService("console", { TLOG_RESOURCES });
         auto client = std::make_shared<TTestAsyncClient>();
-        auto sideChannel = CreateTCPSideChannel(*logging, client);
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
 
         sideChannel->Update(BackendInfo());
 
@@ -495,7 +690,10 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
     {
         auto logging = CreateLoggingService("console", { TLOG_DEBUG });
         auto client = std::make_shared<TTestAsyncClient>();
-        auto sideChannel = CreateTCPSideChannel(*logging, client);
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
 
         sideChannel->Update(BackendInfo());
 

@@ -21,7 +21,7 @@ PEERDIR(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/fmdtest/configs/nfs-storage-persistent-fastshard.txt
+    cloud/filestore/tests/fastshard/fmdtest/configs/nfs-storage-persistent-fastshard.txt
 )
 
 # Naive-mirrored talks to the disk-agent's journalled_device_tcp_server,
@@ -29,7 +29,7 @@ SET(
 # and open a fast-shard port for the tablet <-> shard control path.
 SET(
     NFS_SERVICE_CONFIG_PATCH
-    cloud/filestore/tests/fmdtest/configs/vhost-sidechannel.txt
+    cloud/filestore/tests/fastshard/fmdtest/configs/vhost-sidechannel.txt
 )
 SET(USE_FAST_SHARD_PORT yes)
 

@@ -173,6 +173,15 @@ void AppendVolatileConfigs(NFyaml::TDocument& config, NFyaml::TNodeRef& volatile
 void AppendDatabaseConfig(NFyaml::TDocument& config, NFyaml::TDocument& databaseConfig);
 
 /**
+ * Resolves per-database config selectors in isolation.
+ * Applies matching selectors from the database config's own selector_config,
+ * strips selector_config and allowed_labels from the document,
+ * and preserves all existed YAML tags on 'config' nodes at all levels for downstream merging.
+ * No-op if the document has no selector_config or allowed_labels.
+ */
+void ResolveDatabaseConfig(NFyaml::TDocument& doc, const TSet<TNamedLabel>& labels);
+
+/**
  * Parses config version
  */
 ui64 GetVersion(const TString& config);

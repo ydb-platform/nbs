@@ -5,8 +5,11 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 
+#include <cloud/filestore/libs/diagnostics/public.h>
+
 #include <cloud/filestore/public/api/protos/headers.pb.h>
 
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 namespace NCloud::NFileStore {
@@ -36,6 +39,8 @@ public:
 
 ISideChannelPtr CreateTCPSideChannel(
     ILoggingService& logging,
+    IProfileLogPtr profileLog,
+    ITimerPtr timer,
     std::shared_ptr<NStorage::NFastShard::IAsyncClient> client);
 
 }   // namespace NCloud::NFileStore

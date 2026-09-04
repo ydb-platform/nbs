@@ -263,7 +263,7 @@ TEST_F(TBufferPoolTest, ShouldSetLkeyAndRkeyToBuffers)
     constexpr ui32 Lkey = 1;
     constexpr ui32 Rkey = 2;
     EXPECT_CALL(*Verbs, RegisterMemoryRegion(&pd, _, 4_MB, 0))
-        .WillOnce(Invoke(
+        .WillOnce(
             [](ibv_pd* pd, void* addr, size_t length, int flags)
             {
                 Y_UNUSED(pd, flags);
@@ -274,7 +274,7 @@ TEST_F(TBufferPoolTest, ShouldSetLkeyAndRkeyToBuffers)
                 mr->addr = addr;
                 mr->length = length;
                 return mr;
-            }));
+            });
 
     const auto& stats = Pool.GetStats();
     auto buffer1 = Pool.AcquireBuffer(4_KB);

@@ -24,6 +24,7 @@ SRCS(
     disk_agent_state.cpp
     disk_agent.cpp
     hash_table_storage.cpp
+    journalled_device.cpp
     rdma_target.cpp
     recent_blocks_tracker.cpp
     spdk_initializer.cpp

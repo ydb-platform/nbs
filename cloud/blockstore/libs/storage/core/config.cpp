@@ -9,6 +9,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
+#include <util/system/mutex.h>
 
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/util/message_differencer.h>
@@ -179,6 +180,22 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
         }})                                                                   )\
     xxx(ShapingThrottlerConfig,           NProto::TShapingThrottlerConfig, {} )\
+/* Safety-critical section of settings that must not be changed at runtime. */ \
+    xxx(FlushToDevNull,                                      bool, false      )\
+    xxx(AcquireNonReplicatedDevices,                         bool, false      )\
+    xxx(NonReplicatedDontSuspendDevices,                     bool, false      )\
+    xxx(NonReplicatedVolumeDirectAcquireEnabled,             bool, false      )\
+    xxx(DisableUsingIntermediateWriteBuffer,                 bool, false      )\
+    xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled, bool, false      )\
+    xxx(UseRecreatedBlobMetasOnCleanup,                      bool, false      )\
+    xxx(WaitForFreshWritesBeforeFlushEnabled,                bool, false      )\
+    xxx(OverlappingRequestsPolicy,                                             \
+        NProto::EOverlappingRequestsPolicy,                                    \
+        NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
+    xxx(RequestSplitterPolicy,                                                 \
+        NProto::ERequestSplitterPolicy,                                        \
+        NProto::ERequestSplitterPolicy::RSP_ENABLE                            )\
+/* Safety-critical section end.                                              */\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
@@ -257,7 +274,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(PipeClientMinRetryTime,        TDuration, Seconds(1)                  )\
     xxx(PipeClientMaxRetryTime,        TDuration, Seconds(4)                  )\
     xxx(FlushBlobSizeThreshold,        ui32,      4_MB                        )\
-    xxx(FlushToDevNull,                bool,      false                       )\
     xxx(CompactionRetryTimeout,        TDuration, Seconds(1)                  )\
     xxx(CleanupRetryTimeout,           TDuration, Seconds(1)                  )\
     xxx(MaxReadWriteRangeSize,         ui64,      4_GB                        )\
@@ -393,6 +409,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshByteCountThresholdForBackpressure,         ui32,   40_MB         )\
     xxx(FreshByteCountFeatureMaxValue,                  ui32,   10            )\
     xxx(FreshByteCountHardLimit,                        ui32,   256_MB        )\
+    xxx(FreshLogicalBlocksByteCountHardLimit,           ui64,   512_TB        )\
                                                                                \
     xxx(CleanupQueueBytesLimitForBackpressure,            ui64,   4_TB        )\
     xxx(CleanupQueueBytesThresholdForBackpressure,        ui64,   1_TB        )\
@@ -436,7 +453,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(NonReplicatedAgentDisconnectRecoveryInterval,  TDuration,  Minutes(1) )\
     xxx(NonReplicatedAgentTimeoutGrowthFactor,         double,     2          )\
                                                                                \
-    xxx(AcquireNonReplicatedDevices,                bool,       false         )\
     xxx(VolumePreemptionType,                                                  \
         NProto::EVolumePreemptionType,                                         \
         NProto::PREEMPTION_NONE                                               )\
@@ -544,7 +560,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RdmaTargetPort,                            ui32,      10020           )\
     xxx(UseNonreplicatedRdmaActor,                 bool,      false           )\
     xxx(UseRdma,                                   bool,      false           )\
-    xxx(NonReplicatedDontSuspendDevices,           bool,      false           )\
+    xxx(QueryAvailableStorageForResumingDevicesEnabled, bool, false           )\
     xxx(AddClientRetryTimeoutIncrement,            TDuration, MSeconds(100)   )\
     xxx(MaxNonReplicatedDiskDeallocationRequests,  ui32,      16              )\
     xxx(BalancerActionDelayInterval,               TDuration, Seconds(3)      )\
@@ -588,7 +604,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
                                                                                \
     xxx(UseDirectCopyRange,                             bool,      false         )\
-    xxx(NonReplicatedVolumeDirectAcquireEnabled,        bool,      false         )\
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
     xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
     xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\
@@ -608,7 +623,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
     xxx(MinScrubbingBandwidth,                          ui64,      5             )\
     xxx(AutomaticallyEnableBufferCopyingAfterChecksumMismatch, bool, false       )\
-    xxx(DisableUsingIntermediateWriteBuffer,                   bool, false       )\
     xxx(ScrubbingResyncPolicy,                                                    \
         NProto::EResyncPolicy,                                                    \
         NProto::EResyncPolicy::RESYNC_POLICY_MINOR_4MB                           )\
@@ -673,7 +687,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(RetryAcquireReleaseDiskInitialDelay,  TDuration,   MSeconds(100)      )\
     xxx(RetryAcquireReleaseDiskMaxDelay,      TDuration,   Seconds(5)         )\
                                                                                \
-    xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled, bool,   false    )\
     xxx(EnableDataIntegrityValidationForYdbBasedDisks,       bool,   false    )\
                                                                                \
     xxx(TrimFreshLogTimeout,                  TDuration,   Seconds(0)         )\
@@ -707,12 +720,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
     xxx(MaxInFlightCmsRequests,               ui32,        0                  )\
-    xxx(OverlappingRequestsPolicy,                                             \
-        NProto::EOverlappingRequestsPolicy,                                    \
-        NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
-    xxx(RequestSplitterPolicy,                                                 \
-        NProto::ERequestSplitterPolicy,                                        \
-        NProto::ERequestSplitterPolicy::RSP_ENABLE                            )\
     xxx(VolumeBalancerMaxInProgress,          ui64,        0                  )\
     xxx(ReadBlockMaskOnCompactionOptimizationEnabled,                          \
         bool,                                                                  \
@@ -723,15 +730,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeBalancerGentlePreemptionTimeout,      TDuration,  Hours(72)     )\
     xxx(SplitByCompactionRangeMaxBlobCount,         ui64,       0             )\
     xxx(VerifyRecreatedBlobMetasOnCleanup,          bool,       false         )\
-    xxx(UseRecreatedBlobMetasOnCleanup,             bool,       false         )\
                                                                                \
     xxx(AllowGentlePreemptionForRebindVolumesAction,    bool,   false         )\
                                                                                \
     xxx(MixedBlocksFilterEnabled,                   bool,       false         )\
-    xxx(WaitForFreshWritesBeforeFlushEnabled,       bool,       false         )\
     xxx(MixedBlocksFilterRangesToLoadPerTx,         ui64,       100           )\
     xxx(MixedBlocksFilterAllowedCpuTimePerSecond,   TDuration,  MSeconds(10)  )\
     xxx(CheckpointAwareCleanupEnabled,              bool,       false         )\
+    xxx(UseBlobChannelDataKindForCounters,          bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -1003,32 +1009,191 @@ constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStorageConfig::TImpl
+// The private control collection owned by one TStorageConfigControls. It keeps
+// one TControlWrapper for every read-write storage setting and applies one of
+// these default-value policies:
+//  - a config-bound set:
+//      - created by the two-argument TStorageConfig constructor
+//      - uses values from its initial proto as ICB defaults
+//      - may be shared only by TStorageConfig copy construction, which also
+//        copies the raw proto
+//  - a config-independent set:
+//      - uses a reserved default to represent "no override" (represents only
+//        explicit ICB overrides)
+//      - may be used by (shared between) multiple TStorageConfig instances
+struct TStorageConfigControls::TImpl
 {
-    NProto::TStorageServiceConfig StorageServiceConfig;
-    NFeatures::TFeaturesConfigPtr FeaturesConfig;
+    // The reserved default used by config-independent controls to mean
+    // "no override". Their lower bound is NoOverride + 1, so ICB cannot set
+    // this value itself.
+    static constexpr TAtomicBase NoOverride = Min<TAtomicBase>();
 
-#define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
-    TControlWrapper Control##name{                                             \
-        ConvertToAtomicBase<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(          \
-            StorageServiceConfig,                                              \
-            name,                                                              \
-            type,                                                              \
-            value)),                                                           \
-        Min<i64>(),                                                            \
-        Max<i64>()};                                                           \
-    // BLOCKSTORE_CONFIG_CONTROL
+    // The control-set mode: true for config-independent defaults that represent
+    // absent overrides; false for defaults bound to one configuration proto.
+    const bool ConfigIndependent;
+
+    // Registration-state lock. It serializes the first registration and
+    // protects RegisteredBoard.
+    TMutex RegistrationLock;
+
+    // Non-owning address of the registered board. It is null before Register(),
+    // then remains equal to that board for the lifetime of this control set.
+    // Access requires RegistrationLock.
+    TControlBoard* RegisteredBoard = nullptr;
+
+    // One wrapper per BLOCKSTORE_STORAGE_CONFIG_RW field. Each wrapper stores
+    // the field's ICB default, allowed range, and current ICB value.
+#define BLOCKSTORE_CONFIG_CONTROL(name, ...) TControlWrapper Control##name;
 
     BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_CONTROL)
 
 #undef BLOCKSTORE_CONFIG_CONTROL
 
+    explicit TImpl(
+        const NProto::TStorageServiceConfig& storageServiceConfig,
+        bool configIndependent)
+        : ConfigIndependent(configIndependent)
+    {
+#define BLOCKSTORE_CONFIG_RESET(name, type, value)                             \
+    Control##name.Reset(                                                       \
+        ConfigIndependent                                                      \
+            ? NoOverride                                                       \
+            : ConvertToAtomicBase<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(    \
+                  storageServiceConfig,                                        \
+                  name,                                                        \
+                  type,                                                        \
+                  value)),                                                     \
+        ConfigIndependent ? NoOverride + 1 : Min<TAtomicBase>(),               \
+        Max<TAtomicBase>());                                                   \
+    // BLOCKSTORE_CONFIG_RESET
+
+        BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_RESET)
+
+#undef BLOCKSTORE_CONFIG_RESET
+    }
+
+    std::optional<i64> ReadOverride(const TControlWrapper& control) const
+    {
+        const TAtomicBase value = static_cast<TAtomicBase>(control);
+        if (value == control.GetDefault()) {
+            return std::nullopt;
+        }
+
+        return static_cast<i64>(value);
+    }
+};
+
+TStorageConfigControls::TStorageConfigControls()
+    : Impl(new TImpl(NProto::TStorageServiceConfig(), true))
+{}
+
+TStorageConfigControls::TStorageConfigControls(
+    const NProto::TStorageServiceConfig& storageServiceConfig)
+    : Impl(new TImpl(storageServiceConfig, false))
+{}
+
+TStorageConfigControls::~TStorageConfigControls() = default;
+
+void TStorageConfigControls::Register(TControlBoard& controlBoard)
+{
+    TGuard<TMutex> guard(Impl->RegistrationLock);
+
+    // Another board could replace wrappers with controls registered under the
+    // same names there, so this control set remains bound to its first board.
+    Y_ABORT_UNLESS(
+        !Impl->RegisteredBoard || Impl->RegisteredBoard == &controlBoard);
+
+    if (Impl->RegisteredBoard) {
+        return;
+    }
+
+    bool allControlsWereInserted = true;
+
+#define BLOCKSTORE_CONFIG_REGISTER(name, ...)                                  \
+    allControlsWereInserted &= controlBoard.RegisterSharedControl(             \
+        Impl->Control##name,                                                   \
+        "BlockStore_" #name);                                                  \
+    // BLOCKSTORE_CONFIG_REGISTER
+
+    BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_REGISTER)
+
+#undef BLOCKSTORE_CONFIG_REGISTER
+
+    // On a name collision, RegisterSharedControl replaces the wrapper's control
+    // with the TControl object already registered by another control set.
+    //  - a config-independent wrapper would then lose its NoOverride default
+    //    and adopt that object's default, bounds, and current value
+    //  - config-bound wrappers intentionally preserve the existing
+    //    shared-registration behavior.
+    // Register one config-independent set per board and share it between
+    // TStorageConfig instances; abort if this contract is violated.
+    Y_ABORT_UNLESS(!Impl->ConfigIndependent || allControlsWereInserted);
+    Impl->RegisteredBoard = &controlBoard;
+}
+
+std::optional<i64> TStorageConfigControls::GetOverride(TStringBuf name) const
+{
+#define BLOCKSTORE_CONFIG_GET_OVERRIDE(field, ...)                             \
+    if (name == #field) {                                                      \
+        return Impl->ReadOverride(Impl->Control##field);                       \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_GET_OVERRIDE
+
+    BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_GET_OVERRIDE)
+
+#undef BLOCKSTORE_CONFIG_GET_OVERRIDE
+
+    return std::nullopt;
+}
+
+bool TStorageConfigControls::RestoreDefault(TStringBuf name)
+{
+    {
+        TGuard<TMutex> guard(Impl->RegistrationLock);
+        if (!Impl->RegisteredBoard) {
+            return false;
+        }
+    }
+
+#define BLOCKSTORE_CONFIG_RESTORE_DEFAULT(field, ...)                          \
+    if (name == #field) {                                                      \
+        /* Assign only GetDefault(), because operator= rewrites the control's  \
+           Default as well as control's Value */                               \
+        Impl->Control##field = Impl->Control##field.GetDefault();              \
+        return true;                                                           \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_RESTORE_DEFAULT
+
+    BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_RESTORE_DEFAULT)
+
+#undef BLOCKSTORE_CONFIG_RESTORE_DEFAULT
+
+    return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TStorageConfig::TImpl
+{
+    NProto::TStorageServiceConfig StorageServiceConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
+
+    // Non-null ICB controls for all read-write storage fields. The
+    // three-argument constructor can reuse a config-independent collection;
+    // the two-argument constructor creates a config-bound collection; the copy
+    // constructor shares the collection in either mode.
+    TStorageConfigControlsPtr Controls;
+
     TImpl(
-            NProto::TStorageServiceConfig storageServiceConfig,
-            NFeatures::TFeaturesConfigPtr featuresConfig)
+        NProto::TStorageServiceConfig storageServiceConfig,
+        NFeatures::TFeaturesConfigPtr featuresConfig,
+        TStorageConfigControlsPtr controls)
         : StorageServiceConfig(std::move(storageServiceConfig))
         , FeaturesConfig(std::move(featuresConfig))
-    {}
+        , Controls(std::move(controls))
+    {
+        Y_ABORT_UNLESS(Controls);
+    }
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig)
     {
@@ -1047,11 +1212,11 @@ struct TStorageConfig::TImpl
 
     // Overriding fields with values from ICB
 #define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
-    if (!Control##name.IsDefault())                                            \
+    if (const auto value =                                                     \
+            Controls->Impl->ReadOverride(Controls->Impl->Control##name))       \
     {                                                                          \
         using T = decltype(StorageServiceConfig.Get##name());                  \
-        const i64 value = Control##name;                                       \
-        proto.Set##name(ConvertValue<T>(value));                               \
+        proto.Set##name(ConvertValue<T>(*value));                              \
     }                                                                          \
     // BLOCKSTORE_CONFIG_COPY
 
@@ -1066,12 +1231,51 @@ struct TStorageConfig::TImpl
 ////////////////////////////////////////////////////////////////////////////////
 
 TStorageConfig::TStorageConfig(
-        NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigPtr featuresConfig)
-    : Impl(new TImpl(std::move(storageServiceConfig), std::move(featuresConfig)))
+    NProto::TStorageServiceConfig storageServiceConfig,
+    NFeatures::TFeaturesConfigPtr featuresConfig)
+    : TStorageConfig(
+          std::move(storageServiceConfig),
+          std::move(featuresConfig),
+          nullptr)
+{}
+
+TStorageConfig::TStorageConfig(
+    NProto::TStorageServiceConfig storageServiceConfig,
+    NFeatures::TFeaturesConfigPtr featuresConfig,
+    TStorageConfigControlsPtr controls)
+{
+    Y_ABORT_UNLESS(!controls || controls->Impl->ConfigIndependent);
+
+    if (!controls) {
+        controls = TStorageConfigControlsPtr(
+            new TStorageConfigControls(storageServiceConfig));
+    }
+
+    Impl = std::make_unique<TImpl>(
+        std::move(storageServiceConfig),
+        std::move(featuresConfig),
+        std::move(controls));
+}
+
+TStorageConfig::TStorageConfig(const TStorageConfig& other)
+    : Impl(std::make_unique<TImpl>(
+          other.Impl->StorageServiceConfig,
+          other.Impl->FeaturesConfig,
+          other.Impl->Controls))
 {}
 
 TStorageConfig::~TStorageConfig() = default;
+
+const TStorageConfigControls::TImpl* TStorageConfig::ControlsImpl() const
+{
+    return Impl->Controls->Impl.get();
+}
+
+TStorageConfigControlsPtr
+TStorageConfig::GetStorageConfigControls() const
+{
+    return ControlsImpl()->ConfigIndependent ? Impl->Controls : nullptr;
+}
 
 void TStorageConfig::SetFeaturesConfig(
     NFeatures::TFeaturesConfigPtr featuresConfig)
@@ -1085,16 +1289,9 @@ void TStorageConfig::SetVolumePreemptionType(
     Impl->SetVolumePreemptionType(volumePreemptionType);
 }
 
-void TStorageConfig::Register(TControlBoard& controlBoard){
-#define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
-    controlBoard.RegisterSharedControl(                                        \
-        Impl->Control##name,                                                   \
-        "BlockStore_" #name);                                                  \
-// BLOCKSTORE_CONFIG_CONTROL
-
-    BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_CONTROL)
-
-#undef BLOCKSTORE_CONFIG_CONTROL
+void TStorageConfig::Register(TControlBoard& controlBoard)
+{
+    Impl->Controls->Register(controlBoard);
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
@@ -1114,9 +1311,10 @@ BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        if (!Impl->Control##name.IsDefault()) {                                \
-            const i64 value = Impl->Control##name;                             \
-            return ConvertValue<type>(value);                                  \
+        if (const auto value = ControlsImpl()->ReadOverride(                   \
+                ControlsImpl()->Control##name))                                \
+        {                                                                      \
+            return ConvertValue<type>(*value);                                 \
         }                                                                      \
         return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
             Impl->StorageServiceConfig,                                        \
@@ -1229,7 +1427,10 @@ TStorageConfigPtr TStorageConfig::Merge(
     TStorageConfigPtr config,
     const NProto::TStorageServiceConfig& patch)
 {
-    const auto configProto = config->GetStorageConfigProto();
+    auto controls = config->GetStorageConfigControls();
+    const auto configProto = controls
+                                 ? config->Impl->StorageServiceConfig
+                                 : config->GetStorageConfigProto();
     auto patchedConfigProto = configProto;
     patchedConfigProto.MergeFrom(patch);
     if (google::protobuf::util::MessageDifferencer::Equals(
@@ -1241,7 +1442,8 @@ TStorageConfigPtr TStorageConfig::Merge(
 
     return std::make_shared<TStorageConfig>(
         std::move(patchedConfigProto),
-        config->Impl->FeaturesConfig);
+        config->Impl->FeaturesConfig,
+        std::move(controls));
 }
 
 ui64 GetAllocationUnit(

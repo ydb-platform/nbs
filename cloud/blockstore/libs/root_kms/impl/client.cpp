@@ -273,7 +273,7 @@ auto TRootKmsClient::Decrypt(const TString& keyId, const TString& ciphertext)
     STORAGE_DEBUG("Decrypt DEK with key " << keyId.Quote());
 
     auto requestHandler = std::make_unique<TDecryptDataKeyHandler>(
-        DefaultTimeout,
+        Params.RequestTimeout,
         keyId,
         ciphertext);
 
@@ -291,7 +291,7 @@ auto TRootKmsClient::GenerateDataEncryptionKey(const TString& keyId)
     STORAGE_DEBUG("Generate DEK with key " << keyId.Quote());
 
     auto requestHandler = std::make_unique<TGenerateDataKeyRequestHandler>(
-        DefaultTimeout,
+        Params.RequestTimeout,
         keyId);
 
     auto future = requestHandler->Execute(*Service, CQ);
@@ -323,6 +323,10 @@ IRootKmsClientPtr CreateRootKmsClient(
     ILoggingServicePtr logging,
     TCreateRootKmsClientParams params)
 {
+    if (!params.RequestTimeout) {
+        params.RequestTimeout = DefaultTimeout;
+    }
+
     return std::make_shared<TRootKmsClient>(
         std::move(logging),
         std::move(params));

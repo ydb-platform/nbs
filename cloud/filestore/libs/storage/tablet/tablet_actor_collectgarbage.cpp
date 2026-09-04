@@ -409,7 +409,7 @@ void TIndexTabletActor::HandleCollectGarbage(
             ctx,
             *ev,
             std::move(profileLogRequest),
-            MakeError(S_ALREADY, "CollectGarbage is in progress"));
+            MakeError(E_TRY_AGAIN, "CollectGarbage is in progress"));
         return;
     }
 

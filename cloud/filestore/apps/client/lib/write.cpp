@@ -10,21 +10,41 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EModeType
+{
+    Unknown,
+    Path,
+    Node,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteCommand final
     : public TFileStoreCommand
 {
 private:
+    EModeType Mode = EModeType::Unknown;
     TString Path;
+    ui64 NodeId = 0;
     TString DataPath;
     ui64 Offset;
 
 public:
     TWriteCommand()
     {
-        Opts.AddLongOption("path")
-            .Required()
+        const TString PathOptionName = "path";
+        Opts.AddLongOption(PathOptionName)
             .RequiredArgument("PATH")
-            .StoreResult(&Path);
+            .StoreResult(&Path)
+            .Handler0([this] { Mode = EModeType::Path; });
+
+        const TString NodeOptionName = "node";
+        Opts.AddLongOption(NodeOptionName)
+            .RequiredArgument("ID")
+            .StoreResult(&NodeId)
+            .Handler0([this] { Mode = EModeType::Node; });
+
+        Opts.MutuallyExclusive(PathOptionName, NodeOptionName);
 
         Opts.AddLongOption("data")
             .RequiredArgument("PATH")
@@ -38,34 +58,49 @@ public:
 
     bool Execute() override
     {
+        Y_ENSURE(
+            Mode != EModeType::Unknown,
+            "--path or --node must be specified");
+
         TString data = TIFStream(DataPath).ReadAll();
 
         auto sessionGuard = CreateSession();
         auto& session = sessionGuard.AccessSession();
 
-        const auto resolved = ResolvePath(session, Path, true);
-
-        Y_ENSURE(
-            resolved.back().Node.GetType() != NProto::E_DIRECTORY_NODE,
-            "can't write to a directory node"
-        );
-
-        Y_ABORT_UNLESS(resolved.size() >= 2);
-
-        const auto& parent = resolved[resolved.size() - 2];
-
-        Y_ENSURE(
-            parent.Node.GetType() != NProto::E_INVALID_NODE,
-            TStringBuilder() << "target parent does not exist: " << parent.Name
-        );
-
-        static const int flags = ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
-            | ProtoFlag(NProto::TCreateHandleRequest::E_READ)
-            | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
-
         auto createRequest = CreateRequest<NProto::TCreateHandleRequest>();
-        createRequest->SetNodeId(parent.Node.GetId());
-        createRequest->SetName(ToString(resolved.back().Name));
+
+        int flags = ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
+                    ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+
+        switch (Mode) {
+            case EModeType::Path: {
+                const auto resolved = ResolvePath(session, Path, true);
+
+                Y_ENSURE(
+                    resolved.back().Node.GetType() != NProto::E_DIRECTORY_NODE,
+                    "can't write to a directory node");
+
+                Y_ABORT_UNLESS(resolved.size() >= 2);
+
+                const auto& parent = resolved[resolved.size() - 2];
+
+                Y_ENSURE(
+                    parent.Node.GetType() != NProto::E_INVALID_NODE,
+                    TStringBuilder()
+                        << "target parent does not exist: " << parent.Name);
+
+                createRequest->SetNodeId(parent.Node.GetId());
+                createRequest->SetName(ToString(resolved.back().Name));
+                flags |= ProtoFlag(NProto::TCreateHandleRequest::E_CREATE);
+                break;
+            }
+            case EModeType::Node:
+                createRequest->SetNodeId(NodeId);
+                break;
+            case EModeType::Unknown:
+                Y_ABORT("unreachable");
+        }
+
         createRequest->SetFlags(flags);
 
         auto createResponse = WaitFor(session.CreateHandle(

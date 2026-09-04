@@ -1247,6 +1247,16 @@ void TVolumeActor::HandleCheckpointRequest<TCreateCheckpointMethod>(
         ev->Cookie,
         msg.CallContext);
 
+    if (State->IsCreateCheckpointOperationRestricted()) {
+        auto response = std::make_unique<TCreateCheckpointMethod::TResponse>(
+            MakeError(
+                E_TRY_AGAIN,
+                "CreateCheckpoint is not allowed while another exclusive "
+                "volume operation is in progress"));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
     const auto& checkpointRequest =
         State->GetCheckpointStore().MakeCreateCheckpointRequest(
             msg.Record.GetCheckpointId(),

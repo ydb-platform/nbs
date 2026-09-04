@@ -342,6 +342,7 @@ public:
     ui32 GetShardsPerDirectoryCount() const;
 
     bool GetDirectoryCreationInShardsEnabled() const;
+    TString GetControlNamespaceDirName() const;
 
     ui32 GetMaxShardManagementRequestsInFlight() const;
 

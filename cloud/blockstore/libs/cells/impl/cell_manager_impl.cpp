@@ -1,7 +1,7 @@
 #include "cell_manager_impl.h"
 
-#include "cell.h"
 #include "describe_volume.h"
+#include "connection.h"
 #include "endpoint_bootstrap.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -57,7 +57,9 @@ TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
     , Bootstrap(std::move(bootstrap))
 {
     for (const auto& cell: Config->GetCells()) {
-        Cells.emplace(cell.first, CreateCell(Bootstrap, cell.second));
+        Pools.emplace(
+            cell.first,
+            std::make_shared<TCellHostPool>(cell.second, Bootstrap));
     }
 
     if (Bootstrap.Monitoring) {
@@ -73,40 +75,60 @@ void TCellManager::Start()
     Bootstrap.CertProvider->Start();
     Bootstrap.GrpcClient->Start();
 
-    for (auto& cell: Cells) {
-        cell.second->Start();
+    for (auto& pool: Pools) {
+        pool.second->Start();
     }
 }
 
 void TCellManager::Stop()
 {
-    for (auto& cell: Cells) {
-        cell.second->Stop();
-    }
-
     Bootstrap.GrpcClient->Stop();
     Bootstrap.CertProvider->Stop();
 }
 
-TResultOrError<TCellHostEndpoint> TCellManager::GetCellEndpoint(
+TCellConnectionFuture TCellManager::CreateConnection(
     const TString& cellId,
-    const NClient::TClientAppConfigPtr& clientConfig)
+    const TString& fqdn,
+    const NClient::TClientAppConfigPtr& clientConfig,
+    ICellConnectionObserverPtr observer)
 {
-    auto it = Cells.find(cellId);
-    Y_ENSURE(it != Cells.end());
-    return it->second->GetCellClient(clientConfig);
+    auto* pool = Pools.FindPtr(cellId);
+    if (!pool) {
+        return MakeFuture(TResultOrError<ICellConnectionPtr>(MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "Cell " << cellId << " is not configured")));
+    }
+
+    auto hostConfig = TCellHostConfig();
+    if (fqdn) {
+        hostConfig = (*pool)->MakeHostConfig(fqdn);
+    } else {
+        auto picked = (*pool)->PickConfiguredHost();
+        if (HasError(picked)) {
+            return MakeFuture(
+                TResultOrError<ICellConnectionPtr>(picked.GetError()));
+        }
+        hostConfig = picked.ExtractResult();
+    }
+
+    return CreateCellConnection(
+        *pool,
+        std::move(hostConfig),
+        Bootstrap,
+        clientConfig,
+        std::move(observer));
 }
 
 TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
     TCellHostEndpointsByCellId res;
-    for (auto& cell: Cells) {
-        auto clientList = cell.second->GetCellClients(clientConfig);
-        if (clientList.empty()) {
+    for (auto& [cellId, pool]: Pools) {
+        auto endpoints = pool->GetDescribeEndpoints(clientConfig);
+        if (endpoints.empty()) {
             continue;
         }
-        res.emplace(cell.first, std::move(clientList));
+        res.emplace(cellId, std::move(endpoints));
     }
     return res;
 }

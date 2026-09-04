@@ -400,6 +400,50 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 
         CheckDescribe(cellManager, std::move(clientConfig), S_OK);
     }
+
+    Y_UNIT_TEST(ShouldRejectConnectionToUnconfiguredCell)
+    {
+        TTestContext testContext;
+
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell(
+                "xyz",  // cellid
+                9001,   // port
+                0,      // secure port
+                1,      // describe volume host count
+                1,      // min cell connections
+                {"localhost"})
+            .Build();
+
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        auto cellManager = CreateCellManager(
+            config,
+            testContext.Timer,
+            testContext.Scheduler,
+            testContext.Logging,
+            testContext.Monitoring,
+            testContext.TraceSerializer,
+            testContext.ServerStats,
+            CreateClientCertificateProvider(config),
+            nullptr);
+
+        // A cell id we never configured can only come from broken internal
+        // state, so it is reported as such rather than as a lookup miss.
+        auto future = cellManager->CreateConnection(
+            "no-such-cell",
+            {},
+            std::make_shared<TClientAppConfig>(),
+            nullptr);
+
+        UNIT_ASSERT(future.HasValue());
+
+        const auto& result = future.GetValue();
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            result.GetError().GetCode());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells

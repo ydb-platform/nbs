@@ -110,6 +110,10 @@ message TMountVolumeResponse
 
     // Service version information.
     string ServiceVersionInfo = 5;
+
+    // The host where the volume tablet is currently running. Empty if the
+    // serving side does not report it.
+    string TabletHost = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

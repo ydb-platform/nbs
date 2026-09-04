@@ -333,6 +333,9 @@ message TLocalServiceConfig
 
 message TKikimrServiceConfig
 {
+    // If nonzero, permanent handler actors are used instead of creating one
+    // request actor for every request.
+    optional uint32 PermanentActorCount = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

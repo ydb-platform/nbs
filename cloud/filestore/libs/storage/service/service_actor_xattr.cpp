@@ -257,6 +257,10 @@ void TStorageServiceActor::HandleGetNodeXAttr(
         return;
     }
 
+    if (TryHandleControlNamespaceGetNodeXAttr(ctx, ev, session)) {
+        return;
+    }
+
     // If there are no extended attributes in the filesystem we don't
     // forward corresponding requests to the tablet and reply from the service
     // actor
@@ -289,6 +293,10 @@ void TStorageServiceActor::HandleListNodeXAttr(
         return;
     }
 
+    if (TryHandleControlNamespaceListNodeXAttr(ctx, ev, session)) {
+        return;
+    }
+
     // if there no extended attributes in the file system we return an empty
     // list
     if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
@@ -316,6 +324,10 @@ void TStorageServiceActor::HandleSetNodeXAttr(
     const TSessionInfo* session =
         GetAndValidateSession<TEvService::TSetNodeXAttrMethod>(ctx, ev);
     if (!session) {
+        return;
+    }
+
+    if (TryHandleControlNamespaceSetNodeXAttr(ctx, ev, session)) {
         return;
     }
 

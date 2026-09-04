@@ -141,6 +141,14 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter MixedIndexBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedIndexBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter FreshBytesCount{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
@@ -266,6 +274,8 @@ struct TSimpleDiskCounters
 
         MakeMeta<&TSimpleDiskCounters::MixedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::MergedBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::MixedIndexBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::MergedIndexBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::UntrimmedFreshBlobBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::UsedBytesCount>(),
@@ -285,7 +295,8 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::CompactionIgnoringZeroedScore>(),
         MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
-        MakeMeta<&TSimpleDiskCounters::GarbageCompactionExecTimePerSecondLimit>(),
+        MakeMeta<
+            &TSimpleDiskCounters::GarbageCompactionExecTimePerSecondLimit>(),
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),

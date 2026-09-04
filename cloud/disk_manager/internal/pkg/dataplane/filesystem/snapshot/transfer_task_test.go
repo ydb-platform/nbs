@@ -1175,7 +1175,6 @@ func TestCreateSnapshotFromFilesystemDoesNotRunWhenDeletedBeforeTransfer(t *test
 	_, err := f.snapshotStorage.DeletingFilesystemSnapshot(
 		f.ctx,
 		snapshotID,
-		"delete-task",
 	)
 	require.NoError(t, err)
 
@@ -1238,7 +1237,6 @@ func TestCreateSnapshotFromFilesystemStopsWhenDeletedDuringTransfer(t *testing.T
 			_, err := f.snapshotStorage.DeletingFilesystemSnapshot(
 				ctx,
 				snapshotID,
-				"delete-task",
 			)
 			return err
 		},

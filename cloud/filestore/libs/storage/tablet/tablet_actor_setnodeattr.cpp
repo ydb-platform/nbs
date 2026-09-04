@@ -118,7 +118,11 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
     const auto& update = args.Request.GetUpdate();
 
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
-        if (!HasSpaceLeft(args.Node->Attrs.GetSize(), update.GetSize())) {
+        if (!HasSpaceLeft(
+                args.Node->Attrs.GetSize(),
+                update.GetSize(),
+                args.Node->Attrs.GetQuotaId()))
+        {
             args.Error = ErrorNoSpaceLeft();
             return true;
         }
@@ -142,6 +146,11 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
             return true;
         } else if (args.Node->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
             args.Error = ErrorIsNotDirectory(args.NodeId);
+            return true;
+        } else if (!FindQuota(newQuotaId)) {
+            args.Error = ErrorInvalidArgument(
+                TStringBuilder()
+                << "quota " << newQuotaId << " does not exist");
             return true;
         } else {
             TVector<INodeIndexTabletDatabase::TNodeRef> refs;

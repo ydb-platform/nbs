@@ -11,6 +11,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/diagnostics
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core

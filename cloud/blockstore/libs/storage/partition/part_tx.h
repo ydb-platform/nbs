@@ -385,6 +385,7 @@ struct TTxPartition
         TAffectedBlocks AffectedBlocks;
         ui32 BlobsSkipped = 0;
         ui32 BlocksSkipped = 0;
+        ui32 MixedBlocksSkipped = 0;
         bool ChecksumsEnabled = false;
 
         TRangeCompaction(ui32 rangeIdx, const TBlockRange32& blockRange)
@@ -400,6 +401,7 @@ struct TTxPartition
             AffectedBlocks.clear();
             BlobsSkipped = 0;
             BlocksSkipped = 0;
+            MixedBlocksSkipped = 0;
             ChecksumsEnabled = false;
         }
 
@@ -576,8 +578,10 @@ struct TTxPartition
 
         ui32 ReadCount = 0;
 
-        ui64 MixedBlockCount = 0;
-        ui64 MergedBlockCount = 0;
+        ui64 MixedIndexBlockCount = 0;
+        ui64 MergedIndexBlockCount = 0;
+        ui64 MixedChannelBlockCount = 0;
+        ui64 MergedChannelBlockCount = 0;
 
         TPartialBlobId LastReadBlobId;
 
@@ -599,8 +603,10 @@ struct TTxPartition
         void Clear()
         {
             ReadCount = 0;
-            MixedBlockCount = 0;
-            MergedBlockCount = 0;
+            MixedIndexBlockCount = 0;
+            MergedIndexBlockCount = 0;
+            MixedChannelBlockCount = 0;
+            MergedChannelBlockCount = 0;
             LastReadBlobId = {};
         }
     };

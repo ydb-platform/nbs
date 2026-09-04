@@ -16,6 +16,10 @@
     "name": "ubuntu-2204-eternal"
   },
   {
+    "id": "fake-id5",
+    "name": "ubuntu-2604-eternal"
+  },
+  {
     "id": "fake-id3",
     "name": "fake-name1"
   }

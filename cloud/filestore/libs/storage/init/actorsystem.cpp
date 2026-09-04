@@ -344,6 +344,10 @@ public:
     TActorId Register(IActorPtr actor, TStringBuf executorName) override;
     bool Send(const TActorId& recipient, IEventBasePtr event) override;
     bool Send(IEventHandlePtr ev) override;
+    void Schedule(
+        TDuration delta,
+        IEventHandlePtr ev,
+        ISchedulerCookie* cookie) override;
 
     TLog CreateLog(const TString& component) override;
 
@@ -486,6 +490,14 @@ bool TActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
 bool TActorSystem::Send(IEventHandlePtr ev)
 {
     return ActorSystem->Send(ev.release());
+}
+
+void TActorSystem::Schedule(
+    TDuration delta,
+    IEventHandlePtr ev,
+    ISchedulerCookie* cookie)
+{
+    ActorSystem->Schedule(delta, ev.release(), cookie);
 }
 
 TLog TActorSystem::CreateLog(const TString& componentName)

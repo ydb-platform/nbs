@@ -271,6 +271,10 @@ void TStorageServiceActor::HandleGetNodeAttr(
 {
     auto* msg = ev->Get();
 
+    if (TryHandleControlNamespaceGetNodeAttr(ctx, ev)) {
+        return;
+    }
+
     if (msg->Record.GetName().empty()) {
         // GetNodeAttr by NodeId can be handled directly by the shard
         ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(

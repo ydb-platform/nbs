@@ -1,6 +1,7 @@
 import json
 import os
 
+import pytest
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
@@ -46,6 +47,13 @@ def __process_stat(node):
     return node
 
 
+def __execute_action_expecting_failure(client, action, request):
+    with pytest.raises(common.ExecutionError) as e:
+        client.execute_action(action, request)
+    # error description is printed to stdout and is a part of canonical output
+    return e.value.execution_result.stdout
+
+
 def __exec_ls(client, *args):
     output = str(client.ls(*args, "--json"), 'utf-8')
     nodes: list = json.loads(output)['content']
@@ -77,9 +85,10 @@ def test_shard_autoaddition():
     client.create_session("fs0", "session0", "client0")
     out += client.execute_action("describesessions", {"FileSystemId": "fs0"})
     out += client.execute_action("describesessions", {"FileSystemId": "fs0_s1"})
-    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s2"})
-    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s3"})
-    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s4"})
+    # shards fs0_s2..fs0_s4 don't exist yet
+    for shard_id in ["fs0_s2", "fs0_s3", "fs0_s4"]:
+        out += __execute_action_expecting_failure(
+            client, "describesessions", {"FileSystemId": shard_id})
     client.destroy_session("fs0", "session0", "client0")
 
     client.create_session("fs0", "session0", "client0")
@@ -101,7 +110,9 @@ def test_shard_autoaddition():
     out += client.execute_action("describesessions", {"FileSystemId": "fs0_s1"})
     out += client.execute_action("describesessions", {"FileSystemId": "fs0_s2"})
     out += client.execute_action("describesessions", {"FileSystemId": "fs0_s3"})
-    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s4"})
+    # shard fs0_s4 doesn't exist
+    out += __execute_action_expecting_failure(
+        client, "describesessions", {"FileSystemId": "fs0_s4"})
     client.destroy_session("fs0", "session0", "client0")
 
     out += client.destroy("fs0")
@@ -129,8 +140,10 @@ def test_explicit_shard_count_addition():
     client.create_session("fs0", "session0", "client0")
     out = client.execute_action("describesessions", {"FileSystemId": "fs0"})
     out += client.execute_action("describesessions", {"FileSystemId": "fs0_s1"})
-    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s2"})
-    out += client.execute_action("describesessions", {"FileSystemId": "fs0_s3"})
+    # shards fs0_s2, fs0_s3 don't exist yet
+    for shard_id in ["fs0_s2", "fs0_s3"]:
+        out += __execute_action_expecting_failure(
+            client, "describesessions", {"FileSystemId": shard_id})
     client.destroy_session("fs0", "session0", "client0")
 
     out += client.resize("fs0", int(SHARD_SIZE / BLOCK_SIZE), shard_count=3)

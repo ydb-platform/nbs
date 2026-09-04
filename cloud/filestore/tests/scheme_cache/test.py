@@ -77,16 +77,7 @@ def test_should_resize_and_alter():
     client.resize("fs0", shard_count * int(SHARD_SIZE / BLOCK_SIZE))
     verify_filesystem_topology(client, "fs0", shard_count)
 
-    client.execute_action(
-        "alterfilesystem",
-        {
-            "FileSystemId": "fs0",
-            "Config": {
-                "CloudId": "new_test_cloud",
-                "FolderId": "new_test_folder",
-            },
-        },
-    )
+    client.alter("fs0", "new_test_cloud", "new_test_folder")
 
     verify_io(client, "fs0")
 

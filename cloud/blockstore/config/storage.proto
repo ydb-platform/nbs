@@ -1680,4 +1680,17 @@ message TStorageServiceConfig
     // If false (default), cleanup removes only blobs that were added to the
     // cleanup queue before all checkpoints.
     optional bool CheckpointAwareCleanupEnabled = 526;
+
+    // If true, the legacy mixed/merged blob and block counters are classified
+    // by the data kind of the channel where a blob is stored. If false, both
+    // the legacy and index counter families are classified by index kind.
+    optional bool UseBlobChannelDataKindForCounters = 527;
+
+    // If true, QueryAvailableStorage includes suspended devices that are
+    // resuming after secure erase.
+    optional bool QueryAvailableStorageForResumingDevicesEnabled = 528;
+
+    // Maximum allowed logical size of all blocks (block count * block size) in
+    // fresh after which we start to reject write and zero requests.
+    optional uint64 FreshLogicalBlocksByteCountHardLimit = 529;
 }

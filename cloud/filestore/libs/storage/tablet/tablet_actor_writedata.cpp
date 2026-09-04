@@ -301,7 +301,11 @@ bool TIndexTabletActor::PrepareTx_WriteData(
 
     UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
 
-    if (!HasSpaceLeft(args.Node->Attrs.GetSize(), args.ByteRange.End())) {
+    if (!HasSpaceLeft(
+            args.Node->Attrs.GetSize(),
+            args.ByteRange.End(),
+            args.Node->Attrs.GetQuotaId()))
+    {
         args.Error = ErrorNoSpaceLeft();
         return true;
     }

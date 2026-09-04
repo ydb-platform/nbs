@@ -21,7 +21,7 @@ PEERDIR(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/fmdtest/configs/nfs-storage.txt
+    cloud/filestore/tests/fastshard/fmdtest/configs/nfs-storage.txt
 )
 
 SET(QEMU_VIRTIO fs)
@@ -30,8 +30,6 @@ SET(FILESTORE_VHOST_ENDPOINT_COUNT 1)
 SET(FILESTORE_BLOCKS_COUNT 5242880)
 SET(VIRTIOFS_SERVER_COUNT 1)
 SET(QEMU_INVOKE_TEST NO)
-
-SET(NFS_RESTART_INTERVAL 10)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)

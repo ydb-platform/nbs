@@ -411,7 +411,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             auto response = Tablet->GenerateBlobIds(id, handle, 0, sz);
             TVector<NKikimr::TLogoBlobID> blobIds;
             for (const auto& blobId: response->Record.GetBlobs()) {
-                auto blob = NKikimr::LogoBlobIDFromLogoBlobID(blobId.GetBlobId());
+                auto blob = LogoBlobIDFromLogoBlobID(blobId.GetBlobId());
                 blobIds.push_back(blob);
             }
             Tablet->AddData(id, handle, 0, sz, blobIds, response->Record.GetCommitId());
@@ -908,7 +908,47 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
              {
                  return val > 0;
              }},
+            {{{"sensor", "HasOverrides"}, {"filesystem", "test"}},
+             [](i64 val)
+             {
+                 return val == 0;
+             }},
         });
+    }
+
+    Y_UNIT_TEST(ShouldReportHasOverrides)
+    {
+        TTestEnv env;
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "HasOverrides"}, {"filesystem", "test"}}, 0},
+            });
+        }
+
+        NProto::TStorageConfig patch;
+        patch.SetNewCleanupEnabled(true);
+        tablet.ChangeStorageConfig(std::move(patch));
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "HasOverrides"}, {"filesystem", "test"}}, 1},
+            });
+        }
     }
 
     Y_UNIT_TEST(ShouldReportDirectHandleMetrics)
