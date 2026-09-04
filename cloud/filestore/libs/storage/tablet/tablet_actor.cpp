@@ -1139,13 +1139,31 @@ void TIndexTabletActor::HandleForcedOperation(
     const auto& request = ev->Get()->Record;
 
     using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
+    std::unique_ptr<TResponse> response;
+    switch (request.GetOpType()) {
+        case NProtoPrivate::TForcedOperationRequest::E_COMPACTION:
+        case NProtoPrivate::TForcedOperationRequest::E_CLEANUP:
+        case NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES:
+            response = ProcessForcedRangeOperationRequest(request, ctx);
+            break;
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH:
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES:
+        case NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE:
+            response = ProcessForcedTabletOperationRequest(request, ctx);
+            break;
+        default:
+            response = std::make_unique<TResponse>(
+                MakeError(E_ARGUMENT, "unsupported mode"));
+    }
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
 
-    auto replyError = [&](NProto::TError error)
-    {
-        auto response = std::make_unique<TResponse>(std::move(error));
-        NCloud::Reply(ctx, *ev, std::move(response));
-    };
-
+std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+TIndexTabletActor::ProcessForcedRangeOperationRequest(
+    const NProtoPrivate::TForcedOperationRequest& request,
+    const TActorContext& ctx)
+{
+    using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
     using EMode = TEvIndexTabletPrivate::EForcedRangeOperationMode;
     EMode mode{};
     switch (request.GetOpType()) {
@@ -1153,44 +1171,37 @@ void TIndexTabletActor::HandleForcedOperation(
             mode = EMode::Compaction;
             break;
         }
-
         case NProtoPrivate::TForcedOperationRequest::E_CLEANUP: {
             mode = EMode::Cleanup;
             break;
         }
-
         case NProtoPrivate::TForcedOperationRequest::E_DELETE_EMPTY_RANGES: {
             mode = EMode::DeleteZeroCompactionRanges;
             break;
         }
-
         default: {
-            replyError(MakeError(E_ARGUMENT, "unsupported mode"));
-            return;
+            return std::make_unique<TResponse>(MakeError(E_ARGUMENT, "unsupported mode"));
         }
     }
 
-    if (IsForcedRangeOperationRunning()) {
-        const auto currentMode = GetForcedRangeOperationState()->Mode;
+    if (IsForcedOperationRunning()) {
         NProto::TError error;
-        if (currentMode == mode) {
+        const auto* rangeState =
+            std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
+        if (rangeState && rangeState->Mode == mode) {
             error = MakeError(S_ALREADY, "already launched");
         } else {
-            error = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
-                << static_cast<int>(mode)
-                << " != " << static_cast<int>(currentMode));
+            error = MakeError(E_TRY_AGAIN, "another operation is running");
         }
-        replyError(std::move(error));
-        return;
+        return std::make_unique<TResponse>(std::move(error));
     }
 
     TVector<ui32> ranges;
     if (mode == EMode::DeleteZeroCompactionRanges) {
         ranges = GenerateForceDeleteZeroCompactionRanges();
     } else {
-        ranges = request.GetProcessAllRanges()
-            ? GetAllCompactionRanges()
-            : GetNonEmptyCompactionRanges();
+        ranges = request.GetProcessAllRanges() ? GetAllCompactionRanges()
+                                               : GetNonEmptyCompactionRanges();
     }
     const auto* b =
         LowerBound(ranges.begin(), ranges.end(), request.GetMinRangeId());
@@ -1202,9 +1213,86 @@ void TIndexTabletActor::HandleForcedOperation(
     response->Record.SetRangeCount(ranges.size());
     auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
     response->Record.SetOperationId(std::move(operationId));
-    EnqueueForcedRangeOperationIfNeeded(ctx);
+    EnqueueForcedOperationIfNeeded(ctx);
+    return response;
+}
 
-    NCloud::Reply(ctx, *ev, std::move(response));
+std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+TIndexTabletActor::ProcessForcedTabletOperationRequest(
+    const NProtoPrivate::TForcedOperationRequest& request,
+    const TActorContext& ctx)
+{
+    using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
+
+    using EMode = TEvIndexTabletPrivate::EForcedTabletOperationMode;
+    EMode mode{};
+    switch (request.GetOpType()) {
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH: {
+            mode = EMode::Flush;
+            break;
+        }
+        case NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES: {
+            mode = EMode::FlushBytes;
+            break;
+        }
+        case NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE: {
+            mode = EMode::CollectGarbage;
+            break;
+        }
+        default: {
+            return std::make_unique<TResponse>(MakeError(E_ARGUMENT, "unsupported mode"));
+        }
+    }
+
+    if (IsForcedOperationRunning()) {
+        NProto::TError error;
+        const auto* state = std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
+        if (state && state->Mode == mode) {
+            error = MakeError(S_ALREADY, "already launched");
+        } else {
+            error = MakeError(E_TRY_AGAIN, TStringBuilder() << "another operation is running");
+        }
+        return std::make_unique<TResponse>(std::move(error));
+    }
+
+    auto response = std::make_unique<TResponse>();
+    auto operationId = EnqueueForcedTabletOperation(mode);
+    response->Record.SetOperationId(std::move(operationId));
+    EnqueueForcedOperationIfNeeded(ctx);
+    return response;
+}
+
+void TIndexTabletActor::EnqueueForcedOperationIfNeeded(const TActorContext& ctx)
+{
+    if (IsForcedOperationRunning()) {
+        return;
+    }
+
+    auto pendingRequest = DequeueForcedOperation();
+    if (!pendingRequest) {
+        return;
+    }
+
+    std::visit(
+        TOverloaded{
+            [&](TPendingForcedRangeOperation& state)
+            {
+                auto request = std::make_unique<
+                    TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
+                    std::move(state.Ranges),
+                    state.Mode,
+                    std::move(state.OperationId));
+                ctx.Send(ctx.SelfID, request.release());
+            },
+            [&](TPendingForcedTabletOperation& state)
+            {
+                auto request = std::make_unique<
+                    TEvIndexTabletPrivate::TEvForcedTabletOperationRequest>(
+                    state.Mode,
+                    std::move(state.OperationId));
+                ctx.Send(ctx.SelfID, request.release());
+            }},
+        *pendingRequest);
 }
 
 void TIndexTabletActor::HandleForcedOperationStatus(
@@ -1217,19 +1305,21 @@ void TIndexTabletActor::HandleForcedOperationStatus(
     using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
     auto response = std::make_unique<TResponse>();
 
-    const auto* state = FindForcedRangeOperation(request.GetOperationId());
+    const auto* state = FindForcedOperation(request.GetOperationId());
     if (state) {
-        response->Record.SetRangeCount(state->RangesToCompact.size());
-        response->Record.SetProcessedRangeCount(state->Current);
-        response->Record.SetLastProcessedRangeId(state->GetCurrentRange());
+        const auto* rangeState = std::get_if<TForcedRangeOperationState>(state);
+        if (rangeState) {
+            response->Record.SetRangeCount(rangeState->RangesToCompact.size());
+            response->Record.SetProcessedRangeCount(rangeState->Current);
+            response->Record.SetLastProcessedRangeId(
+                rangeState->GetCurrentRange());
+        }
         response->Record.SetStatus(
-            state->Current < state->RangesToCompact.size()
-                ? TStatus::E_RUNNING
-                : TStatus::E_COMPLETED);
+            state == GetForcedOperationState() ? TStatus::E_RUNNING
+                                               : TStatus::E_COMPLETED);
     } else if (IsForcedRangeOperationPending(request.GetOperationId())) {
         response->Record.SetStatus(TStatus::E_PENDING);
-    }
-    else {
+    } else {
         response->Record.SetStatus(TStatus::E_UNKNOWN);
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,

@@ -340,9 +340,16 @@ void DumpOperationState(
 
 void DumpCompactionInfo(
     IOutputStream& out,
-    const TIndexTabletState::TForcedRangeOperationState& state)
+    const TIndexTabletState::TForcedOperationState& state)
 {
-    DumpProgress(out, state.Current, state.RangesToCompact.size());
+    const auto* rangeOpState =
+        std::get_if<TIndexTabletState::TForcedRangeOperationState>(&state);
+    if (rangeOpState) {
+        DumpProgress(
+            out,
+            rangeOpState->Current,
+            rangeOpState->RangesToCompact.size());
+    }
 }
 
 void DumpRangeId(IOutputStream& out, ui64 tabletId, ui32 rangeId)
@@ -1255,14 +1262,14 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
 #undef DUMP_INFO_FIELD
 
         TAG(TH3) {
-            if (!IsForcedRangeOperationRunning()) {
+            if (!IsForcedOperationRunning()) {
                 BuildMenuButton(out, "compact-all");
             }
             out << "CompactionQueue";
         }
 
-        if (IsForcedRangeOperationRunning()) {
-            DumpCompactionInfo(out, *GetForcedRangeOperationState());
+        if (IsForcedOperationRunning()) {
+            DumpCompactionInfo(out, *GetForcedOperationState());
         } else {
             out << "<div class='collapse form-group' id='compact-all'>";
             BuildForceCompactionButton(out, TabletID());
@@ -1424,7 +1431,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    if (IsForcedRangeOperationRunning()) {
+    if (IsForcedOperationRunning()) {
         SendHttpResponse(
             ctx,
             TabletID(),
@@ -1481,7 +1488,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     }
 
     EnqueueForcedRangeOperation(mode, std::move(ranges));
-    EnqueueForcedRangeOperationIfNeeded(ctx);
+    EnqueueForcedOperationIfNeeded(ctx);
 
     SendHttpResponse(
         ctx,

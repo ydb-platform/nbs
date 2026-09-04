@@ -344,7 +344,7 @@ private:
         const TCleanupInfo& cleanupInfo);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
-    void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
+    void EnqueueForcedOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
     void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
 
@@ -902,6 +902,16 @@ private:
     std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
         TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
+
+    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+    ProcessForcedRangeOperationRequest(
+        const NProtoPrivate::TForcedOperationRequest& request,
+        const NActors::TActorContext& ctx);
+
+    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+    ProcessForcedTabletOperationRequest(
+        const NProtoPrivate::TForcedOperationRequest& request,
+        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NFileStore::NStorage
