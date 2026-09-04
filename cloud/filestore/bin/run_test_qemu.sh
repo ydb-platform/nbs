@@ -25,6 +25,7 @@ QEMU_FIRMWARE_REL=/usr/share/qemu
 
 : ${QMP_PORT:=4444}
 : ${NET_PORT:=3389}
+: ${SSH_PORT:=2222}
 : ${DISK_IMAGE:=$BIN_DIR/rootfs.img}
 : ${VHOST_SOCKET_PATH:=/tmp/vhost.sock}
 
@@ -47,7 +48,7 @@ args=(
     -object memory-backend-memfd,id=mem,size=$MEM_SIZE,share=on
     -numa node,memdev=mem
 
-    -netdev user,id=netdev0,hostfwd=tcp::$NET_PORT-:$NET_PORT
+    -netdev user,id=netdev0,hostfwd=tcp::$NET_PORT-:$NET_PORT,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22
     -device virtio-net-pci,netdev=netdev0,id=net0
 
     -drive format=qcow2,file="$DISK_IMAGE",id=hdd0,if=none,aio=native,cache=none,discard=unmap
@@ -56,8 +57,10 @@ args=(
     -chardev socket,path=$VHOST_SOCKET_PATH,id=vhost0,reconnect=1
     -device vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,num-request-queues=8,queue-size=1024
 
-    -serial stdio
-    -nographic
+    -chardev stdio,id=console,mux=on,signal=off
+    -serial chardev:console
+    -mon chardev=console,mode=readline
+    -display none
     ${KERNEL_IMAGE:+-kernel $KERNEL_IMAGE}
     ${KCMDLINE:+-append "$KCMDLINE"}
     # -s
