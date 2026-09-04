@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/karlseguin/ccache/v2"
@@ -11,6 +13,14 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	tasks_headers "github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
+	grpc_metadata "google.golang.org/grpc/metadata"
+	grpc_peer "google.golang.org/grpc/peer"
+)
+
+const (
+	HeaderUserIP       = "x-user-ip"
+	HeaderRealIP       = "x-real-ip"
+	HeaderForwardedFor = "x-forwarded-for"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -49,6 +59,43 @@ func NewStubAuthorizer() Authorizer {
 
 func GetRequestID(ctx context.Context) string {
 	return tasks_headers.GetRequestID(ctx)
+}
+
+func parseUserIP(address string) string {
+	address, _, _ = strings.Cut(address, ",")
+	address = strings.TrimSpace(address)
+
+	if host, _, err := net.SplitHostPort(address); err == nil {
+		address = host
+	}
+
+	if ip := net.ParseIP(address); ip != nil {
+		return ip.String()
+	}
+
+	return ""
+}
+
+func GetUserIP(ctx context.Context) string {
+	for _, header := range []string{
+		HeaderUserIP,
+		HeaderRealIP,
+		HeaderForwardedFor,
+	} {
+		values := grpc_metadata.ValueFromIncomingContext(ctx, header)
+		if len(values) != 0 {
+			if ip := parseUserIP(values[0]); ip != "" {
+				return ip
+			}
+		}
+	}
+
+	p, ok := grpc_peer.FromContext(ctx)
+	if !ok || p.Addr == nil {
+		return ""
+	}
+
+	return parseUserIP(p.Addr.String())
 }
 
 func GetAccessToken(ctx context.Context) (string, error) {
