@@ -6,7 +6,9 @@ SRCS(
     cell_manager_ut.cpp
     connection_ut.cpp
     describe_volume_ut.cpp
+    endpoint_router_ut.cpp
     host_pool_ut.cpp
+    transport_switcher_ut.cpp
 )
 
 PEERDIR(

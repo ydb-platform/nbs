@@ -11,6 +11,11 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
+#include <cloud/blockstore/libs/service/storage.h>
+
+#include <cloud/storage/core/libs/common/scheduler_test.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -36,14 +41,16 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
         return GrpcSetupPromise.GetFuture();
     }
 
+    TPromise<TResultOrError<IBlockStorePtr>> RdmaSetupPromise =
+        NewPromise<TResultOrError<IBlockStorePtr>>();
+
     TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) override
     {
         Y_UNUSED(bootstrap);
         Y_UNUSED(config);
-        return MakeFuture(
-            TResultOrError<IBlockStorePtr>(MakeError(E_NOT_IMPLEMENTED)));
+        return RdmaSetupPromise.GetFuture();
     }
 };
 
@@ -52,6 +59,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
 struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
 {
     TString TabletHostToReport;
+    ui32 RequestCount = 0;
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -72,6 +80,8 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
+
+        ++RequestCount;
 
         typename TMethod::TResponse response;
         if constexpr (std::is_same_v<TMethod, TBlockStoreMountVolumeMethod>) {
@@ -137,26 +147,37 @@ struct TTestEnv
     std::shared_ptr<TTestObserver> Observer =
         std::make_shared<TTestObserver>();
 
+    std::shared_ptr<TTestBlockStore> RdmaService =
+        std::make_shared<TTestBlockStore>();
+
     TCellConfigPtr CellConfig;
     TCellHostPoolPtr Pool;
     TBootstrap Bootstrap;
 
-    TTestEnv()
+    explicit TTestEnv(
+        NProto::ECellDataTransport transport =
+            NProto::CELL_DATA_TRANSPORT_GRPC,
+        bool grpcDataFallback = false)
     {
         NProto::TCellConfig proto;
         proto.SetCellId("cell-1");
         proto.SetGrpcPort(9766);
-        proto.SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
+        proto.SetTransport(transport);
+        proto.SetGrpcDataFallbackEnabled(grpcDataFallback);
         proto.AddHosts()->SetFqdn("host-a");
         CellConfig = std::make_shared<TCellConfig>(std::move(proto));
 
         Bootstrap.EndpointsSetup = EndpointsSetup;
         Bootstrap.GrpcClient = GrpcClient;
+        Bootstrap.Logging = CreateLoggingService("console");
+        Bootstrap.Timer = std::make_shared<TTestTimer>();
+        Bootstrap.Scheduler =
+            std::make_shared<TTestScheduler>(TInstant::Zero());
 
         Pool = std::make_shared<TCellHostPool>(CellConfig, Bootstrap);
     }
 
-    ICellConnectionPtr Connect(const TString& fqdn)
+    TCellConnectionFuture ConnectAsync(const TString& fqdn)
     {
         auto future = CreateCellConnection(
             Pool,
@@ -172,11 +193,25 @@ struct TTestEnv
                 9766,
                 false));
 
+        return future;
+    }
+
+    ICellConnectionPtr Connect(const TString& fqdn)
+    {
+        auto future = ConnectAsync(fqdn);
+
         UNIT_ASSERT_C(future.HasValue(), "connection was not established");
 
         auto result = future.GetValue();
         UNIT_ASSERT_C(!HasError(result), result.GetError());
         return result.GetResult();
+    }
+
+    static void Read(const ICellConnectionPtr& connection)
+    {
+        connection->GetStorage()->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TReadBlocksLocalRequest>());
     }
 
     void Mount(const ICellConnectionPtr& connection)
@@ -233,6 +268,45 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         UNIT_ASSERT(response.HasValue());
 
         UNIT_ASSERT_VALUES_EQUAL(1, env.Observer->Reported.size());
+    }
+
+    Y_UNIT_TEST(ShouldServeDataOverGrpcWhileRdmaIsBeingSetUp)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_RDMA, true);
+
+        auto connection = env.Connect("host-a");
+
+        const auto mountRequests = env.GrpcClient->Service->RequestCount;
+
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            mountRequests + 1,
+            env.GrpcClient->Service->RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.RdmaService->RequestCount);
+
+        env.EndpointsSetup->RdmaSetupPromise.SetValue(
+            TResultOrError<IBlockStorePtr>(env.RdmaService));
+
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.RdmaService->RequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldWaitForRdmaWhenGrpcDataFallbackIsDisabled)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_RDMA, false);
+
+        auto future = env.ConnectAsync("host-a");
+        UNIT_ASSERT(!future.HasValue());
+
+        env.EndpointsSetup->RdmaSetupPromise.SetValue(
+            TResultOrError<IBlockStorePtr>(env.RdmaService));
+
+        UNIT_ASSERT(future.HasValue());
+        auto result = future.GetValue();
+        UNIT_ASSERT_C(!HasError(result), result.GetError());
+
+        TTestEnv::Read(result.GetResult());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.RdmaService->RequestCount);
     }
 }
 
