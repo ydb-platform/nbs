@@ -817,7 +817,9 @@ message TStorageServiceConfig
     optional uint32 CompactionRangeCountPerRun = 264;
 
     // Specifies whether to use CompactionRangeCountPerRun,
-    // GarbageCompactionRangeCountPerRun and ForcedCompactionRangeCountPerRun.
+    // GarbageCompactionRangeCountPerRun,
+    // MixedBlocksCountCompactionRangeCountPerRun and
+    // ForcedCompactionRangeCountPerRun.
     optional bool BatchCompactionEnabled = 265;
 
     // Timeout before allowing infra to withdraw our unavailable agents.
@@ -1693,4 +1695,23 @@ message TStorageServiceConfig
     // Maximum allowed logical size of all blocks (block count * block size) in
     // fresh after which we start to reject write and zero requests.
     optional uint64 FreshLogicalBlocksByteCountHardLimit = 529;
+
+    // Enables compaction triggered by the number of mixed blocks for HDD
+    // volumes.
+    optional bool MixedBlocksCountCompactionEnabledHDD = 530;
+
+    // Enables compaction triggered by the number of mixed blocks for SSD
+    // volumes.
+    optional bool MixedBlocksCountCompactionEnabledSSD = 531;
+
+    // Number of mixed bytes in a compaction range that triggers compaction for
+    // HDD volumes. Zero means using WriteBlobThreshold.
+    optional uint32 MixedBytesCountCompactionThresholdHDD = 532;
+
+    // Number of mixed bytes in a compaction range that triggers compaction for
+    // SSD volumes. Zero means using WriteBlobThresholdSSD.
+    optional uint32 MixedBytesCountCompactionThresholdSSD = 533;
+
+    // Number of ranges to process in a single mixed-block-count compaction run.
+    optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 534;
 }
