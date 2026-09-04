@@ -36,8 +36,6 @@ on:
 permissions:
   actions: read
   contents: read
-  pull-requests: write
-  issues: write
 
 jobs:
   build_dispatch:
