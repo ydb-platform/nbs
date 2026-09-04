@@ -6,6 +6,8 @@
 #include <util/system/compiler.h>
 #include <util/system/yassert.h>
 
+#include <atomic>
+
 namespace NCloud {
 
 namespace {
