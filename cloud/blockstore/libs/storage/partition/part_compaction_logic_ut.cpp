@@ -64,7 +64,7 @@ TPartitionState MakeState(size_t blockCount = 2048, bool mixedBlocksFilterEnable
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
         DefaultConfig(1, blockCount),
-        BuildDefaultCompactionPolicy(5),
+        BuildDefaultCompactionPolicy(5, 0),
         0,   // compactionScoreHistorySize
         0,   // cleanupScoreHistorySize
         DefaultBPConfig(),
