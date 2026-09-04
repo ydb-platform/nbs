@@ -36,8 +36,7 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
     xxx(RemoveNodeXAttr, __VA_ARGS__)                                          \
     xxx(GetNodeXAttr, __VA_ARGS__)                                             \
     xxx(SetNodeXAttr, __VA_ARGS__)                                             \
-    xxx(ListNodeXAttr, __VA_ARGS__)
-
+    xxx(ListNodeXAttr, __VA_ARGS__)                                            \
 // FAST_SHARD_PUBLIC_METHODS
 
 struct TFileSystemShardStats

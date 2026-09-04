@@ -70,7 +70,7 @@ five clear of the journalled device ports 29900..29904.
 cd cloud/filestore/bin
 
 ./initctl.sh create
-./configurefastshards.py --file-shard-count 4
+./configurefastshards.py --file-shard-count 4 # --storage-group-type E_SG_QUORUM_MIRROR
 ./initctl.sh mount
 ```
 

@@ -8,6 +8,7 @@ namespace NCloud::NFileStore::NProtoPrivate {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TPersistentFastShardConfig;
+class TStorageGroup;
 
 }   // namespace NCloud::NFileStore::NProtoPrivate
 
@@ -24,7 +25,10 @@ struct IStorageGroupFactory
 
 using IStorageGroupFactoryPtr = std::shared_ptr<IStorageGroupFactory>;
 
-IStorageGroupFactoryPtr CreateNaiveMirroredStorageGroupFactory();
+/**
+ * An unrecognised type falls back to E_SG_MIRROR.
+ */
+IStorageGroupFactoryPtr CreateStorageGroupFactory();
 
 ////////////////////////////////////////////////////////////////////////////////
 

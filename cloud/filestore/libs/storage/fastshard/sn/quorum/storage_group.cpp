@@ -1,6 +1,5 @@
 #include "storage_group.h"
-
-#include <cloud/storage/core/libs/common/error.h>
+#include "storage_group_helpers.h"
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
@@ -29,91 +28,6 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-//
-// Repeats the call until it succeeds, fails with a non-retriable error or the
-// total timeout is reached. All time arithmetic goes through the provided
-// timer. See TStorageGroupRetryPolicy.
-//
-
-template <typename TCall>
-auto CallWithRetries(
-    const TStorageGroupRetryPolicy& policy,
-    ITimer& timer,
-    TCall call)
-{
-    const TInstant start = timer.Now();
-    ui32 errorCount = 0;
-
-    for (;;) {
-        auto response = call();
-        const auto& error = response.GetError();
-        if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            return response;
-        }
-
-        if (timer.Now() - start >= policy.TotalTimeout) {
-            SILK_ERROR(
-                "sg retries timed out after %u errors: %s",
-                errorCount + 1,
-                FormatError(error).c_str());
-
-            return response;
-        }
-
-        ++errorCount;
-        const TDuration backoff = policy.BackoffIncrement * errorCount;
-        SILK_DEBUG(
-            "sg retry #%u, backoff: %luus, error: %s",
-            errorCount,
-            backoff.MicroSeconds(),
-            FormatError(error).c_str());
-
-        timer.Sleep(backoff);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TAcquireDevicesParams
-{
-    TStorageDevice Device;
-    NProto::TAcquireDevicesRequest* Request;
-    NProto::TAcquireDevicesResponse* Response;
-    const TStorageGroupRetryPolicy* RetryPolicy;
-    ITimer* Timer;
-};
-
-int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept
-{
-    NProto::TAcquireDevicesRequest request = *params->Request;
-    request.AddDeviceUUIDs(std::move(params->Device.DeviceUUID));
-    *params->Response = CallWithRetries(
-        *params->RetryPolicy,
-        *params->Timer,
-        [&] { return params->Device.Node->AcquireDevices(request); });
-    return 0;
-}
-
-struct TReleaseDevicesParams
-{
-    TStorageDevice Device;
-    NProto::TReleaseDevicesRequest* Request;
-    NProto::TReleaseDevicesResponse* Response;
-    const TStorageGroupRetryPolicy* RetryPolicy;
-    ITimer* Timer;
-};
-
-int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
-{
-    NProto::TReleaseDevicesRequest request = *params->Request;
-    request.AddDeviceUUIDs(std::move(params->Device.DeviceUUID));
-    *params->Response = CallWithRetries(
-        *params->RetryPolicy,
-        *params->Timer,
-        [&] { return params->Device.Node->ReleaseDevices(request); });
-    return 0;
-}
 
 struct TWriteLogRecordParams
 {
@@ -159,20 +73,20 @@ public:
 public:
     NProto::TError AcquireDevices() override
     {
-        return MirrorRequest<
-            NProto::TAcquireDevicesRequest,
-            NProto::TAcquireDevicesResponse,
-            TAcquireDevicesParams>(
+        return MirrorRequest<NProto::TAcquireDevicesResponse>(
+            Devices,
+            RetryPolicy,
+            *Timer,
             AcquireDevicesFiberMain,
             NProto::TAcquireDevicesRequest{});
     }
 
     NProto::TError ReleaseDevices() override
     {
-        return MirrorRequest<
-            NProto::TReleaseDevicesRequest,
-            NProto::TReleaseDevicesResponse,
-            TReleaseDevicesParams>(
+        return MirrorRequest<NProto::TReleaseDevicesResponse>(
+            Devices,
+            RetryPolicy,
+            *Timer,
             ReleaseDevicesFiberMain,
             NProto::TReleaseDevicesRequest{});
     }
@@ -182,27 +96,20 @@ public:
         TVector<TPageGroup> pageGroups,
         ui64 lsn) override
     {
-        NProto::TWriteLogRecordRequest request;
-        *request.MutableHeaders() = std::move(headers);
-        request.MutablePageGroups()->Reserve(pageGroups.size());
-        for (auto& pg: pageGroups) {
-            auto* w = request.AddPageGroups();
-            w->SetFirstPageNo(pg.FirstPageNo);
-            w->MutableContent()->Reserve(pg.Content.size());
-            for (const auto& c: pg.Content) {
-                // proto content is TString - the copy stays until the
-                // protocol itself switches away from TString
-                w->AddContent()->assign(c.Data(), c.Size());
-            }
-        }
-        request.SetLogSequenceNumber(lsn);
+        auto request = MakeWriteLogRecordRequest(
+            std::move(headers),
+            pageGroups,
+            lsn);
+
         request.SetPrevLogSequenceNumber(LastLsn.exchange(lsn));
         SILK_DEBUG("sg write: %s", DebugMessage(request).c_str());
 
-        return MirrorRequest<
-            NProto::TWriteLogRecordRequest,
-            NProto::TWriteLogRecordResponse,
-            TWriteLogRecordParams>(WriteLogRecordFiberMain, std::move(request));
+        return MirrorRequest<NProto::TWriteLogRecordResponse>(
+            Devices,
+            RetryPolicy,
+            *Timer,
+            WriteLogRecordFiberMain,
+            std::move(request));
     }
 
     NProto::TError ReadPages(
@@ -212,25 +119,7 @@ public:
     {
         pageGroups->clear();
 
-        NProto::TReadPagesRequest request;
-        // TODO(#5895): use proper client-id
-        const TString clientId = "fastshard-prototype-client";
-        headers.SetClientId(clientId);
-
-        *request.MutableHeaders() = std::move(headers);
-        for (const auto& pg: pageGroupRefs) {
-            auto* pgr = request.AddPageGroupRefs();
-            pgr->SetPageSize(pg.PageSize);
-            pgr->SetFirstPageNo(pg.FirstPageNo);
-            pgr->SetPageCount(pg.PageCount);
-        }
-
-        //
-        // Each attempt advances the round-robin selector, so retries after
-        // retriable errors go to the other replicas and a single broken
-        // device does not fail the read.
-        //
-
+        auto request = MakeReadPagesRequest(std::move(headers), pageGroupRefs);
         auto response = CallWithRetries(
             RetryPolicy,
             *Timer,
@@ -245,86 +134,12 @@ public:
                     request.ShortUtf8DebugString().c_str());
                 return Devices[i].Node->ReadPages(request);
             });
+
         if (!HasError(response.GetError())) {
-            pageGroups->reserve(response.PageGroupsSize());
-            for (auto& pg: *response.MutablePageGroups()) {
-                auto& r = pageGroups->emplace_back();
-                r.FirstPageNo = pg.GetFirstPageNo();
-                r.Content.reserve(pg.ContentSize());
-                for (const auto& c: pg.GetContent()) {
-                    r.Content.emplace_back(c.data(), c.size());
-                }
-            }
+            ExtractPageGroups(response, pageGroups);
         }
 
         return response.GetError();
-    }
-
-private:
-    static TString DebugMessage(const NProto::TWriteLogRecordRequest& w)
-    {
-        NProto::TReadPagesRequest r;
-        *r.MutableHeaders() = w.GetHeaders();
-        for (const auto& pg: w.GetPageGroups()) {
-            auto* rpg = r.AddPageGroupRefs();
-            rpg->SetPageSize(pg.ContentSize() ? pg.GetContent(0).size() : 0);
-            rpg->SetPageCount(pg.ContentSize());
-            rpg->SetFirstPageNo(pg.GetFirstPageNo());
-        }
-        return r.ShortUtf8DebugString();
-    }
-
-    template <
-        typename TRequest,
-        typename TResponse,
-        typename TParams,
-        typename TFiberMain>
-    NProto::TError MirrorRequest(TFiberMain fiberMain, TRequest request)
-    {
-        auto& headers = *request.MutableHeaders();
-        // TODO(#5895): use proper client-id
-        const TString clientId = "fastshard-prototype-client";
-        headers.SetClientId(clientId);
-
-        TVector<silk::FiberFuture> futures(Devices.size());
-        TVector<TResponse> responses(Devices.size());
-        for (ui32 i = 0; i < Devices.size(); ++i) {
-            int r = silk::FiberScheduler::run(
-                fiberMain,
-                TParams{
-                    .Device = Devices[i],
-                    .Request = &request,
-                    .Response = &responses[i],
-                    .RetryPolicy = &RetryPolicy,
-                    .Timer = Timer.get()},
-                &futures[i]);
-            Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
-        }
-
-        NProto::TError error;
-        for (ui32 i = 0; i < Devices.size(); ++i) {
-            int r = futures[i].wait();
-            if (r) {
-                SILK_ERROR("future error: %s", ::strerror(r));
-                if (!HasError(error)) {
-                    error = MakeError(MAKE_SYSTEM_ERROR(r));
-                }
-
-                continue;
-            }
-
-            auto& nodeResponse = responses[i];
-            if (HasError(nodeResponse.GetError())) {
-                SILK_ERROR(
-                    "node error: %s",
-                    FormatError(nodeResponse.GetError()).c_str());
-                if (!HasError(error)) {
-                    error = std::move(*nodeResponse.MutableError());
-                }
-            }
-        }
-
-        return error;
     }
 };
 
