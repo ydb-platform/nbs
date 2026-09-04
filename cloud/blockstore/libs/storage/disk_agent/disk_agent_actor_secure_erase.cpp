@@ -10,22 +10,23 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TDiskAgentActor::CanStartSecureErase(const TString& uuid)
-{
-    const auto& name = State->GetDeviceName(uuid);
-    return !SecureEraseDevicesNames.contains(name) &&
-           SecureEraseDevicesNames.size() <
-               AgentConfig->GetMaxParallelSecureErasesAllowed();
-}
-
-void TDiskAgentActor::SecureErase(
+bool TDiskAgentActor::SecureErase(
     const NActors::TActorContext& ctx,
     const TString& deviceId)
 {
+    const auto& deviceName = State->GetDeviceName(deviceId);
+    if (!SecureEraseState.CanStart(
+            deviceId,
+            deviceName,
+            AgentConfig->GetMaxParallelSecureErasesAllowed()))
+    {
+        return false;
+    }
+
     LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
         "Start secure erase for " << deviceId.Quote());
 
-    SecureEraseDevicesNames.emplace(State->GetDeviceName(deviceId));
+    SecureEraseState.Start(deviceId, deviceName);
 
     auto* actorSystem = ctx.ActorSystem();
     auto replyTo = ctx.SelfID;
@@ -48,7 +49,7 @@ void TDiskAgentActor::SecureErase(
         reply(MakeError(E_REJECTED, TStringBuilder()
                 << "SecureErase with inflight ios present for device "
                 << deviceId));
-        return;
+        return true;
     }
 
     try {
@@ -70,6 +71,8 @@ void TDiskAgentActor::SecureErase(
 
         reply(MakeError(e.GetCode(), e.what()));
     }
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -105,22 +108,33 @@ void TDiskAgentActor::HandleSecureEraseDevice(
         TBlockStoreComponents::DISK_AGENT,
         "Secure erase device " << deviceId.Quote());
 
-    auto& pendingRequests = SecureErasePendingRequests[deviceId];
-
-    pendingRequests.emplace_back(
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            ev->Get()->CallContext));
-
-    if (!CanStartSecureErase(deviceId)) {
-        LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
-            "Postpone secure erase for " << deviceId.Quote());
-
+    if (auto error = SecureEraseState.HandleRequest(
+            deviceId,
+            request.GetGeneration(),
+            request.GetIdempotencyKey()))
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
+                std::move(*error)));
         return;
     }
 
-    SecureErase(ctx, deviceId);
+    auto& erase = SecureEraseState.GetOrAdd(deviceId);
+    erase.Requests.emplace_back(
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
+    if (SecureEraseState.IsInProgress(deviceId)) {
+        return;
+    }
+    erase.Status = ESecureEraseStatus::Wait;
+
+    if (!SecureErase(ctx, deviceId)) {
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Postpone secure erase for " << deviceId.Quote());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,38 +161,20 @@ void TDiskAgentActor::HandleSecureEraseCompleted(
 
     // send responses
 
-    if (auto it = SecureErasePendingRequests.find(msg->DeviceId);
-        it != SecureErasePendingRequests.end())
-    {
-        for (auto& requestInfo: it->second) {
-            NCloud::Reply(
-                ctx,
-                *requestInfo,
-                std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(error));
-        }
+    auto& erase = SecureEraseState.Complete(msg->DeviceId, error);
 
-        SecureErasePendingRequests.erase(it);
+    for (auto& requestInfo: erase.Requests) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceResponse>(
+                error));
     }
-    SecureEraseDevicesNames.erase(State->GetDeviceName(msg->DeviceId));
+    erase.Requests.clear();
 
     // erase next device
-
-    TVector<TString> devicesToErase;
-    for (const auto& [deviceUUID, pendingRequests]: SecureErasePendingRequests) {
-        Y_DEBUG_ABORT_UNLESS(!pendingRequests.empty());
-
-        if (pendingRequests.empty()) {
-            devicesToErase.emplace_back(deviceUUID);
-            continue;
-        }
-
-        if (CanStartSecureErase(deviceUUID)) {
-            SecureErase(ctx, deviceUUID);
-        }
-    }
-
-    for (const auto& uuid: devicesToErase) {
-        SecureErasePendingRequests.erase(uuid);
+    for (const auto& deviceUUID: SecureEraseState.GetDevicesToErase()) {
+        SecureErase(ctx, deviceUUID);
     }
 }
 

@@ -5,6 +5,7 @@
 #include "disk_agent_counters.h"
 #include "disk_agent_private.h"
 #include "disk_agent_state.h"
+#include "secure_erase_state.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -43,18 +44,18 @@ class TDiskAgentActor final: public NActors::TActorBootstrapped<TDiskAgentActor>
     using TControlPlaneRequestNumber =
         TEvDiskAgentPrivate::TControlPlaneRequestNumber;
 
-    struct TPostponedRequest
-    {
-        ui64 VolumeRequestId = 0;
-        TBlockRange64 Range;
-        NActors::IEventHandlePtr Event;
-    };
-
     enum class ERegistrationState
     {
         NotStarted,
         InProgress,
         Registered,
+    };
+
+    struct TPostponedRequest
+    {
+        ui64 VolumeRequestId = 0;
+        TBlockRange64 Range;
+        NActors::IEventHandlePtr Event;
     };
 
 private:
@@ -89,8 +90,7 @@ private:
     NActors::TActorId StatsActor;
     TOldRequestCounters OldRequestCounters;
 
-    THashMap<TString, TDeque<TRequestInfoPtr>> SecureErasePendingRequests;
-    THashSet<TString> SecureEraseDevicesNames;
+    TSecureEraseState SecureEraseState;
 
     const bool RejectLateRequestsAtDiskAgentEnabled =
         Config->GetRejectLateRequestsAtDiskAgentEnabled();
@@ -168,9 +168,7 @@ private:
     void RenderDevices(IOutputStream& out) const;
     void RenderNVMeDevices(IOutputStream& out) const;
 
-    bool CanStartSecureErase(const TString& uuid);
-
-    void SecureErase(
+    bool SecureErase(
         const NActors::TActorContext& ctx,
         const TString& deviceId);
 
