@@ -153,7 +153,14 @@ message TStorageGroup
 {
     enum EStorageGroupType
     {
+        // Mirrors every write into all devices and waits for all of them.
+        // Reads are served by a single device, round-robin.
         E_SG_MIRROR = 0;
+
+        // Mirrors every write into all devices but acks after n/m write acks.
+        // Reads are served by any device that has caught up to the last
+        // quorum-acked record.
+        E_SG_QUORUM_MIRROR = 1;
     };
 
     repeated TStorageDevice Devices = 1;

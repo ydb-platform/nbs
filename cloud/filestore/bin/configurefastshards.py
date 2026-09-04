@@ -78,6 +78,12 @@ def parse_args():
         default=int(env("FASTSHARD_GROUP_CAPACITY", str(512 * 1024**2))),
         help="ExpectedGroupCapacity in bytes for the fastshard config")
     p.add_argument(
+        "--storage-group-type",
+        choices=["E_SG_MIRROR", "E_SG_QUORUM_MIRROR"],
+        default=env("STORAGE_GROUP_TYPE", "E_SG_MIRROR"),
+        help="storage group implementation for the fastshards "
+             "(default: %(default)s)")
+    p.add_argument(
         "--jd-port-base", type=int, default=int(env("JD_PORT_BASE", "29900")),
         help="journalled device server port convention: agent 'remoteN.*'"
              " listens on base+N, the local agent on base"
@@ -168,7 +174,10 @@ def build_storage_groups(args, describe_response):
                     args.jd_port_base),
                 "DeviceId": d.get("DeviceUUID") or d.get("deviceUUID"),
             })
-        groups.append([{"Devices": devices, "Type": "E_SG_MIRROR"}])
+        groups.append([{
+            "Devices": devices,
+            "Type": args.storage_group_type,
+        }])
     return groups
 
 
