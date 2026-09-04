@@ -216,13 +216,6 @@ func (i *interceptor) intercept(
 	ctx, span := tracing.StartSpan(ctx, requestName)
 	defer span.End()
 
-	logging.Debug(
-		ctx,
-		"requestName=%v, userIP=%q received",
-		requestName,
-		auth.GetUserIP(ctx),
-	)
-
 	start := time.Now()
 
 	resp, err := i.handleRequest(ctx, req, handler, requestName, requestStats)
