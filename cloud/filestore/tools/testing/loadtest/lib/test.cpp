@@ -11,7 +11,6 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
-#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -37,8 +36,6 @@
 #include <util/system/event.h>
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
-
-#include <google/protobuf/util/json_util.h>
 
 #include <variant>
 
