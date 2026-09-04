@@ -920,4 +920,9 @@ message TStorageConfig
     // Name of the hidden control namespace directory to expose under the
     // root of kikimr-backed filesystems. Empty disables the feature.
     optional string ControlNamespaceDirName = 544;
+
+    // Limits the number of shards used for nodes created in one directory
+    // when ShardBalancerPolicy is SBP_WEIGHTED_DETERMINISTIC.
+    // Zero means that all shards are used.
+    optional uint32 ShardsPerDirectoryCount = 545;
 }

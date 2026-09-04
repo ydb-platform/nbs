@@ -1564,6 +1564,7 @@ TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
 
 NProto::TError TIndexTabletState::SelectShard(
     NProto::ENodeType nodeType,
+    ui64 parentNodeId,
     ui64 fileSize,
     TString* shardId)
 {
@@ -1572,12 +1573,12 @@ NProto::TError TIndexTabletState::SelectShard(
         balancer = Impl->FileShardBalancer.get();
     }
 
-    auto e = balancer->SelectShard(fileSize, shardId);
-    if (HasError(e)) {
-        return e;
-    }
-
-    return e;
+    // ShardNo is used as a hint to the shard balancer. The balancer uses this
+    // hint to calculate a set of shards for parentNodeId.
+    return balancer->SelectShard(
+        fileSize,
+        shardId,
+        ExtractShardNo(parentNodeId) /*hint*/);
 }
 
 NProto::TError TIndexTabletState::UpdateShardBalancer(
@@ -1627,10 +1628,16 @@ NProto::TError TIndexTabletState::UpdateShardBalancer(
         minFreeSpaceReserve);
 }
 
-TVector<TShardStats>
-TIndexTabletState::MakeOrderedShardList() const
+TString TIndexTabletState::DescribeShardBalancers() const
 {
-    return Impl->ShardBalancer->MakeOrderedShardList();
+    TStringBuilder ret;
+    ret << Impl->ShardBalancer->Describe();
+
+    if (Impl->FileShardBalancer) {
+        ret << " File shard balancer: " << Impl->FileShardBalancer->Describe();
+    }
+
+    return ret;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

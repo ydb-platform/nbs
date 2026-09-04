@@ -339,6 +339,7 @@ public:
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
     NProto::EShardBalancerPolicy GetShardBalancerPolicy() const;
     ui64 GetShardBalancerPrecisionBytes() const;
+    ui32 GetShardsPerDirectoryCount() const;
 
     bool GetDirectoryCreationInShardsEnabled() const;
     TString GetControlNamespaceDirName() const;

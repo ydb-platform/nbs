@@ -463,6 +463,7 @@ public:
 
     NProto::TError SelectShard(
         NProto::ENodeType nodeType,
+        ui64 parentNodeId,
         ui64 fileSize,
         TString* shardId);
 
@@ -470,7 +471,7 @@ public:
 
     NProto::TError UpdateShardBalancer(const TVector<TShardStats>& stats);
 
-    TVector<TShardStats> MakeOrderedShardList() const;
+    TString DescribeShardBalancers() const;
 
     //
     // FileSystem Stats

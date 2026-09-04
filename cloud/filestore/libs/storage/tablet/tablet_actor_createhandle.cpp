@@ -298,6 +298,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             {
                 args.Error = SelectShard(
                     NProto::E_REGULAR_NODE,
+                    args.NodeId,
                     0 /*fileSize*/,
                     &shardId);
                 if (HasError(args.Error)) {

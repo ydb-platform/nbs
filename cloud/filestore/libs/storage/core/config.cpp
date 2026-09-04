@@ -78,6 +78,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
             NProto::EShardBalancerPolicy,                                      \
             NProto::SBP_ROUND_ROBIN                                           )\
     xxx(ShardBalancerPrecisionBytes,                            ui64,   1_GB  )\
+    xxx(ShardsPerDirectoryCount,                                ui32,   0     )\
                                                                                \
     xxx(DirectoryCreationInShardsEnabled,                       bool,   false )\
                                                                                \
