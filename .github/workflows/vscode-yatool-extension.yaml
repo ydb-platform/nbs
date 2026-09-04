@@ -3,12 +3,12 @@ name: Build VS Code yatool extension
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 defaults:
   run:
     shell: bash
+
+permissions:
+  contents: read
 
 env:
   GIT_CONFIG_COUNT: "1"

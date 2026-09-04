@@ -19,6 +19,12 @@ on:
         required: false
         default: ""
 
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   build:
     name: Build/test x86_64 using YA (release-ubsan) (dispatch)
