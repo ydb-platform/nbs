@@ -509,13 +509,15 @@ private:
     void CompleteAsyncCreateHandle(
         TCallContext& callContext,
         const NProto::TConfirmCreateHandleResponse& response);
-    void CompleteHandleOpsQueueEntry();
+    void CompleteHandleOpsQueueBatch(ui32 batchSize);
     void ProcessDelayedRelease();
 
     void ClearDirectoryCache();
 
     void ScheduleProcessHandleOpsQueue(TDuration delay);
     void ProcessHandleOpsQueue();
+    NThreading::TFuture<void> ProcessHandleOpsQueueEntry(
+        const std::optional<NProto::TQueueEntry>& entry);
 
     void DoWrite(
         TCallContextPtr callContext,

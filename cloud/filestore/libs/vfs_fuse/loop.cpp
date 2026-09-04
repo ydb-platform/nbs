@@ -1278,6 +1278,8 @@ private:
         }
         config.SetAsyncHandleOperationDrainPeriod(
             features.GetAsyncHandleOperationDrainPeriod());
+        config.SetAsyncHandleOperationBatchSize(
+            features.GetAsyncHandleOperationBatchSize());
 
         config.SetDirectIoEnabled(features.GetDirectIoEnabled());
         config.SetDirectIoAlign(features.GetDirectIoAlign());

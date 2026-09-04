@@ -230,6 +230,12 @@ public:
      */
     [[nodiscard]] NProto::TError Visit(const TVisitor& visitor);
 
+    /**
+     * Calls the visitor for the first count visible allocations in the buffer
+     * in the allocation order.
+     */
+    void VisitFirst(size_t count, const TVisitor& visitor);
+
     // Reading corruption flag is thread-safe
     [[nodiscard]] bool IsCorrupted() const;
 

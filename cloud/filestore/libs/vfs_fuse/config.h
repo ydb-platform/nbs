@@ -43,6 +43,7 @@ public:
     bool GetAsyncCreateHandleEnabled() const;
     TDuration GetAsyncHandleOperationIdlePeriod() const;
     TDuration GetAsyncHandleOperationDrainPeriod() const;
+    ui32 GetAsyncHandleOperationBatchSize() const;
 
     bool GetDirectIoEnabled() const;
     ui32 GetDirectIoAlign() const;

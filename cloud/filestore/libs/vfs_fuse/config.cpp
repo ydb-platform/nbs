@@ -29,9 +29,10 @@ namespace {
                                                                                \
     xxx(PreferredBlockSize,     ui32,           0                             )\
                                                                                \
-    xxx(AsyncDestroyHandleEnabled,          bool,       false                 )\
-    xxx(AsyncDestroyReadOnlyHandleEnabled,  bool,       false                 )\
-    xxx(AsyncCreateHandleEnabled,           bool,       false                 )\
+    xxx(AsyncDestroyHandleEnabled,           bool, false                      )\
+    xxx(AsyncDestroyReadOnlyHandleEnabled,   bool, false                      )\
+    xxx(AsyncCreateHandleEnabled,            bool, false                      )\
+    xxx(AsyncHandleOperationBatchSize,       ui32, 32                         )\
     xxx(AsyncHandleOperationIdlePeriod, TDuration, TDuration::MilliSeconds(50))\
     xxx(AsyncHandleOperationDrainPeriod, TDuration, TDuration::Zero()         )\
                                                                                \
