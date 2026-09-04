@@ -7,6 +7,7 @@
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <util/charset/utf8.h>
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
 #include <util/generic/map.h>
@@ -48,12 +49,19 @@ bool LoadPathDescriptionBackup(
     auto input = TStringInput(fileContent);
 
     TNullOutput warningStream;
-    return TryParseFromTextFormat(
-               input,
-               *backupProto,
-               EParseFromTextFormatOption::AllowUnknownField,
-               &warningStream) ||
-           backupProto->MergeFromString(fileContent);
+
+    if (IsUtf(fileContent)) {
+        if (TryParseFromTextFormat(
+                input,
+                *backupProto,
+                EParseFromTextFormatOption::AllowUnknownField,
+                &warningStream))
+        {
+            return true;
+        }
+    }
+
+    return backupProto->MergeFromString(fileContent);
 }
 
 void ProcessDir(

@@ -1,10 +1,11 @@
+#include "cloud/storage/core/libs/hive_proxy/protos/tablet_boot_info_backup.pb.h"
 #include "options.h"
 
 #include <cloud/storage/core/libs/common/format.h>
-#include "cloud/storage/core/libs/hive_proxy/protos/tablet_boot_info_backup.pb.h"
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <util/charset/utf8.h>
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
 #include <util/generic/map.h>
@@ -44,11 +45,17 @@ bool LoadTabletBootInfoBackup(
     TString fileContent = TUnbufferedFileInput(file).ReadAll();
     auto input = TStringInput(fileContent);
 
-    return TryMergeFromTextFormat(
-               input,
-               *backupProto,
-               EParseFromTextFormatOption::AllowUnknownField) ||
-           backupProto->MergeFromString(fileContent);
+    if (IsUtf(fileContent)) {
+        if (TryMergeFromTextFormat(
+                input,
+                *backupProto,
+                EParseFromTextFormatOption::AllowUnknownField))
+        {
+            return true;
+        }
+    }
+
+    return backupProto->MergeFromString(fileContent);
 }
 
 void ProcessDir(
