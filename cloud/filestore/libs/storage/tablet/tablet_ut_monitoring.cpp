@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
 #include <contrib/ydb/library/actors/core/mon.h>
+#include <library/cpp/json/json_reader.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -85,6 +86,60 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
         UNIT_ASSERT_C(
             !response->Html.Contains("alert-danger"),
             response->Html);
+    }
+
+    Y_UNIT_TEST(ShouldHandleHttpInfo_FastShardStatsJson)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.WaitReady();
+
+        //
+        // A regular tablet rejects the stats action.
+        //
+
+        auto errorResponse =
+            tablet.GetRemoteJsonInfo("action=fastShardStatsJson");
+        UNIT_ASSERT_C(
+            errorResponse->Json.Contains("not a fast shard"),
+            errorResponse->Json);
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            false /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            NProtoPrivate::TFastShardConfig(),
+            true /* isFastShard */);
+
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+
+        auto response = tablet.GetRemoteJsonInfo("action=fastShardStatsJson");
+
+        NJson::TJsonValue json;
+        UNIT_ASSERT_C(
+            NJson::ReadJsonTree(response->Json, &json),
+            response->Json);
+        UNIT_ASSERT_C(!json.Has("error"), response->Json);
+        for (const auto* key: {
+            "usedNodeCount",
+            "totalNodeCount",
+            "usedNameCount",
+            "totalNameCount",
+            "usedHandleCount",
+            "totalHandleCount",
+            "usedPageCount",
+            "totalPageCount",
+        })
+        {
+            UNIT_ASSERT_C(json.Has(key), response->Json);
+        }
     }
 
     Y_UNIT_TEST(ShouldHandleHttpInfo_Diagnostics)

@@ -709,6 +709,11 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
+    void HandleHttpInfo_FastShardStatsJson(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
     void HandleHttpInfo_FastShardLayoutJson(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,

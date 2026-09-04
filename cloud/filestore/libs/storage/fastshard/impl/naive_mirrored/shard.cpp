@@ -1102,7 +1102,10 @@ void DumpLayoutComponentsHtml(
 
     OutputTemplate(
         NResource::Find("fastshard/html/layout.html"),
-        {{"STYLE", NResource::Find("fastshard/css/layout.css")}},
+        {
+            {"STYLE", NResource::Find("fastshard/css/layout.css")},
+            {"SCRIPT", NResource::Find("fastshard/js/layout.js")},
+        },
         {
             {"COMPONENTS", std::move(componentRows)},
             {"DEVICES", std::move(deviceRows)},
@@ -1121,7 +1124,7 @@ private:
     const NProtoPrivate::TPersistentFastShardConfig Config;
 
     IStorageGroupPtr Storage;
-    std::atomic<bool> Acquired = false;
+    mutable std::atomic<bool> Acquired = false;
     IPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
@@ -2485,7 +2488,12 @@ public:
     {
         *stats = {};
 
-        auto e = Nodes.CollectStats(stats);
+        auto e = AcquireIfNeeded();
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = Nodes.CollectStats(stats);
         if (HasError(e)) {
             return e;
         }
@@ -2524,16 +2532,15 @@ private:
         return response;
     }
 
-    template <typename TResponse>
-    bool AcquireIfNeeded(TResponse& response)
+    NProto::TError AcquireIfNeeded() const
     {
         if (Acquired) {
-            return true;
+            return {};
         }
 
         std::lock_guard g(Mutex);
         if (Acquired) {
-            return true;
+            return {};
         }
 
         auto error = Storage->AcquireDevices();
@@ -2542,11 +2549,22 @@ private:
                 LogLevel(error),
                 "AcquireIfNeeded::Storage.AcquireDevices error=%s",
                 FormatError(error).c_str());
+            return error;
+        }
+
+        Acquired = true;
+        return {};
+    }
+
+    template <typename TResponse>
+    bool AcquireIfNeeded(TResponse& response) const
+    {
+        auto error = AcquireIfNeeded();
+        if (HasError(error)) {
             *response.MutableError() = std::move(error);
             return false;
         }
 
-        Acquired = true;
         return true;
     }
 };
