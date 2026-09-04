@@ -17,6 +17,7 @@ struct TCountingService: public TTestService
 {
     ui32 ReadCount = 0;
     ui32 AllocateCount = 0;
+    ui32 StopCount = 0;
     TPromise<NProto::TReadBlocksLocalResponse> Pending;
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
@@ -28,6 +29,8 @@ struct TCountingService: public TTestService
 
     TCountingService()
     {
+        StopHandler = [this] { ++StopCount; };
+
         ReadBlocksLocalHandler =
             [this](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
@@ -86,6 +89,19 @@ Y_UNIT_TEST_SUITE(TEndpointRouterTest)
         router->AllocateBuffer(4096);
 
         UNIT_ASSERT_VALUES_EQUAL(1, target->AllocateCount);
+    }
+
+    // Lifetime is not what the router forwards: stopping it must not stop an
+    // endpoint it merely points at, which may well be shared with others.
+    Y_UNIT_TEST(ShouldNotStopTheTargetItForwardsTo)
+    {
+        auto target = std::make_shared<TCountingService>();
+
+        auto router = CreateEndpointRouter(target);
+        router->Start();
+        router->Stop();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, target->StopCount);
     }
 
     Y_UNIT_TEST(ShouldKeepReplacedTargetAliveUntilItsRequestsComplete)

@@ -173,6 +173,35 @@ Y_UNIT_TEST_SUITE(TTransportSwitcherTest)
         UNIT_ASSERT_VALUES_EQUAL(3, env.FactoryCalls);
     }
 
+    // The switcher cannot cancel an attempt that is already in flight, so it
+    // outlives the router until that attempt completes. Observed through the
+    // factory, which the switcher owns and releases along with itself.
+    Y_UNIT_TEST(ShouldOutliveRouterUntilPendingAttemptCompletes)
+    {
+        auto sentinel = std::make_shared<int>(0);
+        std::weak_ptr<int> weakSentinel = sentinel;
+
+        auto promise = NewPromise<TResultOrError<IBlockStorePtr>>();
+
+        TTestEnv env;
+        env.StartSwitching(
+            [sentinel = std::move(sentinel), promise]
+            { return promise.GetFuture(); });
+
+        env.Router.reset();
+
+        UNIT_ASSERT_C(
+            weakSentinel.lock(),
+            "switcher was released while its attempt was still in flight");
+
+        promise.SetValue(TResultOrError<IBlockStorePtr>(
+            MakeError(E_REJECTED, "endpoint is not up yet")));
+
+        UNIT_ASSERT_C(
+            !weakSentinel.lock(),
+            "switcher was not released once the pending attempt completed");
+    }
+
     Y_UNIT_TEST(ShouldStopRetryingOnceRouterIsGone)
     {
         TTestEnv env;
