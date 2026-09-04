@@ -888,6 +888,41 @@ public:
         return {};
     }
 
+    void VisitFirst(size_t count, const TVisitor& visitor)
+    {
+        if (!ValidateAccess("VisitFirst")) {
+            return;
+        }
+
+        if (count == 0) {
+            return;
+        }
+
+        auto entry = GetFrontEntry();
+        size_t visited = 0;
+
+        while (entry.HasValue()) {
+            if (!entry.GetFreeFlag()) {
+                visitor(
+                    entry.Header.DataChecksum,
+                    entry.GetTag(),
+                    entry.GetData());
+
+                ++visited;
+
+                if (visited == count) {
+                    return;
+                }
+            }
+
+            entry = GetNextEntry(entry);
+        }
+
+        if (entry.IsInvalid()) {
+            SetCorrupted("Invalid entry detected at VisitFirst");
+        }
+    }
+
     bool IsCorrupted() const
     {
         return Corrupted.load(std::memory_order_relaxed);
@@ -1089,6 +1124,11 @@ bool TFileRingBuffer::Validate()
 NProto::TError TFileRingBuffer::Visit(const TVisitor& visitor)
 {
     return Impl->Visit(visitor);
+}
+
+void TFileRingBuffer::VisitFirst(size_t count, const TVisitor& visitor)
+{
+    Impl->VisitFirst(count, visitor);
 }
 
 bool TFileRingBuffer::IsCorrupted() const

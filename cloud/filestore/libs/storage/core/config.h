@@ -279,6 +279,8 @@ public:
     bool GetTabletUnsafeAsyncDestroyHandleEnabled() const;
     TDuration GetAsyncHandleOperationIdlePeriod() const;
     TDuration GetAsyncHandleOperationDrainPeriod() const;
+    ui32 GetAsyncHandleOperationBatchSize() const;
+
     TDuration GetUnconfirmedCreateHandleGraceTimeout() const;
     ui64 GetMaxDeferredNodeDestructionCount() const;
     ui32 GetMaxDeferredNodeDestructionsPerTx() const;

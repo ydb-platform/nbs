@@ -70,6 +70,7 @@ message TFileStoreFeatures
     // Availability interval duration (in ms), 0 means the default.
     uint32 AvailabilityTrackingInterval = 53;
     uint32 AsyncHandleOperationDrainPeriod = 54;
+    uint32 AsyncHandleOperationBatchSize = 55;
 }
 
 message TFileStore
