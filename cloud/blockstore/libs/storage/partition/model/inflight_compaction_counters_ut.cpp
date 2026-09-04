@@ -13,7 +13,7 @@ constexpr ui64 TabletId = 42;
 
 struct TFixture
 {
-    TCompactionMap CompactionMap{RangeSize, BuildDefaultCompactionPolicy(5)};
+    TCompactionMap CompactionMap{RangeSize, BuildDefaultCompactionPolicy(5, 0)};
     TCompressedBitmap UsedBlocks{4 * RangeSize};
     TInflightCompactionCounters Counters{TabletId, CompactionMap, UsedBlocks};
 };
@@ -127,14 +127,14 @@ Y_UNIT_TEST_SUITE(TInflightCompactionCountersTest)
         UNIT_ASSERT_VALUES_EQUAL(2, thirdRangeStat.BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(7, thirdRangeStat.BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(2, thirdRangeStat.UsedBlockCount);
-        UNIT_ASSERT(!thirdRangeStat.Compacted);
+        UNIT_ASSERT(thirdRangeStat.Compacted);
     }
 
     Y_UNIT_TEST(ShouldDiscardCountersWhenCompactionFails)
     {
         TFixture fixture;
 
-        fixture.CompactionMap.Update(RangeSize, 4, 6, 5, 0, false);
+        fixture.CompactionMap.Update(RangeSize, 4, 6, 5, 0, 0, false);
 
         fixture.Counters.CompactionStarted(100, {1});
         auto counters = fixture.Counters.GetCompactionCounters(1);
