@@ -28,14 +28,6 @@ public:
     {
         {
             std::lock_guard g(Mutex);
-            if (HasError(Error)) {
-                SILK_WARN(
-                    "sg already broken, extra failure on %s: %s",
-                    deviceUUID.c_str(),
-                    FormatError(error).c_str());
-                return;
-            }
-
             Error = MakeError(
                 E_INVALID_STATE,
                 TStringBuilder()
@@ -155,7 +147,7 @@ struct TGroupState
 
 using TGroupStatePtr = std::shared_ptr<TGroupState>;
 
-TVector<TStorageDevice> collectDeviceList(const TGroupState& state)
+TVector<TStorageDevice> CollectDeviceList(const TGroupState& state)
 {
     TVector<TStorageDevice> devices;
     devices.reserve(state.Proxies.size());
@@ -187,12 +179,13 @@ struct TWriteDispatchParams
     TDeviceProxyPtr Proxy;
 };
 
-int writeDispatchFiberMain(TWriteDispatchParams* params) noexcept
+int WriteDispatchFiberMain(TWriteDispatchParams* params) noexcept
 {
     auto& state = *params->State;
     auto& proxy = *params->Proxy;
 
     auto error = proxy.Write(params->Op->Request);
+    // Expect non-retriable code
     if (HasError(error)) {
         // Break the group first, so the writer this wakes finds it broken.
         state.Health.Fail(error, proxy.DeviceUUID);
@@ -235,7 +228,7 @@ public:
     NProto::TError AcquireDevices() override
     {
         return MirrorRequest<NProto::TAcquireDevicesResponse>(
-            collectDeviceList(*State),
+            CollectDeviceList(*State),
             RetryPolicy,
             *Timer,
             AcquireDevicesFiberMain,
@@ -245,7 +238,7 @@ public:
     NProto::TError ReleaseDevices() override
     {
         return MirrorRequest<NProto::TReleaseDevicesResponse>(
-            collectDeviceList(*State),
+            CollectDeviceList(*State),
             RetryPolicy,
             *Timer,
             ReleaseDevicesFiberMain,
@@ -275,7 +268,7 @@ public:
         SILK_DEBUG("sg write: %s", DebugMessage(op->Request).c_str());
         for (const auto& proxy: State->Proxies) {
             const int r = silk::FiberScheduler::run(
-                writeDispatchFiberMain,
+                WriteDispatchFiberMain,
                 TWriteDispatchParams{
                     .State = State,
                     .Op = op,
