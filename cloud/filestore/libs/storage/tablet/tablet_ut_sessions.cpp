@@ -1442,6 +1442,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             TDuration::MilliSeconds(100).MilliSeconds());
         config.SetAsyncHandleOperationDrainPeriod(
             TDuration::MilliSeconds(10).MilliSeconds());
+        config.SetAsyncHandleOperationBatchSize(32);
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
@@ -1479,6 +1480,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             TDuration::MilliSeconds(100).MilliSeconds());
         features.SetAsyncHandleOperationDrainPeriod(
             TDuration::MilliSeconds(10).MilliSeconds());
+        features.SetAsyncHandleOperationBatchSize(32);
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);

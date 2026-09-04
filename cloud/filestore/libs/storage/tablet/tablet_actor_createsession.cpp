@@ -56,6 +56,8 @@ void FillFeatures(
         config.GetAsyncHandleOperationIdlePeriod().MilliSeconds());
     features->SetAsyncHandleOperationDrainPeriod(
         config.GetAsyncHandleOperationDrainPeriod().MilliSeconds());
+    features->SetAsyncHandleOperationBatchSize(
+        config.GetAsyncHandleOperationBatchSize());
 
     features->SetGuestWriteBackCacheEnabled(
         config.GetGuestWriteBackCacheEnabled());

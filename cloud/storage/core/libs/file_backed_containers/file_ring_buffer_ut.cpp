@@ -1613,6 +1613,141 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_VALUES_EQUAL(data, rb->Front().Data);
     }
 
+    FILE_RING_BUFFER_TEST(ShouldVisitFirstEntries)
+    {
+        const auto file = TTempFileHandle();
+        TFileRingBuffer rb(file.GetName(), 128, 0, ver);
+
+        UNIT_ASSERT(rb.PushBack("A"));
+        UNIT_ASSERT(rb.PushBack("B"));
+        UNIT_ASSERT(rb.PushBack("C"));
+
+        TVector<TString> visited;
+
+        rb.VisitFirst(
+            2,
+            [&](ui32, ui32, TStringBuf entry)
+            {
+                visited.emplace_back(entry);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(2, visited.size());
+        UNIT_ASSERT_VALUES_EQUAL("A", visited[0]);
+        UNIT_ASSERT_VALUES_EQUAL("B", visited[1]);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldVisitNoEntriesWhenVisitFirstCountIsZero)
+    {
+        const auto file = TTempFileHandle();
+        TFileRingBuffer rb(file.GetName(), 128, 0, ver);
+
+        UNIT_ASSERT(rb.PushBack("A"));
+
+        ui32 visited = 0;
+        rb.VisitFirst(
+            0,
+            [&](ui32, ui32, TStringBuf)
+            {
+                ++visited;
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, visited);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldVisitAllEntriesWhenVisitFirstCountIsLarge)
+    {
+        const auto file = TTempFileHandle();
+        TFileRingBuffer rb(file.GetName(), 128, 0, ver);
+
+        UNIT_ASSERT(rb.PushBack("A"));
+        UNIT_ASSERT(rb.PushBack("B"));
+        UNIT_ASSERT(rb.PushBack("C"));
+
+        TVector<TString> visited;
+        rb.VisitFirst(
+            10,
+            [&](ui32, ui32, TStringBuf entry)
+            {
+                visited.emplace_back(entry);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, visited.size());
+        UNIT_ASSERT_VALUES_EQUAL("A", visited[0]);
+        UNIT_ASSERT_VALUES_EQUAL("B", visited[1]);
+        UNIT_ASSERT_VALUES_EQUAL("C", visited[2]);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldVisitNoEntriesInEmptyBuffer)
+    {
+        const auto file = TTempFileHandle();
+        TFileRingBuffer rb(file.GetName(), 128, 0, ver);
+
+        ui32 visited = 0;
+        rb.VisitFirst(
+            2,
+            [&](ui32, ui32, TStringBuf)
+            {
+                ++visited;
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, visited);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldSkipFreedEntriesInVisitFirst)
+    {
+        const auto file = TTempFileHandle();
+        TFileRingBuffer rb(file.GetName(), 128, 0, ver);
+
+        UNIT_ASSERT(rb.PushBack("A"));
+        UNIT_ASSERT(rb.PushBack("B"));
+        UNIT_ASSERT(rb.PushBack("C"));
+
+        const auto entry = Find(rb, "B");
+        UNIT_ASSERT(entry);
+        UNIT_ASSERT(rb.Free(entry.data()));
+
+        TVector<TString> visited;
+        rb.VisitFirst(
+            2,
+            [&](ui32, ui32, TStringBuf value)
+            {
+                visited.emplace_back(value);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(2, visited.size());
+        UNIT_ASSERT_VALUES_EQUAL("A", visited[0]);
+        UNIT_ASSERT_VALUES_EQUAL("C", visited[1]);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldVisitFirstEntriesAfterWrapAround)
+    {
+        const auto file = TTempFileHandle();
+        TFileRingBuffer rb(file.GetName(), 64, 0, ver);
+
+        UNIT_ASSERT(rb.PushBack("entry001"));
+        UNIT_ASSERT(rb.PushBack("entry002"));
+        UNIT_ASSERT(rb.PushBack("entry003"));
+
+        rb.PopFront();
+        rb.PopFront();
+
+        UNIT_ASSERT(rb.PushBack("entry004"));
+        UNIT_ASSERT(rb.PushBack("entry005"));
+
+        TVector<TString> visited;
+        rb.VisitFirst(
+            3,
+            [&](ui32, ui32, TStringBuf entry)
+            {
+                visited.emplace_back(entry);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, visited.size());
+        UNIT_ASSERT_VALUES_EQUAL("entry003", visited[0]);
+        UNIT_ASSERT_VALUES_EQUAL("entry004", visited[1]);
+        UNIT_ASSERT_VALUES_EQUAL("entry005", visited[2]);
+    }
+
     Y_UNIT_TEST(ShouldSupportTags)
     {
         auto check = [](EVersion version)
