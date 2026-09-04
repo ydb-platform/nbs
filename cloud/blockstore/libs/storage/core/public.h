@@ -20,6 +20,7 @@ namespace NStorage {
 
 class TStorageConfig;
 using TStorageConfigPtr = std::shared_ptr<TStorageConfig>;
+using TStorageConfigConstPtr = std::shared_ptr<const TStorageConfig>;
 
 class TStorageConfigControls;
 using TStorageConfigControlsPtr = std::shared_ptr<TStorageConfigControls>;

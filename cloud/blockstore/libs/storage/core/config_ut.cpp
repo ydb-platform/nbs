@@ -249,7 +249,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            config->GetStorageConfigProto().GetMaxMigrationIoDepth());
+            config->GetEffectiveStorageConfigProto().GetMaxMigrationIoDepth());
 
         UNIT_ASSERT(!controlBoard.SetValue(
             "BlockStore_MaxMigrationIoDepth",
@@ -291,7 +291,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(8, config->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(
             8,
-            config->GetStorageConfigProto().GetMaxMigrationIoDepth());
+            config->GetEffectiveStorageConfigProto().GetMaxMigrationIoDepth());
 
         UNIT_ASSERT(!controlBoard.SetValue(
             "BlockStore_MaxMigrationIoDepth",
@@ -305,7 +305,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            config->GetStorageConfigProto().GetMaxMigrationIoDepth());
+            config->GetEffectiveStorageConfigProto().GetMaxMigrationIoDepth());
     }
 
     Y_UNIT_TEST(ShouldOverrideConfigFields)
@@ -432,6 +432,15 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(
             maxMigrationIoDepthICB,
             globalConfig->GetMaxMigrationIoDepth());
+
+        const auto effectiveProto =
+            globalConfig->GetEffectiveStorageConfigProto();
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxMigrationBandwidthICB,
+            effectiveProto.GetMaxMigrationBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxMigrationIoDepthICB,
+            effectiveProto.GetMaxMigrationIoDepth());
 
         // Apply a patch with new MaxMigrationIoDepth & ExpectedDiskAgentSize
 

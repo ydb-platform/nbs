@@ -16,6 +16,8 @@ private:
 public:
     explicit TSpdkEnvConfig(NProto::TSpdkEnvConfig config = {});
 
+    [[nodiscard]] const NProto::TSpdkEnvConfig& GetConfigProto() const;
+
     TString GetCpuMask() const;
     TString GetHugeDir() const;
 

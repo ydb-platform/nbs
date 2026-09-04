@@ -47,6 +47,12 @@ TDiskRegistryProxyConfig::TDiskRegistryProxyConfig(
     : Config(std::move(config))
 {}
 
+const NProto::TDiskRegistryProxyConfig&
+TDiskRegistryProxyConfig::GetConfigProto() const
+{
+    return Config;
+}
+
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
 type TDiskRegistryProxyConfig::Get##name() const                               \
 {                                                                              \

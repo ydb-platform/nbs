@@ -5,6 +5,7 @@ RECURSE(
     client_rdma
     client_spdk
     common
+    config
     daemon
     diagnostics
     discovery

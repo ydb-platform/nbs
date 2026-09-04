@@ -16,6 +16,7 @@ namespace NClient {
 
 class TClientAppConfig;
 using TClientAppConfigPtr = std::shared_ptr<TClientAppConfig>;
+using TClientAppConfigConstPtr = std::shared_ptr<const TClientAppConfig>;
 
 struct IThrottlerProvider;
 using IThrottlerProviderPtr = std::shared_ptr<IThrottlerProvider>;

@@ -877,7 +877,8 @@ void TVolumeActor::HandleGetStorageConfig(
     const TActorContext& ctx)
 {
     auto response = std::make_unique<TEvVolume::TEvGetStorageConfigResponse>();
-    *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
+    *response->Record.MutableStorageConfig() =
+        Config->GetEffectiveStorageConfigProto();
 
     NCloud::Reply(
         ctx,

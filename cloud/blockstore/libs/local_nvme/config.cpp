@@ -182,6 +182,11 @@ TLocalNVMeConfig::TLocalNVMeConfig(NProto::TLocalNVMeConfig proto)
 
 TLocalNVMeConfig::~TLocalNVMeConfig() = default;
 
+const NProto::TLocalNVMeConfig& TLocalNVMeConfig::GetConfigProto() const
+{
+    return Proto;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \

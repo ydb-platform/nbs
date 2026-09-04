@@ -11,6 +11,7 @@ using TCellConfigPtr = std::shared_ptr<TCellConfig>;
 
 class TCellsConfig;
 using TCellsConfigPtr = std::shared_ptr<TCellsConfig>;
+using TCellsConfigConstPtr = std::shared_ptr<const TCellsConfig>;
 
 struct ICellManager;
 using ICellManagerPtr = std::shared_ptr<ICellManager>;
