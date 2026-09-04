@@ -78,6 +78,7 @@ void TBootstrap::Init()
         config->QpRnrRetryCount = Options->QpRnrRetryCount;
         config->QpTimeout = Options->QpTimeout;
         config->QpMinRnrTimer = Options->QpMinRnrTimer;
+        config->MaxEagerRequestBytes = Options->MaxEagerRequestBytes;
 
         Server = NCloud::NBlockStore::NRdma::CreateRdmaServer(
             Logging,
@@ -105,6 +106,7 @@ void TBootstrap::Init()
         config->QpMinRnrTimer = Options->QpMinRnrTimer;
         config->UseMemoryWindows = Options->UseMemoryWindows;
         config->MemoryWindowsPoolSize = Options->MemoryWindowsPoolSize;
+        config->MaxEagerRequestBytes = Options->MaxEagerRequestBytes;
 
         Client = NCloud::NBlockStore::NRdma::CreateRdmaClient(
             Logging,

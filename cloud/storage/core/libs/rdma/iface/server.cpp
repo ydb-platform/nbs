@@ -35,6 +35,14 @@ void TServerConfig::Validate(TLog& log)
                                << " is greater than 7, set QpRnrRetryCount=7");
         QpRnrRetryCount = ThreeBitsMax;
     }
+    if (MaxEagerRequestBytes > MaxBufferSize) {
+        RDMA_WARN(
+            log,
+            "MaxEagerRequestBytes=" << MaxEagerRequestBytes
+                << " is greater than MaxBufferSize, set MaxEagerRequestBytes="
+                << MaxBufferSize);
+        MaxEagerRequestBytes = MaxBufferSize;
+    }
     if (QpTimeout > FiveBitsMax) {
         RDMA_WARN(
             log,
@@ -84,6 +92,7 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(QpRnrRetryCount, static_cast<ui32>(QpRnrRetryCount));
                 ENTRY(QpTimeout, static_cast<ui32>(QpTimeout));
                 ENTRY(QpMinRnrTimer, static_cast<ui32>(QpMinRnrTimer));
+                ENTRY(MaxEagerRequestBytes, MaxEagerRequestBytes);
             }
         }
     }
