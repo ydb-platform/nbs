@@ -41,15 +41,52 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EPendingWriteDataRequestStatus
+{
+    // The request has no allocation and is waiting for storage space.
+    Pending,
+
+    // The request has an uncommitted allocation and is waiting for
+    // serialization to start.
+    Allocated,
+
+    // Serialization into the uncommitted allocation is in progress. The
+    // allocation must remain valid until serialization finishes.
+    Serializing,
+
+    // Serialization is complete. The allocation is still uncommitted and is
+    // waiting to be committed in sequence order.
+    Serialized,
+
+    // Removal was requested while serialization was in progress. Allocation
+    // cancellation is deferred until serialization finishes.
+    CancelSerializing,
+
+    // The request was removed from the manager and its allocation, if any, was
+    // released. It must no longer be used.
+    Removed
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TPendingWriteDataRequest
     : public TWriteDataRequestBase<TPendingWriteDataRequest>
     , public TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>
 {
 private:
+    friend class TWriteDataRequestManager;
+
     std::shared_ptr<NProto::TWriteDataRequest> Request;
 
     NThreading::TPromise<NProto::TWriteDataResponse> Promise =
         NThreading::NewPromise<NProto::TWriteDataResponse>();
+
+    char* AllocationPtr = nullptr;
+    size_t AllocationByteCount = 0;
+    ui32 Checksum = 0;
+
+    EPendingWriteDataRequestStatus Status =
+        EPendingWriteDataRequestStatus::Pending;
 
 public:
     TPendingWriteDataRequest(
@@ -69,7 +106,11 @@ public:
     {
         return Promise;
     }
+
+    void SerializeToAllocation();
 };
+
+using TPendingWriteDataRequestPtr = std::unique_ptr<TPendingWriteDataRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -150,5 +191,7 @@ public:
             byteCount);
     }
 };
+
+using TCachedWriteDataRequestPtr = std::unique_ptr<TCachedWriteDataRequest>;
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

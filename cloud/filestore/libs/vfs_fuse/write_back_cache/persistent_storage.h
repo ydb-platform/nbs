@@ -46,12 +46,22 @@ struct IPersistentStorage
      * Allocates a buffer of the given size.
      *
      * On successful allocation, returns a pointer to the buffer in persistent
-     * storage. The caller should fill the buffer and call Commit.
+     * storage. The caller must eventually call Commit after filling the buffer,
+     * or CancelAlloc to discard the allocation.
      *
      * On failure, returns nullptr if the buffer is full or an error if
      * allocation is not possible due to corruption or invalid argument.
      */
     [[nodiscard]] virtual TResultOrError<char*> Alloc(size_t size) = 0;
+
+    /**
+     * Cancels an uncommitted allocation and frees its buffer.
+     *
+     * On success, the allocation is discarded and the pointer must not be used
+     * again. Returns an error if the pointer is not associated with an
+     * uncommitted allocation or the storage is corrupted.
+     */
+    [[nodiscard]] virtual NProto::TError CancelAlloc(const void* ptr) = 0;
 
     /**
      * Completes the previously made allocation by calculating checksum and
