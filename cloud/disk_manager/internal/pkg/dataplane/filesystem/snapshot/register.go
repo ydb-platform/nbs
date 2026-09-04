@@ -34,6 +34,12 @@ func validateConfig(config *snapshot_config.FilesystemSnapshotConfig) error {
 		)
 	}
 
+	if config.GetTraversalConfig().GetTraversalWorkersCount() == 0 {
+		return errors.NewNonRetriableErrorf(
+			"TraversalWorkersCount should not be zero",
+		)
+	}
+
 	if config.GetSnapshotDataDeletionLimit() == 0 {
 		return errors.NewNonRetriableErrorf(
 			"SnapshotDataDeletionLimit should not be zero",
@@ -90,10 +96,20 @@ func Register(taskRegistry *tasks.Registry) error {
 		return err
 	}
 
-	return taskRegistry.Register(
+	err = taskRegistry.Register(
 		"dataplane.TransferFromSnapshotToFilesystem",
 		func() tasks.Task {
 			return &transferFromSnapshotToFilesystemTask{}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return taskRegistry.Register(
+		"dataplane.RestoreFilesystemShard",
+		func() tasks.Task {
+			return &restoreFilesystemShardTask{}
 		},
 	)
 }
@@ -178,6 +194,21 @@ func RegisterForExecution(
 				storage:          storage,
 				traversalStorage: traversalStorage,
 				nodesStorage:     nodesStorage,
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.RestoreFilesystemShard",
+		func() tasks.Task {
+			return &restoreFilesystemShardTask{
+				config:       config,
+				factory:      factory,
+				storage:      storage,
+				nodesStorage: nodesStorage,
 			}
 		},
 	)

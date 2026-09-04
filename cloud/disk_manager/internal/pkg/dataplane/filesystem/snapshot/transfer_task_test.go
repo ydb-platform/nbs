@@ -410,6 +410,7 @@ func (f *fixture) snapshotDataDeleted(
 func TestValidateConfigRejectsZeroLimits(t *testing.T) {
 	restoreHardlinksBatchSize := uint32(0)
 	fetchNodesFromStorageLimit := uint32(0)
+	traversalWorkersCount := uint32(0)
 	snapshotDataDeletionLimit := uint64(0)
 	snapshotCollectionInflightLimit := uint32(0)
 
@@ -420,6 +421,13 @@ func TestValidateConfigRejectsZeroLimits(t *testing.T) {
 
 	err = validateConfig(&snapshot_config.FilesystemSnapshotConfig{
 		FetchNodesFromStorageLimit: &fetchNodesFromStorageLimit,
+	})
+	require.Error(t, err)
+
+	err = validateConfig(&snapshot_config.FilesystemSnapshotConfig{
+		TraversalConfig: &traversal_config.FilesystemTraversalConfig{
+			TraversalWorkersCount: &traversalWorkersCount,
+		},
 	})
 	require.Error(t, err)
 

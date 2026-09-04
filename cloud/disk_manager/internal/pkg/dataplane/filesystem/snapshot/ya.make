@@ -6,10 +6,12 @@ SRCS(
     delete_filesystem_snapshot_task.go
     register.go
     create_snapshot_from_filesystem_task.go
+    restore_filesystem_shard_task.go
     transfer_from_snapshot_to_filesystem_task.go
 )
 
 GO_TEST_SRCS(
+    restore_filesystem_shard_task_test.go
     transfer_task_test.go
 )
 
