@@ -681,3 +681,30 @@ including when components and retries use different locations. Renderer CLI
 prefixes remain a fallback for older OTLP bundles. Only HTTP(S) prefixes without
 credentials, queries, fragments, or NUL bytes are retained; relative artifact
 paths are validated and encoded in the browser before a link is created.
+
+## Running the converter directly
+
+Install requirements and expose `.github` as the Python package root:
+
+```bash
+pip install -r .github/scripts/requirements.txt
+export PYTHONPATH="$PWD/.github${PYTHONPATH:+:$PYTHONPATH}"
+```
+
+Run only the Python conversion:
+
+```bash
+python3 -m scripts.tracing.ya_trace_report \
+  --ya-out /path/to/ya-out \
+  --evlog /path/to/ya_evlog.jsonl \
+  --output-dir /path/to/trace-summary \
+  --attempt-start-ns 1753952400000000000 \
+  --attempt-end-ns 1753952700000000000 \
+  --exit-code 0 \
+  --result-code 0 \
+  --component cloud/blockstore \
+  --build-preset relwithdebinfo \
+  --test-target cloud/blockstore \
+  --retry 1 \
+  --operation tests
+```
