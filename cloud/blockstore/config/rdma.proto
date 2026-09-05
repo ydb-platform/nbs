@@ -14,6 +14,10 @@ message TRdmaTarget
     TRdmaEndpoint Endpoint = 1;
     NCloud.NProto.TRdmaServer Server = 2;   // deprecated
     uint32 WorkerThreads = 3;
+
+    // Keep track of the client connections and of the volumes mounted over
+    // them, and show them on a monitoring page.
+    bool ConnectionMonitoringEnabled = 4;
 }
 
 message TRdmaConfig

@@ -276,6 +276,7 @@ void TBootstrapBase::Init()
                     Configs->RdmaConfig->GetBlockstoreServerTarget()),
                 Logging,
                 GetTraceSerializer(),
+                Monitoring,
                 RdmaRequestServer,
                 Service);
             STORAGE_INFO("RDMA Target initialized");
