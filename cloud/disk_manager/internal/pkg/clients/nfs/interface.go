@@ -43,6 +43,7 @@ type FilesystemTopology struct {
 	FileShardFileSystemIDs                 []string
 	CompressNodeRef                        bool
 	MainFileSystemID                       string
+	UsedNodesCount                         uint64
 }
 
 type ConfigureAsShardParams struct {

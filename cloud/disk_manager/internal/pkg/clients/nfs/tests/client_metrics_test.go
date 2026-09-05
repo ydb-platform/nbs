@@ -303,6 +303,7 @@ func TestClientGetFileSystemTopologySuccess(t *testing.T) {
 				FileShardFileSystemIds:                 []string{"fs-1_file_s1"},
 				CompressNodeRef:                        true,
 				MainFileSystemId:                       "fs-1",
+				UsedNodesCount:                         42,
 			},
 		),
 		nil,
@@ -321,6 +322,7 @@ func TestClientGetFileSystemTopologySuccess(t *testing.T) {
 		FileShardFileSystemIDs:                 []string{"fs-1_file_s1"},
 		CompressNodeRef:                        true,
 		MainFileSystemID:                       "fs-1",
+		UsedNodesCount:                         42,
 	}, topology)
 
 	nfsMock.AssertExpectations(t)

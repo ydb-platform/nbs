@@ -487,6 +487,7 @@ func (c *client) GetFileSystemTopology(
 		FileShardFileSystemIDs:                 response.FileShardFileSystemIds,
 		CompressNodeRef:                        response.CompressNodeRef,
 		MainFileSystemID:                       response.MainFileSystemId,
+		UsedNodesCount:                         response.UsedNodesCount,
 	}, nil
 }
 
