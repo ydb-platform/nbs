@@ -20,6 +20,7 @@ SRCS(
     log.cpp
     loop.cpp
     node_cache.cpp
+    persistent_state_manager.cpp
 )
 
 PEERDIR(

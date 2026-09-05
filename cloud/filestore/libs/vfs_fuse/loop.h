@@ -24,7 +24,8 @@ NVFS::IFileSystemLoopPtr CreateFuseLoop(
     ITimerPtr timer,
     IProfileLogPtr profileLog,
     NClient::ISessionPtr session,
-    IFileMapMemoryLimiterPtr fileMapMemoryLimiter);
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter,
+    TPersistentStateManagerPtr persistentState);
 
 NVFS::IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     ILoggingServicePtr logging,
@@ -33,6 +34,7 @@ NVFS::IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     IRequestStatsRegistryPtr requestStats,
     IModuleStatsRegistryPtr moduleStats,
     IFsCountersProviderPtr fsCountersProvider,
-    IProfileLogPtr profileLog);
+    IProfileLogPtr profileLog,
+    TPersistentStateManagerPtr persistentState);
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/vfs/config.h>
 #include <cloud/filestore/libs/vfs/loop.h>
 #include <cloud/filestore/libs/vfs_fuse/loop.h>
+#include <cloud/filestore/libs/vfs_fuse/persistent_state_manager.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -113,6 +114,10 @@ TStarter::TStarter()
     proto.SetSocketPath(SocketPath.c_str());
 
     auto config = std::make_shared<TVFSConfig>(std::move(proto));
+    auto persistentState = std::make_shared<TPersistentStateManager>(
+        config->GetHandleOpsQueuePath(),
+        config->GetWriteBackCachePath(),
+        config->GetDirectoryHandlesStoragePath());
 
     Loop = NFuse::CreateFuseLoop(
         std::move(config),
@@ -124,7 +129,8 @@ TStarter::TStarter()
         Timer,
         CreateProfileLogStub(),
         std::move(session),
-        CreateFileMapMemoryLimiterStub());
+        CreateFileMapMemoryLimiterStub(),
+        std::move(persistentState));
 }
 
 

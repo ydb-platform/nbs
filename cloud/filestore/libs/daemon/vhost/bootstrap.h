@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/server/public.h>
 #include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/vfs/public.h>
+#include <cloud/filestore/libs/vfs_fuse/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -32,7 +33,8 @@ struct TVhostModuleFactories
         IRequestStatsRegistryPtr requestStats,
         IModuleStatsRegistryPtr moduleStats,
         IFsCountersProviderPtr fsCountersProvider,
-        IProfileLogPtr profileLog)> LoopFactory;
+        IProfileLogPtr profileLog,
+        NFuse::TPersistentStateManagerPtr persistentState)> LoopFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

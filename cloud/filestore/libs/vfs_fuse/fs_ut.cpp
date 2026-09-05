@@ -4,6 +4,7 @@
 #include "log.h"
 #include "loop.h"
 #include "node_cache.h"
+#include "persistent_state_manager.h"
 
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
@@ -299,7 +300,11 @@ struct TBootstrap
             Timer,
             CreateProfileLogStub(),
             Session,
-            std::move(fileMapMemoryLimiter));
+            std::move(fileMapMemoryLimiter),
+            std::make_shared<TPersistentStateManager>(
+                config->GetHandleOpsQueuePath(),
+                config->GetWriteBackCachePath(),
+                config->GetDirectoryHandlesStoragePath()));
     }
 
     NMonitoring::TDynamicCountersPtr GetFileSystemStatsCounters() const
