@@ -67,6 +67,9 @@ on:
         required: true
         default: 'orchestrator-light.yaml'
 
+permissions:
+  contents: read
+
 jobs:
   light:
     name: Populate light VMs
@@ -95,4 +98,3 @@ jobs:
       flavor: heavy
       provision_mode: ${{ inputs.provision_mode || 'regular' }}
       loop: ${{ inputs.provision_mode == 'initial' && 'no' || (inputs.loop == 'yes' && 'yes' || 'no') }}
-

@@ -24,6 +24,10 @@ on:
         required: false
         default: ""
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   build_dispatch:
     name: Build ARM Grace using YA (relwithdebinfo) (dispatch)

@@ -14,14 +14,14 @@ on:
       - "reopened"
       - "labeled"
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
   pull-requests: write
   issues: write
-
-defaults:
-  run:
-    shell: bash
 
 env:
   GIT_CONFIG_COUNT: "1"

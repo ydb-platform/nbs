@@ -75,6 +75,12 @@ on:
         required: true
         type: string
 
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+  issues: write
+
 env:
   GIT_CONFIG_COUNT: "1"
   GIT_CONFIG_KEY_0: http.version

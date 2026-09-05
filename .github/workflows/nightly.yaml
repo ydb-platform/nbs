@@ -33,6 +33,10 @@ on:
 
 
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   build_dispatch:
     name: Build/test x86_64 using YA (relwithdebinfo) (dispatch)

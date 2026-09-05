@@ -18,9 +18,6 @@ on:
       - 'reopened'
       - 'labeled'
 
-permissions:
-  contents: read
-
 concurrency:
   group: >-
     ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{
@@ -33,6 +30,9 @@ concurrency:
       ) && 'pre-commit' || 'ignored'
     }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   GIT_CONFIG_COUNT: "1"

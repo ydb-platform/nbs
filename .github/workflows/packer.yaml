@@ -97,6 +97,9 @@ concurrency:
   group: packer-build-vm-image
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 env:
   GIT_CONFIG_COUNT: "1"
   GIT_CONFIG_KEY_0: http.version
