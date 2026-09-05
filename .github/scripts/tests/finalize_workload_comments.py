@@ -11,7 +11,7 @@ from github.WorkflowJob import WorkflowJob
 from ..helpers import (
     BUILD_AND_TEST_JOB_NAME_PREFIX,
     PYGITHUB_RETRY_EXCEPTIONS,
-    get_jobs_raw,
+    get_jobs,
     github_client_from_env,
     load_github_event,
     parse_actions_job_url,
@@ -162,10 +162,8 @@ def main() -> None:
     ):
         return
 
-    pr = pull_request_from_event(
-        github_client_from_env(),
-        load_github_event(),
-    )
+    github = github_client_from_env()
+    pr = pull_request_from_event(github, load_github_event())
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
     current_run_id = int(os.environ.get("GITHUB_RUN_ID", "0"))
     jobs_cache: JobsCache = {}
@@ -175,8 +173,8 @@ def main() -> None:
         if run_id in jobs_cache:
             return jobs_cache[run_id]
         try:
-            jobs = get_jobs_raw(
-                os.environ["GITHUB_TOKEN"],
+            jobs = get_jobs(
+                github,
                 os.environ["GITHUB_REPOSITORY"],
                 run_id,
             )
