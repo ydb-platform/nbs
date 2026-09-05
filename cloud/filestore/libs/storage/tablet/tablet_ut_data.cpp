@@ -3933,6 +3933,38 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction);
     }
 
+    TABLET_TEST(ShouldRespondToForcedRangeOperationWithEmptyRanges)
+    {
+        TTestEnv env(testEnvConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto response = tablet.ForcedOperation(
+            NProtoPrivate::TForcedOperationRequest::E_COMPACTION);
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetRangeCount());
+
+        const auto& operationId = response->Record.GetOperationId();
+        UNIT_ASSERT(!operationId.empty());
+
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvForcedOperationStatusRequest>();
+        request->Record.SetOperationId(operationId);
+        tablet.SendRequest(std::move(request));
+
+        auto status = tablet.RecvForcedOperationStatusResponse();
+        UNIT_ASSERT_C(SUCCEEDED(status->GetStatus()), status->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(0, status->Record.GetRangeCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, status->Record.GetProcessedRangeCount());
+    }
+
     TABLET_TEST(ShouldRetryForcedCompaction)
     {
         TTestEnv env(testEnvConfig);
