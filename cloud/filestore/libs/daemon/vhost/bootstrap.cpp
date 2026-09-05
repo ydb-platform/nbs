@@ -36,6 +36,7 @@
 #include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 #include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 #include <cloud/filestore/libs/vfs/probes.h>
+#include <cloud/filestore/libs/vfs_fuse/persistent_state_manager.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
@@ -610,6 +611,12 @@ void TBootstrapVhost::InitEndpoints()
             .FileMapMemoryLimit =
                 Configs->VhostServiceConfig->GetFileMapMemoryLimit()});
 
+    // Shared by all the filesystem loops
+    auto persistentState = std::make_shared<NFuse::TPersistentStateManager>(
+        Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
+        Configs->VhostServiceConfig->GetWriteBackCachePath(),
+        Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath());
+
     EndpointListener = NVhost::CreateEndpointListener(
         Logging,
         Timer,
@@ -622,7 +629,8 @@ void TBootstrapVhost::InitEndpoints()
             StatsRegistry,
             ModuleStatsRegistry,
             FsCountersProvider,
-            ProfileLog),
+            ProfileLog,
+            std::move(persistentState)),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
             .MaxQueueSize =

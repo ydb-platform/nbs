@@ -11,6 +11,7 @@ SRCS(
     fs_directory_handle_ut.cpp
     fs_impl_data_ut.cpp
     fs_ut.cpp
+    persistent_state_manager_ut.cpp
 )
 
 PEERDIR(

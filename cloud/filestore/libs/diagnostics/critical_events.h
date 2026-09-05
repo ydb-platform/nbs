@@ -45,7 +45,7 @@ namespace NCloud::NFileStore{
     xxx(WriteBackCacheInitializationError)                                     \
     xxx(WriteBackCacheWritingNotAllowedInDrainingMode)                         \
     xxx(ErrorWasSentToTheGuest)                                                \
-    xxx(DirectoryHandlesStorageError)                                          \
+    xxx(DirectoryHandleStorageError)                                           \
     xxx(CalculateChecksumsBufferOverflow)                                      \
     xxx(UnexpectedFakeDescribeDataResponse)                                    \
     xxx(CreateLinkRequestWithShardNodeNameAndNoShardId)                        \
