@@ -11,6 +11,8 @@ PEERDIR(
 
     cloud/storage/core/libs/common
 
+    library/cpp/threading/future
+
     contrib/libs/silk/src/fibers
 )
 

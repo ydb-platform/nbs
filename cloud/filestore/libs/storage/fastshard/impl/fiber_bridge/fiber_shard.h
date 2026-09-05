@@ -6,11 +6,19 @@
 
 #include <silk/fibers/fiber.h>
 
+#include <library/cpp/threading/future/future.h>
+
 #include <util/string/builder.h>
+
+#include <cstring>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
+// TODO(#6958):
+// * strerror -> strerror_r (it's thread-safe)
+// * deal with SetValue being called from fiber context (it triggers arbitrary
+//  callback invocation)
 
 template <typename TFiberShardImpl>
 class TFiberShard: public IFileSystemShard
@@ -24,7 +32,7 @@ public:
     {}
 
 private:
-#define FAST_SHARD_DEFINE_METHOD(name, ns, ...)                                \
+#define FAST_SHARD_FB_DEFINE_METHOD(name, ns, ...)                             \
     struct TFiberShard##name##Params                                           \
     {                                                                          \
         std::shared_ptr<TFiberShardImpl> Impl;                                 \
@@ -38,12 +46,12 @@ private:
         params->Promise.SetValue(std::move(response));                         \
         return 0;                                                              \
     }                                                                          \
-    // FAST_SHARD_DEFINE_METHOD
+    // FAST_SHARD_FB_DEFINE_METHOD
 
-    FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_DEFINE_METHOD, NProtoPrivate)
-    FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
+    FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_FB_DEFINE_METHOD, NProtoPrivate)
+    FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_FB_DEFINE_METHOD, NProto)
 
-#undef FAST_SHARD_DEFINE_METHOD
+#undef FAST_SHARD_FB_DEFINE_METHOD
 
     struct TFiberShardCollectStatsParams
     {
@@ -61,7 +69,7 @@ private:
     }
 
 public:
-#define FAST_SHARD_DEFINE_METHOD(name, ns, ...)                                \
+#define FAST_SHARD_FB_DEFINE_METHOD(name, ns, ...)                             \
     NThreading::TFuture<ns::T##name##Response> name(                           \
         ns::T##name##Request request) override                                 \
     {                                                                          \
@@ -88,12 +96,12 @@ public:
                                                                                \
         return future;                                                         \
     }                                                                          \
-    // FAST_SHARD_DEFINE_METHOD
+    // FAST_SHARD_FB_DEFINE_METHOD
 
-    FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_DEFINE_METHOD, NProtoPrivate)
-    FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
+    FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_FB_DEFINE_METHOD, NProtoPrivate)
+    FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_FB_DEFINE_METHOD, NProto)
 
-#undef FAST_SHARD_DEFINE_METHOD
+#undef FAST_SHARD_FB_DEFINE_METHOD
 
     [[nodiscard]] NThreading::TFuture<NProto::TError> CollectStats(
         TFileSystemShardStats* stats) const override
