@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/fiber_bridge/fiber_shard.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/handle_table.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/helpers.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/name_table.h>
@@ -18,7 +19,6 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/simple_template.h>
 
-#include <silk/fibers/fiber.h>
 #include <silk/fibers/mutex.h>
 
 #include <library/cpp/json/writer/json.h>
@@ -2035,45 +2035,6 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using namespace NThreading;
-
-#define FAST_SHARD_DEFINE_METHOD(name, ns, ...)                                \
-    struct TFiberShard##name##Params                                           \
-    {                                                                          \
-        std::shared_ptr<TFiberShardImpl> FiberShard;                           \
-        std::shared_ptr<ns::T##name##Request> Request;                         \
-        TPromise<ns::T##name##Response> Promise;                               \
-    };                                                                         \
-                                                                               \
-    int name##FiberMain(TFiberShard##name##Params* params) noexcept            \
-    {                                                                          \
-        auto response = params->FiberShard->name(std::move(*params->Request)); \
-        params->Promise.SetValue(std::move(response));                         \
-        return 0;                                                              \
-    }                                                                          \
-    // FAST_SHARD_DEFINE_METHOD
-
-FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_DEFINE_METHOD, NProtoPrivate)
-FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
-
-#undef FAST_SHARD_DEFINE_METHOD
-
-struct TFiberShardCollectStatsParams
-{
-    std::shared_ptr<TFiberShardImpl> FiberShard;
-    TFileSystemShardStats* Stats;
-    TPromise<NProto::TError> Promise;
-};
-
-int CollectStatsFiberMain(TFiberShardCollectStatsParams* params) noexcept
-{
-    auto e = params->FiberShard->CollectStats(params->Stats);
-    params->Promise.SetValue(std::move(e));
-    return 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TNaiveMirroredStorageGroupFactory: IStorageGroupFactory
 {
     IStorageGroupPtr MakeStorageGroup(
@@ -2116,97 +2077,21 @@ IStorageGroupFactoryPtr CreateNaiveMirroredStorageGroupFactory()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNaiveMirroredFileSystemShard: public IFileSystemShard
+class TNaiveMirroredFileSystemShard: public TFiberShard<TFiberShardImpl>
 {
-private:
-    std::shared_ptr<TFiberShardImpl> FiberShard;
-
 public:
     TNaiveMirroredFileSystemShard(
         TString fileSystemId,
         ui32 shardNo,
         IStorageGroupFactoryPtr storageGroupFactory,
         NProtoPrivate::TPersistentFastShardConfig config)
-        : FiberShard(
+        : TFiberShard<TFiberShardImpl>(
               std::make_shared<TFiberShardImpl>(
                   std::move(fileSystemId),
                   shardNo,
                   std::move(storageGroupFactory),
                   std::move(config)))
     {}
-
-public:
-#define FAST_SHARD_DEFINE_METHOD(name, ns, ...)                                \
-    TFuture<ns::T##name##Response> name(ns::T##name##Request request) override \
-    {                                                                          \
-        auto promise = NewPromise<ns::T##name##Response>();                    \
-        auto future = promise.GetFuture();                                     \
-                                                                               \
-        int r = silk::FiberScheduler::run(                                     \
-            name##FiberMain,                                                   \
-            TFiberShard##name##Params{                                         \
-                .FiberShard = FiberShard,                                      \
-                .Request = std::make_shared<ns::T##name##Request>(             \
-                    std::move(request)),                                       \
-                .Promise = promise,                                            \
-            },                                                                 \
-            nullptr /* future */);                                             \
-        if (r) {                                                               \
-            ns::T##name##Response response;                                    \
-            *response.MutableError() = MakeError(                              \
-                E_FAIL,                                                        \
-                TStringBuilder()                                               \
-                    << "failed to spawn fiber: " << ::strerror(r));            \
-            promise.SetValue(std::move(response));                             \
-        }                                                                      \
-                                                                               \
-        return future;                                                         \
-    }                                                                          \
-    // FAST_SHARD_DEFINE_METHOD
-
-    FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_DEFINE_METHOD, NProtoPrivate)
-    FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_DEFINE_METHOD, NProto)
-
-#undef FAST_SHARD_DEFINE_METHOD
-
-    [[nodiscard]] TFuture<NProto::TError> CollectStats(
-        TFileSystemShardStats* stats) const override
-    {
-        auto promise = NewPromise<NProto::TError>();
-        auto future = promise.GetFuture();
-
-        int r = silk::FiberScheduler::run(
-            CollectStatsFiberMain,
-            TFiberShardCollectStatsParams{
-                .FiberShard = FiberShard,
-                .Stats = stats,
-                .Promise = promise,
-            },
-            nullptr /* future */);
-        if (r) {
-            promise.SetValue(MakeError(
-                E_FAIL,
-                TStringBuilder()
-                    << "failed to spawn fiber: " << ::strerror(r)));
-        }
-
-        return future;
-    }
-
-    //
-    // The layout is immutable after construction and its dump does no
-    // page IO, so no fiber is needed here.
-    //
-
-    void DumpLayoutHtml(IOutputStream& out) const override
-    {
-        FiberShard->DumpLayoutHtml(out);
-    }
-
-    void DumpLayoutJson(IOutputStream& out) const override
-    {
-        FiberShard->DumpLayoutJson(out);
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
