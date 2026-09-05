@@ -28,6 +28,7 @@ RECURSE_FOR_TESTS(
     fs_posix_compliance
     guest_cache
     lease_expiration
+    virtiofs_live_migration
     loadtest
     profile_log
     registration
