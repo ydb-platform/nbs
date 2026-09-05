@@ -811,6 +811,7 @@ public:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer,
         const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(
@@ -823,21 +824,19 @@ public:
         const TString& clientId,
         const TString& sessionId,
         ui64 SeqNo) const;
+    TSession* FindSessionByPipeServer(
+        const NActors::TActorId& pipeServer) const;
 
     NActors::TActorId RecoverSession(
         TSession* session,
         ui64 sessionSeqNo,
         bool readOnly,
-        const NActors::TActorId& owner);
-    void RegisterSessionByPipeServer(
-        const NActors::TActorId& pipeServer,
-        const TString& sessionId);
-    void UnregisterSessionByPipeServer(const TString& sessionId);
-    const TVector<TString>& FindSessionIdsByPipeServer(
-        const NActors::TActorId& pipeServer) const;
-    void RemoveSessionByPipeServer(const NActors::TActorId& pipeServer);
+        const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer);
+
     void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
     void ResetSession(IIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
+    void RemovePipeServer(const NActors::TActorId& pipeServer);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
@@ -867,6 +866,7 @@ private:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer,
         const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(TSession* session);

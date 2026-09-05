@@ -255,29 +255,31 @@ public:
         SetMaxRwSeqNo(SubSessions.GetMaxSeenRwSeqNo());
     }
 
-    NActors::TActorId UpdateSubSession(
+    TSubSessionUpdateResult UpdateSubSession(
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
+        const NActors::TActorId& pipeServer,
         ui32 tabletGeneration)
     {
         auto result = SubSessions.UpdateSubSession(
             seqNo,
             readOnly,
             owner,
+            pipeServer,
             tabletGeneration);
         UpdateSeqNo();
         return result;
     }
 
-    ui32 DeleteSubSession(const NActors::TActorId& owner)
+    ui32 DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer)
     {
-        auto result = SubSessions.DeleteSubSession(owner);
+        auto result = SubSessions.DeleteSubSessionByPipeServer(pipeServer);
         UpdateSeqNo();
         return result;
     }
 
-    ui32 DeleteSubSession(ui64 sessionSeqNo)
+    std::optional<TSubSession> DeleteSubSession(ui64 sessionSeqNo)
     {
         auto result = SubSessions.DeleteSubSession(sessionSeqNo);
         UpdateSeqNo();
@@ -286,7 +288,22 @@ public:
 
     TVector<NActors::TActorId> GetSubSessions() const
     {
-        return SubSessions.GetSubSessions();
+        return SubSessions.GetSubSessionsOwner();
+    }
+
+    TVector<NActors::TActorId> GetSubSessionsPipeServer() const
+    {
+        return SubSessions.GetSubSessionsPipeServer();
+    }
+
+    std::optional<TSubSession> GetSubSessionBySeqNo(ui64 seqNo) const
+    {
+        return SubSessions.GetSubSessionBySeqNo(seqNo);
+    }
+
+    bool ReadyToDestroy(ui64 seqNo) const
+    {
+        return SubSessions.ReadyToDestroy(seqNo);
     }
 
     ui64 GenerateDupCacheEntryId()
@@ -445,6 +462,8 @@ struct TSessionHistoryEntry
 using TSessionList = TIntrusiveListWithAutoDelete<TSession, TDelete>;
 using TSessionMap = THashMap<TString, TSession*>;
 using TSessionOwnerMap = THashMap<NActors::TActorId, TSession*>;
+using TSessionOwnerByPipeServerMap =
+    THashMap<NActors::TActorId, NActors::TActorId>;
 using TSessionClientMap = THashMap<TString, TSession*>;
 using TSessionHistoryList = TDeque<TSessionHistoryEntry>;
 

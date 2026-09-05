@@ -37,10 +37,11 @@ ui32 ExtractSubSessionOwnerGeneration(ui64 ownerGeneration)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::TActorId TSubSessions::AddSubSession(
+TSubSessionUpdateResult TSubSessions::AddSubSession(
     ui64 seqNo,
     bool readOnly,
     const NActors::TActorId& owner,
+    const NActors::TActorId& pipeServer,
     ui32 tabletGeneration)
 {
     MaxSeenSeqNo = std::max(MaxSeenSeqNo, seqNo);
@@ -50,7 +51,7 @@ NActors::TActorId TSubSessions::AddSubSession(
     SubSessions.push_back(
         {seqNo,
          readOnly,
-         owner,
+         {owner, pipeServer},
          MakeSubSessionOwnerGeneration(
              tabletGeneration,
              1 /* ownerGeneration */)});
@@ -61,17 +62,22 @@ NActors::TActorId TSubSessions::AddSubSession(
             [] (const auto& a, const auto& b) {
                 return a.SeqNo < b.SeqNo;
             });
-        auto ans = loSeqNo->Owner;
+        // The evicted subsession is a fully separate, older mount: both its
+        // pipe server binding and its owner actor are stale.
+        TSubSessionUpdateResult result;
+        result.StalePipeServer = loSeqNo->PipeInfo.PipeServer;
+        result.StaleOwner = loSeqNo->PipeInfo.Owner;
         SubSessions.erase(loSeqNo);
-        return ans;
+        return result;
     }
     return {};
 }
 
-NActors::TActorId TSubSessions::UpdateSubSession(
+TSubSessionUpdateResult TSubSessions::UpdateSubSession(
     ui64 seqNo,
     bool readOnly,
     const NActors::TActorId& owner,
+    const NActors::TActorId& pipeServer,
     ui32 tabletGeneration)
 {
     MaxSeenSeqNo = std::max(MaxSeenSeqNo, seqNo);
@@ -85,26 +91,40 @@ NActors::TActorId TSubSessions::UpdateSubSession(
         });
     if (subsession != SubSessions.end()) {
         subsession->ReadOnly = readOnly;
-        if (subsession->Owner != owner) {
-            auto toKill = subsession->Owner;
-            subsession->Owner = owner;
+
+        // Owner and PipeServer change independently on reconnect.
+        const bool ownerChanged = subsession->PipeInfo.Owner != owner;
+        const bool pipeServerChanged =
+            subsession->PipeInfo.PipeServer != pipeServer;
+        if (!ownerChanged && !pipeServerChanged) {
+            return {};
+        }
+
+        TSubSessionUpdateResult result;
+        result.StalePipeServer = subsession->PipeInfo.PipeServer;
+        if (ownerChanged) {
+            result.StaleOwner = subsession->PipeInfo.Owner;
+        }
+
+        subsession->PipeInfo.Owner = owner;
+        subsession->PipeInfo.PipeServer = pipeServer;
+        if (ownerChanged) {
             subsession->OwnerGeneration = MakeSubSessionOwnerGeneration(
                 tabletGeneration,
                 ExtractSubSessionOwnerGeneration(
                     subsession->OwnerGeneration) + 1);
-            return toKill;
         }
-        return {};
+        return result;
     }
-    return AddSubSession(seqNo, readOnly, owner, tabletGeneration);
+    return AddSubSession(seqNo, readOnly, owner, pipeServer, tabletGeneration);
 }
 
-ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
+ui32 TSubSessions::DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer)
 {
     auto subsession = FindIf(
         SubSessions,
         [&] (const auto& subsession) {
-            return subsession.Owner == owner;
+            return subsession.PipeInfo.PipeServer == pipeServer;
         });
     if (subsession == SubSessions.end()) {
         return true;
@@ -128,7 +148,7 @@ ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
     return true;
 }
 
-ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
+std::optional<TSubSession> TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
 {
     auto subsession = FindIf(
         SubSessions,
@@ -137,14 +157,7 @@ ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
         });
 
     if (subsession == SubSessions.end()) {
-        return !ReadyToDestroy(sessionSeqNo);
-    }
-
-    SubSessions.erase(subsession);
-
-    auto alive = !ReadyToDestroy(sessionSeqNo);
-    if (!alive) {
-        return false;
+        return {};
     }
 
     if (sessionSeqNo == MaxSeenRwSeqNo) {
@@ -154,14 +167,25 @@ ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
         MaxSeenSeqNo = MaxSeenRwSeqNo;
     }
 
-    return true;
+    auto result = *subsession;
+    SubSessions.erase(subsession);
+    return result;
 }
 
-TVector<NActors::TActorId> TSubSessions::GetSubSessions() const
+TVector<NActors::TActorId> TSubSessions::GetSubSessionsOwner() const
 {
     TVector<NActors::TActorId> ans;
     for (const auto& s: SubSessions) {
-        ans.push_back(s.Owner);
+        ans.push_back(s.PipeInfo.Owner);
+    }
+    return ans;
+}
+
+TVector<NActors::TActorId> TSubSessions::GetSubSessionsPipeServer() const
+{
+    TVector<NActors::TActorId> ans;
+    for (const auto& s: SubSessions) {
+        ans.push_back(s.PipeInfo.PipeServer);
     }
     return ans;
 }
@@ -192,7 +216,7 @@ bool TSubSessions::IsValid() const
     return AllOf(
         SubSessions,
         [&] (const auto& subsession) {
-            return !!subsession.Owner;
+            return !!subsession.PipeInfo.Owner;
         });
 }
 
