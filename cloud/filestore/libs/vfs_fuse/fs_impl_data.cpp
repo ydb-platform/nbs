@@ -1139,7 +1139,7 @@ void TFileSystem::FSyncDir(
         return;
     }
 
-    if (!ValidateDirectoryHandle(*callContext, req, ino, fi->fh)) {
+    if (!ValidateAndGetDirectoryHandle(*callContext, req, ino, fi->fh)) {
         return;
     }
 

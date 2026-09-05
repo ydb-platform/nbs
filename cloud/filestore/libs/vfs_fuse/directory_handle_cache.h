@@ -35,6 +35,8 @@ public:
         TDirectoryHandleStoragePtr storage,
         TDirectoryEntryVersionCachePtr directoryEntryVersionCache);
 
+    bool IsPersistent() const;
+
     ui64 CreateHandle(fuse_ino_t ino);
 
     std::shared_ptr<TDirectoryHandle> FindHandle(ui64 handleId);
