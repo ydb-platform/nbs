@@ -3236,6 +3236,147 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
     }
 
+    Y_UNIT_TEST(ShouldProcessHandleOpsQueueInBatches)
+    {
+        constexpr ui32 batchSize = 3;
+
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyHandleEnabled(true);
+        features.SetAsyncHandleOperationBatchSize(batchSize);
+        features.SetAsyncHandleOperationIdlePeriod(50);
+        features.SetAsyncHandleOperationDrainPeriod(0);
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
+        TBootstrap bootstrap(timer, scheduler, features);
+
+        TVector<TPromise<NProto::TConfirmCreateHandleResponse>>
+            confirmPromises;
+        TVector<TPromise<NProto::TDestroyHandleResponse>> destroyPromises;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto, auto request)
+            {
+                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(request->GetNodeId() + 100);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(request->GetNodeId());
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                auto promise =
+                    NewPromise<NProto::TConfirmCreateHandleResponse>();
+                confirmPromises.push_back(promise);
+                return promise;
+            });
+
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto, auto)
+            {
+                auto promise = NewPromise<NProto::TDestroyHandleResponse>();
+                destroyPromises.push_back(promise);
+                return promise;
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto entryCount =
+            bootstrap.GetHandleOpsQueueCounters()->FindCounter("EntryCount");
+        UNIT_ASSERT(entryCount);
+        auto getEntryCount = [&]
+        {
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            return entryCount->GetAtomic();
+        };
+
+        auto open = [&](ui64 nodeId)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId + 100,
+                bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                    .GetValue(WaitTimeout));
+        };
+        auto release = [&](ui64 nodeId)
+        {
+            auto future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+                nodeId,
+                nodeId + 100,
+                O_RDONLY);
+            UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        };
+
+        open(10);
+        release(20);
+        open(11);
+        release(21);
+        open(12);
+
+        UNIT_ASSERT_VALUES_EQUAL(5, getEntryCount());
+
+        scheduler->RunAllScheduledTasksUntilNow();
+
+        // Only the first batch is dispatched. It contains two confirmations
+        // and one destroy request.
+        UNIT_ASSERT_VALUES_EQUAL(2, confirmPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, destroyPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, getEntryCount());
+
+        // Completing requests out of order must not start the next batch or
+        // remove entries until every request in this batch has completed.
+        confirmPromises[1].SetValue(NProto::TConfirmCreateHandleResponse{});
+        destroyPromises[0].SetValue(NProto::TDestroyHandleResponse{});
+        scheduler->RunAllScheduledTasksUntilNow();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, confirmPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, destroyPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, getEntryCount());
+
+        confirmPromises[0].SetValue(NProto::TConfirmCreateHandleResponse{});
+        UNIT_ASSERT_VALUES_EQUAL(2, getEntryCount());
+
+        scheduler->RunAllScheduledTasksUntilNow();
+
+        // The second batch is smaller than the configured batch size.
+        UNIT_ASSERT_VALUES_EQUAL(3, confirmPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, destroyPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, getEntryCount());
+
+        // Add an entry while the partial batch is in flight. Completing the
+        // partial batch must pop only its two entries and leave this one for
+        // the next pass.
+        release(22);
+        UNIT_ASSERT_VALUES_EQUAL(3, getEntryCount());
+
+        confirmPromises[2].SetValue(NProto::TConfirmCreateHandleResponse{});
+        scheduler->RunAllScheduledTasksUntilNow();
+
+        UNIT_ASSERT_VALUES_EQUAL(3, confirmPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, destroyPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, getEntryCount());
+
+        destroyPromises[1].SetValue(NProto::TDestroyHandleResponse{});
+        UNIT_ASSERT_VALUES_EQUAL(1, getEntryCount());
+
+        scheduler->RunAllScheduledTasksUntilNow();
+
+        UNIT_ASSERT_VALUES_EQUAL(3, confirmPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, destroyPromises.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, getEntryCount());
+
+        destroyPromises[2].SetValue(NProto::TDestroyHandleResponse{});
+        UNIT_ASSERT_VALUES_EQUAL(0, getEntryCount());
+    }
+
     Y_UNIT_TEST(ShouldDrainHandleOpsQueueBackToBack)
     {
         // AsyncHandleOperationDrainPeriod is 0, so a non-empty queue is drained

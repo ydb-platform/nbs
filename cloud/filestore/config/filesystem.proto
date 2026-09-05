@@ -136,4 +136,7 @@ message TFileSystemConfig
 
     // Delay between processing entries in the async handle operations queue.
     optional uint32 AsyncHandleOperationDrainPeriod = 40;
+
+    // Maximum number of operations in one HandleOpsQueue batch.
+    optional uint32 AsyncHandleOperationBatchSize = 41;
 }
