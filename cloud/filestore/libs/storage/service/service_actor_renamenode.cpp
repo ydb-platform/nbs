@@ -10,7 +10,13 @@ void TStorageServiceActor::HandleRenameNode(
     const TEvService::TEvRenameNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (TryHandleControlNamespaceRenameNode(ctx, ev)) {
+    auto* session =
+        GetAndValidateSession<TEvService::TRenameNodeMethod>(ctx, ev);
+    if (!session) {
+        return;
+    }
+
+    if (TryHandleControlNamespaceRenameNode(ctx, ev, session)) {
         return;
     }
 
