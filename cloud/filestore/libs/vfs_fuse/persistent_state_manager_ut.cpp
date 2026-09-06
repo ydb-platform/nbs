@@ -207,6 +207,41 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!IsLocked(filePath));
     }
 
+    Y_UNIT_TEST_F(ShouldReleaseHeldStateFileOnMoveAssignment, TFixture)
+    {
+        auto manager = CreateManager();
+
+        auto hoqResult =
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+        auto wbcResult =
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT_C(!HasError(hoqResult), hoqResult.GetError().GetMessage());
+        UNIT_ASSERT_C(!HasError(wbcResult), wbcResult.GetError().GetMessage());
+        auto guard = hoqResult.ExtractResult();
+        auto other = wbcResult.ExtractResult();
+        const auto hoqPath = guard.GetFilePath();
+        const auto wbcPath = other.GetFilePath();
+
+        // Assigning onto a guard which holds a file releases that file just
+        // like destroying the guard would: the lock is dropped, the file is
+        // kept, and it becomes acquirable again.
+        guard = std::move(other);
+
+        UNIT_ASSERT(guard);
+        UNIT_ASSERT_VALUES_EQUAL(
+            wbcPath.GetPath(),
+            guard.GetFilePath().GetPath());
+        UNIT_ASSERT(!other);
+
+        UNIT_ASSERT(hoqPath.Exists());
+        UNIT_ASSERT(!IsLocked(hoqPath));
+        UNIT_ASSERT(IsLocked(wbcPath));
+
+        auto again =
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT_C(!HasError(again), again.GetError().GetMessage());
+    }
+
     Y_UNIT_TEST_F(ShouldKeepSessionDirUntilLastStateFileDeleted, TFixture)
     {
         auto manager = CreateManager();

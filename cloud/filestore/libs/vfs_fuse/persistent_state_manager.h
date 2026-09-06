@@ -45,6 +45,9 @@ public:
     // too once it is empty. Leaves the guard holding nothing; no-op if it
     // holds nothing already.
     NProto::TError DeleteStateFile();
+
+private:
+    void Reset() noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -86,23 +86,37 @@ TAcquireStateFileGuard::TAcquireStateFileGuard(
     TAcquireStateFileGuard&& other) noexcept = default;
 
 TAcquireStateFileGuard& TAcquireStateFileGuard::operator=(
-    TAcquireStateFileGuard&& other) noexcept = default;
+    TAcquireStateFileGuard&& other) noexcept
+{
+    if (this != &other) {
+        Reset();
+        Impl = std::move(other.Impl);
+    }
+    return *this;
+}
 
 TAcquireStateFileGuard::~TAcquireStateFileGuard()
+{
+    Reset();
+}
+
+void TAcquireStateFileGuard::Reset() noexcept
 {
     if (!Impl) {
         return;
     }
 
-    TGuard guard(Impl->Registry->Mutex);
-    Impl->UnregisterLocked();
+    auto impl = std::move(Impl);
+
+    TGuard guard(impl->Registry->Mutex);
+    impl->UnregisterLocked();
 
     // Destroying the lock closes the file, which releases the lock without
     // any chance of failure, unlike an explicit Release(). It has to happen
     // while the registry is still locked: otherwise an acquisition racing
     // with us finds the file unregistered but still locked. The file itself
     // is kept together with its session directory.
-    Impl->Lock.Reset();
+    impl->Lock.Reset();
 }
 
 TAcquireStateFileGuard::operator bool() const
@@ -331,7 +345,8 @@ TPersistentStateManager::AcquireStateFile(
     if (!NFs::MakeDirectoryRecursive(dir)) {
         return MakeError(
             E_FAIL,
-            TStringBuilder() << "Failed to create directories, path: " << dir);
+            TStringBuilder() << "Failed to create session dir: " << dir
+                             << ", reason: " << LastSystemErrorText());
     }
 
     // Touch(), the TFileLock constructor (which opens the file) and
