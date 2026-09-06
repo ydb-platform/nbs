@@ -114,7 +114,7 @@ TStarter::TStarter()
     proto.SetSocketPath(SocketPath.c_str());
 
     auto config = std::make_shared<TVFSConfig>(std::move(proto));
-    auto persistentState = std::make_shared<TPersistentStateManager>(
+    auto persistentState = CreatePersistentStateManager(
         config->GetHandleOpsQueuePath(),
         config->GetWriteBackCachePath(),
         config->GetDirectoryHandlesStoragePath());

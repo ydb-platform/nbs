@@ -612,7 +612,7 @@ void TBootstrapVhost::InitEndpoints()
                 Configs->VhostServiceConfig->GetFileMapMemoryLimit()});
 
     // Shared by all the filesystem loops
-    auto persistentState = std::make_shared<NFuse::TPersistentStateManager>(
+    auto persistentState = NFuse::CreatePersistentStateManager(
         Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
         Configs->VhostServiceConfig->GetWriteBackCachePath(),
         Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath());

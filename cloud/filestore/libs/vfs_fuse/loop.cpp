@@ -666,7 +666,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const ISessionPtr Session;
     const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
-    const TPersistentStateManagerPtr PersistentState;
+    const IPersistentStateManagerPtr PersistentState;
 
     TLog Log;
 
@@ -695,7 +695,7 @@ public:
             IProfileLogPtr profileLog,
             ISessionPtr session,
             IFileMapMemoryLimiterPtr fileMapMemoryLimiter,
-            TPersistentStateManagerPtr persistentState)
+            IPersistentStateManagerPtr persistentState)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , StatsRegistry(std::move(statsRegistry))
@@ -1846,7 +1846,7 @@ struct TFileSystemLoopFactory
     const IFsCountersProviderPtr FsCountersProvider;
     const IProfileLogPtr ProfileLog;
     // Shared by all the loops created by this factory
-    const TPersistentStateManagerPtr PersistentState;
+    const IPersistentStateManagerPtr PersistentState;
 
     TFileSystemLoopFactory(
             ILoggingServicePtr logging,
@@ -1856,7 +1856,7 @@ struct TFileSystemLoopFactory
             IModuleStatsRegistryPtr moduleStats,
             IFsCountersProviderPtr fsCountersProvider,
             IProfileLogPtr profileLog,
-            TPersistentStateManagerPtr persistentState)
+            IPersistentStateManagerPtr persistentState)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -1902,7 +1902,7 @@ IFileSystemLoopPtr CreateFuseLoop(
     IProfileLogPtr profileLog,
     ISessionPtr session,
     IFileMapMemoryLimiterPtr fileMapMemoryLimiter,
-    TPersistentStateManagerPtr persistentState)
+    IPersistentStateManagerPtr persistentState)
 {
     return std::make_shared<TFileSystemLoop>(
         std::move(config),
@@ -1928,7 +1928,7 @@ IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     IModuleStatsRegistryPtr moduleStats,
     IFsCountersProviderPtr fsCountersProvider,
     IProfileLogPtr profileLog,
-    TPersistentStateManagerPtr persistentState)
+    IPersistentStateManagerPtr persistentState)
 {
     struct TInitializer {
         TInitializer(const ILoggingServicePtr& logging)

@@ -42,9 +42,9 @@ struct TFixture: public NUnitTest::TBaseFixture
             true);
     }
 
-    TPersistentStateManager CreateManager()
+    IPersistentStateManagerPtr CreateManager()
     {
-        return TPersistentStateManager(StatePath, StatePath, StatePath);
+        return CreatePersistentStateManager(StatePath, StatePath, StatePath);
     }
 
     TFsPath SessionDir(
@@ -75,10 +75,10 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
     {
         auto manager = CreateManager();
 
-        UNIT_ASSERT(!manager.HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
 
         auto result =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
 
         const auto expected =
@@ -87,7 +87,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             expected.GetPath(),
             result.FilePath.GetPath());
         UNIT_ASSERT(result.FilePath.Exists());
-        UNIT_ASSERT(manager.HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, SessionId));
         UNIT_ASSERT(IsLocked(result.FilePath));
     }
 
@@ -96,17 +96,17 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto manager = CreateManager();
 
         auto first =
-            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(first.Error), first.Error.GetMessage());
 
         auto second =
-            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT(HasError(second.Error));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, second.Error.GetCode());
 
         // Other components are not affected by the failed attempt.
         auto other =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(other.Error), other.Error.GetMessage());
     }
 
@@ -115,16 +115,16 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto manager = CreateManager();
 
         auto result =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
 
         auto error =
-            manager.DeleteHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->DeleteHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
 
         UNIT_ASSERT(!result.FilePath.Exists());
         UNIT_ASSERT(!SessionDir(FileSystemId, SessionId).Exists());
-        UNIT_ASSERT(!manager.HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
     }
 
     Y_UNIT_TEST_F(ShouldTreatDeleteOfMissingStateFileAsNoop, TFixture)
@@ -132,7 +132,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto manager = CreateManager();
 
         auto error =
-            manager.DeleteHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->DeleteHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
     }
 
@@ -141,7 +141,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         TFsPath filePath;
         {
             auto manager = CreateManager();
-            auto result = manager.AcquireHandleOpsQueueStateFile(
+            auto result = manager->AcquireHandleOpsQueueStateFile(
                 FileSystemId,
                 SessionId);
             UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
@@ -154,10 +154,10 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!IsLocked(filePath));
 
         auto manager = CreateManager();
-        UNIT_ASSERT(manager.HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, SessionId));
 
         auto result =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
     }
 
@@ -166,10 +166,10 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto manager = CreateManager();
 
         auto hoq =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         auto wbc =
-            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
-        auto dhs = manager.AcquireDirectoryHandleStorageStateFile(
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+        auto dhs = manager->AcquireDirectoryHandleStorageStateFile(
             FileSystemId,
             SessionId);
         UNIT_ASSERT_C(!HasError(hoq.Error), hoq.Error.GetMessage());
@@ -179,14 +179,14 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         // Deleting one state file keeps the shared directory and the other
         // state files held in it, whatever the order of deletion.
         auto error =
-            manager.DeleteWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->DeleteWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
         UNIT_ASSERT(!wbc.FilePath.Exists());
         UNIT_ASSERT(hoq.FilePath.Exists());
         UNIT_ASSERT(dhs.FilePath.Exists());
         UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
 
-        error = manager.DeleteDirectoryHandleStorageStateFile(
+        error = manager->DeleteDirectoryHandleStorageStateFile(
             FileSystemId,
             SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
@@ -195,7 +195,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
 
         // Deleting the last one removes the directory.
-        error = manager.DeleteHandleOpsQueueStateFile(FileSystemId, SessionId);
+        error = manager->DeleteHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
         UNIT_ASSERT(!hoq.FilePath.Exists());
         UNIT_ASSERT(!SessionDir(FileSystemId, SessionId).Exists());
@@ -209,7 +209,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         TFsPath orphan;
         {
             auto previous = CreateManager();
-            auto result = previous.AcquireDirectoryHandleStorageStateFile(
+            auto result = previous->AcquireDirectoryHandleStorageStateFile(
                 FileSystemId,
                 SessionId);
             UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
@@ -218,15 +218,15 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
         auto manager = CreateManager();
         auto hoq =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         auto wbc =
-            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(hoq.Error), hoq.Error.GetMessage());
         UNIT_ASSERT_C(!HasError(wbc.Error), wbc.Error.GetMessage());
         UNIT_ASSERT(orphan.Exists());
 
         // Cleaning up the unheld file must remove only that file.
-        auto error = manager.DeleteDirectoryHandleStorageStateFile(
+        auto error = manager->DeleteDirectoryHandleStorageStateFile(
             FileSystemId,
             SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
@@ -243,13 +243,13 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto manager = CreateManager();
 
         auto hoq =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         auto wbc =
-            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(hoq.Error), hoq.Error.GetMessage());
         UNIT_ASSERT_C(!HasError(wbc.Error), wbc.Error.GetMessage());
 
-        manager.ReleaseStateFiles(FileSystemId, SessionId);
+        manager->ReleaseStateFiles(FileSystemId, SessionId);
 
         // The locks are gone but the state stays, so that it can be restored
         // by the next loop of the same session.
@@ -258,16 +258,16 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
         UNIT_ASSERT(!IsLocked(hoq.FilePath));
         UNIT_ASSERT(!IsLocked(wbc.FilePath));
-        UNIT_ASSERT(manager.HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, SessionId));
 
         // ... and the same manager is able to acquire them again.
         auto again =
-            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(again.Error), again.Error.GetMessage());
         UNIT_ASSERT(IsLocked(again.FilePath));
 
         // Releasing what is not held is a no-op.
-        manager.ReleaseStateFiles(FileSystemId, "unknown-session");
+        manager->ReleaseStateFiles(FileSystemId, "unknown-session");
     }
 
     Y_UNIT_TEST_F(ShouldManageSessionsIndependently, TFixture)
@@ -275,26 +275,27 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto manager = CreateManager();
 
         auto first =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, "session-1");
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, "session-1");
         auto second =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, "session-2");
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, "session-2");
         UNIT_ASSERT_C(!HasError(first.Error), first.Error.GetMessage());
         UNIT_ASSERT_C(!HasError(second.Error), second.Error.GetMessage());
         UNIT_ASSERT_UNEQUAL(
             first.FilePath.Parent().GetPath(),
             second.FilePath.Parent().GetPath());
 
-        UNIT_ASSERT(manager.HasHandleOpsQueueState(FileSystemId, "session-1"));
-        UNIT_ASSERT(manager.HasHandleOpsQueueState(FileSystemId, "session-2"));
+        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-1"));
+        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-2"));
 
-        auto error = manager.DeleteHandleOpsQueueStateFile(
+        auto error = manager->DeleteHandleOpsQueueStateFile(
             FileSystemId,
             "session-1");
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
 
-        UNIT_ASSERT(!manager.HasHandleOpsQueueState(FileSystemId, "session-1"));
+        UNIT_ASSERT(
+            !manager->HasHandleOpsQueueState(FileSystemId, "session-1"));
         UNIT_ASSERT(!SessionDir(FileSystemId, "session-1").Exists());
-        UNIT_ASSERT(manager.HasHandleOpsQueueState(FileSystemId, "session-2"));
+        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-2"));
         UNIT_ASSERT(second.FilePath.Exists());
     }
 
@@ -306,7 +307,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         TFsPath unheld;
         {
             auto previous = CreateManager();
-            auto result = previous.AcquireWriteBackCacheStateFile(
+            auto result = previous->AcquireWriteBackCacheStateFile(
                 FileSystemId,
                 SessionId);
             UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
@@ -315,12 +316,12 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(unheld.Exists());
 
         auto manager = CreateManager();
-        auto dhs = manager.AcquireDirectoryHandleStorageStateFile(
+        auto dhs = manager->AcquireDirectoryHandleStorageStateFile(
             FileSystemId,
             SessionId);
         UNIT_ASSERT_C(!HasError(dhs.Error), dhs.Error.GetMessage());
 
-        auto error = manager.DeleteDirectoryHandleStorageStateFile(
+        auto error = manager->DeleteDirectoryHandleStorageStateFile(
             FileSystemId,
             SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
@@ -341,7 +342,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         TFsPath unheld;
         {
             auto previous = CreateManager();
-            auto result = previous.AcquireWriteBackCacheStateFile(
+            auto result = previous->AcquireWriteBackCacheStateFile(
                 FileSystemId,
                 SessionId);
             UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
@@ -349,7 +350,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         }
 
         auto manager = CreateManager();
-        auto error = manager.DeleteDirectoryHandleStorageStateFile(
+        auto error = manager->DeleteDirectoryHandleStorageStateFile(
             FileSystemId,
             SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
@@ -366,7 +367,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         TFsPath orphan;
         {
             auto manager = CreateManager();
-            auto result = manager.AcquireDirectoryHandleStorageStateFile(
+            auto result = manager->AcquireDirectoryHandleStorageStateFile(
                 FileSystemId,
                 SessionId);
             UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
@@ -375,7 +376,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(orphan.Exists());
 
         auto manager = CreateManager();
-        auto error = manager.DeleteDirectoryHandleStorageStateFile(
+        auto error = manager->DeleteDirectoryHandleStorageStateFile(
             FileSystemId,
             SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
@@ -389,40 +390,40 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto manager = CreateManager();
 
         auto first =
-            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(first.Error), first.Error.GetMessage());
 
         auto error =
-            manager.DeleteWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->DeleteWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
 
         auto second =
-            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(second.Error), second.Error.GetMessage());
         UNIT_ASSERT(second.FilePath.Exists());
     }
 
     Y_UNIT_TEST_F(ShouldFailToAcquireUnconfiguredComponent, TFixture)
     {
-        TPersistentStateManager manager(
+        auto manager = CreatePersistentStateManager(
             StatePath,
             {},   // writeBackCacheBasePath
             StatePath);
 
-        UNIT_ASSERT(!manager.HasWriteBackCacheState(FileSystemId, SessionId));
+        UNIT_ASSERT(!manager->HasWriteBackCacheState(FileSystemId, SessionId));
 
         auto result =
-            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT(HasError(result.Error));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.Error.GetCode());
 
         auto error =
-            manager.DeleteWriteBackCacheStateFile(FileSystemId, SessionId);
+            manager->DeleteWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
 
         // The configured components of the same manager still work.
         auto ok =
-            manager.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(ok.Error), ok.Error.GetMessage());
     }
 
@@ -430,24 +431,24 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
     {
         auto owner = CreateManager();
         auto result =
-            owner.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            owner->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
 
         // A different manager (e.g. another process sharing the base path)
         // must not be able to take the same state file while it is held.
         auto other = CreateManager();
         auto contended =
-            other.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            other->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT(HasError(contended.Error));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, contended.Error.GetCode());
 
         // Once released it becomes acquirable again.
         auto error =
-            owner.DeleteHandleOpsQueueStateFile(FileSystemId, SessionId);
+            owner->DeleteHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
 
         auto retried =
-            other.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+            other->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
         UNIT_ASSERT_C(!HasError(retried.Error), retried.Error.GetMessage());
     }
 
@@ -462,9 +463,9 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             SessionDir(FileSystemId, SessionId) / "handle_ops_queue";
         UNIT_ASSERT(NFs::MakeDirectoryRecursive(filePath));
 
-        TPersistentStateManager::TAcquireStateFileResult result;
+        IPersistentStateManager::TAcquireStateFileResult result;
         UNIT_ASSERT_NO_EXCEPTION(
-            result = manager.AcquireHandleOpsQueueStateFile(
+            result = manager->AcquireHandleOpsQueueStateFile(
                 FileSystemId,
                 SessionId));
         UNIT_ASSERT(HasError(result.Error));
@@ -475,7 +476,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         // directory is not referenced).
         NProto::TError error;
         UNIT_ASSERT_NO_EXCEPTION(
-            error = manager.DeleteHandleOpsQueueStateFile(
+            error = manager->DeleteHandleOpsQueueStateFile(
                 FileSystemId,
                 SessionId));
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());

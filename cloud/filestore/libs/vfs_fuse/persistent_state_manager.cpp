@@ -2,10 +2,16 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
+#include <util/generic/hash.h>
+#include <util/generic/ptr.h>
+#include <util/generic/strbuf.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/error.h>
+#include <util/system/file_lock.h>
 #include <util/system/fs.h>
+#include <util/system/guard.h>
+#include <util/system/mutex.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -17,7 +23,117 @@ constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
 constexpr TStringBuf DirectoryHandleStorageFileName = "directory_handles_storage";
 
-}   // namespace
+////////////////////////////////////////////////////////////////////////////////
+
+// Keeps the state files on disk under the configured base paths, following
+// the layout <basePath>/<fileSystemId>/<sessionId>/<fileName>, and holds the
+// advisory locks on the acquired ones.
+class TPersistentStateManager final
+    : public IPersistentStateManager
+{
+private:
+    struct TComponentConfig
+    {
+        const TString BasePath;
+        // Points to a static string.
+        const TStringBuf FileName;
+
+        TComponentConfig(TString basePath, TStringBuf fileName)
+            : BasePath(std::move(basePath))
+            , FileName(fileName)
+        {}
+    };
+
+    // Locked state files held in one session directory, keyed by file name.
+    using TSessionDirLocks = THashMap<TString, THolder<TFileLock>>;
+
+    // Guards SessionDirs and the filesystem operations on the state files.
+    mutable TMutex Mutex;
+
+    // Session directories that hold at least one locked state file, keyed by
+    // path. A directory may be shared by several components, so only the
+    // requested files are ever removed from it, and the directory itself is
+    // removed once it is empty. A directory found not empty after the last
+    // state file held in it has been deleted contains state nobody tracks
+    // (e.g. of a component which is not configured anymore), which is
+    // reported as a critical event.
+    THashMap<TString, TSessionDirLocks> SessionDirs;
+
+    const TComponentConfig HandleOpsQueue;
+    const TComponentConfig WriteBackCache;
+    const TComponentConfig DirectoryHandleStorage;
+
+public:
+    TPersistentStateManager(
+        TString handleOpsQueueBasePath,
+        TString writeBackCacheBasePath,
+        TString directoryHandlesStorageBasePath);
+
+    // HandleOpsQueue
+
+    bool HasHandleOpsQueueState(
+        const TString& fileSystemId,
+        const TString& sessionId) const override;
+    TAcquireStateFileResult AcquireHandleOpsQueueStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override;
+    NProto::TError DeleteHandleOpsQueueStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override;
+
+    // WriteBackCache
+
+    bool HasWriteBackCacheState(
+        const TString& fileSystemId,
+        const TString& sessionId) const override;
+    TAcquireStateFileResult AcquireWriteBackCacheStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override;
+    NProto::TError DeleteWriteBackCacheStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override;
+
+    // DirectoryHandleStorage
+
+    TAcquireStateFileResult AcquireDirectoryHandleStorageStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override;
+    NProto::TError DeleteDirectoryHandleStorageStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override;
+
+    // All components
+
+    void ReleaseStateFiles(
+        const TString& fileSystemId,
+        const TString& sessionId) override;
+
+private:
+    TFsPath GetSessionDir(
+        const TComponentConfig& component,
+        const TString& fileSystemId,
+        const TString& sessionId) const;
+
+    bool HasState(
+        const TComponentConfig& component,
+        const TString& fileSystemId,
+        const TString& sessionId) const;
+
+    TAcquireStateFileResult AcquireStateFile(
+        const TComponentConfig& component,
+        const TString& fileSystemId,
+        const TString& sessionId);
+
+    NProto::TError DeleteStateFile(
+        const TComponentConfig& component,
+        const TString& fileSystemId,
+        const TString& sessionId);
+
+    void ReleaseStateFile(
+        const TComponentConfig& component,
+        const TString& fileSystemId,
+        const TString& sessionId);
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -324,12 +440,119 @@ void TPersistentStateManager::ReleaseStateFiles(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TPersistentStateManagerPtr CreatePersistentStateManagerStub()
+class TPersistentStateManagerStub final
+    : public IPersistentStateManager
+{
+public:
+    // HandleOpsQueue
+
+    bool HasHandleOpsQueueState(
+        const TString& fileSystemId,
+        const TString& sessionId) const override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+        return false;
+    }
+
+    TAcquireStateFileResult AcquireHandleOpsQueueStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+        return NotImplemented(HandleOpsQueueFileName);
+    }
+
+    NProto::TError DeleteHandleOpsQueueStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+        return {};
+    }
+
+    // WriteBackCache
+
+    bool HasWriteBackCacheState(
+        const TString& fileSystemId,
+        const TString& sessionId) const override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+        return false;
+    }
+
+    TAcquireStateFileResult AcquireWriteBackCacheStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+        return NotImplemented(WriteBackCacheFileName);
+    }
+
+    NProto::TError DeleteWriteBackCacheStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+        return {};
+    }
+
+    // DirectoryHandleStorage
+
+    TAcquireStateFileResult AcquireDirectoryHandleStorageStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+        return NotImplemented(DirectoryHandleStorageFileName);
+    }
+
+    NProto::TError DeleteDirectoryHandleStorageStateFile(
+        const TString& fileSystemId,
+        const TString& sessionId) override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+        return {};
+    }
+
+    // All components
+
+    void ReleaseStateFiles(
+        const TString& fileSystemId,
+        const TString& sessionId) override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+    }
+
+private:
+    static TAcquireStateFileResult NotImplemented(TStringBuf fileName)
+    {
+        return {
+            .Error = MakeError(
+                E_NOT_IMPLEMENTED,
+                TStringBuilder() << "State file " << fileName
+                                 << " is not supported by the stub"),
+            .FilePath = {}};
+    }
+};
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+IPersistentStateManagerPtr CreatePersistentStateManager(
+    TString handleOpsQueueBasePath,
+    TString writeBackCacheBasePath,
+    TString directoryHandlesStorageBasePath)
 {
     return std::make_shared<TPersistentStateManager>(
-        TString{},   // handleOpsQueueBasePath
-        TString{},   // writeBackCacheBasePath
-        TString{});  // directoryHandlesStorageBasePath
+        std::move(handleOpsQueueBasePath),
+        std::move(writeBackCacheBasePath),
+        std::move(directoryHandlesStorageBasePath));
+}
+
+IPersistentStateManagerPtr CreatePersistentStateManagerStub()
+{
+    return std::make_shared<TPersistentStateManagerStub>();
 }
 
 }   // namespace NCloud::NFileStore::NFuse

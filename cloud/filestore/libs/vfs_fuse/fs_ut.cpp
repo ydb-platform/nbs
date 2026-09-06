@@ -194,7 +194,7 @@ struct TBootstrap
             ui64 directoryHandlesMaxDataAreaStepSize = 0,
             IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
                 CreateFileMapMemoryLimiterStub(),
-            TPersistentStateManagerPtr persistentStateManager = nullptr)
+            IPersistentStateManagerPtr persistentStateManager = nullptr)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -293,7 +293,7 @@ struct TBootstrap
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
         if (!persistentStateManager) {
-            persistentStateManager = std::make_shared<TPersistentStateManager>(
+            persistentStateManager = CreatePersistentStateManager(
                 config->GetHandleOpsQueuePath(),
                 config->GetWriteBackCachePath(),
                 config->GetDirectoryHandlesStoragePath());
@@ -5320,7 +5320,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         // A single manager is shared by all the loops, as in production
         auto persistentStateManager =
-            std::make_shared<TPersistentStateManager>(
+            CreatePersistentStateManager(
                 TempDir.Path() / "HandleOpsQueue",
                 TempDir.Path() / "WriteBackCache",
                 TempDir.Path() / "DirectoryHandles");
