@@ -3,7 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/generic/hash.h>
-#include <util/generic/ptr.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
@@ -12,6 +12,7 @@
 #include <util/system/fs.h>
 #include <util/system/guard.h>
 #include <util/system/mutex.h>
+#include <util/system/yassert.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -25,9 +26,159 @@ constexpr TStringBuf DirectoryHandleStorageFileName = "directory_handles_storage
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Keeps track of the state files held by the guards, per session directory.
+// Shared by the manager and all the guards it has handed out, since the
+// guards are owned by the loops and may outlive the manager.
+struct TStateFileRegistry
+{
+    // Guards the registry and the filesystem operations on the state files.
+    TMutex Mutex;
+
+    // Session directories that hold at least one acquired state file, keyed
+    // by path, with the names of the files held. A directory may be shared
+    // by several components.
+    THashMap<TString, THashSet<TString>> HeldStateFiles;
+};
+
+using TStateFileRegistryPtr = std::shared_ptr<TStateFileRegistry>;
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TAcquireStateFileGuard::TImpl
+{
+    TStateFileRegistryPtr Registry;
+
+    TFsPath Dir;
+    TString FileName;
+    TFsPath FilePath;
+
+    THolder<TFileLock> Lock;
+
+    // Returns whether this is the last state file held in the directory.
+    // Must be called with the registry locked.
+    //
+    // Should be guarded by TStateFileRegistry::Mutex.
+    bool UnregisterLocked()
+    {
+        auto dirIt = Registry->HeldStateFiles.find(Dir.GetPath());
+        if (dirIt == Registry->HeldStateFiles.end()) {
+            return true;
+        }
+
+        auto& fileNames = dirIt->second;
+        fileNames.erase(FileName);
+        if (!fileNames.empty()) {
+            return false;
+        }
+
+        Registry->HeldStateFiles.erase(dirIt);
+        return true;
+    }
+};
+
+TAcquireStateFileGuard::TAcquireStateFileGuard() = default;
+
+TAcquireStateFileGuard::TAcquireStateFileGuard(THolder<TImpl> impl)
+    : Impl(std::move(impl))
+{}
+
+TAcquireStateFileGuard::TAcquireStateFileGuard(
+    TAcquireStateFileGuard&& other) noexcept = default;
+
+TAcquireStateFileGuard& TAcquireStateFileGuard::operator=(
+    TAcquireStateFileGuard&& other) noexcept = default;
+
+TAcquireStateFileGuard::~TAcquireStateFileGuard()
+{
+    if (!Impl) {
+        return;
+    }
+
+    TGuard guard(Impl->Registry->Mutex);
+    Impl->UnregisterLocked();
+
+    // Destroying the lock closes the file, which releases the lock without
+    // any chance of failure, unlike an explicit Release(). The file itself
+    // is kept together with its session directory.
+}
+
+TAcquireStateFileGuard::operator bool() const
+{
+    return !!Impl;
+}
+
+const TFsPath& TAcquireStateFileGuard::GetFilePath() const
+{
+    Y_ABORT_UNLESS(Impl, "The guard holds no state file");
+    return Impl->FilePath;
+}
+
+NProto::TError TAcquireStateFileGuard::DeleteStateFile()
+{
+    if (!Impl) {
+        return {};
+    }
+
+    // Leave nothing behind whatever happens below, so that a repeated call
+    // is a no-op and the destructor has nothing to do.
+    auto impl = std::move(Impl);
+
+    TGuard guard(impl->Registry->Mutex);
+
+    const bool lastStateFile = impl->UnregisterLocked();
+
+    // Release() reports failures by throwing. The lock is dropped either way
+    // once |impl| goes out of scope, since closing the file releases it.
+    NProto::TError releaseError;
+    try {
+        impl->Lock->Release();
+    } catch (const yexception& e) {
+        releaseError = MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to unlock file " << impl->FilePath
+                             << ", reason: " << e.what());
+    }
+    impl->Lock.Reset();
+
+    // Only this very file is removed: the directory may hold state files of
+    // other components, whether held by other guards or not.
+    if (impl->FilePath.Exists() && !NFs::Remove(impl->FilePath)) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to remove file " << impl->FilePath
+                             << ", reason: " << LastSystemErrorText());
+    }
+
+    // If other state files are still held in the directory it is obviously
+    // not empty, so there is nothing to try. Otherwise remove it if empty: a
+    // directory found not empty at this point contains state nobody tracks
+    // (e.g. of a component which is not configured anymore).
+    if (lastStateFile && !NFs::Remove(impl->Dir)) {
+        const int err = LastSystemError();
+        if (err == ENOTEMPTY || err == EEXIST) {
+            ReportPersistentStateSessionDirNotEmpty(
+                TStringBuilder() << "Session dir " << impl->Dir
+                                 << " is not empty after the state file "
+                                 << impl->FileName << " has been deleted");
+        } else {
+            return MakeError(
+                E_FAIL,
+                TStringBuilder() << "Failed to remove dir " << impl->Dir
+                                 << ", reason: " << LastSystemErrorText(err));
+        }
+    }
+
+    return releaseError;
+}
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Keeps the state files on disk under the configured base paths, following
-// the layout <basePath>/<fileSystemId>/<sessionId>/<fileName>, and holds the
-// advisory locks on the acquired ones.
+// the layout <basePath>/<fileSystemId>/<sessionId>/<fileName>.
 class TPersistentStateManager final
     : public IPersistentStateManager
 {
@@ -44,20 +195,8 @@ private:
         {}
     };
 
-    // Locked state files held in one session directory, keyed by file name.
-    using TSessionDirLocks = THashMap<TString, THolder<TFileLock>>;
-
-    // Guards SessionDirs and the filesystem operations on the state files.
-    mutable TMutex Mutex;
-
-    // Session directories that hold at least one locked state file, keyed by
-    // path. A directory may be shared by several components, so only the
-    // requested files are ever removed from it, and the directory itself is
-    // removed once it is empty. A directory found not empty after the last
-    // state file held in it has been deleted contains state nobody tracks
-    // (e.g. of a component which is not configured anymore), which is
-    // reported as a critical event.
-    THashMap<TString, TSessionDirLocks> SessionDirs;
+    const TStateFileRegistryPtr Registry =
+        std::make_shared<TStateFileRegistry>();
 
     const TComponentConfig HandleOpsQueue;
     const TComponentConfig WriteBackCache;
@@ -74,10 +213,7 @@ public:
     bool HasHandleOpsQueueState(
         const TString& fileSystemId,
         const TString& sessionId) const override;
-    TAcquireStateFileResult AcquireHandleOpsQueueStateFile(
-        const TString& fileSystemId,
-        const TString& sessionId) override;
-    NProto::TError DeleteHandleOpsQueueStateFile(
+    TResultOrError<TAcquireStateFileGuard> AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
         const TString& sessionId) override;
 
@@ -86,25 +222,17 @@ public:
     bool HasWriteBackCacheState(
         const TString& fileSystemId,
         const TString& sessionId) const override;
-    TAcquireStateFileResult AcquireWriteBackCacheStateFile(
-        const TString& fileSystemId,
-        const TString& sessionId) override;
-    NProto::TError DeleteWriteBackCacheStateFile(
+    TResultOrError<TAcquireStateFileGuard> AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
         const TString& sessionId) override;
 
     // DirectoryHandleStorage
 
-    TAcquireStateFileResult AcquireDirectoryHandleStorageStateFile(
+    bool HasDirectoryHandleStorageState(
         const TString& fileSystemId,
-        const TString& sessionId) override;
-    NProto::TError DeleteDirectoryHandleStorageStateFile(
-        const TString& fileSystemId,
-        const TString& sessionId) override;
-
-    // All components
-
-    void ReleaseStateFiles(
+        const TString& sessionId) const override;
+    TResultOrError<TAcquireStateFileGuard>
+    AcquireDirectoryHandleStorageStateFile(
         const TString& fileSystemId,
         const TString& sessionId) override;
 
@@ -119,17 +247,7 @@ private:
         const TString& fileSystemId,
         const TString& sessionId) const;
 
-    TAcquireStateFileResult AcquireStateFile(
-        const TComponentConfig& component,
-        const TString& fileSystemId,
-        const TString& sessionId);
-
-    NProto::TError DeleteStateFile(
-        const TComponentConfig& component,
-        const TString& fileSystemId,
-        const TString& sessionId);
-
-    void ReleaseStateFile(
+    TResultOrError<TAcquireStateFileGuard> AcquireStateFile(
         const TComponentConfig& component,
         const TString& fileSystemId,
         const TString& sessionId);
@@ -176,48 +294,41 @@ bool TPersistentStateManager::HasState(
     const auto filePath =
         GetSessionDir(component, fileSystemId, sessionId) / component.FileName;
 
-    TGuard guard(Mutex);
+    TGuard guard(Registry->Mutex);
     return filePath.Exists();
 }
 
-TPersistentStateManager::TAcquireStateFileResult
+TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireStateFile(
     const TComponentConfig& component,
     const TString& fileSystemId,
     const TString& sessionId)
 {
     if (!component.BasePath) {
-        return {
-            .Error = MakeError(
-                E_INVALID_STATE,
-                TStringBuilder() << "Base path for " << component.FileName
-                                 << " is not set"),
-            .FilePath = {}};
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "Base path for " << component.FileName
+                             << " is not set");
     }
 
-    const auto dir = GetSessionDir(component, fileSystemId, sessionId);
-    const TString fileName(component.FileName);
+    auto dir = GetSessionDir(component, fileSystemId, sessionId);
+    TString fileName(component.FileName);
     auto filePath = dir / fileName;
 
-    TGuard guard(Mutex);
+    TGuard guard(Registry->Mutex);
 
-    const auto* locks = SessionDirs.FindPtr(dir.GetPath());
-    if (locks && locks->contains(fileName)) {
-        return {
-            .Error = MakeError(
-                E_INVALID_STATE,
-                TStringBuilder() << "State file " << filePath
-                                 << " is already acquired"),
-            .FilePath = {}};
+    const auto* fileNames = Registry->HeldStateFiles.FindPtr(dir.GetPath());
+    if (fileNames && fileNames->contains(fileName)) {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "State file " << filePath
+                             << " is already acquired");
     }
 
     if (!NFs::MakeDirectoryRecursive(dir)) {
-        return {
-            .Error = MakeError(
-                E_FAIL,
-                TStringBuilder() << "Failed to create directories, path: "
-                                 << dir),
-            .FilePath = {}};
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to create directories, path: " << dir);
     }
 
     // Touch(), the TFileLock constructor (which opens the file) and
@@ -228,134 +339,27 @@ TPersistentStateManager::AcquireStateFile(
 
         lock = MakeHolder<TFileLock>(filePath);
         if (!lock->TryAcquire()) {
-            return {
-                .Error = MakeError(
-                    E_INVALID_STATE,
-                    TStringBuilder() << "State file " << filePath
-                                     << " is locked by another owner"),
-                .FilePath = {}};
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "State file " << filePath
+                                 << " is locked by another owner");
         }
     } catch (const yexception& e) {
-        return {
-            .Error = MakeError(
-                E_FAIL,
-                TStringBuilder() << "Failed to lock file, path: " << filePath
-                                 << ", reason: " << e.what()),
-            .FilePath = {}};
-    }
-
-    SessionDirs[dir.GetPath()].emplace(fileName, std::move(lock));
-    return {.Error = {}, .FilePath = std::move(filePath)};
-}
-
-NProto::TError TPersistentStateManager::DeleteStateFile(
-    const TComponentConfig& component,
-    const TString& fileSystemId,
-    const TString& sessionId)
-{
-    if (!component.BasePath) {
-        return {};
-    }
-
-    const auto dir = GetSessionDir(component, fileSystemId, sessionId);
-    const TString fileName(component.FileName);
-    const auto filePath = dir / fileName;
-
-    TGuard guard(Mutex);
-
-    // Release the lock if the state file is held. Stop referencing the
-    // session directory when this manager holds no more state files in it,
-    // no matter whether the removal below succeeds.
-    NProto::TError releaseError;
-    bool dirHoldsNoLocks = true;
-    if (auto dirIt = SessionDirs.find(dir.GetPath());
-        dirIt != SessionDirs.end())
-    {
-        auto& locks = dirIt->second;
-        if (auto lockIt = locks.find(fileName); lockIt != locks.end()) {
-            auto lock = std::move(lockIt->second);
-            locks.erase(lockIt);
-
-            // Release() reports failures by throwing. The lock is dropped
-            // either way once |lock| goes out of scope, since closing the
-            // file releases it.
-            try {
-                lock->Release();
-            } catch (const yexception& e) {
-                releaseError = MakeError(
-                    E_FAIL,
-                    TStringBuilder() << "Failed to unlock file " << filePath
-                                     << ", reason: " << e.what());
-            }
-        }
-
-        dirHoldsNoLocks = locks.empty();
-        if (dirHoldsNoLocks) {
-            SessionDirs.erase(dirIt);
-        }
-    }
-
-    // The state file may be present without being held, e.g. when it was
-    // left behind by a previous session and the component is now disabled.
-    // Only this very file is removed: the directory may hold state files of
-    // other components, whether held by this manager or not.
-    if (filePath.Exists() && !NFs::Remove(filePath)) {
         return MakeError(
             E_FAIL,
-            TStringBuilder() << "Failed to remove file " << filePath
-                             << ", reason: " << LastSystemErrorText());
+            TStringBuilder() << "Failed to lock file, path: " << filePath
+                             << ", reason: " << e.what());
     }
 
-    // If other state files are still held in the directory it is obviously
-    // not empty, so there is nothing to try. Otherwise remove it if empty: a
-    // directory found not empty at this point contains state nobody tracks.
-    if (dirHoldsNoLocks && dir.Exists() && !NFs::Remove(dir)) {
-        const int err = LastSystemError();
-        if (err == ENOTEMPTY || err == EEXIST) {
-            ReportPersistentStateSessionDirNotEmpty(
-                TStringBuilder() << "Session dir " << dir
-                                 << " is not empty after the state file "
-                                 << fileName << " has been deleted");
-        } else {
-            return MakeError(
-                E_FAIL,
-                TStringBuilder() << "Failed to remove dir " << dir
-                                 << ", reason: " << LastSystemErrorText(err));
-        }
-    }
+    Registry->HeldStateFiles[dir.GetPath()].insert(fileName);
 
-    return releaseError;
-}
-
-void TPersistentStateManager::ReleaseStateFile(
-    const TComponentConfig& component,
-    const TString& fileSystemId,
-    const TString& sessionId)
-{
-    if (!component.BasePath) {
-        return;
-    }
-
-    const auto dir = GetSessionDir(component, fileSystemId, sessionId);
-    const TString fileName(component.FileName);
-
-    TGuard guard(Mutex);
-
-    auto dirIt = SessionDirs.find(dir.GetPath());
-    if (dirIt == SessionDirs.end()) {
-        return;
-    }
-
-    // Destroying the lock closes the file, which releases the lock without
-    // any chance of failure, unlike an explicit Release().
-    auto& locks = dirIt->second;
-    locks.erase(fileName);
-
-    // The session directory is kept together with the state files, only the
-    // reference to it is dropped once nothing is held in it anymore.
-    if (locks.empty()) {
-        SessionDirs.erase(dirIt);
-    }
+    return TAcquireStateFileGuard(MakeHolder<TAcquireStateFileGuard::TImpl>(
+        TAcquireStateFileGuard::TImpl{
+            .Registry = Registry,
+            .Dir = std::move(dir),
+            .FileName = std::move(fileName),
+            .FilePath = std::move(filePath),
+            .Lock = std::move(lock)}));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -368,19 +372,12 @@ bool TPersistentStateManager::HasHandleOpsQueueState(
     return HasState(HandleOpsQueue, fileSystemId, sessionId);
 }
 
-TPersistentStateManager::TAcquireStateFileResult
+TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireHandleOpsQueueStateFile(
     const TString& fileSystemId,
     const TString& sessionId)
 {
     return AcquireStateFile(HandleOpsQueue, fileSystemId, sessionId);
-}
-
-NProto::TError TPersistentStateManager::DeleteHandleOpsQueueStateFile(
-    const TString& fileSystemId,
-    const TString& sessionId)
-{
-    return DeleteStateFile(HandleOpsQueue, fileSystemId, sessionId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -393,7 +390,7 @@ bool TPersistentStateManager::HasWriteBackCacheState(
     return HasState(WriteBackCache, fileSystemId, sessionId);
 }
 
-TPersistentStateManager::TAcquireStateFileResult
+TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireWriteBackCacheStateFile(
     const TString& fileSystemId,
     const TString& sessionId)
@@ -401,41 +398,22 @@ TPersistentStateManager::AcquireWriteBackCacheStateFile(
     return AcquireStateFile(WriteBackCache, fileSystemId, sessionId);
 }
 
-NProto::TError TPersistentStateManager::DeleteWriteBackCacheStateFile(
-    const TString& fileSystemId,
-    const TString& sessionId)
-{
-    return DeleteStateFile(WriteBackCache, fileSystemId, sessionId);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // DirectoryHandleStorage
 
-TPersistentStateManager::TAcquireStateFileResult
+bool TPersistentStateManager::HasDirectoryHandleStorageState(
+    const TString& fileSystemId,
+    const TString& sessionId) const
+{
+    return HasState(DirectoryHandleStorage, fileSystemId, sessionId);
+}
+
+TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireDirectoryHandleStorageStateFile(
     const TString& fileSystemId,
     const TString& sessionId)
 {
     return AcquireStateFile(DirectoryHandleStorage, fileSystemId, sessionId);
-}
-
-NProto::TError TPersistentStateManager::DeleteDirectoryHandleStorageStateFile(
-    const TString& fileSystemId,
-    const TString& sessionId)
-{
-    return DeleteStateFile(DirectoryHandleStorage, fileSystemId, sessionId);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// All components
-
-void TPersistentStateManager::ReleaseStateFiles(
-    const TString& fileSystemId,
-    const TString& sessionId)
-{
-    ReleaseStateFile(HandleOpsQueue, fileSystemId, sessionId);
-    ReleaseStateFile(WriteBackCache, fileSystemId, sessionId);
-    ReleaseStateFile(DirectoryHandleStorage, fileSystemId, sessionId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -454,20 +432,12 @@ public:
         return false;
     }
 
-    TAcquireStateFileResult AcquireHandleOpsQueueStateFile(
+    TResultOrError<TAcquireStateFileGuard> AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
         const TString& sessionId) override
     {
         Y_UNUSED(fileSystemId, sessionId);
         return NotImplemented(HandleOpsQueueFileName);
-    }
-
-    NProto::TError DeleteHandleOpsQueueStateFile(
-        const TString& fileSystemId,
-        const TString& sessionId) override
-    {
-        Y_UNUSED(fileSystemId, sessionId);
-        return {};
     }
 
     // WriteBackCache
@@ -480,7 +450,7 @@ public:
         return false;
     }
 
-    TAcquireStateFileResult AcquireWriteBackCacheStateFile(
+    TResultOrError<TAcquireStateFileGuard> AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
         const TString& sessionId) override
     {
@@ -488,17 +458,18 @@ public:
         return NotImplemented(WriteBackCacheFileName);
     }
 
-    NProto::TError DeleteWriteBackCacheStateFile(
-        const TString& fileSystemId,
-        const TString& sessionId) override
-    {
-        Y_UNUSED(fileSystemId, sessionId);
-        return {};
-    }
-
     // DirectoryHandleStorage
 
-    TAcquireStateFileResult AcquireDirectoryHandleStorageStateFile(
+    bool HasDirectoryHandleStorageState(
+        const TString& fileSystemId,
+        const TString& sessionId) const override
+    {
+        Y_UNUSED(fileSystemId, sessionId);
+        return false;
+    }
+
+    TResultOrError<TAcquireStateFileGuard>
+    AcquireDirectoryHandleStorageStateFile(
         const TString& fileSystemId,
         const TString& sessionId) override
     {
@@ -506,32 +477,13 @@ public:
         return NotImplemented(DirectoryHandleStorageFileName);
     }
 
-    NProto::TError DeleteDirectoryHandleStorageStateFile(
-        const TString& fileSystemId,
-        const TString& sessionId) override
-    {
-        Y_UNUSED(fileSystemId, sessionId);
-        return {};
-    }
-
-    // All components
-
-    void ReleaseStateFiles(
-        const TString& fileSystemId,
-        const TString& sessionId) override
-    {
-        Y_UNUSED(fileSystemId, sessionId);
-    }
-
 private:
-    static TAcquireStateFileResult NotImplemented(TStringBuf fileName)
+    static NProto::TError NotImplemented(TStringBuf fileName)
     {
-        return {
-            .Error = MakeError(
-                E_NOT_IMPLEMENTED,
-                TStringBuilder() << "State file " << fileName
-                                 << " is not supported by the stub"),
-            .FilePath = {}};
+        return MakeError(
+            E_NOT_IMPLEMENTED,
+            TStringBuilder() << "State file " << fileName
+                             << " is not supported by the stub");
     }
 };
 

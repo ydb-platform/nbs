@@ -681,6 +681,13 @@ private:
     TDirectoryHandleModuleStatsPtr DirectoryHandleStats;
     TFileSystemConfigPtr FileSystemConfig;
 
+    // Hold the locks on the state files for as long as the loop lives: if the
+    // loop goes away without being stopped (e.g. its start has failed and the
+    // endpoint is dropped), the files stay on disk for a future session.
+    TAcquireStateFileGuard HandleOpsQueueStateFileGuard;
+    TAcquireStateFileGuard WriteBackCacheStateFileGuard;
+    TAcquireStateFileGuard DirectoryHandleStorageStateFileGuard;
+
     TWriteBackCache WriteBackCache;
 
 public:
@@ -709,19 +716,6 @@ public:
         , PersistentState(std::move(persistentState))
     {
         Log = Logging->CreateLog("NFS_FUSE");
-    }
-
-    ~TFileSystemLoop() override
-    {
-        // The loop may be destroyed without being stopped, e.g. when its
-        // start has failed and the endpoint is dropped. Release the locks on
-        // the state files (keeping the files) so that a new loop for the
-        // same session is able to acquire them.
-        if (FileSystemConfig && SessionId) {
-            PersistentState->ReleaseStateFiles(
-                FileSystemConfig->GetFileSystemId(),
-                SessionId);
-        }
     }
 
     TFuture<NProto::TError> StartAsync() override
@@ -974,18 +968,19 @@ private:
                             FileSystemConfig->GetFileSystemId(),
                             SessionId);
 
-                    if (HasError(result.Error)) {
+                    if (HasError(result)) {
                         ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
                             "[f:%s][c:%s] AcquireHandleOpsQueueStateFile "
                             "error: %s",
                             Config->GetFileSystemId().Quote().c_str(),
                             Config->GetClientId().Quote().c_str(),
-                            result.Error.GetMessage().c_str()));
-                        return result.Error;
+                            result.GetError().GetMessage().c_str()));
+                        return result.GetError();
                     }
 
+                    HandleOpsQueueStateFileGuard = result.ExtractResult();
                     handleOpsQueue = CreateHandleOpsQueue(
-                        result.FilePath,
+                        HandleOpsQueueStateFileGuard.GetFilePath(),
                         Config->GetHandleOpsQueueSize());
                 }
             } else if (ShouldCreateHandleOpsQueue(*FileSystemConfig)) {
@@ -1007,16 +1002,17 @@ private:
                             FileSystemConfig->GetFileSystemId(),
                             SessionId);
 
-                    if (HasError(result.Error)) {
+                    if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
                             "[f:%s][c:%s] AcquireWriteBackCacheStateFile "
                             "error: %s",
                             Config->GetFileSystemId().Quote().c_str(),
                             Config->GetClientId().Quote().c_str(),
-                            result.Error.GetMessage().c_str()));
-                        return result.Error;
+                            result.GetError().GetMessage().c_str()));
+                        return result.GetError();
                     }
 
+                    WriteBackCacheStateFileGuard = result.ExtractResult();
                     WriteBackCache = TWriteBackCache(
                         {.Session = Session,
                          .Scheduler = Scheduler,
@@ -1025,7 +1021,7 @@ private:
                          .Log = Log,
                          .FileSystemId = Config->GetFileSystemId(),
                          .ClientId = Config->GetClientId(),
-                         .FilePath = result.FilePath,
+                         .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
                          .CapacityBytes = Config->GetWriteBackCacheCapacity(),
                          .AutomaticFlushPeriod =
                              Config->GetWriteBackCacheAutomaticFlushPeriod(),
@@ -1081,11 +1077,14 @@ private:
                             FileSystemConfig->GetFileSystemId(),
                             SessionId);
 
-                    if (HasError(result.Error)) {
+                    if (HasError(result)) {
                         ReportDirectoryHandleStorageError(
-                            result.Error.GetMessage());
-                        return result.Error;
+                            result.GetError().GetMessage());
+                        return result.GetError();
                     }
+
+                    DirectoryHandleStorageStateFileGuard =
+                        result.ExtractResult();
 
                     directoryHandleStorageStats =
                         CreateDirectoryHandleStorageStats(Timer);
@@ -1094,7 +1093,8 @@ private:
                         {.Log = Log,
                          .FileMapMemoryLimiter = FileMapMemoryLimiter,
                          .Stats = directoryHandleStorageStats,
-                         .FilePath = result.FilePath,
+                         .FilePath =
+                             DirectoryHandleStorageStateFileGuard.GetFilePath(),
                          .MaxRecords =
                              FileSystemConfig->GetDirectoryHandlesTableSize(),
                          .InitialDataAreaSize =
@@ -1106,15 +1106,23 @@ private:
                          .PersistentHandleMaxSize =
                              FileSystemConfig
                                  ->GetDirectoryHandlesPersistentHandleMaxSize()});
-                } else {
+                } else if (PersistentState->HasDirectoryHandleStorageState(
+                               FileSystemConfig->GetFileSystemId(),
+                               SessionId))
+                {
                     // The feature is disabled but a file from a previous
-                    // session with it enabled may still be on disk. The file
+                    // session with it enabled is still on disk. The file
                     // holds only a derived view of the directory listing, so
                     // it can be removed without any drain.
-                    auto error =
-                        PersistentState->DeleteDirectoryHandleStorageStateFile(
+                    auto result =
+                        PersistentState->AcquireDirectoryHandleStorageStateFile(
                             FileSystemConfig->GetFileSystemId(),
                             SessionId);
+
+                    NProto::TError error = result.GetError();
+                    if (!HasError(error)) {
+                        error = result.ExtractResult().DeleteStateFile();
+                    }
                     if (HasError(error)) {
                         ReportDirectoryHandleStorageError(error.GetMessage());
                     }
@@ -1500,12 +1508,8 @@ private:
 
         ModuleStatsRegistry->Unregister(SessionId);
 
-        const auto& fileSystemId = FileSystemConfig->GetFileSystemId();
-
         // We need to cleanup HandleOpsQueue file and directories
-        auto error = PersistentState->DeleteHandleOpsQueueStateFile(
-            fileSystemId,
-            SessionId);
+        auto error = HandleOpsQueueStateFileGuard.DeleteStateFile();
         if (HasError(error)) {
             ReportHandleOpsQueueCreatingOrDeletingError(error.GetMessage());
         }
@@ -1515,16 +1519,12 @@ private:
         // its backing file
         WriteBackCache = {};
 
-        error = PersistentState->DeleteWriteBackCacheStateFile(
-            fileSystemId,
-            SessionId);
+        error = WriteBackCacheStateFileGuard.DeleteStateFile();
         if (HasError(error)) {
             ReportWriteBackCacheCreatingOrDeletingError(error.GetMessage());
         }
 
-        error = PersistentState->DeleteDirectoryHandleStorageStateFile(
-            fileSystemId,
-            SessionId);
+        error = DirectoryHandleStorageStateFileGuard.DeleteStateFile();
         if (HasError(error)) {
             ReportDirectoryHandleStorageError(error.GetMessage());
         }
