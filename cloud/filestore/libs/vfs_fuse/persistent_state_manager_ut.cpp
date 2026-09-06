@@ -223,6 +223,38 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(IsLocked(wbc.FilePath));
     }
 
+    Y_UNIT_TEST_F(ShouldReleaseStateFilesKeepingThemOnDisk, TFixture)
+    {
+        auto manager = CreateManager();
+
+        auto hoq =
+            manager.AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+        auto wbc =
+            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT_C(!HasError(hoq.Error), hoq.Error.GetMessage());
+        UNIT_ASSERT_C(!HasError(wbc.Error), wbc.Error.GetMessage());
+
+        manager.ReleaseStateFiles(FileSystemId, SessionId);
+
+        // The locks are gone but the state stays, so that it can be restored
+        // by the next loop of the same session.
+        UNIT_ASSERT(hoq.FilePath.Exists());
+        UNIT_ASSERT(wbc.FilePath.Exists());
+        UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
+        UNIT_ASSERT(!IsLocked(hoq.FilePath));
+        UNIT_ASSERT(!IsLocked(wbc.FilePath));
+        UNIT_ASSERT(manager.HasHandleOpsQueueState(FileSystemId, SessionId));
+
+        // ... and the same manager is able to acquire them again.
+        auto again =
+            manager.AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT_C(!HasError(again.Error), again.Error.GetMessage());
+        UNIT_ASSERT(IsLocked(again.FilePath));
+
+        // Releasing what is not held is a no-op.
+        manager.ReleaseStateFiles(FileSystemId, "unknown-session");
+    }
+
     Y_UNIT_TEST_F(ShouldManageSessionsIndependently, TFixture)
     {
         auto manager = CreateManager();

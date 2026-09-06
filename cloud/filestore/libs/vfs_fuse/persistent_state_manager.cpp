@@ -200,6 +200,37 @@ NProto::TError TPersistentStateManager::DeleteStateFile(
     return releaseError;
 }
 
+void TPersistentStateManager::ReleaseStateFile(
+    const TComponentConfig& component,
+    const TString& fileSystemId,
+    const TString& sessionId)
+{
+    if (!component.BasePath) {
+        return;
+    }
+
+    const auto dir = GetSessionDir(component, fileSystemId, sessionId);
+    const TString fileName(component.FileName);
+
+    TGuard guard(Mutex);
+
+    auto dirIt = SessionDirs.find(dir.GetPath());
+    if (dirIt == SessionDirs.end()) {
+        return;
+    }
+
+    // Destroying the lock closes the file, which releases the lock without
+    // any chance of failure, unlike an explicit Release().
+    auto& locks = dirIt->second;
+    locks.erase(fileName);
+
+    // The session directory is kept together with the state files, only the
+    // reference to it is dropped once nothing is held in it anymore.
+    if (locks.empty()) {
+        SessionDirs.erase(dirIt);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // HandleOpsQueue
 
@@ -266,6 +297,18 @@ NProto::TError TPersistentStateManager::DeleteDirectoryHandleStorageStateFile(
     const TString& sessionId)
 {
     return DeleteStateFile(DirectoryHandleStorage, fileSystemId, sessionId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// All components
+
+void TPersistentStateManager::ReleaseStateFiles(
+    const TString& fileSystemId,
+    const TString& sessionId)
+{
+    ReleaseStateFile(HandleOpsQueue, fileSystemId, sessionId);
+    ReleaseStateFile(WriteBackCache, fileSystemId, sessionId);
+    ReleaseStateFile(DirectoryHandleStorage, fileSystemId, sessionId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

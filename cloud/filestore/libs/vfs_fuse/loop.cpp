@@ -711,6 +711,19 @@ public:
         Log = Logging->CreateLog("NFS_FUSE");
     }
 
+    ~TFileSystemLoop() override
+    {
+        // The loop may be destroyed without being stopped, e.g. when its
+        // start has failed and the endpoint is dropped. Release the locks on
+        // the state files (keeping the files) so that a new loop for the
+        // same session is able to acquire them.
+        if (FileSystemConfig && SessionId) {
+            PersistentState->ReleaseStateFiles(
+                FileSystemConfig->GetFileSystemId(),
+                SessionId);
+        }
+    }
+
     TFuture<NProto::TError> StartAsync() override
     {
         RequestStats = StatsRegistry->GetFileSystemStats(
@@ -946,16 +959,19 @@ private:
 
             SessionId = response.GetSession().GetSessionId();
 
+            // The state files are kept under the filesystem id returned by
+            // the server rather than the requested one: the latter may be an
+            // alias, which the server resolves upon session creation.
             THandleOpsQueuePtr handleOpsQueue;
             if (Config->GetHandleOpsQueuePath()) {
                 if (PersistentState->HasHandleOpsQueueState(
-                        Config->GetFileSystemId(),
+                        FileSystemConfig->GetFileSystemId(),
                         SessionId) ||
                     ShouldCreateHandleOpsQueue(*FileSystemConfig))
                 {
                     auto result =
                         PersistentState->AcquireHandleOpsQueueStateFile(
-                            Config->GetFileSystemId(),
+                            FileSystemConfig->GetFileSystemId(),
                             SessionId);
 
                     if (HasError(result.Error)) {
@@ -982,13 +998,13 @@ private:
 
             if (Config->GetWriteBackCachePath()) {
                 if (PersistentState->HasWriteBackCacheState(
-                        Config->GetFileSystemId(),
+                        FileSystemConfig->GetFileSystemId(),
                         SessionId) ||
                     FileSystemConfig->GetServerWriteBackCacheEnabled())
                 {
                     auto result =
                         PersistentState->AcquireWriteBackCacheStateFile(
-                            Config->GetFileSystemId(),
+                            FileSystemConfig->GetFileSystemId(),
                             SessionId);
 
                     if (HasError(result.Error)) {
@@ -1062,7 +1078,7 @@ private:
                 if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
                     auto result =
                         PersistentState->AcquireDirectoryHandleStorageStateFile(
-                            Config->GetFileSystemId(),
+                            FileSystemConfig->GetFileSystemId(),
                             SessionId);
 
                     if (HasError(result.Error)) {
@@ -1097,7 +1113,7 @@ private:
                     // it can be removed without any drain.
                     auto error =
                         PersistentState->DeleteDirectoryHandleStorageStateFile(
-                            Config->GetFileSystemId(),
+                            FileSystemConfig->GetFileSystemId(),
                             SessionId);
                     if (HasError(error)) {
                         ReportDirectoryHandleStorageError(error.GetMessage());
@@ -1484,7 +1500,7 @@ private:
 
         ModuleStatsRegistry->Unregister(SessionId);
 
-        const auto& fileSystemId = Config->GetFileSystemId();
+        const auto& fileSystemId = FileSystemConfig->GetFileSystemId();
 
         // We need to cleanup HandleOpsQueue file and directories
         auto error = PersistentState->DeleteHandleOpsQueueStateFile(

@@ -80,6 +80,15 @@ public:
         const TString& fileSystemId,
         const TString& sessionId);
 
+    // All components
+
+    // Releases the locks of all the state files of the session held by this
+    // manager, keeping the files on disk so that a future session can
+    // restore them.
+    void ReleaseStateFiles(
+        const TString& fileSystemId,
+        const TString& sessionId);
+
 private:
     struct TComponentConfig
     {
@@ -112,6 +121,11 @@ private:
         const TString& sessionId);
 
     NProto::TError DeleteStateFile(
+        const TComponentConfig& component,
+        const TString& fileSystemId,
+        const TString& sessionId);
+
+    void ReleaseStateFile(
         const TComponentConfig& component,
         const TString& fileSystemId,
         const TString& sessionId);
