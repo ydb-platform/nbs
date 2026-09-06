@@ -135,8 +135,12 @@ private:
     mutable TMutex Mutex;
 
     // Session directories that hold at least one locked state file, keyed by
-    // path. A directory may be shared by several components, it is removed
-    // once it holds no more state files.
+    // path. A directory may be shared by several components, so only the
+    // requested files are ever removed from it, and the directory itself is
+    // removed once it is empty. A directory found not empty after the last
+    // state file held in it has been deleted contains state nobody tracks
+    // (e.g. of a component which is not configured anymore), which is
+    // reported as a critical event.
     THashMap<TString, TSessionDirLocks> SessionDirs;
 
     const TComponentConfig HandleOpsQueue;

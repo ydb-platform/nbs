@@ -1,5 +1,7 @@
 #include "persistent_state_manager.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/error.h>
@@ -146,10 +148,10 @@ NProto::TError TPersistentStateManager::DeleteStateFile(
     TGuard guard(Mutex);
 
     // Release the lock if the state file is held. Stop referencing the
-    // session directory when it holds no more state files, no matter whether
-    // the removal below succeeds.
+    // session directory when this manager holds no more state files in it,
+    // no matter whether the removal below succeeds.
     NProto::TError releaseError;
-    bool dirHoldsStateFiles = false;
+    bool dirHoldsNoLocks = true;
     if (auto dirIt = SessionDirs.find(dir.GetPath());
         dirIt != SessionDirs.end())
     {
@@ -171,14 +173,16 @@ NProto::TError TPersistentStateManager::DeleteStateFile(
             }
         }
 
-        dirHoldsStateFiles = !locks.empty();
-        if (!dirHoldsStateFiles) {
+        dirHoldsNoLocks = locks.empty();
+        if (dirHoldsNoLocks) {
             SessionDirs.erase(dirIt);
         }
     }
 
     // The state file may be present without being held, e.g. when it was
     // left behind by a previous session and the component is now disabled.
+    // Only this very file is removed: the directory may hold state files of
+    // other components, whether held by this manager or not.
     if (filePath.Exists() && !NFs::Remove(filePath)) {
         return MakeError(
             E_FAIL,
@@ -186,14 +190,21 @@ NProto::TError TPersistentStateManager::DeleteStateFile(
                              << ", reason: " << LastSystemErrorText());
     }
 
-    if (!dirHoldsStateFiles && dir.Exists()) {
-        try {
-            NFs::RemoveRecursive(dir);
-        } catch (const yexception& e) {
+    // If other state files are still held in the directory it is obviously
+    // not empty, so there is nothing to try. Otherwise remove it if empty: a
+    // directory found not empty at this point contains state nobody tracks.
+    if (dirHoldsNoLocks && dir.Exists() && !NFs::Remove(dir)) {
+        const int err = LastSystemError();
+        if (err == ENOTEMPTY || err == EEXIST) {
+            ReportPersistentStateSessionDirNotEmpty(
+                TStringBuilder() << "Session dir " << dir
+                                 << " is not empty after the state file "
+                                 << fileName << " has been deleted");
+        } else {
             return MakeError(
                 E_FAIL,
                 TStringBuilder() << "Failed to remove dir " << dir
-                                 << ", reason: " << e.what());
+                                 << ", reason: " << LastSystemErrorText(err));
         }
     }
 

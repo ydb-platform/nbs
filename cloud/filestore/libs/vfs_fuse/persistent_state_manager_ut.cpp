@@ -1,7 +1,10 @@
 #include "persistent_state_manager.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
@@ -26,6 +29,18 @@ struct TFixture: public NUnitTest::TBaseFixture
 {
     TTempDir TempDir;
     TString StatePath = TempDir.Path() / "state";
+
+    NMonitoring::TDynamicCountersPtr Counters =
+        MakeIntrusive<NMonitoring::TDynamicCounters>();
+    NMonitoring::TDynamicCounters::TCounterPtr SessionDirNotEmptyCounter;
+
+    TFixture()
+    {
+        InitCriticalEventsCounter(Counters);
+        SessionDirNotEmptyCounter = Counters->GetCounter(
+            GetCriticalEventForPersistentStateSessionDirNotEmpty(),
+            true);
+    }
 
     TPersistentStateManager CreateManager()
     {
@@ -281,6 +296,67 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!SessionDir(FileSystemId, "session-1").Exists());
         UNIT_ASSERT(manager.HasHandleOpsQueueState(FileSystemId, "session-2"));
         UNIT_ASSERT(second.FilePath.Exists());
+    }
+
+    Y_UNIT_TEST_F(ShouldNotDeleteUnheldSiblingStateFiles, TFixture)
+    {
+        // A state file of a component which is not configured anymore (or
+        // just not acquired) is left in the session directory. Deleting the
+        // state file of another component must not take it away.
+        TFsPath unheld;
+        {
+            auto previous = CreateManager();
+            auto result = previous.AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
+            unheld = result.FilePath;
+        }
+        UNIT_ASSERT(unheld.Exists());
+
+        auto manager = CreateManager();
+        auto dhs = manager.AcquireDirectoryHandleStorageStateFile(
+            FileSystemId,
+            SessionId);
+        UNIT_ASSERT_C(!HasError(dhs.Error), dhs.Error.GetMessage());
+
+        auto error = manager.DeleteDirectoryHandleStorageStateFile(
+            FileSystemId,
+            SessionId);
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+
+        UNIT_ASSERT(!dhs.FilePath.Exists());
+        UNIT_ASSERT(unheld.Exists());
+        UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
+
+        // ... but the untracked leftover is reported, since nobody is going
+        // to clean it up.
+        UNIT_ASSERT_VALUES_EQUAL(1, SessionDirNotEmptyCounter->Val());
+    }
+
+    Y_UNIT_TEST_F(ShouldNotDeleteUnheldSiblingEvenIfOwnFileIsMissing, TFixture)
+    {
+        // Nothing of the requested component is on disk at all, only an unheld
+        // file of another one.
+        TFsPath unheld;
+        {
+            auto previous = CreateManager();
+            auto result = previous.AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result.Error), result.Error.GetMessage());
+            unheld = result.FilePath;
+        }
+
+        auto manager = CreateManager();
+        auto error = manager.DeleteDirectoryHandleStorageStateFile(
+            FileSystemId,
+            SessionId);
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+
+        UNIT_ASSERT(unheld.Exists());
+        UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
+        UNIT_ASSERT_VALUES_EQUAL(1, SessionDirNotEmptyCounter->Val());
     }
 
     Y_UNIT_TEST_F(ShouldDeleteStateFileLeftByPreviousSession, TFixture)
