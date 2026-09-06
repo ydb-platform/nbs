@@ -5318,12 +5318,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldStartAfterPreviousLoopWasDestroyedWithoutStop)
     {
-        // A single manager is shared by all the loops, as in production
+        // A single manager is shared by all the loops and all the components
+        // share one base path, as in production
+        const TString statePath = TempDir.Path() / "SharedState";
         auto persistentStateManager =
-            CreatePersistentStateManager(
-                TempDir.Path() / "HandleOpsQueue",
-                TempDir.Path() / "WriteBackCache",
-                TempDir.Path() / "DirectoryHandles");
+            CreatePersistentStateManager(statePath, statePath, statePath);
 
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
@@ -5333,9 +5332,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // the start fails after the write back cache state file has already
         // been acquired, like it happens when e.g. the FUSE loop fails to
         // start.
-        const auto directoryHandleStoragePath =
-            TFsPath(TempDir.Path() / "DirectoryHandles") / FileSystemId /
-            SessionId / "directory_handles_storage";
+        const auto directoryHandleStoragePath = TFsPath(statePath) /
+                                                FileSystemId / SessionId /
+                                                "directory_handles_storage";
         directoryHandleStoragePath.Parent().MkDirs();
         directoryHandleStoragePath.Touch();
         auto externalLock = MakeHolder<TFileLock>(directoryHandleStoragePath);

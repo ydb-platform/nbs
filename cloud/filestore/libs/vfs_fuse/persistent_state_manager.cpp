@@ -57,8 +57,6 @@ struct TAcquireStateFileGuard::TImpl
     THolder<TFileLock> Lock;
 
     // Returns whether this is the last state file held in the directory.
-    // Must be called with the registry locked.
-    //
     // Should be guarded by TStateFileRegistry::Mutex.
     bool UnregisterLocked()
     {
@@ -100,8 +98,11 @@ TAcquireStateFileGuard::~TAcquireStateFileGuard()
     Impl->UnregisterLocked();
 
     // Destroying the lock closes the file, which releases the lock without
-    // any chance of failure, unlike an explicit Release(). The file itself
+    // any chance of failure, unlike an explicit Release(). It has to happen
+    // while the registry is still locked: otherwise an acquisition racing
+    // with us finds the file unregistered but still locked. The file itself
     // is kept together with its session directory.
+    Impl->Lock.Reset();
 }
 
 TAcquireStateFileGuard::operator bool() const
@@ -157,7 +158,9 @@ NProto::TError TAcquireStateFileGuard::DeleteStateFile()
     // (e.g. of a component which is not configured anymore).
     if (lastStateFile && !NFs::Remove(impl->Dir)) {
         const int err = LastSystemError();
-        if (err == ENOTEMPTY || err == EEXIST) {
+        if (err == ENOENT) {
+            // Already gone, e.g. removed together with the file by hand.
+        } else if (err == ENOTEMPTY || err == EEXIST) {
             ReportPersistentStateSessionDirNotEmpty(
                 TStringBuilder() << "Session dir " << impl->Dir
                                  << " is not empty after the state file "

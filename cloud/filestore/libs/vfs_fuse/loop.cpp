@@ -668,6 +668,16 @@ private:
     const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
     const IPersistentStateManagerPtr PersistentState;
 
+    // Hold the locks on the state files for as long as the loop lives: if the
+    // loop goes away without being stopped (e.g. its start has failed and the
+    // endpoint is dropped), the files stay on disk for a future session.
+    // Declared before everything that uses the files (the write-back cache,
+    // the file system with its handle ops queue and directory handle storage)
+    // so that the locks are released after those are gone.
+    TAcquireStateFileGuard HandleOpsQueueStateFileGuard;
+    TAcquireStateFileGuard WriteBackCacheStateFileGuard;
+    TAcquireStateFileGuard DirectoryHandleStorageStateFileGuard;
+
     TLog Log;
 
     TString SessionState;
@@ -680,13 +690,6 @@ private:
     IFileSystemPtr FileSystem;
     TDirectoryHandleModuleStatsPtr DirectoryHandleStats;
     TFileSystemConfigPtr FileSystemConfig;
-
-    // Hold the locks on the state files for as long as the loop lives: if the
-    // loop goes away without being stopped (e.g. its start has failed and the
-    // endpoint is dropped), the files stay on disk for a future session.
-    TAcquireStateFileGuard HandleOpsQueueStateFileGuard;
-    TAcquireStateFileGuard WriteBackCacheStateFileGuard;
-    TAcquireStateFileGuard DirectoryHandleStorageStateFileGuard;
 
     TWriteBackCache WriteBackCache;
 

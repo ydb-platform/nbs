@@ -114,10 +114,6 @@ TStarter::TStarter()
     proto.SetSocketPath(SocketPath.c_str());
 
     auto config = std::make_shared<TVFSConfig>(std::move(proto));
-    auto persistentState = CreatePersistentStateManager(
-        config->GetHandleOpsQueuePath(),
-        config->GetWriteBackCachePath(),
-        config->GetDirectoryHandlesStoragePath());
 
     Loop = NFuse::CreateFuseLoop(
         std::move(config),
@@ -130,7 +126,7 @@ TStarter::TStarter()
         CreateProfileLogStub(),
         std::move(session),
         CreateFileMapMemoryLimiterStub(),
-        std::move(persistentState));
+        CreatePersistentStateManagerStub());
 }
 
 

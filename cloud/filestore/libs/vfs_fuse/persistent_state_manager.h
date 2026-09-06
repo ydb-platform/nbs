@@ -38,7 +38,7 @@ public:
     // Whether a state file is held.
     explicit operator bool() const;
 
-    // Path to the held state file. Valid iff the guard holds one.
+    // Path to the held state file. Aborts if the guard holds none.
     const TFsPath& GetFilePath() const;
 
     // Releases the lock and removes the state file, and the session directory
