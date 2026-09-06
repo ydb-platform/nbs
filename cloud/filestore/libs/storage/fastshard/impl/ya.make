@@ -1,5 +1,3 @@
-SET(FORCE_FASTSHARD_IPC_STUB YES)
-
 RECURSE(
     mem
     naive_mirrored
