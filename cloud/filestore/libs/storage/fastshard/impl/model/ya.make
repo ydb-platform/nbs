@@ -17,8 +17,6 @@ PEERDIR(
 
     cloud/storage/core/libs/common
 
-    contrib/libs/silk/src/fibers
-
     library/cpp/json
 )
 
@@ -32,3 +30,7 @@ PEERDIR(
 )
 
 END()
+
+RECURSE_FOR_TESTS(
+    ut
+)

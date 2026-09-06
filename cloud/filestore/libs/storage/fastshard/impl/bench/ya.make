@@ -1,8 +1,6 @@
 G_BENCHMARK()
 
-IF (SANITIZER_TYPE)
-    TAG(ya:manual)
-ENDIF()
+TAG(ya:manual)
 
 SRCS(
     delay_policy.cpp

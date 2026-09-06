@@ -1,7 +1,5 @@
 #include "persistent_bitmap.h"
 
-#include <silk/util/logger.h>
-
 #include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
@@ -299,10 +297,6 @@ NProto::TError TPersistentBitmap::ReadPage(
     if (relPageNo == GetPageCount() - 1) {
         const ui64 endBit = MaxBits % bitsPerPage;
         if (endBit) {
-            if (endBit % 8 != 0) {
-                SILK_WARN("unaligned max bit count: %lu", MaxBits);
-            }
-
             const ui64 endByte = endBit / 8;
             memset(
                 page->data() + endByte,
