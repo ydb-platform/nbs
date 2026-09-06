@@ -258,17 +258,6 @@ void TStorageServiceActor::HandleCreateHandle(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    if (msg->Record.GetName().empty()) {
-        // handle creation by NodeId can be handled directly by the shard
-        ForwardRequestToShard<TEvService::TCreateHandleMethod>(
-            ctx,
-            ev,
-            true /* forceBehaveAsShard */,
-            msg->Record.GetNodeId());
-        return;
-    }
-
     auto* session =
         GetAndValidateSession<TEvService::TCreateHandleMethod>(ctx, ev);
     if (!session) {
@@ -276,6 +265,17 @@ void TStorageServiceActor::HandleCreateHandle(
     }
 
     if (TryHandleControlNamespaceCreateHandle(ctx, ev, session)) {
+        return;
+    }
+
+    if (msg->Record.GetName().empty()) {
+        // handle creation by NodeId can be handled directly by the shard
+        ForwardRequestToShard<TEvService::TCreateHandleMethod>(
+            ctx,
+            ev,
+            true /* forceBehaveAsShard */,
+            msg->Record.GetNodeId(),
+            session);
         return;
     }
 

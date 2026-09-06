@@ -270,17 +270,6 @@ void TStorageServiceActor::HandleGetNodeAttr(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    if (msg->Record.GetName().empty()) {
-        // GetNodeAttr by NodeId can be handled directly by the shard
-        ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
-            ctx,
-            ev,
-            false /* forceBehaveAsShard */,
-            msg->Record.GetNodeId());
-        return;
-    }
-
     auto* session =
         GetAndValidateSession<TEvService::TGetNodeAttrMethod>(ctx, ev);
     if (!session) {
@@ -288,6 +277,17 @@ void TStorageServiceActor::HandleGetNodeAttr(
     }
 
     if (TryHandleControlNamespaceGetNodeAttr(ctx, ev, session)) {
+        return;
+    }
+
+    if (msg->Record.GetName().empty()) {
+        // GetNodeAttr by NodeId can be handled directly by the shard
+        ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
+            ctx,
+            ev,
+            false /* forceBehaveAsShard */,
+            msg->Record.GetNodeId(),
+            session);
         return;
     }
 

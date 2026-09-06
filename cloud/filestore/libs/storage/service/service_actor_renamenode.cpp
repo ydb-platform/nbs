@@ -24,7 +24,8 @@ void TStorageServiceActor::HandleRenameNode(
         ctx,
         ev,
         false /* forceBehaveAsShard */,
-        ev->Get()->Record.GetNodeId());
+        ev->Get()->Record.GetNodeId(),
+        session);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

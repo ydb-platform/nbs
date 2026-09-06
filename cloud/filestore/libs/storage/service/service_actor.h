@@ -121,6 +121,15 @@ private:
         bool forceBehaveAsShard,
         ui64 entityId);
 
+    // Overload for a caller that already validated the session
+    template <typename TMethod>
+    void ForwardRequestToShard(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        bool forceBehaveAsShard,
+        ui64 entityId,
+        TSessionInfo* session);
+
     template <typename TMethod>
     TSessionInfo* GetAndValidateSession(
         const NActors::TActorContext& ctx,
