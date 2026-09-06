@@ -7496,6 +7496,140 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST(
+        ShouldNotRouteCreateNodeToNotYetConfiguredShardDuringExpansion)
+    {
+        // See https://github.com/ydb-platform/nbs/issues/7054
+        config.SetDirectoryCreationInShardsEnabled(true);
+        // the test relies on round-robin shard selection (the default)
+        config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        const TString shard3Id = fsConfig.FsId + "_s3";
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // a directory owned by an existing shard - CreateNode under it is
+        // handled by that shard, which picks the target shard for the new node
+        const ui64 dirId = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir"))
+            ->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dirId));
+
+        // hold back ConfigureAsShard for the new shard s3 (it stays at
+        // ShardNo == 0); count how many times s1/s2 get reconfigured
+        TVector<TAutoPtr<IEventHandle>> delayedShard3Config;
+        bool delayShard3Config = true;
+        ui32 existingShardConfigureCount = 0;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+                if (ev->GetTypeRewrite()
+                        == TEvIndexTablet::EvConfigureAsShardRequest)
+                {
+                    const auto* msg =
+                        ev->Get<TEvIndexTablet::TEvConfigureAsShardRequest>();
+                    const auto& fsId = msg->Record.GetFileSystemId();
+                    if (delayShard3Config && fsId == shard3Id) {
+                        delayedShard3Config.emplace_back(ev.Release());
+                        return true;
+                    }
+                    if (fsId == fsConfig.Shard1Id || fsId == fsConfig.Shard2Id) {
+                        ++existingShardConfigureCount;
+                    }
+                }
+                return false;
+            });
+
+        // 2 -> 3 shard expansion
+        service.SendResizeFileStoreRequest(
+            fsConfig.FsId,
+            fsConfig.MainFsBlockCount,
+            false /* force */,
+            3 /* shardCount */);
+
+        // wait until s3 is created and its ConfigureAsShard is intercepted
+        for (ui32 i = 0; i < 200 && delayedShard3Config.empty(); ++i) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(!delayedShard3Config.empty());
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // s1/s2 must not be reconfigured (learn about s3) while s3 is held back
+        UNIT_ASSERT_VALUES_EQUAL(0, existingShardConfigureCount);
+
+        const auto critCounter =
+            env.GetCounters()
+                ->FindSubgroup("component", "service")
+                ->GetCounter("AppCriticalEvents/ReceivedNodeOpErrorFromShard");
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->GetAtomic());
+
+        // files created under the directory while the expansion is stuck must
+        // all succeed and none may be routed to the unconfigured shard s3
+        for (ui32 i = 0; i < 6; ++i) {
+            auto response = service.SendAndRecvCreateNode(
+                headers,
+                TCreateNodeArgs::File(
+                    dirId,
+                    TStringBuilder() << "file" << i));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                3,
+                ExtractShardNo(response->Record.GetNode().GetId()));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->GetAtomic());
+
+        // release the held config and let the expansion finish
+        delayShard3Config = false;
+        for (auto& ev: delayedShard3Config) {
+            env.GetRuntime().Send(ev.Release(), nodeIdx);
+        }
+        delayedShard3Config.clear();
+
+        {
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        // now s1/s2 get reconfigured with the 3-shard list
+        UNIT_ASSERT_VALUES_UNEQUAL(0, existingShardConfigureCount);
+
+        // main tablet suicides after ConfigureShards
+        WaitForTabletStart(service);
+        headers = service.InitSession(fsConfig.FsId, "client");
+
+        // s3 is a normal shard now and gets used without errors
+        bool sawShard3 = false;
+        for (ui32 i = 0; i < 12; ++i) {
+            auto response = service.SendAndRecvCreateNode(
+                headers,
+                TCreateNodeArgs::File(
+                    dirId,
+                    TStringBuilder() << "file_after_" << i));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+            if (ExtractShardNo(response->Record.GetNode().GetId()) == 3) {
+                sawShard3 = true;
+            }
+        }
+
+        UNIT_ASSERT(sawShard3);
+        UNIT_ASSERT_VALUES_EQUAL(0, critCounter->GetAtomic());
+    }
+
     SERVICE_TEST(ShouldHandleRenameNodeInDestinationError)
     {
         config.SetDirectoryCreationInShardsEnabled(true);

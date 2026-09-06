@@ -42,9 +42,10 @@ namespace {
 // non-zero, we cap number of in-flight requests.
 // 7. Create shards if needed. If MaxShardManagementRequestsInFlight is
 // non-zero, we cap number of in-flight requests.
-// 8. Configure shards if we created some new ones.
+// 8. Configure shards if we created some new ones. Done in two phases: the
+// newly created shards first, the pre-existing shards next.
 // If MaxShardManagementRequestsInFlight is non-zero, we cap number of in-flight
-// requests.
+// requests within each phase.
 // 9. Configure main filestore if new shards were created.
 // The end!
 
@@ -72,12 +73,23 @@ private:
     TVector<TString> ExistingShardIds;
     ui32 NextShardToCreate = 0;
     ui32 ShardsToCreate = 0;
+
     ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
+    ui32 EndShardToConfigure = 0;
+
+    enum class EShardConfigPhase {
+        NewShards,
+        OldShards,
+    };
+    EShardConfigPhase ShardConfigPhase = EShardConfigPhase::NewShards;
+
     ui32 NextShardToAlter = 0;
     ui32 ShardsToAlter = 0;
+
     ui32 NextShardToDescribe = 0;
     ui32 ShardsToDescribe = 0;
+
     ui32 MaxShardCount = 0;
     ui64 SevenBytesHandlesCount = 0;
 
@@ -117,6 +129,11 @@ private:
     void CreateShards(const TActorContext& ctx);
     void CreateShard(const TActorContext& ctx, const ui32 shardIndex);
     void ConfigureShards(const TActorContext& ctx);
+    void ConfigureShardRange(
+        const TActorContext& ctx,
+        ui32 beginShardIndex,
+        ui32 endShardIndex,
+        EShardConfigPhase phase);
     void ConfigureShard(const TActorContext& ctx, const ui32 shardIndex);
     void ConfigureMainFileStore(const TActorContext& ctx);
 
@@ -819,14 +836,44 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
         return;
     }
 
-    NextShardToConfigure = 0;
+    const ui32 existingShardCount = ExistingShardIds.size();
+    const ui32 totalShardCount = FileStoreConfig.ShardConfigs.size();
+
+    if (existingShardCount < totalShardCount) {
+        ConfigureShardRange(
+            ctx,
+            existingShardCount,
+            totalShardCount,
+            EShardConfigPhase::NewShards);
+    } else {
+        // No new shards (e.g. a resize that only toggles strict-size /
+        // directory-creation-in-shards) - configure the existing shards now.
+        ConfigureShardRange(
+            ctx,
+            0,
+            existingShardCount,
+            EShardConfigPhase::OldShards);
+    }
+}
+
+void TAlterFileStoreActor::ConfigureShardRange(
+    const TActorContext& ctx,
+    const ui32 beginShardIndex,
+    const ui32 endShardIndex,
+    const EShardConfigPhase phase)
+{
+    ShardConfigPhase = phase;
+    EndShardToConfigure = endShardIndex;
+    NextShardToConfigure = beginShardIndex;
+    ShardsToConfigure = endShardIndex - beginShardIndex;
+
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex = (limit == 0)
-                                   ? FileStoreConfig.ShardConfigs.size()
-                                   : std::min<ui32>(
-                                         NextShardToConfigure + limit,
-                                         FileStoreConfig.ShardConfigs.size());
-    for (ui32 i = NextShardToConfigure; i < endShardIndex; ++i) {
+    const ui32 cappedEndIndex =
+        (limit == 0)
+            ? endShardIndex
+            : std::min<ui32>(beginShardIndex + limit, endShardIndex);
+
+    for (ui32 i = beginShardIndex; i < cappedEndIndex; ++i) {
         ConfigureShard(ctx, i);
         NextShardToConfigure = i + 1;
     }
@@ -906,9 +953,21 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
 
     Y_DEBUG_ABORT_UNLESS(ShardsToConfigure);
     if (--ShardsToConfigure == 0) {
-        ConfigureMainFileStore(ctx);
+        if (ShardConfigPhase == EShardConfigPhase::NewShards
+                && !ExistingShardIds.empty())
+        {
+            // The newly created shards are all configured now - configure the
+            // pre-existing shards so that they pick up the new shard list.
+            ConfigureShardRange(
+                ctx,
+                0,
+                ExistingShardIds.size(),
+                EShardConfigPhase::OldShards);
+        } else {
+            ConfigureMainFileStore(ctx);
+        }
     } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        if (NextShardToConfigure < FileStoreConfig.ShardConfigs.size()) {
+        if (NextShardToConfigure < EndShardToConfigure) {
             ConfigureShard(ctx, NextShardToConfigure);
             ++NextShardToConfigure;
         }
