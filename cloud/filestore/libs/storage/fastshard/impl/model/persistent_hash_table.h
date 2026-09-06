@@ -6,6 +6,8 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <silk/util/logger.h>
+
 #include <util/digest/city.h>
 #include <util/generic/buffer.h>
 #include <util/string/builder.h>
@@ -477,6 +479,11 @@ private:
 
         error = WritePage(lsn, slotNo, std::move(page), pageGroups);
 
+        SILK_DEBUG(
+            "pht DoPut: slotNo=%lu, logRecordPGs=%lu",
+            slotNo,
+            pageGroups.size());
+
         return error;
     }
 
@@ -598,6 +605,11 @@ private:
                 break;
             }
         }
+
+        SILK_DEBUG(
+            "pht DoDelete: slotNo=%lu, logRecordPGs=%lu",
+            slotNo,
+            pageGroups.size());
 
         return error;
     }

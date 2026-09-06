@@ -2,6 +2,9 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <silk/fibers/mutex.h>
+#include <silk/util/logger.h>
+
 #include <util/generic/scope.h>
 #include <util/string/builder.h>
 
@@ -31,7 +34,7 @@ private:
     // TODO(#5895): eviction strategy + size limit
     using TPageCache = THashMap<ui64, TPage>;
     mutable TPageCache PageCache;
-    mutable std::mutex Mutex;
+    mutable silk::FiberMutex Mutex;
 
     // TODO(#5895): properly initialize this
     ui64 Lsn = 0;

@@ -1,5 +1,7 @@
 LIBRARY(filestore-testing-loadtest-lib)
 
+SET(FORCE_FASTSHARD_IPC_STUB YES)
+
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     SRCS(
         request_fastshard.cpp

@@ -1,5 +1,7 @@
 LIBRARY()
 
+SET(FORCE_FASTSHARD_IPC_STUB YES)
+
 SRCS(
     fake_storage_node.cpp
 )
