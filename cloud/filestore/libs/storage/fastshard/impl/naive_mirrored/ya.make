@@ -2,8 +2,6 @@ LIBRARY()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
-SET(FORCE_FASTSHARD_IPC_STUB YES)
-
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     SRCS(
         shard.cpp
@@ -38,8 +36,6 @@ PEERDIR(
 )
 
 END()
-
-SET(FORCE_FASTSHARD_IPC_STUB YES)
 
 # TODO(#5895): fix silk bootstrap/shutdown under msan
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB AND SANITIZER_TYPE != "memory")
