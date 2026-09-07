@@ -1,0 +1,241 @@
+#include "latency_thresholds.h"
+
+#include <util/generic/algorithm.h>
+#include <util/generic/hash_set.h>
+#include <util/generic/string.h>
+#include <util/string/builder.h>
+
+namespace NCloud::NBlockStore {
+
+////////////////////////////////////////////////////////////////////////////////
+
+const TLatencyThresholdLadder* TLatencyThresholdsTable::FindLadder(
+    NCloud::NProto::EStorageMediaKind mediaKind) const
+{
+    if (mediaKind < 0 ||
+        static_cast<size_t>(mediaKind) >= Ladders.size())
+    {
+        return nullptr;
+    }
+
+    const auto& ladder = Ladders[mediaKind];
+    return ladder.empty() ? nullptr : &ladder;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
+    const TVector<NProto::TMediaKindLatencyThresholds>& config)
+{
+    TLatencyThresholdsValidationResult result;
+
+    // Rule 1: an enabled mechanism with an empty table is a config mistake,
+    // not a way to disable the mechanism (the flag itself already does
+    // that). Left invalid so the caller keeps the mechanism off and logs it.
+    if (config.empty()) {
+        result.Error = "LatencyThresholds is empty";
+        return result;
+    }
+
+    auto table = MakeIntrusive<TLatencyThresholdsTable>();
+    THashSet<int> seenMediaKinds;
+
+    for (const auto& mediaKindThresholds: config) {
+        const auto mediaKind = mediaKindThresholds.GetMediaKind();
+
+        // Rule 0: mediaKind indexes a fixed-size array of ladders below, so
+        // it is bounds-checked here rather than trusted. Today the field
+        // cannot hold an out-of-range value: diagnostics.proto is proto2,
+        // whose enum fields are closed, so an unrecognized number from a
+        // config or from the wire is kept in the unknown-field set and the
+        // getter returns the default instead. That guarantee comes from the
+        // file's syntax, not from anything visible at this call site, so the
+        // check keeps the indexing safe if the enum ever becomes open
+        // (proto3/editions), where an out-of-range index would be UB.
+        if (!NCloud::NProto::EStorageMediaKind_IsValid(mediaKind)) {
+            result.Error = TStringBuilder()
+                << "invalid media kind " << static_cast<int>(mediaKind)
+                << " in LatencyThresholds";
+            return result;
+        }
+
+        const TString mediaKindName =
+            NCloud::NProto::EStorageMediaKind_Name(mediaKind);
+
+        // Rule 6: a media kind must not repeat within the list.
+        if (!seenMediaKinds.insert(static_cast<int>(mediaKind)).second) {
+            result.Error = TStringBuilder()
+                << "duplicate media kind " << mediaKindName
+                << " in LatencyThresholds";
+            return result;
+        }
+
+        // Rule 2: every media kind needs at least one bucket.
+        if (mediaKindThresholds.BucketsSize() == 0) {
+            result.Error = TStringBuilder()
+                << "media kind " << mediaKindName
+                << " has no buckets in LatencyThresholds";
+            return result;
+        }
+
+        // Safe to index Ladders with mediaKind: bounds-checked above.
+        TLatencyThresholdLadder ladder;
+        ladder.reserve(mediaKindThresholds.BucketsSize());
+
+        ui32 lastReadThresholdMs = 0;
+        ui32 lastWriteThresholdMs = 0;
+
+        for (const auto& bucket: mediaKindThresholds.GetBuckets()) {
+            const bool first = ladder.empty();
+
+            // Rule 3: the first bucket must start at 0, so that no operation
+            // size falls outside of every bucket (this is what makes the
+            // ladder total, not just "the ranges we happened to calibrate").
+            if (first && bucket.GetMinRequestBytes() != 0) {
+                result.Error = TStringBuilder()
+                    << "media kind " << mediaKindName
+                    << ": first bucket MinRequestBytes must be 0, got "
+                    << bucket.GetMinRequestBytes();
+                return result;
+            }
+
+            // Rule 4: strictly increasing lower bounds, never silently
+            // sorted - a disordered/duplicated config is a typo, not
+            // something to paper over.
+            if (!first &&
+                bucket.GetMinRequestBytes() <= ladder.back().MinRequestBytes)
+            {
+                result.Error = TStringBuilder()
+                    << "media kind " << mediaKindName
+                    << ": MinRequestBytes must be strictly increasing, "
+                    << bucket.GetMinRequestBytes() << " does not follow "
+                    << ladder.back().MinRequestBytes;
+                return result;
+            }
+
+            // Rule 5: a zero threshold would fail every operation of that
+            // size class outright.
+            if (bucket.GetReadThresholdMs() == 0 ||
+                bucket.GetWriteThresholdMs() == 0)
+            {
+                result.Error = TStringBuilder()
+                    << "media kind " << mediaKindName << ": bucket at "
+                    << bucket.GetMinRequestBytes()
+                    << " has a zero threshold";
+                return result;
+            }
+
+            // Running-max (monotonicity) contract: a violation is not
+            // mechanically dangerous and a hard failure here could block an
+            // urgent config fix, so this is a warning, not an error.
+            if (!first &&
+                (bucket.GetReadThresholdMs() < lastReadThresholdMs ||
+                 bucket.GetWriteThresholdMs() < lastWriteThresholdMs))
+            {
+                result.Warnings.push_back(TStringBuilder()
+                    << "media kind " << mediaKindName
+                    << ": thresholds are not non-decreasing at bucket "
+                    << bucket.GetMinRequestBytes()
+                    << " (running-max contract violated)");
+            }
+
+            ladder.push_back(TLatencyThresholdBucket{
+                .MinRequestBytes = bucket.GetMinRequestBytes(),
+                .ReadThreshold =
+                    TDuration::MilliSeconds(bucket.GetReadThresholdMs()),
+                .WriteThreshold =
+                    TDuration::MilliSeconds(bucket.GetWriteThresholdMs()),
+            });
+
+            lastReadThresholdMs =
+                Max(lastReadThresholdMs, bucket.GetReadThresholdMs());
+            lastWriteThresholdMs =
+                Max(lastWriteThresholdMs, bucket.GetWriteThresholdMs());
+        }
+
+        table->Ladders[mediaKind] = std::move(ladder);
+    }
+
+    result.Table = std::move(table);
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+const TLatencyThresholdBucket& FindLatencyThresholdBucket(
+    const TLatencyThresholdLadder& ladder,
+    ui64 requestBytes)
+{
+    Y_DEBUG_ABORT_UNLESS(!ladder.empty());
+    Y_DEBUG_ABORT_UNLESS(ladder.front().MinRequestBytes == 0);
+
+    // upper_bound(requestBytes) - 1 == "the last bucket whose
+    // MinRequestBytes <= requestBytes". See the header comment for why a
+    // plain lower_bound over the lower bounds is wrong here.
+    auto it = UpperBound(
+        ladder.begin(),
+        ladder.end(),
+        requestBytes,
+        [](ui64 bytes, const TLatencyThresholdBucket& bucket)
+        { return bytes < bucket.MinRequestBytes; });
+    --it;
+    return *it;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TLatencyThresholdOutcome ClassifyLatencyOutcome(
+    const TLatencyThresholdLadder* ladder,
+    EDiagnosticsErrorKind errorKind,
+    bool isWrite,
+    ui64 requestBytes,
+    TDuration execTime)
+{
+    // A media kind without a configured ladder is not judged at all: not
+    // counting it (rather than counting it as bad) avoids showing a bogus
+    // 0% good-operation rate for media kinds nobody has calibrated yet. This
+    // gate applies unconditionally, before looking at errorKind, so it also
+    // covers ErrorFatal operations.
+    if (!ladder) {
+        return {.MediaKindNotConfigured = true};
+    }
+
+    switch (errorKind) {
+        case EDiagnosticsErrorKind::ErrorThrottling:
+        case EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint:
+            // Rejected by the client's own choice/fault - not judged.
+            return {};
+
+        case EDiagnosticsErrorKind::ErrorRetriable:
+        case EDiagnosticsErrorKind::ErrorSession:
+        case EDiagnosticsErrorKind::ErrorAborted:
+        case EDiagnosticsErrorKind::ErrorSilent:
+            // Per-attempt; the final attempt of the retry chain will be
+            // visible on its own.
+            return {};
+
+        case EDiagnosticsErrorKind::ErrorFatal:
+            // The service failed to execute the operation - bad, but there
+            // is nothing to compare against a duration threshold.
+            return {.CountTotal = true};
+
+        case EDiagnosticsErrorKind::Success:
+            break;
+
+        case EDiagnosticsErrorKind::Max:
+            return {};
+    }
+
+    const auto& bucket = FindLatencyThresholdBucket(*ladder, requestBytes);
+    const auto threshold =
+        isWrite ? bucket.WriteThreshold : bucket.ReadThreshold;
+
+    return {
+        .CountTotal = true,
+        // Non-strict comparison: an operation exactly at the threshold is
+        // good.
+        .CountGood = execTime <= threshold,
+    };
+}
+
+}   // namespace NCloud::NBlockStore
