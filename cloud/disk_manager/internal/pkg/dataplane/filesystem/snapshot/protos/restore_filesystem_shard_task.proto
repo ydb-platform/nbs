@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package dataplane_filesystem_snapshot;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message RestoreFilesystemShardRequest {
+    types.Filesystem Shard = 1;
+    string SnapshotId = 2;
+}
+
+message RestoreFilesystemShardTaskState {
+    uint64 ParentNodeId = 1;
+    string Name = 2;
+    bool StoreAsChild = 3;
+}

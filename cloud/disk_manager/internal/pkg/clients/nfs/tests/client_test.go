@@ -808,6 +808,9 @@ func TestFreezeAndUnfreezeTablet(t *testing.T) {
 
 	err = client.FreezeTablet(ctx, filesystemID)
 	require.NoError(t, err)
+	// FreezeTablet must be idempotent.
+	err = client.FreezeTablet(ctx, filesystemID)
+	require.NoError(t, err)
 
 	_, err = session.CreateNode(ctx, nfs.Node{
 		ParentNodeID: nfs.RootNodeID,
@@ -850,7 +853,7 @@ func TestFreezeAndUnfreezeTablet(t *testing.T) {
 
 	regularNodeID, err := session.CreateNode(ctx, nfs.Node{
 		ParentNodeID: nfs.RootNodeID,
-		Name:         "regular-after-unfreeze",
+		Name:         "regular-after-first-unfreeze",
 		Type:         nfs.NODE_KIND_FILE,
 		Mode:         0644,
 	})
@@ -859,7 +862,27 @@ func TestFreezeAndUnfreezeTablet(t *testing.T) {
 	regularNode, err := session.GetNodeAttr(
 		ctx,
 		nfs.RootNodeID,
-		"regular-after-unfreeze",
+		"regular-after-first-unfreeze",
+	)
+	require.NoError(t, err)
+	require.Equal(t, regularNodeID, regularNode.NodeID)
+
+	// UnfreezeTablet must be idempotent.
+	err = client.UnfreezeTablet(ctx, filesystemID)
+	require.NoError(t, err)
+
+	regularNodeID, err = session.CreateNode(ctx, nfs.Node{
+		ParentNodeID: nfs.RootNodeID,
+		Name:         "regular-after-second-unfreeze",
+		Type:         nfs.NODE_KIND_FILE,
+		Mode:         0644,
+	})
+	require.NoError(t, err)
+
+	regularNode, err = session.GetNodeAttr(
+		ctx,
+		nfs.RootNodeID,
+		"regular-after-second-unfreeze",
 	)
 	require.NoError(t, err)
 	require.Equal(t, regularNodeID, regularNode.NodeID)
