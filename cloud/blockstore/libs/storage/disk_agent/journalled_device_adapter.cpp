@@ -1,14 +1,13 @@
-#include "journalled_device.h"
+#include "journalled_device_adapter.h"
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/journalled_device/device.h>
 
 #include <util/generic/hash_set.h>
 #include <util/string/builder.h>
-
-#include <atomic>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -61,13 +60,6 @@ TResultOrError<ui32> ValidateWriteLogRecordRequest(
 
     if (request.PageGroupsSize() == 0) {
         return MakeError(E_ARGUMENT, "nothing to write");
-    }
-
-    if (request.GetLogSequenceNumber() <= request.GetPrevLogSequenceNumber()) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-                << "invalid lsn: " << request.GetLogSequenceNumber()
-                << ", must be greater than the prev one: "
-                << request.GetPrevLogSequenceNumber());
     }
 
     for (const auto& group: request.GetPageGroups()) {
@@ -126,26 +118,22 @@ NProto::TError ValidateReadPagesRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TJournalledDevice final
-    : public IJournalledDevice
-    , public std::enable_shared_from_this<TJournalledDevice>
+class TDeviceAdapter final
+    : public NJournalled::IDevice
 {
 private:
     const TString DeviceUUID;
     const TDeviceClientPtr DeviceClient;
 
-    std::atomic<ui64> LastLsn = 0;
-
 public:
-    TJournalledDevice(TString deviceUUID, TDeviceClientPtr deviceClient)
+    TDeviceAdapter(TString deviceUUID, TDeviceClientPtr deviceClient)
         : DeviceUUID(std::move(deviceUUID))
         , DeviceClient(std::move(deviceClient))
     {}
 
-    // IJournalledDevice
+    // NJournalled::IDevice
 
     [[nodiscard]] auto ReadPages(
-        TInstant now,
         NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final
     {
@@ -167,6 +155,7 @@ public:
         TVector<TFuture<NProto::TReadBlocksResponse>> futures;
         futures.reserve(request.PageGroupRefsSize());
 
+        auto now = TInstant::Now();
         for (const auto& group: request.GetPageGroupRefs()) {
             futures.push_back(storageAdapter->ReadBlocks(
                 now,
@@ -179,9 +168,8 @@ public:
 
         auto all = WaitAll(futures);
 
-        return all.Apply(
-            [futures,
-             request = std::move(request)](const TFuture<void>& future) mutable
+        return all.Apply([futures, request = std::move(request)]
+            (const TFuture<void>& future) mutable
                 -> NCloud::NProto::TReadPagesResponse
             {
                 if (future.HasException()) {
@@ -211,8 +199,7 @@ public:
             });
     }
 
-    [[nodiscard]] auto WriteLogRecord(
-        TInstant now,
+    [[nodiscard]] auto WritePages(
         NCloud::NProto::TWriteLogRecordRequest request)
         -> TFuture<NCloud::NProto::TWriteLogRecordResponse> final
     {
@@ -224,19 +211,6 @@ public:
                 TErrorResponse(error));
         } else {
             requestBlockSize = bs;
-        }
-
-        const ui64 lastLsn = LastLsn.load(std::memory_order_relaxed);
-        const ui64 lsn = request.GetLogSequenceNumber();
-        const ui64 prevLsn = request.GetPrevLogSequenceNumber();
-
-        // TODO(#6956): allow to handle request with wrong lsn order
-        if (lastLsn != 0 && prevLsn != lastLsn) {
-            const auto code = prevLsn > lastLsn ? E_REJECTED : E_INVALID_STATE;
-
-            return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
-                TErrorResponse(code, TStringBuilder()
-                    << "Wrong lsn: " << prevLsn << ", expected " << lastLsn));
         }
 
         auto [storageAdapter, error] = DeviceClient->AccessDevice(
@@ -252,6 +226,7 @@ public:
         TVector<TFuture<NProto::TWriteBlocksResponse>> futures;
         futures.reserve(request.PageGroupsSize());
 
+        auto now = TInstant::Now();
         for (auto& group: *request.MutablePageGroups()) {
             futures.push_back(storageAdapter->WriteBlocks(
                 now,
@@ -264,10 +239,8 @@ public:
 
         auto all = WaitAll(futures);
 
-        return all.Apply(
-            [futures, self = shared_from_this(), lsn](
-                const TFuture<void>& future) mutable
-                -> NCloud::NProto::TWriteLogRecordResponse
+        return all.Apply([futures](const TFuture<void>& future) mutable
+            -> NCloud::NProto::TWriteLogRecordResponse
             {
                 if (future.HasException()) {
                     return TErrorResponse(ResultOrError(future).GetError());
@@ -280,34 +253,8 @@ public:
                     }
                 }
 
-                self->LastLsn.store(lsn, std::memory_order_relaxed);
-
                 return {};
             });
-    }
-
-    [[nodiscard]] auto ReadJournalTail(
-        TInstant now,
-        NCloud::NProto::TReadJournalTailRequest request)
-        -> TFuture<NCloud::NProto::TReadJournalTailResponse> final
-    {
-        // TODO(#6956): implement journal tail reading
-        Y_UNUSED(now, request);
-
-        return MakeFuture<NCloud::NProto::TReadJournalTailResponse>(
-            TErrorResponse(E_NOT_IMPLEMENTED, "ReadJournalTail"));
-    }
-
-    [[nodiscard]] auto AdvanceLsnLowWatermark(
-        TInstant now,
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> final
-    {
-        // TODO(#6956): implement lsn low watermark advancing
-        Y_UNUSED(now, request);
-
-        return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
-            TErrorResponse(E_NOT_IMPLEMENTED, "AdvanceLsnLowWatermark"));
     }
 };
 
@@ -315,11 +262,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IJournalledDevicePtr CreateJournalledDevice(
+NJournalled::IDevicePtr CreateDeviceAdapter(
     TString deviceUUID,
     TDeviceClientPtr deviceClient)
 {
-    return std::make_shared<TJournalledDevice>(
+    return std::make_shared<TDeviceAdapter>(
         std::move(deviceUUID),
         std::move(deviceClient));
 }

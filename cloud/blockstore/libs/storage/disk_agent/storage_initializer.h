@@ -8,9 +8,9 @@
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
-#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
-
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_guard.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/vector.h>
 

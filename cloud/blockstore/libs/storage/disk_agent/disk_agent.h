@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <cloud/storage/core/libs/rdma/iface/public.h>
 
