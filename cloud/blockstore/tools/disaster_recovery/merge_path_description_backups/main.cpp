@@ -50,6 +50,7 @@ bool LoadPathDescriptionBackup(
 
     TNullOutput warningStream;
 
+    //This if statement supresses false-positive error logs on non-utf input
     if (IsUtf(fileContent)) {
         if (TryParseFromTextFormat(
                 input,
