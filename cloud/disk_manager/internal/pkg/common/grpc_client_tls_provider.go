@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -208,14 +209,9 @@ func (p *grpcClientTlsProvider) warnRefreshFailure(
 ////////////////////////////////////////////////////////////////////////////////
 
 func newClientTlsConfig(rootCerts []byte) (*tls.Config, error) {
-	certificates, err := parsePEMCertificates(rootCerts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse root certificates: %w", err)
-	}
-
 	pool := x509.NewCertPool()
-	for _, certificate := range certificates {
-		pool.AddCert(certificate)
+	if !pool.AppendCertsFromPEM(rootCerts) {
+		return nil, errors.New("failed to parse root certificate PEM")
 	}
 
 	return &tls.Config{
