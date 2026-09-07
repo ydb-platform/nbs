@@ -1715,4 +1715,7 @@ message TStorageServiceConfig
 
     // Number of ranges to process in a single mixed-block-count compaction run.
     optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 534;
+
+    // Track concurrent writes when updating compaction range statistics.
+    optional bool CompactionStatsTrackerEnabled = 535;
 }

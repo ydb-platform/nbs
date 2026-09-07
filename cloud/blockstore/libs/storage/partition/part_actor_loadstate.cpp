@@ -270,7 +270,12 @@ void TPartitionActor::CompleteLoadState(
         TabletID(),
         mixedBlocksFilterConfig,
         IsCheckpointAwareCleanupEnabled(),
-        Config->GetUseBlobChannelDataKindForCounters());
+        Config->GetUseBlobChannelDataKindForCounters(),
+        Config->GetCompactionStatsTrackerEnabled() ||
+            Config->IsCompactionStatsTrackerFeatureEnabled(
+                partitionConfig.GetCloudId(),
+                partitionConfig.GetFolderId(),
+                partitionConfig.GetDiskId()));
 
     CreateFreshBlocksCompanionClient();
 

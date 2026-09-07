@@ -540,6 +540,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsCompactionStatsTrackerFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -984,6 +989,8 @@ public:
 
     [[nodiscard]] ui32
     GetMixedBlocksCountCompactionRangeCountPerRun() const;
+
+    [[nodiscard]] bool GetCompactionStatsTrackerEnabled() const;
 };
 
 ui64 GetAllocationUnit(

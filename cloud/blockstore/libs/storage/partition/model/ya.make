@@ -17,6 +17,7 @@ SRCS(
     cleanup_queue.cpp
     commit_queue.cpp
     compaction_map_load_state.cpp
+    compaction_stats_tracker.cpp
     flush_blocks_visitor.cpp
     fresh_blob.cpp
     garbage_queue.cpp
