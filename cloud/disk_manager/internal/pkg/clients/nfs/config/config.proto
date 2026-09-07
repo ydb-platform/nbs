@@ -19,7 +19,8 @@ message ClientConfig {
     optional string GrpcClientTimeout = 6 [default = "30s"];
     // Period of automatic root certificates refresh, zero disables it. The
     // file is checked twice per period and new content is applied only after
-    // it has been read unchanged twice in a row, so that a non-atomic rewrite
-    // is not picked up half-way. A change takes effect within one period.
+    // it has been read unchanged twice in a row, which reduces the chance of
+    // picking up an intermediate state of a non-atomic rewrite. A change
+    // takes effect within one period.
     optional string RefreshCertsPeriod = 7 [default = "0s"];
 }

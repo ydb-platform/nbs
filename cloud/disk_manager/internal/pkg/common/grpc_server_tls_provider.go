@@ -29,7 +29,10 @@ const certificateValidationThreshold = 7 * 24 * time.Hour
 // Certificate files are rewritten by external tools, not necessarily
 // atomically, and a partially written file may be syntactically valid, e.g. a
 // chain without its intermediate certificate. Therefore new content is applied
-// only after it has been read unchanged twice in a row (stable-read).
+// only after it has been read unchanged twice in a row (stable-read). This is
+// a heuristic that reduces the chance of picking up an intermediate state of a
+// rewrite, not a guarantee: a writer that stalls for longer than the check
+// interval is indistinguishable from a finished one.
 type stableReadDecision int
 
 const (
@@ -174,8 +177,10 @@ func (p *GrpcServerTlsProvider) monitorCertificates(
 
 // Reloads certificates from disk. Every certificate is refreshed
 // independently. New content is applied only after it has been read unchanged
-// twice in a row. The last successfully loaded certificate is kept if its
-// files cannot be read or parsed, or if its chain is not valid at |now|.
+// twice in a row, a read error restarts the count. The last successfully
+// loaded certificate is kept if its files cannot be read or parsed, or if its
+// chain is not valid at |now|; new content that fails these checks is reported
+// on every tick until the files change.
 func (p *GrpcServerTlsProvider) refresh(ctx context.Context, now time.Time) {
 	for i, config := range p.configs {
 		p.refreshCertificate(ctx, i, config, now)
@@ -191,6 +196,7 @@ func (p *GrpcServerTlsProvider) refreshCertificate(
 
 	pem, err := readServerCertificatePEM(config)
 	if err != nil {
+		p.clearPending(index)
 		p.warnRefreshFailure(ctx, config, err)
 		return
 	}
@@ -256,6 +262,13 @@ func (p *GrpcServerTlsProvider) decide(
 	}
 
 	return stableReadApply
+}
+
+func (p *GrpcServerTlsProvider) clearPending(index int) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.pendingPEMs[index] = nil
 }
 
 func (p *GrpcServerTlsProvider) warnRefreshFailure(
@@ -352,10 +365,11 @@ func certificateChainExpiration(chain []*x509.Certificate) time.Time {
 	return expiration
 }
 
-// Checks that every certificate in the chain is valid at |now| and that every
-// certificate is signed by the next one. Whether the chain ends at a trusted
-// root is not checked: the server has no trust store, and that is the
-// client's job anyway.
+// Checks that every certificate in the chain is valid at |now| and that the
+// chain can be built from the leaf up to the last certificate the same way
+// clients do it: issuer names, signatures, CA and name constraints. The last
+// certificate serves as the trust anchor: the server has no trust store, and
+// whether the chain ends at a trusted root is the client's job anyway.
 func validateCertificateChain(
 	chain []*x509.Certificate,
 	now time.Time,
@@ -377,20 +391,24 @@ func validateCertificateChain(
 				certificate.NotAfter,
 			)
 		}
+	}
 
-		if i+1 == len(chain) {
-			break
-		}
+	roots := x509.NewCertPool()
+	roots.AddCert(chain[len(chain)-1])
 
-		err := certificate.CheckSignatureFrom(chain[i+1])
-		if err != nil {
-			return fmt.Errorf(
-				"certificate #%v is not signed by certificate #%v: %w",
-				i,
-				i+1,
-				err,
-			)
-		}
+	intermediates := x509.NewCertPool()
+	for i := 1; i+1 < len(chain); i++ {
+		intermediates.AddCert(chain[i])
+	}
+
+	_, err := chain[0].Verify(x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: intermediates,
+		CurrentTime:   now,
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to build certificate chain: %w", err)
 	}
 
 	return nil

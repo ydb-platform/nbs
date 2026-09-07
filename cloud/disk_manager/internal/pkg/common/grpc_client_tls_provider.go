@@ -113,11 +113,14 @@ func (p *grpcClientTlsProvider) refreshLoop(
 }
 
 // Reloads root certificates from disk. New content is applied only after it
-// has been read unchanged twice in a row. The last successfully loaded config
-// is kept if the file cannot be read or parsed.
+// has been read unchanged twice in a row, a read error restarts the count. The
+// last successfully loaded config is kept if the file cannot be read or
+// parsed; new content that fails to parse is reported on every tick until the
+// file changes.
 func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 	rootCerts, err := os.ReadFile(p.rootCertsFile)
 	if err != nil {
+		p.clearPending()
 		p.warnRefreshFailure(ctx, err)
 		return
 	}
@@ -177,6 +180,14 @@ func (p *grpcClientTlsProvider) decide(rootCerts []byte) stableReadDecision {
 	}
 
 	return stableReadApply
+}
+
+func (p *grpcClientTlsProvider) clearPending() {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.pendingRootCerts = nil
+	p.hasPendingRootCerts = false
 }
 
 func (p *grpcClientTlsProvider) warnRefreshFailure(
