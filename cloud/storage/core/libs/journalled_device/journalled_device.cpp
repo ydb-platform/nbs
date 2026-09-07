@@ -26,7 +26,7 @@ private:
     std::atomic<ui64> LastLsn = 0;
 
 public:
-    TJournalledDevice(IDevicePtr dataStore)
+    explicit TJournalledDevice(IDevicePtr dataStore)
         : DataStore(std::move(dataStore))
     {}
 

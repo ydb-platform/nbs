@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/journalled_device/device.h>
 
 #include <util/generic/hash_set.h>
@@ -122,12 +123,17 @@ class TDeviceAdapter final
     : public NJournalled::IDevice
 {
 private:
+    const ITimerPtr Timer;
     const TString DeviceUUID;
     const TDeviceClientPtr DeviceClient;
 
 public:
-    TDeviceAdapter(TString deviceUUID, TDeviceClientPtr deviceClient)
-        : DeviceUUID(std::move(deviceUUID))
+    TDeviceAdapter(
+            ITimerPtr timer,
+            TString deviceUUID,
+            TDeviceClientPtr deviceClient)
+        : Timer(std::move(timer))
+        , DeviceUUID(std::move(deviceUUID))
         , DeviceClient(std::move(deviceClient))
     {}
 
@@ -155,7 +161,7 @@ public:
         TVector<TFuture<NProto::TReadBlocksResponse>> futures;
         futures.reserve(request.PageGroupRefsSize());
 
-        auto now = TInstant::Now();
+        auto now = Timer->Now();
         for (const auto& group: request.GetPageGroupRefs()) {
             futures.push_back(storageAdapter->ReadBlocks(
                 now,
@@ -226,7 +232,7 @@ public:
         TVector<TFuture<NProto::TWriteBlocksResponse>> futures;
         futures.reserve(request.PageGroupsSize());
 
-        auto now = TInstant::Now();
+        auto now = Timer->Now();
         for (auto& group: *request.MutablePageGroups()) {
             futures.push_back(storageAdapter->WriteBlocks(
                 now,
@@ -263,10 +269,12 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 NJournalled::IDevicePtr CreateDeviceAdapter(
+    ITimerPtr timer,
     TString deviceUUID,
     TDeviceClientPtr deviceClient)
 {
     return std::make_shared<TDeviceAdapter>(
+        std::move(timer),
         std::move(deviceUUID),
         std::move(deviceClient));
 }

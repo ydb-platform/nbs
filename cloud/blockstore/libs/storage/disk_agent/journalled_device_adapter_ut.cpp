@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/journalled_device/device.h>
 
@@ -38,6 +39,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     const TInstant Now = TInstant::Seconds(1);
 
     ILoggingServicePtr Logging = CreateLoggingService("console");
+    std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
 
     std::shared_ptr<TMemoryTestStorage> Storage;
     TStorageAdapterPtr StorageAdapter;
@@ -66,7 +68,9 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         // the device is not acquired here: some of the tests observe the
         // behaviour of an unacquired device
-        Device = CreateDeviceAdapter(DeviceUUID, DeviceClient);
+        Timer->AdvanceTime(Now - TInstant::Zero());
+
+        Device = CreateDeviceAdapter(Timer, DeviceUUID, DeviceClient);
     }
 
     void AcquireDevice()

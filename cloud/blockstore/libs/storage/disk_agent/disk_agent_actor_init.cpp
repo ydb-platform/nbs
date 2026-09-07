@@ -8,6 +8,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/future_helper.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/journalled_device/journalled_device.h>
 
@@ -175,11 +176,15 @@ void TDiskAgentActor::HandleInitAgentCompleted(
     if (State) {
         THashMap<TString, NJournalled::IJournalledDevicePtr> devices;
 
+        auto timer = CreateWallClockTimer();
+
         for (const auto& deviceId: State->GetDeviceIds()) {
             devices.emplace(
                 deviceId,
-                NJournalled::CreateJournalledDevice(
-                    CreateDeviceAdapter(deviceId, State->GetDeviceClient())));
+                NJournalled::CreateJournalledDevice(CreateDeviceAdapter(
+                    timer,
+                    deviceId,
+                    State->GetDeviceClient())));
         }
 
         StartJournalledDeviceTcpServer(ctx, std::move(devices));
