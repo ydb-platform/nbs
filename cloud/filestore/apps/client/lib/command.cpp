@@ -62,7 +62,7 @@ TCommand::TCommand()
 
     Opts.AddLongOption("verbose")
         .OptionalArgument("STR")
-        .DefaultValue("info")
+        .DefaultValue("warn")
         .StoreResult(&VerboseLevel);
 
     Opts.AddLongOption("mon-address")
