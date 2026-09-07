@@ -36,6 +36,7 @@ GrpcConfig: <
     >
     Hostname: "{hostname}"
     KeepAlive: <>
+    RefreshCertsPeriod: "1s"
 >
 TasksConfig: <
     TaskPingPeriod: "1s"
@@ -142,6 +143,7 @@ NbsConfig: <
         >
     >
     RootCertsFile: "{root_certs_file}"
+    RefreshCertsPeriod: "1s"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
 >
@@ -368,6 +370,7 @@ NbsConfig: <
         >
     >
     RootCertsFile: "{root_certs_file}"
+    RefreshCertsPeriod: "1s"
     GrpcKeepAlive: <>
     UseGZIPCompression: true
     SessionRediscoverPeriodMin: "20s"
@@ -503,6 +506,7 @@ NfsConfig: <
         >
     >
     RootCertsFile: "{root_certs_file}"
+    RefreshCertsPeriod: "1s"
 >
 """
 
