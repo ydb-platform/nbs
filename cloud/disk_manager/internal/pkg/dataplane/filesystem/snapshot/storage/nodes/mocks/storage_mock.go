@@ -87,12 +87,13 @@ func (s *StorageMock) ListHardLinks(
 	ctx context.Context,
 	snapshotID string,
 	limit int,
-	offset int,
-) ([]nfs.Node, error) {
+	cookie nodes.HardLinksCookie,
+) ([]nfs.Node, nodes.HardLinksCookie, error) {
 
-	args := s.Called(ctx, snapshotID, limit, offset)
+	args := s.Called(ctx, snapshotID, limit, cookie)
 	res, _ := args.Get(0).([]nfs.Node)
-	return res, args.Error(1)
+	nextCookie, _ := args.Get(1).(nodes.HardLinksCookie)
+	return res, nextCookie, args.Error(2)
 }
 
 func (s *StorageMock) CleanupRestorationNodeIDsMapping(

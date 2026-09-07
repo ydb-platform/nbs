@@ -22,6 +22,12 @@ func validateConfig(config *snapshot_config.FilesystemSnapshotConfig) error {
 		)
 	}
 
+	if config.GetTraversalConfig().GetTraversalWorkersCount() == 0 {
+		return errors.NewNonRetriableErrorf(
+			"TraversalWorkersCount should not be zero",
+		)
+	}
+
 	if config.GetRestoreHardlinksBatchSize() == 0 {
 		return errors.NewNonRetriableErrorf(
 			"RestoreHardlinksBatchSize should not be zero",

@@ -1260,34 +1260,47 @@ func (s *storageYDB) GetDestinationNodeIDs(
 	return result, err
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 func (s *storageYDB) listHardLinks(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
 	limit int,
-	offset int,
-) ([]nfs.Node, error) {
+	cookie HardLinksCookie,
+) ([]nfs.Node, HardLinksCookie, error) {
 
-	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $snapshot_id as Utf8;
-		declare $limit as Uint64;
-		declare $offset as Uint64;
+	res, err := session.StreamExecuteRO(
+		ctx,
+		fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $snapshot_id as Utf8;
+			declare $limit as Uint64;
+			declare $cookie_node_id as Uint64;
+			declare $cookie_parent_node_id as Uint64;
+			declare $cookie_name as Utf8;
 
-		select *
-		from hardlinks
-		where filesystem_snapshot_id = $snapshot_id
-		order by node_id, parent_node_id, name
-		limit $limit
-		offset $offset
-	`, s.tablesPath),
+			select *
+			from hardlinks
+			where filesystem_snapshot_id = $snapshot_id
+				and AsTuple(node_id, parent_node_id, name) >=
+					AsTuple(
+						$cookie_node_id,
+						$cookie_parent_node_id,
+						$cookie_name
+					)
+			order by node_id, parent_node_id, name
+			limit $limit
+		`, s.tablesPath),
 		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
-		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
-		persistence.ValueParam("$offset", persistence.Uint64Value(uint64(offset))),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit+1))),
+		persistence.ValueParam("$cookie_node_id", persistence.Uint64Value(cookie.NodeID)),
+		persistence.ValueParam("$cookie_parent_node_id", persistence.Uint64Value(cookie.ParentNodeID)),
+		persistence.ValueParam("$cookie_name", persistence.UTF8Value(cookie.Name)),
 	)
 	if err != nil {
-		return nil, err
+		return nil, HardLinksCookie{}, err
 	}
 	defer res.Close()
 
@@ -1301,7 +1314,7 @@ func (s *storageYDB) listHardLinks(
 				persistence.OptionalWithDefault("name", &node.Name),
 			)
 			if err != nil {
-				return nil, errors.NewNonRetriableErrorf(
+				return nil, HardLinksCookie{}, errors.NewNonRetriableErrorf(
 					"listHardLinks: failed to parse row: %w",
 					err,
 				)
@@ -1312,7 +1325,19 @@ func (s *storageYDB) listHardLinks(
 	}
 
 	if res.Err() != nil {
-		return nil, errors.NewRetriableError(res.Err())
+		return nil, HardLinksCookie{}, errors.NewRetriableError(res.Err())
+	}
+
+	var nextCookie HardLinksCookie
+	if len(nodes) > limit {
+		nextNode := nodes[limit]
+		nextCookie = HardLinksCookie{
+			NodeID:       nextNode.NodeID,
+			ParentNodeID: nextNode.ParentNodeID,
+			Name:         nextNode.Name,
+		}
+
+		nodes = nodes[:limit]
 	}
 
 	nodeIDs := make([]uint64, 0, len(nodes))
@@ -1322,7 +1347,7 @@ func (s *storageYDB) listHardLinks(
 
 	attrs, err := s.fetchNodeAttrs(ctx, session, snapshotID, nodeIDs)
 	if err != nil {
-		return nil, err
+		return nil, HardLinksCookie{}, err
 	}
 
 	for i, node := range nodes {
@@ -1342,31 +1367,32 @@ func (s *storageYDB) listHardLinks(
 		}
 	}
 
-	return nodes, nil
+	return nodes, nextCookie, nil
 }
 
 func (s *storageYDB) ListHardLinks(
 	ctx context.Context,
 	snapshotID string,
 	limit int,
-	offset int,
-) ([]nfs.Node, error) {
+	cookie HardLinksCookie,
+) ([]nfs.Node, HardLinksCookie, error) {
 
 	var result []nfs.Node
+	var nextCookie HardLinksCookie
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			result, err = s.listHardLinks(
+			result, nextCookie, err = s.listHardLinks(
 				ctx,
 				session,
 				snapshotID,
 				limit,
-				offset,
+				cookie,
 			)
 			return err
 		},
 	)
-	return result, err
+	return result, nextCookie, err
 }

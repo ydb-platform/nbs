@@ -576,7 +576,12 @@ func TestDeleteSnapshotData(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	hardlinks, err := f.storage.ListHardLinks(f.ctx, snapshotID, 100, 0)
+	hardlinks, _, err := f.storage.ListHardLinks(
+		f.ctx,
+		snapshotID,
+		100,
+		HardLinksCookie{},
+	)
 	require.NoError(t, err)
 	require.NotEmpty(t, hardlinks)
 
@@ -624,7 +629,12 @@ func TestDeleteSnapshotData(t *testing.T) {
 	require.Empty(t, listed)
 	require.Empty(t, nextCookie)
 
-	hardlinks, err = f.storage.ListHardLinks(f.ctx, snapshotID, 100, 0)
+	hardlinks, _, err = f.storage.ListHardLinks(
+		f.ctx,
+		snapshotID,
+		100,
+		HardLinksCookie{},
+	)
 	require.NoError(t, err)
 	require.Empty(t, hardlinks)
 
@@ -829,6 +839,48 @@ func compareNodes(
 	}
 }
 
+func (f *fixture) collectHardLinks(
+	t *testing.T,
+	snapshotID string,
+	limit int,
+	expected []nfs.Node,
+) []nfs.Node {
+
+	t.Helper()
+
+	var cookie HardLinksCookie
+	var collected []nfs.Node
+	for {
+		batch, nextCookie, err := f.storage.ListHardLinks(
+			f.ctx,
+			snapshotID,
+			limit,
+			cookie,
+		)
+		require.NoError(t, err)
+		require.LessOrEqual(t, len(batch), limit)
+		collected = append(collected, batch...)
+		require.LessOrEqual(t, len(collected), len(expected))
+		if len(collected) == len(expected) {
+			require.Equal(t, HardLinksCookie{}, nextCookie)
+			return collected
+		}
+
+		require.NotEmpty(t, batch)
+		next := expected[len(collected)]
+		require.Equal(
+			t,
+			HardLinksCookie{
+				NodeID:       next.NodeID,
+				ParentNodeID: next.ParentNodeID,
+				Name:         next.Name,
+			},
+			nextCookie,
+		)
+		cookie = nextCookie
+	}
+}
+
 func TestListHardLinks(t *testing.T) {
 	f := createFixture(t, 100)
 	defer f.teardown()
@@ -837,38 +889,64 @@ func TestListHardLinks(t *testing.T) {
 
 	// List of nodes, ordered by (node_id, parent_node_id, name).
 	nodes := []nfs.Node{
-		makeHardlinkNode(1, 10, "hardlink_a", 2),
-		makeHardlinkNode(2, 10, "hardlink_b", 2),
-		makeHardlinkNode(1, 20, "hardlink_c", 3),
-		makeHardlinkNode(2, 20, "hardlink_d", 3),
-		makeHardlinkNode(3, 20, "hardlink_e", 3),
-		makeHardlinkNode(1, 30, "regular_file", 1),
+		// Nonempty names sort after the zero cookie even when both IDs are zero.
+		makeHardlinkNode(0, 0, "minimum_a", 2),
+		makeHardlinkNode(0, 0, "minimum_b", 2),
+		makeHardlinkNode(1, 10, "hardlink_a", 4),
+		makeHardlinkNode(1, 10, "hardlink_b", 4),
+		makeHardlinkNode(2, 10, "hardlink_c", 4),
+		makeHardlinkNode(2, 10, "hardlink_d", 4),
+		makeHardlinkNode(1, 20, "hardlink_e", 3),
+		makeHardlinkNode(2, 20, "hardlink_f", 3),
+		makeHardlinkNode(3, 20, "hardlink_g", 3),
+		makeHardlinkNode(1, 30, "hardlink_h", 2),
+		makeHardlinkNode(1, 30, "hardlink_i", 2),
+		makeHardlinkNode(1, 40, "regular_file", 1),
 	}
 
 	err := f.storage.SaveNodes(f.ctx, snapshotID, nodes)
 	require.NoError(t, err)
 
-	// Expected hardlinks: all nodes except the last one (links=1).
-	expected := nodes[:len(nodes)-1]
-
-	allHardlinks, err := f.storage.ListHardLinks(f.ctx, snapshotID, 100, 0)
-	require.NoError(t, err)
-	compareNodes(t, expected, allHardlinks)
-
-	// Select one by one with limit=1 and increasing offset.
-	var collected []nfs.Node
-	for offset := 0; ; offset++ {
-		batch, err := f.storage.ListHardLinks(f.ctx, snapshotID, 1, offset)
-		require.NoError(t, err)
-
-		if len(batch) == 0 {
-			break
-		}
-
-		collected = append(collected, batch...)
+	otherSnapshotID := "snapshot-hardlinks-other"
+	otherNodes := []nfs.Node{
+		makeHardlinkNode(1, 10, "hardlink_a", 3),
+		makeHardlinkNode(1, 10, "hardlink_b", 3),
+		makeHardlinkNode(2, 10, "other_c", 3),
+		makeHardlinkNode(1, 50, "other_d", 2),
+		makeHardlinkNode(2, 50, "other_e", 2),
 	}
 
-	compareNodes(t, expected, collected)
+	for i := range otherNodes {
+		otherNodes[i].UID = 2000
+	}
+
+	err = f.storage.SaveNodes(f.ctx, otherSnapshotID, otherNodes)
+	require.NoError(t, err)
+
+	for _, testCase := range []struct {
+		snapshotID string
+		expected   []nfs.Node
+	}{
+		// The regular file has one link and must not be listed.
+		{snapshotID: snapshotID, expected: nodes[:len(nodes)-1]},
+		{snapshotID: otherSnapshotID, expected: otherNodes},
+		{snapshotID: "snapshot-without-hardlinks"},
+	} {
+		for _, limit := range []int{1, 2, 3, 4, 5, 9, 100} {
+			t.Run(
+				fmt.Sprintf("%s-limit-%d", testCase.snapshotID, limit),
+				func(t *testing.T) {
+					collected := f.collectHardLinks(
+						t,
+						testCase.snapshotID,
+						limit,
+						testCase.expected,
+					)
+					compareNodes(t, testCase.expected, collected)
+				},
+			)
+		}
+	}
 }
 
 func TestLister(t *testing.T) {

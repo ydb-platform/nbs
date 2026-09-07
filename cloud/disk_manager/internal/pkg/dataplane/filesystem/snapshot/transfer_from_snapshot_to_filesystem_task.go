@@ -54,209 +54,66 @@ func (t *transferFromSnapshotToFilesystemTask) traversalID(
 	return fmt.Sprintf("restore_%s_%s", t.snapshotID(), execCtx.GetTaskID())
 }
 
-func (t *transferFromSnapshotToFilesystemTask) getParentNodeIDsInDestinationFs(
-	ctx context.Context,
-	nodes []nfs.Node,
-) (map[uint64]uint64, error) {
-
-	parentNodeIDSet := make(map[uint64]struct{})
-	for _, node := range nodes {
-		parentNodeIDSet[node.ParentNodeID] = struct{}{}
-	}
-
-	srcParentNodeIDs := make([]uint64, 0, len(parentNodeIDSet))
-	for id := range parentNodeIDSet {
-		srcParentNodeIDs = append(srcParentNodeIDs, id)
-	}
-
-	return t.nodesStorage.GetDestinationNodeIDs(
-		ctx,
-		t.snapshotID(),
-		t.filesystemID(),
-		srcParentNodeIDs,
-	)
-}
-
-func (t *transferFromSnapshotToFilesystemTask) groupHardlinksByNodeID(
-	nodes []nfs.Node,
-) map[uint64][]nfs.Node {
-
-	hardlinksByNodeID := make(map[uint64][]nfs.Node)
-	for _, node := range nodes {
-		hardlinksByNodeID[node.NodeID] = append(
-			hardlinksByNodeID[node.NodeID],
-			node,
-		)
-	}
-
-	return hardlinksByNodeID
-}
-
-func (t *transferFromSnapshotToFilesystemTask) getAlreadyCreatedNodes(
-	ctx context.Context,
-	hardlinksByNodeID map[uint64][]nfs.Node,
-) (map[uint64]uint64, error) {
-
-	srcNodeIDs := make([]uint64, 0, len(hardlinksByNodeID))
-	for nodeID := range hardlinksByNodeID {
-		srcNodeIDs = append(srcNodeIDs, nodeID)
-	}
-
-	return t.nodesStorage.GetDestinationNodeIDs(
-		ctx,
-		t.snapshotID(),
-		t.filesystemID(),
-		srcNodeIDs,
-	)
-}
-
-func (t *transferFromSnapshotToFilesystemTask) restoreHardlinksBatch(
-	ctx context.Context,
-	session nfs.Session,
-	offset int,
-) (bool, error) {
-
-	err := t.checkSourceSnapshotReady(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	limit := int(t.config.GetRestoreHardlinksBatchSize())
-
-	batch, err := t.nodesStorage.ListHardLinks(
-		ctx,
-		t.snapshotID(),
-		limit,
-		offset,
-	)
-	if err != nil {
-		return false, err
-	}
-
-	if len(batch) == 0 {
-		return false, nil
-	}
-
-	hardlinksByNodeID := t.groupHardlinksByNodeID(batch)
-
-	parentMapping, err := t.getParentNodeIDsInDestinationFs(ctx, batch)
-	if err != nil {
-		return false, err
-	}
-
-	alreadyCreatedNodeIDsMapping, err := t.getAlreadyCreatedNodes(
-		ctx,
-		hardlinksByNodeID,
-	)
-	if err != nil {
-		return false, err
-	}
-
-	newMappings := make(map[uint64]uint64)
-
-	for srcNodeID, nodes := range hardlinksByNodeID {
-		for i := range nodes {
-			if dstParentNodeID, ok := parentMapping[nodes[i].ParentNodeID]; ok {
-				nodes[i].ParentNodeID = dstParentNodeID
-			}
-		}
-
-		dstNodeID, ok := alreadyCreatedNodeIDsMapping[srcNodeID]
-
-		if !ok {
-			first := nodes[0]
-			dstNodeID, err = session.CreateNodeIdempotent(ctx, first)
-			if err != nil {
-				return false, err
-			}
-
-			logging.Debug(
-				ctx,
-				"recovered filesystem hardlink source node from snapshot: "+
-					"snapshot_id=%v filesystem_id=%v source_node_id=%v "+
-					"node=%v dst_node_id=%v",
-				t.snapshotID(),
-				t.filesystemID(),
-				srcNodeID,
-				first,
-				dstNodeID,
-			)
-
-			newMappings[srcNodeID] = dstNodeID
-			nodes = nodes[1:]
-		}
-
-		for _, node := range nodes {
-			node.NodeID = dstNodeID
-			node.Type = nfs.NODE_KIND_LINK
-			_, err = session.CreateNodeIdempotent(ctx, node)
-			if err != nil {
-				return false, err
-			}
-
-			logging.Debug(
-				ctx,
-				"recovered filesystem hardlink node from snapshot: "+
-					"snapshot_id=%v filesystem_id=%v source_node_id=%v "+
-					"node=%v dst_node_id=%v",
-				t.snapshotID(),
-				t.filesystemID(),
-				srcNodeID,
-				node,
-				dstNodeID,
-			)
-		}
-	}
-
-	if len(newMappings) > 0 {
-		err = t.nodesStorage.UpdateRestorationNodeIDMapping(
-			ctx,
-			t.snapshotID(),
-			t.filesystemID(),
-			newMappings,
-		)
-		if err != nil {
-			return false, err
-		}
-	}
-
-	err = t.checkSourceSnapshotReady(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	return len(batch) == limit, nil
-}
-
 func (t *transferFromSnapshotToFilesystemTask) restoreHardlinks(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	session nfs.Session,
 ) error {
 
-	batchSize := int(t.config.GetRestoreHardlinksBatchSize())
-	offset := int(t.state.GetHardlinksRestoreOffset())
+	if t.state.GetHardlinksRestored() {
+		return nil
+	}
+
+	saved := t.state.GetHardLinksRestoreCookie()
+	cookie := nodes_storage.HardLinksCookie{
+		NodeID:       saved.GetNodeId(),
+		ParentNodeID: saved.GetParentNodeId(),
+		Name:         saved.GetName(),
+	}
+
 	for {
-		remains, err := t.restoreHardlinksBatch(
-			ctx,
-			session,
-			offset,
-		)
+		err := t.checkSourceSnapshotReady(ctx)
 		if err != nil {
 			return err
 		}
 
-		t.state.HardlinksRestoreOffset = int64(offset + batchSize)
+		restorer := newHardlinkBatchRestorer(
+			session,
+			t.nodesStorage,
+			t.snapshotID(),
+			t.filesystemID(),
+			int(t.config.GetRestoreHardlinksBatchSize()),
+			int(t.config.GetTraversalConfig().GetTraversalWorkersCount()),
+		)
+		nextCookie, err := restorer.Restore(ctx, cookie)
+		if err != nil {
+			return err
+		}
+
+		err = t.checkSourceSnapshotReady(ctx)
+		if err != nil {
+			return err
+		}
+
+		t.state.HardLinksRestoreCookie =
+			&snapshot_protos.HardLinksRestoreCookie{
+				NodeId:       nextCookie.NodeID,
+				ParentNodeId: nextCookie.ParentNodeID,
+				Name:         nextCookie.Name,
+			}
+
+		// Persist completion before cleanup can remove parent node mappings.
+		t.state.HardlinksRestored = nextCookie == (nodes_storage.HardLinksCookie{})
 		err = execCtx.SaveState(ctx)
 		if err != nil {
 			return err
 		}
 
-		if !remains {
+		if t.state.HardlinksRestored {
 			return nil
 		}
 
-		offset += batchSize
+		cookie = nextCookie
 	}
 }
 
