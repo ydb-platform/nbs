@@ -270,6 +270,15 @@ void TStorageServiceActor::HandleGetNodeAttr(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    auto* session =
+        GetAndValidateSession<TEvService::TGetNodeAttrMethod>(ctx, ev);
+    if (!session) {
+        return;
+    }
+
+    if (TryHandleControlNamespaceGetNodeAttr(ctx, ev, session)) {
+        return;
+    }
 
     if (msg->Record.GetName().empty()) {
         // GetNodeAttr by NodeId can be handled directly by the shard
@@ -277,22 +286,13 @@ void TStorageServiceActor::HandleGetNodeAttr(
             ctx,
             ev,
             false /* forceBehaveAsShard */,
-            msg->Record.GetNodeId());
+            msg->Record.GetNodeId(),
+            session);
         return;
     }
 
-    const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
-
-    auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId ||
-        !session->GetSessionActor(seqNo))
-    {
-        auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(
-            ErrorInvalidSession(clientId, sessionId, seqNo));
-        return NCloud::Reply(ctx, *ev, std::move(response));
-    }
 
     const NProto::TFileStore& filestore = session->FileStore;
 

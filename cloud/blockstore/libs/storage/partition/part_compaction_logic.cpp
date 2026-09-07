@@ -44,6 +44,7 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     TBlockMask zeroBlobSkipMask,
     ui32 blobsSkippedByCompaction,
     ui32 blocksSkippedByCompaction,
+    ui32 mixedBlockCountSkippedByCompaction,
     TVector<std::optional<ui32>> blockChecksums,
     EChannelDataKind channelDataKind,
     TBlockBuffer blobContent,
@@ -59,6 +60,7 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     , ZeroBlobSkipMask(zeroBlobSkipMask)
     , BlobsSkippedByCompaction(blobsSkippedByCompaction)
     , BlocksSkippedByCompaction(blocksSkippedByCompaction)
+    , MixedBlockCountSkippedByCompaction(mixedBlockCountSkippedByCompaction)
     , BlockChecksums(std::move(blockChecksums))
     , ChannelDataKind(channelDataKind)
     , BlobContent(std::move(blobContent))
@@ -666,8 +668,14 @@ void ApplyBlobsSkipping(
     }
 
     args.BlobsSkipped = blobsToSkip.size();
-    for (const auto& [_, skippedBlockCount]: blobsToSkip) {
+    for (const auto& [blobId, skippedBlockCount]: blobsToSkip) {
         args.BlocksSkipped += skippedBlockCount;
+
+        auto* ab = args.AffectedBlobs.FindPtr(blobId);
+        Y_ABORT_UNLESS(ab);
+        if (ab->IndexKind == EChannelDataKind::Mixed) {
+            args.MixedBlocksSkipped += skippedBlockCount;
+        }
     }
 
     THashSet<ui32> skippedBlockIndices;
@@ -854,6 +862,7 @@ void CompleteRangeCompaction(
         buildBlobContentResult.ZeroBlobSkipMask,
         args.BlobsSkipped,
         args.BlocksSkipped,
+        args.MixedBlocksSkipped,
         std::move(buildBlobContentResult.BlockChecksums),
         resultBlobIds.ChannelDataKind,
         std::move(buildBlobContentResult.BlobContent),

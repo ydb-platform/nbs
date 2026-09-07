@@ -135,13 +135,49 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void TStorageServiceActor::ForwardRequest(
+TSessionInfo* TStorageServiceActor::GetAndValidateSession(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev)
 {
     auto* msg = ev->Get();
 
     const auto& clientId = GetClientId(msg->Record);
+    const auto& sessionId = GetSessionId(msg->Record);
+    const ui64 seqNo = GetSessionSeqNo(msg->Record);
+
+    TSessionInfo* session = State->FindSession(sessionId, seqNo);
+    if (!session || session->ClientId != clientId ||
+        !session->GetSessionActor(seqNo))
+    {
+        auto response = std::make_unique<typename TMethod::TResponse>(
+            ErrorInvalidSession(clientId, sessionId, seqNo));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return nullptr;
+    }
+
+    return session;
+}
+
+#define FILESTORE_DEFINE_HANDLE_GET_AND_VALIDATE_SESSION(name, ns)             \
+template TSessionInfo*                                                         \
+TStorageServiceActor::GetAndValidateSession<ns::T##name##Method>(              \
+    const TActorContext&, const ns::TEv##name##Request::TPtr&);                \
+
+    FILESTORE_SERVICE_REQUESTS_HANDLE(
+        FILESTORE_DEFINE_HANDLE_GET_AND_VALIDATE_SESSION,
+        TEvService)
+
+#undef FILESTORE_DEFINE_HANDLE_GET_AND_VALIDATE_SESSION
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
+void TStorageServiceActor::ForwardRequest(
+    const TActorContext& ctx,
+    const typename TMethod::TRequest::TPtr& ev)
+{
+    auto* msg = ev->Get();
+
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
 
@@ -152,13 +188,9 @@ void TStorageServiceActor::ForwardRequest(
         TMethod::Name,
         msg->CallContext->RequestId);
 
-    auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId ||
-        !session->GetSessionActor(seqNo))
-    {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            ErrorInvalidSession(clientId, sessionId, seqNo));
-        return NCloud::Reply(ctx, *ev, std::move(response));
+    auto* session = GetAndValidateSession<TMethod>(ctx, ev);
+    if (!session) {
+        return;
     }
     const NProto::TFileStore& filestore = session->FileStore;
 
@@ -204,9 +236,23 @@ void TStorageServiceActor::ForwardRequestToShard(
     bool forceBehaveAsShard,
     ui64 entityId)
 {
+    auto* session = GetAndValidateSession<TMethod>(ctx, ev);
+    if (!session) {
+        return;
+    }
+    ForwardRequestToShard<TMethod>(ctx, ev, forceBehaveAsShard, entityId, session);
+}
+
+template <typename TMethod>
+void TStorageServiceActor::ForwardRequestToShard(
+    const TActorContext& ctx,
+    const typename TMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
+    ui64 entityId,
+    TSessionInfo* session)
+{
     auto* msg = ev->Get();
 
-    const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
 
@@ -217,14 +263,6 @@ void TStorageServiceActor::ForwardRequestToShard(
         TMethod::Name,
         msg->CallContext->RequestId);
 
-    auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId ||
-        !session->GetSessionActor(seqNo))
-    {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            ErrorInvalidSession(clientId, sessionId, seqNo));
-        return NCloud::Reply(ctx, *ev, std::move(response));
-    }
     const NProto::TFileStore& filestore = session->FileStore;
 
     if (!forceBehaveAsShard) {
@@ -340,13 +378,23 @@ TStorageServiceActor::ForwardRequestToShard<TEvService::TCreateHandleMethod>(
     const TActorContext& ctx,
     const TEvService::TCreateHandleMethod::TRequest::TPtr& ev,
     bool forceBehaveAsShard,
-    ui64 entityId);
+    ui64 entityId,
+    TSessionInfo* session);
 
 template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TGetNodeAttrMethod>(
     const TActorContext& ctx,
     const TEvService::TGetNodeAttrMethod::TRequest::TPtr& ev,
     bool forceBehaveAsShard,
-    ui64 entityId);
+    ui64 entityId,
+    TSessionInfo* session);
+
+template void
+TStorageServiceActor::ForwardRequestToShard<TEvService::TRenameNodeMethod>(
+    const TActorContext& ctx,
+    const TEvService::TRenameNodeMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
+    ui64 entityId,
+    TSessionInfo* session);
 
 }   // namespace NCloud::NFileStore::NStorage

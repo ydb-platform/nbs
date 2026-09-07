@@ -4,6 +4,7 @@
 #include "log.h"
 #include "loop.h"
 #include "node_cache.h"
+#include "persistent_state_manager.h"
 
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
@@ -41,9 +42,11 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/folder/path.h>
+#include <util/system/file_lock.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
+#include <util/generic/ylimits.h>
 #include <util/random/random.h>
 #include <util/system/file.h>
 
@@ -190,7 +193,8 @@ struct TBootstrap
             ui64 directoryHandlesInitialDataSize = 0,
             ui64 directoryHandlesMaxDataAreaStepSize = 0,
             IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
-                CreateFileMapMemoryLimiterStub())
+                CreateFileMapMemoryLimiterStub(),
+            IPersistentStateManagerPtr persistentStateManager = nullptr)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -288,6 +292,13 @@ struct TBootstrap
             writeBackCacheAutomaticFlushPeriodMs);
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
+        if (!persistentStateManager) {
+            persistentStateManager = CreatePersistentStateManager(
+                config->GetHandleOpsQueuePath(),
+                config->GetWriteBackCachePath(),
+                config->GetDirectoryHandlesStoragePath());
+        }
+
         Loop = NFuse::CreateFuseLoop(
             config,
             Logging,
@@ -298,7 +309,8 @@ struct TBootstrap
             Timer,
             CreateProfileLogStub(),
             Session,
-            std::move(fileMapMemoryLimiter));
+            std::move(fileMapMemoryLimiter),
+            std::move(persistentStateManager));
     }
 
     NMonitoring::TDynamicCountersPtr GetFileSystemStatsCounters() const
@@ -4511,9 +4523,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         NProto::TQueueEntry createEntry;
         auto* queued = createEntry.MutableQueuedCreateHandleRequest();
-        *queued->MutableRequest() = createRequest;
-        queued->SetHandle(handle);
         queued->SetNodeId(nodeId);
+        queued->SetHandle(handle);
+        queued->SetFlags(createRequest.GetFlags());
         queued->SetOriginalRequestId(
             createRequest.GetHeaders().GetRequestId());
 
@@ -5304,6 +5316,69 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*writeBackCacheError));
     }
 
+    Y_UNIT_TEST(ShouldStartAfterPreviousLoopWasDestroyedWithoutStop)
+    {
+        // A single manager is shared by all the loops and all the components
+        // share one base path, as in production
+        const TString statePath = TempDir.Path() / "SharedState";
+        auto persistentStateManager =
+            CreatePersistentStateManager(statePath, statePath, statePath);
+
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        // Hold the directory handle storage state file from outside so that
+        // the start fails after the write back cache state file has already
+        // been acquired, like it happens when e.g. the FUSE loop fails to
+        // start.
+        const auto directoryHandleStoragePath = TFsPath(statePath) /
+                                                FileSystemId / SessionId /
+                                                "directory_handles_storage";
+        directoryHandleStoragePath.Parent().MkDirs();
+        directoryHandleStoragePath.Touch();
+        auto externalLock = MakeHolder<TFileLock>(directoryHandleStoragePath);
+        UNIT_ASSERT(externalLock->TryAcquire());
+
+        {
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                features,
+                1000,
+                1000,
+                WriteBackCacheCapacity,
+                0,
+                0,
+                CreateFileMapMemoryLimiterStub(),
+                persistentStateManager);
+            auto error = bootstrap.Start();
+            UNIT_ASSERT(HasError(error));
+
+            // The loop goes away without being stopped, as it happens to an
+            // endpoint whose start has failed.
+        }
+
+        externalLock.Reset();
+
+        // A new loop for the same session must be able to acquire the state
+        // files left by the previous one.
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,
+            1000,
+            WriteBackCacheCapacity,
+            0,
+            0,
+            CreateFileMapMemoryLimiterStub(),
+            persistentStateManager);
+        auto error = bootstrap.Start();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+        bootstrap.Stop();
+    }
+
     Y_UNIT_TEST(ShouldNotCrashWhileStoppingWhenForgetRequestIsInFlight)
     {
         TBootstrap bootstrap;
@@ -5850,6 +5925,113 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
         UNIT_ASSERT(reqFlush.Wait(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldKeepPersistentStateUnderFileSystemIdReturnedBySession)
+    {
+        // The requested filesystem id may be an alias which the server
+        // resolves upon session creation. The state files have to be kept
+        // under the resolved id, otherwise the state of a previous session
+        // is not found and e.g. pending writes are lost.
+        const TString resolvedFileSystemId = FileSystemId + "-resolved";
+        const TString sessionId = CreateGuidAsString();
+
+        std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> writeDataCalled2 = 0;
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        auto createBootstrap = [&](bool serverWriteBackCacheEnabled,
+                                   std::atomic<int>& counter)
+        {
+            NProto::TFileStoreFeatures features;
+            features.SetServerWriteBackCacheEnabled(
+                serverWriteBackCacheEnabled);
+
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                features);
+
+            bootstrap.Service->CreateSessionHandler =
+                [features, &sessionId, &resolvedFileSystemId](auto, auto)
+            {
+                NProto::TCreateSessionResponse result;
+                result.MutableSession()->SetSessionId(sessionId);
+                result.MutableFileStore()->SetBlockSize(4096);
+                result.MutableFileStore()->MutableFeatures()->CopyFrom(
+                    features);
+                result.MutableFileStore()->SetFileSystemId(
+                    resolvedFileSystemId);
+                return MakeFuture(result);
+            };
+
+            bootstrap.Service->WriteDataHandler = [&counter](auto, const auto&)
+            {
+                counter++;
+                NProto::TWriteDataResponse result;
+                return MakeFuture(result);
+            };
+
+            return bootstrap;
+        };
+
+        const auto resolvedPath = TempDir.Path() / "WriteBackCache" /
+                                  resolvedFileSystemId / sessionId /
+                                  "write_back_cache";
+        const auto requestedPath = TempDir.Path() / "WriteBackCache" /
+                                   FileSystemId / sessionId /
+                                   "write_back_cache";
+
+        {
+            auto bootstrap = createBootstrap(true, writeDataCalled);
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            UNIT_ASSERT(resolvedPath.Exists());
+            UNIT_ASSERT(!requestedPath.Exists());
+
+            auto reqWrite = std::make_shared<TWriteRequest>(
+                nodeId,
+                handleId,
+                0,
+                CreateBuffer(4096, 'a'));
+            reqWrite->In->Body.flags |= O_WRONLY;
+            auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+            auto suspend = bootstrap.Loop->SuspendAsync();
+            UNIT_ASSERT(suspend.Wait(WaitTimeout));
+        }
+
+        // Since write-back cache was enabled, the actual write didn't happen
+        // and the request is stored in the persistent queue
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+        UNIT_ASSERT(resolvedPath.Exists());
+        UNIT_ASSERT(!requestedPath.Exists());
+
+        {
+            auto bootstrap = createBootstrap(false, writeDataCalled2);
+
+            bootstrap.Start();
+
+            // The state of the previous session is found under the resolved
+            // id although the feature is disabled now: drain triggers flush
+            // immediately
+            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
+
+            bootstrap.Stop();
+        }
+
+        // Stopping destroys the session, so its state is deleted, again
+        // under the resolved id
+        UNIT_ASSERT(!resolvedPath.Exists());
+        UNIT_ASSERT(!requestedPath.Exists());
     }
 
     Y_UNIT_TEST(ShouldRestoreAndDrainCacheAfterSessionRestart)
@@ -7805,6 +7987,27 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             0,
             counters->GetCounter(
                 "Availability_LastIntervalAvailable")->Val());
+    }
+
+    Y_UNIT_TEST(ShouldKeepHandleOpsQueueEntriesSmall)
+    {
+        // Every queued entry is written to a file, so guard the maximum
+        // serialized size of the fields populated below.
+        NProto::TQueueEntry createEntry;
+        auto* create = createEntry.MutableQueuedCreateHandleRequest();
+        create->SetNodeId(Max<ui64>());
+        create->SetHandle(Max<ui64>());
+        create->SetFlags(Max<ui32>());
+        create->SetOriginalRequestId(Max<ui64>());
+
+        UNIT_ASSERT_VALUES_EQUAL(37, createEntry.ByteSizeLong());
+
+        NProto::TQueueEntry destroyEntry;
+        auto* destroy = destroyEntry.MutableDestroyHandleRequest();
+        destroy->SetNodeId(Max<ui64>());
+        destroy->SetHandle(Max<ui64>());
+
+        UNIT_ASSERT_VALUES_EQUAL(24, destroyEntry.ByteSizeLong());
     }
 }
 

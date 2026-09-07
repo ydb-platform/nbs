@@ -40,6 +40,7 @@ TString DebugDump(const T& v)
 
 using TEvRemoteHttpInfoRequest = NActors::NMon::TEvRemoteHttpInfo;
 using TEvRemoteHttpInfoResponse = NActors::NMon::TEvRemoteHttpInfoRes;
+using TEvRemoteJsonInfoResponse = NActors::NMon::TEvRemoteJsonInfoRes;
 
 }   // namespace NImpl
 
@@ -1155,6 +1156,14 @@ public:
     {
         SendRemoteHttpInfoRequest(std::move(query), method);
         return RecvRemoteHttpInfoResponse();
+    }
+
+    std::unique_ptr<NImpl::TEvRemoteJsonInfoResponse> GetRemoteJsonInfo(
+        TString query = {},
+        HTTP_METHOD method = HTTP_METHOD_GET)
+    {
+        SendRemoteHttpInfoRequest(std::move(query), method);
+        return RecvResponse<NImpl::TEvRemoteJsonInfoResponse>();
     }
 
     //

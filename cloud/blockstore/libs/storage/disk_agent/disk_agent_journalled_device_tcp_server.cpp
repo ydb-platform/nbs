@@ -1,7 +1,5 @@
 #include "disk_agent_actor.h"
 
-#include "journalled_device.h"
-
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/journalled_device_tcp_server/server.h>
 
@@ -45,13 +43,13 @@ class TJournalledDeviceHandler final: public IServerBackend
 private:
     TActorSystem* ActorSystem = nullptr;
     const TActorId DiskAgentActorId;
-    const THashMap<TString, IJournalledDevicePtr> Devices;
+    const THashMap<TString, NJournalled::IJournalledDevicePtr> Devices;
 
 public:
     TJournalledDeviceHandler(
         TActorSystem* actorSystem,
         const TActorId& diskAgentActorId,
-        THashMap<TString, IJournalledDevicePtr> devices)
+        THashMap<TString, NJournalled::IJournalledDevicePtr> devices)
         : ActorSystem(actorSystem)
         , DiskAgentActorId(diskAgentActorId)
         , Devices(std::move(devices))
@@ -60,12 +58,9 @@ public:
     // IServerBackend
 
     [[nodiscard]] auto AcquireDevices(
-        TInstant now,
         NCloud::NProto::TAcquireDevicesRequest request)
         -> TFuture<NCloud::NProto::TAcquireDevicesResponse> final
     {
-        Y_UNUSED(now);
-
         auto ev = std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
 
         CopyHeaders(*ev->Record.MutableHeaders(), request.GetHeaders());
@@ -93,12 +88,9 @@ public:
     }
 
     [[nodiscard]] auto ReleaseDevices(
-        TInstant now,
         NCloud::NProto::TReleaseDevicesRequest request)
         -> TFuture<NCloud::NProto::TReleaseDevicesResponse> final
     {
-        Y_UNUSED(now);
-
         auto promise = NewPromise<NCloud::NProto::TReleaseDevicesResponse>();
 
         auto ev = std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
@@ -124,7 +116,6 @@ public:
     }
 
     [[nodiscard]] auto ReadPages(
-        TInstant now,
         NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final
     {
@@ -134,11 +125,10 @@ public:
                 TErrorResponse(error));
         }
 
-        return device->ReadPages(now, std::move(request));
+        return device->ReadPages(std::move(request));
     }
 
     [[nodiscard]] auto WriteLogRecord(
-        TInstant now,
         NCloud::NProto::TWriteLogRecordRequest request)
         -> TFuture<NCloud::NProto::TWriteLogRecordResponse> final
     {
@@ -148,11 +138,10 @@ public:
                 TErrorResponse(error));
         }
 
-        return device->WriteLogRecord(now, std::move(request));
+        return device->WriteLogRecord(std::move(request));
     }
 
     [[nodiscard]] auto ReadJournalTail(
-        TInstant now,
         NCloud::NProto::TReadJournalTailRequest request)
         -> TFuture<NCloud::NProto::TReadJournalTailResponse> final
     {
@@ -162,11 +151,10 @@ public:
                 TErrorResponse(error));
         }
 
-        return device->ReadJournalTail(now, std::move(request));
+        return device->ReadJournalTail(std::move(request));
     }
 
     [[nodiscard]] auto AdvanceLsnLowWatermark(
-        TInstant now,
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
         -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> final
     {
@@ -176,11 +164,11 @@ public:
                 TErrorResponse(error));
         }
 
-        return device->AdvanceLsnLowWatermark(now, std::move(request));
+        return device->AdvanceLsnLowWatermark(std::move(request));
     }
 
 private:
-    TResultOrError<IJournalledDevicePtr> GetDevice(
+    TResultOrError<NJournalled::IJournalledDevicePtr> GetDevice(
         const TString& deviceUUID) const
     {
         if (deviceUUID.empty()) {
@@ -216,7 +204,7 @@ TNetworkAddress CreateNetworkAddress(TStringBuf s)
 
 void TDiskAgentActor::StartJournalledDeviceTcpServer(
     const NActors::TActorContext& ctx,
-    THashMap<TString, IJournalledDevicePtr> devices)
+    THashMap<TString, NJournalled::IJournalledDevicePtr> devices)
 {
     if (AgentConfig->GetJournalledDeviceTcpServerListenAddress().empty()) {
         return;

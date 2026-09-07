@@ -1,6 +1,7 @@
 #include "compaction_policy.h"
 
 #include "config.h"
+#include "proto_helpers.h"
 
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
@@ -38,11 +39,15 @@ struct TDefaultPolicy
     : ICompactionPolicy
 {
     const ui32 CompactionThreshold;
+    const ui64 UsedBlocksThresholdForMixedBlocksCompaction;
 
-    TDefaultPolicy(ui32 compactionThreshold)
+    TDefaultPolicy(
+        ui32 compactionThreshold,
+        ui64 usedBlocksThresholdForMixedBlocksCompaction)
         : CompactionThreshold(compactionThreshold)
-    {
-    }
+        , UsedBlocksThresholdForMixedBlocksCompaction(
+              usedBlocksThresholdForMixedBlocksCompaction)
+    {}
 
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
@@ -55,6 +60,11 @@ struct TDefaultPolicy
     bool BackpressureEnabled() const override
     {
         return true;
+    }
+
+    ui64 GetUsedBlocksThresholdForMixedBlocksCompaction() const override
+    {
+        return UsedBlocksThresholdForMixedBlocksCompaction;
     }
 };
 
@@ -69,11 +79,15 @@ struct TLoadOptimizationPolicy
     : ICompactionPolicy
 {
     TLoadOptimizationCompactionPolicyConfig Config;
+    ui64 UsedBlocksThresholdForMixedBlocksCompaction;
 
-    TLoadOptimizationPolicy(const TLoadOptimizationCompactionPolicyConfig& config)
+    TLoadOptimizationPolicy(
+        const TLoadOptimizationCompactionPolicyConfig& config,
+        const ui64 usedBlocksThresholdForMixedBlocksCompaction)
         : Config(config)
-    {
-    }
+        , UsedBlocksThresholdForMixedBlocksCompaction(
+              usedBlocksThresholdForMixedBlocksCompaction)
+    {}
 
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
@@ -133,6 +147,11 @@ struct TLoadOptimizationPolicy
     {
         return true;
     }
+
+    ui64 GetUsedBlocksThresholdForMixedBlocksCompaction() const override
+    {
+        return UsedBlocksThresholdForMixedBlocksCompaction;
+    }
 };
 
 }   // namespace
@@ -160,15 +179,22 @@ ui32 GetMaxBlobsPerRange(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICompactionPolicyPtr BuildDefaultCompactionPolicy(ui32 compactionThreshold)
+ICompactionPolicyPtr BuildDefaultCompactionPolicy(
+    ui32 compactionThreshold,
+    ui64 usedBlocksThresholdForMixedBlocksCompaction)
 {
-    return std::make_shared<TDefaultPolicy>(compactionThreshold);
+    return std::make_shared<TDefaultPolicy>(
+        compactionThreshold,
+        usedBlocksThresholdForMixedBlocksCompaction);
 }
 
 ICompactionPolicyPtr BuildLoadOptimizationCompactionPolicy(
-    const TLoadOptimizationCompactionPolicyConfig& config)
+    const TLoadOptimizationCompactionPolicyConfig& config,
+    const ui64 usedBlocksThresholdForMixedBlocksCompaction)
 {
-    return std::make_shared<TLoadOptimizationPolicy>(config);
+    return std::make_shared<TLoadOptimizationPolicy>(
+        config,
+        usedBlocksThresholdForMixedBlocksCompaction);
 }
 
 TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyConfig(
@@ -226,6 +252,20 @@ ICompactionPolicyPtr BuildCompactionPolicy(
         storageConfig,
         siblingCount);
 
+    ui64 usedBlocksThresholdForMixedBlocksCompaction =
+        GetWriteBlobThreshold(
+            storageConfig,
+            partitionConfig.GetStorageMediaKind()) /
+        partitionConfig.GetBlockSize();
+    if (partitionConfig.GetStorageMediaKind() !=
+        NCloud::NProto::STORAGE_MEDIA_SSD)
+    {
+        usedBlocksThresholdForMixedBlocksCompaction = Max<ui64>(
+            usedBlocksThresholdForMixedBlocksCompaction,
+            storageConfig.GetCompactionMergedBlobThresholdHDD() /
+                partitionConfig.GetBlockSize());
+    }
+
     NProto::ECompactionType ct = NProto::ECompactionType::CT_DEFAULT;
     switch (partitionConfig.GetStorageMediaKind()) {
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
@@ -245,7 +285,9 @@ ICompactionPolicyPtr BuildCompactionPolicy(
 
     switch (ct) {
         case NProto::ECompactionType::CT_DEFAULT: {
-            return BuildDefaultCompactionPolicy(maxBlobsPerRange);
+            return BuildDefaultCompactionPolicy(
+                maxBlobsPerRange,
+                usedBlocksThresholdForMixedBlocksCompaction);
         }
 
         case NProto::ECompactionType::CT_LOAD: {
@@ -253,9 +295,8 @@ ICompactionPolicyPtr BuildCompactionPolicy(
                 BuildLoadOptimizationCompactionPolicyConfig(
                     partitionConfig,
                     storageConfig,
-                    maxBlobsPerRange
-                )
-            );
+                    maxBlobsPerRange),
+                usedBlocksThresholdForMixedBlocksCompaction);
         }
 
         default: Y_ABORT_UNLESS(0);

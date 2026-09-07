@@ -640,7 +640,13 @@ public:
 
     ~TRdmaDataEndpoint() override
     {
-        DoStopEndpoint();
+        if (Endpoint) {
+            // The endpoint belongs to the rdma client's poller and tears
+            // itself down, so asking is enough. Waiting here would block
+            // whichever thread destroys us, which may be the connection
+            // manager thread - the only one able to carry the teardown out.
+            Endpoint->Stop();
+        }
     }
 
     void Init(NRdma::IClientEndpointPtr endpoint)
@@ -722,7 +728,6 @@ private:
         ui32 status,
         size_t responseBytes) override;
 
-    void DoStopEndpoint();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -784,7 +789,11 @@ void TRdmaDataEndpoint::Start()
 
 void TRdmaDataEndpoint::Stop()
 {
-    DoStopEndpoint();
+    // an explicit stop is a request to be done with it, so it does wait,
+    // unlike destruction
+    if (Endpoint) {
+        Endpoint->Stop().Wait();
+    }
 }
 
 TStorageBuffer TRdmaDataEndpoint::AllocateBuffer(size_t bytesCount)
@@ -843,13 +852,6 @@ void TRdmaDataEndpoint::HandleResponse(
         }
     } catch (...) {
         STORAGE_ERROR("Exception in callback: " << CurrentExceptionMessage());
-    }
-}
-
-void TRdmaDataEndpoint::DoStopEndpoint()
-{
-    if (Endpoint) {
-        Endpoint->Stop().Wait();
     }
 }
 

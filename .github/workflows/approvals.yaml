@@ -5,6 +5,8 @@ on:
     issue_comment:
         types: [created]
 
+permissions: {}
+
 jobs:
     approval-check:
         runs-on: [self-hosted, "self-hosted", "runner_light"]
@@ -28,6 +30,8 @@ jobs:
                     'cloud/blockstore/tests/csi_driver/',
                     'cloud/filestore/libs/storage/fastshard/',
                     'cloud/filestore/tests/fastshard/',
+                    'cloud/storage/core/libs/journalled_device/',
+                    'cloud/storage/core/libs/journalled_device_tcp_server/',
                     'doc/filestore/design/storage/fastshard/',
                     '.github/',
                 ];

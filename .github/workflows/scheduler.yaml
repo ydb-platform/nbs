@@ -89,7 +89,9 @@ on:
 concurrency:
   group: 'populate-vms-${{ inputs.flavor }}'
   cancel-in-progress: false
-  
+
+permissions:
+  contents: read
 
 env:
   GIT_CONFIG_COUNT: "1"

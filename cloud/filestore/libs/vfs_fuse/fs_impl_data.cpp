@@ -88,17 +88,16 @@ fuse_file_info MakeFuseFileInfo(
 
 std::shared_ptr<NProto::TConfirmCreateHandleRequest>
 TFileSystem::CreateConfirmCreateHandleRequest(
-    const NProto::TCreateHandleRequest& createRequest,
     ui64 nodeId,
     ui64 handle,
+    ui32 flags,
     ui64 originalRequestId)
 {
+    // Headers and FileSystemId are filled in by the session
     auto request = std::make_shared<NProto::TConfirmCreateHandleRequest>();
-    *request->MutableHeaders() = createRequest.GetHeaders();
-    request->SetFileSystemId(createRequest.GetFileSystemId());
     request->SetNodeId(nodeId);
     request->SetHandle(handle);
-    request->SetFlags(createRequest.GetFlags());
+    request->SetFlags(flags);
     request->SetOriginalRequestId(originalRequestId);
     return request;
 }
@@ -115,9 +114,9 @@ void TFileSystem::ConfirmCreateHandleAndReplyOpen(
         ? createRequest.GetHeaders().GetRequestId()
         : callContext->RequestId;
     auto confirmRequest = CreateConfirmCreateHandleRequest(
-        createRequest,
         nodeId,
         handle,
+        createRequest.GetFlags(),
         originalRequestId);
 
     Session->ConfirmCreateHandle(callContext, std::move(confirmRequest))
@@ -422,9 +421,9 @@ void TFileSystem::ProcessAsyncCreateHandleResponse(
     THandleOpsQueue::EResult result;
     with_lock (HandleOpsQueueLock) {
         result = HandleOpsQueue->AddCreateRequest(
-            originalRequest,
             ino,
             asyncResponse.GetHandle(),
+            originalRequest.GetFlags(),
             originalRequestId);
     }
 

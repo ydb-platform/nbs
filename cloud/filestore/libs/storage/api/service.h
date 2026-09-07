@@ -40,7 +40,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
                                                                                \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
-    xxx(RenameNode,                         __VA_ARGS__)                       \
     xxx(ReadLink,                           __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID
 
@@ -64,6 +63,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
     xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
+    xxx(RenameNode,                         __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_HANDLE
 
 #define FILESTORE_SERVICE_REQUESTS(xxx, ...)                                   \

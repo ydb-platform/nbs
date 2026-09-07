@@ -12,6 +12,7 @@ SRCS(
     collect_filesystem_snapshots_task.proto
     delete_filesystem_snapshot_data_task.proto
     delete_filesystem_snapshot_task.proto
+    restore_filesystem_shard_task.proto
     transfer_from_snapshot_to_filesystem_task.proto
 )
 

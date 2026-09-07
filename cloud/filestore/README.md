@@ -68,6 +68,20 @@ qemu@test> mkdir mnt
 qemu@test> sudo mount -t virtiofs fs0 mnt    # creates mount point for the filestore
 ```
 
+- You can also connect to the running VM via SSH from the `cloud/filestore/bin`
+  directory. Port `2222` is forwarded to the VM by default:
+```bash
+ssh -p 2222 \
+    -i ../../storage/core/tools/testing/qemu/keys/id_rsa \
+    qemu@127.0.0.1
+```
+
+- To stop QEMU from its interactive console, press `Ctrl-A`, release the keys,
+  and then press `X`. Alternatively, shut down the VM from inside the guest:
+```bash
+sudo poweroff
+```
+
 - or you can mount filestore localy
 ```bash
 ./initctl.sh mount
@@ -76,11 +90,11 @@ qemu@test> sudo mount -t virtiofs fs0 mnt    # creates mount point for the files
 To run second (third, fourth, etc.) VM:
 ```bash
 CLIENT_ID="local-qemu2" VHOST_SOCKET_PATH="/tmp/vhost2.sock" ./initctl.sh startendpoint
-QMP_PORT=4445 NET_PORT=3390 VHOST_SOCKET_PATH="/tmp/vhost2.sock" ./run_test_qemu.sh
+QMP_PORT=4445 NET_PORT=3390 SSH_PORT=2223 VHOST_SOCKET_PATH="/tmp/vhost2.sock" ./run_test_qemu.sh
 ```
 ```bash
 CLIENT_ID="local-qemu3" VHOST_SOCKET_PATH="/tmp/vhost3.sock" ./initctl.sh startendpoint
-QMP_PORT=4446 NET_PORT=3391 VHOST_SOCKET_PATH="/tmp/vhost3.sock" ./run_test_qemu.sh
+QMP_PORT=4446 NET_PORT=3391 SSH_PORT=2224 VHOST_SOCKET_PATH="/tmp/vhost3.sock" ./run_test_qemu.sh
 ```
 
 Thanks for flying NFS

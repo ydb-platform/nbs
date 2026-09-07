@@ -1986,6 +1986,13 @@ func (s *storageYDB) forceFinishTask(
 	state.ChangedStateAt = now
 	state.EndedAt = now
 
+	if state.Regular && !IsEnded(lastState.Status) {
+		err = s.decrementRegularTasksInflight(ctx, tx, state.TaskType)
+		if err != nil {
+			return err
+		}
+	}
+
 	transitions := []stateTransition{
 		{
 			lastState: &lastState,

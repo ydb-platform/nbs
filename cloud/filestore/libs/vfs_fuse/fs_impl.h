@@ -368,9 +368,9 @@ private:
 
     static std::shared_ptr<NProto::TConfirmCreateHandleRequest>
     CreateConfirmCreateHandleRequest(
-        const NProto::TCreateHandleRequest& createRequest,
         ui64 nodeId,
         ui64 handle,
+        ui32 flags,
         ui64 originalRequestId);
 
     void ConfirmCreateHandleAndReplyOpen(

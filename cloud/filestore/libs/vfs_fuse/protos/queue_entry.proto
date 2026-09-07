@@ -6,12 +6,16 @@ package NCloud.NFileStore.NProto;
 
 message TQueuedCreateHandleRequest
 {
-    TCreateHandleRequest Request = 1;
-    uint64 Handle = 2;
-    uint64 NodeId = 3;
+    // Node that the handle belongs to.
+    fixed64 NodeId = 1;
 
-    // Stored separately for convenience. This value is also contained in
-    // Request.Headers.RequestId.
+    // Handle returned by the asynchronous CreateHandle.
+    fixed64 Handle = 2;
+
+    // Flags of the original CreateHandle request.
+    uint32 Flags = 3;
+
+    // Request id of the original CreateHandle request.
     uint64 OriginalRequestId = 4;
 }
 

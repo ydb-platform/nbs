@@ -8,8 +8,10 @@ SRCS(
     describe_volume.cpp
     endpoint_bootstrap_impl.cpp
     endpoint_bootstrap.cpp
+    endpoint_router.cpp
     host_pool.cpp
     remote_storage.cpp
+    transport_switcher.cpp
 )
 
 PEERDIR(
@@ -22,6 +24,8 @@ PEERDIR(
 
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/rdma/impl
+
+    library/cpp/threading/hot_swap
 )
 
 END()

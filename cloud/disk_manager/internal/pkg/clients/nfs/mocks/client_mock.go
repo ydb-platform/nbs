@@ -73,6 +73,16 @@ func (c *ClientMock) GetFileSystemTopology(
 	return res, args.Error(1)
 }
 
+func (c *ClientMock) GetStorageStats(
+	ctx context.Context,
+	filesystemID string,
+) (nfs.StorageStats, error) {
+
+	args := c.Called(ctx, filesystemID)
+	res, _ := args.Get(0).(nfs.StorageStats)
+	return res, args.Error(1)
+}
+
 func (c *ClientMock) DescribeModel(
 	ctx context.Context,
 	blocksCount uint64,

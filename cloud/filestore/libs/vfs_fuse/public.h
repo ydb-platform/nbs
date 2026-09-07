@@ -30,4 +30,7 @@ class TDirectoryEntryVersionCache;
 using TDirectoryEntryVersionCachePtr =
     std::shared_ptr<TDirectoryEntryVersionCache>;
 
+struct IPersistentStateManager;
+using IPersistentStateManagerPtr = std::shared_ptr<IPersistentStateManager>;
+
 }   // namespace NCloud::NFileStore::NFuse

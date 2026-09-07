@@ -24,7 +24,7 @@ SRCS(
     disk_agent_state.cpp
     disk_agent.cpp
     hash_table_storage.cpp
-    journalled_device.cpp
+    journalled_device_adapter.cpp
     rdma_target.cpp
     recent_blocks_tracker.cpp
     spdk_initializer.cpp
@@ -46,6 +46,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/model
 
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/journalled_device
     cloud/storage/core/libs/journalled_device_tcp_server
     cloud/storage/core/libs/rdma/iface
 

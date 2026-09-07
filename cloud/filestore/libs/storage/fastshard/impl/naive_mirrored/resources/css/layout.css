@@ -18,3 +18,29 @@
 .fsl-table thead {
     background: #eee;
 }
+
+.fsl-loader {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #ccc;
+    border-top-color: #333;
+    border-radius: 50%;
+    vertical-align: middle;
+    animation: fsl-spin 0.8s linear infinite;
+}
+
+.fsl-loader[hidden] {
+    display: none;
+}
+
+@keyframes fsl-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.fsl-error {
+    color: #a00;
+    font-family: monospace;
+}

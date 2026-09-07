@@ -46,13 +46,15 @@ on:
 concurrency:
   group: orchestrator-proxy
 
+permissions:
+  contents: read
+
 env:
   GIT_CONFIG_COUNT: "1"
   GIT_CONFIG_KEY_0: http.version
   GIT_CONFIG_VALUE_0: HTTP/1.1
 
 jobs:
-  
   restart:
     name: Run ${{ inputs.workflow_name }}
     if: ${{ !cancelled() }}
@@ -73,7 +75,7 @@ jobs:
         run: sleep 15
       - name: Run gh cli to start this workflow with the same arguments
         if: ${{ always() }}
-        shell: bash --noprofile --norc -eo pipefail -x {0} 
+        shell: bash --noprofile --norc -eo pipefail -x {0}
         run: |
           gh workflow run "${WORKFLOW_NAME}" -R "${GITHUB_REPO}"
         env:

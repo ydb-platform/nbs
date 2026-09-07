@@ -258,6 +258,15 @@ void TStorageServiceActor::HandleCreateHandle(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    auto* session =
+        GetAndValidateSession<TEvService::TCreateHandleMethod>(ctx, ev);
+    if (!session) {
+        return;
+    }
+
+    if (TryHandleControlNamespaceCreateHandle(ctx, ev, session)) {
+        return;
+    }
 
     if (msg->Record.GetName().empty()) {
         // handle creation by NodeId can be handled directly by the shard
@@ -265,22 +274,13 @@ void TStorageServiceActor::HandleCreateHandle(
             ctx,
             ev,
             true /* forceBehaveAsShard */,
-            msg->Record.GetNodeId());
+            msg->Record.GetNodeId(),
+            session);
         return;
     }
 
-    const auto& clientId = GetClientId(msg->Record);
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
-
-    auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId ||
-        !session->GetSessionActor(seqNo))
-    {
-        auto response = std::make_unique<TEvService::TEvCreateHandleResponse>(
-            ErrorInvalidSession(clientId, sessionId, seqNo));
-        return NCloud::Reply(ctx, *ev, std::move(response));
-    }
     const NProto::TFileStore& filestore = session->FileStore;
 
     auto& headers = *msg->Record.MutableHeaders();

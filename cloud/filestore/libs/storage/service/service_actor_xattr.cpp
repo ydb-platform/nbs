@@ -111,33 +111,6 @@ STFUNC(TSetHasXAttrsActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-TSessionInfo* TStorageServiceActor::GetAndValidateSession(
-    const NActors::TActorContext& ctx,
-    const typename TMethod::TRequest::TPtr& ev)
-{
-    auto* msg = ev->Get();
-
-    const auto& clientId = GetClientId(msg->Record);
-    const auto& sessionId = GetSessionId(msg->Record);
-    const ui64 seqNo = GetSessionSeqNo(msg->Record);
-
-    TSessionInfo* session = State->FindSession(sessionId, seqNo);
-    if (!session ||
-        session->ClientId != clientId ||
-        !session->GetSessionActor(seqNo))
-    {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            ErrorInvalidSession(clientId, sessionId, seqNo));
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return nullptr;
-    }
-
-    return session;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TMethod>
 void TStorageServiceActor::ForwardXAttrRequest(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
@@ -257,6 +230,10 @@ void TStorageServiceActor::HandleGetNodeXAttr(
         return;
     }
 
+    if (TryHandleControlNamespaceGetNodeXAttr(ctx, ev, session)) {
+        return;
+    }
+
     // If there are no extended attributes in the filesystem we don't
     // forward corresponding requests to the tablet and reply from the service
     // actor
@@ -289,6 +266,10 @@ void TStorageServiceActor::HandleListNodeXAttr(
         return;
     }
 
+    if (TryHandleControlNamespaceListNodeXAttr(ctx, ev, session)) {
+        return;
+    }
+
     // if there no extended attributes in the file system we return an empty
     // list
     if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
@@ -316,6 +297,10 @@ void TStorageServiceActor::HandleSetNodeXAttr(
     const TSessionInfo* session =
         GetAndValidateSession<TEvService::TSetNodeXAttrMethod>(ctx, ev);
     if (!session) {
+        return;
+    }
+
+    if (TryHandleControlNamespaceSetNodeXAttr(ctx, ev, session)) {
         return;
     }
 

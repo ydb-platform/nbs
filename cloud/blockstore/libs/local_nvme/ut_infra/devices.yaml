@@ -4,6 +4,7 @@ devices:
     owner: nbs
   - pci: 0000:31:00.0
     serial: NVME_1
+    state: decommissioned
     owner: nbs
   - pci: 0000:33:00.0
     serial: NVME_2

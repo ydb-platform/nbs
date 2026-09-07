@@ -1002,6 +1002,10 @@ void TIndexTabletActor::HandleHttpInfo(
             &TIndexTabletActor::HandleHttpInfo_Locks
         },
         {
+            "fastShardStatsJson",
+            &TIndexTabletActor::HandleHttpInfo_FastShardStatsJson
+        },
+        {
             "fastShardLayoutJson",
             &TIndexTabletActor::HandleHttpInfo_FastShardLayoutJson
         },

@@ -116,6 +116,9 @@ message TReadPagesResponse
 
     // Requested pages.
     repeated TDevicePageGroup PageGroups = 3;
+
+    // The log sequence number of the last acked record.
+    uint64 LastAckedLogSequenceNumber = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -189,6 +192,9 @@ message TReadJournalTailResponse
 
     // The records still kept in the journal, ordered by LogSequenceNumber.
     repeated TJournalRecord Records = 3;
+
+    // The log sequence number of the last acked record.
+    uint64 LastAckedLogSequenceNumber = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

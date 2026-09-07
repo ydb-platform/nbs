@@ -564,6 +564,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     {
         args.Error = SelectShard(
             static_cast<NProto::ENodeType>(args.Attrs.GetType()),
+            args.ParentNodeId,
             args.Attrs.GetSize(),
             &args.ShardId);
         if (HasError(args.Error)) {

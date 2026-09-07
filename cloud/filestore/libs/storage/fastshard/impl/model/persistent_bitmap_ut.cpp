@@ -1,4 +1,4 @@
-#include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/persistent_bitmap.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_bitmap.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

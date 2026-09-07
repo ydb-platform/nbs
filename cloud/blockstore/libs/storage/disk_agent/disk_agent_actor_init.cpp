@@ -3,12 +3,14 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/io_request_parser.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
-#include <cloud/blockstore/libs/storage/disk_agent/journalled_device.h>
+#include <cloud/blockstore/libs/storage/disk_agent/journalled_device_adapter.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/future_helper.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/journalled_device/journalled_device.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
@@ -172,12 +174,17 @@ void TDiskAgentActor::HandleInitAgentCompleted(
     }
 
     if (State) {
-        THashMap<TString, IJournalledDevicePtr> devices;
+        THashMap<TString, NJournalled::IJournalledDevicePtr> devices;
+
+        auto timer = CreateWallClockTimer();
 
         for (const auto& deviceId: State->GetDeviceIds()) {
             devices.emplace(
                 deviceId,
-                CreateJournalledDevice(deviceId, State->GetDeviceClient()));
+                NJournalled::CreateJournalledDevice(CreateDeviceAdapter(
+                    timer,
+                    deviceId,
+                    State->GetDeviceClient())));
         }
 
         StartJournalledDeviceTcpServer(ctx, std::move(devices));

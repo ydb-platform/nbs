@@ -14,6 +14,7 @@ import (
 	client_metrics_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	stats_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos"
 	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
@@ -344,6 +345,70 @@ func TestClientGetFileSystemTopologyError(t *testing.T) {
 	topology, err := c.GetFileSystemTopology(ctx, "fs-1")
 	require.ErrorIs(t, err, testError)
 	require.Equal(t, nfs.FilesystemTopology{}, topology)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
+func TestClientGetStorageStatsSuccess(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "GetStorageStats", true)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getstoragestats",
+		matchesActionRequest(
+			&stats_protos.TGetStorageStatsRequest{
+				FileSystemId: "fs-1",
+			},
+		),
+	).Return(
+		marshalActionResponse(
+			t,
+			&stats_protos.TGetStorageStatsResponse{
+				Stats: &stats_protos.TStorageStats{
+					UsedNodesCount:   42,
+					UsedBlocksCount:  100,
+					TotalBlocksCount: 1024,
+				},
+			},
+		),
+		nil,
+	).Once()
+
+	c := newTestClient(nfsMock, registryMock)
+	stats, err := c.GetStorageStats(ctx, "fs-1")
+	require.NoError(t, err)
+	require.Equal(t, nfs.StorageStats{
+		UsedNodesCount:   42,
+		UsedBlocksCount:  100,
+		TotalBlocksCount: 1024,
+	}, stats)
+
+	nfsMock.AssertExpectations(t)
+	registryMock.AssertAllExpectations(t)
+}
+
+func TestClientGetStorageStatsError(t *testing.T) {
+	ctx := context.Background()
+	registryMock := metrics_mocks.NewRegistryMock()
+	setupRequestMocks(registryMock, "GetStorageStats", false)
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getstoragestats",
+		mock.Anything,
+	).Return(nil, testError).Once()
+
+	c := newTestClient(nfsMock, registryMock)
+	stats, err := c.GetStorageStats(ctx, "fs-1")
+	require.ErrorIs(t, err, testError)
+	require.Equal(t, nfs.StorageStats{}, stats)
 
 	nfsMock.AssertExpectations(t)
 	registryMock.AssertAllExpectations(t)
@@ -1044,6 +1109,87 @@ func TestClientGetFileSystemTopologyWrappedError(t *testing.T) {
 	var clientErr *nfs_client.ClientError
 	require.ErrorAs(t, err, &clientErr)
 	require.ErrorIs(t, err, retriableError)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
+}
+
+func TestClientGetStorageStatsWrappedError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On(
+		"StatRequest",
+		"GetStorageStats",
+	).Return(func(err *error) {
+		require.Error(t, *err)
+		var clientErr *nfs_client.ClientError
+		require.ErrorAs(t, *err, &clientErr)
+		require.ErrorIs(t, *err, retriableError)
+	}).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getstoragestats",
+		mock.Anything,
+	).Return(nil, testNfsClientError).Once()
+
+	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+	stats, err := c.GetStorageStats(ctx, "fs-1")
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.ErrorIs(t, err, retriableError)
+	require.Equal(t, nfs.StorageStats{}, stats)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
+}
+
+func TestClientGetStorageStatsResponseWrappedError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On(
+		"StatRequest",
+		"GetStorageStats",
+	).Return(func(err *error) {
+		require.Error(t, *err)
+		var clientErr *nfs_client.ClientError
+		require.ErrorAs(t, *err, &clientErr)
+		require.ErrorIs(t, *err, task_errors.NewEmptyRetriableError())
+		require.Equal(t, testNfsClientError, clientErr)
+	}).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getstoragestats",
+		mock.Anything,
+	).Return(
+		marshalActionResponse(
+			t,
+			&stats_protos.TGetStorageStatsResponse{
+				Error: &coreprotos.TError{
+					Code:    testNfsClientError.Code,
+					Message: testNfsClientError.Message,
+				},
+			},
+		),
+		nil,
+	).Once()
+
+	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+	stats, err := c.GetStorageStats(ctx, "fs-1")
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.ErrorIs(t, err, task_errors.NewEmptyRetriableError())
+	require.Equal(t, testNfsClientError, clientErr)
+	require.Equal(t, nfs.StorageStats{}, stats)
 
 	nfsMock.AssertExpectations(t)
 	metricsMock.AssertExpectations(t)
@@ -1753,6 +1899,89 @@ func TestClientGetFileSystemTopologyNonRetriableError(t *testing.T) {
 	require.ErrorAs(t, err, &clientErr)
 	require.NotErrorIs(t, err, retriableError)
 	require.ErrorIs(t, err, testNfsClientNonRetriableError)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
+}
+
+func TestClientGetStorageStatsNonRetriableError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On(
+		"StatRequest",
+		"GetStorageStats",
+	).Return(func(err *error) {
+		require.Error(t, *err)
+		var clientErr *nfs_client.ClientError
+		require.ErrorAs(t, *err, &clientErr)
+		require.NotErrorIs(t, *err, task_errors.NewEmptyRetriableError())
+		require.ErrorIs(t, *err, testNfsClientNonRetriableError)
+	}).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getstoragestats",
+		mock.Anything,
+	).Return(nil, testNfsClientNonRetriableError).Once()
+
+	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+	stats, err := c.GetStorageStats(ctx, "fs-1")
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.NotErrorIs(t, err, task_errors.NewEmptyRetriableError())
+	require.ErrorIs(t, err, testNfsClientNonRetriableError)
+	require.Equal(t, nfs.StorageStats{}, stats)
+
+	nfsMock.AssertExpectations(t)
+	metricsMock.AssertExpectations(t)
+}
+
+func TestClientGetStorageStatsResponseNonRetriableError(t *testing.T) {
+	ctx := context.Background()
+
+	metricsMock := client_metrics_mocks.NewMetricsMock()
+	metricsMock.On(
+		"StatRequest",
+		"GetStorageStats",
+	).Return(func(err *error) {
+		require.Error(t, *err)
+		var clientErr *nfs_client.ClientError
+		require.ErrorAs(t, *err, &clientErr)
+		require.NotErrorIs(t, *err, task_errors.NewEmptyRetriableError())
+		require.Equal(t, testNfsClientNonRetriableError, clientErr)
+	}).Once()
+
+	nfsMock := nfs_client_mocks.NewClientInterfaceMock()
+	nfsMock.On(
+		"ExecuteAction",
+		mock.Anything,
+		"getstoragestats",
+		mock.Anything,
+	).Return(
+		marshalActionResponse(
+			t,
+			&stats_protos.TGetStorageStatsResponse{
+				Error: &coreprotos.TError{
+					Code:    testNfsClientNonRetriableError.Code,
+					Message: testNfsClientNonRetriableError.Message,
+				},
+			},
+		),
+		nil,
+	).Once()
+
+	c := newTestClientWithMetricsMock(nfsMock, metricsMock)
+	stats, err := c.GetStorageStats(ctx, "fs-1")
+	require.Error(t, err)
+	var clientErr *nfs_client.ClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.NotErrorIs(t, err, task_errors.NewEmptyRetriableError())
+	require.Equal(t, testNfsClientNonRetriableError, clientErr)
+	require.Equal(t, nfs.StorageStats{}, stats)
 
 	nfsMock.AssertExpectations(t)
 	metricsMock.AssertExpectations(t)

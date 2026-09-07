@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/vfs/config.h>
 #include <cloud/filestore/libs/vfs/loop.h>
 #include <cloud/filestore/libs/vfs_fuse/loop.h>
+#include <cloud/filestore/libs/vfs_fuse/persistent_state_manager.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -124,7 +125,8 @@ TStarter::TStarter()
         Timer,
         CreateProfileLogStub(),
         std::move(session),
-        CreateFileMapMemoryLimiterStub());
+        CreateFileMapMemoryLimiterStub(),
+        CreatePersistentStateManagerStub());
 }
 
 

@@ -1000,18 +1000,18 @@ void TStorageServiceActor::HandleWriteData(
 
     FILESTORE_TRACK(RequestReceived_Service, msg->CallContext, "WriteData");
 
-    const auto& clientId = GetClientId(msg->Record);
+    auto* session =
+        GetAndValidateSession<TEvService::TWriteDataMethod>(ctx, ev);
+    if (!session) {
+        return;
+    }
+
+    if (TryHandleControlNamespaceWriteData(ctx, ev, session)) {
+        return;
+    }
+
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
-
-    auto* session = State->FindSession(sessionId, seqNo);
-    if (!session || session->ClientId != clientId ||
-        !session->GetSessionActor(seqNo))
-    {
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>(
-            ErrorInvalidSession(clientId, sessionId, seqNo));
-        return NCloud::Reply(ctx, *ev, std::move(response));
-    }
     const NProto::TFileStore& filestore = session->FileStore;
 
     // In handleless IO mode, if the handle is not set, we use the nodeId to

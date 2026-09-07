@@ -6,6 +6,7 @@
 #include "fuse.h"
 #include "handle_ops_queue.h"
 #include "log.h"
+#include "persistent_state_manager.h"
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -29,13 +30,10 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/datetime/base.h>
-#include <util/folder/path.h>
 #include <util/generic/bitops.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
 #include <util/system/event.h>
-#include "util/system/file_lock.h"
-#include <util/system/fs.h>
 #include <util/system/info.h>
 #include <util/system/rwlock.h>
 #include <util/system/spinlock.h>
@@ -59,49 +57,6 @@ using namespace NCloud::NFileStore::NVFS;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
-static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
-static constexpr TStringBuf DirectoryHandleStorageFileName = "directory_handles_storage";
-
-NProto::TError CreateAndLockFile(
-    const TString& dir,
-    const TStringBuf& fileName,
-    THolder<TFileLock>& fileLock)
-{
-    if (!NFs::MakeDirectoryRecursive(dir)) {
-        return MakeError(
-            E_FAIL,
-            TStringBuilder() << "Failed to create directories, path: " << dir);
-    }
-
-    auto filePath = TFsPath(dir) / fileName;
-    filePath.Touch();
-    fileLock = MakeHolder<TFileLock>(filePath);
-    if (!fileLock->TryAcquire()) {
-        return MakeError(
-            E_FAIL,
-            TStringBuilder() << "Failed to lock file, path: %s " << filePath);
-    }
-    return {};
-}
-
-NProto::TError UnlockAndDeleteFile(
-    const TString& dir,
-    THolder<TFileLock>& fileLock)
-{
-    fileLock->Release();
-
-    try {
-        NFs::RemoveRecursive(dir);
-    } catch (const TSystemError& err) {
-        return MakeError(
-            E_FAIL,
-            TStringBuilder() << "Failed to remove dir"
-                             << ", reason: " << err.AsStrBuf());
-    }
-    return {};
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -711,6 +666,17 @@ private:
     const IProfileLogPtr ProfileLog;
     const ISessionPtr Session;
     const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
+    const IPersistentStateManagerPtr PersistentState;
+
+    // Hold the locks on the state files for as long as the loop lives: if the
+    // loop goes away without being stopped (e.g. its start has failed and the
+    // endpoint is dropped), the files stay on disk for a future session.
+    // Declared before everything that uses the files (the write-back cache,
+    // the file system with its handle ops queue and directory handle storage)
+    // so that the locks are released after those are gone.
+    TAcquireStateFileGuard HandleOpsQueueStateFileGuard;
+    TAcquireStateFileGuard WriteBackCacheStateFileGuard;
+    TAcquireStateFileGuard DirectoryHandleStorageStateFileGuard;
 
     TLog Log;
 
@@ -725,14 +691,7 @@ private:
     TDirectoryHandleModuleStatsPtr DirectoryHandleStats;
     TFileSystemConfigPtr FileSystemConfig;
 
-    THolder<TFileLock> HandleOpsQueueFileLock;
-    THolder<TFileLock> WriteBackCacheFileLock;
-    THolder<TFileLock> DirectoryHandleStorageFileLock;
-
     TWriteBackCache WriteBackCache;
-
-    bool HandleOpsQueueInitialized = false;
-    bool DirectoryHandleStorageInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -745,7 +704,8 @@ public:
             ITimerPtr timer,
             IProfileLogPtr profileLog,
             ISessionPtr session,
-            IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
+            IFileMapMemoryLimiterPtr fileMapMemoryLimiter,
+            IPersistentStateManagerPtr persistentState)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , StatsRegistry(std::move(statsRegistry))
@@ -756,6 +716,7 @@ public:
         , ProfileLog(std::move(profileLog))
         , Session(std::move(session))
         , FileMapMemoryLimiter(std::move(fileMapMemoryLimiter))
+        , PersistentState(std::move(persistentState))
     {
         Log = Logging->CreateLog("NFS_FUSE");
     }
@@ -995,31 +956,35 @@ private:
 
             SessionId = response.GetSession().GetSessionId();
 
+            // The state files are kept under the filesystem id returned by
+            // the server rather than the requested one: the latter may be an
+            // alias, which the server resolves upon session creation.
             THandleOpsQueuePtr handleOpsQueue;
             if (Config->GetHandleOpsQueuePath()) {
-                const auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
-                                  FileSystemConfig->GetFileSystemId() /
-                                  SessionId;
-                if (path.Exists() || ShouldCreateHandleOpsQueue(*FileSystemConfig)) {
-                    auto error = CreateAndLockFile(
-                        path,
-                        HandleOpsQueueFileName,
-                        HandleOpsQueueFileLock);
+                if (PersistentState->HasHandleOpsQueueState(
+                        FileSystemConfig->GetFileSystemId(),
+                        SessionId) ||
+                    ShouldCreateHandleOpsQueue(*FileSystemConfig))
+                {
+                    auto result =
+                        PersistentState->AcquireHandleOpsQueueStateFile(
+                            FileSystemConfig->GetFileSystemId(),
+                            SessionId);
 
-                    if (HasError(error)) {
+                    if (HasError(result)) {
                         ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
-                            "[f:%s][c:%s] CreateAndLockFile error: %s (%s)",
+                            "[f:%s][c:%s] AcquireHandleOpsQueueStateFile "
+                            "error: %s",
                             Config->GetFileSystemId().Quote().c_str(),
                             Config->GetClientId().Quote().c_str(),
-                            error.GetMessage().c_str(),
-                            path.c_str()));
-                        return error;
+                            result.GetError().GetMessage().c_str()));
+                        return result.GetError();
                     }
 
+                    HandleOpsQueueStateFileGuard = result.ExtractResult();
                     handleOpsQueue = CreateHandleOpsQueue(
-                        path / HandleOpsQueueFileName,
+                        HandleOpsQueueStateFileGuard.GetFilePath(),
                         Config->GetHandleOpsQueueSize());
-                    HandleOpsQueueInitialized = true;
                 }
             } else if (ShouldCreateHandleOpsQueue(*FileSystemConfig)) {
                 ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
@@ -1030,27 +995,27 @@ private:
             }
 
             if (Config->GetWriteBackCachePath()) {
-                auto path = TFsPath(Config->GetWriteBackCachePath()) /
-                            FileSystemConfig->GetFileSystemId() / SessionId;
-
-                if (path.Exists() ||
+                if (PersistentState->HasWriteBackCacheState(
+                        FileSystemConfig->GetFileSystemId(),
+                        SessionId) ||
                     FileSystemConfig->GetServerWriteBackCacheEnabled())
                 {
-                    auto error = CreateAndLockFile(
-                        path,
-                        WriteBackCacheFileName,
-                        WriteBackCacheFileLock);
+                    auto result =
+                        PersistentState->AcquireWriteBackCacheStateFile(
+                            FileSystemConfig->GetFileSystemId(),
+                            SessionId);
 
-                    if (HasError(error)) {
+                    if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
-                            "[f:%s][c:%s] CreateAndLockFile error: %s (%s)",
+                            "[f:%s][c:%s] AcquireWriteBackCacheStateFile "
+                            "error: %s",
                             Config->GetFileSystemId().Quote().c_str(),
                             Config->GetClientId().Quote().c_str(),
-                            error.GetMessage().c_str(),
-                            path.c_str()));
-                        return error;
+                            result.GetError().GetMessage().c_str()));
+                        return result.GetError();
                     }
 
+                    WriteBackCacheStateFileGuard = result.ExtractResult();
                     WriteBackCache = TWriteBackCache(
                         {.Session = Session,
                          .Scheduler = Scheduler,
@@ -1059,7 +1024,7 @@ private:
                          .Log = Log,
                          .FileSystemId = Config->GetFileSystemId(),
                          .ClientId = Config->GetClientId(),
-                         .FilePath = path / WriteBackCacheFileName,
+                         .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
                          .CapacityBytes = Config->GetWriteBackCacheCapacity(),
                          .AutomaticFlushPeriod =
                              Config->GetWriteBackCacheAutomaticFlushPeriod(),
@@ -1109,20 +1074,20 @@ private:
             IDirectoryHandleStorageStatsPtr directoryHandleStorageStats;
             TDirectoryHandleStoragePtr directoryHandleStorage;
             if (Config->GetDirectoryHandlesStoragePath()) {
-                auto path = TFsPath(Config->GetDirectoryHandlesStoragePath()) /
-                            FileSystemConfig->GetFileSystemId() / SessionId;
-                auto filePath = path / DirectoryHandleStorageFileName;
-
                 if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
-                    auto error = CreateAndLockFile(
-                        path,
-                        DirectoryHandleStorageFileName,
-                        DirectoryHandleStorageFileLock);
+                    auto result =
+                        PersistentState->AcquireDirectoryHandleStorageStateFile(
+                            FileSystemConfig->GetFileSystemId(),
+                            SessionId);
 
-                    if (HasError(error)) {
-                        ReportDirectoryHandlesStorageError(error.GetMessage());
-                        return error;
+                    if (HasError(result)) {
+                        ReportDirectoryHandleStorageError(
+                            result.GetError().GetMessage());
+                        return result.GetError();
                     }
+
+                    DirectoryHandleStorageStateFileGuard =
+                        result.ExtractResult();
 
                     directoryHandleStorageStats =
                         CreateDirectoryHandleStorageStats(Timer);
@@ -1131,7 +1096,8 @@ private:
                         {.Log = Log,
                          .FileMapMemoryLimiter = FileMapMemoryLimiter,
                          .Stats = directoryHandleStorageStats,
-                         .FilePath = filePath,
+                         .FilePath =
+                             DirectoryHandleStorageStateFileGuard.GetFilePath(),
                          .MaxRecords =
                              FileSystemConfig->GetDirectoryHandlesTableSize(),
                          .InitialDataAreaSize =
@@ -1143,20 +1109,25 @@ private:
                          .PersistentHandleMaxSize =
                              FileSystemConfig
                                  ->GetDirectoryHandlesPersistentHandleMaxSize()});
-
-                    DirectoryHandleStorageInitialized = true;
-                } else if (filePath.Exists()) {
+                } else if (PersistentState->HasDirectoryHandleStorageState(
+                               FileSystemConfig->GetFileSystemId(),
+                               SessionId))
+                {
                     // The feature is disabled but a file from a previous
                     // session with it enabled is still on disk. The file
-                    // holds only a derived view of the directory listing,
-                    // so it can be removed without any drain.
-                    try {
-                        NFs::Remove(filePath);
-                    } catch (const TSystemError& err) {
-                        ReportDirectoryHandlesStorageError(
-                            TStringBuilder()
-                            << "Failed to remove orphan directory handles "
-                            << filePath << ": " << err.AsStrBuf());
+                    // holds only a derived view of the directory listing, so
+                    // it can be removed without any drain.
+                    auto result =
+                        PersistentState->AcquireDirectoryHandleStorageStateFile(
+                            FileSystemConfig->GetFileSystemId(),
+                            SessionId);
+
+                    NProto::TError error = result.GetError();
+                    if (!HasError(error)) {
+                        error = result.ExtractResult().DeleteStateFile();
+                    }
+                    if (HasError(error)) {
+                        ReportDirectoryHandleStorageError(error.GetMessage());
                     }
                 }
             } else if (FileSystemConfig->GetDirectoryHandlesStorageEnabled()) {
@@ -1541,37 +1512,24 @@ private:
         ModuleStatsRegistry->Unregister(SessionId);
 
         // We need to cleanup HandleOpsQueue file and directories
-        if (HandleOpsQueueInitialized) {
-            auto error = UnlockAndDeleteFile(
-                TFsPath(Config->GetHandleOpsQueuePath()) /
-                    Config->GetFileSystemId() / SessionId,
-                HandleOpsQueueFileLock);
-            if (HasError(error)) {
-                ReportHandleOpsQueueCreatingOrDeletingError(error.GetMessage());
-            }
+        auto error = HandleOpsQueueStateFileGuard.DeleteStateFile();
+        if (HasError(error)) {
+            ReportHandleOpsQueueCreatingOrDeletingError(error.GetMessage());
         }
 
-        // We need to cleanup WriteBackCache file and directories
-        if (WriteBackCache) {
-            WriteBackCache = {};
+        // We need to cleanup WriteBackCache file and directories:
+        // destroy the cache before releasing the lock and removing
+        // its backing file
+        WriteBackCache = {};
 
-            auto error = UnlockAndDeleteFile(
-                TFsPath(Config->GetWriteBackCachePath()) /
-                    Config->GetFileSystemId() / SessionId,
-                WriteBackCacheFileLock);
-            if (HasError(error)) {
-                ReportWriteBackCacheCreatingOrDeletingError(error.GetMessage());
-            }
+        error = WriteBackCacheStateFileGuard.DeleteStateFile();
+        if (HasError(error)) {
+            ReportWriteBackCacheCreatingOrDeletingError(error.GetMessage());
         }
 
-        if (DirectoryHandleStorageInitialized) {
-            auto error = UnlockAndDeleteFile(
-                TFsPath(Config->GetDirectoryHandlesStoragePath()) /
-                    Config->GetFileSystemId() / SessionId,
-                DirectoryHandleStorageFileLock);
-            if (HasError(error)) {
-                ReportDirectoryHandlesStorageError(error.GetMessage());
-            }
+        error = DirectoryHandleStorageStateFileGuard.DeleteStateFile();
+        if (HasError(error)) {
+            ReportDirectoryHandleStorageError(error.GetMessage());
         }
 
         stopCompleted.SetValue();
@@ -1890,6 +1848,8 @@ struct TFileSystemLoopFactory
     const IModuleStatsRegistryPtr ModuleStats;
     const IFsCountersProviderPtr FsCountersProvider;
     const IProfileLogPtr ProfileLog;
+    // Shared by all the loops created by this factory
+    const IPersistentStateManagerPtr PersistentState;
 
     TFileSystemLoopFactory(
             ILoggingServicePtr logging,
@@ -1898,7 +1858,8 @@ struct TFileSystemLoopFactory
             IRequestStatsRegistryPtr requestStats,
             IModuleStatsRegistryPtr moduleStats,
             IFsCountersProviderPtr fsCountersProvider,
-            IProfileLogPtr profileLog)
+            IProfileLogPtr profileLog,
+            IPersistentStateManagerPtr persistentState)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -1906,6 +1867,7 @@ struct TFileSystemLoopFactory
         , ModuleStats(std::move(moduleStats))
         , FsCountersProvider(std::move(fsCountersProvider))
         , ProfileLog(std::move(profileLog))
+        , PersistentState(std::move(persistentState))
     {}
 
     IFileSystemLoopPtr Create(
@@ -1923,7 +1885,8 @@ struct TFileSystemLoopFactory
             Timer,
             ProfileLog,
             std::move(session),
-            std::move(fileMapMemoryLimiter));
+            std::move(fileMapMemoryLimiter),
+            PersistentState);
     }
 };
 
@@ -1941,7 +1904,8 @@ IFileSystemLoopPtr CreateFuseLoop(
     ITimerPtr timer,
     IProfileLogPtr profileLog,
     ISessionPtr session,
-    IFileMapMemoryLimiterPtr fileMapMemoryLimiter)
+    IFileMapMemoryLimiterPtr fileMapMemoryLimiter,
+    IPersistentStateManagerPtr persistentState)
 {
     return std::make_shared<TFileSystemLoop>(
         std::move(config),
@@ -1953,7 +1917,8 @@ IFileSystemLoopPtr CreateFuseLoop(
         std::move(timer),
         std::move(profileLog),
         std::move(session),
-        std::move(fileMapMemoryLimiter));
+        std::move(fileMapMemoryLimiter),
+        std::move(persistentState));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1965,7 +1930,8 @@ IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     IRequestStatsRegistryPtr requestStats,
     IModuleStatsRegistryPtr moduleStats,
     IFsCountersProviderPtr fsCountersProvider,
-    IProfileLogPtr profileLog)
+    IProfileLogPtr profileLog,
+    IPersistentStateManagerPtr persistentState)
 {
     struct TInitializer {
         TInitializer(const ILoggingServicePtr& logging)
@@ -1983,7 +1949,8 @@ IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
         std::move(requestStats),
         std::move(moduleStats),
         std::move(fsCountersProvider),
-        std::move(profileLog));
+        std::move(profileLog),
+        std::move(persistentState));
 }
 
 }   // namespace NCloud::NFileStore::NFuse

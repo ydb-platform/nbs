@@ -45,7 +45,7 @@ namespace NCloud::NFileStore{
     xxx(WriteBackCacheInitializationError)                                     \
     xxx(WriteBackCacheWritingNotAllowedInDrainingMode)                         \
     xxx(ErrorWasSentToTheGuest)                                                \
-    xxx(DirectoryHandlesStorageError)                                          \
+    xxx(DirectoryHandleStorageError)                                           \
     xxx(CalculateChecksumsBufferOverflow)                                      \
     xxx(UnexpectedFakeDescribeDataResponse)                                    \
     xxx(CreateLinkRequestWithShardNodeNameAndNoShardId)                        \
@@ -71,6 +71,7 @@ namespace NCloud::NFileStore{
     xxx(IncompatibleFeatures)                                                  \
     xxx(AvailabilityCountersUnavailableInterval)                               \
     xxx(AvailabilityCountersMissingIntervals)                                  \
+    xxx(PersistentStateSessionDirNotEmpty)                                     \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

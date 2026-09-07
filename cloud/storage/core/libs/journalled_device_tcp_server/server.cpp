@@ -34,7 +34,7 @@ namespace {
 template <
     typename TProtoRequest,
     typename TProtoResponse,
-    TFuture<TProtoResponse> (IServerBackend::*Method)(TInstant, TProtoRequest),
+    auto Method,
     TProtoRequest* (NProto::TDeviceProtocolRequest::*mutableRequest)(),
     TProtoResponse* (NProto::TDeviceProtocolResponse::*mutableResponse)()>
 struct TServerMethod
@@ -44,10 +44,9 @@ struct TServerMethod
 
     static auto Execute(
         IServerBackend& backend,
-        TInstant now,
         TRequest&& request) -> TFuture<TResponse>
     {
-        return (backend.*Method)(now, std::move(request));
+        return (backend.*Method)(std::move(request));
     }
 
     static auto MutableProto(NProto::TDeviceProtocolRequest& request)
@@ -194,7 +193,7 @@ private:
         try {
             auto& proto = TMethod::MutableProto(request);
 
-            future = TMethod::Execute(*Backend, Now(), std::move(proto));
+            future = TMethod::Execute(*Backend, std::move(proto));
         } catch (...) {
             STORAGE_ERROR(
                 TMethod::Name << " failed: " << CurrentExceptionMessage());

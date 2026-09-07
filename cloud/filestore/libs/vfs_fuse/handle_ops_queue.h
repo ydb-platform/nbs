@@ -29,9 +29,9 @@ public:
 
     IModuleStatsPtr GetModuleStats() const;
     EResult AddCreateRequest(
-        const NProto::TCreateHandleRequest& request,
         ui64 nodeId,
         ui64 handle,
+        ui32 flags,
         ui64 originalRequestId);
     EResult AddDestroyRequest(ui64 nodeId, ui64 handle);
     std::optional<NProto::TQueueEntry> Front();

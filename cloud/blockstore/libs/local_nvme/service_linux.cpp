@@ -255,6 +255,7 @@ private:
     auto RefreshDevice(const TSerialNumber& serialNumber)
         -> TResultOrError<NProto::TNVMeDevice>;
     auto UpdateDevices() -> NProto::TError;
+    void ReconcileDevices(TVector<NProto::TNVMeDevice> fetchedDevices);
     bool TryRestoreStateFromCache();
     void UpdateStateCache();
     auto CreateStateSnapshot() const -> NProto::TLocalNVMeServiceState;
@@ -316,7 +317,7 @@ TLocalNVMeService::TLocalNVMeService(
 
 void TLocalNVMeService::InitDevices()
 {
-    // Save the InitDevices continuation so Stop() can interrupt it.
+    // Allow Stop() to interrupt initialization and subsequent polling.
     InitDevicesCont = RunningCont();
     Y_DEBUG_ABORT_UNLESS(InitDevicesCont);
 
@@ -331,16 +332,19 @@ void TLocalNVMeService::InitDevices()
         return;
     }
 
-    // Initialization is complete; publish the Running state.
-    EServiceState state = EServiceState::Initializing;
-    if (!ServiceState.compare_exchange_strong(state, EServiceState::Running)) {
-        Y_DEBUG_ABORT_UNLESS(state == EServiceState::Stopped);
+    // Initialization is complete; Transition to Running unless Stop() completed
+    // concurrently.
+    EServiceState expectedState = EServiceState::Initializing;
+    if (!ServiceState.compare_exchange_strong(
+            expectedState,
+            EServiceState::Running))
+    {
+        Y_DEBUG_ABORT_UNLESS(expectedState == EServiceState::Stopped);
         return;
     }
 
-    // The service is already running, but devices may appear later. Keep
-    // polling the provider until at least one device becomes available.
-    while (Devices.empty()) {
+    // Refresh the device list periodically until Stop() interrupts the sleep.
+    for (;;) {
         if (!SleepCont(Config->GetUpdateDevicesInterval())) {
             return;
         }
@@ -362,6 +366,30 @@ void TLocalNVMeService::UpdateCounters()
         auto revisionCounter = fwGroup->GetCounter("revision", false);
         *revisionCounter = 1;
     }
+
+    ui32 onlineDevices = 0;
+    ui32 offlineDevices = 0;
+    ui32 maintenanceDevices = 0;
+
+    for (auto& [_, device]: Devices) {
+        switch (device.GetDeviceState()) {
+            case NProto::NVME_DEVICE_STATE_ONLINE:
+                ++onlineDevices;
+                break;
+            case NProto::NVME_DEVICE_STATE_MAINTENANCE:
+                ++maintenanceDevices;
+                break;
+            case NProto::NVME_DEVICE_STATE_OFFLINE:
+                ++offlineDevices;
+                break;
+            default:
+                break;
+        }
+    }
+
+    Counters->GetCounter("DevicesInOnlineState")->Set(onlineDevices);
+    Counters->GetCounter("DevicesInOfflineState")->Set(offlineDevices);
+    Counters->GetCounter("DevicesInMaintenanceState")->Set(maintenanceDevices);
 }
 
 void TLocalNVMeService::UpdateCountersLoop()
@@ -594,17 +622,67 @@ auto TLocalNVMeService::EnsureIsReady(
     return service;
 }
 
+void TLocalNVMeService::ReconcileDevices(
+    TVector<NProto::TNVMeDevice> fetchedDevices)
+{
+    SortBy(fetchedDevices, std::mem_fn(&NProto::TNVMeDevice::GetSerialNumber));
+
+    // Add newly discovered devices and refresh the state of known ones.
+    for (const auto& fetchedDevice: fetchedDevices) {
+        auto [it, inserted] =
+            Devices.try_emplace(fetchedDevice.GetSerialNumber(), fetchedDevice);
+
+        auto& device = it->second;
+
+        if (inserted) {
+            STORAGE_INFO(
+                "Discovered NVMe device "
+                << device.GetSerialNumber().Quote() << ", state: "
+                << NProto::ENVMeDeviceState_Name(device.GetDeviceState()));
+        } else {
+            const auto oldState = device.GetDeviceState();
+            const auto newState = fetchedDevice.GetDeviceState();
+
+            if (oldState != newState) {
+                STORAGE_INFO(
+                    "NVMe device "
+                    << device.GetSerialNumber().Quote() << " changed state: "
+                    << NProto::ENVMeDeviceState_Name(oldState) << " -> "
+                    << NProto::ENVMeDeviceState_Name(newState));
+            }
+
+            device.SetDeviceState(newState);
+        }
+    }
+
+    // Keep missing devices in the registry, but mark them as offline.
+    for (auto& [sn, device]: Devices) {
+        const bool found = std::ranges::binary_search(
+            fetchedDevices,
+            sn,
+            std::ranges::less{},
+            &NProto::TNVMeDevice::GetSerialNumber);
+
+        if (!found &&
+            device.GetDeviceState() != NProto::NVME_DEVICE_STATE_OFFLINE)
+        {
+            STORAGE_WARN(
+                "NVMe device " << sn.Quote()
+                               << " is no longer reported; marking it offline");
+
+            device.SetDeviceState(NProto::NVME_DEVICE_STATE_OFFLINE);
+        }
+    }
+}
+
 auto TLocalNVMeService::UpdateDevices() -> NProto::TError
 {
-    auto [devices, error] = FetchDevices();
+    auto [fetchedDevices, error] = FetchDevices();
     if (HasError(error)) {
         return error;
     }
 
-    Devices.clear();
-    for (auto& d: devices) {
-        Devices[d.GetSerialNumber()] = std::move(d);
-    }
+    ReconcileDevices(std::move(fetchedDevices));
 
     UpdateStateCache();
 
@@ -703,6 +781,8 @@ auto TLocalNVMeService::FetchDevices() const
                 << ": " << src << ": " << FormatError(error));
             continue;
         }
+
+        device.SetDeviceState(src.GetDeviceState());
 
         result.push_back(std::move(device));
     }

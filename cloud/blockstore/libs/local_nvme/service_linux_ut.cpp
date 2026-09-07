@@ -372,6 +372,7 @@ struct TFixtureBase: public NUnitTest::TBaseFixture
                 DeviceId: 0x400
                 Model: "Test NVMe 2"
                 FirmwareRev: "FW4243"
+                DeviceState: NVME_DEVICE_STATE_MAINTENANCE
             }
             Devices {
                 SerialNumber: "NVME_2"
@@ -506,6 +507,8 @@ struct TFixture: public TFixtureBase
 
             // chop "0000:"
             device.SetPCIAddress(src.GetPCIAddress().substr(5));
+
+            device.SetDeviceState(src.GetDeviceState());
         }
 
         // Add some noise
@@ -523,7 +526,7 @@ struct TFixture: public TFixtureBase
         return devices;
     }
 
-    void SetProviderReady()
+    void SetProviderReady() const
     {
         DeviceProvider->ListNVMeDevicesImpl.SetValue(
             [&] { return MakeFuture(CreateDeviceList()); });
@@ -1702,6 +1705,16 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         auto counters = rootGroup->FindSubgroup("component", "local_nvme");
         UNIT_ASSERT(counters);
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            counters->GetCounter("DevicesInOnlineState")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters->GetCounter("DevicesInOfflineState")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("DevicesInMaintenanceState")->Val());
+
         for (const auto& d: Devices) {
             auto deviceGroup =
                 counters->FindSubgroup("device", d.GetSerialNumber());
@@ -1944,6 +1957,180 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 lockdownError.GetCode(),
                 error.GetCode(),
                 FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldReconcileDevices, TFixture)
+    {
+        TVector<NProto::TNVMeDevice> providedDeviceList;
+        std::mutex mutex;
+        std::condition_variable deviceListFetched;
+        ui32 publishedVersion = 0;
+        ui32 fetchedVersion = 0;
+
+        auto publishDeviceList = [&](const auto& devices)
+        {
+            std::unique_lock lock{mutex};
+
+            providedDeviceList = devices;
+            ++publishedVersion;
+
+            // Do not continue until the service has fetched this exact
+            // version.
+            deviceListFetched.wait(
+                lock,
+                [&] { return fetchedVersion == publishedVersion; });
+        };
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&]
+            {
+                TVector<NProto::TNVMeDevice> devices;
+                {
+                    std::unique_lock lock{mutex};
+                    devices = providedDeviceList;
+                    fetchedVersion = publishedVersion;
+                }
+
+                deviceListFetched.notify_one();
+                return MakeFuture(std::move(devices));
+            });
+
+        struct TTestCase
+        {
+            TStringBuf Name;
+            TVector<NProto::TNVMeDevice> ProvidedList;
+            TVector<NProto::TNVMeDevice> ExpectedList;
+        };
+
+        auto online = [](auto device)
+        {
+            device.SetDeviceState(NProto::NVME_DEVICE_STATE_ONLINE);
+            return device;
+        };
+
+        auto maintenance = [](auto device)
+        {
+            device.SetDeviceState(NProto::NVME_DEVICE_STATE_MAINTENANCE);
+            return device;
+        };
+
+        auto offline = [](auto device)
+        {
+            device.SetDeviceState(NProto::NVME_DEVICE_STATE_OFFLINE);
+            return device;
+        };
+
+        const TTestCase testCases[]{
+            {
+                .Name = "empty device list",
+                .ProvidedList = {},
+                .ExpectedList = {},
+            },
+            // NVME_0: online
+            {
+                .Name = "discover online device",
+                .ProvidedList = {online(Devices[0])},
+                .ExpectedList = {online(Devices[0])},
+            },
+            // NVME_0: online
+            // NVME_1: new, maintenance
+            // NVME_2: new, online
+            {
+                .Name = "discover online and maintenance devices",
+                .ProvidedList =
+                    {
+                        online(Devices[0]),
+                        maintenance(Devices[1]),
+                        online(Devices[2]),
+                    },
+                .ExpectedList =
+                    {
+                        online(Devices[0]),
+                        maintenance(Devices[1]),
+                        online(Devices[2]),
+                    },
+            },
+            // NVME_0: online
+            // NVME_1: lost, maintenance -> offline
+            // NVME_2: online -> maintenance
+            {
+                .Name = "mark missing device offline and update device state",
+                .ProvidedList =
+                    {
+                        online(Devices[0]),
+                        maintenance(Devices[2]),
+                    },
+                .ExpectedList =
+                    {
+                        online(Devices[0]),
+                        offline(Devices[1]),
+                        maintenance(Devices[2]),
+                    },
+            },
+            // NVME_0: online
+            // NVME_1: offline -> online
+            // NVME_2: maintenance -> offline
+            // NVME_3: new, online
+            {
+                .Name = "restore offline device, mark missing device offline, "
+                        "and discover new device",
+                .ProvidedList =
+                    {
+                        online(Devices[0]),
+                        online(Devices[1]),
+                        online(Devices[3]),
+                    },
+                .ExpectedList =
+                    {
+                        online(Devices[0]),
+                        online(Devices[1]),
+                        offline(Devices[2]),
+                        online(Devices[3]),
+                    },
+            },
+            // NVME_0: online -> offline
+            // NVME_1: online -> offline
+            // NVME_2: offline
+            // NVME_3: online -> offline
+            {
+                .Name = "mark all missing devices offline",
+                .ProvidedList = {},
+                .ExpectedList =
+                    {
+                        offline(Devices[0]),
+                        offline(Devices[1]),
+                        offline(Devices[2]),
+                        offline(Devices[3]),
+                    },
+            },
+        };
+
+        for (ui32 i = 0; i != std::size(testCases); ++i) {
+            const auto& t = testCases[i];
+
+            publishDeviceList(t.ProvidedList);
+
+            const auto [devices, error] = ListNVMeDevices();
+            const auto caseInfo = TStringBuilder()
+                                  << "Case #" << i << " (" << t.Name << ")";
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                caseInfo << ": " << FormatError(error));
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                t.ExpectedList.size(),
+                devices.size(),
+                caseInfo);
+
+            for (size_t j = 0; j != devices.size(); ++j) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    t.ExpectedList[j].DebugString(),
+                    devices[j].DebugString(),
+                    caseInfo << ", device #" << j);
+            }
         }
     }
 

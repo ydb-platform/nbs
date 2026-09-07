@@ -121,6 +121,15 @@ private:
         bool forceBehaveAsShard,
         ui64 entityId);
 
+    // Overload for a caller that already validated the session
+    template <typename TMethod>
+    void ForwardRequestToShard(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        bool forceBehaveAsShard,
+        ui64 entityId,
+        TSessionInfo* session);
+
     template <typename TMethod>
     TSessionInfo* GetAndValidateSession(
         const NActors::TActorContext& ctx,
@@ -143,6 +152,49 @@ private:
     void CompleteRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TResponse::TPtr& ev);
+
+    // Control namespace (".filestore-ctl") hooks - true if the request was
+    // answered here and the caller should return
+    bool TryHandleControlNamespaceGetNodeAttr(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvGetNodeAttrRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceCreateHandle(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvCreateHandleRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceCreateNode(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvCreateNodeRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceReadData(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvReadDataRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceWriteData(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvWriteDataRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceListNodes(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvListNodesRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceRenameNode(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvRenameNodeRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceGetNodeXAttr(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvGetNodeXAttrRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceListNodeXAttr(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvListNodeXAttrRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceSetNodeXAttr(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvSetNodeXAttrRequest::TPtr& ev,
+        const TSessionInfo* session);
 
     bool HandleRequests(STFUNC_SIG);
 

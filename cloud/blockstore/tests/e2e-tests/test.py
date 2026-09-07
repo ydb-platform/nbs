@@ -420,6 +420,12 @@ def test_resize_device(nbd_netlink):
         log_called_process_error(e)
         raise
     finally:
+        if mount_dir is not None:
+            result = common.execute(
+                ["umount", str(mount_dir)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT)
+
         run(
             "stopendpoint",
             "--socket",
@@ -432,12 +438,6 @@ def test_resize_device(nbd_netlink):
             volume_name,
             input=volume_name,
         )
-
-        if mount_dir is not None:
-            result = common.execute(
-                ["umount", str(mount_dir)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT)
 
         cleanup_after_test(env)
 

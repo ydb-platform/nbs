@@ -4247,6 +4247,85 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 	require.Equal(t, 2, len(taskInfos))
 }
 
+func TestStorageYDBForceFinishLongRunningRegularTask(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+
+	taskDuration := time.Hour
+	scheduleInterval := time.Second
+	createdAt := time.Now().Add(-taskDuration)
+	task := TaskState{
+		TaskType:     "task",
+		Description:  "Some task",
+		CreatedAt:    createdAt,
+		CreatedBy:    "some_user",
+		ModifiedAt:   createdAt,
+		GenerationID: 0,
+		Status:       TaskStatusReadyToRun,
+		State:        []byte{},
+	}
+	schedule := TaskSchedule{
+		ScheduleInterval: scheduleInterval,
+		MaxTasksInflight: 1,
+	}
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": task.TaskType},
+	).On("Add", int64(1)).Twice()
+
+	err = storage.CreateRegularTasks(ctx, task, schedule)
+	require.NoError(t, err)
+
+	taskInfos, err := storage.ListTasksReadyToRun(ctx, 100500, nil)
+	require.NoError(t, err)
+	require.Len(t, taskInfos, 1)
+
+	runningTask, err := storage.LockTaskToRun(ctx, taskInfos[0], time.Now(), "host", "runner")
+	require.NoError(t, err)
+	require.Equal(t, TaskStatusRunning, runningTask.Status)
+
+	// Simulate the next scheduling iteration after the task has been running
+	// for much longer than its schedule interval. The unfinished task should
+	// still prevent a new iteration from being scheduled.
+	task.CreatedAt = createdAt.Add(taskDuration)
+	err = storage.CreateRegularTasks(ctx, task, schedule)
+	require.NoError(t, err)
+
+	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
+	require.NoError(t, err)
+	require.Empty(t, taskInfos)
+
+	err = storage.ForceFinishTask(ctx, runningTask.ID)
+	require.NoError(t, err)
+
+	finishedTask, err := storage.GetTask(ctx, runningTask.ID)
+	require.NoError(t, err)
+	require.Equal(t, TaskStatusFinished, finishedTask.Status)
+
+	// Force-finishing the only in-flight regular task should release the
+	// schedule and allow the next iteration to be created.
+	err = storage.CreateRegularTasks(ctx, task, schedule)
+	require.NoError(t, err)
+
+	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
+	require.NoError(t, err)
+	require.Len(t, taskInfos, 1)
+	metricsRegistry.AssertAllExpectations(t)
+}
+
 func TestStorageYDBCreateRegularTasksUsingCrontab(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()

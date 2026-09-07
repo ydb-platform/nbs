@@ -1,5 +1,6 @@
 #include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
+#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_quorum.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/fake_storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
 
@@ -7,6 +8,7 @@
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/protos/device.pb.h>
 
+#include <silk/fibers/event.h>
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 
@@ -29,12 +31,54 @@ namespace {
 const NProto::TDeviceRequestHeaders defaultHeaders;
 
 ////////////////////////////////////////////////////////////////////////////////
-// Test fixture: builds a set of fake storage nodes. And that's it.
+
+/**
+ * Storage node whose WriteLogRecord parks the calling fiber on a gate until the
+ * test opens it. Lets a test hold one replica back and observe what the group
+ * does with the remaining ones.
+ */
+struct TPausableStorageNode: public TFakeStorageNode
+{
+    silk::FiberEvent Gate;
+    std::atomic<bool> Paused = false;
+    std::atomic<ui64> HoldLsn = 0;
+    std::atomic<ui32> Parked = 0;
+
+    NProto::TWriteLogRecordResponse WriteLogRecord(
+        NProto::TWriteLogRecordRequest request) override
+    {
+        const ui64 lsn = request.GetLogSequenceNumber();
+        const ui64 held = HoldLsn;
+        if (Paused || (held && held == lsn)) {
+            ++Parked;
+            Gate.wait();
+        }
+
+        return TFakeStorageNode::WriteLogRecord(std::move(request));
+    }
+
+    void Unpause()
+    {
+        Paused = false;
+        HoldLsn = 0;
+        Gate.set();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Test fixture: three fake storage nodes and a group built over them. The gate
+// on the nodes is closed by default, so tests that never touch it see a plain
+// fake.
+
+using TGroupFactory = IStorageGroupPtr (*)(
+    TVector<TStorageDevice>,
+    TStorageGroupRetryPolicy,
+    ITimerPtr);
 
 struct TStorageFixture
 {
     static constexpr ui32 NodeCount = 3;
-    TVector<std::shared_ptr<TFakeStorageNode>> StorageNodes;
+    TVector<std::shared_ptr<TPausableStorageNode>> StorageNodes;
     const TVector<TString> DeviceUUIDs = {
         "dev-a",
         "dev-b",
@@ -43,23 +87,30 @@ struct TStorageFixture
     std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
     IStorageGroupPtr Group;
 
-    TStorageFixture()
+    TStorageFixture(TGroupFactory createGroup = CreateNaiveMirroredStorageGroup)
         : StorageNodes(NodeCount)
     {
         TVector<TStorageDevice> devices(NodeCount);
         for (ui32 i = 0; i < NodeCount; ++i) {
-            StorageNodes[i] = std::make_shared<TFakeStorageNode>();
+            StorageNodes[i] = std::make_shared<TPausableStorageNode>();
             devices[i] = {
                 .Node = StorageNodes[i],
                 .DeviceUUID = DeviceUUIDs[i],
             };
         }
 
-        Group = CreateNaiveMirroredStorageGroup(
+        Group = createGroup(
             std::move(devices),
             TStorageGroupRetryPolicy{},
             Timer);
     }
+};
+
+struct TQuorumFixture: TStorageFixture
+{
+    TQuorumFixture()
+        : TStorageFixture(CreateQuorumMirroredStorageGroup)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -485,6 +536,518 @@ TEST(NaiveGroupTest, PropagatesReadErrorUponRetryTimeout)
             CheckBackoffDurations(
                 fx.Timer->GetSleepDurations(),
                 ExpectedTimeoutBackoffs);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Quorum group.
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Yields until the predicate holds, so a test can observe a detached fiber's
+// side effect without sleeping.
+template <typename TPredicate>
+void WaitFor(TPredicate predicate)
+{
+    for (ui32 i = 0; i < 100000 && !predicate(); ++i) {
+        FiberScheduler::yield();
+    }
+    ASSERT_TRUE(predicate());
+}
+
+// True if the fiber is still blocked after giving the scheduler a good chance
+// to run everything else that is runnable.
+bool StillRunning(silk::FiberFuture& future)
+{
+    for (ui32 i = 0; i < 2000; ++i) {
+        FiberScheduler::yield();
+    }
+    int error = 0;
+    return !future.isSet(&error);
+}
+
+ui32 TotalParked(const TStorageFixture& fx)
+{
+    ui32 total = 0;
+    for (const auto& sn: fx.StorageNodes) {
+        total += sn->Parked;
+    }
+    return total;
+}
+
+struct TConcurrentWriteParams
+{
+    TStorageFixture* Fixture;
+    ui64 Lsn;
+};
+
+int ConcurrentWriteFiberMain(TConcurrentWriteParams* params) noexcept
+{
+    TPageGroup pageGroup{.FirstPageNo = 111};
+    pageGroup.Content.emplace_back("page1", 5U /* len */);
+    TVector<TPageGroup> pageGroups;
+    pageGroups.push_back(std::move(pageGroup));
+
+    auto error = params->Fixture->Group->WriteLogRecord(
+        defaultHeaders,
+        std::move(pageGroups),
+        params->Lsn);
+    return HasError(error) ? 1 : 0;
+}
+
+void StartWrite(TStorageFixture& fx, ui64 lsn, silk::FiberFuture* future)
+{
+    const int r = FiberScheduler::run(
+        ConcurrentWriteFiberMain,
+        TConcurrentWriteParams{.Fixture = &fx, .Lsn = lsn},
+        future);
+    EXPECT_EQ(0, r);
+}
+
+ui32 TotalWriteCalls(const TStorageFixture& fx)
+{
+    ui32 total = 0;
+    for (const auto& sn: fx.StorageNodes) {
+        total += sn->WriteCalls.size();
+    }
+    return total;
+}
+
+// Fails reads everywhere but @p i, then reads until one succeeds: only @p i
+// can serve it, and only once it has caught up to the quorum lsn. A recorded
+// write call proves neither, the fake logs it before the fiber acks.
+void WaitUntilServes(TStorageFixture& fx, ui32 i)
+{
+    for (ui32 j = 0; j < TQuorumFixture::NodeCount; ++j) {
+        if (j != i) {
+            fx.StorageNodes[j]->ReadResp = ReadErrorResponse(E_ARGUMENT);
+        }
+    }
+    WaitFor(
+        [&]
+        {
+            TVector<TPageGroup> pageGroups;
+            return !HasError(ReadSomething(*fx.Group, &pageGroups));
+        });
+    EXPECT_GT(fx.StorageNodes[i]->ReadCalls.size(), 0U);
+}
+
+}   // namespace
+
+TEST(QuorumGroupTest, AcquireReleaseNeedEveryDevice)
+{
+    int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            auto error = fx.Group->AcquireDevices();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+                auto& sn = fx.StorageNodes[i];
+                EXPECT_EQ(1U, sn->AcquireCalls.size());
+                EXPECT_EQ(
+                    fx.DeviceUUIDs[i],
+                    sn->AcquireCalls[0].GetDeviceUUIDs(0));
+            }
+
+            error = fx.Group->ReleaseDevices();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+                EXPECT_EQ(1U, fx.StorageNodes[i]->ReleaseCalls.size());
+            }
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+
+    r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            // Acquire is n/n: one bad device is enough to fail the group.
+            *fx.StorageNodes[2]->AcquireResp.MutableError() =
+                MakeError(E_ARGUMENT, "scripted error");
+
+            auto error = fx.Group->AcquireDevices();
+            EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, WriteReturnsOnMajorityAck)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            // Hold the third replica back: the write must not wait for it.
+            fx.StorageNodes[2]->Paused = true;
+
+            auto error = WriteSomething(*fx.Group);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            EXPECT_EQ(1U, fx.StorageNodes[0]->WriteCalls.size());
+            EXPECT_EQ(1U, fx.StorageNodes[1]->WriteCalls.size());
+            EXPECT_EQ(0U, fx.StorageNodes[2]->WriteCalls.size());
+
+            // The straggler was dispatched, just detached: opening the gate
+            // lets it land after the caller already returned.
+            fx.StorageNodes[2]->Unpause();
+            WaitFor([&] { return TotalWriteCalls(fx) == 3; });
+
+            WaitUntilServes(fx, 2);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, ReadSkipsReplicaBehindQuorumLsn)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+                auto* pg = fx.StorageNodes[i]->ReadResp.AddPageGroups();
+                pg->SetFirstPageNo(111);
+                pg->AddContent(TStringBuilder() << "aaa" << i);
+            }
+
+            fx.StorageNodes[2]->Paused = true;
+
+            auto error = WriteSomething(*fx.Group);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            // dev-c is below the quorum lsn, so only the other two serve.
+            for (ui32 i = 0; i < 6; ++i) {
+                TVector<TPageGroup> pageGroups;
+                error = ReadSomething(*fx.Group, &pageGroups);
+                EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            }
+
+            EXPECT_EQ(0U, fx.StorageNodes[2]->ReadCalls.size());
+            EXPECT_EQ(6U, fx.StorageNodes[0]->ReadCalls.size()
+                + fx.StorageNodes[1]->ReadCalls.size());
+
+            // Rotation is independent of the watermark, so both eligible
+            // replicas take a share.
+            EXPECT_GT(fx.StorageNodes[0]->ReadCalls.size(), 0U);
+            EXPECT_GT(fx.StorageNodes[1]->ReadCalls.size(), 0U);
+
+            fx.StorageNodes[2]->Unpause();
+            WaitFor([&] { return TotalWriteCalls(fx) == 3; });
+
+            WaitUntilServes(fx, 2);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, WriteErrorBreaksGroup)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            // dev-b held, dev-c failing: the failure lands before a quorum can
+            // form. The other order is StragglerFailureBreaksGroupAfterAck.
+            fx.StorageNodes[1]->Paused = true;
+            fx.StorageNodes[2]->WriteResp = WriteErrorResponse(E_ARGUMENT);
+
+            auto error = WriteSomething(*fx.Group);
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+
+            // Stays broken: later requests are refused up front.
+            error = WriteSomething(*fx.Group);
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+
+            TVector<TPageGroup> pageGroups;
+            error = ReadSomething(*fx.Group, &pageGroups);
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+
+            fx.StorageNodes[1]->Unpause();
+            WaitFor([&] { return TotalWriteCalls(fx) == 3; });
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, AcksConcurrentWritesWhateverOrderTheyLand)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            // Nothing acks until every write has been dispatched.
+            for (auto& sn: fx.StorageNodes) {
+                sn->Paused = true;
+            }
+
+            // Three writes in flight, acked in whatever order the release
+            // produces; every device gets all three, every caller is told.
+            const ui64 lsns[] = {1236, 1234, 1235};
+            silk::FiberFuture futures[3];
+            for (ui32 i = 0; i < 3; ++i) {
+                StartWrite(fx, lsns[i], &futures[i]);
+            }
+
+            // Nine parked dispatches: all three records reached all three
+            // devices before any of them acked.
+            WaitFor([&] { return TotalParked(fx) == 9; });
+            for (auto& sn: fx.StorageNodes) {
+                sn->Unpause();
+            }
+
+            for (ui32 i = 0; i < 3; ++i) {
+                EXPECT_EQ(0, futures[i].wait());
+            }
+
+            // A write returns on two acks; its third dispatch may still be
+            // landing.
+            WaitFor([&] { return TotalWriteCalls(fx) == 9; });
+            for (ui32 i = 0; i < 3; ++i) {
+                EXPECT_EQ(3U, fx.StorageNodes[i]->WriteCalls.size());
+            }
+
+            // Every replica is caught up, so all of them serve reads again.
+            TVector<TPageGroup> pageGroups;
+            auto error = ReadSomething(*fx.Group, &pageGroups);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, WriteWaitsForItsOwnQuorum)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            // Every replica holds the first record's ack.
+            for (auto& sn: fx.StorageNodes) {
+                sn->HoldLsn = 100;
+            }
+
+            silk::FiberFuture first;
+            StartWrite(fx, 100, &first);
+            WaitFor([&] { return TotalParked(fx) == 3; });
+
+            silk::FiberFuture second;
+            StartWrite(fx, 200, &second);
+
+            // 200 completes on its own acks; 100 is never inferred from them.
+            EXPECT_EQ(0, second.wait());
+            EXPECT_TRUE(StillRunning(first));
+
+            for (auto& sn: fx.StorageNodes) {
+                sn->Unpause();
+            }
+            EXPECT_EQ(0, first.wait());
+            WaitFor([&] { return TotalWriteCalls(fx) == 6; });
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, RejectsLsnZero)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            TVector<TPageGroup> pageGroups;
+            auto error = fx.Group->WriteLogRecord(
+                defaultHeaders,
+                std::move(pageGroups),
+                0 /* lsn */);
+            EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(0U, TotalWriteCalls(fx));
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, StragglerFailureBreaksGroupAfterAck)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            // dev-c is held, and will fail once released.
+            fx.StorageNodes[2]->Paused = true;
+            fx.StorageNodes[2]->WriteResp = WriteErrorResponse(E_ARGUMENT);
+
+            auto error = WriteSomething(*fx.Group);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            // The caller has its ack and the group is still in service.
+            {
+                TVector<TPageGroup> pageGroups;
+                error = ReadSomething(*fx.Group, &pageGroups);
+                EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            }
+
+            // The record was already acked; a replica failing it afterwards
+            // still breaks the group.
+            fx.StorageNodes[2]->Unpause();
+            WaitFor(
+                [&]
+                {
+                    TVector<TPageGroup> pageGroups;
+                    return HasError(ReadSomething(*fx.Group, &pageGroups));
+                });
+
+            error = WriteSomething(*fx.Group);
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+            TVector<TPageGroup> pageGroups;
+            error = ReadSomething(*fx.Group, &pageGroups);
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, ReadFailoverStaysWithinEligibleReplicas)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            fx.StorageNodes[2]->Paused = true;
+            auto error = WriteSomething(*fx.Group);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            // Both replicas holding the record fail reads. dev-c is healthy but
+            // behind: failing over to it would return stale pages.
+            fx.StorageNodes[0]->ReadResp = ReadErrorResponse(E_ARGUMENT);
+            fx.StorageNodes[1]->ReadResp = ReadErrorResponse(E_ARGUMENT);
+
+            TVector<TPageGroup> pageGroups;
+            error = ReadSomething(*fx.Group, &pageGroups);
+            EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(1U, fx.StorageNodes[0]->ReadCalls.size());
+            EXPECT_EQ(1U, fx.StorageNodes[1]->ReadCalls.size());
+            EXPECT_EQ(0U, fx.StorageNodes[2]->ReadCalls.size());
+
+            // Read failures do not break the group: writes still go through.
+            error = WriteSomething(*fx.Group);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            fx.StorageNodes[2]->Unpause();
+            WaitUntilServes(fx, 2);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+                auto* pg = fx.StorageNodes[i]->ReadResp.AddPageGroups();
+                pg->SetFirstPageNo(111);
+                pg->AddContent(TStringBuilder() << "aaa" << i);
+            }
+
+            {
+                TPageGroup pageGroup{.FirstPageNo = 111};
+                pageGroup.Content.emplace_back("page1", 5U /* len */);
+                pageGroup.Content.emplace_back("page2", 5U /* len */);
+                TVector<TPageGroup> pageGroups;
+                pageGroups.push_back(std::move(pageGroup));
+
+                auto error = fx.Group->WriteLogRecord(
+                    defaultHeaders,
+                    std::move(pageGroups),
+                    1234 /* lsn */);
+                EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            }
+            WaitFor([&] { return TotalWriteCalls(fx) == 3; });
+
+            // Every device got the same record, stamped with its own id.
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+                const auto& w = fx.StorageNodes[i]->WriteCalls[0];
+                EXPECT_EQ(fx.DeviceUUIDs[i], w.GetDeviceUUID());
+                EXPECT_EQ(1234U, w.GetLogSequenceNumber());
+                EXPECT_EQ(1U, w.PageGroupsSize());
+                if (w.PageGroupsSize() != 1) {
+                    return 1;
+                }
+                EXPECT_EQ(111U, w.GetPageGroups(0).GetFirstPageNo());
+                EXPECT_EQ(2U, w.GetPageGroups(0).ContentSize());
+                if (w.GetPageGroups(0).ContentSize() != 2) {
+                    return 1;
+                }
+                EXPECT_EQ("page1", w.GetPageGroups(0).GetContent(0));
+                EXPECT_EQ("page2", w.GetPageGroups(0).GetContent(1));
+            }
+
+            // And a read returns whichever replica served it, verbatim.
+            TVector<TPageGroup> pageGroups;
+            auto error = ReadSomething(*fx.Group, &pageGroups);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(1U, pageGroups.size());
+            if (pageGroups.size() != 1 || pageGroups[0].Content.size() != 1) {
+                return 1;
+            }
+            EXPECT_EQ(111U, pageGroups[0].FirstPageNo);
+
+            ui32 served = TQuorumFixture::NodeCount;
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+                if (fx.StorageNodes[i]->ReadCalls.size()) {
+                    served = i;
+                }
+            }
+            EXPECT_LT(served, TQuorumFixture::NodeCount);
+            if (served == TQuorumFixture::NodeCount) {
+                return 1;
+            }
+            EXPECT_EQ(
+                TStringBuilder() << "aaa" << served,
+                TString(pageGroups[0].Content[0].Data(),
+                        pageGroups[0].Content[0].Size()));
 
             return 0;
         },

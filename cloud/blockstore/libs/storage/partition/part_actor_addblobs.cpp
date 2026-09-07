@@ -69,6 +69,7 @@ private:
         TRangeStat Stat;
         ui32 BlobsSkippedByCompaction = 0;
         ui32 BlocksSkippedByCompaction = 0;
+        ui32 MixedBlockCountSkippedByCompaction = 0;
     };
 
     TDenseHash<ui32, TRangeInfo> CompactionCounters{
@@ -120,6 +121,9 @@ public:
                     Args.MixedBlobCompactionInfos[i].BlobsSkippedByCompaction;
                 rangeInfo.BlocksSkippedByCompaction +=
                     Args.MixedBlobCompactionInfos[i].BlocksSkippedByCompaction;
+                rangeInfo.MixedBlockCountSkippedByCompaction +=
+                    Args.MixedBlobCompactionInfos[i]
+                        .MixedBlockCountSkippedByCompaction;
             }
         }
 
@@ -147,6 +151,9 @@ public:
                     Args.MergedBlobCompactionInfos[i].BlobsSkippedByCompaction;
                 rangeInfo.BlocksSkippedByCompaction +=
                     Args.MergedBlobCompactionInfos[i].BlocksSkippedByCompaction;
+                rangeInfo.MixedBlockCountSkippedByCompaction +=
+                    Args.MergedBlobCompactionInfos[i]
+                        .MixedBlockCountSkippedByCompaction;
             }
         }
 
@@ -575,6 +582,9 @@ private:
                     rangeStat->BlockCount + 1,
                     &rangeStat->BlockCount
                 );
+                TCompactionMap::UpdateCompactionCounter(
+                    rangeStat->MixedBlockCount + 1,
+                    &rangeStat->MixedBlockCount);
             }
         }
     }
@@ -615,6 +625,8 @@ private:
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
                 newlyZeroedBlocks,
+                kv.second.Stat.MixedBlockCount +
+                    kv.second.MixedBlockCountSkippedByCompaction,
                 Args.Mode == ADD_COMPACTION_RESULT);
         }
     }

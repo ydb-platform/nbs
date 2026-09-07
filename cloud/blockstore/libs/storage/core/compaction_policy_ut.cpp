@@ -16,7 +16,7 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
 {
     Y_UNIT_TEST(TestDefaultPolicy)
     {
-        auto policy = BuildDefaultCompactionPolicy(1);
+        auto policy = BuildDefaultCompactionPolicy(1, 0);
         UNIT_ASSERT_DOUBLES_EQUAL(-1, policy->CalculateScore({}).Score, 1e-4);
         UNIT_ASSERT(policy->CalculateScore({}).Score > -1);
         UNIT_ASSERT_DOUBLES_EQUAL(
@@ -33,15 +33,9 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
 
     Y_UNIT_TEST(TestLoadOptimizationPolicy)
     {
-        auto policy = BuildLoadOptimizationCompactionPolicy({
-            4_MB,
-            4_KB,
-            400,
-            15_MB,
-            1000,
-            15_MB,
-            70
-        });
+        auto policy = BuildLoadOptimizationCompactionPolicy(
+            {4_MB, 4_KB, 400, 15_MB, 1000, 15_MB, 70},
+            0);
 
         UNIT_ASSERT_VALUES_EQUAL(0, policy->CalculateScore({}).Score);
         UNIT_ASSERT_VALUES_EQUAL(
