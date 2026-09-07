@@ -175,7 +175,7 @@ void TIndexTabletActor::HandleConfirmAddData(
         return;
     }
 
-    if (const auto* data = FindUnconfirmedData(commitId))
+    if (const auto* data = AccessUnconfirmedData(commitId))
     {
         ProcessStorageStatusFlags(
             ctx,

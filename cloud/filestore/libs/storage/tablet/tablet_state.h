@@ -297,7 +297,7 @@ protected:
     bool GetUnconfirmedDataContains(ui64 commitId) const;
     void UnconfirmedDataClear();
     size_t GetUnconfirmedDataSize() const;
-    const TTrackedUnconfirmedData* FindUnconfirmedData(ui64 commitId) const;
+    const TTrackedUnconfirmedData* AccessUnconfirmedData(ui64 commitId) const;
     TTrackedUnconfirmedData& AccessAndVerifyUnconfirmedData(ui64 commitId);
     void ForEachUnconfirmedData(
         const std::function<void(const ui64, const TTrackedUnconfirmedData&)>&

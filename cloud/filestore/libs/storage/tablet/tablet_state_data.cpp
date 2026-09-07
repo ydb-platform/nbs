@@ -529,13 +529,10 @@ bool TIndexTabletState::GetUnconfirmedDataContains(ui64 commitId) const
     return Impl->UnconfirmedData.contains(commitId);
 }
 
-const TTrackedUnconfirmedData* TIndexTabletState::FindUnconfirmedData(
+const TTrackedUnconfirmedData* TIndexTabletState::AccessUnconfirmedData(
     ui64 commitId) const
 {
-    const auto& map = Impl->UnconfirmedData;
-
-    auto it = map.find(commitId);
-    return Impl->UnconfirmedData.FindPtr(commitId)
+    return Impl->UnconfirmedData.FindPtr(commitId);
 }
 
 TTrackedUnconfirmedData& TIndexTabletState::AccessAndVerifyUnconfirmedData(
