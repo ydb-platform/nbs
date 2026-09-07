@@ -1491,7 +1491,6 @@ void TIndexTabletState::AbortForcedRangeOperation(
     TVector<ui32> ranges,
     TString operationId)
 {
-    TABLET_VERIFY(!ForcedRangeOperationState.Defined());
     CompletedForcedRangeOperations.emplace_back(
         mode,
         std::move(ranges),
