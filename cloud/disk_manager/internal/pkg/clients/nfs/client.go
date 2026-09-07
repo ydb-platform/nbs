@@ -11,6 +11,7 @@ import (
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	stats_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos"
 	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
 	"github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
@@ -487,6 +488,39 @@ func (c *client) GetFileSystemTopology(
 		FileShardFileSystemIDs:                 response.FileShardFileSystemIds,
 		CompressNodeRef:                        response.CompressNodeRef,
 		MainFileSystemID:                       response.MainFileSystemId,
+	}, nil
+}
+
+func (c *client) GetStorageStats(
+	ctx context.Context,
+	filesystemID string,
+) (_ StorageStats, err error) {
+
+	defer c.metrics.StatRequest("GetStorageStats")(&err)
+
+	response := &stats_protos.TGetStorageStatsResponse{}
+	err = c.executeAction(
+		ctx,
+		"getstoragestats",
+		&stats_protos.TGetStorageStatsRequest{
+			FileSystemId: filesystemID,
+		},
+		response,
+	)
+	if err != nil {
+		return StorageStats{}, err
+	}
+
+	err = checkActionError(response.Error)
+	if err != nil {
+		return StorageStats{}, err
+	}
+
+	stats := response.GetStats()
+	return StorageStats{
+		UsedNodesCount:   stats.GetUsedNodesCount(),
+		UsedBlocksCount:  stats.GetUsedBlocksCount(),
+		TotalBlocksCount: stats.GetTotalBlocksCount(),
 	}, nil
 }
 

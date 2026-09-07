@@ -74,6 +74,46 @@ func TestGetFileSystemTopology(t *testing.T) {
 	require.Equal(t, filesystemID, shardTopology.MainFileSystemID)
 }
 
+func TestGetStorageStats(t *testing.T) {
+	ctx := nfs_testing.NewContext()
+	client := nfs_testing.NewClient(t, ctx)
+
+	filesystemID := t.Name()
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID, false)
+
+	session, err := client.CreateSession(ctx, filesystemID, "", false)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	before, err := client.GetStorageStats(ctx, filesystemID)
+	require.NoError(t, err)
+	require.Zero(t, before.UsedNodesCount)
+	require.Zero(t, before.UsedBlocksCount)
+	require.NotZero(t, before.TotalBlocksCount)
+
+	_, err = session.CreateNode(ctx, nfs.Node{
+		ParentNodeID: nfs.RootNodeID,
+		Name:         "file",
+		Type:         nfs.NODE_KIND_FILE,
+		Mode:         0644,
+	})
+	require.NoError(t, err)
+
+	after, err := client.GetStorageStats(ctx, filesystemID)
+	require.NoError(t, err)
+	require.Equal(t, before.UsedNodesCount+1, after.UsedNodesCount)
+	require.Equal(t, before.UsedBlocksCount, after.UsedBlocksCount)
+	require.Equal(t, before.TotalBlocksCount, after.TotalBlocksCount)
+}
+
 func TestDeleteFilesystem(t *testing.T) {
 	ctx := nfs_testing.NewContext()
 	client := nfs_testing.NewClient(t, ctx)
