@@ -1425,6 +1425,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetTabletDirectRdmaEnabled(false);
         features.SetAsyncHandleOperationIdlePeriod(
             TDuration::MilliSeconds(50).MilliSeconds());
+        features.SetAsyncHandleOperationBatchSize(32);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 

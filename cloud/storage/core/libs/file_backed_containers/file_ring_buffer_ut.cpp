@@ -1618,9 +1618,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const auto file = TTempFileHandle();
         TFileRingBuffer rb(file.GetName(), 128, 0, ver);
 
-        UNIT_ASSERT(rb.PushBack("A"));
-        UNIT_ASSERT(rb.PushBack("B"));
-        UNIT_ASSERT(rb.PushBack("C"));
+        UNIT_ASSERT(rb.PushBack("A").Pushed);
+        UNIT_ASSERT(rb.PushBack("B").Pushed);
+        UNIT_ASSERT(rb.PushBack("C").Pushed);
 
         TVector<TString> visited;
 
@@ -1641,7 +1641,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const auto file = TTempFileHandle();
         TFileRingBuffer rb(file.GetName(), 128, 0, ver);
 
-        UNIT_ASSERT(rb.PushBack("A"));
+        UNIT_ASSERT(rb.PushBack("A").Pushed);
 
         ui32 visited = 0;
         rb.VisitFirst(
@@ -1659,9 +1659,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const auto file = TTempFileHandle();
         TFileRingBuffer rb(file.GetName(), 128, 0, ver);
 
-        UNIT_ASSERT(rb.PushBack("A"));
-        UNIT_ASSERT(rb.PushBack("B"));
-        UNIT_ASSERT(rb.PushBack("C"));
+        UNIT_ASSERT(rb.PushBack("A").Pushed);
+        UNIT_ASSERT(rb.PushBack("B").Pushed);
+        UNIT_ASSERT(rb.PushBack("C").Pushed);
 
         TVector<TString> visited;
         rb.VisitFirst(
@@ -1698,13 +1698,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const auto file = TTempFileHandle();
         TFileRingBuffer rb(file.GetName(), 128, 0, ver);
 
-        UNIT_ASSERT(rb.PushBack("A"));
-        UNIT_ASSERT(rb.PushBack("B"));
-        UNIT_ASSERT(rb.PushBack("C"));
+        UNIT_ASSERT(rb.PushBack("A").Pushed);
+        UNIT_ASSERT(rb.PushBack("B").Pushed);
+        UNIT_ASSERT(rb.PushBack("C").Pushed);
 
         const auto entry = Find(rb, "B");
         UNIT_ASSERT(entry);
-        UNIT_ASSERT(rb.Free(entry.data()));
+        UNIT_ASSERT(!HasError(rb.Free(entry.data())));
 
         TVector<TString> visited;
         rb.VisitFirst(
@@ -1724,15 +1724,15 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         const auto file = TTempFileHandle();
         TFileRingBuffer rb(file.GetName(), 64, 0, ver);
 
-        UNIT_ASSERT(rb.PushBack("entry001"));
-        UNIT_ASSERT(rb.PushBack("entry002"));
-        UNIT_ASSERT(rb.PushBack("entry003"));
+        UNIT_ASSERT(rb.PushBack("entry001").Pushed);
+        UNIT_ASSERT(rb.PushBack("entry002").Pushed);
+        UNIT_ASSERT(rb.PushBack("entry003").Pushed);
 
-        rb.PopFront();
-        rb.PopFront();
+        UNIT_ASSERT(rb.PopFront().Removed);
+        UNIT_ASSERT(rb.PopFront().Removed);
 
-        UNIT_ASSERT(rb.PushBack("entry004"));
-        UNIT_ASSERT(rb.PushBack("entry005"));
+        UNIT_ASSERT(rb.PushBack("entry004").Pushed);
+        UNIT_ASSERT(rb.PushBack("entry005").Pushed);
 
         TVector<TString> visited;
         rb.VisitFirst(
