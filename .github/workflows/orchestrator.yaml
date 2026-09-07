@@ -1,6 +1,6 @@
 name: Orchestrator
 run-name: ${{ format('Orchestrator ({0} {1} {2})', github.event_name, inputs.run_light, inputs.run_heavy)  }}
-      
+
 on:
   workflow_call:
     inputs:

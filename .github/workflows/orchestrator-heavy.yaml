@@ -28,7 +28,7 @@ jobs:
       loop: 'yes'
       run_light: 'no'
       run_heavy: 'yes'
-  
+
   restart:
     name: Run gh cli to run orchestrator-proxy with the same arguments, which will start orchestrator.yaml if not cancelled and looped
     if: ${{ !cancelled() }}
@@ -48,7 +48,7 @@ jobs:
         uses: ./.github/actions/gh_cli
       - name: Run gh cli to start this workflow with the same arguments
         if: ${{ always() }}
-        shell: bash --noprofile --norc -eo pipefail -x {0} 
+        shell: bash --noprofile --norc -eo pipefail -x {0}
         run: |
           gh workflow run orchestrator-proxy.yaml -R "${GITHUB_REPO}" \
               --field workflow_name="${WORKFLOW_NAME}" \
