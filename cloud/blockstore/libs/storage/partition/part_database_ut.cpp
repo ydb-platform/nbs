@@ -34,9 +34,9 @@ struct TTestBlockVisitor final
     bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        ui32 skippedBlocksCount) override
+        const TBlockMask& skipMask) override
     {
-        Y_UNUSED(skippedBlocksCount);
+        Y_UNUSED(skipMask);
         BlobToRange[blobId] = blockRange;
 
         return true;
