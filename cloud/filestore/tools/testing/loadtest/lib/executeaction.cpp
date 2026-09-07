@@ -79,7 +79,7 @@ void TExecuteActionController::ForcedOperation(
                 << typeName << ": operation not found (tablet rebooted?)";
         }
 
-        if (statusResponse.HasError()) {
+        if (statusResponse.HasError() && HasError(statusResponse.GetError())) {
             throw yexception()
                 << typeName
                 << ": failed to read op status: " << statusResponse.GetError();
