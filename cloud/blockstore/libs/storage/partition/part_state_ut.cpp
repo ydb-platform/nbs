@@ -99,7 +99,8 @@ struct TNoBackpressurePolicy
 TPartitionState MakeState(
     NProto::TPartitionMeta meta,
     bool checkpointAwareCleanupEnabled = false,
-    bool useBlobChannelDataKindForCounters = false)
+    bool useBlobChannelDataKindForCounters = false,
+    bool compactionStatsTrackerEnabled = false)
 {
     const auto channelCount = meta.GetConfig().ExplicitChannelProfilesSize();
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
@@ -126,7 +127,8 @@ TPartitionState MakeState(
         0,              // tabletId
         std::nullopt,   // mixedBlocksFilterConfig
         checkpointAwareCleanupEnabled,
-        useBlobChannelDataKindForCounters);
+        useBlobChannelDataKindForCounters,
+        compactionStatsTrackerEnabled);
 }
 
 TPartitionState MakeState(
@@ -176,6 +178,19 @@ void AssertBlobAndBlockCounts(
 
 Y_UNIT_TEST_SUITE(TPartitionStateTest)
 {
+    Y_UNIT_TEST(ShouldOnlyCreateCompactionStatsTrackerWhenEnabled)
+    {
+        auto disabledState = MakeState();
+        UNIT_ASSERT(!disabledState.AccessCompactionStatsTracker());
+
+        auto enabledState = MakeState(
+            DefaultConfig(1, DefaultBlockCount),
+            false,   // checkpointAwareCleanupEnabled
+            false,   // useBlobChannelDataKindForCounters
+            true);   // compactionStatsTrackerEnabled
+        UNIT_ASSERT(enabledState.AccessCompactionStatsTracker());
+    }
+
     Y_UNIT_TEST(ShouldInitializeMixedMergedBlobsAndBlocksCounts)
     {
         struct TTestCase
