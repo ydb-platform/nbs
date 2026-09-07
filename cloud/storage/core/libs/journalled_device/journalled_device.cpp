@@ -32,6 +32,12 @@ public:
 
     // IJournalledDevice
 
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
     [[nodiscard]] auto ReadPages(
         NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final

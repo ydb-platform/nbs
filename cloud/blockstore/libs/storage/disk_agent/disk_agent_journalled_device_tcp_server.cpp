@@ -57,6 +57,12 @@ public:
 
     // IServerBackend
 
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
     [[nodiscard]] auto AcquireDevices(
         NCloud::NProto::TAcquireDevicesRequest request)
         -> TFuture<NCloud::NProto::TAcquireDevicesResponse> final

@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/protos/device.pb.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -10,7 +11,7 @@ namespace NCloud::NJournalled {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IJournalledDevice
+struct IJournalledDevice : public IStartable
 {
     virtual ~IJournalledDevice() = default;
 
