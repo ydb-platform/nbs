@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	storage_grpc "github.com/ydb-platform/nbs/cloud/storage/core/go/grpc"
 	metrics_mocks "github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 )
@@ -83,15 +84,18 @@ func TestGrpcServerTlsProviderReportsEarliestExpiration(t *testing.T) {
 	defer cancel()
 
 	now := time.Now().Truncate(time.Second)
-	leafPEM, leafKeyPEM := generateCertificate(
-		t,
-		"leaf",
-		now.Add(48*time.Hour),
-	)
-	intermediatePEM, _ := generateCertificate(
+	intermediatePEM, intermediateKeyPEM := generateCertificate(
 		t,
 		"intermediate",
 		now.Add(24*time.Hour),
+	)
+	leafPEM, leafKeyPEM := generateSignedCertificate(
+		t,
+		"leaf",
+		now.Add(-time.Hour),
+		now.Add(48*time.Hour),
+		intermediatePEM,
+		intermediateKeyPEM,
 	)
 
 	dir := t.TempDir()
@@ -227,8 +231,108 @@ func generateCertificateWithValidity(
 
 	t.Helper()
 
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, keyPEM := generatePrivateKey(t)
+	return createCertificate(
+		t,
+		commonName,
+		notBefore,
+		notAfter,
+		key,
+		nil, // issuer
+		nil, // issuerKey
+	), keyPEM
+}
+
+// Self-signed certificate for an existing key, e.g. a re-issued CA.
+func generateCertificateForKey(
+	t *testing.T,
+	commonName string,
+	notBefore time.Time,
+	notAfter time.Time,
+	keyPEM []byte,
+) []byte {
+
+	t.Helper()
+
+	key := parsePrivateKeyPEM(t, keyPEM)
+	return createCertificate(
+		t,
+		commonName,
+		notBefore,
+		notAfter,
+		key,
+		nil, // issuer
+		nil, // issuerKey
+	)
+}
+
+// Certificate with a fresh key signed by the issuer.
+func generateSignedCertificate(
+	t *testing.T,
+	commonName string,
+	notBefore time.Time,
+	notAfter time.Time,
+	issuerPEM []byte,
+	issuerKeyPEM []byte,
+) ([]byte, []byte) {
+
+	t.Helper()
+
+	key, keyPEM := generatePrivateKey(t)
+	return createCertificate(
+		t,
+		commonName,
+		notBefore,
+		notAfter,
+		key,
+		parseCertificatePEM(t, issuerPEM),
+		parsePrivateKeyPEM(t, issuerKeyPEM),
+	), keyPEM
+}
+
+func generatePrivateKey(t *testing.T) (*ecdsa.PrivateKey, []byte) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	return key, pem.EncodeToMemory(
+		&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER},
+	)
+}
+
+func parsePrivateKeyPEM(t *testing.T, keyPEM []byte) *ecdsa.PrivateKey {
+	t.Helper()
+
+	block, _ := pem.Decode(keyPEM)
+	require.NotNil(t, block)
+	key, err := x509.ParseECPrivateKey(block.Bytes)
+	require.NoError(t, err)
+	return key
+}
+
+func parseCertificatePEM(t *testing.T, certPEM []byte) *x509.Certificate {
+	t.Helper()
+
+	certificate, err := x509.ParseCertificate(leafOf(t, certPEM))
+	require.NoError(t, err)
+	return certificate
+}
+
+// Self-signed if issuer is nil.
+func createCertificate(
+	t *testing.T,
+	commonName string,
+	notBefore time.Time,
+	notAfter time.Time,
+	key *ecdsa.PrivateKey,
+	issuer *x509.Certificate,
+	issuerKey *ecdsa.PrivateKey,
+) []byte {
+
+	t.Helper()
+
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(time.Now().UnixNano()),
 		Subject:               pkix.Name{CommonName: commonName},
@@ -240,19 +344,32 @@ func generateCertificateWithValidity(
 		IsCA:                  true,
 	}
 
+	if issuer == nil {
+		issuer = template
+		issuerKey = key
+	}
+
 	der, err := x509.CreateCertificate(
 		rand.Reader,
 		template,
-		template,
-		&privateKey.PublicKey,
-		privateKey,
+		issuer,
+		&key.PublicKey,
+		issuerKey,
 	)
 	require.NoError(t, err)
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+}
 
-	keyDER, err := x509.MarshalECPrivateKey(privateKey)
-	require.NoError(t, err)
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
-		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+func readServerCertificate(
+	cert GrpcServerCertificateConfig,
+) (tls.Certificate, []*x509.Certificate, error) {
+
+	pem, err := readServerCertificatePEM(cert)
+	if err != nil {
+		return tls.Certificate{}, nil, err
+	}
+
+	return parseServerCertificate(cert, pem)
 }
 
 func loadServerCertificate(t *testing.T, serverName string) tls.Certificate {
@@ -313,7 +430,7 @@ func TestGrpcClientTlsProviderRefreshLoadsNewRootCertificate(t *testing.T) {
 	)
 
 	require.NoError(t, os.WriteFile(certPath, secondPEM, 0o600))
-	provider.(*grpcClientTlsProvider).refresh(ctx)
+	refreshClientUntilStable(ctx, provider)
 
 	require.True(
 		t,
@@ -352,15 +469,15 @@ func TestGrpcClientTlsProviderRefreshKeepsLastGoodRootCertificate(
 	expectedConfig := provider.GetTlsConfig()
 
 	// Unchanged file.
-	provider.(*grpcClientTlsProvider).refresh(ctx)
+	refreshClientUntilStable(ctx, provider)
 	require.Same(t, expectedConfig, provider.GetTlsConfig())
 
 	require.NoError(t, os.WriteFile(certPath, []byte("invalid"), 0o600))
-	provider.(*grpcClientTlsProvider).refresh(ctx)
+	refreshClientUntilStable(ctx, provider)
 	require.Same(t, expectedConfig, provider.GetTlsConfig())
 
 	require.NoError(t, os.Remove(certPath))
-	provider.(*grpcClientTlsProvider).refresh(ctx)
+	refreshClientUntilStable(ctx, provider)
 	require.Same(t, expectedConfig, provider.GetTlsConfig())
 
 	require.True(t, registry.AssertAllExpectations(t))
@@ -540,7 +657,7 @@ func TestGrpcServerTlsProviderRefreshLoadsNewCertificate(t *testing.T) {
 	)
 
 	writeServerCertificate(t, files, secondPEM, secondKeyPEM)
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 
 	require.Equal(
 		t,
@@ -588,16 +705,15 @@ func TestGrpcServerTlsProviderRefreshKeepsLastGoodCertificate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Unchanged files.
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 	require.Equal(
 		t,
 		leafOf(t, certPEM),
 		selectedLeaf(t, provider, "server.example"),
 	)
 
-	// Invalid certificate.
 	writeServerCertificate(t, files, []byte("invalid"), keyPEM)
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 	require.Equal(
 		t,
 		leafOf(t, certPEM),
@@ -606,17 +722,16 @@ func TestGrpcServerTlsProviderRefreshKeepsLastGoodCertificate(t *testing.T) {
 
 	// Certificate does not match the private key.
 	writeServerCertificate(t, files, otherPEM, keyPEM)
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 	require.Equal(
 		t,
 		leafOf(t, certPEM),
 		selectedLeaf(t, provider, "server.example"),
 	)
 
-	// Missing files.
 	require.NoError(t, os.Remove(files.certPath))
 	require.NoError(t, os.Remove(files.keyPath))
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 	require.Equal(
 		t,
 		leafOf(t, certPEM),
@@ -674,7 +789,7 @@ func TestGrpcServerTlsProviderRefreshRejectsCertificateOutsideValidityPeriod(
 	require.NoError(t, err)
 
 	writeServerCertificate(t, files, expiredPEM, expiredKeyPEM)
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 	require.Equal(
 		t,
 		leafOf(t, certPEM),
@@ -682,7 +797,7 @@ func TestGrpcServerTlsProviderRefreshRejectsCertificateOutsideValidityPeriod(
 	)
 
 	writeServerCertificate(t, files, futurePEM, futureKeyPEM)
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 	require.Equal(
 		t,
 		leafOf(t, certPEM),
@@ -690,8 +805,21 @@ func TestGrpcServerTlsProviderRefreshRejectsCertificateOutsideValidityPeriod(
 	)
 
 	// Expired intermediate certificate invalidates the whole chain.
-	writeServerCertificate(t, files, append(certPEM, expiredPEM...), keyPEM)
-	provider.refresh(ctx, now)
+	signedPEM, signedKeyPEM := generateSignedCertificate(
+		t,
+		"server.example",
+		now.Add(-time.Hour),
+		now.Add(30*24*time.Hour),
+		expiredPEM,
+		expiredKeyPEM,
+	)
+	writeServerCertificate(
+		t,
+		files,
+		append(append([]byte(nil), signedPEM...), expiredPEM...),
+		signedKeyPEM,
+	)
+	refreshServerUntilStable(ctx, provider, now)
 	require.Equal(
 		t,
 		leafOf(t, certPEM),
@@ -812,7 +940,7 @@ func TestGrpcServerTlsProviderRefreshesCertificatesIndependently(
 
 	writeServerCertificate(t, firstFiles, newFirstPEM, newFirstKeyPEM)
 	writeServerCertificate(t, secondFiles, []byte("invalid"), secondKeyPEM)
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 
 	require.Equal(
 		t,
@@ -883,8 +1011,7 @@ func TestGrpcServerTlsProviderRefreshesPeriodically(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Simulates a file that is being rewritten non-atomically: the last PEM block
-// has no end marker.
+// Cuts a PEM block in the middle so that it has no end marker.
 func truncatePEM(certPEM []byte) []byte {
 	return certPEM[:len(certPEM)/2]
 }
@@ -925,7 +1052,7 @@ func TestGrpcClientTlsProviderRefreshRejectsTruncatedRootCertificates(
 		truncatePEM(secondPEM)...,
 	)
 	require.NoError(t, os.WriteFile(certPath, truncatedPEM, 0o600))
-	provider.(*grpcClientTlsProvider).refresh(ctx)
+	refreshClientUntilStable(ctx, provider)
 
 	require.Same(t, expectedConfig, provider.GetTlsConfig())
 	require.True(t, registry.AssertAllExpectations(t))
@@ -940,15 +1067,18 @@ func TestGrpcServerTlsProviderRefreshRejectsTruncatedCertificateChain(
 
 	now := time.Now().Truncate(time.Second)
 	files := newServerCertificateFiles(t)
-	leafPEM, leafKeyPEM := generateCertificate(
-		t,
-		"server.example",
-		now.Add(60*24*time.Hour),
-	)
-	intermediatePEM, _ := generateCertificate(
+	intermediatePEM, intermediateKeyPEM := generateCertificate(
 		t,
 		"intermediate",
 		now.Add(30*24*time.Hour),
+	)
+	leafPEM, leafKeyPEM := generateSignedCertificate(
+		t,
+		"server.example",
+		now.Add(-time.Hour),
+		now.Add(60*24*time.Hour),
+		intermediatePEM,
+		intermediateKeyPEM,
 	)
 	chainPEM := append(append([]byte(nil), leafPEM...), intermediatePEM...)
 	writeServerCertificate(t, files, chainPEM, leafKeyPEM)
@@ -977,7 +1107,7 @@ func TestGrpcServerTlsProviderRefreshRejectsTruncatedCertificateChain(
 		truncatePEM(intermediatePEM)...,
 	)
 	writeServerCertificate(t, files, truncatedPEM, leafKeyPEM)
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 
 	require.Equal(
 		t,
@@ -997,20 +1127,30 @@ func TestGrpcServerTlsProviderRefreshDetectsIntermediateChange(
 
 	now := time.Now().Truncate(time.Second)
 	files := newServerCertificateFiles(t)
-	leafPEM, leafKeyPEM := generateCertificate(
+	// The intermediate certificate is re-issued for the same key, so the leaf
+	// certificate is valid with both.
+	_, intermediateKeyPEM := generatePrivateKey(t)
+	firstIntermediatePEM := generateCertificateForKey(
+		t,
+		"intermediate",
+		now.Add(-time.Hour),
+		now.Add(30*24*time.Hour),
+		intermediateKeyPEM,
+	)
+	secondIntermediatePEM := generateCertificateForKey(
+		t,
+		"intermediate",
+		now.Add(-time.Hour),
+		now.Add(20*24*time.Hour),
+		intermediateKeyPEM,
+	)
+	leafPEM, leafKeyPEM := generateSignedCertificate(
 		t,
 		"server.example",
+		now.Add(-time.Hour),
 		now.Add(60*24*time.Hour),
-	)
-	firstIntermediatePEM, _ := generateCertificate(
-		t,
-		"intermediate",
-		now.Add(30*24*time.Hour),
-	)
-	secondIntermediatePEM, _ := generateCertificate(
-		t,
-		"intermediate",
-		now.Add(20*24*time.Hour),
+		firstIntermediatePEM,
+		intermediateKeyPEM,
 	)
 	writeServerCertificate(
 		t,
@@ -1050,7 +1190,7 @@ func TestGrpcServerTlsProviderRefreshDetectsIntermediateChange(
 		append(append([]byte(nil), leafPEM...), secondIntermediatePEM...),
 		leafKeyPEM,
 	)
-	provider.refresh(ctx, now)
+	refreshServerUntilStable(ctx, provider, now)
 
 	require.Equal(
 		t,
@@ -1146,4 +1286,294 @@ func TestParsePEMCertificates(t *testing.T) {
 		_, err = parsePEMCertificates(data)
 		require.Error(t, err, "case #%v", i)
 	}
+}
+
+func TestReadServerCertificateReturnsPlainErrors(t *testing.T) {
+	certPEM, _ := generateCertificate(t, "server", time.Now().Add(24*time.Hour))
+	_, otherKeyPEM := generateCertificate(t, "other", time.Now().Add(24*time.Hour))
+	files := newServerCertificateFiles(t)
+	writeServerCertificate(t, files, certPEM, otherKeyPEM)
+
+	_, _, err := readServerCertificate(GrpcServerCertificateConfig{
+		CertFile:       files.certPath,
+		PrivateKeyFile: files.keyPath,
+	})
+	require.Error(t, err)
+
+	// Errors are logged on every refresh tick, so they must not carry a stack
+	// trace.
+	require.NotContains(t, err.Error(), "\n")
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// New content is applied only after it has been read unchanged twice in a row.
+func refreshClientUntilStable(
+	ctx context.Context,
+	provider storage_grpc.TlsConfigProvider,
+) {
+
+	for i := 0; i < 2; i++ {
+		provider.(*grpcClientTlsProvider).refresh(ctx)
+	}
+}
+
+func refreshServerUntilStable(
+	ctx context.Context,
+	provider *GrpcServerTlsProvider,
+	now time.Time,
+) {
+
+	for i := 0; i < 2; i++ {
+		provider.refresh(ctx, now)
+	}
+}
+
+func TestGrpcClientTlsProviderRefreshWaitsForStableRootCertificates(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	firstPEM, _ := generateCertificate(t, "first", time.Now().Add(24*time.Hour))
+	secondPEM, _ := generateCertificate(t, "second", time.Now().Add(24*time.Hour))
+	thirdPEM, _ := generateCertificate(t, "third", time.Now().Add(24*time.Hour))
+	certPath := filepath.Join(t.TempDir(), "root.pem")
+	require.NoError(t, os.WriteFile(certPath, firstPEM, 0o600))
+
+	registry := metrics_mocks.NewRegistryMock()
+	gauge := registry.GetGauge(
+		"fingerprint",
+		map[string]string{
+			"subsystem": "certificates",
+			"path":      certPath,
+		},
+	)
+	gauge.On("Set", float64(fingerprintOf(firstPEM))).Once()
+	gauge.On("Set", float64(fingerprintOf(thirdPEM))).Once()
+
+	provider, err := NewGrpcClientTlsProvider(
+		ctx,
+		false,
+		GrpcClientTlsProviderConfig{RootCertsFile: certPath},
+		registry,
+	)
+	require.NoError(t, err)
+	expectedConfig := provider.GetTlsConfig()
+
+	// Content seen once is not applied yet.
+	require.NoError(t, os.WriteFile(certPath, secondPEM, 0o600))
+	provider.(*grpcClientTlsProvider).refresh(ctx)
+	require.Same(t, expectedConfig, provider.GetTlsConfig())
+
+	// Content changed again, so it is still not stable.
+	require.NoError(t, os.WriteFile(certPath, thirdPEM, 0o600))
+	provider.(*grpcClientTlsProvider).refresh(ctx)
+	require.Same(t, expectedConfig, provider.GetTlsConfig())
+
+	provider.(*grpcClientTlsProvider).refresh(ctx)
+	require.True(
+		t,
+		provider.GetTlsConfig().RootCAs.Equal(newCertPool(t, thirdPEM)),
+	)
+	require.True(t, registry.AssertAllExpectations(t))
+}
+
+func TestGrpcServerTlsProviderRefreshWaitsForStableFiles(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	now := time.Now().Truncate(time.Second)
+	files := newServerCertificateFiles(t)
+	firstIntermediatePEM, firstIntermediateKeyPEM := generateCertificate(
+		t,
+		"intermediate",
+		now.Add(30*24*time.Hour),
+	)
+	firstLeafPEM, firstKeyPEM := generateSignedCertificate(
+		t,
+		"server.example",
+		now.Add(-time.Hour),
+		now.Add(60*24*time.Hour),
+		firstIntermediatePEM,
+		firstIntermediateKeyPEM,
+	)
+	secondIntermediatePEM, secondIntermediateKeyPEM := generateCertificate(
+		t,
+		"intermediate",
+		now.Add(45*24*time.Hour),
+	)
+	secondLeafPEM, secondKeyPEM := generateSignedCertificate(
+		t,
+		"server.example",
+		now.Add(-time.Hour),
+		now.Add(90*24*time.Hour),
+		secondIntermediatePEM,
+		secondIntermediateKeyPEM,
+	)
+	writeServerCertificate(
+		t,
+		files,
+		append(append([]byte(nil), firstLeafPEM...), firstIntermediatePEM...),
+		firstKeyPEM,
+	)
+
+	registry := metrics_mocks.NewRegistryMock()
+	expectServerCertificateMetrics(
+		registry,
+		files.certPath,
+		now.Add(30*24*time.Hour),
+		1,
+	)
+	expectServerCertificateMetrics(
+		registry,
+		files.certPath,
+		now.Add(45*24*time.Hour),
+		1,
+	)
+
+	provider, err := NewGrpcServerTlsProvider(
+		ctx,
+		[]GrpcServerCertificateConfig{{
+			CertFile:       files.certPath,
+			PrivateKeyFile: files.keyPath,
+		}},
+		0, // refreshPeriod
+		registry,
+	)
+	require.NoError(t, err)
+
+	// A non-atomic writer has written the new key and the new leaf, but not
+	// the intermediate certificate yet. The chain is valid on its own.
+	writeServerCertificate(t, files, secondLeafPEM, secondKeyPEM)
+	provider.refresh(ctx, now)
+	require.Equal(
+		t,
+		leafOf(t, firstLeafPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+
+	// The writer has finished, but the content differs from the previous
+	// read, so it is still not applied.
+	writeServerCertificate(
+		t,
+		files,
+		append(append([]byte(nil), secondLeafPEM...), secondIntermediatePEM...),
+		secondKeyPEM,
+	)
+	provider.refresh(ctx, now)
+	require.Equal(
+		t,
+		leafOf(t, firstLeafPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+
+	provider.refresh(ctx, now)
+	require.Equal(
+		t,
+		leafOf(t, secondLeafPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+	require.Len(t, provider.certificates[0].Certificate, 2)
+	require.True(t, registry.AssertAllExpectations(t))
+}
+
+func TestRefreshInterval(t *testing.T) {
+	// Files are checked twice per period so that a change is applied within
+	// one period despite the stable-read.
+	require.Equal(t, 5*time.Second, refreshInterval(10*time.Second))
+	require.Equal(t, time.Nanosecond, refreshInterval(time.Nanosecond))
+}
+
+func TestGrpcServerTlsProviderRefreshRejectsBrokenChain(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	now := time.Now().Truncate(time.Second)
+	files := newServerCertificateFiles(t)
+	intermediatePEM, intermediateKeyPEM := generateCertificate(
+		t,
+		"intermediate",
+		now.Add(30*24*time.Hour),
+	)
+	leafPEM, leafKeyPEM := generateSignedCertificate(
+		t,
+		"server.example",
+		now.Add(-time.Hour),
+		now.Add(60*24*time.Hour),
+		intermediatePEM,
+		intermediateKeyPEM,
+	)
+	unrelatedPEM, _ := generateCertificate(
+		t,
+		"intermediate",
+		now.Add(30*24*time.Hour),
+	)
+	newLeafPEM, newLeafKeyPEM := generateSignedCertificate(
+		t,
+		"server.example",
+		now.Add(-time.Hour),
+		now.Add(90*24*time.Hour),
+		intermediatePEM,
+		intermediateKeyPEM,
+	)
+	writeServerCertificate(
+		t,
+		files,
+		append(append([]byte(nil), leafPEM...), intermediatePEM...),
+		leafKeyPEM,
+	)
+
+	registry := metrics_mocks.NewRegistryMock()
+	expectServerCertificateMetrics(
+		registry,
+		files.certPath,
+		now.Add(30*24*time.Hour),
+		1,
+	)
+
+	provider, err := NewGrpcServerTlsProvider(
+		ctx,
+		[]GrpcServerCertificateConfig{{
+			CertFile:       files.certPath,
+			PrivateKeyFile: files.keyPath,
+		}},
+		0, // refreshPeriod
+		registry,
+	)
+	require.NoError(t, err)
+
+	// Leaf is not signed by the intermediate certificate.
+	writeServerCertificate(
+		t,
+		files,
+		append(append([]byte(nil), newLeafPEM...), unrelatedPEM...),
+		newLeafKeyPEM,
+	)
+	refreshServerUntilStable(ctx, provider, now)
+	require.Equal(
+		t,
+		leafOf(t, leafPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+
+	// Intermediate certificate is not signed by the next one.
+	writeServerCertificate(
+		t,
+		files,
+		append(
+			append(append([]byte(nil), newLeafPEM...), intermediatePEM...),
+			unrelatedPEM...,
+		),
+		newLeafKeyPEM,
+	)
+	refreshServerUntilStable(ctx, provider, now)
+	require.Equal(
+		t,
+		leafOf(t, leafPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+
+	require.True(t, registry.AssertAllExpectations(t))
 }

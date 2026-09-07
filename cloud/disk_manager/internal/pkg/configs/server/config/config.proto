@@ -49,7 +49,11 @@ message GrpcConfig {
     // Used in tests.
     optional string Hostname = 4;
     required KeepAliveConfig KeepAlive = 5;
-    // Zero disables automatic server certificates refresh.
+    // Period of automatic server certificates refresh, zero disables it. The
+    // files are checked twice per period and new content is applied only
+    // after it has been read unchanged twice in a row, so that a non-atomic
+    // rewrite is not picked up half-way. A change takes effect within one
+    // period.
     optional string RefreshCertsPeriod = 6 [default = "0s"];
 }
 

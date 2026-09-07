@@ -15,8 +15,9 @@ var pemBeginMarker = []byte("-----BEGIN")
 // Parses all certificates from PEM encoded data. Blocks of other types are
 // skipped. Unlike x509.CertPool.AppendCertsFromPEM and tls.X509KeyPair, which
 // silently stop at the first malformed block, this rejects data that contains
-// a malformed or truncated block, e.g. a file that is being rewritten
-// non-atomically.
+// a malformed or truncated block. Note that a syntactically valid prefix of a
+// file, e.g. the first certificates of a bundle that is being rewritten
+// non-atomically, cannot be told apart from a complete file here.
 func parsePEMCertificates(data []byte) ([]*x509.Certificate, error) {
 	var certificates []*x509.Certificate
 

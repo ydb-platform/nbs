@@ -31,6 +31,10 @@ type grpcClientTlsProvider struct {
 	mutex     sync.RWMutex
 	rootCerts []byte
 	tlsConfig *tls.Config
+	// Content that differs from rootCerts and has been read once, see
+	// stableReadDecision.
+	pendingRootCerts    []byte
+	hasPendingRootCerts bool
 }
 
 // A provider is not created for insecure clients or when system roots are used.
@@ -95,7 +99,7 @@ func (p *grpcClientTlsProvider) refreshLoop(
 	period time.Duration,
 ) {
 
-	ticker := time.NewTicker(period)
+	ticker := time.NewTicker(refreshInterval(period))
 	defer ticker.Stop()
 
 	for {
@@ -108,8 +112,9 @@ func (p *grpcClientTlsProvider) refreshLoop(
 	}
 }
 
-// Reloads root certificates from disk. The last successfully loaded config is
-// kept if the file cannot be read or parsed.
+// Reloads root certificates from disk. New content is applied only after it
+// has been read unchanged twice in a row. The last successfully loaded config
+// is kept if the file cannot be read or parsed.
 func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 	rootCerts, err := os.ReadFile(p.rootCertsFile)
 	if err != nil {
@@ -117,11 +122,15 @@ func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 		return
 	}
 
-	p.mutex.RLock()
-	unchanged := bytes.Equal(p.rootCerts, rootCerts)
-	p.mutex.RUnlock()
-
-	if unchanged {
+	switch p.decide(rootCerts) {
+	case stableReadUnchanged:
+		return
+	case stableReadWait:
+		logging.Info(
+			ctx,
+			"New root certificates in %v, waiting for a stable read",
+			p.rootCertsFile,
+		)
 		return
 	}
 
@@ -134,6 +143,8 @@ func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 	p.mutex.Lock()
 	p.rootCerts = rootCerts
 	p.tlsConfig = tlsConfig
+	p.pendingRootCerts = nil
+	p.hasPendingRootCerts = false
 	p.mutex.Unlock()
 
 	fingerprint := rootCertsFingerprint(rootCerts)
@@ -145,6 +156,27 @@ func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 	)
 
 	p.fingerprintGauge.Set(float64(fingerprint))
+}
+
+func (p *grpcClientTlsProvider) decide(rootCerts []byte) stableReadDecision {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	if bytes.Equal(p.rootCerts, rootCerts) {
+		p.pendingRootCerts = nil
+		p.hasPendingRootCerts = false
+		return stableReadUnchanged
+	}
+
+	stable := p.hasPendingRootCerts &&
+		bytes.Equal(p.pendingRootCerts, rootCerts)
+	p.pendingRootCerts = rootCerts
+	p.hasPendingRootCerts = true
+	if !stable {
+		return stableReadWait
+	}
+
+	return stableReadApply
 }
 
 func (p *grpcClientTlsProvider) warnRefreshFailure(
