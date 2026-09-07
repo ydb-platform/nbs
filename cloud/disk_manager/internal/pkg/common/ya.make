@@ -15,6 +15,7 @@ SRCS(
     grpc_client_tls_provider.go
     grpc_server_tls_provider.go
     inflight_queue.go
+    pem_certificates.go
     progress_saver.go
     util.go
 )

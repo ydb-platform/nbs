@@ -17,4 +17,6 @@ message ClientConfig {
     optional bool DisableAuthentication = 4;
     optional string DurableClientTimeout = 5 [default = "60s"];
     optional string GrpcClientTimeout = 6 [default = "30s"];
+    // Zero disables automatic root certificates refresh.
+    optional string RefreshCertsPeriod = 7 [default = "0s"];
 }
