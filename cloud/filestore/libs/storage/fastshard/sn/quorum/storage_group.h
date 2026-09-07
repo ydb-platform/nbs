@@ -86,6 +86,12 @@ struct TStorageGroupConfig
     ui64 AcquireGeneration = 0;
 
     TStorageGroupRetryPolicy RetryPolicy;
+
+    // How often the low watermark is pushed to the devices; zero never.
+    TDuration LowWatermarkPeriod = TDuration::Seconds(1);
+
+    // TODO(#6956): drop once every device supports the journal.
+    bool JournalRestoreEnabled = false;
 };
 
 /**

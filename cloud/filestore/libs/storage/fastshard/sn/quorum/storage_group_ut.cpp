@@ -75,11 +75,14 @@ using TGroupFactory = IStorageGroupPtr (*)(
     TVector<TStorageDevice>,
     ITimerPtr);
 
+// No watermark fiber unless a test asks for one.
 TStorageGroupConfig MakeTestConfig()
 {
     TStorageGroupConfig config;
     config.ClientId = "test-client";
     config.AcquireGeneration = 42;
+    config.LowWatermarkPeriod = TDuration::Zero();
+    config.JournalRestoreEnabled = true;
     return config;
 }
 
@@ -95,7 +98,10 @@ struct TStorageFixture
     std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
     IStorageGroupPtr Group;
 
-    TStorageFixture(TGroupFactory createGroup = CreateNaiveMirroredStorageGroup)
+    TStorageFixture(
+            TGroupFactory createGroup = CreateNaiveMirroredStorageGroup,
+            TStorageGroupConfig config = MakeTestConfig(),
+            ITimerPtr timer = nullptr)
         : StorageNodes(NodeCount)
     {
         TVector<TStorageDevice> devices(NodeCount);
@@ -107,24 +113,147 @@ struct TStorageFixture
             };
         }
 
-        Group = createGroup(MakeTestConfig(), std::move(devices), Timer);
+        Group = createGroup(
+            std::move(config),
+            std::move(devices),
+            timer ? std::move(timer) : Timer);
     }
 };
 
+/**
+ * A timer whose Sleep waits for the test to call TickOnce, which lets the
+ * watermark fiber run exactly one iteration and returns once the fiber is
+ * parked in Sleep again. Sleep announces itself before waiting, so the fiber
+ * is parked exactly when Sleeps == Ticks + 1.
+ */
+struct TTickTimer: ITimer
+{
+    silk::FiberSequencer Ticks;    // test to fiber
+    silk::FiberSequencer Sleeps;   // fiber to test: Sleep calls made
+
+    TInstant Now() override
+    {
+        return TInstant::Now();
+    }
+
+    void Sleep(TDuration duration) override
+    {
+        Y_UNUSED(duration);
+        (void)Ticks.wait(Sleeps.increment());
+    }
+
+    void TickOnce()
+    {
+        (void)Sleeps.wait(Ticks.get() + 1);
+        (void)Sleeps.wait(Ticks.increment() + 1);
+    }
+
+    // Ticks until the predicate holds, each tick being one full iteration of
+    // the loop. A tick right after a write may find the third ack not yet
+    // counted, hence more than one.
+    template <typename TPredicate>
+    bool TickUntil(TPredicate predicate)
+    {
+        for (ui32 i = 0; i < 100; ++i) {
+            TickOnce();
+            if (predicate()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Lets the fiber out of Sleep for good, so TearDown can join it.
+    void Stop()
+    {
+        Ticks.stop();
+    }
+};
+
+// A quorum group over the fakes; init = false leaves it to the test, so it
+// can script the journals first.
 struct TQuorumFixture: TStorageFixture
 {
-    TQuorumFixture()
-        : TStorageFixture(CreateQuorumMirroredStorageGroup)
+    std::shared_ptr<TTickTimer> TickTimer;
+
+    TQuorumFixture(
+            bool init = true,
+            TStorageGroupConfig config = MakeTestConfig(),
+            std::shared_ptr<TTickTimer> tickTimer = nullptr)
+        : TStorageFixture(
+              CreateQuorumMirroredStorageGroup,
+              std::move(config),
+              tickTimer)
+        , TickTimer(std::move(tickTimer))
     {
-        auto error = Group->Init();
-        EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+        if (init) {
+            auto error = Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+        }
     }
 
     ~TQuorumFixture()
     {
+        if (TickTimer) {
+            TickTimer->Stop();
+        }
         Group->TearDown();
     }
 };
+
+// Ticks until every device has been pushed a watermark.
+void TickUntilPushed(TStorageFixture& fx, TTickTimer& timer)
+{
+    const bool pushed = timer.TickUntil(
+        [&]
+        {
+            for (const auto& sn: fx.StorageNodes) {
+                if (sn->AdvanceLsnLowWatermarkCalls.empty()) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    EXPECT_TRUE(pushed) << "watermark never pushed";
+}
+
+// A group with the watermark fiber on.
+TStorageGroupConfig WatermarkConfig()
+{
+    auto config = MakeTestConfig();
+    config.LowWatermarkPeriod = TDuration::MilliSeconds(1);
+    // A refused push is reported at once instead of sleeping on the tick
+    // timer, which would count as the fiber parking in its own Sleep.
+    config.RetryPolicy.TotalTimeout = TDuration::Zero();
+    return config;
+}
+
+// What a device answers to ReadJournalTail.
+NProto::TReadJournalTailResponse JournalTail(std::initializer_list<ui64> lsns)
+{
+    NProto::TReadJournalTailResponse response;
+    for (ui64 lsn: lsns) {
+        auto* record = response.AddRecords();
+        record->SetLogSequenceNumber(lsn);
+        record->SetPrevLogSequenceNumber(lsn - 1);
+        auto* pg = record->AddPageGroups();
+        pg->SetFirstPageNo(lsn);
+        pg->AddContent(TStringBuilder() << "lsn" << lsn);
+        response.SetLastAckedLogSequenceNumber(lsn);
+    }
+    return response;
+}
+
+TVector<ui64> WrittenLsns(const TStorageFixture& fx, ui32 i)
+{
+    TVector<ui64> lsns;
+    for (const auto& w: fx.StorageNodes[i]->WriteCalls) {
+        lsns.push_back(w.GetLogSequenceNumber());
+    }
+    return lsns;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 //
 // The tests below use the default retry policy (300s total timeout, 0.5s
@@ -646,6 +775,23 @@ void WaitUntilServes(TStorageFixture& fx, ui32 i)
     EXPECT_GT(fx.StorageNodes[i]->ReadCalls.size(), 0U);
 }
 
+// Three reads hit three different replicas only if all of them are eligible.
+void ExpectEveryReplicaServes(TStorageFixture& fx)
+{
+    for (auto& sn: fx.StorageNodes) {
+        sn->ReadCalls.clear();
+        sn->ReadResp = NProto::TReadPagesResponse{};
+    }
+    for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+        TVector<TPageGroup> pageGroups;
+        auto error = ReadSomething(*fx.Group, &pageGroups);
+        EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    }
+    for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+        EXPECT_EQ(1U, fx.StorageNodes[i]->ReadCalls.size()) << "dev " << i;
+    }
+}
+
 }   // namespace
 
 TEST(QuorumGroupTest, InitAcquiresEveryDeviceWithTheGeneration)
@@ -653,7 +799,7 @@ TEST(QuorumGroupTest, InitAcquiresEveryDeviceWithTheGeneration)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TStorageFixture fx(CreateQuorumMirroredStorageGroup);
+            TQuorumFixture fx(false);
 
             auto error = fx.Group->Init();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
@@ -668,10 +814,16 @@ TEST(QuorumGroupTest, InitAcquiresEveryDeviceWithTheGeneration)
                 EXPECT_EQ(
                     "test-client",
                     sn->AcquireCalls[0].GetHeaders().GetClientId());
+                // a position query, not a journal read
+                EXPECT_EQ(1U, sn->ReadJournalTailCalls.size());
+                EXPECT_EQ(
+                    0U,
+                    sn->ReadJournalTailCalls[0].GetAfterLogSequenceNumber());
+                EXPECT_EQ(1U, sn->ReadJournalTailCalls[0].GetMaxRecordCount());
             }
 
             fx.Group->TearDown();
-            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
                 EXPECT_EQ(1U, fx.StorageNodes[i]->ReleaseCalls.size());
             }
 
@@ -686,7 +838,7 @@ TEST(QuorumGroupTest, InitFailsIfAnyDeviceRefusesAcquire)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TStorageFixture fx(CreateQuorumMirroredStorageGroup);
+            TQuorumFixture fx(false);
 
             // Acquire is n/n: one bad device is enough to fail the group.
             *fx.StorageNodes[2]->AcquireResp.MutableError() =
@@ -696,6 +848,445 @@ TEST(QuorumGroupTest, InitFailsIfAnyDeviceRefusesAcquire)
             EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
 
             fx.Group->TearDown();
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitFailsIfAnyDeviceCannotReportItsLsn)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false);
+
+            // n/n, like acquire
+            *fx.StorageNodes[2]->ReadJournalTailResp.MutableError() =
+                MakeError(E_ARGUMENT, "scripted error");
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+
+            fx.Group->TearDown();
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitSeedsFromDevicesAndCatchesUpTheLaggingOne)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false);
+
+            // dev-a and dev-b at 10, dev-c at 7; dev-a serves the tail
+            fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({8, 9, 10});
+            fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({10});
+            fx.StorageNodes[2]->ReadJournalTailResp = JournalTail({7});
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            EXPECT_EQ((TVector<ui64>{8, 9, 10}), WrittenLsns(fx, 2));
+            if (WrittenLsns(fx, 2).size() != 3) {
+                return 1;
+            }
+            const auto& replay = fx.StorageNodes[2]->WriteCalls[0];
+            EXPECT_EQ(7U, replay.GetPrevLogSequenceNumber());
+            EXPECT_EQ("lsn8", replay.GetPageGroups(0).GetContent(0));
+            EXPECT_EQ(0U, fx.StorageNodes[0]->WriteCalls.size());
+            EXPECT_EQ(0U, fx.StorageNodes[1]->WriteCalls.size());
+
+            // dev-b included, which was never written to
+            ExpectEveryReplicaServes(fx);
+
+            error = WriteSomething(*fx.Group, 11);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            WaitFor([&] { return TotalWriteCalls(fx) == 6; });
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                const auto& w = fx.StorageNodes[i]->WriteCalls.back();
+                EXPECT_EQ(11U, w.GetLogSequenceNumber());
+            }
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitWithEveryDeviceAtTheSameLsnServesAtOnce)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false);
+
+            for (auto& sn: fx.StorageNodes) {
+                sn->ReadJournalTailResp = JournalTail({9, 10});
+            }
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            EXPECT_EQ(0U, TotalWriteCalls(fx));
+            ExpectEveryReplicaServes(fx);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitFailsIfTheTailStopsShortOfTheReportedLsn)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false);
+
+            // dev-a says 10, but the tail it serves stops at 9
+            fx.StorageNodes[0]->ReadJournalTailRespQueue.push_back(
+                JournalTail({8, 9, 10}));
+            fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({8, 9});
+            fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({10});
+            fx.StorageNodes[2]->ReadJournalTailResp = JournalTail({7});
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(0U, TotalWriteCalls(fx));
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitFailsIfAReplayIsRefused)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false);
+
+            fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({8, 9, 10});
+            fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({10});
+            fx.StorageNodes[2]->ReadJournalTailResp = JournalTail({7});
+            fx.StorageNodes[2]->WriteResp = WriteErrorResponse(E_ARGUMENT);
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+            EXPECT_TRUE(error.GetMessage().Contains("dev-c")) << error.GetMessage();
+
+            TVector<TPageGroup> pageGroups;
+            error = ReadSomething(*fx.Group, &pageGroups);
+            EXPECT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitWithoutJournalRestoreOnlyAcquires)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            // Restore off, watermark period on: neither may touch the
+            // devices, which do not implement either call.
+            auto config = WatermarkConfig();
+            config.JournalRestoreEnabled = false;
+            TQuorumFixture fx(false, config);
+
+            for (auto& sn: fx.StorageNodes) {
+                *sn->ReadJournalTailResp.MutableError() =
+                    MakeError(E_NOT_IMPLEMENTED, "ReadJournalTail");
+                *sn->AdvanceLsnLowWatermarkResp.MutableError() =
+                    MakeError(E_NOT_IMPLEMENTED, "AdvanceLsnLowWatermark");
+            }
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            ExpectEveryReplicaServes(fx);
+
+            error = WriteSomething(*fx.Group);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            WaitFor([&] { return TotalWriteCalls(fx) == 3; });
+
+            for (auto& sn: fx.StorageNodes) {
+                EXPECT_EQ(0U, sn->ReadJournalTailCalls.size());
+                EXPECT_EQ(0U, sn->AdvanceLsnLowWatermarkCalls.size());
+            }
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitReplaysEverythingOntoAnEmptyDevice)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false);
+
+            // dev-c has nothing at all: the whole tail goes onto it
+            fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({1, 2, 3});
+            fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({3});
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            EXPECT_EQ((TVector<ui64>{1, 2, 3}), WrittenLsns(fx, 2));
+            EXPECT_EQ(0U, fx.StorageNodes[0]->WriteCalls.size());
+            EXPECT_EQ(0U, fx.StorageNodes[1]->WriteCalls.size());
+            ExpectEveryReplicaServes(fx);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, TearDownBeforeInitReleasesAndReturns)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false);
+
+            // No watermark fiber was ever started: nothing to wait for.
+            fx.Group->TearDown();
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                EXPECT_EQ(1U, fx.StorageNodes[i]->ReleaseCalls.size());
+            }
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitTakesThePositionFromTheAckedLsnField)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false);
+
+            // A position query may come back without records at all.
+            for (auto& sn: fx.StorageNodes) {
+                sn->ReadJournalTailResp.SetLastAckedLogSequenceNumber(10);
+            }
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            // everyone at 10: no tail read, no replay
+            for (auto& sn: fx.StorageNodes) {
+                EXPECT_EQ(1U, sn->ReadJournalTailCalls.size());
+            }
+            EXPECT_EQ(0U, TotalWriteCalls(fx));
+            ExpectEveryReplicaServes(fx);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitJoinsEveryReplayEvenIfOneIsRefused)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false);
+
+            // dev-b and dev-c both lag; dev-c refuses its replay
+            fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({8, 9, 10});
+            fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({7});
+            fx.StorageNodes[2]->ReadJournalTailResp = JournalTail({7});
+            fx.StorageNodes[2]->WriteResp = WriteErrorResponse(E_ARGUMENT);
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+            EXPECT_TRUE(error.GetMessage().Contains("dev-c")) << error.GetMessage();
+
+            // dev-b was caught up regardless
+            EXPECT_EQ((TVector<ui64>{8, 9, 10}), WrittenLsns(fx, 1));
+            EXPECT_EQ(1U, fx.StorageNodes[2]->WriteCalls.size());
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, LowWatermarkFollowsTheSlowestDevice)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto timer = std::make_shared<TTickTimer>();
+            TQuorumFixture fx(true, WatermarkConfig(), timer);
+
+            fx.StorageNodes[2]->Paused = true;
+            auto error = WriteSomething(*fx.Group);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            // dev-c has not acked the record, so nothing may be trimmed
+            // anywhere yet: a trimmed peer could never replay it to dev-c.
+            timer->TickOnce();
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+                EXPECT_EQ(
+                    0U,
+                    fx.StorageNodes[i]->AdvanceLsnLowWatermarkCalls.size());
+            }
+
+            fx.StorageNodes[2]->Unpause();
+            TickUntilPushed(fx, *timer);
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+                const auto& calls = fx.StorageNodes[i]->AdvanceLsnLowWatermarkCalls;
+                EXPECT_EQ(1U, calls.size()) << "dev " << i;
+                if (calls.size() != 1) {
+                    return 1;
+                }
+                EXPECT_EQ(1234U, calls[0].GetLsnLowWatermark());
+            }
+
+            // Nothing moved: nothing is pushed again.
+            timer->TickOnce();
+            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+                EXPECT_EQ(
+                    1U,
+                    fx.StorageNodes[i]->AdvanceLsnLowWatermarkCalls.size());
+            }
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, LowWatermarkStartsFromTheRestoredPosition)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto timer = std::make_shared<TTickTimer>();
+            TQuorumFixture fx(false, WatermarkConfig(), timer);
+
+            // Every device restored at 10: that is acked everywhere by
+            // definition, so the first round pushes it.
+            for (auto& sn: fx.StorageNodes) {
+                sn->ReadJournalTailResp = JournalTail({10});
+            }
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            TickUntilPushed(fx, *timer);
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                const auto& calls = fx.StorageNodes[i]->AdvanceLsnLowWatermarkCalls;
+                EXPECT_EQ(1U, calls.size()) << "dev " << i;
+                if (calls.size() == 1) {
+                    EXPECT_EQ(10U, calls[0].GetLsnLowWatermark());
+                }
+            }
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, LowWatermarkMissedByADeviceReachesItWithTheNextOne)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto timer = std::make_shared<TTickTimer>();
+            TQuorumFixture fx(true, WatermarkConfig(), timer);
+
+            // Retriable and out of retries at once (see WatermarkConfig)
+            *fx.StorageNodes[2]->AdvanceLsnLowWatermarkResp.MutableError() =
+                MakeError(E_REJECTED, "scripted error");
+
+            auto error = WriteSomething(*fx.Group);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            TickUntilPushed(fx, *timer);
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                EXPECT_EQ(
+                    1U,
+                    fx.StorageNodes[i]->AdvanceLsnLowWatermarkCalls.size())
+                    << "dev " << i;
+            }
+
+            // The miss is not repeated: dev-c just keeps a few extra records.
+            fx.StorageNodes[2]->AdvanceLsnLowWatermarkResp = {};
+            timer->TickOnce();
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                EXPECT_EQ(
+                    1U,
+                    fx.StorageNodes[i]->AdvanceLsnLowWatermarkCalls.size())
+                    << "dev " << i;
+            }
+
+            // The next watermark reaches dev-c like everyone else.
+            error = WriteSomething(*fx.Group, 2000);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            WaitFor([&] { return TotalWriteCalls(fx) == 6; });
+            EXPECT_TRUE(timer->TickUntil(
+                [&]
+                {
+                    for (const auto& sn: fx.StorageNodes) {
+                        if (sn->AdvanceLsnLowWatermarkCalls.size() != 2) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }));
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                const auto& calls = fx.StorageNodes[i]->AdvanceLsnLowWatermarkCalls;
+                EXPECT_EQ(2U, calls.size()) << "dev " << i;
+                if (calls.size() == 2) {
+                    EXPECT_EQ(2000U, calls[1].GetLsnLowWatermark());
+                }
+            }
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, LowWatermarkRefusedOutrightBreaksTheGroup)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto timer = std::make_shared<TTickTimer>();
+            TQuorumFixture fx(true, WatermarkConfig(), timer);
+
+            *fx.StorageNodes[2]->AdvanceLsnLowWatermarkResp.MutableError() =
+                MakeError(E_ARGUMENT, "scripted error");
+
+            auto error = WriteSomething(*fx.Group);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            WaitFor([&] { return TotalWriteCalls(fx) == 3; });
+
+            // The refused push breaks the group before the loop parks again.
+            TickUntilPushed(fx, *timer);
+
+            error = WriteSomething(*fx.Group, 3);
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+            EXPECT_TRUE(error.GetMessage().Contains("dev-c")) << error.GetMessage();
+            EXPECT_EQ(3U, TotalWriteCalls(fx));
+
             return 0;
         },
         0);

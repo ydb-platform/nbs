@@ -63,8 +63,8 @@ NCloud::NProto::TReadJournalTailResponse TFakeStorageNode::ReadJournalTail(
 {
     with_lock (Lock) {
         ReadJournalTailCalls.push_back(std::move(request));
+        return PopResponse(ReadJournalTailRespQueue, ReadJournalTailResp);
     }
-    return ReadJournalTailResp;
 }
 
 NCloud::NProto::TAdvanceLsnLowWatermarkResponse

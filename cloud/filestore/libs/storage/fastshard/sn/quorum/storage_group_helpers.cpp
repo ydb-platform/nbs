@@ -27,6 +27,18 @@ NProto::TWriteLogRecordRequest MakeWriteLogRecordRequest(
     return request;
 }
 
+NProto::TWriteLogRecordRequest MakeReplayRequest(
+    NProto::TDeviceRequestHeaders headers,
+    const NProto::TJournalRecord& record)
+{
+    NProto::TWriteLogRecordRequest request;
+    *request.MutableHeaders() = std::move(headers);
+    *request.MutablePageGroups() = record.GetPageGroups();
+    request.SetLogSequenceNumber(record.GetLogSequenceNumber());
+    request.SetPrevLogSequenceNumber(record.GetPrevLogSequenceNumber());
+    return request;
+}
+
 NProto::TReadPagesRequest MakeReadPagesRequest(
     NProto::TDeviceRequestHeaders headers,
     const TVector<TPageGroupRef>& pageGroupRefs)
