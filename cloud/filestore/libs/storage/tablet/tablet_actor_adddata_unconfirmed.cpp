@@ -19,7 +19,7 @@ bool TIndexTabletActor::PrepareTx_AddDataUnconfirmed(
 {
     Y_UNUSED(ctx);
 
-    if (!UnconfirmedDataInProgressContains(args.CommitId)) {
+    if (!GetUnconfirmedDataInProgressContains(args.CommitId)) {
         ReportUnconfirmedDataNotInProgress(
             TStringBuilder()
             << "tabletId: " << TabletID() << ", commitId: " << args.CommitId);
@@ -34,7 +34,7 @@ bool TIndexTabletActor::PrepareTx_AddDataUnconfirmed(
         return true;
     }
 
-    if (DeletionQueueContains(args.CommitId)) {
+    if (GetDeletionQueueContains(args.CommitId)) {
         args.RejectedByDeletion = true;
         args.Error = MakeError(E_REJECTED, "Already deleted");
         LOG_WARN(
@@ -59,7 +59,7 @@ void TIndexTabletActor::ExecuteTx_AddDataUnconfirmed(
 
     auto db = CreateIndexTabletDatabase(tx.DB);
 
-    auto& data = UnconfirmedDataInProgressByCommitId(args.CommitId).Data;
+    auto& data = AccessUnconfirmedDataInProgressByCommitId(args.CommitId).Data;
 
     data.SetNodeId(args.NodeId);
 
@@ -80,10 +80,10 @@ void TIndexTabletActor::CompleteTx_AddDataUnconfirmed(
     const TActorContext& ctx,
     TTxIndexTablet::TAddDataUnconfirmed& args)
 {
-    auto& data = FindAndVerifyUnconfirmedDataInProgress(args.CommitId);
+    auto& data = AccessAndVerifyUnconfirmedDataInProgress(args.CommitId);
     const ui64 requestBytes = data.Data.GetLength();
     const bool deletionInProgress =
-        args.RejectedByDeletion || DeletionQueueContains(args.CommitId);
+        args.RejectedByDeletion || GetDeletionQueueContains(args.CommitId);
 
     Y_DEFER
     {

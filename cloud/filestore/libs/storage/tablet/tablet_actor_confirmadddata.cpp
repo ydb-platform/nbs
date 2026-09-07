@@ -183,13 +183,13 @@ void TIndexTabletActor::HandleConfirmAddData(
             msg->Record);
 
         deferReply();
-        if (!DeletionQueueContains(commitId)) {
+        if (!GetDeletionQueueContains(commitId)) {
             ConfirmData(commitId, ctx);
         }
         return;
     }
 
-    if (UnconfirmedDataInProgressContains(commitId))
+    if (GetUnconfirmedDataInProgressContains(commitId))
     {
         deferReply();
         Metrics->ConfirmAddDataExtra.DeferredCount.fetch_add(
@@ -260,14 +260,14 @@ void TIndexTabletActor::HandleCancelAddData(
 
     const ui64 commitId = msg->Record.GetCommitId();
 
-    if (!UnconfirmedDataContains(commitId) &&
-        !UnconfirmedDataInProgressContains(commitId))
+    if (!GetUnconfirmedDataContains(commitId) &&
+        !GetUnconfirmedDataInProgressContains(commitId))
     {
         reply(ErrorUnconfirmedDataNotFound());
         return;
     }
 
-    if (!DeletionQueueContains(commitId)) {
+    if (!GetDeletionQueueContains(commitId)) {
         DeletionQueueEmplace(commitId);
         // We reply to CancelAddData immediately, so from this point forward we
         // rely on DeleteUnconfirmedData being executed ahead of any later
@@ -388,7 +388,7 @@ void TIndexTabletActor::AddBlobForUnconfirmedData(
 
 void TIndexTabletActor::ConfirmData(ui64 commitId, const TActorContext& ctx)
 {
-    auto& data = FindAndVerifyUnconfirmedData(commitId);
+    auto& data = AccessAndVerifyUnconfirmedData(commitId);
 
     auto [pos, inserted] =
         ConfirmedData.emplace(commitId, std::move(data));
@@ -419,11 +419,10 @@ void TIndexTabletActor::DeleteUnconfirmedData(
     const TActorContext& ctx,
     const char* entityLogTag,
     const TString& entityLogValue,
-    const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
-        shouldDelete)
+    const TDeletionDeterminer& shouldDelete)
 {
     TVector<ui64> commitIdsToDelete;
-    EnqueueCommitIdsToDelete(shouldDelete, commitIdsToDelete);
+    EnqueueCommitIdsToDelete(shouldDelete, &commitIdsToDelete);
 
     if (commitIdsToDelete.empty()) {
         return;

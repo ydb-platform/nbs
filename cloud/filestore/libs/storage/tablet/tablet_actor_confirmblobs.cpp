@@ -339,7 +339,7 @@ void TIndexTabletActor::HandleConfirmBlobsCompleted(
     Sort(recoverableCommitIds);
 
     for (const ui64 commitId: recoverableCommitIds) {
-        const auto& data = FindAndVerifyUnconfirmedData(commitId).Data;
+        const auto& data = AccessAndVerifyUnconfirmedData(commitId).Data;
         NProto::TProfileLogRequestInfo profileLogRequest;
         InitTabletProfileLogRequestInfo(
             profileLogRequest,

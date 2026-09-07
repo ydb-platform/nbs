@@ -437,19 +437,20 @@ void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
     Impl->CacheReadBypass.SetUnconfirmedRecoveryReady(value);
 }
 
-bool TIndexTabletState::UnconfirmedDataInProgressContains(ui64 commitId) const
+bool TIndexTabletState::GetUnconfirmedDataInProgressContains(
+    ui64 commitId) const
 {
     return Impl->UnconfirmedDataInProgress.contains(commitId);
 }
 
-TTrackedUnconfirmedData& TIndexTabletState::UnconfirmedDataInProgressByCommitId(
-    ui64 commitId)
+TTrackedUnconfirmedData&
+TIndexTabletState::AccessUnconfirmedDataInProgressByCommitId(ui64 commitId)
 {
     return Impl->UnconfirmedDataInProgress[commitId];
 }
 
 TTrackedUnconfirmedData&
-TIndexTabletState::FindAndVerifyUnconfirmedDataInProgress(ui64 commitId)
+TIndexTabletState::AccessAndVerifyUnconfirmedDataInProgress(ui64 commitId)
 {
     auto& map = Impl->UnconfirmedDataInProgress;
     auto it = map.find(commitId);
@@ -473,9 +474,9 @@ bool TIndexTabletState::UnconfirmedDataInProgressEmplace(
 }
 
 void TIndexTabletState::EnqueueCommitIdsToDelete(
-    const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
+    const TDeletionDeterminer&
         shouldDelete,
-    TVector<ui64>& commitIdsToDelete)
+    TVector<ui64>* commitIdsToDelete)
 {
     auto process = [&](const auto& data)
     {
@@ -488,7 +489,7 @@ void TIndexTabletState::EnqueueCommitIdsToDelete(
                 continue;
             }
 
-            commitIdsToDelete.push_back(commitId);
+            commitIdsToDelete->push_back(commitId);
         }
     };
 
@@ -501,7 +502,7 @@ size_t TIndexTabletState::GetUnconfirmedDataInProgressSize() const
     return Impl->UnconfirmedDataInProgress.size();
 }
 
-bool TIndexTabletState::DeletionQueueContains(ui64 commitId) const
+bool TIndexTabletState::GetDeletionQueueContains(ui64 commitId) const
 {
     return Impl->DeletionQueue.contains(commitId);
 }
@@ -523,7 +524,7 @@ bool TIndexTabletState::UnconfirmedDataEmplace(
     return Impl->UnconfirmedData.emplace(commitId, std::move(data)).second;
 }
 
-bool TIndexTabletState::UnconfirmedDataContains(ui64 commitId) const
+bool TIndexTabletState::GetUnconfirmedDataContains(ui64 commitId) const
 {
     return Impl->UnconfirmedData.contains(commitId);
 }
@@ -534,10 +535,10 @@ const TTrackedUnconfirmedData* TIndexTabletState::FindUnconfirmedData(
     const auto& map = Impl->UnconfirmedData;
 
     auto it = map.find(commitId);
-    return it == map.end() ? nullptr : &it->second;
+    return Impl->UnconfirmedData.FindPtr(commitId)
 }
 
-TTrackedUnconfirmedData& TIndexTabletState::FindAndVerifyUnconfirmedData(
+TTrackedUnconfirmedData& TIndexTabletState::AccessAndVerifyUnconfirmedData(
     ui64 commitId)
 {
     auto& map = Impl->UnconfirmedData;

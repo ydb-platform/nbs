@@ -273,31 +273,32 @@ protected:
 protected:
     void SetUnconfirmedRecoveryReady(bool value);
 
-    bool UnconfirmedDataInProgressContains(ui64 commitId) const;
-    TTrackedUnconfirmedData& UnconfirmedDataInProgressByCommitId(ui64 commitId);
-    TTrackedUnconfirmedData& FindAndVerifyUnconfirmedDataInProgress(
+    bool GetUnconfirmedDataInProgressContains(ui64 commitId) const;
+    TTrackedUnconfirmedData& AccessUnconfirmedDataInProgressByCommitId(ui64 commitId);
+    TTrackedUnconfirmedData& AccessAndVerifyUnconfirmedDataInProgress(
         ui64 commitId);
     void EraseUnconfirmedDataInProgress(ui64 commitId);
     bool UnconfirmedDataInProgressEmplace(
         ui64 commitId,
         TTrackedUnconfirmedData data);
+    using TDeletionDeterminer = std::function<bool(ui64, const TTrackedUnconfirmedData&)>;
     void EnqueueCommitIdsToDelete(
-        const std::function<bool(ui64, const TTrackedUnconfirmedData&)>&
+        const TDeletionDeterminer&
             shouldDelete,
-        TVector<ui64>& commitIdsToDelete);
+        TVector<ui64>* commitIdsToDelete);
     size_t GetUnconfirmedDataInProgressSize() const;
 
-    bool DeletionQueueContains(ui64 commitId) const;
+    bool GetDeletionQueueContains(ui64 commitId) const;
     bool DeletionQueueEmplace(ui64 commitId);
     void DeletionQueueErase(ui64 commitId);
 
     bool UnconfirmedDataEmplace(ui64 commitId, TTrackedUnconfirmedData data);
     void UnconfirmedDataErase(ui64 commitId);
-    bool UnconfirmedDataContains(ui64 commitId) const;
+    bool GetUnconfirmedDataContains(ui64 commitId) const;
     void UnconfirmedDataClear();
     size_t GetUnconfirmedDataSize() const;
     const TTrackedUnconfirmedData* FindUnconfirmedData(ui64 commitId) const;
-    TTrackedUnconfirmedData& FindAndVerifyUnconfirmedData(ui64 commitId);
+    TTrackedUnconfirmedData& AccessAndVerifyUnconfirmedData(ui64 commitId);
     void ForEachUnconfirmedData(
         const std::function<void(const ui64, const TTrackedUnconfirmedData&)>&
             visitor) const;
