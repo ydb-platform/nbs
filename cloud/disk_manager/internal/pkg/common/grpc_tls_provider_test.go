@@ -1575,5 +1575,160 @@ func TestGrpcServerTlsProviderRefreshRejectsBrokenChain(t *testing.T) {
 		selectedLeaf(t, provider, "server.example"),
 	)
 
+	// Intermediate certificate has been re-issued for the same key with a
+	// different subject, so the signature is valid but the issuer name of the
+	// leaf certificate does not match and clients cannot build the chain.
+	renamedIntermediatePEM := generateCertificateForKey(
+		t,
+		"intermediate-renamed",
+		now.Add(-time.Hour),
+		now.Add(30*24*time.Hour),
+		intermediateKeyPEM,
+	)
+	writeServerCertificate(
+		t,
+		files,
+		append(append([]byte(nil), newLeafPEM...), renamedIntermediatePEM...),
+		newLeafKeyPEM,
+	)
+	refreshServerUntilStable(ctx, provider, now)
+	require.Equal(
+		t,
+		leafOf(t, leafPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+
+	require.True(t, registry.AssertAllExpectations(t))
+}
+
+func TestGrpcClientTlsProviderReadErrorResetsPendingRootCertificates(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	firstPEM, _ := generateCertificate(t, "first", time.Now().Add(24*time.Hour))
+	secondPEM, _ := generateCertificate(t, "second", time.Now().Add(24*time.Hour))
+	certPath := filepath.Join(t.TempDir(), "root.pem")
+	require.NoError(t, os.WriteFile(certPath, firstPEM, 0o600))
+
+	registry := metrics_mocks.NewRegistryMock()
+	gauge := registry.GetGauge(
+		"fingerprint",
+		map[string]string{
+			"subsystem": "certificates",
+			"path":      certPath,
+		},
+	)
+	gauge.On("Set", float64(fingerprintOf(firstPEM))).Once()
+	gauge.On("Set", float64(fingerprintOf(secondPEM))).Once()
+
+	provider, err := NewGrpcClientTlsProvider(
+		ctx,
+		false,
+		GrpcClientTlsProviderConfig{RootCertsFile: certPath},
+		registry,
+	)
+	require.NoError(t, err)
+	expectedConfig := provider.GetTlsConfig()
+
+	require.NoError(t, os.WriteFile(certPath, secondPEM, 0o600))
+	provider.(*grpcClientTlsProvider).refresh(ctx)
+	require.Same(t, expectedConfig, provider.GetTlsConfig())
+
+	// A read error, e.g. in the middle of a non-atomic rotation, restarts the
+	// stable-read.
+	require.NoError(t, os.Remove(certPath))
+	provider.(*grpcClientTlsProvider).refresh(ctx)
+	require.Same(t, expectedConfig, provider.GetTlsConfig())
+
+	require.NoError(t, os.WriteFile(certPath, secondPEM, 0o600))
+	provider.(*grpcClientTlsProvider).refresh(ctx)
+	require.Same(t, expectedConfig, provider.GetTlsConfig())
+
+	provider.(*grpcClientTlsProvider).refresh(ctx)
+	require.True(
+		t,
+		provider.GetTlsConfig().RootCAs.Equal(newCertPool(t, secondPEM)),
+	)
+	require.True(t, registry.AssertAllExpectations(t))
+}
+
+func TestGrpcServerTlsProviderReadErrorResetsPendingFiles(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	now := time.Now().Truncate(time.Second)
+	files := newServerCertificateFiles(t)
+	firstPEM, firstKeyPEM := generateCertificate(
+		t,
+		"server.example",
+		now.Add(30*24*time.Hour),
+	)
+	secondPEM, secondKeyPEM := generateCertificate(
+		t,
+		"server.example",
+		now.Add(60*24*time.Hour),
+	)
+	writeServerCertificate(t, files, firstPEM, firstKeyPEM)
+
+	registry := metrics_mocks.NewRegistryMock()
+	expectServerCertificateMetrics(
+		registry,
+		files.certPath,
+		now.Add(30*24*time.Hour),
+		1,
+	)
+	expectServerCertificateMetrics(
+		registry,
+		files.certPath,
+		now.Add(60*24*time.Hour),
+		1,
+	)
+
+	provider, err := NewGrpcServerTlsProvider(
+		ctx,
+		[]GrpcServerCertificateConfig{{
+			CertFile:       files.certPath,
+			PrivateKeyFile: files.keyPath,
+		}},
+		0, // refreshPeriod
+		registry,
+	)
+	require.NoError(t, err)
+
+	writeServerCertificate(t, files, secondPEM, secondKeyPEM)
+	provider.refresh(ctx, now)
+	require.Equal(
+		t,
+		leafOf(t, firstPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+
+	// A read error, e.g. in the middle of a non-atomic rotation, restarts the
+	// stable-read.
+	require.NoError(t, os.Remove(files.keyPath))
+	provider.refresh(ctx, now)
+	require.Equal(
+		t,
+		leafOf(t, firstPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+
+	writeServerCertificate(t, files, secondPEM, secondKeyPEM)
+	provider.refresh(ctx, now)
+	require.Equal(
+		t,
+		leafOf(t, firstPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+
+	provider.refresh(ctx, now)
+	require.Equal(
+		t,
+		leafOf(t, secondPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
 	require.True(t, registry.AssertAllExpectations(t))
 }
