@@ -1301,18 +1301,18 @@ public:
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
-            }
-
-            slot.Links += 1;
-            attr.SetLinks(slot.Links);
-            error = Nodes.UpdateNode(slot, slotNo, writeContext);
-            if (HasError(error)) {
-                SILK_LOG(
-                    LogLevel(error),
-                    "[%s] CreateHandle::Nodes.UpdateNode error=%s",
-                    lc.Describe().c_str(),
-                    FormatError(error).c_str());
-                *response.MutableError() = std::move(error);
+            } else {
+                slot.Links += 1;
+                attr.SetLinks(slot.Links);
+                error = Nodes.UpdateNode(slot, slotNo, writeContext);
+                if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "[%s] CreateHandle::Nodes.UpdateNode error=%s",
+                        lc.Describe().c_str(),
+                        FormatError(error).c_str());
+                    *response.MutableError() = std::move(error);
+                }
             }
         } else {
             auto error = Names.Get(request.GetName(), &nodeId);
@@ -1365,18 +1365,18 @@ public:
                         lc.Describe().c_str(),
                         FormatError(error).c_str());
                     *response.MutableError() = std::move(error);
-                }
-
-                slot.Links += 1;
-                attr.SetLinks(slot.Links);
-                error = Nodes.UpdateNode(slot, slotNo, writeContext);
-                if (HasError(error)) {
-                    SILK_LOG(
-                        LogLevel(error),
-                        "[%s] CreateHandle::Nodes.UpdateNode error=%s",
-                        lc.Describe().c_str(),
-                        FormatError(error).c_str());
-                    *response.MutableError() = std::move(error);
+                } else {
+                    slot.Links += 1;
+                    attr.SetLinks(slot.Links);
+                    error = Nodes.UpdateNode(slot, slotNo, writeContext);
+                    if (HasError(error)) {
+                        SILK_LOG(
+                            LogLevel(error),
+                            "[%s] CreateHandle::Nodes.UpdateNode error=%s",
+                            lc.Describe().c_str(),
+                            FormatError(error).c_str());
+                        *response.MutableError() = std::move(error);
+                    }
                 }
             }
         }
