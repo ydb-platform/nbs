@@ -465,15 +465,6 @@ func parseServerCertificate(
 	pem serverCertificatePEM,
 ) (tls.Certificate, []*x509.Certificate, error) {
 
-	chain, err := parsePEMCertificates(pem.cert)
-	if err != nil {
-		return tls.Certificate{}, nil, fmt.Errorf(
-			"failed to parse cert file %v: %w",
-			cert.CertFile,
-			err,
-		)
-	}
-
 	certificate, err := tls.X509KeyPair(pem.cert, pem.key)
 	if err != nil {
 		return tls.Certificate{}, nil, fmt.Errorf(
@@ -483,13 +474,26 @@ func parseServerCertificate(
 		)
 	}
 
-	if len(certificate.Certificate) != len(chain) {
+	if len(certificate.Certificate) == 0 {
 		return tls.Certificate{}, nil, fmt.Errorf(
-			"unexpected number of certificates in cert file %v: %v != %v",
+			"certificate chain is empty for cert file %v",
 			cert.CertFile,
-			len(certificate.Certificate),
-			len(chain),
 		)
+	}
+
+	chain := make([]*x509.Certificate, 0, len(certificate.Certificate))
+	for i, certificateBytes := range certificate.Certificate {
+		parsed, err := x509.ParseCertificate(certificateBytes)
+		if err != nil {
+			return tls.Certificate{}, nil, fmt.Errorf(
+				"failed to parse certificate #%v from cert file %v: %w",
+				i,
+				cert.CertFile,
+				err,
+			)
+		}
+
+		chain = append(chain, parsed)
 	}
 
 	certificate.Leaf = chain[0]
