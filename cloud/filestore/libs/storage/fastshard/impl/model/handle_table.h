@@ -44,7 +44,10 @@ public:
 
     NProto::TError Put(THandleSlot v, TWriteContext& writeContext);
 
-    NProto::TError Delete(ui64 handle, TWriteContext& writeContext);
+    NProto::TError Delete(
+        ui64 handle,
+        TWriteContext& writeContext,
+        ui64* nodeId);
 
     NProto::TError Get(ui64 handle, ui64* nodeId) const;
 

@@ -410,7 +410,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
+auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid, ui32 links)
 {
     ui64 now = MicroSeconds();
 
@@ -421,10 +421,10 @@ auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
     attrs.SetATime(now);
     attrs.SetMTime(now);
     attrs.SetCTime(now);
-    attrs.SetLinks(1);
     attrs.SetSize(size);
     attrs.SetUid(uid);
     attrs.SetGid(gid);
+    attrs.SetLinks(links);
 
     return attrs;
 }
@@ -943,6 +943,7 @@ public:
         ui32 mode,
         ui64 uid,
         ui64 gid,
+        ui32 links,
         TWriteContext& writeContext,
         NProto::TNodeAttr* attr)
     {
@@ -957,7 +958,7 @@ public:
         }
 
         nodeId = ShardedId(nodeId, ShardNo);
-        *attr = CreateAttrs(nodeId, mode, 0 /* size */, uid, gid);
+        *attr = CreateAttrs(nodeId, mode, 0 /* size */, uid, gid, links);
 
         error = Nodes.PutNode(*attr, writeContext);
         if (HasError(error)) {
@@ -1024,6 +1025,7 @@ public:
                 request.GetFile().GetMode(),
                 request.GetUid(),
                 request.GetGid(),
+                1 /* links */,
                 writeContext,
                 &attr);
         }
@@ -1061,6 +1063,122 @@ public:
         return response;
     }
 
+    NProto::TError DestroyNode(
+        TLoggingContext& lc,
+        ui64 nodeId,
+        TWriteContext& writeContext)
+    {
+        TNodeTableSlot slot{};
+        auto error = Nodes.DeleteNode(nodeId, writeContext, &slot);
+        if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "[%s] DestroyNode::Nodes.DeleteNode error=%s",
+                lc.Describe().c_str(),
+                FormatError(error).c_str());
+            return error;
+        }
+
+        TVector<ui64> storagePageClusterIds;
+        for (ui64 offset = 0; offset < slot.Size;
+                offset += PageClusterSize)
+        {
+            const ui64 pageClusterId = offset / PageClusterSize;
+            lc.PageClusterIds.push_back(pageClusterId);
+
+            TNodePageClusterSlot slot{};
+            error = PageIndex.Delete(
+                {
+                    .NodeId = nodeId,
+                    .PageClusterId = pageClusterId,
+                },
+                writeContext,
+                &slot);
+
+            if (error.GetCode() == E_FS_NOENT) {
+                //
+                // This page cluster is not allocated.
+                //
+
+                lc.StoragePageClusterIds.push_back(
+                    InvalidStoragePageClusterId);
+                continue;
+            }
+
+            if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "[%s] DestroyNode::PageIndex.Delete error=%s",
+                    lc.Describe().c_str(),
+                    FormatError(error).c_str());
+                return error;
+            }
+
+            storagePageClusterIds.push_back(slot.StoragePageClusterId);
+            lc.StoragePageClusterIds.push_back(slot.StoragePageClusterId);
+        }
+
+        error = PageAllocator.Deallocate(
+            lc,
+            storagePageClusterIds,
+            writeContext);
+        if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "[%s] DestroyNode::PageAllocator.Deallocate error=%s",
+                lc.Describe().c_str(),
+                FormatError(error).c_str());
+            return error;
+        }
+
+        return {};
+    }
+
+    NProto::TError UnrefNode(
+        TLoggingContext& lc,
+        ui64 nodeId,
+        TWriteContext& writeContext)
+    {
+        TNodeTableSlot slot{};
+        ui64 slotNo = 0;
+        NProto::TNodeAttr attr;
+        auto error = Nodes.GetNode(nodeId, writeContext, &slot, &slotNo, &attr);
+        if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "[%s] UnrefNode::Nodes.GetNode error=%s",
+                lc.Describe().c_str(),
+                FormatError(error).c_str());
+            return error;
+        }
+
+        if (slot.Links > 1) {
+            slot.Links -= 1;
+            attr.SetLinks(slot.Links);
+            error = Nodes.UpdateNode(slot, slotNo, writeContext);
+            if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "[%s] UnrefNode::Nodes.UpdateNode error=%s",
+                    lc.Describe().c_str(),
+                    FormatError(error).c_str());
+                return error;
+            }
+        } else {
+            error = DestroyNode(lc, nodeId, writeContext);
+            if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "[%s] UnrefNode::DestroyNode error=%s",
+                    lc.Describe().c_str(),
+                    FormatError(error).c_str());
+                return error;
+            }
+        }
+
+        return {};
+    }
+
     NProto::TUnlinkNodeResponse UnlinkNode(NProto::TUnlinkNodeRequest request)
     {
         NProto::TUnlinkNodeResponse response;
@@ -1078,10 +1196,6 @@ public:
 
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
-
-        //
-        // TODO(#5894): take Links into account.
-        //
 
         ui64 nodeId = 0;
         {
@@ -1112,66 +1226,11 @@ public:
                 return response;
             }
 
-            TNodeTableSlot slot{};
-            error = Nodes.DeleteNode(nodeId, writeContext, &slot);
+            error = UnrefNode(lc, nodeId, writeContext);
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
-                    "[%s] UnlinkNode::Nodes.DeleteNode error=%s",
-                    lc.Describe().c_str(),
-                    FormatError(error).c_str());
-                *response.MutableError() = std::move(error);
-                return response;
-            }
-
-            TVector<ui64> storagePageClusterIds;
-            for (ui64 offset = 0; offset < slot.Size;
-                    offset += PageClusterSize)
-            {
-                const ui64 pageClusterId = offset / PageClusterSize;
-                lc.PageClusterIds.push_back(pageClusterId);
-
-                TNodePageClusterSlot slot{};
-                error = PageIndex.Delete(
-                    {
-                        .NodeId = nodeId,
-                        .PageClusterId = pageClusterId,
-                    },
-                    writeContext,
-                    &slot);
-
-                if (error.GetCode() == E_FS_NOENT) {
-                    //
-                    // This page cluster is not allocated.
-                    //
-
-                    lc.StoragePageClusterIds.push_back(
-                        InvalidStoragePageClusterId);
-                    continue;
-                }
-
-                if (HasError(error)) {
-                    SILK_LOG(
-                        LogLevel(error),
-                        "[%s] UnlinkNode::PageIndex.Delete error=%s",
-                        lc.Describe().c_str(),
-                        FormatError(error).c_str());
-                    *response.MutableError() = std::move(error);
-                    return response;
-                }
-
-                storagePageClusterIds.push_back(slot.StoragePageClusterId);
-                lc.StoragePageClusterIds.push_back(slot.StoragePageClusterId);
-            }
-
-            error = PageAllocator.Deallocate(
-                lc,
-                storagePageClusterIds,
-                writeContext);
-            if (HasError(error)) {
-                SILK_LOG(
-                    LogLevel(error),
-                    "[%s] UnlinkNode::PageAllocator.Deallocate error=%s",
+                    "[%s] UnlinkNode::UnrefNode error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
@@ -1231,11 +1290,26 @@ public:
         ui64 nodeId = request.GetNodeId();
         NProto::TNodeAttr attr;
         if (request.GetName().empty()) {
-            auto error = Nodes.GetNode(nodeId, &attr);
+            TNodeTableSlot slot{};
+            ui64 slotNo = 0;
+            auto error =
+                Nodes.GetNode(nodeId, writeContext, &slot, &slotNo, &attr);
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
                     "[%s] CreateHandle::Nodes.GetNode error=%s",
+                    lc.Describe().c_str(),
+                    FormatError(error).c_str());
+                *response.MutableError() = std::move(error);
+            }
+
+            slot.Links += 1;
+            attr.SetLinks(slot.Links);
+            error = Nodes.UpdateNode(slot, slotNo, writeContext);
+            if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "[%s] CreateHandle::Nodes.UpdateNode error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
@@ -1250,6 +1324,7 @@ public:
                         request.GetMode(),
                         request.GetUid(),
                         request.GetGid(),
+                        2 /* links */,
                         writeContext,
                         &attr);
                     if (HasError(error)) {
@@ -1279,11 +1354,26 @@ public:
                     ErrorAlreadyExists(request.GetName());
             } else {
                 lc.NodeId = nodeId;
-                auto error = Nodes.GetNode(nodeId, &attr);
+                TNodeTableSlot slot{};
+                ui64 slotNo = 0;
+                auto error =
+                    Nodes.GetNode(nodeId, writeContext, &slot, &slotNo, &attr);
                 if (HasError(error)) {
                     SILK_LOG(
                         LogLevel(error),
                         "[%s] CreateHandle::Nodes.GetNode error=%s",
+                        lc.Describe().c_str(),
+                        FormatError(error).c_str());
+                    *response.MutableError() = std::move(error);
+                }
+
+                slot.Links += 1;
+                attr.SetLinks(slot.Links);
+                error = Nodes.UpdateNode(slot, slotNo, writeContext);
+                if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "[%s] CreateHandle::Nodes.UpdateNode error=%s",
                         lc.Describe().c_str(),
                         FormatError(error).c_str());
                     *response.MutableError() = std::move(error);
@@ -1300,7 +1390,6 @@ public:
             return response;
         }
 
-        attr.SetLinks(attr.GetLinks() + 1);
         ui64 handle = 0;
         auto error = Handles.AllocateHandle(&handle);
         if (HasError(error)) {
@@ -1372,7 +1461,9 @@ public:
             std::lock_guard g(Mutex);
             wcg.Init();
 
-            auto error = Handles.Delete(request.GetHandle(), writeContext);
+            ui64 nodeId = 0;
+            auto error =
+                Handles.Delete(request.GetHandle(), writeContext, &nodeId);
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
@@ -1380,11 +1471,19 @@ public:
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
-            }
+            } else {
+                lc.NodeId = nodeId;
 
-            //
-            // TODO(#5894): update Links.
-            //
+                error = UnrefNode(lc, nodeId, writeContext);
+                if (HasError(error)) {
+                    SILK_LOG(
+                        LogLevel(error),
+                        "[%s] DestroyHandle::UnrefNode error=%s",
+                        lc.Describe().c_str(),
+                        FormatError(error).c_str());
+                    *response.MutableError() = std::move(error);
+                }
+            }
         }
 
         if (HasError(response.GetError())) {

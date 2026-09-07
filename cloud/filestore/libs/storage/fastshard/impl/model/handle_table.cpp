@@ -62,7 +62,10 @@ NProto::TError THandleTable::Put(THandleSlot v, TWriteContext& writeContext)
     return Slots->Put(writeContext.Lsn, v, writeContext.PageGroups);
 }
 
-NProto::TError THandleTable::Delete(ui64 handle, TWriteContext& writeContext)
+NProto::TError THandleTable::Delete(
+    ui64 handle,
+    TWriteContext& writeContext,
+    ui64* nodeId)
 {
     THandleSlot slot{};
     auto error = Slots->Delete(
@@ -74,6 +77,8 @@ NProto::TError THandleTable::Delete(ui64 handle, TWriteContext& writeContext)
     if (error.GetCode() == E_FS_NOENT) {
         error = ErrorInvalidHandle(handle);
     }
+
+    *nodeId = slot.NodeId;
 
     return error;
 }

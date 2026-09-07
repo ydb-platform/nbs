@@ -109,6 +109,18 @@ NProto::TError TNodeTable::ResizeNode(
 }
 
 NProto::TError TNodeTable::UpdateNode(
+    const TNodeTableSlot& slot,
+    ui64 slotNo,
+    TWriteContext& writeContext)
+{
+    return Slots->Update(
+        writeContext.Lsn,
+        slot,
+        slotNo,
+        writeContext.PageGroups);
+}
+
+NProto::TError TNodeTable::UpdateNode(
     ui64 nodeId,
     ui32 flags,
     const NProto::TSetNodeAttrRequest::TUpdate& update,
@@ -182,6 +194,22 @@ NProto::TError TNodeTable::DeleteNode(
 {
     return Slots
         ->Delete(writeContext.Lsn, nodeId, slot, writeContext.PageGroups);
+}
+
+NProto::TError TNodeTable::GetNode(
+    ui64 nodeId,
+    TWriteContext& writeContext,
+    TNodeTableSlot* slot,
+    ui64* slotNo,
+    NProto::TNodeAttr* attr) const
+{
+    auto error = Slots->Get(writeContext.Lsn, nodeId, slot, slotNo);
+    if (HasError(error)) {
+        return error;
+    }
+
+    *attr = Convert(*slot);
+    return {};
 }
 
 NProto::TError TNodeTable::GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
