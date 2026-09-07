@@ -1409,23 +1409,24 @@ void TIndexTabletActor::HandleForcedOperationStatus(
 
     const auto* state = FindForcedOperation(request.GetOperationId());
     if (state) {
-        if (const auto* rangeState =
-                std::get_if<TForcedRangeOperationState>(state);
-            rangeState)
-        {
-            response->Record.SetRangeCount(rangeState->RangesToCompact.size());
-            response->Record.SetProcessedRangeCount(rangeState->Current);
-            response->Record.SetLastProcessedRangeId(
-                rangeState->GetCurrentRange());
-            response->Record.SetStatus(rangeState->Status);
-            response->Record.MutableError()->CopyFrom(rangeState->Error);
-        } else if (const auto* tabletState =
-                       std::get_if<TForcedTabletOperationState>(state);
-                   tabletState)
-        {
-            response->Record.SetStatus(tabletState->Status);
-            response->Record.MutableError()->CopyFrom(tabletState->Error);
-        }
+        std::visit(
+            TOverloaded{
+                [&](const TForcedRangeOperationState& state)
+                {
+                    response->Record.SetRangeCount(
+                        state.RangesToCompact.size());
+                    response->Record.SetProcessedRangeCount(state.Current);
+                    response->Record.SetLastProcessedRangeId(
+                        state.GetCurrentRange());
+                    response->Record.SetStatus(state.Status);
+                    response->Record.MutableError()->CopyFrom(state.Error);
+                },
+                [&](const TForcedTabletOperationState& state)
+                {
+                    response->Record.SetStatus(state.Status);
+                    response->Record.MutableError()->CopyFrom(state.Error);
+                }},
+            *state);
     } else if (IsForcedRangeOperationPending(request.GetOperationId())) {
         response->Record.SetStatus(TStatus::E_PENDING);
     } else {
