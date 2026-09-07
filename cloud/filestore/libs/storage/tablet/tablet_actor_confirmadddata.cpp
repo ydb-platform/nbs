@@ -183,13 +183,13 @@ void TIndexTabletActor::HandleConfirmAddData(
             msg->Record);
 
         deferReply();
-        if (!GetDeletionQueueContains(commitId)) {
+        if (!DeletionQueueContains(commitId)) {
             ConfirmData(commitId, ctx);
         }
         return;
     }
 
-    if (GetUnconfirmedDataInProgressContains(commitId))
+    if (UnconfirmedDataInProgressContains(commitId))
     {
         deferReply();
         Metrics->ConfirmAddDataExtra.DeferredCount.fetch_add(
@@ -260,14 +260,14 @@ void TIndexTabletActor::HandleCancelAddData(
 
     const ui64 commitId = msg->Record.GetCommitId();
 
-    if (!GetUnconfirmedDataContains(commitId) &&
-        !GetUnconfirmedDataInProgressContains(commitId))
+    if (!UnconfirmedDataContains(commitId) &&
+        !UnconfirmedDataInProgressContains(commitId))
     {
         reply(ErrorUnconfirmedDataNotFound());
         return;
     }
 
-    if (!GetDeletionQueueContains(commitId)) {
+    if (!DeletionQueueContains(commitId)) {
         DeletionQueueEmplace(commitId);
         // We reply to CancelAddData immediately, so from this point forward we
         // rely on DeleteUnconfirmedData being executed ahead of any later

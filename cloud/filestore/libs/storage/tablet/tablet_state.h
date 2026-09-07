@@ -273,7 +273,7 @@ protected:
 protected:
     void SetUnconfirmedRecoveryReady(bool value);
 
-    bool GetUnconfirmedDataInProgressContains(ui64 commitId) const;
+    bool UnconfirmedDataInProgressContains(ui64 commitId) const;
     TTrackedUnconfirmedData& AccessUnconfirmedDataInProgressByCommitId(ui64 commitId);
     TTrackedUnconfirmedData& AccessAndVerifyUnconfirmedDataInProgress(
         ui64 commitId);
@@ -288,13 +288,13 @@ protected:
         TVector<ui64>* commitIdsToDelete);
     size_t GetUnconfirmedDataInProgressSize() const;
 
-    bool GetDeletionQueueContains(ui64 commitId) const;
+    bool DeletionQueueContains(ui64 commitId) const;
     bool DeletionQueueEmplace(ui64 commitId);
     void DeletionQueueErase(ui64 commitId);
 
     bool UnconfirmedDataEmplace(ui64 commitId, TTrackedUnconfirmedData data);
     void UnconfirmedDataErase(ui64 commitId);
-    bool GetUnconfirmedDataContains(ui64 commitId) const;
+    bool UnconfirmedDataContains(ui64 commitId) const;
     void UnconfirmedDataClear();
     size_t GetUnconfirmedDataSize() const;
     const TTrackedUnconfirmedData* AccessUnconfirmedData(ui64 commitId) const;

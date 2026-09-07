@@ -437,7 +437,7 @@ void TIndexTabletState::SetUnconfirmedRecoveryReady(bool value)
     Impl->CacheReadBypass.SetUnconfirmedRecoveryReady(value);
 }
 
-bool TIndexTabletState::GetUnconfirmedDataInProgressContains(
+bool TIndexTabletState::UnconfirmedDataInProgressContains(
     ui64 commitId) const
 {
     return Impl->UnconfirmedDataInProgress.contains(commitId);
@@ -502,7 +502,7 @@ size_t TIndexTabletState::GetUnconfirmedDataInProgressSize() const
     return Impl->UnconfirmedDataInProgress.size();
 }
 
-bool TIndexTabletState::GetDeletionQueueContains(ui64 commitId) const
+bool TIndexTabletState::DeletionQueueContains(ui64 commitId) const
 {
     return Impl->DeletionQueue.contains(commitId);
 }
@@ -524,7 +524,7 @@ bool TIndexTabletState::UnconfirmedDataEmplace(
     return Impl->UnconfirmedData.emplace(commitId, std::move(data)).second;
 }
 
-bool TIndexTabletState::GetUnconfirmedDataContains(ui64 commitId) const
+bool TIndexTabletState::UnconfirmedDataContains(ui64 commitId) const
 {
     return Impl->UnconfirmedData.contains(commitId);
 }
