@@ -36,7 +36,9 @@ func newHardlinkRestorerTestFixture(t *testing.T) *hardlinkRestorerTestFixture {
 		session: nfs_mocks.NewSessionMock(),
 		storage: nodes_storage_mocks.NewStorageMock(),
 		cookie: nodes_storage.HardLinksCookie{
-			NodeID: 10, ParentNodeID: 2, Name: "file",
+			NodeID:       10,
+			ParentNodeID: 2,
+			Name:         "file",
 		},
 	}
 
@@ -67,7 +69,6 @@ func TestHardlinkBatchRestorerEmptyBatch(t *testing.T) {
 		Return([]nfs.Node(nil), nodes_storage.HardLinksCookie{}, nil).Once()
 
 	cookie, err := f.restorer.Restore(f.ctx, f.cookie)
-
 	require.NoError(t, err)
 	require.Equal(t, nodes_storage.HardLinksCookie{}, cookie)
 	f.session.AssertNumberOfCalls(t, "CreateNodeIdempotent", 0)
@@ -85,7 +86,9 @@ func TestHardlinkBatchRestorerCreatesInodeAndLink(t *testing.T) {
 	}
 
 	nextCookie := nodes_storage.HardLinksCookie{
-		NodeID: 11, ParentNodeID: 2, Name: "next",
+		NodeID:       11,
+		ParentNodeID: 2,
+		Name:         "next",
 	}
 
 	f.storage.On("ListHardLinks", mock.Anything, "snapshot", 2, f.cookie).
@@ -105,11 +108,17 @@ func TestHardlinkBatchRestorerCreatesInodeAndLink(t *testing.T) {
 		[]uint64{10},
 	).Return(map[uint64]uint64(nil), nil).Once()
 	inode := nfs.Node{
-		NodeID: 10, ParentNodeID: 20, Name: "file", Type: nfs.NODE_KIND_FILE,
+		NodeID:       10,
+		ParentNodeID: 20,
+		Name:         "file",
+		Type:         nfs.NODE_KIND_FILE,
 	}
 
 	link := nfs.Node{
-		NodeID: 100, ParentNodeID: 20, Name: "link", Type: nfs.NODE_KIND_LINK,
+		NodeID:       100,
+		ParentNodeID: 20,
+		Name:         "link",
+		Type:         nfs.NODE_KIND_LINK,
 	}
 
 	inodeCall := f.session.On("CreateNodeIdempotent", mock.Anything, inode).
@@ -125,7 +134,6 @@ func TestHardlinkBatchRestorerCreatesInodeAndLink(t *testing.T) {
 	).Return(nil).Once().NotBefore(linkCall)
 
 	cookie, err := f.restorer.Restore(f.ctx, f.cookie)
-
 	require.NoError(t, err)
 	require.Equal(t, nextCookie, cookie)
 	require.Equal(
@@ -164,11 +172,17 @@ func TestHardlinkBatchRestorerUsesExistingInode(t *testing.T) {
 		[]uint64{10},
 	).Return(map[uint64]uint64{10: 100}, nil).Once()
 	firstLink := nfs.Node{
-		NodeID: 100, ParentNodeID: 20, Name: "file", Type: nfs.NODE_KIND_LINK,
+		NodeID:       100,
+		ParentNodeID: 20,
+		Name:         "file",
+		Type:         nfs.NODE_KIND_LINK,
 	}
 
 	secondLink := nfs.Node{
-		NodeID: 100, ParentNodeID: 20, Name: "link", Type: nfs.NODE_KIND_LINK,
+		NodeID:       100,
+		ParentNodeID: 20,
+		Name:         "link",
+		Type:         nfs.NODE_KIND_LINK,
 	}
 
 	f.session.On("CreateNodeIdempotent", mock.Anything, firstLink).
@@ -177,7 +191,6 @@ func TestHardlinkBatchRestorerUsesExistingInode(t *testing.T) {
 		Return(uint64(100), nil).Once()
 
 	cookie, err := f.restorer.Restore(f.ctx, f.cookie)
-
 	require.NoError(t, err)
 	require.Equal(t, nodes_storage.HardLinksCookie{}, cookie)
 	f.storage.AssertNumberOfCalls(t, "UpdateRestorationNodeIDMapping", 0)
@@ -210,14 +223,16 @@ func TestHardlinkBatchRestorerInodeFailure(t *testing.T) {
 		[]uint64{10},
 	).Return(map[uint64]uint64(nil), nil).Once()
 	inode := nfs.Node{
-		NodeID: 10, ParentNodeID: 20, Name: "file", Type: nfs.NODE_KIND_FILE,
+		NodeID:       10,
+		ParentNodeID: 20,
+		Name:         "file",
+		Type:         nfs.NODE_KIND_FILE,
 	}
 
 	f.session.On("CreateNodeIdempotent", mock.Anything, inode).
 		Return(uint64(0), expectedErr).Once()
 
 	cookie, err := f.restorer.Restore(f.ctx, f.cookie)
-
 	require.ErrorIs(t, err, expectedErr)
 	require.Equal(t, nodes_storage.HardLinksCookie{}, cookie)
 	f.session.AssertNumberOfCalls(t, "CreateNodeIdempotent", 1)
@@ -251,11 +266,17 @@ func TestHardlinkBatchRestorerLinkFailure(t *testing.T) {
 		[]uint64{10},
 	).Return(map[uint64]uint64(nil), nil).Once()
 	inode := nfs.Node{
-		NodeID: 10, ParentNodeID: 20, Name: "file", Type: nfs.NODE_KIND_FILE,
+		NodeID:       10,
+		ParentNodeID: 20,
+		Name:         "file",
+		Type:         nfs.NODE_KIND_FILE,
 	}
 
 	link := nfs.Node{
-		NodeID: 100, ParentNodeID: 20, Name: "link", Type: nfs.NODE_KIND_LINK,
+		NodeID:       100,
+		ParentNodeID: 20,
+		Name:         "link",
+		Type:         nfs.NODE_KIND_LINK,
 	}
 
 	inodeCall := f.session.On("CreateNodeIdempotent", mock.Anything, inode).
@@ -264,7 +285,6 @@ func TestHardlinkBatchRestorerLinkFailure(t *testing.T) {
 		Return(uint64(0), expectedErr).Once().NotBefore(inodeCall)
 
 	cookie, err := f.restorer.Restore(f.ctx, f.cookie)
-
 	require.ErrorIs(t, err, expectedErr)
 	require.Equal(t, nodes_storage.HardLinksCookie{}, cookie)
 	f.storage.AssertNumberOfCalls(t, "UpdateRestorationNodeIDMapping", 0)

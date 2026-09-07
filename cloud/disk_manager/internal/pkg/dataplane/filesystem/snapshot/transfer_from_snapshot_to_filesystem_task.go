@@ -95,12 +95,11 @@ func (t *transferFromSnapshotToFilesystemTask) restoreHardlinks(
 			return err
 		}
 
-		t.state.HardLinksRestoreCookie =
-			&snapshot_protos.HardLinksRestoreCookie{
-				NodeId:       nextCookie.NodeID,
-				ParentNodeId: nextCookie.ParentNodeID,
-				Name:         nextCookie.Name,
-			}
+		t.state.HardLinksRestoreCookie = &snapshot_protos.HardLinksRestoreCookie{
+			NodeId:       nextCookie.NodeID,
+			ParentNodeId: nextCookie.ParentNodeID,
+			Name:         nextCookie.Name,
+		}
 
 		// Persist completion before cleanup can remove parent node mappings.
 		t.state.HardlinksRestored = nextCookie == (nodes_storage.HardLinksCookie{})

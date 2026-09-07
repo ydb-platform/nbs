@@ -220,20 +220,18 @@ func (r *hardlinkBatchRestorer) restoreInodes(
 	eg.SetLimit(r.workersCount + 1)
 	results := make(chan restoredInode)
 	newMappings := make(map[uint64]uint64)
-	eg.Go(
-		func() error {
-			for i := 0; i < missingInodes; i++ {
-				select {
-				case result := <-results:
-					newMappings[result.srcNodeID] = result.dstNodeID
-				case <-ctx.Done():
-					return ctx.Err()
-				}
+	eg.Go(func() error {
+		for i := 0; i < missingInodes; i++ {
+			select {
+			case result := <-results:
+				newMappings[result.srcNodeID] = result.dstNodeID
+			case <-ctx.Done():
+				return ctx.Err()
 			}
+		}
 
-			return nil
-		},
-	)
+		return nil
+	})
 
 	for srcNodeID, nodes := range hardlinksByNodeID {
 		if _, ok := alreadyCreatedNodeIDsMapping[srcNodeID]; ok {
@@ -241,24 +239,22 @@ func (r *hardlinkBatchRestorer) restoreInodes(
 		}
 
 		node := nodes[0]
-		eg.Go(
-			func() error {
-				dstNodeID, err := r.restoreInode(ctx, node)
-				if err != nil {
-					return err
-				}
+		eg.Go(func() error {
+			dstNodeID, err := r.restoreInode(ctx, node)
+			if err != nil {
+				return err
+			}
 
-				select {
-				case results <- restoredInode{
-					srcNodeID: node.NodeID,
-					dstNodeID: dstNodeID,
-				}:
-					return nil
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			},
-		)
+			select {
+			case results <- restoredInode{
+				srcNodeID: node.NodeID,
+				dstNodeID: dstNodeID,
+			}:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
 	}
 
 	err := eg.Wait()
@@ -287,11 +283,9 @@ func (r *hardlinkBatchRestorer) restoreLinks(
 
 		for _, node := range nodes {
 			node := node
-			eg.Go(
-				func() error {
-					return r.restoreLink(ctx, dstNodeID, node)
-				},
-			)
+			eg.Go(func() error {
+				return r.restoreLink(ctx, dstNodeID, node)
+			})
 		}
 	}
 
