@@ -45,6 +45,7 @@ bool LoadTabletBootInfoBackup(
     TString fileContent = TUnbufferedFileInput(file).ReadAll();
     auto input = TStringInput(fileContent);
 
+    //This if statement supresses false-positive error logs on non-utf input
     if (IsUtf(fileContent)) {
         if (TryMergeFromTextFormat(
                 input,
