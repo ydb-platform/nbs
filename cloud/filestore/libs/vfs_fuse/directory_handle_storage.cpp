@@ -45,7 +45,7 @@ void TDirectoryHandleStorage::StoreHandle(
     TGuard guard(TableLock);
 
     if (HandleIdToIndices.contains(handleId)) {
-        ReportDirectoryHandlesStorageError(
+        ReportDirectoryHandleStorageError(
             "Failed to store record with existing handle id");
         RemoveRecords(handleId);
         HandlesExcludedFromStorage.insert(handleId);

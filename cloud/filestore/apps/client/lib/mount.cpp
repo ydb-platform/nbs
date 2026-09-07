@@ -9,6 +9,7 @@
 #include <cloud/filestore/libs/vfs/config.h>
 #include <cloud/filestore/libs/vfs/loop.h>
 #include <cloud/filestore/libs/vfs_fuse/loop.h>
+#include <cloud/filestore/libs/vfs_fuse/persistent_state_manager.h>
 
 #include <cloud/storage/core/libs/file_backed_containers/file_map_memory_limiter.h>
 
@@ -80,7 +81,8 @@ public:
             Timer,
             CreateProfileLogStub(),
             session,
-            CreateFileMapMemoryLimiterStub());
+            CreateFileMapMemoryLimiterStub(),
+            NFuse::CreatePersistentStateManagerStub());
     }
 
     void Start() override
