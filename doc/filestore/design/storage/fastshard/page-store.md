@@ -35,17 +35,26 @@ commits or rolls back the staged pages in the cache.
 
 The LSN tag on dirty pages isolates concurrent operations:
 
-* `WritePage` on a page that is dirty under a different LSN returns
-  `E_REJECTED`;
+* In the prototype `WritePage` on a page that is dirty under a different LSN
+  returns `E_REJECTED`; When proper LSN ordering becomes supported in the layers
+  below `PageStore` this bottleneck will go away - a write operation can access
+  dirty pages without any issues because either those pages will become clean
+  because the corresponding (previous) operation will successfully commit or,
+  if that operation fails, the current operation won't commit as well because
+  of LSN ordering;
 * `ReadPage` on a page that is dirty under a different LSN returns
-  `E_REJECTED`;
+  `E_REJECTED`; This applies to pure read operations like `GetNodeAttr` - this
+  is a way to protect against phantom reads; We may consider `PageStore`-level
+  MVCC as another approach and let read only operations read the newest clean
+  version of the page (if it's present in the cache);
 * `CommitPages` clears the dirty flag, `RollbackPages` drops the cache
   entry.
 
 The caller must treat `E_REJECTED` as a retriable conflict, distinct from
-`E_FS_NOENT` and other domain errors. If such coarse conflict resolution turns
-out to be too bad for our performance, we can support staging of multiple page
-versions at once and queueing of the incoming requests.
+`E_FS_NOENT` and other domain errors. Will mention it again - this kind of
+conflict resolution is very coarse and we'll completely abandon it for write
+operations and, if needed, can abandon it for read operations by implementing
+cache-level (`PageStore`-level) MVCC.
 
 ## Differences from the planned production implementation
 
