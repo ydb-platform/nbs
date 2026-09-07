@@ -6,6 +6,7 @@
 
 #include <util/datetime/base.h>
 
+#include <functional>
 #include <optional>
 
 
@@ -27,12 +28,21 @@ struct TSubSession
     ui64 OwnerGeneration = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
 struct TSubSessionUpdateResult
 {
     std::optional<NActors::TActorId> StalePipeServer;
     std::optional<NActors::TActorId> StaleOwner;
+};
+
+struct TDeleteSubSessionResult
+{
+    // The subsession that was removed, if any matched.
+    std::optional<TSubSession> Removed;
+
+    // True if nothing else holds the session after this removal - the
+    // caller should destroy the whole session instead of just this
+    // subsession.
+    bool SessionCanBeDestroyed = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,6 +61,9 @@ class TSubSessions
     TVector<TSubSession> SubSessions;
     ui64 MaxSeenSeqNo = 0;
     ui64 MaxSeenRwSeqNo = 0;
+
+    TDeleteSubSessionResult DeleteSubSessionIf(
+        const std::function<bool(const TSubSession&)>& predicate);
 
 public:
     explicit TSubSessions(ui64 maxSeenSeqNo, ui64 maxSeenRwSeqNo)
@@ -72,11 +85,12 @@ public:
         const NActors::TActorId& pipeServer,
         ui32 tabletGeneration);
 
-    ui32 DeleteSubSessionByPipeServer(const NActors::TActorId& pipeServer);
-    std::optional<TSubSession> DeleteSubSession(ui64 sessionSeqNo);
+    TDeleteSubSessionResult DeleteSubSessionByPipeServer(
+        const NActors::TActorId& pipeServer);
+    TDeleteSubSessionResult DeleteSubSession(ui64 sessionSeqNo);
 
-    TVector<NActors::TActorId> GetSubSessionsOwner() const;
-    TVector<NActors::TActorId> GetSubSessionsPipeServer() const;
+    TVector<NActors::TActorId> GetSubSessionOwnerIds() const;
+    TVector<NActors::TActorId> GetSubSessionPipeServerIds() const;
     TVector<TSubSession> GetAllSubSessions() const;
 
     bool HasSeqNo(ui64 seqNo) const;
