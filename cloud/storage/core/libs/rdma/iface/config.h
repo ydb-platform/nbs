@@ -149,6 +149,7 @@ inline TServerConfigPtr CreateServerConfigPtr(const NProto::TRdmaServer& config)
 ////////////////////////////////////////////////////////////////////////////////
 
 #undef SET_NESTED
+#undef SET_OPTIONAL
 #undef SET
 
 }   // namespace NCloud::NStorage::NRdma
