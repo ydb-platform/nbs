@@ -1,4 +1,4 @@
-#include "journalled_device.h"
+#include "journalled_device_adapter.h"
 
 #include <cloud/blockstore/libs/rdma_test/memory_test_storage.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -6,7 +6,9 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/journalled_device/device.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -37,11 +39,12 @@ struct TFixture: public NUnitTest::TBaseFixture
     const TInstant Now = TInstant::Seconds(1);
 
     ILoggingServicePtr Logging = CreateLoggingService("console");
+    std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
 
     std::shared_ptr<TMemoryTestStorage> Storage;
     TStorageAdapterPtr StorageAdapter;
     TDeviceClientPtr DeviceClient;
-    IJournalledDevicePtr Device;
+    NJournalled::IDevicePtr Device;
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -65,7 +68,9 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         // the device is not acquired here: some of the tests observe the
         // behaviour of an unacquired device
-        Device = CreateJournalledDevice(DeviceUUID, DeviceClient);
+        Timer->AdvanceTime(Now - TInstant::Zero());
+
+        Device = CreateDeviceAdapter(Timer, DeviceUUID, DeviceClient);
     }
 
     void AcquireDevice()
@@ -112,32 +117,16 @@ struct TFixture: public NUnitTest::TBaseFixture
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
     }
 
-    NProto::TError WriteLogRecord(
-        NCloud::NProto::TWriteLogRecordRequest request)
+    NProto::TError WritePages(NCloud::NProto::TWriteLogRecordRequest request)
     {
-        return Device->WriteLogRecord(Now, std::move(request))
+        return Device->WritePages(std::move(request))
             .GetValueSync()
             .GetError();
     }
 
-    NProto::TError WriteLogRecord(ui64 lsn, ui64 prevLsn)
-    {
-        NCloud::NProto::TWriteLogRecordRequest request;
-        request.MutableHeaders()->SetClientId(ClientId);
-        request.SetDeviceUUID(DeviceUUID);
-        request.SetLogSequenceNumber(lsn);
-        request.SetPrevLogSequenceNumber(prevLsn);
-
-        auto& group = *request.MutablePageGroups()->Add();
-        group.SetFirstPageNo(0x10);
-        group.MutableContent()->Add()->resize(DefaultBlockSize, 'A');
-
-        return WriteLogRecord(std::move(request));
-    }
-
     auto ReadPages(NCloud::NProto::TReadPagesRequest request)
     {
-        return Device->ReadPages(Now, std::move(request)).GetValueSync();
+        return Device->ReadPages(std::move(request)).GetValueSync();
     }
 };
 
@@ -145,9 +134,9 @@ struct TFixture: public NUnitTest::TBaseFixture
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
+Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
 {
-    Y_UNIT_TEST_F(ShouldValidateWriteLogRecordRequest, TFixture)
+    Y_UNIT_TEST_F(ShouldValidateWritePagesRequest, TFixture)
     {
         using TPrepareFunc =
             std::function<void(NCloud::NProto::TWriteLogRecordRequest&)>;
@@ -159,14 +148,12 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
             {[&](auto& proto)
              {
                  proto.SetDeviceUUID(DeviceUUID);
-                 proto.SetLogSequenceNumber(1);
                  proto.MutablePageGroups()->Add();
              },
              MakeError(E_ARGUMENT, "empty page group")},
             {[&](auto& proto)
              {
                  proto.SetDeviceUUID(DeviceUUID);
-                 proto.SetLogSequenceNumber(1);
                  auto& groups = *proto.MutablePageGroups();
 
                  {
@@ -181,7 +168,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
             {[&](auto& proto)
              {
                  proto.SetDeviceUUID(DeviceUUID);
-                 proto.SetLogSequenceNumber(1);
                  auto& groups = *proto.MutablePageGroups();
 
                  {
@@ -204,7 +190,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
             {[&](auto& proto)
              {
                  proto.SetDeviceUUID(DeviceUUID);
-                 proto.SetLogSequenceNumber(1);
                  auto& groups = *proto.MutablePageGroups();
 
                  {
@@ -219,7 +204,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
              {
                  // the client id is checked after the device is found
                  proto.SetDeviceUUID(DeviceUUID);
-                 proto.SetLogSequenceNumber(1);
                  auto& groups = *proto.MutablePageGroups();
 
                  {
@@ -238,7 +222,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
              {
                  proto.MutableHeaders()->SetClientId(ClientId);
                  proto.SetDeviceUUID(DeviceUUID);
-                 proto.SetLogSequenceNumber(1);
 
                  auto& groups = *proto.MutablePageGroups();
 
@@ -254,43 +237,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
                  }
              },
              MakeError(E_BS_INVALID_SESSION, "not acquired by client")},
-            {[&](auto& proto)
-             {
-                 proto.MutableHeaders()->SetClientId(ClientId);
-                 proto.SetDeviceUUID(DeviceUUID);
-                 // LogSequenceNumber is not set
-
-                 auto& groups = *proto.MutablePageGroups();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.MutableContent()->Add()->resize(
-                         DefaultBlockSize,
-                         'A');
-                 }
-             },
-             MakeError(E_ARGUMENT, "invalid lsn: 0")},
-            {[&](auto& proto)
-             {
-                 proto.MutableHeaders()->SetClientId(ClientId);
-                 proto.SetDeviceUUID(DeviceUUID);
-                 proto.SetLogSequenceNumber(10);
-                 proto.SetPrevLogSequenceNumber(10);
-
-                 auto& groups = *proto.MutablePageGroups();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.MutableContent()->Add()->resize(
-                         DefaultBlockSize,
-                         'A');
-                 }
-             },
-             MakeError(
-                 E_ARGUMENT,
-                 "invalid lsn: 10, must be greater than the prev one: 10")},
         };
 
         for (size_t i = 0; i != std::size(testCases); ++i) {
@@ -299,7 +245,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
             NCloud::NProto::TWriteLogRecordRequest request;
             prepare(request);
 
-            const auto error = WriteLogRecord(std::move(request));
+            const auto error = WritePages(std::move(request));
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 expectedError.GetCode(),
@@ -440,7 +386,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldWriteLogRecord, TFixture)
+    Y_UNIT_TEST_F(ShouldWritePages, TFixture)
     {
         const auto makeRequest = [&]
         {
@@ -471,7 +417,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
         // the device has not been acquired yet
 
         {
-            const auto error = WriteLogRecord(makeRequest());
+            const auto error = WritePages(makeRequest());
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
                 error.GetCode(),
@@ -481,66 +427,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
         AcquireDevice();
 
         {
-            const auto error = WriteLogRecord(makeRequest());
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                error.GetCode(),
-                FormatError(error));
-        }
-    }
-
-    Y_UNIT_TEST_F(ShouldValidateLogSequenceNumber, TFixture)
-    {
-        AcquireDevice();
-
-        // the very first record is accepted with any prev lsn
-
-        {
-            const auto error = WriteLogRecord(10, 5);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                error.GetCode(),
-                FormatError(error));
-        }
-
-        {
-            const auto error = WriteLogRecord(11, 10);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                error.GetCode(),
-                FormatError(error));
-        }
-
-        // a gap in the log
-
-        {
-            const auto error = WriteLogRecord(20, 15);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_REJECTED,
-                error.GetCode(),
-                FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "Wrong lsn: 15, expected 11");
-        }
-
-        // an outdated record
-
-        {
-            const auto error = WriteLogRecord(13, 5);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_INVALID_STATE,
-                error.GetCode(),
-                FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "Wrong lsn: 5, expected 11");
-        }
-
-        // the rejected records have not changed the state
-
-        {
-            const auto error = WriteLogRecord(12, 11);
+            const auto error = WritePages(makeRequest());
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),

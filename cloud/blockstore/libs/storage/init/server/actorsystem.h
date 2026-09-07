@@ -16,7 +16,7 @@
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
-#include <cloud/blockstore/libs/storage/disk_agent/public.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/public.h>
 #include <cloud/blockstore/libs/ydbstats/public.h>
 

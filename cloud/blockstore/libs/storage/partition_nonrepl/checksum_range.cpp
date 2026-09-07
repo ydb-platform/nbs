@@ -1,7 +1,7 @@
 #include "checksum_range.h"
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/blockstore/libs/storage/disk_agent/public.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
 
