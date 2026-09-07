@@ -3,6 +3,7 @@
 #include "block_index.h"
 
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
+#include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 
 #include <cloud/storage/core/libs/common/block_buffer.h>
 
@@ -79,5 +80,10 @@ private:
         const TVector<TBlock>& blocks,
         ui32 blockIndex);
 };
+
+EChannelDataKind ChooseChannelDataKindForFlushBlob(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig,
+    TFlushBlocksVisitor::TBlob& blob);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

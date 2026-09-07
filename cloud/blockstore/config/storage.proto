@@ -1693,4 +1693,10 @@ message TStorageServiceConfig
     // Maximum allowed logical size of all blocks (block count * block size) in
     // fresh after which we start to reject write and zero requests.
     optional uint64 FreshLogicalBlocksByteCountHardLimit = 529;
+
+    optional uint64 LocalRangeSizeForChannelDataKindCalculation = 530;
+
+    optional double LocalRangeFillThresholdForChannelDataKindCalculation = 531;
+
+    optional double LocalRangesFilledForBlobChannelDataKindCalculation = 532;
 }

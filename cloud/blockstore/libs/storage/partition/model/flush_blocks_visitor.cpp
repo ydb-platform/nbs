@@ -1,6 +1,9 @@
 #include "flush_blocks_visitor.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 
@@ -268,6 +271,72 @@ ui32 TFlushBlocksVisitor::GetBlobRangeSize(
         return blockIndex - firstBlockIndex;
     }
     return 0;
+}
+
+EChannelDataKind ChooseChannelDataKindForFlushBlob(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig,
+    TFlushBlocksVisitor::TBlob& blob)
+{
+    EChannelDataKind channelDataKind = EChannelDataKind::Mixed;
+
+    const ui64 localRangeSize =
+        config.GetLocalRangeSizeForChannelDataKindCalculation();
+    const ui64 localRangeBlockCount =
+        localRangeSize / partitionConfig.GetBlockSize();
+
+    ui64 localRangesBeyoundThreshold = 0;
+    ui64 localRanges = 0;
+
+    for (size_t blockIndex = 0; blockIndex < blob.Blocks.size();) {
+        ++localRanges;
+
+        const size_t localRangeIndex =
+            blob.Blocks[blockIndex].BlockIndex / localRangeBlockCount;
+
+        size_t blocksInLocalRange = 1;
+
+        size_t endBlockIndexForLocalRange = blockIndex + 1;
+        while (endBlockIndexForLocalRange < blob.Blocks.size()) {
+            if (blob.Blocks[endBlockIndexForLocalRange].BlockIndex /
+                    localRangeBlockCount !=
+                localRangeIndex)
+            {
+                break;
+            }
+
+            if (blob.Blocks[endBlockIndexForLocalRange].BlockIndex !=
+                blob.Blocks[endBlockIndexForLocalRange - 1].BlockIndex)
+            {
+                ++blocksInLocalRange;
+            }
+
+            ++endBlockIndexForLocalRange;
+        }
+
+        if (static_cast<double>(blocksInLocalRange) >=
+            static_cast<double>(localRangeBlockCount) *
+                config
+                    .GetLocalRangeFillThresholdForChannelDataKindCalculation())
+        {
+            ++localRangesBeyoundThreshold;
+        }
+
+        blockIndex = endBlockIndexForLocalRange;
+    }
+
+    if (blob.BlobContent.GetBytesCount() != 0 &&
+        blob.BlobContent.GetBytesCount() >=
+            GetWriteBlobThreshold(
+                config,
+                partitionConfig.GetStorageMediaKind()) &&
+        static_cast<double>(localRangesBeyoundThreshold) >=
+            config.GetLocalRangesFilledForBlobChannelDataKindCalculation() *
+                static_cast<double>(localRanges))
+    {
+        channelDataKind = EChannelDataKind::Merged;
+    }
+    return channelDataKind;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

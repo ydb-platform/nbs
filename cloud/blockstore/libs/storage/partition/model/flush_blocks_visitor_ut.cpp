@@ -1,6 +1,8 @@
 #include "flush_blocks_visitor.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/block_data_ref.h>
 
@@ -77,6 +79,53 @@ TVector<TFlushBlocksVisitor::TBlob> BuildBlobs(
 
     visitor.Finish();
     return blobs;
+}
+
+TFlushBlocksVisitor::TBlob BuildBlob(const TVector<ui32>& blockIndices,
+                                     bool withContent = true)
+{
+    TBlockBuffer blobContent;
+    TVector<TBlock> blocks;
+    blocks.reserve(blockIndices.size());
+
+    for (const ui32 blockIndex: blockIndices) {
+        if (withContent) {
+            blobContent.AddBlock(BlockSize, 'x');
+        }
+        blocks.emplace_back(blockIndex, 1, false);
+    }
+
+    return {
+        std::move(blobContent),
+        std::move(blocks),
+        {},
+        0,
+    };
+}
+
+EChannelDataKind ChooseChannelDataKind(
+    TFlushBlocksVisitor::TBlob& blob, ui32 writeBlobThreshold,
+    ui32 localRangeBlockCount, double localRangeFillThreshold,
+    double localRangesFilledThreshold)
+{
+    NProto::TStorageServiceConfig storageServiceConfig;
+    storageServiceConfig.SetWriteBlobThreshold(writeBlobThreshold);
+    storageServiceConfig.SetLocalRangeSizeForChannelDataKindCalculation(
+        localRangeBlockCount * BlockSize);
+    storageServiceConfig
+        .SetLocalRangeFillThresholdForChannelDataKindCalculation(
+            localRangeFillThreshold);
+    storageServiceConfig.SetLocalRangesFilledForBlobChannelDataKindCalculation(
+        localRangesFilledThreshold);
+
+    const TStorageConfig config(std::move(storageServiceConfig), nullptr);
+
+    NProto::TPartitionConfig partitionConfig;
+    partitionConfig.SetBlockSize(BlockSize);
+    partitionConfig.SetStorageMediaKind(
+        NProto::EStorageMediaKind::STORAGE_MEDIA_HDD);
+
+    return ChooseChannelDataKindForFlushBlob(config, partitionConfig, blob);
 }
 
 }   // namespace
@@ -376,6 +425,82 @@ Y_UNIT_TEST_SUITE(TFlushBlocksVisitorTest)
         for (size_t i = 0; i < 5; ++i) {
             UNIT_ASSERT_VALUES_EQUAL(ExpectedChecksum(i), blobs[0].Checksums[i]);
         }
+    }
+
+    Y_UNIT_TEST(ShouldChooseMergedChannelForHugeDenseBlob)
+    {
+        // Both local ranges have exactly two out of four blocks filled. The
+        // blob size and local-range density are exactly at their thresholds.
+        auto blob = BuildBlob({0, 1, 4, 5});
+
+        UNIT_ASSERT(
+            ChooseChannelDataKind(blob, /*writeBlobThreshold*/ 4 * BlockSize,
+                                  /*localRangeBlockCount*/ 4,
+                                  /*localRangeFillThreshold*/ 0.5,
+                                  /*localRangesFilledThreshold*/ 1.0) ==
+            EChannelDataKind::Merged);
+    }
+
+    Y_UNIT_TEST(ShouldChooseMergedChannelAtBlobDensityThreshold)
+    {
+        // The first local range is dense and the second is sparse, so exactly
+        // half of the ranges touched by the blob are dense.
+        auto blob = BuildBlob({0, 1, 4});
+
+        UNIT_ASSERT(
+            ChooseChannelDataKind(blob, /*writeBlobThreshold*/ 3 * BlockSize,
+                                  /*localRangeBlockCount*/ 4,
+                                  /*localRangeFillThreshold*/ 0.5,
+                                  /*localRangesFilledThreshold*/ 0.5) ==
+            EChannelDataKind::Merged);
+    }
+
+    Y_UNIT_TEST(ShouldChooseMixedChannelForSmallBlob)
+    {
+        auto blob = BuildBlob({0, 1, 4, 5});
+
+        UNIT_ASSERT(
+            ChooseChannelDataKind(
+                blob, /*writeBlobThreshold*/ 4 * BlockSize + 1,
+                /*localRangeBlockCount*/ 4, /*localRangeFillThreshold*/ 0.5,
+                /*localRangesFilledThreshold*/ 1.0) == EChannelDataKind::Mixed);
+    }
+
+    Y_UNIT_TEST(ShouldChooseMixedChannelForSparseBlob)
+    {
+        // The adjacent indices straddle a local-range boundary, so each range
+        // has only one out of four blocks filled.
+        auto blob = BuildBlob({3, 4});
+
+        UNIT_ASSERT(
+            ChooseChannelDataKind(
+                blob, /*writeBlobThreshold*/ 2 * BlockSize,
+                /*localRangeBlockCount*/ 4, /*localRangeFillThreshold*/ 0.5,
+                /*localRangesFilledThreshold*/ 0.5) == EChannelDataKind::Mixed);
+    }
+
+    Y_UNIT_TEST(ShouldCountOnlyUniqueBlocksForLocalRangeDensity)
+    {
+        // Multiple versions of the same block do not fill more positions in
+        // the local range.
+        auto blob = BuildBlob({0, 0, 0, 0, 4, 4, 4, 4});
+
+        UNIT_ASSERT(
+            ChooseChannelDataKind(
+                blob, /*writeBlobThreshold*/ BlockSize,
+                /*localRangeBlockCount*/ 4, /*localRangeFillThreshold*/ 0.5,
+                /*localRangesFilledThreshold*/ 0.5) == EChannelDataKind::Mixed);
+    }
+
+    Y_UNIT_TEST(ShouldChooseMixedChannelForZeroBlob)
+    {
+        auto blob = BuildBlob({0, 1, 4, 5}, /*withContent*/ false);
+
+        UNIT_ASSERT(
+            ChooseChannelDataKind(
+                blob, /*writeBlobThreshold*/ 0, /*localRangeBlockCount*/ 4,
+                /*localRangeFillThreshold*/ 0.5,
+                /*localRangesFilledThreshold*/ 1.0) == EChannelDataKind::Mixed);
     }
 }
 

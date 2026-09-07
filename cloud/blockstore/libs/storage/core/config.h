@@ -970,6 +970,14 @@ public:
     [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
 
     [[nodiscard]] bool GetUseBlobChannelDataKindForCounters() const;
+
+    [[nodiscard]] ui64 GetLocalRangeSizeForChannelDataKindCalculation() const;
+
+    [[nodiscard]] double
+    GetLocalRangeFillThresholdForChannelDataKindCalculation() const;
+
+    [[nodiscard]] double
+    GetLocalRangesFilledForBlobChannelDataKindCalculation() const;
 };
 
 ui64 GetAllocationUnit(

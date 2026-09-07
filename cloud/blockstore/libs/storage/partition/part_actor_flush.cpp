@@ -672,8 +672,11 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
 
     ui32 blobIndex = 0;
     for (auto& blob: blobs) {
+        auto channelDataKind =
+            ChooseChannelDataKindForFlushBlob(*Config, PartitionConfig, blob);
+
         auto blobId = State->GenerateBlobId(
-            EChannelDataKind::Mixed,
+            channelDataKind,
             EChannelPermission::UserWritesAllowed,
             commitId,
             blob.BlobContent.GetBytesCount(),
