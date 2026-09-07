@@ -1277,7 +1277,8 @@ TIndexTabletActor::ProcessForcedRangeOperationRequest(
             break;
         }
         default: {
-            return std::make_unique<TResponse>(MakeError(E_ARGUMENT, "unsupported mode"));
+            return std::make_unique<TResponse>(
+                MakeError(E_ARGUMENT, "unsupported mode"));
         }
     }
 
@@ -1337,17 +1338,21 @@ TIndexTabletActor::ProcessForcedTabletOperationRequest(
             break;
         }
         default: {
-            return std::make_unique<TResponse>(MakeError(E_ARGUMENT, "unsupported mode"));
+            return std::make_unique<TResponse>(
+                MakeError(E_ARGUMENT, "unsupported mode"));
         }
     }
 
     if (IsForcedOperationRunning()) {
         NProto::TError error;
-        const auto* state = std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
+        const auto* state =
+            std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
         if (state && state->Mode == mode) {
             error = MakeError(S_ALREADY, "already launched");
         } else {
-            error = MakeError(E_TRY_AGAIN, TStringBuilder() << "another operation is running");
+            error = MakeError(
+                E_TRY_AGAIN,
+                TStringBuilder() << "another operation is running");
         }
         return std::make_unique<TResponse>(std::move(error));
     }

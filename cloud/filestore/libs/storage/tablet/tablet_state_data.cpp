@@ -1457,10 +1457,8 @@ TString TIndexTabletState::EnqueueForcedRangeOperation(
     if (operationId.empty()) {
         operationId = CreateGuidAsString();
     }
-    PendingForcedOperations.emplace_back(TPendingForcedRangeOperation(
-        mode,
-        std::move(ranges),
-        operationId));
+    PendingForcedOperations.emplace_back(
+        TPendingForcedRangeOperation(mode, std::move(ranges), operationId));
     return operationId;
 }
 
@@ -1471,14 +1469,13 @@ TString TIndexTabletState::EnqueueForcedTabletOperation(
     if (!operationId) {
         operationId = CreateGuidAsString();
     }
-    PendingForcedOperations.emplace_back(TPendingForcedTabletOperation(
-        mode,
-        operationId));
+    PendingForcedOperations.emplace_back(
+        TPendingForcedTabletOperation(mode, operationId));
     return operationId;
 }
 
-TMaybe<TIndexTabletState::TPendingForcedOperation> TIndexTabletState::
-    DequeueForcedOperation()
+TMaybe<TIndexTabletState::TPendingForcedOperation>
+TIndexTabletState::DequeueForcedOperation()
 {
     if (PendingForcedOperations.empty()) {
         return {};
@@ -1504,8 +1501,7 @@ TIndexTabletState::StartForcedRangeOperation(
         mode,
         std::move(ranges),
         std::move(operationId));
-    state.Status =
-        NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
+    state.Status = NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
     ForcedOperationState.ConstructInPlace(std::move(state));
     return std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
 }
@@ -1520,8 +1516,7 @@ TIndexTabletState::StartForcedTabletOperation(
         return nullptr;
     }
     TForcedTabletOperationState state(mode, std::move(operationId));
-    state.Status =
-        NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
+    state.Status = NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
     ForcedOperationState.ConstructInPlace(std::move(state));
     return std::get_if<TForcedTabletOperationState>(ForcedOperationState.Get());
 }
@@ -1613,7 +1608,8 @@ void TIndexTabletState::CompleteForcedTabletOperation(
         return;
     }
 
-    auto* tabletState = std::get_if<TForcedTabletOperationState>(ForcedOperationState.Get());
+    auto* tabletState =
+        std::get_if<TForcedTabletOperationState>(ForcedOperationState.Get());
     if (!tabletState) {
         ReportForcedOperationUnexpectedState(
             "current state is not a tablet state");
@@ -1645,8 +1641,7 @@ auto TIndexTabletState::FindForcedOperation(
             state);
     };
 
-    if (ForcedOperationState && checkId(*ForcedOperationState.Get()))
-    {
+    if (ForcedOperationState && checkId(*ForcedOperationState.Get())) {
         return ForcedOperationState.Get();
     }
 
