@@ -1461,7 +1461,7 @@ TString TIndexTabletState::EnqueueForcedRangeOperation(
     return operationId;
 }
 
-TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
+TMaybe<TIndexTabletState::TPendingForcedRangeOperation> TIndexTabletState::
     DequeueForcedRangeOperation()
 {
     if (PendingForcedRangeOperations.empty()) {
@@ -1481,6 +1481,17 @@ void TIndexTabletState::StartForcedRangeOperation(
 {
     TABLET_VERIFY(!ForcedRangeOperationState.Defined());
     ForcedRangeOperationState.ConstructInPlace(
+        mode,
+        std::move(ranges),
+        std::move(operationId));
+}
+
+void TIndexTabletState::AbortForcedRangeOperation(
+    TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+    TVector<ui32> ranges,
+    TString operationId)
+{
+    CompletedForcedRangeOperations.emplace_back(
         mode,
         std::move(ranges),
         std::move(operationId));

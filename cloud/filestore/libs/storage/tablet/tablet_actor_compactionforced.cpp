@@ -272,15 +272,15 @@ void TIndexTabletActor::EnqueueForcedRangeOperationIfNeeded(
     }
 
     auto pendingRequest = DequeueForcedRangeOperation();
-    if (pendingRequest.Ranges.empty()) {
+    if (!pendingRequest) {
         return;
     }
 
     auto request =
         std::make_unique<TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
-            std::move(pendingRequest.Ranges),
-            pendingRequest.Mode,
-            std::move(pendingRequest.OperationId));
+            std::move(pendingRequest->Ranges),
+            pendingRequest->Mode,
+            std::move(pendingRequest->OperationId));
     ctx.Send(ctx.SelfID, request.release());
 }
 
@@ -295,9 +295,13 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         LogTag.c_str(),
         msg->Ranges.size());
 
-    auto replyError = [&] (
-        const NProto::TError& error)
+    auto replyError = [&](const NProto::TError& error)
     {
+        AbortForcedRangeOperation(
+            msg->Mode,
+            std::move(msg->Ranges),
+            std::move(msg->OperationId));
+
         if (ev->Sender == ctx.SelfID) {
             return;
         }

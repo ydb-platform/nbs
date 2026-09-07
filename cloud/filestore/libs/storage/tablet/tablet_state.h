@@ -1565,9 +1565,14 @@ public:
     TString EnqueueForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges);
-    TPendingForcedRangeOperation DequeueForcedRangeOperation();
+    TMaybe<TPendingForcedRangeOperation> DequeueForcedRangeOperation();
 
     void StartForcedRangeOperation(
+        TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+        TVector<ui32> ranges,
+        TString operationId);
+
+    void AbortForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges,
         TString operationId);
