@@ -17,10 +17,6 @@ message ClientConfig {
     optional bool DisableAuthentication = 4;
     optional string DurableClientTimeout = 5 [default = "60s"];
     optional string GrpcClientTimeout = 6 [default = "30s"];
-    // Period of automatic root certificates refresh, zero disables it. The
-    // file is checked twice per period and new content is applied only after
-    // it has been read unchanged twice in a row, which reduces the chance of
-    // picking up an intermediate state of a non-atomic rewrite. A change
-    // takes effect within one period.
+    // Period of automatic root certificates refresh, zero disables it.
     optional string RefreshCertsPeriod = 7 [default = "0s"];
 }

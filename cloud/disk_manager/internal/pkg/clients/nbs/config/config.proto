@@ -34,10 +34,6 @@ message ClientConfig {
     // ServerRequestTimeout is passed to server in headers and handled on the server side.
     optional string ServerRequestTimeout = 13 [default = "20s"];
     optional string DiscoveryClientRetryDelay = 14 [default = "200ms"];
-    // Period of automatic root certificates refresh, zero disables it. The
-    // file is checked twice per period and new content is applied only after
-    // it has been read unchanged twice in a row, which reduces the chance of
-    // picking up an intermediate state of a non-atomic rewrite. A change
-    // takes effect within one period.
+    // Period of automatic root certificates refresh, zero disables it.
     optional string RefreshCertsPeriod = 15 [default = "0s"];
 }
