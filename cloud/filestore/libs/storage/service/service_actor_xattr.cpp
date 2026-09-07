@@ -218,6 +218,27 @@ void TStorageServiceActor::ReplyToXAttrRequest(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+template void
+TStorageServiceActor::ReplyToXAttrRequest<TEvService::TGetNodeXAttrMethod>(
+    const TActorContext& ctx,
+    const TEvService::TGetNodeXAttrMethod::TRequest::TPtr& ev,
+    std::unique_ptr<TEvService::TGetNodeXAttrMethod::TResponse> response,
+    const TSessionInfo* session);
+
+template void
+TStorageServiceActor::ReplyToXAttrRequest<TEvService::TListNodeXAttrMethod>(
+    const TActorContext& ctx,
+    const TEvService::TListNodeXAttrMethod::TRequest::TPtr& ev,
+    std::unique_ptr<TEvService::TListNodeXAttrMethod::TResponse> response,
+    const TSessionInfo* session);
+
+template void
+TStorageServiceActor::ReplyToXAttrRequest<TEvService::TSetNodeXAttrMethod>(
+    const TActorContext& ctx,
+    const TEvService::TSetNodeXAttrMethod::TRequest::TPtr& ev,
+    std::unique_ptr<TEvService::TSetNodeXAttrMethod::TResponse> response,
+    const TSessionInfo* session);
+
 ///////////////////////////////////////////////////////////////////////////////
 
 void TStorageServiceActor::HandleGetNodeXAttr(

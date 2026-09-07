@@ -1,5 +1,7 @@
 #include "service_actor.h"
 
+#include "service_actor_control_namespace.h"
+
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
@@ -262,6 +264,17 @@ void TStorageServiceActor::ForwardRequestToShard(
         seqNo,
         TMethod::Name,
         msg->CallContext->RequestId);
+
+    if (!StorageConfig->GetControlNamespaceDirName().empty() &&
+        ClassifyControlNamespaceEntry(entityId) != EControlNamespaceEntry::None)
+    {
+        return NCloud::Reply(
+            ctx,
+            *ev,
+            BuildControlNamespaceResponse<TMethod>(
+                ev,
+                session->FileStore.GetFileSystemId()));
+    }
 
     const NProto::TFileStore& filestore = session->FileStore;
 
