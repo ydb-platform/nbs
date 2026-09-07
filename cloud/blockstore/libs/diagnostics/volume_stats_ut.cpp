@@ -2528,4 +2528,456 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+NProto::TDiagnosticsConfig MakeConfigWithLatencyThresholds(
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui32 readThresholdMs,
+    ui32 writeThresholdMs)
+{
+    NProto::TDiagnosticsConfig config;
+    config.SetLatencyThresholdsEnabled(true);
+
+    auto& mkt = *config.AddLatencyThresholds();
+    mkt.SetMediaKind(mediaKind);
+
+    auto& bucket = *mkt.AddBuckets();
+    bucket.SetMinRequestBytes(0);
+    bucket.SetReadThresholdMs(readThresholdMs);
+    bucket.SetWriteThresholdMs(writeThresholdMs);
+
+    return config;
+}
+
+// Judges a single completed operation via TVolumeInfo::RequestCompleted with
+// a chosen execTime, by backdating requestStarted from the current cycle
+// count (RequestCompleted itself always measures the "completed" end against
+// a fresh GetCycleCount(), so this is the only way to control execTime
+// deterministically without an actual sleep).
+void SendRequest(
+    IVolumeInfoPtr volume,
+    EBlockStoreRequest requestType,
+    ui64 requestBytes,
+    TDuration execTime,
+    EDiagnosticsErrorKind errorKind = EDiagnosticsErrorKind::Success)
+{
+    const auto now = GetCycleCount();
+    const auto durationInCycles = DurationToCyclesSafe(execTime);
+
+    volume->RequestCompleted(
+        requestType,
+        now - Min(now, durationInCycles),
+        TDuration::Zero(),   // postponedTime
+        TDuration::Zero(),   // backoffTime
+        TDuration::Zero(),   // shapingTime
+        requestBytes,
+        errorKind,
+        NCloud::NProto::EF_NONE,
+        false,
+        0);
+}
+
+// Like SendRequest, but also simulates a non-zero gap between "response
+// handed off to the transport" (responseSent) and "RequestCompleted called"
+// (now) - e.g. gRPC write-to-socket time, backpressure, a slow client. Only
+// execTime should be judged against the latency threshold; responseDelay
+// must not leak into it.
+void SendRequestWithResponseDelay(
+    IVolumeInfoPtr volume,
+    EBlockStoreRequest requestType,
+    ui64 requestBytes,
+    TDuration execTime,
+    TDuration responseDelay,
+    EDiagnosticsErrorKind errorKind = EDiagnosticsErrorKind::Success)
+{
+    const auto now = GetCycleCount();
+    const auto execCycles = DurationToCyclesSafe(execTime);
+    const auto responseDelayCycles = DurationToCyclesSafe(responseDelay);
+    const auto totalCycles = execCycles + responseDelayCycles;
+    const auto requestStarted = now - Min(now, totalCycles);
+    const auto responseSent = requestStarted + execCycles;
+
+    volume->RequestCompleted(
+        requestType,
+        requestStarted,
+        TDuration::Zero(),   // postponedTime
+        TDuration::Zero(),   // backoffTime
+        TDuration::Zero(),   // shapingTime
+        requestBytes,
+        errorKind,
+        NCloud::NProto::EF_NONE,
+        false,
+        responseSent);
+}
+
+}   // namespace
+
+Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
+{
+    Y_TEST_HOOK_BEFORE_RUN(InitTest)
+    {
+        // NHPTimer warmup, see issue #2830 for more information: SendRequest
+        // above relies on GetCycleCount()/DurationToCyclesSafe() being
+        // calibrated before the first real measurement.
+        Y_UNUSED(GetCyclesPerMillisecond());
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateLatencyCountersWhenMechanismDisabled)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto config = std::make_shared<TDiagnosticsConfig>(
+            NProto::TDiagnosticsConfig());
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volume = volumeStats->GetVolumeInfo("test1", "client1");
+
+        // Must not crash even though the mechanism is off.
+        SendRequest(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(1));
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        UNIT_ASSERT(!availabilityCounters->FindCounter("LatencyTotalOps"));
+        UNIT_ASSERT(!availabilityCounters->FindCounter("LatencyGoodOps"));
+    }
+
+    Y_UNIT_TEST(ShouldTrackLatencyCountersWhenEnabledWithValidTable)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto config = std::make_shared<TDiagnosticsConfig>(
+            MakeConfigWithLatencyThresholds(
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                10,   // readThresholdMs
+                10)); // writeThresholdMs
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volume = volumeStats->GetVolumeInfo("test1", "client1");
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto total = availabilityCounters->GetCounter("LatencyTotalOps");
+        auto good = availabilityCounters->GetCounter("LatencyGoodOps");
+
+        // Fast write, well under the 10ms threshold: both counters advance.
+        SendRequest(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+
+        // Slow write, well over the threshold: only the total advances.
+        SendRequest(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(500));
+        UNIT_ASSERT_VALUES_EQUAL(2, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+
+        // A fatal error is counted as bad without a duration comparison.
+        SendRequest(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(1),
+            EDiagnosticsErrorKind::ErrorFatal);
+        UNIT_ASSERT_VALUES_EQUAL(3, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+
+        // Throttled operations are excluded entirely, not counted as bad.
+        SendRequest(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(1),
+            EDiagnosticsErrorKind::ErrorThrottling);
+        UNIT_ASSERT_VALUES_EQUAL(3, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+    }
+
+    Y_UNIT_TEST(ShouldExcludeResponseDeliveryTimeFromLatency)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto config = std::make_shared<TDiagnosticsConfig>(
+            MakeConfigWithLatencyThresholds(
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                10,   // readThresholdMs
+                10)); // writeThresholdMs
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volume = volumeStats->GetVolumeInfo("test1", "client1");
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto total = availabilityCounters->GetCounter("LatencyTotalOps");
+        auto good = availabilityCounters->GetCounter("LatencyGoodOps");
+
+        // Real execution time is 1ms (well under the 10ms threshold), but
+        // the response then spends 50ms being delivered to the client
+        // (network/backpressure/slow client). If that delivery time leaked
+        // into the judged duration (1ms + 50ms = 51ms > 10ms), this would
+        // wrongly count as bad.
+        SendRequestWithResponseDelay(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(1),
+            TDuration::MilliSeconds(50));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+    }
+
+    Y_UNIT_TEST(ShouldKeepMechanismDisabledAndRaiseGaugeOnEmptyTable)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        NProto::TDiagnosticsConfig protoConfig;
+        protoConfig.SetLatencyThresholdsEnabled(true);
+        // LatencyThresholds is intentionally left empty here: a config
+        // mistake per BuildLatencyThresholdsTable rule 1, not a way to
+        // disable the mechanism (the flag itself already does that).
+        auto config = std::make_shared<TDiagnosticsConfig>(protoConfig);
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volume = volumeStats->GetVolumeInfo("test1", "client1");
+
+        // The server must stay alive and simply skip judging operations.
+        SendRequest(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(1));
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+        UNIT_ASSERT(!availabilityCounters->FindCounter("LatencyTotalOps"));
+        UNIT_ASSERT(!availabilityCounters->FindCounter("LatencyGoodOps"));
+
+        auto invalidGauge = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server")
+            ->GetCounter("LatencyThresholdsConfigInvalid");
+        UNIT_ASSERT_VALUES_EQUAL(1, invalidGauge->Val());
+    }
+
+    Y_UNIT_TEST(ShouldSkipOperationsForMediaKindWithoutConfiguredLadder)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        // The table below only configures SSD; the volume mounted below is
+        // HDD, i.e. a media kind nobody has calibrated yet.
+        auto config = std::make_shared<TDiagnosticsConfig>(
+            MakeConfigWithLatencyThresholds(
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                10,
+                10));
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+        auto volume = volumeStats->GetVolumeInfo("test1", "client1");
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-hdd");
+
+        auto total = availabilityCounters->GetCounter("LatencyTotalOps");
+        auto good = availabilityCounters->GetCounter("LatencyGoodOps");
+
+        auto skipped = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server")
+            ->GetCounter("LatencyThresholdsSkippedOps");
+
+        SendRequest(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(1));
+
+        // Neither counter moves for an unconfigured media kind - it must
+        // never look like a 0% good-operation rate - but the gap is still
+        // visible via the server-level skipped-ops counter.
+        UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, skipped->Val());
+    }
+
+    Y_UNIT_TEST(ShouldContinueLatencyCountersUntilVolumeTrimmed)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto config = std::make_shared<TDiagnosticsConfig>(
+            MakeConfigWithLatencyThresholds(
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                10,
+                10));
+        auto timer = std::make_shared<TTestTimer>();
+
+        // Finite inactivity timeout so that TrimVolumes() actually removes
+        // the instance - mirrors
+        // ShouldStopAccruingAvailabilityAfterVolumeTrimmed above.
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Seconds(10),
+            EVolumeStatsType::EServerStats,
+            timer);
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volume = volumeStats->GetVolumeInfo("test1", "client1");
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+        auto total = availabilityCounters->GetCounter("LatencyTotalOps");
+
+        SendRequest(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, total->Val());
+
+        // Unmount alone is a no-op for this class: the instance (and its
+        // counters) is not removed until TrimVolumes fires, so it must keep
+        // accruing.
+        volumeStats->UnmountVolume("test1", "client1");
+        SendRequest(
+            volume,
+            EBlockStoreRequest::WriteBlocks,
+            4_KB,
+            TDuration::MilliSeconds(1));
+        UNIT_ASSERT(availabilityCounters->FindCounter("LatencyTotalOps"));
+        UNIT_ASSERT_VALUES_EQUAL(2, total->Val());
+
+        // The instance is now inactive longer than the timeout, so
+        // TrimVolumes removes its whole subtree, LatencyTotalOps included.
+        // (`availabilityCounters` above is a pointer to the leaf subgroup
+        // itself, kept alive by this test's own shared_ptr, so it is not a
+        // reliable way to observe the removal - re-navigate from the root
+        // instead, the same way a fresh monitoring scrape would.)
+        timer->AdvanceTime(TDuration::Seconds(11));
+        volumeStats->TrimVolumes();
+
+        auto volumeGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->FindSubgroup("volume", "test1");
+        UNIT_ASSERT(!volumeGroup);
+    }
+}
+
 }   // namespace NCloud::NBlockStore

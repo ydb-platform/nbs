@@ -1,6 +1,7 @@
 #include "volume_stats.h"
 
 #include "config.h"
+#include "latency_thresholds.h"
 #include "stats_helpers.h"
 #include "user_counter.h"
 #include "volume_perf.h"
@@ -12,6 +13,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/postpone_time_predictor.h>
@@ -65,6 +67,23 @@ public:
             MaxPredictedPostponeTimeCalc.NextValue();
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Unlike IsWriteRequest (which also matches ZeroBlocks), this matches only
+// "real" write payload requests. The latency threshold mechanism is
+// read/write-only; zero/discard operations are out of scope for this
+// iteration.
+constexpr bool IsPureWriteRequest(EBlockStoreRequest requestType)
+{
+    switch (requestType) {
+        case EBlockStoreRequest::WriteBlocks:
+        case EBlockStoreRequest::WriteBlocksLocal:
+            return true;
+        default:
+            return false;
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -171,12 +190,34 @@ struct TVolumeInfoBase
     TMaxCalculator<DEFAULT_BUCKET_COUNT> CheckpointRejects;
     TDynamicCounters::TCounterPtr HasStorageConfigPatchCounter;
 
+    // Effective flag for the operation latency threshold mechanism: true
+    // only when the server enabled it AND the configured table passed
+    // validation (see TVolumeStats::InitLatencyThresholds). Stored once at
+    // construction and never re-read from config on the request path.
+    const bool LatencyThresholdsEnabled;
+
+    // Shared (not per-volume) hot-swappable snapshot of the latency
+    // thresholds table; see latency_thresholds.h. Held via shared_ptr, not
+    // by value, so per-volume state stays cheap and the table can be
+    // replaced later (e.g. by a dynamic config source) without touching
+    // every volume.
+    const std::shared_ptr<TLatencyThresholdsHotSwap> LatencyThresholdsHotSwap;
+
+    // Server-level (not per-volume) diagnostic counter: operations whose
+    // media kind has no configured threshold ladder are skipped entirely -
+    // never counted as bad - and tallied here instead so the gap stays
+    // visible.
+    const TDynamicCounters::TCounterPtr LatencyThresholdsSkippedOpsCounter;
+
     TVolumeInfoBase(
             NProto::TVolume volume,
             TDiagnosticsConfigPtr diagnosticsConfig,
             IPostponeTimePredictorPtr postponeTimePredictor,
             TDynamicCountersPtr volumeGroup,
-            ITimerPtr timer)
+            ITimerPtr timer,
+            bool latencyThresholdsEnabled,
+            std::shared_ptr<TLatencyThresholdsHotSwap> latencyThresholdsHotSwap,
+            TDynamicCounters::TCounterPtr latencyThresholdsSkippedOpsCounter)
         : Timer(timer)
         , Volume(std::move(volume))
         , PerfCalc(Volume, diagnosticsConfig)
@@ -187,6 +228,10 @@ struct TVolumeInfoBase
         , CheckpointRejects(timer)
         , HasStorageConfigPatchCounter(
             volumeGroup->GetCounter("HasStorageConfigPatch"))
+        , LatencyThresholdsEnabled(latencyThresholdsEnabled)
+        , LatencyThresholdsHotSwap(std::move(latencyThresholdsHotSwap))
+        , LatencyThresholdsSkippedOpsCounter(
+            std::move(latencyThresholdsSkippedOpsCounter))
     {
         BusyIdleCalc.Register(volumeGroup);
         PerfCalc.Register(*volumeGroup, Volume);
@@ -265,6 +310,17 @@ private:
     TDynamicCounters::TCounterPtr ObservedSecondsCounter;
     TDynamicCounters::TCounterPtr AvailableSecondsCounter;
     TDynamicCounters::TCounterPtr HealthySecondsCounter;
+
+    // Cumulative per-volume operation latency counters (derivative/RATE,
+    // operations). LatencyGoodOps <= LatencyTotalOps; consumers compute
+    // latency = GoodOps/TotalOps over a window. See
+    // TVolumeInfoBase::LatencyThresholdsEnabled and latency_thresholds.h for
+    // the accounting rule. Populated only when the server-wide mechanism is
+    // enabled (config flag + a valid thresholds table); left null otherwise
+    // - RequestCompleted only touches them under
+    // VolumeBase->LatencyThresholdsEnabled, checked once at construction.
+    TDynamicCounters::TCounterPtr LatencyTotalOpsCounter;
+    TDynamicCounters::TCounterPtr LatencyGoodOpsCounter;
 
     // Wall-clock time up to which the availability counters have been credited
     // for this instance. Seeded at construction (mount time) so that time
@@ -350,13 +406,15 @@ public:
         bool unaligned,
         ui64 responseSent) override
     {
+        const auto requestCompleted = GetCycleCount();
+        const auto waitTime = postponedTime + backoffTime + shapingTime;
+
         VolumeBase->BusyIdleCalc.OnRequestCompleted();
         VolumeBase->PerfCalc.OnRequestCompleted(
             TranslateLocalRequestType(requestType),
             requestStarted,
-            GetCycleCount(),   // requestCompleted
-            DurationToCyclesSafe(
-                postponedTime + backoffTime + shapingTime),   // waitTime
+            requestCompleted,
+            DurationToCyclesSafe(waitTime),
             requestBytes);
         VolumeBase->PostponeTimePredictor->Register(postponedTime);
         VolumeBase->DowntimeCalculator.RequestCompleted(
@@ -368,6 +426,40 @@ public:
             VolumeBase->CheckpointRejects.Add(1);
         } else if (errorKind == EDiagnosticsErrorKind::ErrorThrottling) {
             VolumeBase->ThrottlerRejects.Add(1);
+        }
+
+        if (VolumeBase->LatencyThresholdsEnabled) {
+            // processingCompleted excludes gRPC response-delivery time
+            // (network, backpressure, a slow client), mirroring
+            // TRequestCounters::RequestCompleted: responseSent is the
+            // timestamp taken right before handing the response off to the
+            // transport, and this method only runs once that hand-off has
+            // finished, so requestCompleted - responseSent is time spent
+            // delivering the response, not executing the operation.
+            const ui64 processingCompleted =
+                responseSent ? responseSent : requestCompleted;
+
+            // execTime = requestTime - waitTime, clamped at zero, mirroring
+            // the exec-time-safe pattern already used by
+            // TVolumePerformanceCalculator::OnRequestCompleted above: the
+            // throttler's own wait is not the service's responsibility, but
+            // the operation itself is still judged (a throttled-but-executed
+            // operation is NOT excluded, only judged on the time it actually
+            // took to execute).
+            const ui64 requestTimeCycles =
+                processingCompleted > requestStarted
+                    ? processingCompleted - requestStarted
+                    : 0;
+            const ui64 waitTimeCycles = DurationToCyclesSafe(waitTime);
+            const ui64 execTimeCycles = requestTimeCycles > waitTimeCycles
+                ? requestTimeCycles - waitTimeCycles
+                : 0;
+
+            RecordLatencyThresholdOutcome(
+                requestType,
+                errorKind,
+                requestBytes,
+                CyclesToDurationSafe(execTimeCycles));
         }
 
         return RequestCounters.RequestCompleted(
@@ -470,6 +562,59 @@ public:
             timeHist,
             sizeHist);
     }
+
+private:
+    // Judges a single completed operation against the latency thresholds
+    // table and increments LatencyTotalOpsCounter/LatencyGoodOpsCounter
+    // accordingly. Called from RequestCompleted only when
+    // VolumeBase->LatencyThresholdsEnabled - see latency_thresholds.h for
+    // the accounting rule (ClassifyLatencyOutcome) this wraps.
+    void RecordLatencyThresholdOutcome(
+        EBlockStoreRequest requestType,
+        EDiagnosticsErrorKind errorKind,
+        ui64 requestBytes,
+        TDuration execTime)
+    {
+        // Only ReadBlocks/WriteBlocks (and their *Local variants)
+        // participate; Zero/discard operations are out of scope for this
+        // iteration.
+        const bool isWrite = IsPureWriteRequest(requestType);
+        if (!isWrite && !IsReadRequest(requestType)) {
+            return;
+        }
+
+        const auto mediaKind = VolumeBase->Volume.GetStorageMediaKind();
+        const auto thresholds =
+            VolumeBase->LatencyThresholdsHotSwap->AtomicLoad();
+        const auto* ladder =
+            thresholds ? thresholds->FindLadder(mediaKind) : nullptr;
+
+        const auto outcome = ClassifyLatencyOutcome(
+            ladder,
+            errorKind,
+            isWrite,
+            requestBytes,
+            execTime);
+
+        if (outcome.MediaKindNotConfigured) {
+            // Guaranteed non-null: created unconditionally by
+            // InitLatencyThresholds, which always runs before any volume can
+            // be registered on this (EServerStats) TVolumeStats instance.
+            *VolumeBase->LatencyThresholdsSkippedOpsCounter += 1;
+            return;
+        }
+
+        // Guaranteed non-null here: both counters are created together with
+        // VolumeBase->LatencyThresholdsEnabled in RegisterInstance, and this
+        // method only runs when that same flag is true (see the call site
+        // in RequestCompleted).
+        if (outcome.CountTotal) {
+            *LatencyTotalOpsCounter += 1;
+        }
+        if (outcome.CountGood) {
+            *LatencyGoodOpsCounter += 1;
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -571,13 +716,33 @@ private:
     TDownDisksCounters DownDisksCounters;
     TDynamicCounters::TCounterPtr TotalDownDisksCounter;
 
+    // Effective flag for the operation latency threshold mechanism: only
+    // ever set for EServerStats (client-side sli_volume counters are not
+    // grown for this mechanism, unlike the older availability counters).
+    // See InitLatencyThresholds.
+    bool LatencyThresholdsEnabled = false;
+
+    // Shared, hot-swappable holder for the latency thresholds table; copied
+    // (as a shared_ptr) into every TVolumeInfoBase. See latency_thresholds.h.
+    std::shared_ptr<TLatencyThresholdsHotSwap> LatencyThresholdsHotSwap =
+        std::make_shared<TLatencyThresholdsHotSwap>();
+
+    // Server-level (not per-volume) diagnostics: whether the configured
+    // table is invalid (gauge, 0/1) and how many operations were skipped
+    // because their media kind has no configured ladder (derivative).
+    TDynamicCounters::TCounterPtr LatencyThresholdsConfigInvalidCounter;
+    TDynamicCounters::TCounterPtr LatencyThresholdsSkippedOpsCounter;
+
+    TLog Log;
+
 public:
     TVolumeStats(
             IMonitoringServicePtr monitoring,
             TDuration inactiveClientsTimeout,
             TDiagnosticsConfigPtr diagnosticsConfig,
             EVolumeStatsType type,
-            ITimerPtr timer)
+            ITimerPtr timer,
+            TLog log = {})
         : Monitoring(std::move(monitoring))
         , InactiveClientsTimeout(inactiveClientsTimeout)
         , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -587,6 +752,7 @@ public:
             return THashSet<TString>(v.begin(), v.end());
         }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
         , UserCounters(CreateUserCounterSupplier())
+        , Log(std::move(log))
     {}
 
     // Not thread-safe
@@ -1127,7 +1293,10 @@ private:
                 DiagnosticsConfig->GetPostponeTimePredictorPercentage(),
                 DiagnosticsConfig->GetPostponeTimePredictorMaxTime()),
             volumeGroup,
-            Timer);
+            Timer,
+            LatencyThresholdsEnabled,
+            LatencyThresholdsHotSwap,
+            LatencyThresholdsSkippedOpsCounter);
 
         return TVolumeInfoHolder{
             .VolumeBase = std::move(volumeBase),
@@ -1190,6 +1359,19 @@ private:
         info->HealthySecondsCounter =
             availabilityCountersGroup->GetCounter("HealthySeconds", true);
 
+        // Registered only when the mechanism is actually enabled (config
+        // flag + a valid table), which in turn is only ever true for
+        // EServerStats - see InitLatencyThresholds. This is the "honest
+        // optionality" the counters need: unlike counters that always exist,
+        // creating LatencyTotalOps/LatencyGoodOps unconditionally would be
+        // misleading (nothing to compare against without a threshold table).
+        if (volumeBase->LatencyThresholdsEnabled) {
+            info->LatencyTotalOpsCounter =
+                availabilityCountersGroup->GetCounter("LatencyTotalOps", true);
+            info->LatencyGoodOpsCounter =
+                availabilityCountersGroup->GetCounter("LatencyGoodOps", true);
+        }
+
         auto reportZeroBlocksMetrics =
             !DiagnosticsConfig
                  ->GetSkipReportingZeroBlocksMetricsForYDBBasedDisks() ||
@@ -1243,6 +1425,46 @@ private:
             volumeBase->Volume.GetDiskId());
     }
 
+    // Validates the configured latency thresholds table and, if valid,
+    // stores it for use by every volume. Called once, from InitCounters, so
+    // it only ever runs for EServerStats (see the call site below). Never
+    // throws: a bad config leaves the mechanism disabled, not the server
+    // dead - this runs on every server on the fleet, so a config typo must
+    // not be able to take the whole service down.
+    void InitLatencyThresholds()
+    {
+        auto serverGroup = Counters->GetSubgroup("component", "server");
+        LatencyThresholdsConfigInvalidCounter =
+            serverGroup->GetCounter("LatencyThresholdsConfigInvalid");
+        LatencyThresholdsSkippedOpsCounter =
+            serverGroup->GetCounter("LatencyThresholdsSkippedOps", true);
+
+        if (!DiagnosticsConfig->GetLatencyThresholdsEnabled()) {
+            *LatencyThresholdsConfigInvalidCounter = 0;
+            return;
+        }
+
+        auto validation = BuildLatencyThresholdsTable(
+            DiagnosticsConfig->GetLatencyThresholds());
+
+        for (const auto& warning: validation.Warnings) {
+            STORAGE_WARN(warning);
+        }
+
+        if (!validation.IsValid()) {
+            STORAGE_ERROR(
+                "LatencyThresholdsEnabled is set but the configured table "
+                "is invalid, the mechanism stays disabled: "
+                << validation.Error);
+            *LatencyThresholdsConfigInvalidCounter = 1;
+            return;
+        }
+
+        LatencyThresholdsHotSwap->AtomicStore(validation.Table);
+        LatencyThresholdsEnabled = true;
+        *LatencyThresholdsConfigInvalidCounter = 0;
+    }
+
     void InitCounters()
     {
         Counters =
@@ -1281,6 +1503,8 @@ private:
                             ->GetCounter("DownDisks");
                     ++mk;
                 }
+
+                InitLatencyThresholds();
 
                 AvailabilityCounters = Counters
                     ->GetSubgroup("component", "sli_volume")
@@ -1410,7 +1634,8 @@ IVolumeStatsPtr CreateVolumeStats(
     TDiagnosticsConfigPtr diagnosticsConfig,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer)
+    ITimerPtr timer,
+    TLog log)
 {
     Y_DEBUG_ABORT_UNLESS(diagnosticsConfig);
     return std::make_shared<TVolumeStats>(
@@ -1418,14 +1643,16 @@ IVolumeStatsPtr CreateVolumeStats(
         inactiveClientsTimeout,
         std::move(diagnosticsConfig),
         type,
-        std::move(timer));
+        std::move(timer),
+        std::move(log));
 }
 
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer)
+    ITimerPtr timer,
+    TLog log)
 {
     NProto::TDiagnosticsConfig diagnosticsConfig;
     return std::make_shared<TVolumeStats>(
@@ -1433,7 +1660,8 @@ IVolumeStatsPtr CreateVolumeStats(
         inactiveClientsTimeout,
         std::make_shared<TDiagnosticsConfig>(diagnosticsConfig),
         type,
-        std::move(timer));
+        std::move(timer),
+        std::move(log));
 }
 
 

@@ -385,7 +385,8 @@ void TBootstrapBase::Init()
             Configs->DiagnosticsConfig,
             inactiveClientsTimeout,
             EVolumeStatsType::EServerStats,
-            Timer);
+            Timer,
+            Log);
     }
 
     ServerStats = CreateServerStats(

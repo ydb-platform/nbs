@@ -10,6 +10,8 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/logger/log.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/ptr.h>
 #include <util/generic/string.h>
@@ -156,18 +158,25 @@ struct IVolumeStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// `log` is optional: a default-constructed (closed) TLog silently disables
+// the STORAGE_ERROR/STORAGE_WARN diagnostics emitted while validating the
+// latency thresholds config (see TDiagnosticsConfig::GetLatencyThresholds*),
+// so callers that do not care about that diagnostic (tools, benchmarks) do
+// not need to change.
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
     TDiagnosticsConfigPtr diagnosticsConfig,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer);
+    ITimerPtr timer,
+    TLog log = {});
 
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer);
+    ITimerPtr timer,
+    TLog log = {});
 
 IVolumeStatsPtr CreateVolumeStatsStub();
 

@@ -17,6 +17,7 @@ SRCS(
     critical_events_ut.cpp
     fault_injection_ut.cpp
     hostname_ut.cpp
+    latency_thresholds_ut.cpp
     profile_log_ut.cpp
     quota_metrics_ut.cpp
     request_stats_ut.cpp
