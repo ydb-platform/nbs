@@ -111,33 +111,6 @@ STFUNC(TSetHasXAttrsActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-TSessionInfo* TStorageServiceActor::GetAndValidateSession(
-    const NActors::TActorContext& ctx,
-    const typename TMethod::TRequest::TPtr& ev)
-{
-    auto* msg = ev->Get();
-
-    const auto& clientId = GetClientId(msg->Record);
-    const auto& sessionId = GetSessionId(msg->Record);
-    const ui64 seqNo = GetSessionSeqNo(msg->Record);
-
-    TSessionInfo* session = State->FindSession(sessionId, seqNo);
-    if (!session ||
-        session->ClientId != clientId ||
-        !session->GetSessionActor(seqNo))
-    {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            ErrorInvalidSession(clientId, sessionId, seqNo));
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return nullptr;
-    }
-
-    return session;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TMethod>
 void TStorageServiceActor::ForwardXAttrRequest(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,

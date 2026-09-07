@@ -9,57 +9,64 @@ using namespace NActors;
 
 bool TStorageServiceActor::TryHandleControlNamespaceGetNodeAttr(
     const TActorContext& ctx,
-    const TEvService::TEvGetNodeAttrRequest::TPtr& ev)
+    const TEvService::TEvGetNodeAttrRequest::TPtr& ev,
+    const TSessionInfo* session)
 {
-    Y_UNUSED(ctx, ev);
+    Y_UNUSED(ctx, ev, session);
     return false;
 }
 
 bool TStorageServiceActor::TryHandleControlNamespaceCreateHandle(
     const TActorContext& ctx,
-    const TEvService::TEvCreateHandleRequest::TPtr& ev)
+    const TEvService::TEvCreateHandleRequest::TPtr& ev,
+    const TSessionInfo* session)
 {
-    Y_UNUSED(ctx, ev);
+    Y_UNUSED(ctx, ev, session);
     return false;
 }
 
 bool TStorageServiceActor::TryHandleControlNamespaceCreateNode(
     const TActorContext& ctx,
-    const TEvService::TEvCreateNodeRequest::TPtr& ev)
+    const TEvService::TEvCreateNodeRequest::TPtr& ev,
+    const TSessionInfo* session)
 {
-    Y_UNUSED(ctx, ev);
+    Y_UNUSED(ctx, ev, session);
     return false;
 }
 
 bool TStorageServiceActor::TryHandleControlNamespaceReadData(
     const TActorContext& ctx,
-    const TEvService::TEvReadDataRequest::TPtr& ev)
+    const TEvService::TEvReadDataRequest::TPtr& ev,
+    const TSessionInfo* session)
 {
-    Y_UNUSED(ctx, ev);
+    Y_UNUSED(ctx, ev, session);
     return false;
 }
 
 bool TStorageServiceActor::TryHandleControlNamespaceWriteData(
     const TActorContext& ctx,
-    const TEvService::TEvWriteDataRequest::TPtr& ev)
+    const TEvService::TEvWriteDataRequest::TPtr& ev,
+    const TSessionInfo* session)
 {
-    Y_UNUSED(ctx, ev);
+    Y_UNUSED(ctx, ev, session);
     return false;
 }
 
 bool TStorageServiceActor::TryHandleControlNamespaceListNodes(
     const TActorContext& ctx,
-    const TEvService::TEvListNodesRequest::TPtr& ev)
+    const TEvService::TEvListNodesRequest::TPtr& ev,
+    const TSessionInfo* session)
 {
-    Y_UNUSED(ctx, ev);
+    Y_UNUSED(ctx, ev, session);
     return false;
 }
 
 bool TStorageServiceActor::TryHandleControlNamespaceRenameNode(
     const TActorContext& ctx,
-    const TEvService::TEvRenameNodeRequest::TPtr& ev)
+    const TEvService::TEvRenameNodeRequest::TPtr& ev,
+    const TSessionInfo* session)
 {
-    Y_UNUSED(ctx, ev);
+    Y_UNUSED(ctx, ev, session);
     return false;
 }
 
