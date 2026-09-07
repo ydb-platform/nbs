@@ -19,6 +19,10 @@ on:
         required: false
         default: ""
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   build:
     name: Build/test x86_64 using YA (release-asan) (dispatch)
