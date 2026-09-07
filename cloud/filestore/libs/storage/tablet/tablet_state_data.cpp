@@ -452,12 +452,9 @@ TIndexTabletState::AccessUnconfirmedDataInProgressByCommitId(ui64 commitId)
 TTrackedUnconfirmedData&
 TIndexTabletState::AccessAndVerifyUnconfirmedDataInProgress(ui64 commitId)
 {
-    auto& map = Impl->UnconfirmedDataInProgress;
-    auto it = map.find(commitId);
-
-    TABLET_VERIFY(it != map.end());
-
-    return it->second;
+    auto* dataInProgress = Impl->UnconfirmedDataInProgress.FindPtr(commitId);
+    TABLET_VERIFY(dataInProgress != nullptr);
+    return *dataInProgress;
 }
 
 void TIndexTabletState::EraseUnconfirmedDataInProgress(ui64 commitId)
@@ -538,12 +535,9 @@ const TTrackedUnconfirmedData* TIndexTabletState::AccessUnconfirmedData(
 TTrackedUnconfirmedData& TIndexTabletState::AccessAndVerifyUnconfirmedData(
     ui64 commitId)
 {
-    auto& map = Impl->UnconfirmedData;
-    auto it = map.find(commitId);
-
-    TABLET_VERIFY(it != map.end());
-
-    return it->second;
+    auto* data = Impl->UnconfirmedData.FindPtr(commitId);
+    TABLET_VERIFY(data != nullptr);
+    return *data;
 }
 
 void TIndexTabletState::UnconfirmedDataErase(ui64 commitId)
