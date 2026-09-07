@@ -45,6 +45,12 @@ type FilesystemTopology struct {
 	MainFileSystemID                       string
 }
 
+type StorageStats struct {
+	UsedNodesCount   uint64
+	UsedBlocksCount  uint64
+	TotalBlocksCount uint64
+}
+
 type ConfigureAsShardParams struct {
 	ShardNo                                uint32
 	ShardFileSystemIDs                     []string
@@ -142,6 +148,12 @@ type Client interface {
 		ctx context.Context,
 		filesystemID string,
 	) (FilesystemTopology, error)
+
+	// Returns fresh stats, including shards when querying the main filesystem.
+	GetStorageStats(
+		ctx context.Context,
+		filesystemID string,
+	) (StorageStats, error)
 
 	DescribeModel(
 		ctx context.Context,
