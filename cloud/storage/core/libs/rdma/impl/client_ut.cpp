@@ -1544,8 +1544,8 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
         handleRequest();
 
         ASSERT_TRUE(response1->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
-        // request duration is measured against the wall clock, so request
-        // can legitimately time out if thread stalls for any reason
+        // request duration is measured against the wall clock, so it can
+        // legitimately time out if the process stalls
         if (response1->Status == RDMA_PROTO_OK) {
             ASSERT_EQ(2, bound);
             ASSERT_EQ(2, invalidated);
