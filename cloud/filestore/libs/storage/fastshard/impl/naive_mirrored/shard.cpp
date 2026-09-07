@@ -573,11 +573,12 @@ class TFiberShardImpl
 private:
     const TString FileSystemId;
     const ui32 ShardNo;
+    const ui64 Generation;
     const IStorageGroupFactoryPtr StorageGroupFactory;
     const NProtoPrivate::TPersistentFastShardConfig Config;
 
     IStorageGroupPtr Storage;
-    mutable std::atomic<bool> Acquired = false;
+    std::atomic<bool> Ready = false;
     IPageStorePtr PageStore;
     TNodeTable Nodes;
     TNameTable Names;
@@ -595,10 +596,12 @@ public:
     TFiberShardImpl(
         TString fileSystemId,
         ui32 shardNo,
+        ui64 generation,
         IStorageGroupFactoryPtr storageGroupFactory,
         NProtoPrivate::TPersistentFastShardConfig config)
         : FileSystemId(std::move(fileSystemId))
         , ShardNo(shardNo)
+        , Generation(generation)
         , StorageGroupFactory(std::move(storageGroupFactory))
         , Config(std::move(config))
     {
@@ -606,7 +609,7 @@ public:
         // Using only one storage group for now.
         //
 
-        Storage = StorageGroupFactory->MakeStorageGroup(Config);
+        Storage = StorageGroupFactory->MakeStorageGroup(Config, Generation);
         PageStore = CreatePageStore(Storage, PageSize);
 
         ui64 firstPageNo = 0;
@@ -720,7 +723,7 @@ public:
         NProtoPrivate::TGetNodeAttrBatchRequest request)
     {
         NProtoPrivate::TGetNodeAttrBatchResponse response;
-        if (!AcquireIfNeeded(response)) {
+        if (!CheckReady(response)) {
             return response;
         }
 
@@ -778,7 +781,7 @@ public:
         NProto::TGetNodeAttrRequest request)
     {
         NProto::TGetNodeAttrResponse response;
-        if (!AcquireIfNeeded(response)) {
+        if (!CheckReady(response)) {
             return response;
         }
 
@@ -812,7 +815,7 @@ public:
         NProto::TSetNodeAttrRequest request)
     {
         NProto::TSetNodeAttrResponse response;
-        if (!AcquireIfNeeded(response)) {
+        if (!CheckReady(response)) {
             return response;
         }
 
@@ -990,7 +993,7 @@ public:
     NProto::TCreateNodeResponse CreateNode(NProto::TCreateNodeRequest request)
     {
         NProto::TCreateNodeResponse response;
-        if (!AcquireIfNeeded(response)) {
+        if (!CheckReady(response)) {
             return response;
         }
 
@@ -1064,7 +1067,7 @@ public:
     NProto::TUnlinkNodeResponse UnlinkNode(NProto::TUnlinkNodeRequest request)
     {
         NProto::TUnlinkNodeResponse response;
-        if (!AcquireIfNeeded(response)) {
+        if (!CheckReady(response)) {
             return response;
         }
 
@@ -1205,7 +1208,7 @@ public:
         NProto::TCreateHandleRequest request)
     {
         NProto::TCreateHandleResponse response;
-        if (!AcquireIfNeeded(response)) {
+        if (!CheckReady(response)) {
             return response;
         }
 
@@ -1358,7 +1361,7 @@ public:
         NProto::TDestroyHandleRequest request)
     {
         NProto::TDestroyHandleResponse response;
-        if (!AcquireIfNeeded(response)) {
+        if (!CheckReady(response)) {
             return response;
         }
 
@@ -1422,7 +1425,7 @@ public:
     NProto::TWriteDataResponse WriteData(NProto::TWriteDataRequest request)
     {
         NProto::TWriteDataResponse response;
-        if (!AcquireIfNeeded(response)) {
+        if (!CheckReady(response)) {
             return response;
         }
 
@@ -1733,7 +1736,7 @@ public:
     NProto::TReadDataResponse ReadData(NProto::TReadDataRequest request)
     {
         NProto::TReadDataResponse response;
-        if (!AcquireIfNeeded(response)) {
+        if (!CheckReady(response)) {
             return response;
         }
 
@@ -1954,7 +1957,7 @@ public:
     {
         *stats = {};
 
-        auto e = AcquireIfNeeded();
+        auto e = CheckReady();
         if (HasError(e)) {
             return e;
         }
@@ -1998,40 +2001,47 @@ private:
         return response;
     }
 
-    NProto::TError AcquireIfNeeded() const
+    NProto::TError CheckReady() const
     {
-        if (Acquired) {
+        if (Ready) {
             return {};
         }
 
-        std::lock_guard g(Mutex);
-        if (Acquired) {
-            return {};
-        }
-
-        auto error = Storage->AcquireDevices();
-        if (HasError(error)) {
-            SILK_LOG(
-                LogLevel(error),
-                "AcquireIfNeeded::Storage.AcquireDevices error=%s",
-                FormatError(error).c_str());
-            return error;
-        }
-
-        Acquired = true;
-        return {};
+        return MakeError(E_REJECTED, "shard is not initialized yet");
     }
 
     template <typename TResponse>
-    bool AcquireIfNeeded(TResponse& response) const
+    bool CheckReady(TResponse& response) const
     {
-        auto error = AcquireIfNeeded();
+        auto error = CheckReady();
         if (HasError(error)) {
             *response.MutableError() = std::move(error);
             return false;
         }
 
         return true;
+    }
+
+public:
+    NProto::TError Init()
+    {
+        auto error = Storage->Init();
+        if (HasError(error)) {
+            SILK_LOG(
+                LogLevel(error),
+                "Init::Storage.Init error=%s",
+                FormatError(error).c_str());
+            return error;
+        }
+
+        Ready = true;
+        return {};
+    }
+
+    void TearDown()
+    {
+        Ready = false;
+        Storage->TearDown();
     }
 };
 
@@ -2040,7 +2050,8 @@ private:
 struct TStorageGroupFactory: IStorageGroupFactory
 {
     IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config) override
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        ui64 generation) override
     {
         TVector<TStorageDevice> devices;
         const auto& sg = config.GetStorageGroups(0);
@@ -2051,26 +2062,28 @@ struct TStorageGroupFactory: IStorageGroupFactory
             });
         }
 
-        TStorageGroupRetryPolicy retryPolicy;
+        TStorageGroupConfig groupConfig;
+        // TODO: set client id
+        groupConfig.AcquireGeneration = generation;
         if (config.GetRetryTotalTimeoutMs()) {
-            retryPolicy.TotalTimeout =
+            groupConfig.RetryPolicy.TotalTimeout =
                 TDuration::MilliSeconds(config.GetRetryTotalTimeoutMs());
         }
         if (config.GetRetryBackoffIncrementMs()) {
-            retryPolicy.BackoffIncrement =
+            groupConfig.RetryPolicy.BackoffIncrement =
                 TDuration::MilliSeconds(config.GetRetryBackoffIncrementMs());
         }
 
         if (sg.GetType() == NProtoPrivate::TStorageGroup::E_SG_QUORUM_MIRROR) {
             return CreateQuorumMirroredStorageGroup(
+                std::move(groupConfig),
                 std::move(devices),
-                retryPolicy,
                 CreateFiberTimer());
         }
 
         return CreateNaiveMirroredStorageGroup(
+            std::move(groupConfig),
             std::move(devices),
-            retryPolicy,
             CreateFiberTimer());
     }
 };
@@ -2092,12 +2105,14 @@ public:
     TNaiveMirroredFileSystemShard(
         TString fileSystemId,
         ui32 shardNo,
+        ui64 generation,
         IStorageGroupFactoryPtr storageGroupFactory,
         NProtoPrivate::TPersistentFastShardConfig config)
         : TFiberShard<TFiberShardImpl>(
               std::make_shared<TFiberShardImpl>(
                   std::move(fileSystemId),
                   shardNo,
+                  generation,
                   std::move(storageGroupFactory),
                   std::move(config)))
     {}
@@ -2108,12 +2123,14 @@ public:
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
+    ui64 generation,
     IStorageGroupFactoryPtr storageGroupFactory,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
     return std::make_shared<TNaiveMirroredFileSystemShard>(
         std::move(fileSystemId),
         shardNo,
+        generation,
         std::move(storageGroupFactory),
         config);
 }
@@ -2121,11 +2138,13 @@ IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
+    ui64 generation,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
     return std::make_shared<TNaiveMirroredFileSystemShard>(
         std::move(fileSystemId),
         shardNo,
+        generation,
         CreateStorageGroupFactory(),
         config);
 }

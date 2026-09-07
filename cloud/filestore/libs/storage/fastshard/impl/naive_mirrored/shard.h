@@ -20,7 +20,8 @@ struct IStorageGroupFactory
 {
     virtual ~IStorageGroupFactory() = default;
     virtual IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config) = 0;
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        ui64 generation) = 0;
 };
 
 using IStorageGroupFactoryPtr = std::shared_ptr<IStorageGroupFactory>;
@@ -35,12 +36,14 @@ IStorageGroupFactoryPtr CreateStorageGroupFactory();
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
+    ui64 generation,
     IStorageGroupFactoryPtr storageGroupFactory,
     const NProtoPrivate::TPersistentFastShardConfig& config);
 
 IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
+    ui64 generation,
     const NProtoPrivate::TPersistentFastShardConfig& config);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

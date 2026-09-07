@@ -20,8 +20,12 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO(#5895): use proper client-id
-inline const TString DefaultClientId = "fastshard-prototype-client";
+inline void FillHeaders(
+    const TStorageGroupConfig& config,
+    NProto::TDeviceRequestHeaders* headers)
+{
+    headers->SetClientId(config.ClientId);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -108,7 +112,6 @@ struct TReleaseDevicesParams
 
 int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept;
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -122,13 +125,13 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept;
  */
 template <typename TResponse, typename TRequest, typename TParams>
 NProto::TError MirrorRequest(
+    const TStorageGroupConfig& config,
     const TVector<TStorageDevice>& devices,
-    const TStorageGroupRetryPolicy& retryPolicy,
     ITimer& timer,
     int (*fiberMain)(TParams*) noexcept,
     TRequest request)
 {
-    request.MutableHeaders()->SetClientId(DefaultClientId);
+    FillHeaders(config, request.MutableHeaders());
 
     const ui32 count = devices.size();
     TVector<silk::FiberFuture> futures(count);
@@ -141,7 +144,7 @@ NProto::TError MirrorRequest(
                 .Device = devices[i],
                 .Request = &request,
                 .Response = &responses[i],
-                .RetryPolicy = &retryPolicy,
+                .RetryPolicy = &config.RetryPolicy,
                 .Timer = &timer},
             &futures[i]);
         Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
@@ -164,7 +167,7 @@ NProto::TError MirrorRequest(
                 "node error: %s",
                 FormatError(response.GetError()).c_str());
             if (!HasError(error)) {
-                error = std::move(*response.MutableError());
+                error = response.GetError();
             }
         }
     }

@@ -8,6 +8,7 @@ SRCS(
     tablet_proxy_client.cpp
     test_env.cpp
     test_executor.cpp
+    test_fast_shard.cpp
     ut_helpers.cpp
 )
 
@@ -15,6 +16,8 @@ PEERDIR(
     cloud/filestore/libs/diagnostics
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
+    cloud/filestore/libs/storage/fastshard/iface
+    cloud/filestore/libs/storage/fastshard/impl/factory
     cloud/filestore/libs/storage/model
     cloud/filestore/libs/storage/service
     cloud/filestore/libs/storage/ss_proxy
@@ -26,8 +29,6 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/hive_proxy
     cloud/storage/core/libs/kikimr
-    contrib/ydb/library/actors/core
-    library/cpp/testing/unittest
     contrib/ydb/core/base
     contrib/ydb/core/client/minikql_compile
     contrib/ydb/core/filestore/core
@@ -40,6 +41,8 @@ PEERDIR(
     contrib/ydb/core/testlib
     contrib/ydb/core/testlib/actors
     contrib/ydb/core/testlib/basics
+    contrib/ydb/library/actors/core
+    library/cpp/testing/unittest
 )
 
 YQL_LAST_ABI_VERSION()

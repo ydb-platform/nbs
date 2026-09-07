@@ -14,6 +14,7 @@ PEERDIR(
     cloud/filestore/libs/server
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/core
+    cloud/filestore/libs/storage/fastshard/impl/factory
     cloud/filestore/libs/storage/fastshard/server
     cloud/filestore/libs/storage/init
 

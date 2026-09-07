@@ -4,11 +4,12 @@
 
 #include "tablet_counters.h"
 #include "tablet_state.h"
+#include "tablet.h"
 #include "tablet_tx.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/histogram.h>
-#include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
+#include <cloud/filestore/libs/diagnostics/metrics/window_calculator.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -25,17 +26,17 @@
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
-#include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/throttling/public.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
-#include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/filestore/core/filestore.h>
+#include <contrib/ydb/core/mind/local.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/executor_thread.h>
 #include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/executor_thread.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
@@ -146,6 +147,7 @@ class TIndexTabletActor final
         STATE_BOOT,
         STATE_INIT,
         STATE_WORK,
+        STATE_ADAPTER_INIT,
         STATE_ADAPTER,
         STATE_ZOMBIE,
         STATE_BROKEN,
@@ -222,6 +224,7 @@ private:
 
     NFastShard::IFileSystemShardPtr FastShard;
     NFastShard::IServerPtr FastShardServer;
+    NFastShard::IFileSystemShardFactoryPtr FastShardFactory;
 
 public:
     TIndexTabletActor(
@@ -234,6 +237,7 @@ public:
         TSystemCountersPtr systemCounters,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
         NFastShard::IServerPtr fastShardServer,
+        NFastShard::IFileSystemShardFactoryPtr fastShardFactory,
         ITxReschedulerPtr txRescheduler);
     ~TIndexTabletActor() override;
 
@@ -547,6 +551,8 @@ private:
     // Misc.
     //
 
+    void CreateFastShard(const NActors::TActorContext& ctx);
+
     void ReplayOpLog(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TOpLogEntry>& opLog);
@@ -769,6 +775,10 @@ private:
         const TEvIndexTabletPrivate::TEvReadDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleFastShardInitCompleted(
+        const TEvIndexTabletPrivate::TEvFastShardInitCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleWriteDataCompleted(
         const TEvIndexTabletPrivate::TEvWriteDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -931,6 +941,7 @@ private:
     STFUNC(StateInit);
     STFUNC(StateWork);
     STFUNC(StateAdapter);
+    STFUNC(StateAdapterInit);
     STFUNC(StateZombie);
     STFUNC(StateBroken);
 

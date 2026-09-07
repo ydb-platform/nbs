@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/diagnostics/user_counter.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/libs/storage/fastshard/iface/public.h>
 #include <cloud/filestore/libs/storage/fastshard/server/server.h>
 
 #include <cloud/storage/core/libs/common/public.h>
@@ -38,6 +39,7 @@ struct TActorSystemArgs
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
 
     NFastShard::IServerPtr FastShardServer;
+    NFastShard::IFileSystemShardFactoryPtr FastShardFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

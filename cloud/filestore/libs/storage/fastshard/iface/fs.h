@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/locks.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
@@ -65,6 +66,17 @@ struct IFileSystemShard
 
 #undef FAST_SHARD_DECLARE_METHOD
 
+    /**
+     * Brings the shard's storage up and recovers if needed.
+     */
+    [[nodiscard]] virtual NThreading::TFuture<NCloud::NProto::TError>
+    Init() = 0;
+
+    /**
+     * Releases the shard's storage and stops all internal activities.
+     */
+    virtual void TearDown() = 0;
+
     [[nodiscard]] virtual NThreading::TFuture<NCloud::NProto::TError>
     CollectStats(TFileSystemShardStats* stats) const = 0;
 
@@ -83,6 +95,19 @@ struct IFileSystemShard
      * @param out - Stream the document is written to.
      */
     virtual void DumpLayoutJson(IOutputStream& out) const = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IFileSystemShardFactory
+{
+    virtual ~IFileSystemShardFactory() = default;
+
+    virtual IFileSystemShardPtr CreateShard(
+        const TString& fileSystemId,
+        const NProtoPrivate::TFastShardConfig& config,
+        ui32 shardNo,
+        ui64 generation) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -530,6 +530,14 @@ public:
         return NotImplemented<NProto::TListNodeXAttrResponse>(request);
     }
 
+    [[nodiscard]] TFuture<NCloud::NProto::TError> Init() override
+    {
+        return MakeFuture(NCloud::NProto::TError{});
+    }
+
+    void TearDown() override
+    {}
+
     [[nodiscard]] TFuture<NCloud::NProto::TError> CollectStats(
         TFileSystemShardStats* stats) const override
     {

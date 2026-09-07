@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
+#include <cloud/filestore/libs/storage/fastshard/iface/public.h>
 #include <cloud/filestore/libs/storage/fastshard/server/server.h>
 
 #include <cloud/storage/core/libs/kikimr/public.h>
@@ -26,6 +27,7 @@ NActors::IActorPtr CreateIndexTablet(
     TSystemCountersPtr systemCounters,
     NMetrics::IMetricsRegistryPtr metricsRegistry,
     NFastShard::IServerPtr fastShardServer,
+    NFastShard::IFileSystemShardFactoryPtr fastShardFactory,
     ITxReschedulerPtr txRescheduler);
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -18,8 +18,8 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/timer.h>
-#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
 
@@ -478,6 +478,7 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             SystemCounters,
             Registry,
             nullptr /* fastShardServer */,
+            Config.FastShardFactory,
             Config.FakePageFaultsProbability > 0 ?
                 CreateRescheduler({
                     .Probability = Config.FakePageFaultsProbability,
@@ -615,6 +616,7 @@ void TTestEnv::SetupLocalServiceConfig(
             SystemCounters,
             Registry,
             nullptr /* fastShardServer */,
+            Config.FastShardFactory,
             Config.FakePageFaultsProbability > 0 ?
                 CreateRescheduler({
                     .Probability = Config.FakePageFaultsProbability,

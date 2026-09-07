@@ -33,6 +33,14 @@ struct TFileSystemShardStub: IFileSystemShard
 
 #undef FAST_SHARD_DEFINE_METHOD
 
+    [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> Init() override
+    {
+        return NThreading::MakeFuture(NCloud::NProto::TError{});
+    }
+
+    void TearDown() override
+    {}
+
     [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> CollectStats(
         TFileSystemShardStats* stats) const override
     {

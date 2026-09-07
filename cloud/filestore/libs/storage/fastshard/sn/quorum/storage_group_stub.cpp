@@ -13,15 +13,13 @@ namespace {
 class TStorageGroupStub: public IStorageGroup
 {
 public:
-    NProto::TError AcquireDevices() override
+    NProto::TError Init() override
     {
         return MakeError(E_NOT_IMPLEMENTED);
     }
 
-    NProto::TError ReleaseDevices() override
-    {
-        return MakeError(E_NOT_IMPLEMENTED);
-    }
+    void TearDown() override
+    {}
 
     NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
@@ -47,11 +45,11 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
+    TStorageGroupConfig config,
     TVector<TStorageDevice> devices,
-    TStorageGroupRetryPolicy retryPolicy,
     ITimerPtr timer)
 {
-    Y_UNUSED(devices, retryPolicy, timer);
+    Y_UNUSED(config, devices, timer);
 
     return std::make_shared<TStorageGroupStub>();
 }

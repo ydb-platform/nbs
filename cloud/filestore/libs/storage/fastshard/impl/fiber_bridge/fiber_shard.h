@@ -5,6 +5,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <silk/fibers/fiber.h>
+#include <silk/util/logger.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -68,7 +69,60 @@ private:
         return 0;
     }
 
+    struct TFiberShardInitParams
+    {
+        std::shared_ptr<TFiberShardImpl> Impl;
+        NThreading::TPromise<NProto::TError> Promise;
+    };
+
+    static int InitFiberMain(TFiberShardInitParams* params) noexcept
+    {
+        params->Promise.SetValue(params->Impl->Init());
+        return 0;
+    }
+
+    struct TFiberShardTearDownParams
+    {
+        std::shared_ptr<TFiberShardImpl> Impl;
+    };
+
+    static int TearDownFiberMain(TFiberShardTearDownParams* params) noexcept
+    {
+        params->Impl->TearDown();
+        return 0;
+    }
+
 public:
+    [[nodiscard]] NThreading::TFuture<NProto::TError> Init() override
+    {
+        auto promise = NThreading::NewPromise<NProto::TError>();
+        auto future = promise.GetFuture();
+
+        const int r = silk::FiberScheduler::run(
+            InitFiberMain,
+            TFiberShardInitParams{.Impl = Impl, .Promise = promise},
+            nullptr /* future */);
+        if (r) {
+            promise.SetValue(MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "failed to spawn fiber: " << ::strerror(r)));
+        }
+
+        return future;
+    }
+
+    void TearDown() override
+    {
+        const int r = silk::FiberScheduler::run(
+            TearDownFiberMain,
+            TFiberShardTearDownParams{.Impl = Impl},
+            nullptr /* future */);
+        if (r) {
+            SILK_ERROR("failed to spawn tear-down fiber: %s", ::strerror(r));
+        }
+    }
+
 #define FAST_SHARD_FB_DEFINE_METHOD(name, ns, ...)                             \
     NThreading::TFuture<ns::T##name##Response> name(                           \
         ns::T##name##Request request) override                                 \

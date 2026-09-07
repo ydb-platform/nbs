@@ -59,6 +59,7 @@ IFileSystemShardPtr MakeNaiveMirroredShard()
     return CreateNaiveMirroredFileSystemShard(
         "bench-fs",
         ShardNo,
+        1 /* generation */,
         CreateNullStorageGroupFactory(CreateLognormalDelayPolicy(
             StorageDelayMean,
             StorageDelayStdDev)),

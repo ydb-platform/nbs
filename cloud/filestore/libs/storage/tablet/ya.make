@@ -18,16 +18,16 @@ SRCS(
     tablet_actor_addblob.cpp
     tablet_actor_adddata.cpp
     tablet_actor_adddata_unconfirmed.cpp
-    tablet_actor_confirmadddata.cpp
     tablet_actor_allocatedata.cpp
     tablet_actor_change_storage_config.cpp
     tablet_actor_cleanup.cpp
     tablet_actor_cleanupsessions.cpp
     tablet_actor_cluster.cpp
     tablet_actor_collectgarbage.cpp
-    tablet_actor_confirmblobs.cpp
     tablet_actor_compaction.cpp
     tablet_actor_compactionforced.cpp
+    tablet_actor_confirmadddata.cpp
+    tablet_actor_confirmblobs.cpp
     tablet_actor_counters.cpp
     tablet_actor_createcheckpoint.cpp
     tablet_actor_createhandle.cpp
@@ -41,6 +41,7 @@ SRCS(
     tablet_actor_destroyhandle.cpp
     tablet_actor_destroysession.cpp
     tablet_actor_dumprange.cpp
+    tablet_actor_fastshard.cpp
     tablet_actor_filteralivenodes.cpp
     tablet_actor_flush.cpp
     tablet_actor_flush_bytes.cpp
@@ -49,12 +50,11 @@ SRCS(
     tablet_actor_getnodexattr.cpp
     tablet_actor_initschema.cpp
     tablet_actor_listnodes.cpp
-    tablet_actor_readnoderefs.cpp
-    tablet_actor_mark_node_refs_exhaustive.cpp
     tablet_actor_listnodexattr.cpp
     tablet_actor_loadstate.cpp
     tablet_actor_loadstate_noderefs.cpp
     tablet_actor_loadstate_nodes.cpp
+    tablet_actor_mark_node_refs_exhaustive.cpp
     tablet_actor_monitoring.cpp
     tablet_actor_monitoring_diagnostics.cpp
     tablet_actor_monitoring_directory_viewer.cpp
@@ -65,6 +65,7 @@ SRCS(
     tablet_actor_readblob.cpp
     tablet_actor_readdata.cpp
     tablet_actor_readlink.cpp
+    tablet_actor_readnoderefs.cpp
     tablet_actor_releaselock.cpp
     tablet_actor_removenodexattr.cpp
     tablet_actor_renamenode.cpp
@@ -88,9 +89,9 @@ SRCS(
     tablet_actor_unsafe_node_ops.cpp
     tablet_actor_updateconfig.cpp
     tablet_actor_waitready.cpp
+    tablet_actor_write_compactionmap.cpp
     tablet_actor_writeblob.cpp
     tablet_actor_writedata.cpp
-    tablet_actor_write_compactionmap.cpp
     tablet_actor_zerorange.cpp
     tablet_cache_read_bypass.cpp
     tablet_counters.cpp
@@ -98,11 +99,11 @@ SRCS(
     tablet_database_failure_injection.cpp
     tablet_schema.cpp
     tablet_state.cpp
-    tablet_state_iface.cpp
     tablet_state_cache.cpp
     tablet_state_channels.cpp
     tablet_state_checkpoints.cpp
     tablet_state_data.cpp
+    tablet_state_iface.cpp
     tablet_state_nodes.cpp
     tablet_state_quotas.cpp
     tablet_state_sessions.cpp

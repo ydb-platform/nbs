@@ -3,8 +3,6 @@
 #include "helpers.h"
 #include "tablet_schema.h"
 
-#include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
-#include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -245,18 +243,6 @@ void TIndexTabletActor::CompleteAdapterLoadState(
     const TActorContext& ctx,
     TTxIndexTablet::TLoadState& args)
 {
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Activating tablet");
-
-    // allow pipes to connect
-    SignalTabletActive(ctx);
-
-    // resend pending WaitReady requests
-    while (WaitReadyRequests) {
-        ctx.Send(WaitReadyRequests.front().release());
-        WaitReadyRequests.pop_front();
-    }
-
     const auto config = BuildThrottlerConfig(
         *Config,
         args.FileSystem.GetPerformanceProfile());
@@ -275,24 +261,7 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         config);
     UpdateLogTag();
 
-    const auto& fastShardConfig = GetFileSystem().GetFastShardConfig();
-    if (fastShardConfig.HasPersistentConfig()) {
-        if (Config->GetFastShardRuntimeEnabled()) {
-            FastShard = NFastShard::CreateNaiveMirroredFileSystemShard(
-                GetFileSystemId(),
-                GetFileSystem().GetShardNo(),
-                fastShardConfig.GetPersistentConfig());
-        } else {
-            LOG_ERROR_S(ctx, TFileStoreComponents::TABLET,
-                LogTag << " FastShardRuntime not enabled, persistent fastshard"
-                " can't be initialized");
-            FastShard = NFastShard::CreateFileSystemShardStub();
-        }
-    } else {
-        FastShard = NFastShard::CreateMemFileSystemShard(
-            GetFileSystem().GetShardNo(),
-            fastShardConfig.GetMemConfig());
-    }
+    CreateFastShard(ctx);
 
     NMetrics::Store(Metrics->OpLogEntryCount, GetOpLogEntryCount());
     NMetrics::Store(Metrics->ResponseLogEntryCount, GetResponseLogEntryCount());
@@ -312,25 +281,15 @@ void TIndexTabletActor::CompleteAdapterLoadState(
         args.SessionHistory,
         sessionOptions);
 
-    ScheduleSyncSessions(ctx);
-    ScheduleCleanupSessions(ctx);
-
-    RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
 
-    if (FastShardServer) {
-        FastShardServer->RegisterShard(
-            GetFileSystemId(),
-            FastShard);
-    }
-
-    RunRegularTasks(ctx);
-
-    CompleteStateLoad();
-
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Load state completed");
+
+    // Timers and registrations wait for the shard: nothing periodic runs
+    // and nobody is told about the tablet until it can serve.
+    BecomeAux(ctx, STATE_ADAPTER_INIT);
 }
 
 void TIndexTabletActor::CompleteTx_LoadState(
@@ -367,13 +326,12 @@ void TIndexTabletActor::CompleteTx_LoadState(
         return;
     }
 
-    ScheduleUpdateCounters(ctx);
-
     if (args.FileSystem.GetIsFastShard()) {
-        BecomeAux(ctx, STATE_ADAPTER);
         CompleteAdapterLoadState(ctx, args);
         return;
     }
+
+    ScheduleUpdateCounters(ctx);
 
     BecomeAux(ctx, STATE_WORK);
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,

@@ -1,4 +1,5 @@
 RECURSE(
+    factory
     mem
     naive_mirrored
 )

@@ -71,9 +71,17 @@ struct TPausableStorageNode: public TFakeStorageNode
 // fake.
 
 using TGroupFactory = IStorageGroupPtr (*)(
+    TStorageGroupConfig,
     TVector<TStorageDevice>,
-    TStorageGroupRetryPolicy,
     ITimerPtr);
+
+TStorageGroupConfig MakeTestConfig()
+{
+    TStorageGroupConfig config;
+    config.ClientId = "test-client";
+    config.AcquireGeneration = 42;
+    return config;
+}
 
 struct TStorageFixture
 {
@@ -99,10 +107,7 @@ struct TStorageFixture
             };
         }
 
-        Group = createGroup(
-            std::move(devices),
-            TStorageGroupRetryPolicy{},
-            Timer);
+        Group = createGroup(MakeTestConfig(), std::move(devices), Timer);
     }
 };
 
@@ -110,10 +115,16 @@ struct TQuorumFixture: TStorageFixture
 {
     TQuorumFixture()
         : TStorageFixture(CreateQuorumMirroredStorageGroup)
-    {}
-};
+    {
+        auto error = Group->Init();
+        EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    }
 
-////////////////////////////////////////////////////////////////////////////////
+    ~TQuorumFixture()
+    {
+        Group->TearDown();
+    }
+};
 
 //
 // The tests below use the default retry policy (300s total timeout, 0.5s
@@ -154,17 +165,14 @@ NProto::TReadPagesResponse ReadErrorResponse(ui32 code)
     return resp;
 }
 
-NProto::TError WriteSomething(IStorageGroup& group)
+NProto::TError WriteSomething(IStorageGroup& group, ui64 lsn = 1234)
 {
     TPageGroup pageGroup{.FirstPageNo = 111};
     pageGroup.Content.emplace_back("page1", 5U /* len */);
     TVector<TPageGroup> pageGroups;
     pageGroups.push_back(std::move(pageGroup));
 
-    return group.WriteLogRecord(
-        defaultHeaders,
-        std::move(pageGroups),
-        1234 /* lsn */);
+    return group.WriteLogRecord(defaultHeaders, std::move(pageGroups), lsn);
 }
 
 NProto::TError ReadSomething(
@@ -192,7 +200,7 @@ TEST(NaiveGroupTest, MirrorsAcquireReleaseRequests)
             TStorageFixture fx;
 
             {
-                auto error = fx.Group->AcquireDevices();
+                auto error = fx.Group->Init();
                 EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
             }
 
@@ -210,10 +218,7 @@ TEST(NaiveGroupTest, MirrorsAcquireReleaseRequests)
                     sn->AcquireCalls[0].GetDeviceUUIDs(0));
             }
 
-            {
-                auto error = fx.Group->ReleaseDevices();
-                EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-            }
+            fx.Group->TearDown();
 
             //
             // We expect naive group impl to do dumb mirroring for acquire and
@@ -252,7 +257,7 @@ TEST(NaiveGroupTest, MirrorsWrites)
                 auto error = fx.Group->WriteLogRecord(
                     defaultHeaders,
                     std::move(pageGroups),
-                    1234 /* lsn */);
+                    1234);
                 EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
             }
 
@@ -624,7 +629,7 @@ ui32 TotalWriteCalls(const TStorageFixture& fx)
 // write call proves neither, the fake logs it before the fiber acks.
 void WaitUntilServes(TStorageFixture& fx, ui32 i)
 {
-    for (ui32 j = 0; j < TQuorumFixture::NodeCount; ++j) {
+    for (ui32 j = 0; j < TStorageFixture::NodeCount; ++j) {
         if (j != i) {
             fx.StorageNodes[j]->ReadResp = ReadErrorResponse(E_ARGUMENT);
         }
@@ -640,27 +645,30 @@ void WaitUntilServes(TStorageFixture& fx, ui32 i)
 
 }   // namespace
 
-TEST(QuorumGroupTest, AcquireReleaseNeedEveryDevice)
+TEST(QuorumGroupTest, InitAcquiresEveryDeviceWithTheGeneration)
 {
-    int r = FiberScheduler::run(
+    const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx;
+            TStorageFixture fx(CreateQuorumMirroredStorageGroup);
 
-            auto error = fx.Group->AcquireDevices();
+            auto error = fx.Group->Init();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
-            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
                 auto& sn = fx.StorageNodes[i];
                 EXPECT_EQ(1U, sn->AcquireCalls.size());
                 EXPECT_EQ(
                     fx.DeviceUUIDs[i],
                     sn->AcquireCalls[0].GetDeviceUUIDs(0));
+                EXPECT_EQ(42U, sn->AcquireCalls[0].GetGeneration());
+                EXPECT_EQ(
+                    "test-client",
+                    sn->AcquireCalls[0].GetHeaders().GetClientId());
             }
 
-            error = fx.Group->ReleaseDevices();
-            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+            fx.Group->TearDown();
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
                 EXPECT_EQ(1U, fx.StorageNodes[i]->ReleaseCalls.size());
             }
 
@@ -668,19 +676,23 @@ TEST(QuorumGroupTest, AcquireReleaseNeedEveryDevice)
         },
         0);
     EXPECT_EQ(0, r);
+}
 
-    r = FiberScheduler::run(
+TEST(QuorumGroupTest, InitFailsIfAnyDeviceRefusesAcquire)
+{
+    const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx;
+            TStorageFixture fx(CreateQuorumMirroredStorageGroup);
 
             // Acquire is n/n: one bad device is enough to fail the group.
             *fx.StorageNodes[2]->AcquireResp.MutableError() =
                 MakeError(E_ARGUMENT, "scripted error");
 
-            auto error = fx.Group->AcquireDevices();
+            auto error = fx.Group->Init();
             EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
 
+            fx.Group->TearDown();
             return 0;
         },
         0);
@@ -724,7 +736,7 @@ TEST(QuorumGroupTest, ReadSkipsReplicaBehindQuorumLsn)
         {
             TQuorumFixture fx;
 
-            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
                 auto* pg = fx.StorageNodes[i]->ReadResp.AddPageGroups();
                 pg->SetFirstPageNo(111);
                 pg->AddContent(TStringBuilder() << "aaa" << i);
@@ -985,7 +997,7 @@ TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
         {
             TQuorumFixture fx;
 
-            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
                 auto* pg = fx.StorageNodes[i]->ReadResp.AddPageGroups();
                 pg->SetFirstPageNo(111);
                 pg->AddContent(TStringBuilder() << "aaa" << i);
@@ -1001,16 +1013,18 @@ TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
                 auto error = fx.Group->WriteLogRecord(
                     defaultHeaders,
                     std::move(pageGroups),
-                    1234 /* lsn */);
+                    1234);
                 EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
             }
             WaitFor([&] { return TotalWriteCalls(fx) == 3; });
 
             // Every device got the same record, stamped with its own id.
-            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
                 const auto& w = fx.StorageNodes[i]->WriteCalls[0];
                 EXPECT_EQ(fx.DeviceUUIDs[i], w.GetDeviceUUID());
                 EXPECT_EQ(1234U, w.GetLogSequenceNumber());
+                EXPECT_EQ(0U, w.GetPrevLogSequenceNumber());
+                EXPECT_EQ("test-client", w.GetHeaders().GetClientId());
                 EXPECT_EQ(1U, w.PageGroupsSize());
                 if (w.PageGroupsSize() != 1) {
                     return 1;
@@ -1034,14 +1048,14 @@ TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
             }
             EXPECT_EQ(111U, pageGroups[0].FirstPageNo);
 
-            ui32 served = TQuorumFixture::NodeCount;
-            for (ui32 i = 0; i < TQuorumFixture::NodeCount; ++i) {
+            ui32 served = TStorageFixture::NodeCount;
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
                 if (fx.StorageNodes[i]->ReadCalls.size()) {
                     served = i;
                 }
             }
-            EXPECT_LT(served, TQuorumFixture::NodeCount);
-            if (served == TQuorumFixture::NodeCount) {
+            EXPECT_LT(served, TStorageFixture::NodeCount);
+            if (served == TStorageFixture::NodeCount) {
                 return 1;
             }
             EXPECT_EQ(

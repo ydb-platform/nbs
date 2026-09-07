@@ -1257,6 +1257,8 @@ struct TEvIndexTabletPrivate
 
         EvConfirmBlobsCompleted,
 
+        EvFastShardInitCompleted,
+
         EvEnd
     };
 
@@ -1284,6 +1286,9 @@ struct TEvIndexTabletPrivate
         TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
     using TEvAddDataCompleted =
         TResponseEvent<TAddDataCompleted, EvAddDataCompleted>;
+
+    using TEvFastShardInitCompleted =
+        TResponseEvent<TEmpty, EvFastShardInitCompleted>;
 
     using TEvForcedRangeOperationProgress = TRequestEvent<
         TForcedRangeOperationProgress,

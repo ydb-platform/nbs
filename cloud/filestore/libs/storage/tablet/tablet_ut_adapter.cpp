@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
+#include <cloud/filestore/libs/storage/testlib/test_fast_shard.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -13,10 +14,109 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NActors;
 using namespace NKikimr;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void DispatchUntil(TTestActorRuntime& runtime, std::function<bool()> done)
+{
+    TDispatchOptions options;
+    options.CustomFinalCondition = done;
+    runtime.DispatchEvents(options, TDuration::Seconds(30));
+    UNIT_ASSERT(done());
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
 {
+    TABLET_TEST_4K_ONLY(ShouldServeOnlyAfterFastShardIsInitialized)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        UNIT_ASSERT_VALUES_EQUAL(0U, shards->Created.size());
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            NProtoPrivate::TFastShardConfig(),
+            true /* isFastShard */);
+        tablet.ReconnectPipe();
+
+        // the shard is asked for; until it is up the tablet is not ready
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        tablet.SendRequest(tablet.CreateWaitReadyRequest());
+        {
+            TAutoPtr<IEventHandle> handle;
+            UNIT_ASSERT(!runtime.GrabEdgeEvent<TEvIndexTablet::TEvWaitReadyResponse>(
+                handle,
+                TDuration::Seconds(5)));
+        }
+
+        shards->Created[0]->InitResult.SetValue({});
+        tablet.RecvResponse<TEvIndexTablet::TEvWaitReadyResponse>();
+        {
+            auto response = tablet.InitSession("client", "session");
+            UNIT_ASSERT(response->Record.GetAdapterModeEnabled());
+        }
+
+        // a restart releases the shard and asks for a new one
+        tablet.RebootTablet();
+        UNIT_ASSERT(shards->Created[0]->TornDown);
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
+        shards->Created[1]->InitResult.SetValue({});
+        tablet.WaitReady();
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldRestartIfFastShardInitFails)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            NProtoPrivate::TFastShardConfig(),
+            true /* isFastShard */);
+
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        shards->Created[0]->InitResult.SetValue(
+            MakeError(E_FAIL, "devices are gone"));
+
+        // the tablet dies, releases the shard, and comes back asking again
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
+        UNIT_ASSERT(shards->Created[0]->TornDown);
+
+        shards->Created[1]->InitResult.SetValue({});
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        {
+            auto response = tablet.InitSession("client", "session");
+            UNIT_ASSERT(response->Record.GetAdapterModeEnabled());
+        }
+    }
+
     TABLET_TEST_4K_ONLY(ShouldUseAdapter)
     {
         NProto::TStorageConfig storageConfig;

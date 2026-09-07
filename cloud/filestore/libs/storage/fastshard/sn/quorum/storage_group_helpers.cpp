@@ -10,7 +10,6 @@ NProto::TWriteLogRecordRequest MakeWriteLogRecordRequest(
     ui64 lsn)
 {
     NProto::TWriteLogRecordRequest request;
-    headers.SetClientId(DefaultClientId);
     *request.MutableHeaders() = std::move(headers);
     request.MutablePageGroups()->Reserve(pageGroups.size());
     for (const auto& pg: pageGroups) {
@@ -23,6 +22,7 @@ NProto::TWriteLogRecordRequest MakeWriteLogRecordRequest(
             w->AddContent()->assign(c.Data(), c.Size());
         }
     }
+
     request.SetLogSequenceNumber(lsn);
     return request;
 }
@@ -32,7 +32,6 @@ NProto::TReadPagesRequest MakeReadPagesRequest(
     const TVector<TPageGroupRef>& pageGroupRefs)
 {
     NProto::TReadPagesRequest request;
-    headers.SetClientId(DefaultClientId);
     *request.MutableHeaders() = std::move(headers);
     for (const auto& pg: pageGroupRefs) {
         auto* ref = request.AddPageGroupRefs();
@@ -40,6 +39,7 @@ NProto::TReadPagesRequest MakeReadPagesRequest(
         ref->SetFirstPageNo(pg.FirstPageNo);
         ref->SetPageCount(pg.PageCount);
     }
+
     return request;
 }
 
@@ -68,6 +68,7 @@ TString DebugMessage(const NProto::TWriteLogRecordRequest& w)
         rpg->SetPageCount(pg.ContentSize());
         rpg->SetFirstPageNo(pg.GetFirstPageNo());
     }
+
     return r.ShortUtf8DebugString();
 }
 
@@ -81,6 +82,7 @@ int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept
         *params->RetryPolicy,
         *params->Timer,
         [&] { return params->Device.Node->AcquireDevices(request); });
+
     return 0;
 }
 
@@ -92,6 +94,7 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
         *params->RetryPolicy,
         *params->Timer,
         [&] { return params->Device.Node->ReleaseDevices(request); });
+
     return 0;
 }
 
