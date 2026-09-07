@@ -144,6 +144,34 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         UNIT_ASSERT(!ans.StaleOwner.has_value());
     }
 
+    Y_UNIT_TEST(ShouldNotReportStalePipeServerWhenOnlyOwnerChanges)
+    {
+        // The caller unbinds whatever UpdateSubSession reports as
+        // StalePipeServer (see TIndexTabletState::RecoverSession). Reporting
+        // the current, unchanged pipe server as stale would erase and
+        // immediately re-add the same PipeServer -> TSession entry - harmless
+        // there, but the field would no longer mean "actually stale".
+        TSubSessions subsessions(0, 0);
+
+        subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 1),
+            TActorId(2, 0),
+            TabletGeneration);
+
+        auto ans = subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 99),   // new owner
+            TActorId(2, 0),    // same pipe server
+            TabletGeneration);
+
+        UNIT_ASSERT(!ans.StalePipeServer.has_value());
+        UNIT_ASSERT(ans.StaleOwner.has_value());
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), *ans.StaleOwner);
+    }
+
     Y_UNIT_TEST(ShouldTrackOwnerGeneration)
     {
         TSubSessions subsessions(0, 0);
@@ -246,7 +274,6 @@ Y_UNIT_TEST_SUITE(TSubSessions)
     Y_UNIT_TEST(ShouldRemoveSubSession)
     {
         TSubSessions subsessions(0, 0);
-        ui32 size = 0;
 
         auto ans = subsessions.UpdateSubSession(
             1,
@@ -268,20 +295,19 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         UNIT_ASSERT(!ans.StalePipeServer);
         UNIT_ASSERT(!ans.StaleOwner);
 
-        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
+        auto result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(1, size);
+        UNIT_ASSERT(!result.SessionCanBeDestroyed);
 
-        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
+        result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(0, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(0, size);
+        UNIT_ASSERT(result.SessionCanBeDestroyed);
         UNIT_ASSERT_VALUES_EQUAL(false, subsessions.IsValid());
     }
 
     Y_UNIT_TEST(ShouldNotRemoveSessionIfWriterIsStillAlive)
     {
         TSubSessions subsessions(0, 0);
-        ui32 size = 0;
 
         auto ans = subsessions.UpdateSubSession(
             1,
@@ -303,15 +329,14 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         UNIT_ASSERT(!ans.StalePipeServer);
         UNIT_ASSERT(!ans.StaleOwner);
 
-        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
+        auto result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(1, size);
+        UNIT_ASSERT(!result.SessionCanBeDestroyed);
     }
 
     Y_UNIT_TEST(ShouldNotRemoveSessionSeqNoIsLower)
     {
         TSubSessions subsessions(0, 0);
-        ui32 size = 0;
 
         auto ans = subsessions.UpdateSubSession(
             1,
@@ -333,15 +358,14 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         UNIT_ASSERT(!ans.StalePipeServer);
         UNIT_ASSERT(!ans.StaleOwner);
 
-        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
+        auto result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(1, size);
+        UNIT_ASSERT(!result.SessionCanBeDestroyed);
     }
 
     Y_UNIT_TEST(ShouldRemoveSubSessionIfRemovedWriterWithHighestSeqNo)
     {
         TSubSessions subsessions(0, 0);
-        ui32 size = 0;
 
         auto ans = subsessions.UpdateSubSession(
             1,
@@ -363,8 +387,8 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         UNIT_ASSERT(!ans.StalePipeServer);
         UNIT_ASSERT(!ans.StaleOwner);
 
-        size = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
-        UNIT_ASSERT_VALUES_EQUAL(0, size);
+        auto result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
+        UNIT_ASSERT(result.SessionCanBeDestroyed);
     }
 }
 

@@ -1691,7 +1691,10 @@ STFUNC(TIndexTabletActor::StateZombie)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
-        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
+
+        // Tablet is rebooting - sessions get orphaned and unconfirmed data gets
+        // cleaned up on startup anyway, no need to do anything extra on stop.
+        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         // If compaction/cleanup/collectgarbage/flush started before the tablet
         // reload and completed during the zombie state, we should ignore it.
