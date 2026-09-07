@@ -1583,15 +1583,20 @@ private:
             return std::nullopt;
         }
 
+        const ui64 rangeMixedBytesCount =
+            static_cast<ui64>(rangeStat.MixedBlockCount) * State.GetBlockSize();
         const bool rangeMixedBlockCountOverThreshold =
-            rangeStat.MixedBlockCount * State.GetBlockSize() >= threshold;
+            rangeMixedBytesCount >= threshold;
 
         if (!rangeMixedBlockCountOverThreshold) {
             return std::nullopt;
         }
 
+        // Use full compaction to include all mixed blocks in the range so they
+        // can be written to the merged channel. Skipping mixed blocks can cause
+        // a compaction livelock, repeatedly compacting the same blobs.
         return TTriggerInfo(
-            rangeStat.MixedBlockCount,
+            rangeMixedBytesCount,
             threshold,
             0,
             0,
@@ -1856,6 +1861,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         request->CompactionOptions.set(ToBit(ECompactionOption::Full));
     }
     if (info->Mode == TEvPartitionPrivate::MixedBlockCountCompaction) {
+        // Force writes to the merged channel to avoid a compaction livelock.
         request->CompactionOptions.set(ToBit(ECompactionOption::ForceToMerged));
     }
 
