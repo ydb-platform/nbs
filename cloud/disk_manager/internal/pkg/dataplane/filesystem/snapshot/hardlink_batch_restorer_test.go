@@ -219,7 +219,7 @@ func TestHardlinkBatchRestorerInodeFailure(t *testing.T) {
 	cookie, err := f.restorer.Restore(f.ctx, f.cookie)
 
 	require.ErrorIs(t, err, expectedErr)
-	require.Equal(t, f.cookie, cookie)
+	require.Equal(t, nodes_storage.HardLinksCookie{}, cookie)
 	f.session.AssertNumberOfCalls(t, "CreateNodeIdempotent", 1)
 	f.storage.AssertNumberOfCalls(t, "UpdateRestorationNodeIDMapping", 0)
 }
@@ -266,6 +266,6 @@ func TestHardlinkBatchRestorerLinkFailure(t *testing.T) {
 	cookie, err := f.restorer.Restore(f.ctx, f.cookie)
 
 	require.ErrorIs(t, err, expectedErr)
-	require.Equal(t, f.cookie, cookie)
+	require.Equal(t, nodes_storage.HardLinksCookie{}, cookie)
 	f.storage.AssertNumberOfCalls(t, "UpdateRestorationNodeIDMapping", 0)
 }

@@ -1394,5 +1394,9 @@ func (s *storageYDB) ListHardLinks(
 			return err
 		},
 	)
-	return result, nextCookie, err
+	if err != nil {
+		return nil, HardLinksCookie{}, err
+	}
+
+	return result, nextCookie, nil
 }

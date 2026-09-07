@@ -59,15 +59,19 @@ func (r *hardlinkBatchRestorer) Restore(
 		r.batchSize,
 		cookie,
 	)
-	if err != nil || len(batch) == 0 {
+	if err != nil {
 		return nodes_storage.HardLinksCookie{}, err
+	}
+
+	if len(batch) == 0 {
+		return nodes_storage.HardLinksCookie{}, nil
 	}
 
 	hardlinksByNodeID := r.groupHardlinksByNodeID(batch)
 
 	parentMapping, err := r.getParentNodeIDsInDestinationFs(ctx, batch)
 	if err != nil {
-		return cookie, err
+		return nodes_storage.HardLinksCookie{}, err
 	}
 
 	alreadyCreatedNodeIDsMapping, err := r.getAlreadyCreatedNodes(
@@ -75,7 +79,7 @@ func (r *hardlinkBatchRestorer) Restore(
 		hardlinksByNodeID,
 	)
 	if err != nil {
-		return cookie, err
+		return nodes_storage.HardLinksCookie{}, err
 	}
 
 	newMappings, err := r.restoreNodes(
@@ -85,7 +89,7 @@ func (r *hardlinkBatchRestorer) Restore(
 		alreadyCreatedNodeIDsMapping,
 	)
 	if err != nil {
-		return cookie, err
+		return nodes_storage.HardLinksCookie{}, err
 	}
 
 	if len(newMappings) > 0 {
@@ -96,7 +100,7 @@ func (r *hardlinkBatchRestorer) Restore(
 			newMappings,
 		)
 		if err != nil {
-			return cookie, err
+			return nodes_storage.HardLinksCookie{}, err
 		}
 	}
 

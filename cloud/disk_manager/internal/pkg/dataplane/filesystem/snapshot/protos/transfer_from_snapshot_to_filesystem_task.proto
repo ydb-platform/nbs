@@ -23,8 +23,8 @@ message TransferFromSnapshotToFilesystemTaskState {
     bool RootNodeScheduled = 1;
 
     // Field 2 replaces the legacy int64 HardlinksRestoreOffset.
-    // Only finished lab tasks use that state; compatibility, including
-    // retrieval through dataplane/admin APIs, is intentionally not guaranteed.
+    // Compatibility with legacy state, including retrieval through
+    // dataplane/admin APIs, is intentionally not guaranteed.
     // No migration is provided.
     HardLinksRestoreCookie HardLinksRestoreCookie = 2;
     bool HardlinksRestored = 3;
