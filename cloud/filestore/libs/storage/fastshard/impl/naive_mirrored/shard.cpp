@@ -12,6 +12,8 @@
 #include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_hash_table.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/client/client.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
+#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_helpers.h>
+#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_quorum.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
@@ -2074,10 +2076,10 @@ int CollectStatsFiberMain(TFiberShardCollectStatsParams* params) noexcept
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNaiveMirroredStorageGroupFactory: IStorageGroupFactory
+struct TStorageGroupFactory: IStorageGroupFactory
 {
     IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config)
+        const NProtoPrivate::TPersistentFastShardConfig& config) override
     {
         TVector<TStorageDevice> devices;
         const auto& sg = config.GetStorageGroups(0);
@@ -2098,6 +2100,13 @@ struct TNaiveMirroredStorageGroupFactory: IStorageGroupFactory
                 TDuration::MilliSeconds(config.GetRetryBackoffIncrementMs());
         }
 
+        if (sg.GetType() == NProtoPrivate::TStorageGroup::E_SG_QUORUM_MIRROR) {
+            return CreateQuorumMirroredStorageGroup(
+                std::move(devices),
+                retryPolicy,
+                CreateFiberTimer());
+        }
+
         return CreateNaiveMirroredStorageGroup(
             std::move(devices),
             retryPolicy,
@@ -2109,9 +2118,9 @@ struct TNaiveMirroredStorageGroupFactory: IStorageGroupFactory
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStorageGroupFactoryPtr CreateNaiveMirroredStorageGroupFactory()
+IStorageGroupFactoryPtr CreateStorageGroupFactory()
 {
-    return std::make_shared<TNaiveMirroredStorageGroupFactory>();
+    return std::make_shared<TStorageGroupFactory>();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2232,7 +2241,7 @@ IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
     return std::make_shared<TNaiveMirroredFileSystemShard>(
         std::move(fileSystemId),
         shardNo,
-        CreateNaiveMirroredStorageGroupFactory(),
+        CreateStorageGroupFactory(),
         config);
 }
 
