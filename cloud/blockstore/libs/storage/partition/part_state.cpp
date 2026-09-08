@@ -47,8 +47,8 @@ void InitializeMixedMergedBlobsAndBlocksCounts(
     bool useBlobChannelDataKindForCounters)
 {
     const bool indexCountersInitialized =
-        (stats.GetMixedBlobsCount() || stats.GetMergedBlobsCount()) &&
-        (stats.GetMixedBlocksCount() || stats.GetMergedBlocksCount());
+        (stats.GetMixedIndexBlobsCount() || stats.GetMergedIndexBlobsCount()) &&
+        (stats.GetMixedIndexBlocksCount() || stats.GetMergedIndexBlocksCount());
 
     // if index counters are not set, initialize them from old channel counters.
     if (!indexCountersInitialized) {

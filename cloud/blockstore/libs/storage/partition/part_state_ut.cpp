@@ -9,6 +9,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -96,12 +97,14 @@ struct TNoBackpressurePolicy
 
 // TODO: use this function in other tests.
 TPartitionState MakeState(
-    size_t blockCount = DefaultBlockCount,
-    bool checkpointAwareCleanupEnabled = false)
+    NProto::TPartitionMeta meta,
+    bool checkpointAwareCleanupEnabled = false,
+    bool useBlobChannelDataKindForCounters = false)
 {
+    const auto channelCount = meta.GetConfig().ExplicitChannelProfilesSize();
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
-        DefaultConfig(1, blockCount),
+        std::move(meta),
         BuildDefaultCompactionPolicy(5, 0),
         0,   // compactionScoreHistorySize
         0,   // cleanupScoreHistorySize
@@ -112,17 +115,58 @@ TPartitionState MakeState(
         100,     // reassignFreshChannelsPercentageThreshold
         100,     // reassignMixedChannelsPercentageThreshold
         false,   // reassignSystemChannelsImmediately
-        5,       // channelCount
+        channelCount,
         0,       // mixedIndexCacheSize
         10000,   // allocationUnit
         100,     // maxBlobsPerUnit
         10,      // maxBlobsPerRange,
         1,       // compactionRangeCountPerRun
         std::move(threadSafeState),
-        0,             // tabletId
-        std::nullopt,  // mixedBlocksFilterConfig
-        checkpointAwareCleanupEnabled
-    );
+        0,              // tabletId
+        std::nullopt,   // mixedBlocksFilterConfig
+        checkpointAwareCleanupEnabled,
+        useBlobChannelDataKindForCounters);
+}
+
+TPartitionState MakeState(
+    size_t blockCount = DefaultBlockCount,
+    bool checkpointAwareCleanupEnabled = false)
+{
+    return MakeState(
+        DefaultConfig(1, blockCount),
+        checkpointAwareCleanupEnabled);
+}
+
+struct TBlobAndBlockCounts
+{
+    ui64 MixedBlobs = 0;
+    ui64 MergedBlobs = 0;
+    ui64 MixedBlocks = 0;
+    ui64 MergedBlocks = 0;
+};
+
+void AssertBlobAndBlockCounts(
+    const NProto::TPartitionStats& stats,
+    const TBlobAndBlockCounts& channel,
+    const TBlobAndBlockCounts& index,
+    const TString& context = {})
+{
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        channel.MixedBlobs, stats.GetMixedBlobsCount(), context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        channel.MergedBlobs, stats.GetMergedBlobsCount(), context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        channel.MixedBlocks, stats.GetMixedBlocksCount(), context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        channel.MergedBlocks, stats.GetMergedBlocksCount(), context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        index.MixedBlobs, stats.GetMixedIndexBlobsCount(), context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        index.MergedBlobs, stats.GetMergedIndexBlobsCount(), context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        index.MixedBlocks, stats.GetMixedIndexBlocksCount(), context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        index.MergedBlocks, stats.GetMergedIndexBlocksCount(), context);
 }
 
 }   // namespace
@@ -131,6 +175,181 @@ TPartitionState MakeState(
 
 Y_UNIT_TEST_SUITE(TPartitionStateTest)
 {
+    Y_UNIT_TEST(ShouldInitializeMixedMergedBlobsAndBlocksCounts)
+    {
+        struct TTestCase
+        {
+            TString Name;
+            TBlobAndBlockCounts Channel;
+            TBlobAndBlockCounts Index;
+            TBlobAndBlockCounts ExpectedIndex;
+            TBlobAndBlockCounts ExpectedChannelWhenDisabled;
+            TBlobAndBlockCounts ExpectedChannelWithMixed;
+            TBlobAndBlockCounts ExpectedChannelWithoutMixed;
+        };
+
+        const TTestCase testCases[] = {
+            {
+                .Name = "empty",
+                .Channel = {},
+                .Index = {},
+                .ExpectedIndex = {},
+                .ExpectedChannelWhenDisabled = {},
+                .ExpectedChannelWithMixed = {},
+                .ExpectedChannelWithoutMixed = {},
+            },
+            {
+                .Name = "legacy mixed and merged",
+                .Channel = {2, 3, 20, 60},
+                .Index = {},
+                .ExpectedIndex = {2, 3, 20, 60},
+                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
+                .ExpectedChannelWithMixed = {2, 3, 20, 60},
+                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
+            },
+            {
+                .Name = "legacy mixed only",
+                .Channel = {2, 0, 20, 0},
+                .Index = {},
+                .ExpectedIndex = {2, 0, 20, 0},
+                .ExpectedChannelWhenDisabled = {2, 0, 20, 0},
+                .ExpectedChannelWithMixed = {2, 0, 20, 0},
+                .ExpectedChannelWithoutMixed = {0, 2, 0, 20},
+            },
+            {
+                .Name = "legacy merged only",
+                .Channel = {0, 3, 0, 60},
+                .Index = {},
+                .ExpectedIndex = {0, 3, 0, 60},
+                .ExpectedChannelWhenDisabled = {0, 3, 0, 60},
+                .ExpectedChannelWithMixed = {0, 3, 0, 60},
+                .ExpectedChannelWithoutMixed = {0, 3, 0, 60},
+            },
+            {
+                .Name = "initialized",
+                .Channel = {1, 4, 10, 70},
+                .Index = {2, 3, 20, 60},
+                .ExpectedIndex = {2, 3, 20, 60},
+                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
+                .ExpectedChannelWithMixed = {1, 4, 10, 70},
+                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
+            },
+            {
+                .Name = "mixed index only",
+                .Channel = {0, 2, 0, 20},
+                .Index = {2, 0, 20, 0},
+                .ExpectedIndex = {2, 0, 20, 0},
+                .ExpectedChannelWhenDisabled = {2, 0, 20, 0},
+                .ExpectedChannelWithMixed = {0, 2, 0, 20},
+                .ExpectedChannelWithoutMixed = {0, 2, 0, 20},
+            },
+            {
+                .Name = "merged index only",
+                .Channel = {},
+                .Index = {0, 3, 0, 60},
+                .ExpectedIndex = {0, 3, 0, 60},
+                .ExpectedChannelWhenDisabled = {0, 3, 0, 60},
+                .ExpectedChannelWithMixed = {},
+                .ExpectedChannelWithoutMixed = {},
+            },
+            {
+                .Name = "empty channel counters",
+                .Channel = {},
+                .Index = {2, 3, 20, 60},
+                .ExpectedIndex = {2, 3, 20, 60},
+                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
+                .ExpectedChannelWithMixed = {},
+                .ExpectedChannelWithoutMixed = {},
+            },
+            {
+                .Name = "missing index blocks",
+                .Channel = {2, 3, 20, 60},
+                .Index = {1, 4, 0, 0},
+                .ExpectedIndex = {2, 3, 20, 60},
+                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
+                .ExpectedChannelWithMixed = {2, 3, 20, 60},
+                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
+            },
+            {
+                .Name = "missing index blobs",
+                .Channel = {2, 3, 20, 60},
+                .Index = {0, 0, 10, 70},
+                .ExpectedIndex = {2, 3, 20, 60},
+                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
+                .ExpectedChannelWithMixed = {2, 3, 20, 60},
+                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
+            },
+        };
+
+        for (const auto& test: testCases) {
+            for (bool hasMixedChannel: {false, true}) {
+                for (bool useChannelCounters: {false, true}) {
+                    auto meta = DefaultConfig(1, DefaultBlockCount);
+                    if (hasMixedChannel) {
+                        meta.MutableConfig()
+                            ->AddExplicitChannelProfiles()
+                            ->SetDataKind(
+                                static_cast<ui32>(EChannelDataKind::Mixed));
+                    }
+
+                    auto& stats = *meta.MutableStats();
+                    stats.SetMixedBlobsCount(test.Channel.MixedBlobs);
+                    stats.SetMergedBlobsCount(test.Channel.MergedBlobs);
+                    stats.SetMixedBlocksCount(test.Channel.MixedBlocks);
+                    stats.SetMergedBlocksCount(test.Channel.MergedBlocks);
+                    stats.SetMixedIndexBlobsCount(test.Index.MixedBlobs);
+                    stats.SetMergedIndexBlobsCount(test.Index.MergedBlobs);
+                    stats.SetMixedIndexBlocksCount(test.Index.MixedBlocks);
+                    stats.SetMergedIndexBlocksCount(test.Index.MergedBlocks);
+
+                    const auto& expectedChannel = !useChannelCounters
+                        ? test.ExpectedChannelWhenDisabled
+                        : (hasMixedChannel ? test.ExpectedChannelWithMixed
+                                           : test.ExpectedChannelWithoutMixed);
+
+                    const auto context =
+                        TStringBuilder()
+                        << test.Name << ", hasMixedChannel=" << hasMixedChannel
+                        << ", useChannelCounters=" << useChannelCounters;
+                    auto state = MakeState(
+                        std::move(meta),
+                        false,   // checkpointAwareCleanupEnabled
+                        useChannelCounters);
+                    AssertBlobAndBlockCounts(
+                        state.GetStats(),
+                        expectedChannel,
+                        test.ExpectedIndex,
+                        context);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPreserveBlobAndBlockCountsAcrossCounterModeChanges)
+    {
+        auto meta = DefaultConfig(1, DefaultBlockCount);
+        auto& stats = *meta.MutableStats();
+        stats.SetMixedBlobsCount(2);
+        stats.SetMergedBlobsCount(3);
+        stats.SetMixedBlocksCount(20);
+        stats.SetMergedBlocksCount(60);
+
+        // With no mixed channels, enabling channel counters moves mixed counts
+        // to merged while retaining the original index counts across restarts.
+        for (bool useChannelCounters: {true, true, false, false, true, true}) {
+            auto state = MakeState(
+                std::move(meta),
+                false,   // checkpointAwareCleanupEnabled
+                useChannelCounters);
+            AssertBlobAndBlockCounts(
+                state.GetStats(),
+                useChannelCounters ? TBlobAndBlockCounts{0, 5, 0, 80}
+                                   : TBlobAndBlockCounts{2, 3, 20, 60},
+                {2, 3, 20, 60});
+            meta = state.GetMeta();
+        }
+    }
+
     Y_UNIT_TEST(CalculateCurrentBackpressure)
     {
         auto threadSafeState =
