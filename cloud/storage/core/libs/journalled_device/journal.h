@@ -17,8 +17,9 @@ struct IJournal
 
     // Restoring
 
+    // Restores the journal state and returns lsn of the last indexed record
     [[nodiscard]] virtual auto Restore()
-        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+        -> NThreading::TFuture<TResultOrError<ui64>> = 0;
 
     // Device API
 
@@ -41,7 +42,7 @@ struct IJournal
 
     // Background cleanup
 
-    [[nodiscard]] virtual auto GetFirstRecordToFlush() const
+    [[nodiscard]] virtual auto GetRecordToFlush(ui64 maxAllowedLsn) const
         -> NThreading::TFuture<
             TResultOrError<NCloud::NProto::TJournalRecord>> = 0;
 

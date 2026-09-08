@@ -3,6 +3,7 @@
 #include "device.h"
 #include "journal.h"
 #include "journalled_device.h"
+#include "watermark_tracker.h"
 
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -147,6 +148,8 @@ private:
 
     TLog Log;
 
+    TWatermarkTracker IndexedLsnTracker;
+
     std::atomic_bool ShouldStop = false;
 
     TPromise<void> FlushCycleStopped;
@@ -203,8 +206,7 @@ public:
         return Execute<NCloud::NProto::TWriteLogRecordResponse>(
             [request = std::move(request)] (auto& self) mutable
             {
-                return self.Executor->ExtractResponse(
-                    self.Journal->Write(std::move(request)));
+                return self.DoWriteLogRecord(std::move(request));
             });
     }
 
@@ -249,11 +251,14 @@ private:
             });
     }
 
-    NCloud::NProto::TError DoStart() {
-        auto error = Executor->ExtractResponse(Journal->Restore());
-        if (HasError(error)) {
-            return error;
+    NCloud::NProto::TError DoStart()
+    {
+        auto response = Executor->ExtractResponse(Journal->Restore());
+        if (HasError(response)) {
+            return response.GetError();
         }
+
+        IndexedLsnTracker.Advance(response.GetResult());
 
         FlushCycleStopped = NewPromise<void>();
         ScheduleFlushCycle();
@@ -264,6 +269,11 @@ private:
     NCloud::NProto::TReadPagesResponse DoReadPages(
         NCloud::NProto::TReadPagesRequest request)
     {
+        auto pinnedLsn = IndexedLsnTracker.Pin();
+        Y_DEFER {
+            IndexedLsnTracker.Unpin(pinnedLsn);
+        };
+
         auto journalFuture = Journal->Read(request);
         auto journalResp = Executor->ExtractResponse(std::move(journalFuture));
         if (HasError(journalResp)) {
@@ -293,7 +303,22 @@ private:
         return response;
     }
 
-    void ScheduleFlushCycle() {
+    NCloud::NProto::TWriteLogRecordResponse DoWriteLogRecord(
+        NCloud::NProto::TWriteLogRecordRequest request)
+    {
+        auto lsn = request.GetLogSequenceNumber();
+        auto future = Journal->Write(std::move(request));
+        auto response = Executor->ExtractResponse(std::move(future));
+        if (HasError(response)) {
+            return response;
+        }
+
+        IndexedLsnTracker.Advance(lsn);
+        return response;
+    }
+
+    void ScheduleFlushCycle()
+    {
         Executor->Execute([weakSelf = weak_from_this()] () {
             auto self = weakSelf.lock();
             if (!self) {
@@ -306,10 +331,12 @@ private:
 
     void RunFlushCycle()
     {
+        auto maxAllowedLsn = IndexedLsnTracker.GetPinnedWatermark();
+
         ui64 lastFlushedLsn = 0;
 
         while (!ShouldStop.load()) {
-            auto future = Journal->GetFirstRecordToFlush();
+            auto future = Journal->GetRecordToFlush(maxAllowedLsn);
             auto response = Executor->ExtractResponse(future);
             if (HasError(response)) {
                 STORAGE_ERROR(
@@ -350,7 +377,7 @@ private:
         const auto& response = Executor->WaitFor(future);
         if (HasError(response)) {
             STORAGE_ERROR(
-                "unable to cleanup flushed records to lsn " << lastFlushedLsn
+                "unable to cleanup flushed records up to lsn " << lastFlushedLsn
                 << ": " << FormatError(response));
         }
 
