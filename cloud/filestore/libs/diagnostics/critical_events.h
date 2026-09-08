@@ -110,6 +110,7 @@ namespace NCloud::NFileStore{
     xxx(WriteDataRequestWithBufferAndPayload)                                  \
     xxx(DiagnosticStatsInsertFailed)                                           \
     xxx(AvailabilityCountersDoubleRegistration)                                \
+    xxx(ForcedOperationUnexpectedState)                                        \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
