@@ -474,6 +474,16 @@ bool TFileSystem::ProcessAsyncRelease(
 {
     with_lock (HandleOpsQueueLock) {
         const auto res = HandleOpsQueue->AddDestroyRequest(ino, fh);
+        if (res == THandleOpsQueue::EResult::QueueIsCorrupted) {
+            TStringBuilder msg;
+            msg << "HandleOpsQueue is corrupted, can't add destroy handle "
+                   "request to queue #"
+                << ino << " @" << fh;
+
+            ReportHandleOpsQueueProcessError(msg);
+            return false;
+        }
+
         if (res == THandleOpsQueue::EResult::QueueOverflow) {
             STORAGE_DEBUG(
                 "HandleOpsQueue overflow, can't add destroy handle request to "
