@@ -577,6 +577,9 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
         )
         assert result.returncode == 0
 
+        # Wait for the initial NBD partition probe before restarting NBS.
+        subprocess.check_call(["udevadm", "settle"], timeout=20)
+
         shutil.rmtree(socket_dir)
 
         env.nbs.restart()
@@ -587,6 +590,9 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
         )
         assert result.returncode == 0
         assert socket_path.exists()
+
+        # Restoring the endpoint reconfigures NBD and starts another probe.
+        subprocess.check_call(["udevadm", "settle"], timeout=20)
 
     except subprocess.CalledProcessError as e:
         log_called_process_error(e)
