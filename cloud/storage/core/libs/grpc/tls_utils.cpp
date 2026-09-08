@@ -156,175 +156,6 @@ bool IsEmptyPair(const TCertificateFiles& certPair)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class EStableRead
-{
-    // Content equals the current one.
-    Unchanged,
-    // New content has been read for the first time or differs from the
-    // content read previously.
-    Wait,
-    // New content has been read unchanged twice in a row.
-    Apply,
-};
-
-template <typename T>
-EStableRead DecideStableRead(
-    const T& current,
-    TMaybe<T>& pending,
-    const T& content)
-{
-    if (content == current) {
-        pending.Clear();
-        return EStableRead::Unchanged;
-    }
-
-    const bool stable = pending.Defined() && *pending == content;
-    pending = content;
-    return stable ? EStableRead::Apply : EStableRead::Wait;
-}
-
-// Returns true if the root certificate has been replaced.
-bool UpdateRootCa(TRootCaPair& root, bool& pending, TLog& Log)
-{
-    if (root.RootCaPath.empty()) {
-        return false;
-    }
-
-    auto content = TryReadFile(root.RootCaPath);
-    if (HasError(content.GetError())) {
-        root.Pending.Clear();
-        STORAGE_WARN(
-            "Root certificate update is skipped: "
-            << FormatError(content.GetError()));
-        return false;
-    }
-
-    switch (DecideStableRead(root.RootCa, root.Pending, content.GetResult())) {
-        case EStableRead::Unchanged:
-            return false;
-        case EStableRead::Wait:
-            pending = true;
-            STORAGE_INFO(
-                "New root certificate " << root.RootCaPath.Quote()
-                << ", waiting for a stable read");
-            return false;
-        case EStableRead::Apply:
-            break;
-    }
-
-    auto validity = IsValidPemCertificate(content.GetResult());
-    if (HasError(validity.GetError())) {
-        STORAGE_WARN(
-            "Root certificate update is skipped: "
-            << FormatError(validity.GetError()));
-        return false;
-    }
-
-    root.RootCa = content.ExtractResult();
-    root.Pending.Clear();
-    STORAGE_INFO(
-        "Root certificate " << root.RootCaPath.Quote() << " has been updated");
-    return true;
-}
-
-TResultOrError<void> ValidateIdentity(const TPendingIdentity& identity)
-{
-    auto keyMatchesCert = PrivateKeyAndCertificateMatch(
-        identity.PrivateKey,
-        identity.CertChain);
-    if (HasError(keyMatchesCert.GetError())) {
-        return keyMatchesCert.GetError();
-    }
-
-    auto validity = ValidateIdentityCertificateValidity(identity.CertChain);
-    if (HasError(validity.GetError())) {
-        return validity.GetError();
-    }
-
-    return ValidateIdentityCertificateChain(identity.CertChain);
-}
-
-TResultOrError<TPendingIdentity> ReadIdentity(const TCertificateFiles& files)
-{
-    auto privateKey = TryReadFile(files.PrivateKeyPath);
-    if (HasError(privateKey.GetError())) {
-        return privateKey.GetError();
-    }
-
-    auto certChain = TryReadFile(files.CertChainPath);
-    if (HasError(certChain.GetError())) {
-        return certChain.GetError();
-    }
-
-    return TPendingIdentity{
-        .PrivateKey = privateKey.ExtractResult(),
-        .CertChain = certChain.ExtractResult(),
-    };
-}
-
-TCertificateUpdate UpdateIdentity(
-    TCertificatePair& cert,
-    bool& pending,
-    TLog& Log)
-{
-    TCertificateUpdate update;
-    const auto& path = cert.Files.CertChainPath;
-
-    auto content = ReadIdentity(cert.Files);
-    if (HasError(content.GetError())) {
-        cert.Pending.Clear();
-        STORAGE_WARN(
-            "Identity certificate update is skipped for " << path.Quote()
-            << ": " << FormatError(content.GetError()));
-        return update;
-    }
-
-    const TPendingIdentity current{
-        .PrivateKey = cert.PrivateKey,
-        .CertChain = cert.CertChain,
-    };
-    switch (DecideStableRead(current, cert.Pending, content.GetResult())) {
-        case EStableRead::Unchanged:
-            return update;
-        case EStableRead::Wait:
-            pending = true;
-            STORAGE_INFO(
-                "New identity certificate " << path.Quote()
-                << ", waiting for a stable read");
-            return update;
-        case EStableRead::Apply:
-            break;
-    }
-
-    auto validity = ValidateIdentity(content.GetResult());
-    if (HasError(validity.GetError())) {
-        STORAGE_WARN(
-            "Identity certificate update is skipped for " << path.Quote()
-            << ": " << FormatError(validity.GetError()));
-        return update;
-    }
-
-    auto notAfterTs = GetCertificateNotAfterTimestampSec(
-        content.GetResult().CertChain);
-    if (HasError(notAfterTs)) {
-        STORAGE_WARN(
-            "Unable to parse certificate notAfter date for " << path.Quote()
-            << ": " << FormatError(notAfterTs.GetError()));
-    } else {
-        update.NotValidAfter = TInstant::Seconds(notAfterTs.ExtractResult());
-    }
-
-    auto identity = content.ExtractResult();
-    cert.PrivateKey = std::move(identity.PrivateKey);
-    cert.CertChain = std::move(identity.CertChain);
-    cert.Pending.Clear();
-    update.Changed = true;
-    STORAGE_INFO(
-        "Identity certificate " << path.Quote() << " has been updated"
-        << ", expires at " << update.NotValidAfter);
-    return update;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -589,6 +420,41 @@ TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
     return result;
 }
 
+TResultOrError<TIdentityContent> ReadIdentity(const TCertificateFiles& files)
+{
+    auto privateKey = TryReadFile(files.PrivateKeyPath);
+    if (HasError(privateKey.GetError())) {
+        return privateKey.GetError();
+    }
+
+    auto certChain = TryReadFile(files.CertChainPath);
+    if (HasError(certChain.GetError())) {
+        return certChain.GetError();
+    }
+
+    return TIdentityContent{
+        .PrivateKey = privateKey.ExtractResult(),
+        .CertChain = certChain.ExtractResult(),
+    };
+}
+
+TResultOrError<void> ValidateIdentity(const TIdentityContent& identity)
+{
+    auto keyMatchesCert = PrivateKeyAndCertificateMatch(
+        identity.PrivateKey,
+        identity.CertChain);
+    if (HasError(keyMatchesCert.GetError())) {
+        return keyMatchesCert.GetError();
+    }
+
+    auto validity = ValidateIdentityCertificateValidity(identity.CertChain);
+    if (HasError(validity.GetError())) {
+        return validity.GetError();
+    }
+
+    return ValidateIdentityCertificateChain(identity.CertChain);
+}
+
 TVector<TCertificatePair> LoadCertificatePairs(
     TVector<TCertificateFiles> certificates)
 {
@@ -651,23 +517,6 @@ TVector<TCertificateFiles> PrepareCertificateFilePairs(
         res.emplace_back(std::move(cert));
     }
     return res;
-}
-
-TCertificatesUpdateResult UpdateCertificates(
-    TVector<TCertificatePair>& certificates,
-    TRootCaPair& root,
-    TLog& log)
-{
-    TCertificatesUpdateResult result;
-    result.RootCaChanged = UpdateRootCa(root, result.Pending, log);
-
-    result.Certificates.reserve(certificates.size());
-    for (auto& cert: certificates) {
-        result.Certificates.push_back(
-            UpdateIdentity(cert, result.Pending, log));
-    }
-
-    return result;
 }
 
 }   // namespace NCloud::NTlsUtils

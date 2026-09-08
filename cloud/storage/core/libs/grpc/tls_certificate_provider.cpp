@@ -176,7 +176,8 @@ ICertificateProviderPtr CreateCertificateProvider(
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval)
+    TDuration refreshInterval,
+    ITimerPtr timer)
 {
     if (refreshInterval == TDuration::Zero()) {
         return CreateStaticCertificateProvider(
@@ -198,7 +199,8 @@ ICertificateProviderPtr CreateCertificateProvider(
                 std::move(serverGroup),
                 std::move(rootCertPath),
                 {},
-                refreshInterval);
+                refreshInterval,
+                std::move(timer));
         }
 
         return CreateStaticCertificateProvider({}, {});
@@ -212,7 +214,8 @@ ICertificateProviderPtr CreateCertificateProvider(
         std::move(serverGroup),
         std::move(rootCertPath),
         std::move(certs),
-        refreshInterval);
+        refreshInterval,
+        std::move(timer));
 }
 
 ICertificateProviderPtr CreateStaticCertificateProvider(
