@@ -17,6 +17,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -58,15 +59,30 @@ func (t *createSnapshotFromURLTask) Run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	_, err := t.storage.CreateSnapshot(
-		ctx,
-		storage.SnapshotMeta{
-			ID: t.request.DstSnapshotId,
-		},
-	)
+	err := common.ValidateSnapshotChunkSize(t.request.ChunkSize, t.request.UseS3)
 	if err != nil {
 		return err
 	}
+
+	requestedMeta := storage.SnapshotMeta{
+		ID:        t.request.DstSnapshotId,
+		ChunkSize: t.request.ChunkSize,
+	}
+	snapshotMeta, err := t.storage.CreateSnapshot(ctx, requestedMeta, false /* useBaseSnapshotChunkSize */)
+	if err != nil {
+		return err
+	}
+
+	if snapshotMeta.GetChunkSize() != requestedMeta.GetChunkSize() {
+		return errors.NewNonRetriableErrorf(
+			"snapshot %v has chunk size %v, but requested chunk size is %v",
+			snapshotMeta.ID,
+			snapshotMeta.GetChunkSize(),
+			requestedMeta.GetChunkSize(),
+		)
+	}
+
+	chunkSize := uint64(snapshotMeta.GetChunkSize())
 
 	source, err := url.NewURLSource(
 		ctx,
@@ -132,7 +148,7 @@ func (t *createSnapshotFromURLTask) Run(
 		ReaderCount:         t.config.GetCreateSnapshotFromURLReaderCount(),
 		WriterCount:         t.config.GetWriterCount(),
 		ChunksInflightLimit: t.config.GetChunksInflightLimit(),
-		ChunkSize:           chunkSize,
+		ChunkSize:           int(chunkSize),
 	}
 
 	transferredChunkCount, err := transferer.Transfer(

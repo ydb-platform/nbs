@@ -27,4 +27,17 @@ message ImagesConfig {
     // TODO: remove it later.
     optional bool RetryBrokenDRBasedDiskCheckpoint = 9;
     optional string S3DefaultStorageClass = 10;
+
+    // Chunk size in bytes for new S3 snapshots created from disks or URLs.
+    // Nonzero sizes must be at least 4 MiB and multiples of 4 MiB.
+    // Zero selects the 4 MiB default.
+    // YDB-backed snapshots always use 4 MiB chunks.
+    // Incremental snapshots inherit their base's size; images copied from
+    // snapshots or images retain the source chunk size.
+    // For disk sources, must be a multiple of eight disk blocks and divide
+    // the disk size.
+    optional uint32 ChunkSize = 11 [default = 4194304];
+
+    // Folders allowed to override ChunkSize in disk or URL creation requests.
+    repeated string ChunkSizeOverrideAllowedForFolder = 12;
 }

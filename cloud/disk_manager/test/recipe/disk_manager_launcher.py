@@ -223,6 +223,9 @@ PoolsConfig: <
     BaseDiskIdleTTL: "1m"
 >
 ImagesConfig: <
+    ChunkSize: {image_chunk_size}
+    ChunkSizeOverrideAllowedForFolder: "chunk-size-override-s3"
+    UseS3ForFolder: "chunk-size-override-s3"
     DeletedImageExpirationTimeout: "1s"
     ClearDeletedImagesTaskScheduleInterval: "2s"
     S3DefaultStorageClass: "{image_s3_default_storage_class}"
@@ -252,6 +255,9 @@ ImagesConfig: <
     UseS3Percentage: {image_use_s3_percentage}
 >
 SnapshotsConfig: <
+    ChunkSize: {snapshot_chunk_size}
+    ChunkSizeOverrideAllowedForFolder: "chunk-size-override-s3"
+    UseS3ForFolder: "chunk-size-override-s3"
     DeletedSnapshotExpirationTimeout: "1s"
     ClearDeletedSnapshotsTaskScheduleInterval: "2s"
     UseS3Percentage: {use_s3_percentage}
@@ -593,6 +599,8 @@ class DiskManagerLauncher:
         snapshot_list_nodes_max_bytes=100,
         scrubbing_config_content="",
         image_s3_default_storage_class="",
+        snapshot_chunk_size=4194304,
+        image_chunk_size=4194304,
         # 100s is long enough in tests with concurrent resource creation and deletion to prevent
         # creating an already deleted resourse (see #5539).
         deleted_disk_expiration_timeout="100s",
@@ -712,6 +720,8 @@ class DiskManagerLauncher:
                     retry_broken_disk_registry_based_disk_checkpoint=retry_broken_disk_registry_based_disk_checkpoint,
                     cell_selection_policy=cell_selection_policy,
                     image_s3_default_storage_class=image_s3_default_storage_class,
+                    snapshot_chunk_size=snapshot_chunk_size,
+                    image_chunk_size=image_chunk_size,
                     image_use_s3_percentage=image_use_s3_percentage,
                     deleted_disk_expiration_timeout=deleted_disk_expiration_timeout,
                     released_slot_expiration_timeout=released_slot_expiration_timeout,

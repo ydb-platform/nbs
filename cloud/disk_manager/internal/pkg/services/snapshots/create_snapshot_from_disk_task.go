@@ -110,6 +110,7 @@ func (t *createSnapshotFromDiskTask) run(
 			DstSnapshotId:       t.request.DstSnapshotId,
 			UseS3:               t.request.UseS3,
 			UseProxyOverlayDisk: t.request.UseProxyOverlayDisk,
+			ChunkSize:           t.request.ChunkSize,
 		},
 	)
 	if err != nil {

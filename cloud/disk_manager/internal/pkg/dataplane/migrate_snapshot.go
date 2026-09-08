@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -56,18 +57,34 @@ func (t *migrateSnapshotTask) Run(
 	}
 
 	t.state.ChunkCount = srcMeta.ChunkCount
+	chunkSize := srcMeta.GetChunkSize()
+	err = common.ValidateSnapshotChunkSize(chunkSize, t.useS3)
+	if err != nil {
+		return err
+	}
 
-	_, err = t.dstStorage.CreateSnapshot(
+	dstMeta, err := t.dstStorage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
 			ID:           t.request.SrcSnapshotId,
 			Disk:         srcMeta.Disk,
 			CheckpointID: srcMeta.CheckpointID,
 			CreateTaskID: execCtx.GetTaskID(),
+			ChunkSize:    chunkSize,
 		},
+		false, // useBaseSnapshotChunkSize
 	)
 	if err != nil {
 		return err
+	}
+
+	if dstMeta.GetChunkSize() != chunkSize {
+		return errors.NewNonRetriableErrorf(
+			"destination snapshot %v has chunk size %v, but source snapshot has chunk size %v",
+			dstMeta.ID,
+			dstMeta.GetChunkSize(),
+			chunkSize,
+		)
 	}
 
 	source := snapshot.NewSnapshotSource(
@@ -90,7 +107,7 @@ func (t *migrateSnapshotTask) Run(
 		ReaderCount:         t.config.GetReaderCount(),
 		WriterCount:         t.config.GetWriterCount(),
 		ChunksInflightLimit: t.config.GetChunksInflightLimit(),
-		ChunkSize:           chunkSize,
+		ChunkSize:           int(chunkSize),
 	}
 
 	transferredChunkCount, err := transferer.Transfer(
@@ -140,12 +157,12 @@ func (t *migrateSnapshotTask) Run(
 	}
 
 	size := srcMeta.Size
-	storageSize := dataChunkCount * chunkSize
+	storageSize := dataChunkCount * uint64(chunkSize)
 
 	t.state.SnapshotSize = size
 	t.state.SnapshotStorageSize = storageSize
 	t.state.TransferredDataSize =
-		uint64(t.state.TransferredChunkCount) * chunkSize
+		uint64(t.state.TransferredChunkCount) * uint64(chunkSize)
 
 	return t.dstStorage.SnapshotCreated(
 		ctx,

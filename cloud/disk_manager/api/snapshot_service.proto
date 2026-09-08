@@ -33,6 +33,13 @@ message CreateSnapshotRequest {
     string snapshot_id = 2;
     string folder_id = 3;
     bool zonal = 7;
+    // Chunk size in bytes. Nonzero sizes must be at least 4 MiB and multiples of
+    // 4 MiB. A nonzero override requires the folder to be allowlisted in
+    // controlplane configuration.
+    // Zero uses the controlplane default for S3 and 4 MiB for YDB.
+    // Incremental snapshots inherit the parent snapshot's size instead.
+    // YDB-backed snapshots always use 4 MiB chunks.
+    uint32 chunk_size = 8;
 }
 
 message CreateSnapshotMetadata {

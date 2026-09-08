@@ -21,9 +21,10 @@ type StorageMock struct {
 func (s *StorageMock) CreateSnapshot(
 	ctx context.Context,
 	snapshotMeta storage.SnapshotMeta,
+	useBaseSnapshotChunkSize bool,
 ) (*storage.SnapshotMeta, error) {
 
-	args := s.Called(ctx, snapshotMeta)
+	args := s.Called(ctx, snapshotMeta, useBaseSnapshotChunkSize)
 	return args.Get(0).(*storage.SnapshotMeta), args.Error(1)
 }
 

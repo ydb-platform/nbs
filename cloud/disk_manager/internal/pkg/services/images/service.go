@@ -7,10 +7,13 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	grpc_codes "google.golang.org/grpc/codes"
+	grpc_status "google.golang.org/grpc/status"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,6 +51,12 @@ func (s *service) CreateImage(
 				req,
 			)
 		}
+		if req.ChunkSize != 0 {
+			return "", grpc_status.Error(
+				grpc_codes.InvalidArgument,
+				"chunk size cannot be overridden when copying a snapshot",
+			)
+		}
 
 		return s.taskScheduler.ScheduleTask(
 			ctx,
@@ -66,6 +75,12 @@ func (s *service) CreateImage(
 			return "", common.NewInvalidArgumentError(
 				"some of parameters are empty, req=%v",
 				req,
+			)
+		}
+		if req.ChunkSize != 0 {
+			return "", grpc_status.Error(
+				grpc_codes.InvalidArgument,
+				"chunk size cannot be overridden when copying an image",
 			)
 		}
 
@@ -89,6 +104,11 @@ func (s *service) CreateImage(
 			)
 		}
 
+		chunkSize, err := s.getChunkSize(req.FolderId, req.ChunkSize, useS3)
+		if err != nil {
+			return "", err
+		}
+
 		return s.taskScheduler.ScheduleTask(
 			ctx,
 			"images.CreateImageFromURL",
@@ -100,6 +120,7 @@ func (s *service) CreateImage(
 				DiskPools:    pools,
 				UseS3:        useS3,
 				StorageClass: storageClass,
+				ChunkSize:    chunkSize,
 			},
 		)
 	case *disk_manager.CreateImageRequest_SrcDiskId:
@@ -111,6 +132,11 @@ func (s *service) CreateImage(
 				"some of parameters are empty, req=%v",
 				req,
 			)
+		}
+
+		chunkSize, err := s.getChunkSize(req.FolderId, req.ChunkSize, useS3)
+		if err != nil {
+			return "", err
 		}
 
 		return s.taskScheduler.ScheduleTask(
@@ -128,11 +154,39 @@ func (s *service) CreateImage(
 				UseS3:                            useS3,
 				StorageClass:                     storageClass,
 				RetryBrokenDRBasedDiskCheckpoint: s.config.GetRetryBrokenDRBasedDiskCheckpoint(),
+				ChunkSize:                        chunkSize,
 			},
 		)
 	default:
 		return "", common.NewInvalidArgumentError("unknown src %s", src)
 	}
+}
+
+func (s *service) getChunkSize(
+	folderID string,
+	chunkSize uint32,
+	useS3 bool,
+) (uint32, error) {
+
+	if chunkSize == 0 {
+		if useS3 {
+			chunkSize = s.config.GetChunkSize()
+		}
+	} else if !common.Find(s.config.GetChunkSizeOverrideAllowedForFolder(), folderID) {
+		return 0, grpc_status.Errorf(
+			grpc_codes.InvalidArgument,
+			"chunk size override is not allowed for folder %q",
+			folderID,
+		)
+	}
+
+	if chunkSize == 0 {
+		chunkSize = dataplane_common.DefaultChunkSize
+	}
+	if err := dataplane_common.ValidateSnapshotChunkSize(chunkSize, useS3); err != nil {
+		return 0, grpc_status.Errorf(grpc_codes.InvalidArgument, "%v", err)
+	}
+	return chunkSize, nil
 }
 
 func (s *service) DeleteImage(
