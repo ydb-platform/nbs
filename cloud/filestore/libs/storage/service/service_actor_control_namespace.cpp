@@ -78,6 +78,26 @@ NProto::TError ControlNamespaceNotPermittedError()
     return MakeError(E_FS_PERM, "not permitted on the control namespace");
 }
 
+bool TStorageServiceActor::IsControlNamespaceReservedIno(ui64 nodeId) const
+{
+    return !StorageConfig->GetControlNamespaceDirName().empty() &&
+        IsControlNamespaceEntry(ClassifyControlNamespaceEntry(nodeId));
+}
+
+EControlNamespaceEntry TStorageServiceActor::ClassifyControlNamespace(
+    ui64 nodeId,
+    TStringBuf name) const
+{
+    const auto& controlNamespaceDirName =
+        StorageConfig->GetControlNamespaceDirName();
+    if (controlNamespaceDirName.empty()) {
+        return EControlNamespaceEntry::None;
+    }
+    return name.empty()
+        ? ClassifyControlNamespaceEntry(nodeId)
+        : ClassifyControlNamespaceEntry(nodeId, name, controlNamespaceDirName);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TStorageServiceActor::TryHandleControlNamespaceGetNodeAttr(
@@ -86,20 +106,9 @@ bool TStorageServiceActor::TryHandleControlNamespaceGetNodeAttr(
     const TSessionInfo* session)
 {
     auto* msg = ev->Get();
-    const auto& controlNamespaceDirName =
-        StorageConfig->GetControlNamespaceDirName();
-
-    if (controlNamespaceDirName.empty()) {
-        return false;
-    }
-
-    const auto entry =
-        msg->Record.GetName().empty()
-            ? ClassifyControlNamespaceEntry(msg->Record.GetNodeId())
-            : ClassifyControlNamespaceEntry(
-                  msg->Record.GetNodeId(),
-                  msg->Record.GetName(),
-                  controlNamespaceDirName);
+    const auto entry = ClassifyControlNamespace(
+        msg->Record.GetNodeId(),
+        msg->Record.GetName());
 
     if (Y_LIKELY(!IsControlNamespaceEntry(entry))) {
         return false;
@@ -132,20 +141,9 @@ bool TStorageServiceActor::TryHandleControlNamespaceCreateHandle(
     const TSessionInfo* session)
 {
     auto* msg = ev->Get();
-    const auto& controlNamespaceDirName =
-        StorageConfig->GetControlNamespaceDirName();
-
-    if (controlNamespaceDirName.empty()) {
-        return false;
-    }
-
-    const auto entry =
-        msg->Record.GetName().empty()
-            ? ClassifyControlNamespaceEntry(msg->Record.GetNodeId())
-            : ClassifyControlNamespaceEntry(
-                  msg->Record.GetNodeId(),
-                  msg->Record.GetName(),
-                  controlNamespaceDirName);
+    const auto entry = ClassifyControlNamespace(
+        msg->Record.GetNodeId(),
+        msg->Record.GetName());
 
     if (Y_LIKELY(!IsControlNamespaceEntry(entry))) {
         return false;
@@ -274,10 +272,7 @@ bool TStorageServiceActor::TryHandleControlNamespaceWriteData(
     Y_UNUSED(session);
     auto* msg = ev->Get();
 
-    if (StorageConfig->GetControlNamespaceDirName().empty() ||
-        Y_LIKELY(!IsControlNamespaceEntry(
-            ClassifyControlNamespaceEntry(msg->Record.GetHandle()))))
-    {
+    if (Y_LIKELY(!IsControlNamespaceReservedIno(msg->Record.GetHandle()))) {
         return false;
     }
 
@@ -402,10 +397,7 @@ bool TStorageServiceActor::TryHandleControlNamespaceDestroyHandle(
     Y_UNUSED(session);
     auto* msg = ev->Get();
 
-    if (StorageConfig->GetControlNamespaceDirName().empty() ||
-        Y_LIKELY(!IsControlNamespaceEntry(
-            ClassifyControlNamespaceEntry(msg->Record.GetHandle()))))
-    {
+    if (Y_LIKELY(!IsControlNamespaceReservedIno(msg->Record.GetHandle()))) {
         return false;
     }
 
@@ -423,10 +415,7 @@ bool TStorageServiceActor::TryHandleControlNamespaceGetNodeXAttr(
     const TSessionInfo* session)
 {
     Y_UNUSED(session);
-    if (StorageConfig->GetControlNamespaceDirName().empty() ||
-        Y_LIKELY(!IsControlNamespaceEntry(
-            ClassifyControlNamespaceEntry(ev->Get()->Record.GetNodeId()))))
-    {
+    if (Y_LIKELY(!IsControlNamespaceReservedIno(ev->Get()->Record.GetNodeId()))) {
         return false;
     }
 
@@ -443,10 +432,7 @@ bool TStorageServiceActor::TryHandleControlNamespaceListNodeXAttr(
     const TSessionInfo* session)
 {
     Y_UNUSED(session);
-    if (StorageConfig->GetControlNamespaceDirName().empty() ||
-        Y_LIKELY(!IsControlNamespaceEntry(
-            ClassifyControlNamespaceEntry(ev->Get()->Record.GetNodeId()))))
-    {
+    if (Y_LIKELY(!IsControlNamespaceReservedIno(ev->Get()->Record.GetNodeId()))) {
         return false;
     }
 
@@ -462,10 +448,7 @@ bool TStorageServiceActor::TryHandleControlNamespaceSetNodeXAttr(
     const TSessionInfo* session)
 {
     Y_UNUSED(session);
-    if (StorageConfig->GetControlNamespaceDirName().empty() ||
-        Y_LIKELY(!IsControlNamespaceEntry(
-            ClassifyControlNamespaceEntry(ev->Get()->Record.GetNodeId()))))
-    {
+    if (Y_LIKELY(!IsControlNamespaceReservedIno(ev->Get()->Record.GetNodeId()))) {
         return false;
     }
 

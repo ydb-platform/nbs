@@ -30,6 +30,8 @@ namespace NCloud::NFileStore::NProto {
 
 namespace NCloud::NFileStore::NStorage {
 
+enum class EControlNamespaceEntry;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -152,6 +154,12 @@ private:
     void CompleteRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TResponse::TPtr& ev);
+
+    bool IsControlNamespaceReservedIno(ui64 nodeId) const;
+
+    EControlNamespaceEntry ClassifyControlNamespace(
+        ui64 nodeId,
+        TStringBuf name) const;
 
     // Control namespace (".filestore-ctl") hooks - true if the request was
     // answered here and the caller should return
