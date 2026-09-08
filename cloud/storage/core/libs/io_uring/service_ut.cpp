@@ -219,7 +219,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
             }
 
             for (char val: buffer) {
-                UNIT_ASSERT_VALUES_EQUAL(expectedData, val);
+                UNIT_ASSERT(expectedData == val);
             }
         }
     }
@@ -270,7 +270,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
 
             for (auto& buffer: buffers) {
                 for (char val: buffer) {
-                    UNIT_ASSERT_VALUES_EQUAL(expectedData, val);
+                    UNIT_ASSERT(expectedData == val);
                 }
             }
         }
