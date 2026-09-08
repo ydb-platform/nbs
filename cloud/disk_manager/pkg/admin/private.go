@@ -11,7 +11,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	filesystem_snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -1041,6 +1044,118 @@ func newMigrateDiskBetweenCellsCmd(config *client_config.ClientConfig) *cobra.Co
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type restoreFilesystemShard struct {
+	commandWithScheduler
+	snapshotID string
+	shardID    string
+	zoneID     string
+	async      bool
+}
+
+func (c *restoreFilesystemShard) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	var client internal_client.PrivateClient
+	if !c.async {
+		client, err = internal_client.NewPrivateClientForCLI(c.ctx, c.clientConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
+		}
+		defer client.Close()
+	}
+
+	taskID, err := c.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.RestoreFilesystemShard_"+c.shardID+"_"+generateID(),
+		),
+		"dataplane.RestoreFilesystemShard",
+		"",
+		&filesystem_snapshot_protos.RestoreFilesystemShardRequest{
+			Shard: &types.Filesystem{
+				ZoneId:       c.zoneID,
+				FilesystemId: c.shardID,
+			},
+			SnapshotId: c.snapshotID,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+
+	if c.async {
+		return nil
+	}
+
+	return internal_client.WaitOperation(c.ctx, client, taskID)
+}
+
+func newRestoreFilesystemShardCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &restoreFilesystemShard{
+		commandWithScheduler: newCommandWithScheduler(clientConfig, serverConfig),
+	}
+
+	cmd := &cobra.Command{
+		Use:     "restore-shard",
+		Aliases: []string{"restore_shard"},
+		Short:   "Restore a filesystem shard from a filesystem snapshot",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"filesystem-snapshot",
+		"",
+		"ID of filesystem snapshot to restore from; required",
+	)
+	if err := cmd.MarkFlagRequired("filesystem-snapshot"); err != nil {
+		log.Fatalf("Error setting flag filesystem-snapshot as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.shardID,
+		"shard-id",
+		"",
+		"ID of filesystem shard to restore; required",
+	)
+	if err := cmd.MarkFlagRequired("shard-id"); err != nil {
+		log.Fatalf("Error setting flag shard-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.zoneID,
+		"zone-id",
+		"",
+		"zone ID where filesystem shard is located; required",
+	)
+	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
+		log.Fatalf("Error setting flag zone-id as required: %v", err)
+	}
+
+	cmd.Flags().BoolVar(
+		&c.async,
+		"async",
+		false,
+		"do not wait for task ending",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newPrivateCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -1064,6 +1179,7 @@ func newPrivateCmd(
 		newFinishExternalFilesystemCreationCmd(clientConfig),
 		newFinishExternalFilesystemDeletionCmd(clientConfig),
 		newMigrateDiskBetweenCellsCmd(clientConfig),
+		newRestoreFilesystemShardCmd(clientConfig, serverConfig),
 	)
 
 	return cmd
