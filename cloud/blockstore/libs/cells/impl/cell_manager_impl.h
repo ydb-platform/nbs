@@ -47,6 +47,9 @@ struct TCellManager: public ICellManager
         const NClient::TClientAppConfigPtr& clientConfig,
         ICellConnectionObserverPtr observer) override;
 
+    [[nodiscard]] TResultOrError<IBlockStorePtr> CreateNbs2Endpoint(
+        const NProto::TNbs2DataRoute& route) override;
+
     [[nodiscard]] TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,
         const TString& diskId,

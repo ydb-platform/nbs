@@ -332,6 +332,13 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
                          << response.GetError().GetMessage().Quote() << " from "
                          << HostInfo.Fqdn);
 
+    // An invalid static NBS2 route must reach the caller instead of being
+    // treated as an absent volume or falling back to another backend.
+    if (response.GetError().GetCode() == E_INVALID_STATE) {
+        owner->Reply(std::move(response));
+        return;
+    }
+
     if (EErrorKind::ErrorRetriable != GetErrorKind(response.GetError())) {
         auto code = response.GetError().GetCode();
         const bool volumeNotFoundError =

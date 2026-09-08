@@ -1,0 +1,102 @@
+SchemeShardDir: "/Root/NBS"
+AuthorizationMode: AUTHORIZATION_IGNORE
+ManuallyPreemptedVolumesFile: "backups.1/nbs-preempted-volumes.json"
+
+# DiskRegistry
+AllocationUnitMirror2SSD: 1
+AllocationUnitMirror3SSD: 1
+AllocationUnitNonReplicatedSSD: 1
+CoolDownTimeoutBeforeSecureErase: 30000
+EnableToChangeErrorStatesFromDiskRegistryMonpage: true
+EnableToChangeStatesFromDiskRegistryMonpage: true
+MirroredMigrationStartAllowed: true
+NonReplicatedDiskRecyclingPeriod: 5000
+NonReplicatedDontSuspendDevices: true
+NonReplicatedMigrationStartAllowed: true
+DiskRegistryAlwaysAllocatesLocalDisks: true
+DiskRegistryCleanupConfigOnRemoveHost: false
+AttachDetachPathsEnabled: true
+
+# Volume
+OverlappingRequestsPolicy: ORP_ENABLE_WITH_CRIT_EVENT
+RequestSplitterPolicy: RSP_ENABLE_WITH_CRIT_EVENT
+
+# DiskRegistry-based
+AcquireNonReplicatedDevices: true
+AssignIdToWriteAndZeroRequestsEnabled: true
+DeviceOperationTrackingFrequency: 1
+MaxMigrationBandwidth: 1000
+MaxMigrationIoDepth: 1
+MaxShadowDiskFillBandwidth: 1000
+MaxShadowDiskFillIoDepth: 4
+NonReplicatedVolumeDirectAcquireEnabled: true
+OptimizeVoidBuffersTransferForReadsEnabled: true
+RejectLateRequestsAtDiskAgentEnabled: true
+UseDirectCopyRange: true
+UseNonreplicatedRdmaActor: true
+UseRdma: true
+UseShadowDisksForNonreplDiskCheckpoints: true
+
+# Mirror
+DataScrubbingEnabled: true
+LaggingDevicesForMirror2DisksEnabled: true
+LaggingDevicesForMirror3DisksEnabled: true
+MirrorReadReplicaCount: 2
+MultiAgentWriteEnabled: true
+ResyncRangeAfterScrubbing: true
+ScrubbingChecksumMismatchTimeout: 1000
+ScrubbingResyncPolicy: RESYNC_POLICY_MINOR_BLOCK_BY_BLOCK
+UseMirrorResync: true
+
+# CopyVolume
+LinkedDiskFillBandwidth {
+  ReadBandwidth: 200
+  WriteBandwidth: 200
+  ReadIoDepth: 2
+  WriteIoDepth: 2
+}
+LinkedDiskFillBandwidth {
+  MediaKind: STORAGE_MEDIA_SSD_NONREPLICATED
+  ReadBandwidth: 300
+  WriteBandwidth: 300
+  ReadIoDepth: 4
+  WriteIoDepth: 4
+}
+
+# SchemeShard proxy
+PathDescriptionBackupFilePath: "backups.1/nbs-path-description-backup.txt"
+#SSProxyFallbackMode: true
+UseBinaryFormatForPathDescriptionBackup: false
+UseSchemeCache: true
+
+# Hive proxy
+TabletBootInfoBackupFilePath: "backups.1/nbs-tablet-boot-info-backup.txt"
+UseBinaryFormatForTabletBootInfoBackup: false
+
+# Volume Throttling Manager
+VolumeThrottlingManagerEnabled: true
+
+# YDB Config Dispatcher Support
+ConfigsDispatcherServiceEnabled: true
+ConfigDispatcherSettings {
+  AllowList {
+    Names: "BlockstoreConfigItem"
+  }
+  AdditionalNodeLabels {
+    Key: "nbs"
+    Value: "true"
+  }
+}
+StaticNbs2Disk {
+    Volume {
+        DiskId: "disk1"
+        BlockSize: 4096
+        BlocksCount: 33554432
+        PartitionsCount: 1
+        StorageMediaKind: STORAGE_MEDIA_SSD
+    }
+    DataRoute {
+        Host: "127.0.0.1"
+        GrpcPort: 12135
+    }
+}

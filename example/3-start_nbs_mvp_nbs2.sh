@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+IC_PORT=${IC_PORT:-29502}
+GRPC_PORT=${GRPC_PORT:-9001}
+SERVER_PORT=${SERVER_PORT:-9766}
+DATA_SERVER_PORT=${DATA_SERVER_PORT:-9767}
+SECURE_SERVER_PORT=${SECURE_SERVER_PORT:-9768}
+MON_PORT=${MON_PORT:-8766}
+source ./prepare_binaries.sh || exit 1
+
+export ASAN_SYMBOLIZER_PATH=$(../ya tool llvm-symbolizer --print-path)
+
+echo "First NBS http://localhost:$MON_PORT/blockstore/service"
+
+nbsd \
+    --domain             Root \
+    --node-broker        localhost:$GRPC_PORT \
+    --ic-port            $IC_PORT \
+    --mon-port           $MON_PORT \
+    --server-port        $SERVER_PORT \
+    --data-server-port   $DATA_SERVER_PORT \
+    --secure-server-port $SECURE_SERVER_PORT \
+    --discovery-file     nbs/nbs-discovery.txt \
+    --domains-file       nbs/nbs-domains.txt \
+    --ic-file            nbs/nbs-ic.txt \
+    --log-file           nbs/nbs-log.txt \
+    --sys-file           nbs/nbs-sys.txt \
+    --server-file        nbs/nbs-server.txt \
+    --storage-file       nbs/nbs-storage.nbs2_mvp.txt \
+    --naming-file        nbs/nbs-names.txt \
+    --diag-file          nbs/nbs-diag.txt \
+    --features-file      nbs/nbs-features.txt \
+    --auth-file          nbs/nbs-auth.txt \
+    --cells-file         nbs/nbs-cells.nbs2_mvp.txt \
+    --dr-proxy-file      nbs/nbs-dr-proxy.txt \
+    --rdma-file          nbs/nbs-rdma.txt \
+    --service            kikimr \
+    --load-configs-from-cms \
+    --profile-file       logs/profile-log.bin \
+    $@ > logs/nbs.1.log 2>&1

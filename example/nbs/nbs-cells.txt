@@ -1,0 +1,21 @@
+CellsEnabled: true
+CellId: "cell-a"
+
+DescribeVolumeTimeout: 30000
+
+GrpcClientConfig {
+    RequestTimeout: 30000
+    RetryTimeout: 1000
+}
+
+Cells {
+    CellId: "cell-b"
+    GrpcPort: 9786
+    Transport: CELL_DATA_TRANSPORT_GRPC
+    DescribeVolumeHostCount: 1
+    MinCellConnections: 1
+
+    Hosts {
+        Fqdn: "localhost"
+    }
+}

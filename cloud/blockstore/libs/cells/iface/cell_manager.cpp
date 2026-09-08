@@ -29,6 +29,16 @@ struct TCellManagerStub: public ICellManager
             MakeError(E_NOT_IMPLEMENTED, "not implemented")));
     }
 
+    [[nodiscard]] TResultOrError<IBlockStorePtr> CreateNbs2Endpoint(
+        const NProto::TNbs2DataRoute& route) override
+    {
+        Y_UNUSED(route);
+
+        return MakeError(
+            E_INVALID_STATE,
+            "Connecting to NBS2 requires CellsEnabled = true");
+    }
+
     [[nodiscard]] TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,
         const TString& diskId,

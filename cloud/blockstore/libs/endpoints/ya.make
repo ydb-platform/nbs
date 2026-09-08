@@ -12,6 +12,7 @@ PEERDIR(
     cloud/blockstore/public/api/protos
 
     cloud/blockstore/libs/cells/iface
+    cloud/blockstore/libs/cells/impl
     cloud/blockstore/libs/client
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics

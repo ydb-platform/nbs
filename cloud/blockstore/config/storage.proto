@@ -2,6 +2,7 @@ syntax = "proto2";
 
 package NCloud.NBlockStore.NProto;
 
+import "cloud/blockstore/public/api/protos/volume.proto";
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
 import "cloud/storage/core/protos/config_dispatcher_settings.proto";
@@ -177,6 +178,15 @@ message TShapingThrottlerConfig
 
     // Performance measurements coefficients for mirror3 disks.
     optional TShapingThrottlerQuota Mirror3Quota = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Static metadata for one NBS2 disk in MVP. Discovery is available regardless
+// of CellsEnabled; absence of this section preserves normal NBS1 discovery.
+message TStaticNbs2Disk
+{
+    optional TVolume Volume = 1;
+    optional TNbs2DataRoute DataRoute = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1693,4 +1703,7 @@ message TStorageServiceConfig
     // Maximum allowed logical size of all blocks (block count * block size) in
     // fresh after which we start to reject write and zero requests.
     optional uint64 FreshLogicalBlocksByteCountHardLimit = 529;
+
+    // Static NBS2 disk description and route for MVP discovery.
+    optional TStaticNbs2Disk StaticNbs2Disk = 530;
 }

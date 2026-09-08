@@ -9,6 +9,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
+#include <util/generic/yexception.h>
 #include <util/system/mutex.h>
 
 #include <google/protobuf/text_format.h>
@@ -180,6 +181,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
         }})                                                                   )\
     xxx(ShapingThrottlerConfig,           NProto::TShapingThrottlerConfig, {} )\
+    xxx(StaticNbs2Disk,                   NProto::TStaticNbs2Disk,        {} )\
 /* Safety-critical section of settings that must not be changed at runtime. */ \
     xxx(FlushToDevNull,                                      bool, false      )\
     xxx(AcquireNonReplicatedDevices,                         bool, false      )\
@@ -1245,6 +1247,26 @@ TStorageConfig::TStorageConfig(
     TStorageConfigControlsPtr controls)
 {
     Y_ABORT_UNLESS(!controls || controls->Impl->ConfigIndependent);
+
+    if (storageServiceConfig.HasStaticNbs2Disk()) {
+        const auto& volume =
+            storageServiceConfig.GetStaticNbs2Disk().GetVolume();
+        Y_ENSURE(
+            !volume.GetDiskId().empty(),
+            "StaticNbs2Disk.Volume.DiskId must not be empty");
+        Y_ENSURE(
+            volume.GetBlockSize() == 4096,
+            "StaticNbs2Disk.Volume.BlockSize must be 4096");
+        Y_ENSURE(
+            volume.GetBlocksCount() > 0,
+            "StaticNbs2Disk.Volume.BlocksCount must be positive");
+        Y_ENSURE(
+            volume.GetPartitionsCount() == 1,
+            "StaticNbs2Disk.Volume.PartitionsCount must be 1");
+        Y_ENSURE(
+            volume.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD,
+            "StaticNbs2Disk.Volume.StorageMediaKind must be STORAGE_MEDIA_SSD");
+    }
 
     if (!controls) {
         controls = TStorageConfigControlsPtr(

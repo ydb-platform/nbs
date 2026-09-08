@@ -119,6 +119,32 @@ TCellConnectionFuture TCellManager::CreateConnection(
         std::move(observer));
 }
 
+TResultOrError<IBlockStorePtr> TCellManager::CreateNbs2Endpoint(
+    const NProto::TNbs2DataRoute& route)
+{
+    if (!Config->GetCellsEnabled()) {
+        return MakeError(
+            E_INVALID_STATE,
+            "Connecting to NBS2 requires CellsEnabled = true");
+    }
+
+    if (route.GetHost().empty() || route.GetGrpcPort() == 0 ||
+        route.GetGrpcPort() > 65535)
+    {
+        return MakeError(
+            E_INVALID_STATE,
+            "Nbs2DataRoute requires a non-empty Host and "
+            "GrpcPort in range 1..65535");
+    }
+
+    return SafeExecute<TResultOrError<IBlockStorePtr>>([&] {
+        return Bootstrap.GrpcClient->CreateEndpoint(
+            route.GetHost(),
+            route.GetGrpcPort(),
+            false);
+    });
+}
+
 TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     const NClient::TClientAppConfigPtr& clientConfig)
 {

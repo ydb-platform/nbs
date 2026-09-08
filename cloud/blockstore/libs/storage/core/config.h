@@ -157,6 +157,8 @@ public:
 
     [[nodiscard]] NProto::TStorageServiceConfig GetStorageConfigProto() const;
 
+    [[nodiscard]] NProto::TStaticNbs2Disk GetStaticNbs2Disk() const;
+
     TString GetSchemeShardDir() const;
     [[nodiscard]] ui32 GetListVolumesConcurrency() const;
     ui32 GetWriteBlobThreshold() const;

@@ -33,6 +33,10 @@ struct ICellManager: public IStartable
         const NClient::TClientAppConfigPtr& clientConfig,
         ICellConnectionObserverPtr observer) = 0;
 
+    // Connect directly to the pinned NBS2 host without a peer cell or host pool.
+    [[nodiscard]] virtual TResultOrError<IBlockStorePtr> CreateNbs2Endpoint(
+        const NProto::TNbs2DataRoute& route) = 0;
+
     [[nodiscard]] virtual TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,
         const TString& diskId,

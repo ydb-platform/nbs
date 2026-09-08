@@ -762,6 +762,14 @@ message TStatVolumeResponse
 ////////////////////////////////////////////////////////////////////////////////
 // Get volume information
 
+// Static MVP route to one NBS2 host. Both session and data RPCs use this
+// insecure TBlockStoreService endpoint.
+message TNbs2DataRoute
+{
+    string Host = 1;
+    uint32 GrpcPort = 2;
+}
+
 message TDescribeVolumeRequest
 {
     // Optional request headers.
@@ -780,6 +788,10 @@ message TDescribeVolumeResponse
     TVolume Volume = 2;
 
     string CellId = 3;
+
+    // Presence selects the NBS2 backend, including within the local cell.
+    // An invalid route is an error and must not enable legacy NBS1 fallback.
+    TNbs2DataRoute Nbs2DataRoute = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -239,6 +239,29 @@ void TServiceActor::HandleDescribeVolume(
         return;
     }
 
+    const auto staticDisk = Config->GetStaticNbs2Disk();
+    if (request.GetDiskId() == staticDisk.GetVolume().GetDiskId()) {
+        const auto& route = staticDisk.GetDataRoute();
+        if (!staticDisk.HasDataRoute() || route.GetHost().empty() ||
+            route.GetGrpcPort() == 0 || route.GetGrpcPort() > 65535)
+        {
+            auto response =
+                std::make_unique<TEvService::TEvDescribeVolumeResponse>(MakeError(
+                    E_INVALID_STATE,
+                    "StaticNbs2Disk.DataRoute requires a non-empty Host and "
+                    "GrpcPort in range 1..65535"));
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+
+        auto response =
+            std::make_unique<TEvService::TEvDescribeVolumeResponse>();
+        *response->Record.MutableVolume() = staticDisk.GetVolume();
+        *response->Record.MutableNbs2DataRoute() = route;
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Describing volume: %s",
         request.GetDiskId().Quote().data());

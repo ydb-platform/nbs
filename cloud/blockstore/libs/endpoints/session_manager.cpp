@@ -1,6 +1,7 @@
 #include "session_manager.h"
 
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
+#include <cloud/blockstore/libs/cells/impl/remote_storage.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -541,8 +542,7 @@ private:
 
     TResultOrError<TEndpointPtr> CreateEndpoint(
         const NProto::TStartEndpointRequest& request,
-        const NProto::TVolume& volume,
-        const TString& cellId);
+        const NProto::TDescribeVolumeResponse& describeResponse);
 
     TClientAppConfigPtr CreateClientConfig(
         const NProto::TStartEndpointRequest& request) const;
@@ -553,9 +553,8 @@ private:
         ui32 port) const;
 
     TResultOrError<IBlockStorePtr> CreateStorageDataClient(
-        const TString& cellId,
         const TClientAppConfigPtr& clientConfig,
-        const NProto::TVolume& volume,
+        const NProto::TDescribeVolumeResponse& describeResponse,
         const TString& clientId,
         NProto::EVolumeAccessMode accessMode) const;
 
@@ -600,7 +599,6 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
         return TErrorResponse(describeResponse.GetError());
     }
     const auto& volume = describeResponse.GetVolume();
-    const auto& cellId = describeResponse.GetCellId();
 
     if (volume.GetDiskId() != request.GetDiskId()) {
         // The original volume no longer exists. Use principal volume instead.
@@ -611,7 +609,7 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
         return CreateSessionImpl(std::move(callContext), std::move(request));
     }
 
-    auto result = CreateEndpoint(request, volume, cellId);
+    auto result = CreateEndpoint(request, describeResponse);
     if (HasError(result)) {
         return TErrorResponse(result.GetError());
     }
@@ -868,16 +866,26 @@ void TSessionManager::SwitchSession(
 }
 
 TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
-    const TString& cellId,
     const TClientAppConfigPtr& clientConfig,
-    const NProto::TVolume& volume,
+    const NProto::TDescribeVolumeResponse& describeResponse,
     const TString& clientId,
     NProto::EVolumeAccessMode accessMode) const
 {
+    const auto& volume = describeResponse.GetVolume();
+    const auto& cellId = describeResponse.GetCellId();
     auto service = Service;
     IStoragePtr storage;
 
-    if (!cellId.empty()) {
+    if (describeResponse.HasNbs2DataRoute()) {
+        auto result =
+            CellManager->CreateNbs2Endpoint(describeResponse.GetNbs2DataRoute());
+        if (HasError(result)) {
+            return result.GetError();
+        }
+
+        service = result.ExtractResult();
+        storage = NCells::CreateRemoteStorage(service);
+    } else if (!cellId.empty()) {
         auto future = CellManager->CreateConnection(
             cellId,
             {},   // any live configured host
@@ -911,18 +919,18 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
 
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     const NProto::TStartEndpointRequest& request,
-    const NProto::TVolume& volume,
-    const TString& cellId)
+    const NProto::TDescribeVolumeResponse& describeResponse)
 {
+    const auto& volume = describeResponse.GetVolume();
+    const auto& cellId = describeResponse.GetCellId();
     const auto& clientId = request.GetClientId();
     auto accessMode = request.GetVolumeAccessMode();
 
     auto clientConfig = CreateClientConfig(request);
 
     auto [client, error] = CreateStorageDataClient(
-        cellId,
         clientConfig,
-        volume,
+        describeResponse,
         clientId,
         accessMode);
 
@@ -1126,10 +1134,7 @@ void TSessionManager::SwitchSessionForEndpoint(
     }
 
     // Start new endpoint
-    auto result = CreateEndpoint(
-        newStartRequest,
-        describeResponse.GetVolume(),
-        describeResponse.GetCellId());
+    auto result = CreateEndpoint(newStartRequest, describeResponse);
 
     if (HasError(result)) {
         STORAGE_WARN(

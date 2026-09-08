@@ -105,6 +105,14 @@ struct TTestCellManager: public ICellManager
         return MakeFuture(CreateConnectionHandler(cellId, clientConfig));
     }
 
+    TResultOrError<IBlockStorePtr> CreateNbs2Endpoint(
+        const NProto::TNbs2DataRoute& route) override
+    {
+        Y_UNUSED(route);
+
+        return MakeError(E_NOT_IMPLEMENTED, "not implemented");
+    }
+
     TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,
         const TString& diskId,
