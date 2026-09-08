@@ -102,9 +102,25 @@ public:
 
             CheckResponse(statusResponse);
 
-            const auto processed = statusResponse.GetProcessedRangeCount();
-            const auto total = statusResponse.GetRangeCount();
-            if (processed >= total) {
+            using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
+            const auto status = statusResponse.GetStatus();
+            if (status == TStatus::E_PENDING) {
+                Cerr << "pending" << Endl;
+                Sleep(TDuration::Seconds(1));
+                continue;
+            }
+
+            if (status == TStatus::E_FAILED) {
+                STORAGE_THROW_SERVICE_ERROR(
+                    MakeError(E_FAIL, "forced compaction failed"));
+            }
+
+            // Older tablets do not populate Status.
+            const bool completedWithoutStatus =
+                status == TStatus::E_UNKNOWN &&
+                statusResponse.GetProcessedRangeCount() >=
+                    statusResponse.GetRangeCount();
+            if (status == TStatus::E_COMPLETED || completedWithoutStatus) {
                 // operation completed
                 Cout << "finished" << Endl;
                 break;
