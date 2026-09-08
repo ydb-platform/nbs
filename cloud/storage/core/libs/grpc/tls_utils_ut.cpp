@@ -7,10 +7,14 @@
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
+#include <util/system/fs.h>
 
 #include <openssl/bio.h>
+#include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <openssl/rsa.h>
 #include <openssl/x509.h>
+#include <openssl/x509v3.h>
 
 #include <memory>
 
@@ -104,6 +108,135 @@ TString SetCertificateValidity(
     return TString(data, size);
 }
 
+using TEvpPkeyPtr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
+using TX509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
+
+TEvpPkeyPtr GeneratePrivateKey()
+{
+    using TCtxPtr =
+        std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)>;
+
+    TCtxPtr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr), EVP_PKEY_CTX_free);
+    UNIT_ASSERT(ctx);
+    UNIT_ASSERT_VALUES_EQUAL(1, EVP_PKEY_keygen_init(ctx.get()));
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        EVP_PKEY_CTX_set_rsa_keygen_bits(ctx.get(), 2048));
+
+    EVP_PKEY* key = nullptr;
+    UNIT_ASSERT_VALUES_EQUAL(1, EVP_PKEY_keygen(ctx.get(), &key));
+    return TEvpPkeyPtr(key, EVP_PKEY_free);
+}
+
+TString CertificateToPem(X509* certificate)
+{
+    using TBioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+
+    TBioPtr output(BIO_new(BIO_s_mem()), BIO_free);
+    UNIT_ASSERT(output);
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        PEM_write_bio_X509(output.get(), certificate));
+
+    char* data = nullptr;
+    const long size = BIO_get_mem_data(output.get(), &data);
+    UNIT_ASSERT(size > 0);
+    return TString(data, size);
+}
+
+TX509Ptr ParseCertificate(TStringBuf pem)
+{
+    using TBioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+
+    TBioPtr input(
+        BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size())),
+        BIO_free);
+    UNIT_ASSERT(input);
+
+    TX509Ptr certificate(
+        PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr),
+        X509_free);
+    UNIT_ASSERT(certificate);
+    return certificate;
+}
+
+void AddExtension(X509* certificate, X509* issuer, int nid, const char* value)
+{
+    X509V3_CTX ctx;
+    X509V3_set_ctx_nodb(&ctx);
+    X509V3_set_ctx(&ctx, issuer, certificate, nullptr, nullptr, 0);
+
+    X509_EXTENSION* extension = X509V3_EXT_conf_nid(
+        nullptr,
+        &ctx,
+        nid,
+        const_cast<char*>(value));
+    UNIT_ASSERT(extension);
+    UNIT_ASSERT_VALUES_EQUAL(1, X509_add_ext(certificate, extension, -1));
+    X509_EXTENSION_free(extension);
+}
+
+// CA certificate for |key|, self-signed if |issuer| is null and signed by
+// |issuerKey| otherwise. Valid from one day ago for one year.
+TString IssueCertificate(
+    const TString& commonName,
+    EVP_PKEY* key,
+    X509* issuer,
+    EVP_PKEY* issuerKey)
+{
+    TX509Ptr certificate(X509_new(), X509_free);
+    UNIT_ASSERT(certificate);
+    UNIT_ASSERT_VALUES_EQUAL(1, X509_set_version(certificate.get(), 2));
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        ASN1_INTEGER_set(
+            X509_get_serialNumber(certificate.get()),
+            static_cast<long>(TInstant::Now().MicroSeconds() & 0x7fffffff)));
+
+    X509_NAME* subject = X509_get_subject_name(certificate.get());
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        X509_NAME_add_entry_by_txt(
+            subject,
+            "CN",
+            MBSTRING_ASC,
+            reinterpret_cast<const unsigned char*>(commonName.c_str()),
+            -1,
+            -1,
+            0));
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        X509_set_issuer_name(
+            certificate.get(),
+            issuer ? X509_get_subject_name(issuer) : subject));
+
+    UNIT_ASSERT(X509_gmtime_adj(
+        X509_getm_notBefore(certificate.get()),
+        -24 * 60 * 60));
+    UNIT_ASSERT(X509_gmtime_adj(
+        X509_getm_notAfter(certificate.get()),
+        YearSeconds));
+    UNIT_ASSERT_VALUES_EQUAL(1, X509_set_pubkey(certificate.get(), key));
+
+    AddExtension(
+        certificate.get(),
+        issuer ? issuer : certificate.get(),
+        NID_basic_constraints,
+        "critical,CA:TRUE");
+    AddExtension(
+        certificate.get(),
+        issuer ? issuer : certificate.get(),
+        NID_key_usage,
+        "critical,keyCertSign,digitalSignature");
+
+    UNIT_ASSERT(X509_sign(
+        certificate.get(),
+        issuerKey ? issuerKey : key,
+        EVP_sha256()));
+
+    return CertificateToPem(certificate.get());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -162,6 +295,70 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             ValidateIdentityCertificateValidity(cert + expired).GetError()));
         UNIT_ASSERT(HasError(
             ValidateIdentityCertificateValidity(cert + notYetValid).GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldValidateIdentityCertificateChain)
+    {
+        const auto leaf = ReadCertResource("server1.crt");
+        const auto ca = ReadCertResource("ca.crt");
+        const auto selfSigned = ReadCertResource("server3.crt");
+
+        UNIT_ASSERT(!HasError(
+            ValidateIdentityCertificateChain(leaf).GetError()));
+        UNIT_ASSERT(!HasError(
+            ValidateIdentityCertificateChain(leaf + ca).GetError()));
+        UNIT_ASSERT(!HasError(
+            ValidateIdentityCertificateChain(selfSigned).GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldRejectIdentityCertificateChainThatCannotBeBuilt)
+    {
+        const auto leaf = ReadCertResource("server1.crt");
+        const auto ca = ReadCertResource("ca.crt");
+        const auto unrelated = ReadCertResource("server3.crt");
+
+        // Leaf is not issued by the next certificate.
+        UNIT_ASSERT(HasError(
+            ValidateIdentityCertificateChain(leaf + unrelated).GetError()));
+        // Intermediate certificate is not issued by the next certificate.
+        UNIT_ASSERT(HasError(
+            ValidateIdentityCertificateChain(leaf + ca + unrelated)
+                .GetError()));
+        UNIT_ASSERT(HasError(
+            ValidateIdentityCertificateChain("not a certificate")
+                .GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldRejectIdentityCertificateChainWithRenamedIssuer)
+    {
+        const auto issuerKey = GeneratePrivateKey();
+        const auto leafKey = GeneratePrivateKey();
+
+        const auto issuerPem = IssueCertificate(
+            "intermediate",
+            issuerKey.get(),
+            nullptr,
+            nullptr);
+        const auto issuer = ParseCertificate(issuerPem);
+        const auto leafPem = IssueCertificate(
+            "leaf",
+            leafKey.get(),
+            issuer.get(),
+            issuerKey.get());
+        UNIT_ASSERT(!HasError(
+            ValidateIdentityCertificateChain(leafPem + issuerPem).GetError()));
+
+        // Issuer certificate has been re-issued for the same key with a
+        // different subject: the signature is valid, but the issuer name of
+        // the leaf certificate does not match.
+        const auto renamedIssuerPem = IssueCertificate(
+            "intermediate-renamed",
+            issuerKey.get(),
+            nullptr,
+            nullptr);
+        UNIT_ASSERT(HasError(
+            ValidateIdentityCertificateChain(leafPem + renamedIssuerPem)
+                .GetError()));
     }
 
     Y_UNIT_TEST(ShouldExtractCertificateNotAfterTimestamp)
@@ -276,7 +473,7 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT(HasError(result.GetError()));
     }
 
-    Y_UNIT_TEST(ShouldUpdateAllCertificatesWhenValid)
+    Y_UNIT_TEST(ShouldApplyCertificatesAfterStableRead)
     {
         TTempDir tempDir;
         const TString rootPath =
@@ -290,19 +487,131 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             ReadCertResource("server1.crt"));
 
         TVector<TCertificatePair> certs{TCertificatePair{.Files = files}};
+        TRootCaPair root{.RootCaPath = rootPath};
+        TLog log;
+
+        // New content is not applied until it is read unchanged twice.
+        auto result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(result.Pending);
+        UNIT_ASSERT(!result.RootCaChanged);
+        UNIT_ASSERT_VALUES_EQUAL(1, result.Certificates.size());
+        UNIT_ASSERT(!result.Certificates[0].Changed);
+        UNIT_ASSERT_VALUES_EQUAL("", root.RootCa);
+        UNIT_ASSERT_VALUES_EQUAL("", certs[0].CertChain);
+
+        result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(!result.Pending);
+        UNIT_ASSERT(result.RootCaChanged);
+        UNIT_ASSERT(result.Certificates[0].Changed);
+        UNIT_ASSERT(result.Certificates[0].NotValidAfter != TInstant::Zero());
+        UNIT_ASSERT_VALUES_EQUAL(ReadCertResource("ca.crt"), root.RootCa);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadCertResource("server1.key"),
+            certs[0].PrivateKey);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadCertResource("server1.crt"),
+            certs[0].CertChain);
+
+        // Unchanged content.
+        result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(!result.Pending);
+        UNIT_ASSERT(!result.RootCaChanged);
+        UNIT_ASSERT(!result.Certificates[0].Changed);
+    }
+
+    Y_UNIT_TEST(ShouldRestartStableReadWhenContentChangesAgain)
+    {
+        TTempDir tempDir;
+        const TString rootPath =
+            TStringBuilder() << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+
+        const auto files = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            ReadCertResource("server1.crt"));
+
+        TVector<TCertificatePair> certs{TCertificatePair{
+            .Files = files,
+            .PrivateKey = ReadCertResource("server1.key"),
+            .CertChain = ReadCertResource("server1.crt"),
+        }};
         TRootCaPair root{
             .RootCaPath = rootPath,
             .RootCa = ReadCertResource("ca.crt"),
         };
         TLog log;
 
-        const auto result = UpdateCertificates(certs, root, log);
+        WriteTextFile(rootPath, ReadCertResource("server2.crt"));
+        WriteTextFile(files.PrivateKeyPath, ReadCertResource("server2.key"));
+        WriteTextFile(files.CertChainPath, ReadCertResource("server2.crt"));
+        auto result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(result.Pending);
 
-        UNIT_ASSERT(result.RootCa.Defined());
-        UNIT_ASSERT_VALUES_EQUAL(ReadCertResource("ca.crt"), *result.RootCa);
-        UNIT_ASSERT_VALUES_EQUAL(1, result.Certificates.size());
-        UNIT_ASSERT(result.Certificates[0].Defined());
-        UNIT_ASSERT(result.Certificates[0]->NotValidAfter != TInstant::Zero());
+        // Content differs from the previous read, so it is not stable yet.
+        WriteTextFile(rootPath, ReadCertResource("server3.crt"));
+        WriteTextFile(files.PrivateKeyPath, ReadCertResource("server3.key"));
+        WriteTextFile(files.CertChainPath, ReadCertResource("server3.crt"));
+        result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(result.Pending);
+        UNIT_ASSERT(!result.RootCaChanged);
+        UNIT_ASSERT(!result.Certificates[0].Changed);
+        UNIT_ASSERT_VALUES_EQUAL(ReadCertResource("ca.crt"), root.RootCa);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadCertResource("server1.crt"),
+            certs[0].CertChain);
+
+        result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(!result.Pending);
+        UNIT_ASSERT(result.RootCaChanged);
+        UNIT_ASSERT(result.Certificates[0].Changed);
+        UNIT_ASSERT_VALUES_EQUAL(ReadCertResource("server3.crt"), root.RootCa);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadCertResource("server3.crt"),
+            certs[0].CertChain);
+    }
+
+    Y_UNIT_TEST(ShouldResetPendingContentOnReadError)
+    {
+        TTempDir tempDir;
+        const auto files = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server3.key"),
+            ReadCertResource("server3.crt"));
+
+        TVector<TCertificatePair> certs{TCertificatePair{
+            .Files = files,
+            .PrivateKey = ReadCertResource("server1.key"),
+            .CertChain = ReadCertResource("server1.crt"),
+        }};
+        TRootCaPair root;
+        TLog log;
+
+        auto result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(result.Pending);
+
+        // A read error, e.g. in the middle of a non-atomic rotation,
+        // restarts the stable-read.
+        NFs::Remove(files.CertChainPath);
+        result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(!result.Pending);
+        UNIT_ASSERT(!result.Certificates[0].Changed);
+
+        WriteTextFile(files.CertChainPath, ReadCertResource("server3.crt"));
+        result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(result.Pending);
+        UNIT_ASSERT(!result.Certificates[0].Changed);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadCertResource("server1.crt"),
+            certs[0].CertChain);
+
+        result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(result.Certificates[0].Changed);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadCertResource("server3.crt"),
+            certs[0].CertChain);
     }
 
     Y_UNIT_TEST(ShouldKeepPreviousRootWhenRootBecomesInvalid)
@@ -312,24 +621,19 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             TStringBuilder() << tempDir.Name() << "/ca.crt";
         WriteTextFile(rootPath, "not a certificate");
 
-        const auto files = CreateCertificatePair(
-            tempDir.Name(),
-            "server",
-            ReadCertResource("server1.key"),
-            ReadCertResource("server1.crt"));
-
         const TString previousRoot = ReadCertResource("ca.crt");
-        TVector<TCertificatePair> certs{TCertificatePair{.Files = files}};
+        TVector<TCertificatePair> certs;
         TRootCaPair root{.RootCaPath = rootPath, .RootCa = previousRoot};
         TLog log;
 
-        const auto result = UpdateCertificates(certs, root, log);
-
-        UNIT_ASSERT(result.RootCa.Defined());
-        UNIT_ASSERT_VALUES_EQUAL(previousRoot, *result.RootCa);
+        for (int i = 0; i < 3; ++i) {
+            const auto result = UpdateCertificates(certs, root, log);
+            UNIT_ASSERT(!result.RootCaChanged);
+            UNIT_ASSERT_VALUES_EQUAL(previousRoot, root.RootCa);
+        }
     }
 
-    Y_UNIT_TEST(ShouldFallBackToPreviousIdentityWhenFileInvalid)
+    Y_UNIT_TEST(ShouldKeepPreviousIdentityWhenFileInvalid)
     {
         TTempDir tempDir;
         const auto files = CreateCertificatePair(
@@ -343,19 +647,19 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             .PrivateKey = ReadCertResource("server1.key"),
             .CertChain = ReadCertResource("server1.crt"),
         }};
+        TRootCaPair root;
         TLog log;
 
-        const auto result = UpdateCertificates(certs, TRootCaPair{}, log);
-
-        UNIT_ASSERT(result.Certificates[0].Defined());
-        UNIT_ASSERT_VALUES_EQUAL(
-            ReadCertResource("server1.crt"),
-            TString(result.Certificates[0]
-                        ->CertificatesChain.front()
-                        .cert_chain()));
+        for (int i = 0; i < 3; ++i) {
+            const auto result = UpdateCertificates(certs, root, log);
+            UNIT_ASSERT(!result.Certificates[0].Changed);
+            UNIT_ASSERT_VALUES_EQUAL(
+                ReadCertResource("server1.crt"),
+                certs[0].CertChain);
+        }
     }
 
-    Y_UNIT_TEST(ShouldFallBackToPreviousIdentityWhenValidityCheckFails)
+    Y_UNIT_TEST(ShouldKeepPreviousIdentityWhenValidityCheckFails)
     {
         TTempDir tempDir;
         const auto validCert = ReadCertResource("server1.crt");
@@ -371,6 +675,7 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             .PrivateKey = privateKey,
             .CertChain = validCert,
         }};
+        TRootCaPair root;
         TLog log;
 
         for (const auto& invalidCert: {
@@ -384,16 +689,50 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
                      10 * YearSeconds)})
         {
             WriteTextFile(files.CertChainPath, validCert + invalidCert);
-            const auto result =
-                UpdateCertificates(certs, TRootCaPair{}, log);
-
-            UNIT_ASSERT(result.Certificates[0].Defined());
-            UNIT_ASSERT_VALUES_EQUAL(
-                validCert,
-                TString(result.Certificates[0]
-                            ->CertificatesChain.front()
-                            .cert_chain()));
+            for (int i = 0; i < 2; ++i) {
+                const auto result =
+                    UpdateCertificates(certs, root, log);
+                UNIT_ASSERT(!result.Certificates[0].Changed);
+                UNIT_ASSERT_VALUES_EQUAL(validCert, certs[0].CertChain);
+            }
         }
+    }
+
+    Y_UNIT_TEST(ShouldKeepPreviousIdentityWhenChainCannotBeBuilt)
+    {
+        TTempDir tempDir;
+        const auto leaf = ReadCertResource("server1.crt");
+        const auto privateKey = ReadCertResource("server1.key");
+        const auto files = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            privateKey,
+            leaf);
+
+        TVector<TCertificatePair> certs{TCertificatePair{
+            .Files = files,
+            .PrivateKey = privateKey,
+            .CertChain = leaf,
+        }};
+        TRootCaPair root;
+        TLog log;
+
+        WriteTextFile(
+            files.CertChainPath,
+            leaf + ReadCertResource("server3.crt"));
+        for (int i = 0; i < 2; ++i) {
+            const auto result = UpdateCertificates(certs, root, log);
+            UNIT_ASSERT(!result.Certificates[0].Changed);
+            UNIT_ASSERT_VALUES_EQUAL(leaf, certs[0].CertChain);
+        }
+
+        WriteTextFile(files.CertChainPath, leaf + ReadCertResource("ca.crt"));
+        UpdateCertificates(certs, root, log);
+        const auto result = UpdateCertificates(certs, root, log);
+        UNIT_ASSERT(result.Certificates[0].Changed);
+        UNIT_ASSERT_VALUES_EQUAL(
+            leaf + ReadCertResource("ca.crt"),
+            certs[0].CertChain);
     }
 
     Y_UNIT_TEST(ShouldAcceptExpiredIdentityDuringInitialLoad)
@@ -416,7 +755,7 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT_VALUES_EQUAL(validCert + expiredCert, pairs[0].CertChain);
     }
 
-    Y_UNIT_TEST(ShouldLeaveIdentityUndefinedWhenInvalidAndNoPrevious)
+    Y_UNIT_TEST(ShouldLeaveIdentityEmptyWhenInvalidAndNoPrevious)
     {
         TTempDir tempDir;
         const auto files = CreateCertificatePair(
@@ -426,12 +765,15 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             "broken certificate");
 
         TVector<TCertificatePair> certs{TCertificatePair{.Files = files}};
+        TRootCaPair root;
         TLog log;
 
-        const auto result = UpdateCertificates(certs, TRootCaPair{}, log);
-
-        UNIT_ASSERT_VALUES_EQUAL(1, result.Certificates.size());
-        UNIT_ASSERT(!result.Certificates[0].Defined());
+        for (int i = 0; i < 2; ++i) {
+            const auto result = UpdateCertificates(certs, root, log);
+            UNIT_ASSERT_VALUES_EQUAL(1, result.Certificates.size());
+            UNIT_ASSERT(!result.Certificates[0].Changed);
+        }
+        UNIT_ASSERT_VALUES_EQUAL("", certs[0].CertChain);
     }
 
     Y_UNIT_TEST(ShouldLoadCertificatePairsAndSkipEmpty)

@@ -8,6 +8,7 @@
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
 
 #include <algorithm>
 #include <ctime>
@@ -24,6 +25,11 @@ namespace {
 using TBioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
 using TX509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
 using TEvpPkeyPtr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
+using TX509StorePtr = std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)>;
+using TX509StoreCtxPtr =
+    std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)>;
+using TX509StackPtr =
+    std::unique_ptr<STACK_OF(X509), decltype(&sk_X509_free)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -150,44 +156,173 @@ bool IsEmptyPair(const TCertificateFiles& certPair)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TMaybe<TString> UpdateRootCa(
-    const TRootCaPair& root,
-    TLog& Log)
+enum class EStableRead
 {
-    if (root.RootCaPath.empty()) {
-        return Nothing();
+    // Content equals the current one.
+    Unchanged,
+    // New content has been read for the first time or differs from the
+    // content read previously.
+    Wait,
+    // New content has been read unchanged twice in a row.
+    Apply,
+};
+
+template <typename T>
+EStableRead DecideStableRead(
+    const T& current,
+    TMaybe<T>& pending,
+    const T& content)
+{
+    if (content == current) {
+        pending.Clear();
+        return EStableRead::Unchanged;
     }
 
-    auto result = NTlsUtils::ReadAndValidateRootCertificate(root.RootCaPath);
-    if (HasError(result.GetError())) {
-        STORAGE_WARN(
-            "Root certificate update is skipped: "
-            << FormatError(result.GetError()));
-
-        return root.RootCa.empty()
-            ? Nothing()
-            : TMaybe<TString>(root.RootCa);
-    }
-
-    return result.ExtractResult();
+    const bool stable = pending.Defined() && *pending == content;
+    pending = content;
+    return stable ? EStableRead::Apply : EStableRead::Wait;
 }
 
-TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityCertificate(
-    const TCertificateFiles& files)
+// Returns true if the root certificate has been replaced.
+bool UpdateRootCa(TRootCaPair& root, bool& pending, TLog& Log)
 {
-    auto identityResult = NTlsUtils::ReadAndValidateIdentityPair(files);
-    if (HasError(identityResult)) {
-        return identityResult.GetError();
+    if (root.RootCaPath.empty()) {
+        return false;
     }
 
-    const auto& pair = identityResult.GetResult().front();
-    auto validityResult =
-        NTlsUtils::ValidateIdentityCertificateValidity(pair.cert_chain());
-    if (HasError(validityResult)) {
-        return validityResult.GetError();
+    auto content = TryReadFile(root.RootCaPath);
+    if (HasError(content.GetError())) {
+        root.Pending.Clear();
+        STORAGE_WARN(
+            "Root certificate update is skipped: "
+            << FormatError(content.GetError()));
+        return false;
     }
 
-    return identityResult.ExtractResult();
+    switch (DecideStableRead(root.RootCa, root.Pending, content.GetResult())) {
+        case EStableRead::Unchanged:
+            return false;
+        case EStableRead::Wait:
+            pending = true;
+            STORAGE_INFO(
+                "New root certificate " << root.RootCaPath.Quote()
+                << ", waiting for a stable read");
+            return false;
+        case EStableRead::Apply:
+            break;
+    }
+
+    auto validity = IsValidPemCertificate(content.GetResult());
+    if (HasError(validity.GetError())) {
+        STORAGE_WARN(
+            "Root certificate update is skipped: "
+            << FormatError(validity.GetError()));
+        return false;
+    }
+
+    root.RootCa = content.ExtractResult();
+    root.Pending.Clear();
+    STORAGE_INFO(
+        "Root certificate " << root.RootCaPath.Quote() << " has been updated");
+    return true;
+}
+
+TResultOrError<void> ValidateIdentity(const TPendingIdentity& identity)
+{
+    auto keyMatchesCert = PrivateKeyAndCertificateMatch(
+        identity.PrivateKey,
+        identity.CertChain);
+    if (HasError(keyMatchesCert.GetError())) {
+        return keyMatchesCert.GetError();
+    }
+
+    auto validity = ValidateIdentityCertificateValidity(identity.CertChain);
+    if (HasError(validity.GetError())) {
+        return validity.GetError();
+    }
+
+    return ValidateIdentityCertificateChain(identity.CertChain);
+}
+
+TResultOrError<TPendingIdentity> ReadIdentity(const TCertificateFiles& files)
+{
+    auto privateKey = TryReadFile(files.PrivateKeyPath);
+    if (HasError(privateKey.GetError())) {
+        return privateKey.GetError();
+    }
+
+    auto certChain = TryReadFile(files.CertChainPath);
+    if (HasError(certChain.GetError())) {
+        return certChain.GetError();
+    }
+
+    return TPendingIdentity{
+        .PrivateKey = privateKey.ExtractResult(),
+        .CertChain = certChain.ExtractResult(),
+    };
+}
+
+TCertificateUpdate UpdateIdentity(
+    TCertificatePair& cert,
+    bool& pending,
+    TLog& Log)
+{
+    TCertificateUpdate update;
+    const auto& path = cert.Files.CertChainPath;
+
+    auto content = ReadIdentity(cert.Files);
+    if (HasError(content.GetError())) {
+        cert.Pending.Clear();
+        STORAGE_WARN(
+            "Identity certificate update is skipped for " << path.Quote()
+            << ": " << FormatError(content.GetError()));
+        return update;
+    }
+
+    const TPendingIdentity current{
+        .PrivateKey = cert.PrivateKey,
+        .CertChain = cert.CertChain,
+    };
+    switch (DecideStableRead(current, cert.Pending, content.GetResult())) {
+        case EStableRead::Unchanged:
+            return update;
+        case EStableRead::Wait:
+            pending = true;
+            STORAGE_INFO(
+                "New identity certificate " << path.Quote()
+                << ", waiting for a stable read");
+            return update;
+        case EStableRead::Apply:
+            break;
+    }
+
+    auto validity = ValidateIdentity(content.GetResult());
+    if (HasError(validity.GetError())) {
+        STORAGE_WARN(
+            "Identity certificate update is skipped for " << path.Quote()
+            << ": " << FormatError(validity.GetError()));
+        return update;
+    }
+
+    auto notAfterTs = GetCertificateNotAfterTimestampSec(
+        content.GetResult().CertChain);
+    if (HasError(notAfterTs)) {
+        STORAGE_WARN(
+            "Unable to parse certificate notAfter date for " << path.Quote()
+            << ": " << FormatError(notAfterTs.GetError()));
+    } else {
+        update.NotValidAfter = TInstant::Seconds(notAfterTs.ExtractResult());
+    }
+
+    auto identity = content.ExtractResult();
+    cert.PrivateKey = std::move(identity.PrivateKey);
+    cert.CertChain = std::move(identity.CertChain);
+    cert.Pending.Clear();
+    update.Changed = true;
+    STORAGE_INFO(
+        "Identity certificate " << path.Quote() << " has been updated"
+        << ", expires at " << update.NotValidAfter);
+    return update;
 }
 
 }   // namespace
@@ -302,6 +437,69 @@ TResultOrError<void> ValidateIdentityCertificateValidity(
                     << "Identity certificate #" << i
                     << " has expired");
         }
+    }
+
+    return {};
+}
+
+TResultOrError<void> ValidateIdentityCertificateChain(
+    TStringBuf certChainPem)
+{
+    TSslErrorQueueGuard errorGuard;
+
+    auto chainResult = ParseNonEmptyPemCertificates(
+        certChainPem,
+        "Identity certificate chain");
+    if (HasError(chainResult.GetError())) {
+        return chainResult.GetError();
+    }
+
+    const auto& chain = chainResult.GetResult();
+
+    TX509StorePtr store(X509_STORE_new(), X509_STORE_free);
+    if (!store) {
+        return MakeOpenSslError("Failed to allocate X509 store");
+    }
+    if (X509_STORE_add_cert(store.get(), chain.back().get()) != 1) {
+        return MakeOpenSslError("Failed to add trust anchor to X509 store");
+    }
+
+    // Does not own the certificates.
+    TX509StackPtr intermediates(sk_X509_new_null(), sk_X509_free);
+    if (!intermediates) {
+        return MakeOpenSslError("Failed to allocate X509 stack");
+    }
+    for (size_t i = 1; i + 1 < chain.size(); ++i) {
+        if (sk_X509_push(intermediates.get(), chain[i].get()) <= 0) {
+            return MakeOpenSslError("Failed to add certificate to X509 stack");
+        }
+    }
+
+    TX509StoreCtxPtr ctx(X509_STORE_CTX_new(), X509_STORE_CTX_free);
+    if (!ctx) {
+        return MakeOpenSslError("Failed to allocate X509 store context");
+    }
+    if (X509_STORE_CTX_init(
+            ctx.get(),
+            store.get(),
+            chain.front().get(),
+            intermediates.get()) != 1)
+    {
+        return MakeOpenSslError("Failed to init X509 store context");
+    }
+
+    // The trust anchor is not necessarily self-signed.
+    X509_STORE_CTX_set_flags(ctx.get(), X509_V_FLAG_PARTIAL_CHAIN);
+
+    if (X509_verify_cert(ctx.get()) != 1) {
+        const int error = X509_STORE_CTX_get_error(ctx.get());
+        return TErrorResponse(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "Identity certificate chain cannot be built: "
+                << X509_verify_cert_error_string(error)
+                << " (certificate #"
+                << X509_STORE_CTX_get_error_depth(ctx.get()) << ")");
     }
 
     return {};
@@ -456,57 +654,20 @@ TVector<TCertificateFiles> PrepareCertificateFilePairs(
 }
 
 TCertificatesUpdateResult UpdateCertificates(
-    const TVector<TCertificatePair>& certificates,
-    const TRootCaPair& root,
+    TVector<TCertificatePair>& certificates,
+    TRootCaPair& root,
     TLog& log)
 {
-    TLog& Log = log;
+    TCertificatesUpdateResult result;
+    result.RootCaChanged = UpdateRootCa(root, result.Pending, log);
 
-    TCertificatesUpdateResult updateResult;
-    updateResult.Certificates.resize(certificates.size());
-    updateResult.RootCa = UpdateRootCa(root, Log);
-
-    for (size_t i = 0; i < certificates.size(); ++i) {
-        const TCertificatePair& cert = certificates[i];
-        auto identityResult = ReadAndValidateIdentityCertificate(cert.Files);
-
-        if (HasError(identityResult)) {
-            STORAGE_WARN(
-                "Identity certificate update is skipped for "
-                << cert.Files.CertChainPath.Quote() << ": "
-                << FormatError(identityResult.GetError()));
-
-            if (!cert.PrivateKey.empty() && !cert.CertChain.empty()) {
-                grpc_core::PemKeyCertPairList fallback;
-                fallback.emplace_back(cert.PrivateKey, cert.CertChain);
-                updateResult.Certificates[i] = TCertificate{
-                    .CertificatesChain = std::move(fallback),
-                };
-            }
-
-            continue;
-        }
-
-        TCertificate newCert;
-        newCert.CertificatesChain = identityResult.ExtractResult();
-
-        const auto& identityPair = newCert.CertificatesChain.front();
-        auto notAfterTs =
-            NTlsUtils::GetCertificateNotAfterTimestampSec(
-                identityPair.cert_chain());
-        if (HasError(notAfterTs)) {
-            STORAGE_WARN(
-                "Unable to parse certificate notAfter date for "
-                << cert.Files.CertChainPath.Quote() << ": "
-                << FormatError(notAfterTs.GetError()));
-        } else {
-            newCert.NotValidAfter = TInstant::Seconds(notAfterTs.ExtractResult());
-        }
-
-        updateResult.Certificates[i] = std::move(newCert);
+    result.Certificates.reserve(certificates.size());
+    for (auto& cert: certificates) {
+        result.Certificates.push_back(
+            UpdateIdentity(cert, result.Pending, log));
     }
 
-    return updateResult;
+    return result;
 }
 
 }   // namespace NCloud::NTlsUtils
