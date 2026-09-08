@@ -117,7 +117,7 @@ struct TCertificateProviderTestContext
             ServerGroup,
             RootPath,
             TVector<TCertificateFiles>{ServerPair, ClientPair},
-            TDuration::Seconds(1),
+            TDuration::MilliSeconds(200),
             CreateWallClockTimer());
         UNIT_ASSERT(Provider);
         Provider->Start();
@@ -287,12 +287,12 @@ struct TManualProviderContext
             Timer);
     }
 
-    // New content is applied only after it has stayed unchanged for half of
-    // the refresh interval since it was first read.
+    // New content is applied only after it has stayed unchanged for the
+    // refresh interval since it was first read.
     void RunUntilStable() const
     {
         Scheduler->RunPending();
-        Timer->AdvanceTime(RefreshInterval / 2);
+        Timer->AdvanceTime(RefreshInterval);
         Scheduler->RunPending();
     }
 
@@ -621,7 +621,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
         // Content changed again, so it is still not stable.
         context.RotateServer("server3.key", "server3.crt");
-        context.Timer->AdvanceTime(context.RefreshInterval / 2);
+        context.Timer->AdvanceTime(context.RefreshInterval);
         context.Scheduler->RunPending();
         UNIT_ASSERT_VALUES_EQUAL(
             initial,
@@ -633,14 +633,14 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
 
-        context.Timer->AdvanceTime(context.RefreshInterval / 2);
+        context.Timer->AdvanceTime(context.RefreshInterval);
         context.Scheduler->RunPending();
         UNIT_ASSERT_VALUES_UNEQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
     }
 
-    Y_UNIT_TEST(ShouldRecheckNewContentAfterHalfInterval)
+    Y_UNIT_TEST(ShouldCheckFilesOncePerInterval)
     {
         const auto interval = TDuration::Hours(1);
         const auto tolerance = TDuration::Seconds(10);
@@ -665,17 +665,17 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         context.Scheduler->RunPending();
         assertNextDelay(interval);
 
-        // New content is re-checked after half an interval.
+        // New content does not change the schedule either.
         context.RotateServer("server3.key", "server3.crt");
         context.Scheduler->RunPending();
-        assertNextDelay(interval / 2);
+        assertNextDelay(interval);
 
-        context.Timer->AdvanceTime(interval / 2);
+        context.Timer->AdvanceTime(interval);
         context.Scheduler->RunPending();
         assertNextDelay(interval);
     }
 
-    Y_UNIT_TEST(ShouldConfirmNewContentAfterOnDemandUpdate)
+    Y_UNIT_TEST(ShouldConfirmNewContentAfterOnDemandUpdateOnNextCheck)
     {
         const auto interval = TDuration::Hours(1);
         TManualProviderContext context(interval);
@@ -696,13 +696,12 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         // The update is not complete until the new content is applied.
         UNIT_ASSERT(!future.HasValue());
 
-        // The periodic check and a confirmation after half an interval.
-        const auto delays = context.Scheduler->PendingDelays();
-        UNIT_ASSERT_VALUES_EQUAL(2, delays.size());
-        UNIT_ASSERT_C(delays[1] <= interval / 2, delays[1]);
+        // No extra check is scheduled: the next periodic one confirms the
+        // new content once it has stayed unchanged for an interval.
+        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
 
-        context.Timer->AdvanceTime(interval / 2);
-        context.Scheduler->RunPendingWithin(interval / 2);
+        context.Timer->AdvanceTime(interval);
+        context.Scheduler->RunPending();
         UNIT_ASSERT_VALUES_UNEQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
@@ -725,12 +724,12 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         context.RotateServer("server3.key", "server3.crt");
         auto first = context.Provider->UpdateCertificates();
         context.Scheduler->RunPendingWithin(TDuration::Zero());
-        UNIT_ASSERT_VALUES_EQUAL(2, context.Scheduler->PendingCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
 
         // A repeated request joins the pending one instead of reading the
         // files again right away.
         auto second = context.Provider->UpdateCertificates();
-        UNIT_ASSERT_VALUES_EQUAL(2, context.Scheduler->PendingCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
         context.Scheduler->RunPendingWithin(TDuration::Zero());
         UNIT_ASSERT_VALUES_EQUAL(
             initial,
@@ -738,8 +737,8 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT(!first.HasValue());
         UNIT_ASSERT(!second.HasValue());
 
-        context.Timer->AdvanceTime(interval / 2);
-        context.Scheduler->RunPendingWithin(interval / 2);
+        context.Timer->AdvanceTime(interval);
+        context.Scheduler->RunPending();
         UNIT_ASSERT_VALUES_UNEQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
@@ -769,11 +768,9 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
-        const auto delays = context.Scheduler->PendingDelays();
-        UNIT_ASSERT_VALUES_EQUAL(1, delays.size());
-        UNIT_ASSERT_C(delays[0] <= interval / 2, delays[0]);
+        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
 
-        context.Timer->AdvanceTime(interval / 2);
+        context.Timer->AdvanceTime(interval);
         context.Scheduler->RunPending();
         UNIT_ASSERT_VALUES_UNEQUAL(
             initial,
@@ -861,13 +858,13 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         WriteTextFile(
             context.ServerPair.PrivateKeyPath,
             ReadCertResource("server3.key"));
-        context.Timer->AdvanceTime(context.RefreshInterval / 2);
+        context.Timer->AdvanceTime(context.RefreshInterval);
         context.Scheduler->RunPending();
         UNIT_ASSERT_VALUES_EQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
 
-        context.Timer->AdvanceTime(context.RefreshInterval / 2);
+        context.Timer->AdvanceTime(context.RefreshInterval);
         context.Scheduler->RunPending();
         UNIT_ASSERT_VALUES_UNEQUAL(
             initial,
@@ -891,6 +888,50 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         WriteTextFile(context.RootPath, ReadCertResource("server2.crt"));
         context.RunUntilStable();
         UNIT_ASSERT_VALUES_UNEQUAL(initial, context.GetRootCaFingerprint());
+    }
+
+    Y_UNIT_TEST(ShouldStartWithInvalidInitialChain)
+    {
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+
+        // The chain cannot be built. It is served as is and only reported,
+        // so that the service is able to start.
+        const auto pair = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            ReadCertResource("server1.crt") + ReadCertResource("server3.crt"));
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto scheduler = std::make_shared<TManualScheduler>(timer);
+        auto rootCounters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        auto serverGroup = rootCounters->GetSubgroup("component", "server");
+
+        auto provider = CreatePeriodicCertificateProvider(
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            scheduler,
+            CreateTaskQueueStub(),
+            serverGroup,
+            rootPath,
+            TVector<TCertificateFiles>{pair},
+            TDuration::Seconds(1),
+            timer);
+        provider->Start();
+        Y_DEFER {
+            provider->Stop();
+        };
+
+        const auto expireTs = serverGroup
+            ->GetSubgroup("subsystem", "certificates")
+            ->GetSubgroup("cert", GetBaseName(pair.CertChainPath))
+            ->GetCounter("ExpireTs", false)
+            ->Val();
+        UNIT_ASSERT(expireTs > 0);
+        UNIT_ASSERT(provider->CreateSecureServerCredentials());
     }
 
     Y_UNIT_TEST(ShouldReportExpireTsCountersForStaticProvider)

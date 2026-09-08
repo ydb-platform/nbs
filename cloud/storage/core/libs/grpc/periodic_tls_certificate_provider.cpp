@@ -179,9 +179,8 @@ public:
         Y_ABORT_UNLESS(Started.load() == false);
     }
 
-    // Completes when the files have been re-read and any new content has
-    // either been applied or rejected, which may take up to half of the
-    // refresh interval, or when the provider is stopped.
+    // See ICertificateProvider. The hold time is the refresh interval,
+    // repeated calls share the same future.
     NThreading::TFuture<void> UpdateCertificates() override
     {
         NThreading::TFuture<void> future;
@@ -357,16 +356,11 @@ private:
             return;
         }
 
-        // Files are checked once per interval. New content is re-checked
-        // after half an interval, so that a change takes effect within one and
-        // a half intervals without reading unchanged files more often.
+        // Files are checked once per interval and new content must stay
+        // unchanged for an interval, so a change takes effect within two
+        // intervals.
         if (periodic) {
-            ScheduleUpdateAt(
-                Timer->Now() +
-                    (pending ? RefreshInterval / 2 : RefreshInterval),
-                true);
-        } else if (pending) {
-            ScheduleUpdateAt(Timer->Now() + RefreshInterval / 2, false);
+            ScheduleUpdateAt(Timer->Now() + RefreshInterval, true);
         }
     }
 
@@ -408,16 +402,33 @@ private:
         }
     }
 
+    // The initial load is lenient so that the service is able to start, and
+    // unchanged files are never re-validated, so this is the only place where
+    // certificates that are already invalid on disk get reported.
     void PublishInitialState()
     {
         PublishRootCaFingerprint();
         for (size_t i = 0; i < Certificates.size(); ++i) {
-            auto notAfterTs = NTlsUtils::GetCertificateNotAfterTimestampSec(
-                Certificates[i].CertChain);
+            const auto& cert = Certificates[i];
+            const auto& path = cert.Files.CertChainPath;
+
+            auto validity = NTlsUtils::ValidateIdentity({
+                .PrivateKey = cert.PrivateKey,
+                .CertChain = cert.CertChain,
+            });
+            if (HasError(validity.GetError())) {
+                STORAGE_WARN(
+                    "Identity certificate " << path.Quote()
+                    << " is loaded but not valid: "
+                    << FormatError(validity.GetError()));
+            }
+
+            auto notAfterTs =
+                NTlsUtils::GetCertificateNotAfterTimestampSec(cert.CertChain);
             if (HasError(notAfterTs)) {
                 STORAGE_WARN(
                     "Unable to parse certificate notAfter date for "
-                    << Certificates[i].Files.CertChainPath.Quote() << ": "
+                    << path.Quote() << ": "
                     << FormatError(notAfterTs.GetError()));
                 continue;
             }
@@ -427,7 +438,7 @@ private:
     }
 
     // Re-reads the certificate files. New content is applied only after it
-    // has stayed unchanged for half of the refresh interval, see TStableRead.
+    // has stayed unchanged for the refresh interval, see TStableRead.
     // The last successfully loaded content is kept if the files cannot be
     // read, parsed or validated; new content that fails these checks is
     // reported on every check until the files change. Every certificate is
@@ -436,7 +447,7 @@ private:
     bool RefreshCertificates()
     {
         const TInstant now = Timer->Now();
-        const TDuration holdTime = RefreshInterval / 2;
+        const TDuration holdTime = RefreshInterval;
 
         bool pending = false;
         bool changed = false;
