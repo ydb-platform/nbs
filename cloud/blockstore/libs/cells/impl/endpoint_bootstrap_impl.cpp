@@ -26,7 +26,9 @@ auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
 
 auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
     const TBootstrap& bootstrap,
-    const TCellHostConfig& config) -> TRdmaEndpointBootstrapFuture
+    const TCellHostConfig& config,
+    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+    -> TRdmaEndpointBootstrapFuture
 {
     NClient::TRdmaEndpointConfig rdmaEndpoint{
         .Address = config.GetFqdn(),
@@ -38,7 +40,8 @@ auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
         bootstrap.RdmaClient,
         bootstrap.TraceSerializer,
         bootstrap.RdmaTaskQueue,
-        rdmaEndpoint);
+        rdmaEndpoint,
+        std::move(handler));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

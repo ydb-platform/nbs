@@ -16,6 +16,7 @@
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -44,12 +45,24 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     TPromise<TResultOrError<IBlockStorePtr>> RdmaSetupPromise =
         NewPromise<TResultOrError<IBlockStorePtr>>();
 
+    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr RdmaHandler;
+
     TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
-        const TCellHostConfig& config) override
+        const TCellHostConfig& config,
+        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
-        Y_UNUSED(config);
+
+        RdmaHandler = std::move(handler);
+        if (RdmaHandler) {
+            // the real rdma client reports the state as soon as the endpoint
+            // is up, which is what lets the data move over
+            RdmaHandler->HandleConnected(
+                config.GetFqdn(),
+                config.GetRdmaPort());
+        }
+
         return RdmaSetupPromise.GetFuture();
     }
 };
@@ -150,6 +163,10 @@ struct TTestEnv
     std::shared_ptr<TTestBlockStore> RdmaService =
         std::make_shared<TTestBlockStore>();
 
+    std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+    std::shared_ptr<TTestScheduler> Scheduler =
+        std::make_shared<TTestScheduler>(TInstant::Zero());
+
     TCellConfigPtr CellConfig;
     TCellHostPoolPtr Pool;
     TBootstrap Bootstrap;
@@ -157,22 +174,23 @@ struct TTestEnv
     explicit TTestEnv(
         NProto::ECellDataTransport transport =
             NProto::CELL_DATA_TRANSPORT_GRPC,
-        bool grpcDataFallback = false)
+        bool grpcDataFallback = false,
+        ui32 rdmaSettleTimeMs = 0)
     {
         NProto::TCellConfig proto;
         proto.SetCellId("cell-1");
         proto.SetGrpcPort(9766);
         proto.SetTransport(transport);
         proto.SetGrpcDataFallbackEnabled(grpcDataFallback);
+        proto.SetRdmaSettleTimeMs(rdmaSettleTimeMs);
         proto.AddHosts()->SetFqdn("host-a");
         CellConfig = std::make_shared<TCellConfig>(std::move(proto));
 
         Bootstrap.EndpointsSetup = EndpointsSetup;
         Bootstrap.GrpcClient = GrpcClient;
         Bootstrap.Logging = CreateLoggingService("console");
-        Bootstrap.Timer = std::make_shared<TTestTimer>();
-        Bootstrap.Scheduler =
-            std::make_shared<TTestScheduler>(TInstant::Zero());
+        Bootstrap.Timer = Timer;
+        Bootstrap.Scheduler = Scheduler;
 
         Pool = std::make_shared<TCellHostPool>(CellConfig, Bootstrap);
     }
@@ -307,6 +325,67 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
 
         TTestEnv::Read(result.GetResult());
         UNIT_ASSERT_VALUES_EQUAL(1, env.RdmaService->RequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldMoveDataBackToGrpcWhenRdmaBreaks)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_RDMA, true);
+
+        auto connection = env.Connect("host-a");
+
+        env.EndpointsSetup->RdmaSetupPromise.SetValue(
+            TResultOrError<IBlockStorePtr>(env.RdmaService));
+
+        UNIT_ASSERT(env.EndpointsSetup->RdmaHandler);
+
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.RdmaService->RequestCount);
+
+        env.EndpointsSetup->RdmaHandler->HandleDisconnected("host-a", 10020);
+
+        const auto grpcRequests = env.GrpcClient->Service->RequestCount;
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.RdmaService->RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            grpcRequests + 1,
+            env.GrpcClient->Service->RequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldHoldDataOnGrpcUntilRdmaSettles)
+    {
+        // the settle time has to travel from the proto all the way into the
+        // switcher, so drive it through a real connection
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_RDMA, true, 10000);
+
+        auto connection = env.Connect("host-a");
+
+        env.EndpointsSetup->RdmaSetupPromise.SetValue(
+            TResultOrError<IBlockStorePtr>(env.RdmaService));
+
+        UNIT_ASSERT(env.EndpointsSetup->RdmaHandler);
+
+        // the first connect moves the data over at once, so make the link drop
+        // and come back - only then does the settle time apply
+        env.EndpointsSetup->RdmaHandler->HandleDisconnected("host-a", 10020);
+        env.EndpointsSetup->RdmaHandler->HandleConnected("host-a", 10020);
+
+        auto grpcRequests = env.GrpcClient->Service->RequestCount;
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.RdmaService->RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            grpcRequests + 1,
+            env.GrpcClient->Service->RequestCount);
+
+        env.Timer->AdvanceTime(TDuration::Seconds(10));
+        env.Scheduler->AdvanceTime(TDuration::Seconds(10));
+        env.Scheduler->RunAllScheduledTasks();
+
+        grpcRequests = env.GrpcClient->Service->RequestCount;
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.RdmaService->RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            grpcRequests,
+            env.GrpcClient->Service->RequestCount);
     }
 }
 

@@ -953,7 +953,8 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
     NRdma::IClientPtr client,
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
-    const TRdmaEndpointConfig& config)
+    const TRdmaEndpointConfig& config,
+    NRdma::IClientEndpointHandlerPtr handler)
 {
     auto endpoint = std::make_shared<TRdmaDataEndpoint>(
         std::move(logging),
@@ -961,7 +962,10 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
         std::move(taskQueue),
         client->IsAlignedDataEnabled());
 
-    auto future = client->StartEndpoint(config.Address, config.Port);
+    auto future = client->StartEndpoint(
+        config.Address,
+        config.Port,
+        std::move(handler));
     return future.Apply([endpoint = std::move(endpoint)] (const auto& future) mutable {
         auto result = SafeExecute<TResultOrError<IBlockStorePtr>>(
             [&] {

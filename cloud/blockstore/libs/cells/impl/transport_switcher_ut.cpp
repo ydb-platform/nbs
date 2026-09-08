@@ -64,6 +64,9 @@ struct TTestEnv
 
     ui32 FactoryCalls = 0;
 
+    TDuration SettleTime = TDuration::Seconds(10);
+    ITransportSwitcherPtr Switcher;
+
     // moves both clocks forward and lets everything due by now run
     void AdvanceTime(TDuration duration)
     {
@@ -74,8 +77,9 @@ struct TTestEnv
 
     void StartSwitching(TEndpointFactory factory)
     {
-        StartTransportSwitching(
+        Switcher = StartTransportSwitching(
             Router,
+            Initial,   // the endpoint the router starts on
             std::move(factory),
             Timer,
             Scheduler,
@@ -84,6 +88,7 @@ struct TTestEnv
             TTransportSwitcherConfig{
                 .InitialRetryDelay = TDuration::Seconds(1),
                 .MaxRetryDelay = TDuration::Seconds(4),
+                .SettleTime = SettleTime,
             });
     }
 
@@ -94,8 +99,10 @@ struct TTestEnv
 
     TEndpointFactory FailsThenSucceeds(ui32 failures)
     {
-        return [this, failures]
+        return [this, failures](
+                   NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
         {
+            Y_UNUSED(handler);
             ++FactoryCalls;
 
             if (FactoryCalls <= failures) {
@@ -117,7 +124,10 @@ Y_UNIT_TEST_SUITE(TTransportSwitcherTest)
     Y_UNIT_TEST(ShouldInstallEndpointIntoRouterWhenItIsReady)
     {
         TTestEnv env;
+        env.SettleTime = TDuration::Zero();
         env.StartSwitching(env.AlwaysSucceeds());
+
+        env.Switcher->GetEndpointHandler()->HandleConnected("test-host", 10020);
 
         Read(env.Router);
 
@@ -129,6 +139,7 @@ Y_UNIT_TEST_SUITE(TTransportSwitcherTest)
     Y_UNIT_TEST(ShouldRetryAfterFailedAttempt)
     {
         TTestEnv env;
+        env.SettleTime = TDuration::Zero();
         env.StartSwitching(env.FailsThenSucceeds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(1, env.FactoryCalls);
@@ -138,6 +149,8 @@ Y_UNIT_TEST_SUITE(TTransportSwitcherTest)
 
         env.AdvanceTime(TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(2, env.FactoryCalls);
+
+        env.Switcher->GetEndpointHandler()->HandleConnected("test-host", 10020);
 
         Read(env.Router);
         UNIT_ASSERT_VALUES_EQUAL(1, env.Better->ReadCount);
@@ -187,10 +200,15 @@ Y_UNIT_TEST_SUITE(TTransportSwitcherTest)
 
         TTestEnv env;
         env.StartSwitching(
-            [sentinel = std::move(sentinel), promise]
-            { return promise.GetFuture(); });
+            [sentinel = std::move(sentinel), promise](
+                NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+            {
+                Y_UNUSED(handler);
+                return promise.GetFuture();
+            });
 
         env.Router.reset();
+        env.Switcher.reset();
 
         UNIT_ASSERT_C(
             weakSentinel.lock(),
@@ -215,6 +233,165 @@ Y_UNIT_TEST_SUITE(TTransportSwitcherTest)
 
         env.AdvanceTime(TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(1, env.FactoryCalls);
+    }
+
+    Y_UNIT_TEST(ShouldReturnToRdmaOnlyAfterItSettles)
+    {
+        TTestEnv env;
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        auto handler = env.Switcher->GetEndpointHandler();
+
+        // the first connect moves the data over at once; only a link that has
+        // dropped once has to serve out the wait
+        handler->HandleConnected("test-host", 10020);
+        handler->HandleDisconnected("test-host", 10020);
+        handler->HandleConnected("test-host", 10020);
+
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Initial->ReadCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Better->ReadCount);
+
+        env.AdvanceTime(TDuration::Seconds(10));
+
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Better->ReadCount);
+    }
+
+    Y_UNIT_TEST(ShouldSwitchToRdmaAtOnceWhenSettleTimeIsZero)
+    {
+        TTestEnv env;
+        env.SettleTime = TDuration::Zero();
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        env.Switcher->GetEndpointHandler()->HandleConnected("test-host", 10020);
+
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Better->ReadCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotSwitchWhenRdmaBreaksWhileSettling)
+    {
+        TTestEnv env;
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        auto handler = env.Switcher->GetEndpointHandler();
+        handler->HandleConnected("test-host", 10020);
+
+        env.AdvanceTime(TDuration::Seconds(5));
+        handler->HandleDisconnected("test-host", 10020);
+        env.AdvanceTime(TDuration::Seconds(10));
+
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Initial->ReadCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Better->ReadCount);
+    }
+
+    Y_UNIT_TEST(ShouldFallBackToGrpcWhenRdmaBreaks)
+    {
+        TTestEnv env;
+        env.SettleTime = TDuration::Zero();
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        auto handler = env.Switcher->GetEndpointHandler();
+        handler->HandleConnected("test-host", 10020);
+        handler->HandleDisconnected("test-host", 10020);
+
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Initial->ReadCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Better->ReadCount);
+    }
+
+    Y_UNIT_TEST(ShouldReturnToRdmaAfterItComesBack)
+    {
+        TTestEnv env;
+        env.SettleTime = TDuration::Zero();
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        auto handler = env.Switcher->GetEndpointHandler();
+        handler->HandleConnected("test-host", 10020);
+        handler->HandleDisconnected("test-host", 10020);
+        handler->HandleConnected("test-host", 10020);
+
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Better->ReadCount);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreUnavailable)
+    {
+        TTestEnv env;
+        env.SettleTime = TDuration::Zero();
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        auto handler = env.Switcher->GetEndpointHandler();
+        handler->HandleConnected("test-host", 10020);
+        handler->HandleUnavailable("test-host", 10020);
+
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Better->ReadCount);
+    }
+
+    Y_UNIT_TEST(ShouldTolerateRepeatedConnected)
+    {
+        TTestEnv env;
+        env.SettleTime = TDuration::Zero();
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        auto handler = env.Switcher->GetEndpointHandler();
+        handler->HandleConnected("test-host", 10020);
+        handler->HandleConnected("test-host", 10020);
+
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Better->ReadCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotSettleOntoAReleasedRouter)
+    {
+        TTestEnv env;
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        env.Switcher->GetEndpointHandler()->HandleConnected("test-host", 10020);
+        env.Router.reset();
+
+        // the settle timer must find the router gone and do nothing
+        env.AdvanceTime(TDuration::Seconds(10));
+    }
+
+    Y_UNIT_TEST(ShouldSwitchToRdmaAtOnceOnTheFirstConnect)
+    {
+        TTestEnv env;
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        env.Switcher->GetEndpointHandler()->HandleConnected("test-host", 10020);
+
+        // the settle time guards a return to a link that has already proved it
+        // can drop; a link that has never dropped has nothing to prove
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Initial->ReadCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Better->ReadCount);
+    }
+
+    Y_UNIT_TEST(ShouldRestartTheSettleTimeOnReconnect)
+    {
+        TTestEnv env;
+        env.StartSwitching(env.AlwaysSucceeds());
+
+        auto handler = env.Switcher->GetEndpointHandler();
+        handler->HandleConnected("test-host", 10020);
+
+        env.AdvanceTime(TDuration::Seconds(5));
+        handler->HandleDisconnected("test-host", 10020);
+        handler->HandleConnected("test-host", 10020);
+
+        // the first timer is due now, but its generation is stale
+        env.AdvanceTime(TDuration::Seconds(5));
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Initial->ReadCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Better->ReadCount);
+
+        env.AdvanceTime(TDuration::Seconds(5));
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Better->ReadCount);
     }
 }
 

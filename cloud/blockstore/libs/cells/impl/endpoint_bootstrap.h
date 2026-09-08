@@ -27,9 +27,12 @@ struct ICellHostEndpointBootstrap
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) = 0;
 
+    // The handler is how the rdma client reports the endpoint state back to
+    // whoever asked for the endpoint; it may be empty when nobody listens.
     virtual TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
-        const TCellHostConfig& config) = 0;
+        const TCellHostConfig& config,
+        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) = 0;
 
     virtual ~ICellHostEndpointBootstrap() = default;
 };

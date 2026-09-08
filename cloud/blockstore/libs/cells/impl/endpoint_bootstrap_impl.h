@@ -24,7 +24,9 @@ struct TCellCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
 
     auto SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
-        const TCellHostConfig& config) -> TRdmaEndpointBootstrapFuture override;
+        const TCellHostConfig& config,
+        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+        -> TRdmaEndpointBootstrapFuture override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

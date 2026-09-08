@@ -25,6 +25,16 @@ using TCellConnectionPtr = std::shared_ptr<TCellConnection>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The data endpoint together with the switcher that decides what it points at.
+// The switcher is empty for transports that never switch.
+struct TSwitchingDataEndpoint
+{
+    IBlockStorePtr Router;
+    ITransportSwitcherPtr Switcher;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Wraps the per-client control service so that mount responses can be read on
 // their way back. Holds the connection alive: the endpoint above may release
 // its handle while requests are still in flight.
@@ -71,6 +81,9 @@ private:
 
     const IBlockStorePtr ControlService;
     const IBlockStorePtr DataEndpoint;
+    // keeps switching alive for as long as the connection is: the endpoint
+    // holds the handler only weakly
+    const ITransportSwitcherPtr Switcher;
 
 public:
     TCellConnection(
@@ -78,12 +91,14 @@ public:
             TCellHostConfig hostConfig,
             ICellConnectionObserverPtr observer,
             IBlockStorePtr controlService,
-            IBlockStorePtr dataEndpoint)
+            IBlockStorePtr dataEndpoint,
+            ITransportSwitcherPtr switcher)
         : Pool(std::move(pool))
         , HostConfig(std::move(hostConfig))
         , Observer(std::move(observer))
         , ControlService(std::move(controlService))
         , DataEndpoint(std::move(dataEndpoint))
+        , Switcher(std::move(switcher))
     {}
 
     ~TCellConnection() override
@@ -105,9 +120,11 @@ public:
             shared_from_this());
     }
 
+    // Built on demand for the same reason as GetService() above: the storage
+    // holds the connection, so caching it here would close a reference cycle.
     IStoragePtr GetStorage() override
     {
-        return CreateRemoteStorage(DataEndpoint);
+        return CreateRemoteStorage(DataEndpoint, shared_from_this());
     }
 
     void OnMountResponse(
@@ -172,32 +189,40 @@ IBlockStorePtr CreateGrpcDataEndpoint(
 
 // Serves data over gRPC right away and switches over to RDMA as soon as it is
 // up, so that setting up RDMA does not hold the connection back.
-IBlockStorePtr CreateSwitchingDataEndpoint(
+TSwitchingDataEndpoint CreateSwitchingDataEndpoint(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
     const IBlockStorePtr& controlService)
 {
-    auto router = CreateEndpointRouter(
-        CreateGrpcDataEndpoint(bootstrap, hostConfig, controlService));
+    auto fallback =
+        CreateGrpcDataEndpoint(bootstrap, hostConfig, controlService);
+    auto router = CreateEndpointRouter(fallback);
 
-    StartTransportSwitching(
+    // the switcher has to exist before the factory runs: the factory hands the
+    // handler it is given down to the rdma client
+    auto switcher = StartTransportSwitching(
         router,
-        [bootstrap, hostConfig]
+        fallback,
+        [bootstrap, hostConfig](
+            NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
         {
             return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
                 bootstrap,
-                hostConfig);
+                hostConfig,
+                std::move(handler));
         },
         bootstrap.Timer,
         bootstrap.Scheduler,
         bootstrap.Logging,
         hostConfig.GetFqdn(),
-        TTransportSwitcherConfig{});
+        TTransportSwitcherConfig{
+            .SettleTime = hostConfig.GetRdmaSettleTime(),
+        });
 
-    return router;
+    return {std::move(router), std::move(switcher)};
 }
 
-NThreading::TFuture<TResultOrError<IBlockStorePtr>> SetupDataEndpoint(
+NThreading::TFuture<TResultOrError<TSwitchingDataEndpoint>> SetupDataEndpoint(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
     const IBlockStorePtr& controlService)
@@ -205,23 +230,44 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> SetupDataEndpoint(
     switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_RDMA:
             if (!hostConfig.GetGrpcDataFallbackEnabled()) {
-                return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
+                // nothing switches here, so the rdma client has nobody to
+                // report the endpoint state to
+                auto future = bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
                     bootstrap,
-                    hostConfig);
+                    hostConfig,
+                    nullptr);
+
+                using TResult = TResultOrError<TSwitchingDataEndpoint>;
+                return future.Apply(
+                    [](const auto& f) -> TResult
+                    {
+                        const auto& result = f.GetValue();
+                        if (HasError(result)) {
+                            return result.GetError();
+                        }
+                        return TSwitchingDataEndpoint{
+                            result.GetResult(),
+                            nullptr};
+                    });
             }
 
-            return MakeFuture(TResultOrError<IBlockStorePtr>(
+            return MakeFuture(TResultOrError<TSwitchingDataEndpoint>(
                 CreateSwitchingDataEndpoint(
                     bootstrap,
                     hostConfig,
                     controlService)));
 
         case NProto::CELL_DATA_TRANSPORT_GRPC:
-            return MakeFuture(TResultOrError<IBlockStorePtr>(
-                CreateGrpcDataEndpoint(bootstrap, hostConfig, controlService)));
+            return MakeFuture(TResultOrError<TSwitchingDataEndpoint>(
+                TSwitchingDataEndpoint{
+                    CreateGrpcDataEndpoint(
+                        bootstrap,
+                        hostConfig,
+                        controlService),
+                    nullptr}));
 
         default:
-            return MakeFuture(TResultOrError<IBlockStorePtr>(MakeError(
+            return MakeFuture(TResultOrError<TSwitchingDataEndpoint>(MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "Unsupported cell data transport "
@@ -281,13 +327,15 @@ TCellConnectionFuture CreateCellConnection(
                             return result.GetError();
                         }
 
+                        const auto& endpoint = result.GetResult();
                         return ICellConnectionPtr(
                             std::make_shared<TCellConnection>(
                                 std::move(pool),
                                 std::move(hostConfig),
                                 std::move(observer),
                                 std::move(controlService),
-                                result.GetResult()));
+                                endpoint.Router,
+                                endpoint.Switcher));
                     });
         });
 }
