@@ -21,35 +21,55 @@ struct THandleSlot
 
 static_assert(sizeof(THandleSlot) <= HandleSlotSize);
 
+constexpr ui64 NodeHandlesSlotSize = 16;
+
+struct TNodeHandlesSlot
+{
+    ui64 NodeId;
+    ui64 HandleCount;
+};
+
+static_assert(sizeof(TNodeHandlesSlot) <= NodeHandlesSlotSize);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class THandleTable
 {
 private:
-    static constexpr ui64 SlotsPerPage = 256;
-    static_assert(SlotsPerPage * HandleSlotSize <= PageSize);
+    static constexpr ui64 HandleSlotsPerPage = 256;
+    static_assert(HandleSlotsPerPage * HandleSlotSize <= PageSize);
+    static constexpr ui64 NodeHandlesSlotsPerPage = 256;
+    static_assert(NodeHandlesSlotsPerPage * NodeHandlesSlotSize <= PageSize);
 
-    using THt = TPersistentHashTable<ui64, THandleSlot>;
-    std::unique_ptr<THt> Slots;
+    using THandles = TPersistentHashTable<ui64, THandleSlot>;
+    std::unique_ptr<THandles> Handles;
+    using TNodeId2HandleCount = TPersistentHashTable<ui64, TNodeHandlesSlot>;
+    std::unique_ptr<TNodeId2HandleCount> NodeId2HandleCount;
 
 public:
-    ui64 Init(ui64 handlesPerGroup, ui64 firstPageNo, IPageStorePtr pageStore);
+    ui64 Init(
+        ui64 nodesPerGroup,
+        ui64 handlesPerGroup,
+        ui64 firstPageNo,
+        IPageStorePtr pageStore);
 
     [[nodiscard]] ui64 GetSlotCount() const
     {
-        return Slots->GetSlotCount();
+        return Handles->GetSlotCount() + NodeId2HandleCount->GetSlotCount();
     }
 
     NProto::TError AllocateHandle(ui64* handle) const;
 
-    NProto::TError Put(THandleSlot v, TWriteContext& writeContext);
+    NProto::TError Put(THandleSlot handle, TWriteContext& writeContext);
 
     NProto::TError Delete(
         ui64 handle,
         TWriteContext& writeContext,
-        ui64* nodeId);
+        TNodeHandlesSlot* nodeHandles);
 
-    NProto::TError Get(ui64 handle, ui64* nodeId) const;
+    NProto::TError Get(ui64 handle, TNodeHandlesSlot* nodeHandles) const;
+    NProto::TError GetNodeId(ui64 handle, ui64* nodeId) const;
+    NProto::TError GetNodeHandleCount(ui64 nodeId, ui64* handleCount) const;
 
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const;

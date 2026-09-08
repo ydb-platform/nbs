@@ -298,7 +298,7 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNodeAttr().GetType());
         EXPECT_EQ(expectedMode, response.GetNodeAttr().GetMode());
-        EXPECT_EQ(2U, response.GetNodeAttr().GetLinks());
+        EXPECT_EQ(1U, response.GetNodeAttr().GetLinks());
         nodeId = response.GetNodeAttr().GetId();
         handle1 = response.GetHandle();
     }
@@ -317,7 +317,7 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNode().GetType());
         EXPECT_EQ(expectedMode, response.GetNode().GetMode());
-        EXPECT_EQ(2U, response.GetNode().GetLinks());
+        EXPECT_EQ(1U, response.GetNode().GetLinks());
     }
 
     ui64 handle2 = 0;
@@ -340,7 +340,12 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNodeAttr().GetType());
         EXPECT_EQ(expectedMode, response.GetNodeAttr().GetMode());
-        EXPECT_EQ(3U, response.GetNodeAttr().GetLinks());
+
+        //
+        // Links still equal to 1, handles are tracked separately.
+        //
+
+        EXPECT_EQ(1U, response.GetNodeAttr().GetLinks());
         handle2 = response.GetHandle();
         EXPECT_NE(handle2, handle1);
     }
@@ -359,7 +364,12 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNode().GetType());
         EXPECT_EQ(expectedMode, response.GetNode().GetMode());
-        EXPECT_EQ(3U, response.GetNode().GetLinks());
+
+        //
+        // Links still equal to 1, handles are tracked separately.
+        //
+
+        EXPECT_EQ(1U, response.GetNode().GetLinks());
     }
 
     {
@@ -386,7 +396,12 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNode().GetType());
         EXPECT_EQ(expectedMode, response.GetNode().GetMode());
-        EXPECT_EQ(2U, response.GetNode().GetLinks());
+
+        //
+        // Links equal to 0, the node is alive because there're open handles.
+        //
+
+        EXPECT_EQ(0U, response.GetNode().GetLinks());
     }
 
     {
@@ -412,7 +427,12 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNode().GetType());
         EXPECT_EQ(expectedMode, response.GetNode().GetMode());
-        EXPECT_EQ(1U, response.GetNode().GetLinks());
+
+        //
+        // Links equal to 0, the node is alive because there're open handles.
+        //
+
+        EXPECT_EQ(0U, response.GetNode().GetLinks());
     }
 
     {

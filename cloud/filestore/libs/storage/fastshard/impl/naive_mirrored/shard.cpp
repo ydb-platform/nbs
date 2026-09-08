@@ -410,7 +410,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid, ui32 links)
+auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid)
 {
     ui64 now = MicroSeconds();
 
@@ -424,7 +424,7 @@ auto CreateAttrs(ui64 id, ui32 mode, ui64 size, ui64 uid, ui64 gid, ui32 links)
     attrs.SetSize(size);
     attrs.SetUid(uid);
     attrs.SetGid(gid);
-    attrs.SetLinks(links);
+    attrs.SetLinks(1);
 
     return attrs;
 }
@@ -626,8 +626,11 @@ public:
         SILK_INFO("handle table offset=%lu", handleTableOffset);
         const ui64 handlesPerFile = 10;
         const ui64 handlesPerGroup = handlesPerFile * Config.GetNodesPerGroup();
-        const ui64 handleTablePageCount =
-            Handles.Init(handlesPerGroup, firstPageNo, PageStore);
+        const ui64 handleTablePageCount = Handles.Init(
+            Config.GetNodesPerGroup(),
+            handlesPerGroup,
+            firstPageNo,
+            PageStore);
         firstPageNo += handleTablePageCount;
 
         const ui64 pageIndexOffset = firstPageNo * PageSize;
@@ -943,7 +946,6 @@ public:
         ui32 mode,
         ui64 uid,
         ui64 gid,
-        ui32 links,
         TWriteContext& writeContext,
         NProto::TNodeAttr* attr)
     {
@@ -958,7 +960,7 @@ public:
         }
 
         nodeId = ShardedId(nodeId, ShardNo);
-        *attr = CreateAttrs(nodeId, mode, 0 /* size */, uid, gid, links);
+        *attr = CreateAttrs(nodeId, mode, 0 /* size */, uid, gid);
 
         error = Nodes.PutNode(*attr, writeContext);
         if (HasError(error)) {
@@ -1025,7 +1027,6 @@ public:
                 request.GetFile().GetMode(),
                 request.GetUid(),
                 request.GetGid(),
-                1 /* links */,
                 writeContext,
                 &attr);
         }
@@ -1152,7 +1153,20 @@ public:
             return error;
         }
 
-        if (slot.Links > 1) {
+        ui64 handleCount = 0;
+        if (slot.Links == 1) {
+            error = Handles.GetNodeHandleCount(nodeId, &handleCount);
+            if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "[%s] UnrefNode::Handles.GetNodeHandleCount error=%s",
+                    lc.Describe().c_str(),
+                    FormatError(error).c_str());
+                return error;
+            }
+        }
+
+        if (slot.Links > 1 || handleCount > 0) {
             slot.Links -= 1;
             attr.SetLinks(slot.Links);
             error = Nodes.UpdateNode(slot, slotNo, writeContext);
@@ -1290,10 +1304,7 @@ public:
         ui64 nodeId = request.GetNodeId();
         NProto::TNodeAttr attr;
         if (request.GetName().empty()) {
-            TNodeTableSlot slot{};
-            ui64 slotNo = 0;
-            auto error =
-                Nodes.GetNode(nodeId, writeContext, &slot, &slotNo, &attr);
+            auto error = Nodes.GetNode(nodeId, &attr);
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
@@ -1301,18 +1312,6 @@ public:
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
-            } else {
-                slot.Links += 1;
-                attr.SetLinks(slot.Links);
-                error = Nodes.UpdateNode(slot, slotNo, writeContext);
-                if (HasError(error)) {
-                    SILK_LOG(
-                        LogLevel(error),
-                        "[%s] CreateHandle::Nodes.UpdateNode error=%s",
-                        lc.Describe().c_str(),
-                        FormatError(error).c_str());
-                    *response.MutableError() = std::move(error);
-                }
             }
         } else {
             auto error = Names.Get(request.GetName(), &nodeId);
@@ -1324,7 +1323,6 @@ public:
                         request.GetMode(),
                         request.GetUid(),
                         request.GetGid(),
-                        2 /* links */,
                         writeContext,
                         &attr);
                     if (HasError(error)) {
@@ -1354,10 +1352,7 @@ public:
                     ErrorAlreadyExists(request.GetName());
             } else {
                 lc.NodeId = nodeId;
-                TNodeTableSlot slot{};
-                ui64 slotNo = 0;
-                auto error =
-                    Nodes.GetNode(nodeId, writeContext, &slot, &slotNo, &attr);
+                auto error = Nodes.GetNode(nodeId, &attr);
                 if (HasError(error)) {
                     SILK_LOG(
                         LogLevel(error),
@@ -1365,18 +1360,6 @@ public:
                         lc.Describe().c_str(),
                         FormatError(error).c_str());
                     *response.MutableError() = std::move(error);
-                } else {
-                    slot.Links += 1;
-                    attr.SetLinks(slot.Links);
-                    error = Nodes.UpdateNode(slot, slotNo, writeContext);
-                    if (HasError(error)) {
-                        SILK_LOG(
-                            LogLevel(error),
-                            "[%s] CreateHandle::Nodes.UpdateNode error=%s",
-                            lc.Describe().c_str(),
-                            FormatError(error).c_str());
-                        *response.MutableError() = std::move(error);
-                    }
                 }
             }
         }
@@ -1461,9 +1444,9 @@ public:
             std::lock_guard g(Mutex);
             wcg.Init();
 
-            ui64 nodeId = 0;
+            TNodeHandlesSlot nodeHandles{};
             auto error =
-                Handles.Delete(request.GetHandle(), writeContext, &nodeId);
+                Handles.Delete(request.GetHandle(), writeContext, &nodeHandles);
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
@@ -1471,17 +1454,35 @@ public:
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
-            } else {
-                lc.NodeId = nodeId;
+            } else if (nodeHandles.HandleCount == 0) {
+                lc.NodeId = nodeHandles.NodeId;
 
-                error = UnrefNode(lc, nodeId, writeContext);
+                TNodeTableSlot slot{};
+                ui64 slotNo = 0;
+                NProto::TNodeAttr attr;
+                auto error = Nodes.GetNode(
+                    nodeHandles.NodeId,
+                    writeContext,
+                    &slot,
+                    &slotNo,
+                    &attr);
                 if (HasError(error)) {
                     SILK_LOG(
                         LogLevel(error),
-                        "[%s] DestroyHandle::UnrefNode error=%s",
+                        "[%s] DestroyHandle::Nodes.GetNode error=%s",
                         lc.Describe().c_str(),
                         FormatError(error).c_str());
                     *response.MutableError() = std::move(error);
+                } else if (slot.Links == 0) {
+                    error = DestroyNode(lc, nodeHandles.NodeId, writeContext);
+                    if (HasError(error)) {
+                        SILK_LOG(
+                            LogLevel(error),
+                            "[%s] DestroyHandle::DestroyNode error=%s",
+                            lc.Describe().c_str(),
+                            FormatError(error).c_str());
+                        *response.MutableError() = std::move(error);
+                    }
                 }
             }
         }
@@ -1531,7 +1532,7 @@ public:
         std::unique_lock l(Mutex);
 
         ui64 nodeId = 0;
-        auto error = Handles.Get(request.GetHandle(), &nodeId);
+        auto error = Handles.GetNodeId(request.GetHandle(), &nodeId);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1842,7 +1843,7 @@ public:
         std::lock_guard l(Mutex);
 
         ui64 nodeId = 0;
-        auto error = Handles.Get(request.GetHandle(), &nodeId);
+        auto error = Handles.GetNodeId(request.GetHandle(), &nodeId);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
