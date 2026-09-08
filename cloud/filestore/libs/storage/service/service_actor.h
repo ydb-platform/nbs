@@ -183,6 +183,10 @@ private:
         const NActors::TActorContext& ctx,
         const TEvService::TEvRenameNodeRequest::TPtr& ev,
         const TSessionInfo* session);
+    bool TryHandleControlNamespaceUnlinkNode(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvUnlinkNodeRequest::TPtr& ev,
+        const TSessionInfo* session);
     bool TryHandleControlNamespaceGetNodeXAttr(
         const NActors::TActorContext& ctx,
         const TEvService::TEvGetNodeXAttrRequest::TPtr& ev,

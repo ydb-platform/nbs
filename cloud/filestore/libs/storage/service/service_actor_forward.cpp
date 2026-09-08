@@ -410,4 +410,12 @@ TStorageServiceActor::ForwardRequestToShard<TEvService::TRenameNodeMethod>(
     ui64 entityId,
     TSessionInfo* session);
 
+template void
+TStorageServiceActor::ForwardRequestToShard<TEvService::TUnlinkNodeMethod>(
+    const TActorContext& ctx,
+    const TEvService::TUnlinkNodeMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
+    ui64 entityId,
+    TSessionInfo* session);
+
 }   // namespace NCloud::NFileStore::NStorage

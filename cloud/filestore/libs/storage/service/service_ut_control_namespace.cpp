@@ -241,6 +241,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceControlNamespaceTest)
         auto reply = Service->RecvListNodesResponse();
         UNIT_ASSERT_C(SUCCEEDED(reply->GetStatus()), reply->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(0u, reply->Record.NamesSize());
+
+        auto fsIdResponse =
+            Service->AssertListNodesFailed(headers, FsId, ControlFsIdFileIno);
+        UNIT_ASSERT_VALUES_EQUAL(
+            (ui32)E_FS_NOTDIR,
+            fsIdResponse->GetError().GetCode());
     }
 
     Y_UNIT_TEST_F(

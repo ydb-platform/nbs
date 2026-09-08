@@ -345,13 +345,19 @@ bool TStorageServiceActor::TryHandleControlNamespaceListNodes(
     const TSessionInfo* session)
 {
     auto* msg = ev->Get();
+    const auto entry = ClassifyControlNamespaceEntry(msg->Record.GetNodeId());
 
     if (StorageConfig->GetControlNamespaceDirName().empty() ||
-        Y_LIKELY(
-            ClassifyControlNamespaceEntry(msg->Record.GetNodeId()) !=
-            EControlNamespaceEntry::ControlDir))
+        Y_LIKELY(entry == EControlNamespaceEntry::None))
     {
         return false;
+    }
+
+    if (entry == EControlNamespaceEntry::FsId) {
+        auto response = std::make_unique<TEvService::TEvListNodesResponse>(
+            ErrorIsNotDirectory(ControlFsIdFileIno));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return true;
     }
 
     auto response = std::make_unique<TEvService::TEvListNodesResponse>();
@@ -396,6 +402,35 @@ bool TStorageServiceActor::TryHandleControlNamespaceRenameNode(
     }
 
     auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(
+        ControlNamespaceReadOnlyError());
+    NCloud::Reply(ctx, *ev, std::move(response));
+    return true;
+}
+
+bool TStorageServiceActor::TryHandleControlNamespaceUnlinkNode(
+    const TActorContext& ctx,
+    const TEvService::TEvUnlinkNodeRequest::TPtr& ev,
+    const TSessionInfo* session)
+{
+    Y_UNUSED(session);
+    auto* msg = ev->Get();
+    const auto& controlNamespaceDirName =
+        StorageConfig->GetControlNamespaceDirName();
+
+    if (controlNamespaceDirName.empty()) {
+        return false;
+    }
+
+    const auto entry = ClassifyControlNamespaceEntry(
+        msg->Record.GetNodeId(),
+        msg->Record.GetName(),
+        controlNamespaceDirName);
+
+    if (Y_LIKELY(entry == EControlNamespaceEntry::None)) {
+        return false;
+    }
+
+    auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>(
         ControlNamespaceReadOnlyError());
     NCloud::Reply(ctx, *ev, std::move(response));
     return true;
