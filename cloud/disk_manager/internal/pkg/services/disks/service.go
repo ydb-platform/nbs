@@ -44,6 +44,8 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
 	case disk_manager.DiskKind_DISK_KIND_HDD_LOCAL:
 		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
+	case disk_manager.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP:
+		return types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP, nil
 	default:
 		return 0, common.NewInvalidArgumentError(
 			"unknown disk kind %v",
@@ -273,6 +275,12 @@ func (s *service) prepareCreateDiskParams(
 		}
 	}
 
+	if common.IsSsdDirectMirror3Of5GroupDiskKind(kind) && len(req.StoragePoolName) == 0 {
+		return nil, common.NewInvalidArgumentError(
+			"storage_pool_name is required for ssd-direct-mirror3of5-group disks",
+		)
+	}
+
 	return &protos.CreateDiskParams{
 		BlocksCount: blocksCount,
 		Disk: &types.Disk{
@@ -423,6 +431,14 @@ func (s *service) CreateDisk(
 	params, err := s.prepareCreateDiskParams(ctx, req)
 	if err != nil {
 		return "", err
+	}
+
+	if common.IsSsdDirectMirror3Of5GroupDiskKind(params.Kind) {
+		if _, ok := req.Src.(*disk_manager.CreateDiskRequest_SrcEmpty); !ok {
+			return "", common.NewInvalidArgumentError(
+				"ssd-direct-mirror3of5-group disks can only be created empty",
+			)
+		}
 	}
 
 	switch src := req.Src.(type) {
