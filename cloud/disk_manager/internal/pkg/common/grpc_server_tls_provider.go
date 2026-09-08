@@ -41,17 +41,6 @@ const (
 	stableReadApply
 )
 
-// Files are checked once per refresh period. New content is re-checked after
-// half a period, so that a change takes effect within one and a half periods
-// without reading unchanged files more often.
-func refreshInterval(period time.Duration, pending bool) time.Duration {
-	if pending {
-		return max(period/2, time.Nanosecond)
-	}
-
-	return period
-}
-
 type certificateExpiration struct {
 	path          string
 	after         time.Time
@@ -89,9 +78,11 @@ type GrpcServerTlsProvider struct {
 }
 
 // Certificates are loaded once during construction. Unlike on refresh, chains
-// are not validated here, e.g. expired certificates are accepted, so that the
-// service is able to start: there is no last known good certificate to fall
-// back to. Zero refreshPeriod disables automatic certificate refresh.
+// that fail validation, e.g. expired ones, are accepted so that the service is
+// able to start: there is no last known good certificate to fall back to.
+// They are only reported, and since unchanged files are never re-validated,
+// this is the only place where they get reported. Zero refreshPeriod disables
+// automatic certificate refresh.
 func NewGrpcServerTlsProvider(
 	ctx context.Context,
 	certs []GrpcServerCertificateConfig,
@@ -118,6 +109,16 @@ func NewGrpcServerTlsProvider(
 		certificate, chain, err := parseServerCertificate(cert, pem)
 		if err != nil {
 			return nil, err
+		}
+
+		err = validateCertificateChain(chain, time.Now())
+		if err != nil {
+			logging.Warn(
+				ctx,
+				"Certificate %v is loaded but not valid: %v",
+				cert.CertFile,
+				err,
+			)
 		}
 
 		certificates = append(certificates, certificate)
@@ -161,12 +162,13 @@ func (p *GrpcServerTlsProvider) monitorCertificates(
 	defer validityTicker.Stop()
 
 	// Receiving from a nil channel blocks forever, so refresh is disabled.
-	var refreshTimer *time.Timer
+	// Files are checked once per period and new content must be read
+	// unchanged twice in a row, so a change takes effect within two periods.
 	var refreshTicks <-chan time.Time
 	if refreshPeriod > 0 {
-		refreshTimer = time.NewTimer(refreshPeriod)
-		defer refreshTimer.Stop()
-		refreshTicks = refreshTimer.C
+		refreshTicker := time.NewTicker(refreshPeriod)
+		defer refreshTicker.Stop()
+		refreshTicks = refreshTicker.C
 	}
 
 	for {
@@ -174,8 +176,7 @@ func (p *GrpcServerTlsProvider) monitorCertificates(
 		case now := <-validityTicker.C:
 			p.reportCertificateValidity(now)
 		case now := <-refreshTicks:
-			pending := p.refresh(ctx, now)
-			refreshTimer.Reset(refreshInterval(refreshPeriod, pending))
+			p.refresh(ctx, now)
 		case <-ctx.Done():
 			return
 		}
@@ -187,48 +188,37 @@ func (p *GrpcServerTlsProvider) monitorCertificates(
 // twice in a row, a read error restarts the count. The last successfully
 // loaded certificate is kept if its files cannot be read or parsed, or if its
 // chain is not valid at |now|; new content that fails these checks is reported
-// on every tick until the files change. Returns true if any certificate is
-// waiting for a stable read.
-func (p *GrpcServerTlsProvider) refresh(
-	ctx context.Context,
-	now time.Time,
-) bool {
-
-	pending := false
+// on every tick until the files change.
+func (p *GrpcServerTlsProvider) refresh(ctx context.Context, now time.Time) {
 	for i, config := range p.configs {
-		if p.refreshCertificate(ctx, i, config, now) {
-			pending = true
-		}
+		p.refreshCertificate(ctx, i, config, now)
 	}
-
-	return pending
 }
 
-// Returns true if the certificate is waiting for a stable read.
 func (p *GrpcServerTlsProvider) refreshCertificate(
 	ctx context.Context,
 	index int,
 	config GrpcServerCertificateConfig,
 	now time.Time,
-) bool {
+) {
 
 	pem, err := readServerCertificatePEM(config)
 	if err != nil {
 		p.clearPending(index)
 		p.warnRefreshFailure(ctx, config, err)
-		return false
+		return
 	}
 
 	switch p.decide(index, pem) {
 	case stableReadUnchanged:
-		return false
+		return
 	case stableReadWait:
 		logging.Info(
 			ctx,
 			"New GRPC server certificate %v, waiting for a stable read",
 			config.CertFile,
 		)
-		return true
+		return
 	}
 
 	certificate, chain, err := parseServerCertificate(config, pem)
@@ -238,7 +228,7 @@ func (p *GrpcServerTlsProvider) refreshCertificate(
 
 	if err != nil {
 		p.warnRefreshFailure(ctx, config, err)
-		return false
+		return
 	}
 
 	p.mutex.Lock()
@@ -258,7 +248,7 @@ func (p *GrpcServerTlsProvider) refreshCertificate(
 
 	expiration.expireTsGauge.Set(float64(expiration.after.Unix()))
 	expiration.validityGauge.Set(certificateValidity(expiration.after, now))
-	return false
+	return
 }
 
 func (p *GrpcServerTlsProvider) decide(

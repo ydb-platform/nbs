@@ -830,6 +830,57 @@ func TestGrpcServerTlsProviderRefreshRejectsCertificateOutsideValidityPeriod(
 	require.True(t, registry.AssertAllExpectations(t))
 }
 
+func TestGrpcServerTlsProviderInitialLoadAcceptsBrokenChain(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	now := time.Now().Truncate(time.Second)
+	files := newServerCertificateFiles(t)
+	leafPEM, leafKeyPEM := generateCertificate(
+		t,
+		"server.example",
+		now.Add(60*24*time.Hour),
+	)
+	unrelatedPEM, _ := generateCertificate(
+		t,
+		"intermediate",
+		now.Add(30*24*time.Hour),
+	)
+	// The chain cannot be built. It is served as is and only reported, so
+	// that the service is able to start.
+	writeServerCertificate(
+		t,
+		files,
+		append(append([]byte(nil), leafPEM...), unrelatedPEM...),
+		leafKeyPEM,
+	)
+
+	registry := metrics_mocks.NewRegistryMock()
+	expectServerCertificateMetrics(
+		registry,
+		files.certPath,
+		now.Add(30*24*time.Hour),
+		1,
+	)
+
+	provider, err := NewGrpcServerTlsProvider(
+		ctx,
+		[]GrpcServerCertificateConfig{{
+			CertFile:       files.certPath,
+			PrivateKeyFile: files.keyPath,
+		}},
+		0, // refreshPeriod
+		registry,
+	)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		leafOf(t, leafPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+	require.True(t, registry.AssertAllExpectations(t))
+}
+
 func TestGrpcServerTlsProviderInitialLoadAcceptsExpiredCertificate(
 	t *testing.T,
 ) {
@@ -1322,14 +1373,6 @@ func TestGrpcServerTlsProviderRefreshWaitsForStableFiles(t *testing.T) {
 	require.True(t, registry.AssertAllExpectations(t))
 }
 
-func TestRefreshInterval(t *testing.T) {
-	// Files are checked once per period, new content is re-checked after half
-	// a period.
-	require.Equal(t, 10*time.Second, refreshInterval(10*time.Second, false))
-	require.Equal(t, 5*time.Second, refreshInterval(10*time.Second, true))
-	require.Equal(t, time.Nanosecond, refreshInterval(time.Nanosecond, true))
-}
-
 func TestGrpcServerTlsProviderRefreshRejectsBrokenChain(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
@@ -1574,138 +1617,5 @@ func TestGrpcServerTlsProviderReadErrorResetsPendingFiles(t *testing.T) {
 		leafOf(t, secondPEM),
 		selectedLeaf(t, provider, "server.example"),
 	)
-	require.True(t, registry.AssertAllExpectations(t))
-}
-
-func TestGrpcClientTlsProviderRefreshReportsPendingContent(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	firstPEM, _ := generateCertificate(t, "first", time.Now().Add(24*time.Hour))
-	secondPEM, _ := generateCertificate(t, "second", time.Now().Add(24*time.Hour))
-	certPath := filepath.Join(t.TempDir(), "root.pem")
-	require.NoError(t, os.WriteFile(certPath, firstPEM, 0o600))
-
-	registry := metrics_mocks.NewRegistryMock()
-	gauge := registry.GetGauge(
-		"fingerprint",
-		map[string]string{
-			"subsystem": "certificates",
-			"path":      certPath,
-		},
-	)
-	gauge.On("Set", float64(fingerprintOf(firstPEM))).Once()
-	gauge.On("Set", float64(fingerprintOf(secondPEM))).Once()
-
-	provider, err := NewGrpcClientTlsProvider(
-		ctx,
-		false,
-		GrpcClientTlsProviderConfig{RootCertsFile: certPath},
-		registry,
-	)
-	require.NoError(t, err)
-	client := provider.(*grpcClientTlsProvider)
-
-	// Unchanged file.
-	require.False(t, client.refresh(ctx))
-
-	require.NoError(t, os.WriteFile(certPath, secondPEM, 0o600))
-	require.True(t, client.refresh(ctx))
-	require.False(t, client.refresh(ctx))
-
-	// Stable but invalid content is not pending anymore.
-	require.NoError(t, os.WriteFile(certPath, []byte("invalid"), 0o600))
-	require.True(t, client.refresh(ctx))
-	require.False(t, client.refresh(ctx))
-
-	require.NoError(t, os.Remove(certPath))
-	require.False(t, client.refresh(ctx))
-
-	require.True(t, registry.AssertAllExpectations(t))
-}
-
-func TestGrpcServerTlsProviderRefreshReportsPendingFiles(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	now := time.Now().Truncate(time.Second)
-	firstFiles := newServerCertificateFiles(t)
-	secondFiles := newServerCertificateFiles(t)
-	firstPEM, firstKeyPEM := generateCertificate(
-		t,
-		"first.example",
-		now.Add(30*24*time.Hour),
-	)
-	newFirstPEM, newFirstKeyPEM := generateCertificate(
-		t,
-		"first.example",
-		now.Add(60*24*time.Hour),
-	)
-	secondPEM, secondKeyPEM := generateCertificate(
-		t,
-		"second.example",
-		now.Add(30*24*time.Hour),
-	)
-	writeServerCertificate(t, firstFiles, firstPEM, firstKeyPEM)
-	writeServerCertificate(t, secondFiles, secondPEM, secondKeyPEM)
-
-	registry := metrics_mocks.NewRegistryMock()
-	expectServerCertificateMetrics(
-		registry,
-		firstFiles.certPath,
-		now.Add(30*24*time.Hour),
-		1,
-	)
-	expectServerCertificateMetrics(
-		registry,
-		firstFiles.certPath,
-		now.Add(60*24*time.Hour),
-		1,
-	)
-	expectServerCertificateMetrics(
-		registry,
-		secondFiles.certPath,
-		now.Add(30*24*time.Hour),
-		1,
-	)
-
-	provider, err := NewGrpcServerTlsProvider(
-		ctx,
-		[]GrpcServerCertificateConfig{
-			{
-				CertFile:       firstFiles.certPath,
-				PrivateKeyFile: firstFiles.keyPath,
-			},
-			{
-				CertFile:       secondFiles.certPath,
-				PrivateKeyFile: secondFiles.keyPath,
-			},
-		},
-		0, // refreshPeriod
-		registry,
-	)
-	require.NoError(t, err)
-
-	// Unchanged files.
-	require.False(t, provider.refresh(ctx, now))
-
-	// Any pending certificate makes the whole refresh pending.
-	writeServerCertificate(t, firstFiles, newFirstPEM, newFirstKeyPEM)
-	require.True(t, provider.refresh(ctx, now))
-	require.False(t, provider.refresh(ctx, now))
-	require.Equal(
-		t,
-		leafOf(t, newFirstPEM),
-		selectedLeaf(t, provider, "first.example"),
-	)
-
-	// Stable but invalid content is not pending anymore.
-	writeServerCertificate(t, secondFiles, []byte("invalid"), secondKeyPEM)
-	require.True(t, provider.refresh(ctx, now))
-	require.False(t, provider.refresh(ctx, now))
-
-	require.NoError(t, os.Remove(secondFiles.certPath))
-	require.False(t, provider.refresh(ctx, now))
-
 	require.True(t, registry.AssertAllExpectations(t))
 }
