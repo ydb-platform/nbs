@@ -51,44 +51,56 @@ int WriteLogRecordFiberMain(TWriteLogRecordParams* params) noexcept
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStorageGroupImpl: public IStorageGroup
+class TStorageGroupImpl final: public IStorageGroup
 {
 private:
+    const TStorageGroupConfig Config;
     TVector<TStorageDevice> Devices;
-    const TStorageGroupRetryPolicy RetryPolicy;
     ITimerPtr Timer;
     std::atomic<ui32> Selector{0};
     std::atomic<ui64> LastLsn{0};
+    bool TornDown = false;
 
 public:
     TStorageGroupImpl(
+            TStorageGroupConfig config,
             TVector<TStorageDevice> devices,
-            TStorageGroupRetryPolicy retryPolicy,
             ITimerPtr timer)
-        : Devices(std::move(devices))
-        , RetryPolicy(retryPolicy)
+        : Config(std::move(config))
+        , Devices(std::move(devices))
         , Timer(std::move(timer))
     {}
 
 public:
-    NProto::TError AcquireDevices() override
+    // The naive group does no recovery: Init is just the acquire.
+    NProto::TError Init() override
     {
+        NProto::TAcquireDevicesRequest request;
+        request.SetGeneration(Config.AcquireGeneration);
         return MirrorRequest<NProto::TAcquireDevicesResponse>(
+            Config,
             Devices,
-            RetryPolicy,
             *Timer,
             AcquireDevicesFiberMain,
-            NProto::TAcquireDevicesRequest{});
+            std::move(request));
     }
 
-    NProto::TError ReleaseDevices() override
+    void TearDown() override
     {
-        return MirrorRequest<NProto::TReleaseDevicesResponse>(
+        if (TornDown) {
+            return;
+        }
+        TornDown = true;
+
+        auto error = MirrorRequest<NProto::TReleaseDevicesResponse>(
+            Config,
             Devices,
-            RetryPolicy,
             *Timer,
             ReleaseDevicesFiberMain,
             NProto::TReleaseDevicesRequest{});
+        if (HasError(error)) {
+            SILK_WARN("sg release error=%s", FormatError(error).c_str());
+        }
     }
 
     NProto::TError WriteLogRecord(
@@ -96,17 +108,17 @@ public:
         TVector<TPageGroup> pageGroups,
         ui64 lsn) override
     {
+        FillHeaders(Config, &headers);
         auto request = MakeWriteLogRecordRequest(
             std::move(headers),
             pageGroups,
             lsn);
-
         request.SetPrevLogSequenceNumber(LastLsn.exchange(lsn));
         SILK_DEBUG("sg write: %s", DebugMessage(request).c_str());
 
         return MirrorRequest<NProto::TWriteLogRecordResponse>(
+            Config,
             Devices,
-            RetryPolicy,
             *Timer,
             WriteLogRecordFiberMain,
             std::move(request));
@@ -119,9 +131,10 @@ public:
     {
         pageGroups->clear();
 
+        FillHeaders(Config, &headers);
         auto request = MakeReadPagesRequest(std::move(headers), pageGroupRefs);
         auto response = CallWithRetries(
-            RetryPolicy,
+            Config.RetryPolicy,
             *Timer,
             [&]
             {
@@ -148,13 +161,13 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
+    TStorageGroupConfig config,
     TVector<TStorageDevice> devices,
-    TStorageGroupRetryPolicy retryPolicy,
     ITimerPtr timer)
 {
     return std::make_shared<TStorageGroupImpl>(
+        std::move(config),
         std::move(devices),
-        retryPolicy,
         std::move(timer));
 }
 

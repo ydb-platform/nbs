@@ -249,7 +249,8 @@ public:
              traceSerializer = Args.TraceSerializer,
              systemCounters = SystemCounters,
              metricsRegistry = MetricsRegistry,
-             fastShardServer = Args.FastShardServer] (
+             fastShardServer = Args.FastShardServer,
+             fastShardFactory = Args.FastShardFactory] (
                 const TActorId& owner,
                 TTabletStorageInfo* storage)
             {
@@ -264,6 +265,7 @@ public:
                     systemCounters,
                     metricsRegistry,
                     fastShardServer,
+                    fastShardFactory,
                     config->GetFakeTxPageFaultsProbability() > 0
                         ? CreateRescheduler(
                               {.Probability =

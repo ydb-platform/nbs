@@ -52,12 +52,13 @@ double CalculateBackpressureFeature(
 ////////////////////////////////////////////////////////////////////////////////
 
 const TIndexTabletActor::TStateInfo TIndexTabletActor::States[STATE_MAX] = {
-    { "Boot",   (IActor::TReceiveFunc)&TIndexTabletActor::StateBoot   },
-    { "Init",   (IActor::TReceiveFunc)&TIndexTabletActor::StateInit   },
-    { "Work",   (IActor::TReceiveFunc)&TIndexTabletActor::StateWork   },
-    { "Adapter",(IActor::TReceiveFunc)&TIndexTabletActor::StateAdapter},
-    { "Zombie", (IActor::TReceiveFunc)&TIndexTabletActor::StateZombie },
-    { "Broken", (IActor::TReceiveFunc)&TIndexTabletActor::StateBroken },
+    { "Boot",        (IActor::TReceiveFunc)&TIndexTabletActor::StateBoot   },
+    { "Init",        (IActor::TReceiveFunc)&TIndexTabletActor::StateInit   },
+    { "Work",        (IActor::TReceiveFunc)&TIndexTabletActor::StateWork   },
+    { "AdapterInit", (IActor::TReceiveFunc)&TIndexTabletActor::StateAdapterInit },
+    { "Adapter",     (IActor::TReceiveFunc)&TIndexTabletActor::StateAdapter},
+    { "Zombie",      (IActor::TReceiveFunc)&TIndexTabletActor::StateZombie },
+    { "Broken",      (IActor::TReceiveFunc)&TIndexTabletActor::StateBroken },
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72,6 +73,7 @@ TIndexTabletActor::TIndexTabletActor(
         TSystemCountersPtr systemCounters,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
         NFastShard::IServerPtr fastShardServer,
+        NFastShard::IFileSystemShardFactoryPtr fastShardFactory,
         ITxReschedulerPtr txRescheduler)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), std::move(txRescheduler))
@@ -92,6 +94,7 @@ TIndexTabletActor::TIndexTabletActor(
     , BaseStorageConfig(Config->GetStorageConfigProto())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , FastShardServer(std::move(fastShardServer))
+    , FastShardFactory(std::move(fastShardFactory))
 {
     UpdateLogTag();
 }
@@ -377,6 +380,10 @@ void TIndexTabletActor::OnTabletDead(
 
     if (FastShardServer) {
         FastShardServer->UnregisterShard(GetFileSystemId());
+    }
+
+    if (FastShard) {
+        FastShard->TearDown();
     }
 
     Die(ctx);
@@ -1636,6 +1643,19 @@ bool TIndexTabletActor::HandleRequestsByAdapter(STFUNC_SIG)
     return true;
 }
 
+STFUNC(TIndexTabletActor::StateAdapterInit)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvIndexTabletPrivate::TEvFastShardInitCompleted,
+            HandleFastShardInitCompleted);
+
+        default:
+            StateInit(ev);
+            break;
+    }
+}
+
 STFUNC(TIndexTabletActor::StateAdapter)
 {
     TCPUUsageTimerGuard t(CPUUsageTimer);
@@ -1733,6 +1753,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvConfirmBlobsCompleted);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvFastShardInitCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 

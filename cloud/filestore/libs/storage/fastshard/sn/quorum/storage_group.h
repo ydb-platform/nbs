@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <util/datetime/base.h>
@@ -40,8 +41,10 @@ struct IStorageGroup
 {
     virtual ~IStorageGroup() = default;
 
-    virtual NProto::TError AcquireDevices() = 0;
-    virtual NProto::TError ReleaseDevices() = 0;
+    virtual NProto::TError Init() = 0;
+
+    virtual void TearDown() = 0;
+
     virtual NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
@@ -75,6 +78,16 @@ struct TStorageGroupRetryPolicy
     TDuration BackoffIncrement = TDuration::MilliSeconds(500);
 };
 
+struct TStorageGroupConfig
+{
+    // TODO(#5895): use proper client-id
+    TString ClientId = "fastshard-prototype-client";
+
+    ui64 AcquireGeneration = 0;
+
+    TStorageGroupRetryPolicy RetryPolicy;
+};
+
 /**
  * Returns an IStorageGroup which mirrors each write into all storage nodes and
  * reads from one of the nodes selecting it in a round-robin manner. The
@@ -83,8 +96,8 @@ struct TStorageGroupRetryPolicy
  * there's also no real m/n write / k/n read quorum here - it's just always
  * n/n for writes, 1/n for reads.
  *
+ * @param config - See TStorageGroupConfig.
  * @param devices - Storage devices to mirror the data across.
- * @param retryPolicy - Retry policy for storage node requests.
  * @param timer - Time source for the retry deadline checks and backoff
  *                sleeps. Production callers should pass the timer returned
  *                by CreateFiberTimer(). Tests can pass TTestTimer to make
@@ -92,8 +105,8 @@ struct TStorageGroupRetryPolicy
  * @return - The constructed group.
  */
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
+    TStorageGroupConfig config,
     TVector<TStorageDevice> devices,
-    TStorageGroupRetryPolicy retryPolicy,
     ITimerPtr timer);
 
 /**

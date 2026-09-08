@@ -203,10 +203,12 @@ class TQuorumMirroredStorageGroup final: public IStorageGroup
 {
 public:
     TQuorumMirroredStorageGroup(
+            TStorageGroupConfig config,
             TVector<TStorageDevice> devices,
-            TStorageGroupRetryPolicy retryPolicy,
             ITimerPtr timer)
         : State(std::make_shared<TGroupState>())
+        , Config(std::move(config))
+        , Timer(std::move(timer))
     {
         // TODO(#5895): handle a bad device list gracefully instead of aborting.
         Y_ABORT_UNLESS(!devices.empty(), "storage group needs a device");
@@ -217,32 +219,40 @@ public:
             State->Proxies.push_back(
                 std::make_shared<TDeviceProxy>(
                     std::move(device),
-                    retryPolicy,
-                    timer));
+                    Config.RetryPolicy,
+                    Timer));
         }
-
-        RetryPolicy = retryPolicy;
-        Timer = std::move(timer);
     }
 
-    NProto::TError AcquireDevices() override
+    // TODO(#6957): rebuild the journal here.
+    NProto::TError Init() override
     {
+        NProto::TAcquireDevicesRequest request;
+        request.SetGeneration(Config.AcquireGeneration);
         return MirrorRequest<NProto::TAcquireDevicesResponse>(
+            Config,
             CollectDeviceList(*State),
-            RetryPolicy,
             *Timer,
             AcquireDevicesFiberMain,
-            NProto::TAcquireDevicesRequest{});
+            std::move(request));
     }
 
-    NProto::TError ReleaseDevices() override
+    void TearDown() override
     {
-        return MirrorRequest<NProto::TReleaseDevicesResponse>(
+        if (TornDown) {
+            return;
+        }
+        TornDown = true;
+
+        auto error = MirrorRequest<NProto::TReleaseDevicesResponse>(
+            Config,
             CollectDeviceList(*State),
-            RetryPolicy,
             *Timer,
             ReleaseDevicesFiberMain,
             NProto::TReleaseDevicesRequest{});
+        if (HasError(error)) {
+            SILK_WARN("sg release error=%s", FormatError(error).c_str());
+        }
     }
 
     NProto::TError WriteLogRecord(
@@ -258,6 +268,7 @@ public:
             return MakeError(E_ARGUMENT, "lsn must be positive");
         }
 
+        FillHeaders(Config, &headers);
         auto op = std::make_shared<TWriteState>();
         op->Lsn = lsn;
         op->Request = MakeWriteLogRecordRequest(
@@ -311,6 +322,7 @@ public:
         }
 
         pageGroups->clear();
+        FillHeaders(Config, &headers);
         const auto request = MakeReadPagesRequest(
             std::move(headers),
             pageGroupRefs);
@@ -352,8 +364,9 @@ public:
 
 private:
     TGroupStatePtr State;
-    TStorageGroupRetryPolicy RetryPolicy;
-    ITimerPtr Timer;
+    const TStorageGroupConfig Config;
+    const ITimerPtr Timer;
+    bool TornDown = false;
 };
 
 }   // namespace
@@ -361,13 +374,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 IStorageGroupPtr CreateQuorumMirroredStorageGroup(
+    TStorageGroupConfig config,
     TVector<TStorageDevice> devices,
-    TStorageGroupRetryPolicy retryPolicy,
     ITimerPtr timer)
 {
     return std::make_shared<TQuorumMirroredStorageGroup>(
+        std::move(config),
         std::move(devices),
-        std::move(retryPolicy),
         std::move(timer));
 }
 

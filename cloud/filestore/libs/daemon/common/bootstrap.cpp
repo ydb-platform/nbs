@@ -12,6 +12,7 @@
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/storage/core/config.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/factory/factory.h>
 #include <cloud/filestore/libs/storage/init/actorsystem.h>
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -320,6 +321,13 @@ void TBootstrapCommon::InitActorSystem()
     args.StatsFetcher = StatsFetcher;
     args.ModuleFactories = ModuleFactories;
     args.FastShardServer = FastShardServer;
+    args.FastShardFactory = NStorage::NFastShard::CreateFileSystemShardFactory(
+        Configs->StorageConfig->GetFastShardRuntimeEnabled());
+
+    if (!Configs->StorageConfig->GetFastShardRuntimeEnabled()) {
+        STORAGE_WARN("FastShard runtime is not enabled, persistent fastshards "
+            "will be replaced with stubs");
+    }
 
     ActorSystem = NStorage::CreateActorSystem(args);
     STORAGE_INFO("ActorSystem initialized");

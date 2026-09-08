@@ -10,6 +10,8 @@
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/factory/factory.h>
+#include <cloud/filestore/libs/storage/tablet/tablet.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -80,6 +82,9 @@ struct TTestEnvConfig
     // This controls probability that read will be restarted
     double FakePageFaultsProbability = 0.0;
     std::optional<ui64> FakePageFaultsRandomSeed = std::nullopt;
+
+    NFastShard::IFileSystemShardFactoryPtr FastShardFactory =
+        NFastShard::CreateFileSystemShardFactory(true /* runtimeEnabled */);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

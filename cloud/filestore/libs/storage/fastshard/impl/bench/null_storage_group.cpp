@@ -18,16 +18,15 @@ public:
         : DelayPolicy(std::move(delayPolicy))
     {}
 
-    NCloud::NProto::TError AcquireDevices() override
+    NCloud::NProto::TError Init() override
     {
         Wait();
         return {};
     }
 
-    NCloud::NProto::TError ReleaseDevices() override
+    void TearDown() override
     {
         Wait();
-        return {};
     }
 
     NCloud::NProto::TError WriteLogRecord(
@@ -91,9 +90,10 @@ public:
     {}
 
     IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config) override
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        ui64 generation) override
     {
-        Y_UNUSED(config);
+        Y_UNUSED(config, generation);
 
         return std::make_shared<TNullStorageGroup>(DelayPolicy);
     }

@@ -61,15 +61,13 @@ struct TTestStorageGroup: IStorageGroup
     TTempError ReadError;
     TTempError WriteError;
 
-    NCloud::NProto::TError AcquireDevices() override
+    NCloud::NProto::TError Init() override
     {
         return {};
     }
 
-    NCloud::NProto::TError ReleaseDevices() override
-    {
-        return {};
-    }
+    void TearDown() override
+    {}
 
     NCloud::NProto::TError WriteLogRecord(
         NCloud::NProto::TDeviceRequestHeaders headers,
@@ -127,9 +125,10 @@ struct TTestStorageGroupFactory: IStorageGroupFactory
         std::make_shared<TTestStorageGroup>();
 
     IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config) override
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        ui64 generation) override
     {
-        Y_UNUSED(config);
+        Y_UNUSED(config, generation);
 
         return Group;
     }
@@ -163,8 +162,13 @@ TEST(NaiveMirroredShardErrorTest, CreatesHandles)
     auto shard = CreateNaiveMirroredFileSystemShard(
         "fs0",
         ShardNo,
+        1 /* generation */,
         fx.Factory,
         fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
 
     const TString file1 = "file1";
     const ui32 mode = 0644;

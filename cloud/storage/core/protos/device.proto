@@ -33,6 +33,10 @@ message TAcquireDevicesRequest
     // List of device UUIDs to acquire.
     repeated string DeviceUUIDs = 2;
 
+    // Writer generation. A writer with a lower generation than the one that
+    // currently holds the devices is rejected.
+    uint64 Generation = 3;
+
     // Access mode.
     // Let's just assume r/w access for now.
     // EAccessMode AccessMode = 2;

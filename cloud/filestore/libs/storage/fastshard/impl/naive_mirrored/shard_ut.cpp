@@ -132,7 +132,15 @@ TEST(NaiveMirroredShardTest, CreatesFiles)
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -197,7 +205,15 @@ TEST(NaiveMirroredShardTest, ValidatesRequests)
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
 
     const ui32 mode = 0644;
     const ui32 expectedMode = S_IFREG | 0644;
@@ -266,7 +282,15 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -374,7 +398,15 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
 {
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -492,7 +524,15 @@ TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
 {
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -718,7 +758,15 @@ TEST(NaiveMirroredShardTest, UnalignedAppend)
 {
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -818,7 +866,15 @@ TEST(NaiveMirroredShardTest, DeallocatesPagesUponUnlink)
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
 
     const TString file1 = "file1";
     const ui32 mode = 0644;
@@ -956,7 +1012,15 @@ TEST(NaiveMirroredShardTest, DeallocatesPagesUponTruncate)
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard("fs0", ShardNo, fx.Config);
+    auto shard = CreateNaiveMirroredFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
 
     const TString file1 = "file1";
     const ui32 mode = 0644;

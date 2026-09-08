@@ -83,7 +83,15 @@ void RunBatchWithRetries(
 IFileSystemShard& BuildShard(const TShardFactory& factory)
 {
     auto* holder = new IFileSystemShardPtr(factory());
-    return **holder;
+    auto& shard = **holder;
+
+    const auto error = shard.Init().GetValueSync();
+    Y_ABORT_UNLESS(
+        !HasError(error),
+        "shard init failed: %s",
+        FormatError(error).c_str());
+
+    return shard;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
