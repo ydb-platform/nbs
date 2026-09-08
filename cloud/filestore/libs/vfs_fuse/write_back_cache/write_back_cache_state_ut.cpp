@@ -1401,6 +1401,75 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         b.State->ReleaseBarrier(3, barrier.GetResult());
         UNIT_ASSERT_VALUES_EQUAL("3", b.DumpEvents());
     }
+
+    Y_UNIT_TEST(ShouldRemoveFailedPendingRequestsFromTheRequestManager_FlushFailed)
+    {
+        TBootstrap b;
+        b.Storage->SetCapacity(2);
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 5, "def").GetValue());
+        UNIT_ASSERT(!b.Add(1, 101, 10, "ghi").HasValue());
+        UNIT_ASSERT(!b.Add(1, 101, 15, "jkl").HasValue());
+        UNIT_ASSERT(!b.Add(2, 101, 20, "mno").HasValue());
+
+        b.State->UpdateStats();
+
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.PendingQueue.ProcessedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
+
+        auto pending = b.AddAndGetError(1, 101, 25, "pqr");
+        UNIT_ASSERT(!pending.HasValue());
+
+        b.State->AddReleaseHandleRequest(1, 101);
+
+        auto error = MakeError(E_FAIL, "Flush failed");
+        b.State->FlushFailed(1, error);
+
+        UNIT_ASSERT_VALUES_EQUAL(error, pending.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            b.Metrics.PendingQueue.ProcessedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
+    }
+
+
+    Y_UNIT_TEST(ShouldRemoveFailedPendingRequestsFromTheRequestManager_NoSpace)
+    {
+        TBootstrap b;
+        b.Storage->SetCapacity(2);
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 5, "def").GetValue());
+        UNIT_ASSERT(!b.Add(2, 101, 10, "ghi").HasValue());
+        UNIT_ASSERT(!b.Add(2, 101, 15, "jkl").HasValue());
+
+        b.State->UpdateStats();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.PendingQueue.ProcessedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
+
+        auto error = MakeError(E_FS_NOSPC, "Flush failed");
+        b.State->FlushFailed(1, error);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            b.Metrics.PendingQueue.ProcessedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
+
+        b.State->FlushSucceeded(1, 2);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
