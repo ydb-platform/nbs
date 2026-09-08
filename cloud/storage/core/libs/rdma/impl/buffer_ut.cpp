@@ -30,19 +30,19 @@ public:
     MOCK_METHOD(
         NVerbs::TContextPtr,
         OpenDevice,
-        (ibv_device * device),
+        (ibv_device* device),
         (override));
     MOCK_METHOD(NVerbs::TDeviceListPtr, GetDeviceList, (), (override));
 
     MOCK_METHOD(
         NVerbs::TProtectionDomainPtr,
         CreateProtectionDomain,
-        (ibv_context * context),
+        (ibv_context* context),
         (override));
     MOCK_METHOD(
         NVerbs::TMemoryRegionPtr,
         RegisterMemoryRegion,
-        (ibv_pd * pd, void* addr, size_t length, int flags),
+        (ibv_pd* pd, void* addr, size_t length, int flags),
         (override));
     MOCK_METHOD(
         NVerbs::TMemoryWindowPtr,
@@ -53,12 +53,12 @@ public:
     MOCK_METHOD(
         NVerbs::TCompletionChannelPtr,
         CreateCompletionChannel,
-        (ibv_context * context),
+        (ibv_context* context),
         (override));
     MOCK_METHOD(
         NVerbs::TCompletionQueuePtr,
         CreateCompletionQueue,
-        (ibv_context * context,
+        (ibv_context* context,
          int cqe,
          void* cq_context,
          ibv_comp_channel* channel,
@@ -68,23 +68,23 @@ public:
     MOCK_METHOD(
         void,
         RequestCompletionEvent,
-        (ibv_cq * cq, int solicitedOnly),
+        (ibv_cq* cq, int solicitedOnly),
         (override));
-    MOCK_METHOD(void*, GetCompletionEvent, (ibv_cq * cq), (override));
+    MOCK_METHOD(void*, GetCompletionEvent, (ibv_cq* cq), (override));
     MOCK_METHOD(
         void,
         AckCompletionEvents,
-        (ibv_cq * cq, unsigned int count),
+        (ibv_cq* cq, unsigned int count),
         (override));
 
     MOCK_METHOD(
         bool,
         PollCompletionQueue,
-        (ibv_cq * cq, NVerbs::ICompletionHandler* handler),
+        (ibv_cq* cq, NVerbs::ICompletionHandler* handler),
         (override));
 
-    MOCK_METHOD(void, PostSend, (ibv_qp * qp, ibv_send_wr* wr), (override));
-    MOCK_METHOD(void, PostRecv, (ibv_qp * qp, ibv_recv_wr* wr), (override));
+    MOCK_METHOD(void, PostSend, (ibv_qp* qp, ibv_send_wr* wr), (override));
+    MOCK_METHOD(void, PostRecv, (ibv_qp* qp, ibv_recv_wr* wr), (override));
 
     MOCK_METHOD(
         NVerbs::TAddressInfoPtr,
@@ -96,13 +96,13 @@ public:
     MOCK_METHOD(
         NVerbs::TConnectionEventPtr,
         GetConnectionEvent,
-        (rdma_event_channel * channel),
+        (rdma_event_channel* channel),
         (override));
 
     MOCK_METHOD(
         NVerbs::TConnectionPtr,
         CreateConnection,
-        (rdma_event_channel * channel,
+        (rdma_event_channel* channel,
          void* context,
          rdma_port_space ps,
          ui8 tos),
@@ -110,57 +110,57 @@ public:
     MOCK_METHOD(
         void,
         BindAddress,
-        (rdma_cm_id * id, sockaddr* addr),
+        (rdma_cm_id* id, sockaddr* addr),
         (override));
     MOCK_METHOD(
         void,
         SetAckTimeout,
-        (rdma_cm_id * id, ui8 timeout),
+        (rdma_cm_id* id, ui8 timeout),
         (override));
     MOCK_METHOD(
         void,
         ResolveAddress,
-        (rdma_cm_id * id, sockaddr* src, sockaddr* dst, TDuration timeout),
+        (rdma_cm_id* id, sockaddr* src, sockaddr* dst, TDuration timeout),
         (override));
     MOCK_METHOD(
         void,
         ResolveRoute,
-        (rdma_cm_id * id, TDuration timeout),
+        (rdma_cm_id* id, TDuration timeout),
         (override));
-    MOCK_METHOD(TString, GetPeer, (rdma_cm_id * id), (override));
-    MOCK_METHOD(void, Listen, (rdma_cm_id * id, int backlog), (override));
+    MOCK_METHOD(TString, GetPeer, (rdma_cm_id* id), (override));
+    MOCK_METHOD(void, Listen, (rdma_cm_id* id, int backlog), (override));
     MOCK_METHOD(
         void,
         Connect,
-        (rdma_cm_id * id, rdma_conn_param* param),
+        (rdma_cm_id* id, rdma_conn_param* param),
         (override));
-    MOCK_METHOD(void, Disconnect, (rdma_cm_id * id), (override));
+    MOCK_METHOD(void, Disconnect, (rdma_cm_id* id), (override));
     MOCK_METHOD(
         void,
         Accept,
-        (rdma_cm_id * id, rdma_conn_param* param),
+        (rdma_cm_id* id, rdma_conn_param* param),
         (override));
     MOCK_METHOD(
         void,
         Reject,
-        (rdma_cm_id * id, const void* private_data, ui8 private_data_len),
+        (rdma_cm_id* id, const void* private_data, ui8 private_data_len),
         (override));
     MOCK_METHOD(
         void,
         RdmaCreateQP,
-        (rdma_cm_id * id, ibv_qp_init_attr* attr),
+        (rdma_cm_id* id, ibv_qp_init_attr* attr),
         (override));
-    MOCK_METHOD(void, RdmaDestroyQP, (rdma_cm_id * id), (override));
+    MOCK_METHOD(void, RdmaDestroyQP, (rdma_cm_id* id), (override));
     MOCK_METHOD(
         ibv_qp*,
         CreateQP,
-        (ibv_pd * pd, ibv_qp_init_attr* attr),
+        (ibv_pd* pd, ibv_qp_init_attr* attr),
         (override));
-    MOCK_METHOD(void, DestroyQP, (ibv_qp * qp), (override));
+    MOCK_METHOD(void, DestroyQP, (ibv_qp* qp), (override));
     MOCK_METHOD(
         void,
         ModifyQP,
-        (ibv_qp * qp, ibv_qp_attr* attr, int mask),
+        (ibv_qp* qp, ibv_qp_attr* attr, int mask),
         (override));
 };
 
