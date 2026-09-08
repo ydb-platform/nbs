@@ -23,6 +23,7 @@
 #include <contrib/ydb/library/actors/core/mon.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/maybe.h>
 
 namespace NCloud::NFileStore::NProto {
     class TProfileLogRequestInfo;
@@ -154,6 +155,15 @@ private:
     void CompleteRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TResponse::TPtr& ev);
+
+    // Returns Nothing() when the control namespace feature is disabled,
+    // otherwise classifies the (parent, name) pair or the ino into a control
+    // namespace entry
+    TMaybe<EControlNamespaceEntry> ClassifyControlNamespace(
+        ui64 nodeId,
+        TStringBuf name) const;
+
+    TMaybe<EControlNamespaceEntry> ClassifyControlNamespace(ui64 ino) const;
 
     bool IsControlNamespaceReservedIno(ui64 nodeId) const;
 

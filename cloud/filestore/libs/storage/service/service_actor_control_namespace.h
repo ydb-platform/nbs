@@ -6,7 +6,6 @@
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
-#include <util/generic/maybe.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -37,13 +36,6 @@ enum class EControlNamespaceEntry
     FsId, // "fsid" file under the control dir, exposes the filesystem ID
     Unknown, // under the control dir but not a known name
 };
-
-TMaybe<EControlNamespaceEntry> ClassifyControlNamespaceEntry(ui64 nodeId);
-
-TMaybe<EControlNamespaceEntry> ClassifyControlNamespaceEntry(
-    ui64 parentId,
-    TStringBuf name,
-    TStringBuf controlNamespaceDirName);
 
 void FillControlDirAttr(NProto::TNodeAttr& attr);
 void FillControlFsIdAttr(NProto::TNodeAttr& attr, const TString& fileSystemId);
