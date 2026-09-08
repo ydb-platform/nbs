@@ -2223,11 +2223,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldUseSizeScaledSSDFreshFlushThreshold)
     {
+        // 2048 * 4_KB = 8_MB partition, one unit per 4_MB, so the effective
+        // logical flush threshold is 2 * 4_MB. The cap is above that product
+        // and the HDD setting is far below it, so neither a raw SSD read nor a
+        // raw unsuffixed read can produce 8_MB.
         auto config = DefaultConfig();
         config.SetWriteBlobThresholdSSD(16_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetBytesPerFreshCapacityUnitSSD(4_MB);
-        config.SetFlushThresholdSSD(8_MB);
+        config.SetFlushThresholdSSD(64_MB);
+        config.SetFlushThreshold(1_MB);
         config.SetFreshBlobCountFlushThresholdSSD(Max<ui32>());
         config.SetFreshBlobByteCountFlushThresholdSSD(Max<ui32>());
 
@@ -2264,15 +2269,26 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldUseSizeScaledSSDFreshBlobCountFlushThreshold)
     {
+        // 2048 * 4_KB = 8_MB partition, one unit per 4_MB, so the effective
+        // blob count threshold is 2 * 3200 = 6400. The cap is above that
+        // product and the HDD setting is far below it, so neither a raw SSD
+        // read nor a raw unsuffixed read can produce 6400.
+        constexpr ui32 BlockCount = 2048;
+        constexpr ui32 ExpectedThreshold = 2 * 3200;
+
         auto config = DefaultConfig();
         config.SetBytesPerFreshCapacityUnitSSD(4_MB);
-        config.SetFlushThresholdSSD(Max<ui32>());
-        config.SetFreshBlobCountFlushThresholdSSD(3201);
-        config.SetFreshBlobByteCountFlushThresholdSSD(Max<ui32>());
+        config.SetFreshBlobCountFlushThresholdSSD(10000);
+        config.SetFreshBlobCountFlushThreshold(10);
+        // The logical byte and blob byte thresholds are scaled too, so they
+        // cannot be disabled by a large cap. These are their effective values;
+        // both stay far above what this test writes.
+        config.SetFlushThresholdSSD(2 * 4_MB);
+        config.SetFreshBlobByteCountFlushThresholdSSD(2 * 16_MB);
 
         auto runtime = PrepareTestActorRuntime(
             config,
-            1024,
+            BlockCount,
             {},
             {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
 
@@ -2292,42 +2308,64 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return false;
             });
 
-        for (ui32 i = 0; i < 3199; ++i) {
-            AddFreshBlobToPartitionState(
-                partition,
-                MakeCommitId(1, i + 1),
-                1);
-        }
+        // Generation 1 is never used by the tablet itself, so these synthetic
+        // commit ids cannot collide with the ones assigned to real writes.
+        ui32 blobCount = 0;
+        const auto addFreshBlobs = [&](ui32 count)
+        {
+            for (ui32 i = 0; i < count; ++i) {
+                AddFreshBlobToPartitionState(
+                    partition,
+                    MakeCommitId(1, ++blobCount),
+                    1);
+            }
+        };
 
-        partition.WriteBlocks(0, 1);
-        runtime->DispatchEvents(
-            TDispatchOptions(),
-            TDuration::MilliSeconds(100));
+        const auto pokeFlush = [&](ui32 blockIndex)
+        {
+            partition.WriteBlocks(blockIndex, 1);
+            runtime->DispatchEvents(
+                TDispatchOptions(),
+                TDuration::MilliSeconds(100));
+        };
+
+        // One unit would already have flushed here.
+        addFreshBlobs(3200);
+        pokeFlush(0);
         UNIT_ASSERT_VALUES_EQUAL(0, flushRequestCount);
 
-        AddFreshBlobToPartitionState(
-            partition,
-            MakeCommitId(1, 3200),
-            1);
-        partition.WriteBlocks(1, 1);
-        runtime->DispatchEvents(
-            TDispatchOptions(),
-            TDuration::MilliSeconds(100));
+        addFreshBlobs(ExpectedThreshold - 1 - blobCount);
+        pokeFlush(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, flushRequestCount);
 
+        addFreshBlobs(1);
+        UNIT_ASSERT_VALUES_EQUAL(ExpectedThreshold, blobCount);
+        pokeFlush(2);
         UNIT_ASSERT_VALUES_EQUAL(1, flushRequestCount);
     }
 
     Y_UNIT_TEST(ShouldUseSizeScaledSSDFreshBlobByteFlushThreshold)
     {
+        // 2048 * 4_KB = 8_MB partition, one unit per 4_MB, so the effective
+        // blob byte threshold is 2 * 16_MB = 32_MB. The cap is above that
+        // product and the HDD setting is far below it, so neither a raw SSD
+        // read nor a raw unsuffixed read can produce 32_MB.
+        constexpr ui32 BlockCount = 2048;
+        constexpr ui64 ExpectedThreshold = 2 * 16_MB;
+
         auto config = DefaultConfig();
         config.SetBytesPerFreshCapacityUnitSSD(4_MB);
-        config.SetFlushThresholdSSD(Max<ui32>());
-        config.SetFreshBlobCountFlushThresholdSSD(Max<ui32>());
-        config.SetFreshBlobByteCountFlushThresholdSSD(16_MB + 1);
+        config.SetFreshBlobByteCountFlushThresholdSSD(100_MB);
+        config.SetFreshBlobByteCountFlushThreshold(1_MB);
+        // The logical byte and blob count thresholds are scaled too, so they
+        // cannot be disabled by a large cap. These are their effective values;
+        // both stay far above what this test writes.
+        config.SetFlushThresholdSSD(2 * 4_MB);
+        config.SetFreshBlobCountFlushThresholdSSD(2 * 3200);
 
         auto runtime = PrepareTestActorRuntime(
             config,
-            1024,
+            BlockCount,
             {},
             {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
 
@@ -2347,43 +2385,61 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return false;
             });
 
-        AddFreshBlobToPartitionState(
-            partition,
-            MakeCommitId(1, 1),
-            16_MB - 1);
-        partition.WriteBlocks(0, 1);
-        runtime->DispatchEvents(
-            TDispatchOptions(),
-            TDuration::MilliSeconds(100));
+        // Generation 1 is never used by the tablet itself, so these synthetic
+        // commit ids cannot collide with the ones assigned to real writes.
+        const auto pokeFlush = [&](ui32 blockIndex)
+        {
+            partition.WriteBlocks(blockIndex, 1);
+            runtime->DispatchEvents(
+                TDispatchOptions(),
+                TDuration::MilliSeconds(100));
+        };
+
+        // One unit would already have flushed here.
+        AddFreshBlobToPartitionState(partition, MakeCommitId(1, 1), 16_MB);
+        pokeFlush(0);
         UNIT_ASSERT_VALUES_EQUAL(0, flushRequestCount);
 
         AddFreshBlobToPartitionState(
             partition,
             MakeCommitId(1, 2),
-            1);
-        partition.WriteBlocks(1, 1);
-        runtime->DispatchEvents(
-            TDispatchOptions(),
-            TDuration::MilliSeconds(100));
+            ExpectedThreshold - 16_MB - 1);
+        pokeFlush(1);
+        UNIT_ASSERT_VALUES_EQUAL(0, flushRequestCount);
 
+        AddFreshBlobToPartitionState(partition, MakeCommitId(1, 3), 1);
+        pokeFlush(2);
         UNIT_ASSERT_VALUES_EQUAL(1, flushRequestCount);
     }
 
     Y_UNIT_TEST(ShouldUseSizeScaledSSDFreshBackpressureThresholds)
     {
+        // 3072 * 32_KB = 96_MB partition, one unit per 64_MB, so backpressure
+        // starts at 2 * 40_MB and saturates at 2 * 128_MB. Both caps are above
+        // those products, and the unsuffixed settings from DefaultConfig are
+        // far below them, so neither a raw SSD read nor a raw unsuffixed read
+        // can produce these thresholds.
+        constexpr ui32 BlocksPerWrite = 128;
+        constexpr ui32 WriteCount = 24;
+        constexpr ui32 BlockCount = BlocksPerWrite * WriteCount;
+        constexpr ui32 BlockSize = 32_KB;
+
+        constexpr ui64 Units = 2;
+        constexpr ui64 ExpectedThreshold = Units * 40_MB;
+        constexpr ui64 ExpectedLimit = Units * 128_MB;
+        constexpr ui64 FreshByteCount = ui64(BlockCount) * BlockSize;
+        static_assert(ExpectedThreshold < FreshByteCount);
+        static_assert(FreshByteCount < ExpectedLimit);
+
         auto config = DefaultConfig();
         config.SetWriteBlobThresholdSSD(8_MB);
         config.SetBytesPerFreshCapacityUnitSSD(64_MB);
-        config.SetFreshByteCountThresholdForBackpressureSSD(80_MB);
-        config.SetFreshByteCountLimitForBackpressureSSD(256_MB);
+        config.SetFreshByteCountThresholdForBackpressureSSD(200_MB);
+        config.SetFreshByteCountLimitForBackpressureSSD(1_GB);
 
         TTestPartitionInfo partitionInfo;
         partitionInfo.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
-        partitionInfo.BlockSize = 32_KB;
-
-        constexpr ui32 BlocksPerWrite = 128;
-        constexpr ui32 WriteCount = 12;
-        constexpr ui32 BlockCount = BlocksPerWrite * WriteCount;
+        partitionInfo.BlockSize = BlockSize;
 
         auto runtime = PrepareTestActorRuntime(
             config,
@@ -2437,8 +2493,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         };
         runtime->DispatchEvents(options, TDuration::Seconds(5));
 
-        constexpr double expectedScore =
-            1.0 + 5.0 * (48.0 - 40.0) / (128.0 - 40.0);
+        // BPFeature() interpolates between 1 and FreshByteCountFeatureMaxValue
+        // over [threshold, limit].
+        const double maxValue = config.GetFreshByteCountFeatureMaxValue();
+        const double expectedScore =
+            1.0 + (maxValue - 1.0) *
+                      static_cast<double>(FreshByteCount - ExpectedThreshold) /
+                      static_cast<double>(ExpectedLimit - ExpectedThreshold);
         UNIT_ASSERT_DOUBLES_EQUAL(
             expectedScore,
             report.FreshIndexScore,
@@ -10909,13 +10970,23 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             writeResponse->GetErrorReason());
     }
 
-    Y_UNIT_TEST(ShouldUseEffectiveSSDHardLimitForWritesAndZeros)
+    void DoTestEffectiveFreshHardLimitForWritesAndZeros(
+        NCloud::NProto::EStorageMediaKind mediaKind)
     {
+        const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+
+        // One unit per block, so a one-block partition gets the 256_MB legacy
+        // base and a two-block partition gets 2 * 256_MB, capped at 512_MB.
+        // The other media kind is configured far below both values, so a
+        // request admitted/rejected here can only come from the selected one.
         for (const ui32 blocksCount: {1, 2}) {
             auto config = DefaultConfig();
-            config.SetFreshByteCountHardLimit(8_KB);
-            config.SetFreshByteCountHardLimitSSD(512_MB);
-            config.SetBytesPerFreshCapacityUnitSSD(DefaultBlockSize);
+            config.SetFreshByteCountHardLimit(isSSD ? 8_KB : 512_MB);
+            config.SetFreshByteCountHardLimitSSD(isSSD ? 512_MB : 8_KB);
+            config.SetBytesPerFreshCapacityUnitHDD(
+                isSSD ? 0 : DefaultBlockSize);
+            config.SetBytesPerFreshCapacityUnitSSD(
+                isSSD ? DefaultBlockSize : 0);
             config.SetFreshChannelWriteRequestsEnabled(true);
             config.SetFreshChannelZeroRequestsEnabled(true);
 
@@ -10923,7 +10994,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 config,
                 blocksCount,
                 {},
-                {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
+                {.MediaKind = mediaKind});
 
             TPartitionClient partition(*runtime);
             partition.WaitReady();
@@ -10959,6 +11030,18 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 zeroResponse->GetStatus(),
                 zeroResponse->GetErrorReason());
         }
+    }
+
+    Y_UNIT_TEST(ShouldUseEffectiveSSDHardLimitForWritesAndZeros)
+    {
+        DoTestEffectiveFreshHardLimitForWritesAndZeros(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldUseEffectiveHDDHardLimitForWritesAndZeros)
+    {
+        DoTestEffectiveFreshHardLimitForWritesAndZeros(
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT);
     }
 
     Y_UNIT_TEST(ShouldCorrectlyScanDiskWithoutBrokenBlobs)

@@ -5,8 +5,6 @@
 
 #include <util/generic/size_literals.h>
 
-#include <limits>
-
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
@@ -286,14 +284,17 @@ Y_UNIT_TEST_SUITE(TProtoHelpersTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldPreserveLegacyFreshDefaultsForEveryPartitionSize)
+    Y_UNIT_TEST(ShouldDisableFreshCapacityScalingByDefault)
     {
+        // Both byte quanta default to zero, so an out-of-the-box config
+        // resolves to the legacy defaults for both media kinds. Partition size
+        // plays no part - see
+        // ShouldPreserveLegacyFreshDefaultsWhenScalingIsEnabled for the
+        // size-independence of the default caps.
         const TStorageConfig config(
             NProto::TStorageServiceConfig{},
             std::make_shared<NFeatures::TFeaturesConfig>());
 
-        // Scaling is off by default, so the limits are the legacy defaults
-        // verbatim regardless of partition size.
         const auto hdd = GetEffectiveFreshCapacityLimits(
             config,
             MakePartitionConfig(
@@ -426,86 +427,78 @@ Y_UNIT_TEST_SUITE(TProtoHelpersTest)
                 NCloud::NProto::STORAGE_MEDIA_SSD));
         UNIT_ASSERT_VALUES_EQUAL(2, aboveBoundary.Units);
         UNIT_ASSERT_VALUES_EQUAL(8_MB, aboveBoundary.FlushThreshold);
-    }
 
-    Y_UNIT_TEST(ShouldResolveZeroAndExactFreshCapacityUnitsSafely)
-    {
-        NProto::TStorageServiceConfig proto;
-        proto.SetBytesPerFreshCapacityUnitSSD(0);
-        proto.SetFlushThresholdSSD(123);
-        proto.SetFreshByteCountLimitForBackpressureSSD(456);
-        proto.SetFreshByteCountThresholdForBackpressureSSD(78);
-        proto.SetFreshBlobCountFlushThresholdSSD(9);
-        proto.SetFreshBlobByteCountFlushThresholdSSD(10);
-        proto.SetFreshByteCountHardLimitSSD(0);
-        TStorageConfig config(
-            proto,
-            std::make_shared<NFeatures::TFeaturesConfig>());
-
-        const auto exact = GetEffectiveFreshCapacityLimits(
+        // Block size only enters the calculation as a multiplier: 48 GiB made
+        // of 64 KiB blocks rounds up to the same two units.
+        const auto nonStandardBlockSize = GetEffectiveFreshCapacityLimits(
             config,
             MakePartitionConfig(
-                std::numeric_limits<ui64>::max(),
-                std::numeric_limits<ui32>::max(),
+                48_GB / 64_KB,
+                64_KB,
                 NCloud::NProto::STORAGE_MEDIA_SSD));
-        UNIT_ASSERT_VALUES_EQUAL(0, exact.BytesPerFreshCapacityUnit);
-        AssertFreshCapacityLimits(exact, 0, 123, 9, 10, 78, 456, 0);
+        UNIT_ASSERT_VALUES_EQUAL(2, nonStandardBlockSize.Units);
+        UNIT_ASSERT_VALUES_EQUAL(8_MB, nonStandardBlockSize.FlushThreshold);
+    }
 
-        proto.SetBytesPerFreshCapacityUnitSSD(32_GB);
-        TStorageConfig scaledConfig(
-            proto,
+    Y_UNIT_TEST(ShouldGrantAtLeastOneFreshCapacityUnit)
+    {
+        const TStorageConfig config(
+            MakeTargetFreshCapacityConfig(),
             std::make_shared<NFeatures::TFeaturesConfig>());
-        const auto zeroSize = GetEffectiveFreshCapacityLimits(
-            scaledConfig,
-            MakePartitionConfig(
-                0,
-                DefaultBlockSize,
-                NCloud::NProto::STORAGE_MEDIA_SSD));
-        UNIT_ASSERT_VALUES_EQUAL(1, zeroSize.Units);
 
-        const auto oneBlock = GetEffectiveFreshCapacityLimits(
-            scaledConfig,
-            MakePartitionConfig(
+        // A partition below one 32 GiB quantum - an empty one included - earns
+        // a full unit rather than a zeroed set of limits.
+        for (const ui64 blocksCount: {ui64(0), ui64(1)}) {
+            const auto limits = GetEffectiveFreshCapacityLimits(
+                config,
+                MakePartitionConfig(
+                    blocksCount,
+                    DefaultBlockSize,
+                    NCloud::NProto::STORAGE_MEDIA_SSD));
+            AssertFreshCapacityLimits(
+                limits,
                 1,
-                DefaultBlockSize,
-                NCloud::NProto::STORAGE_MEDIA_SSD));
-        UNIT_ASSERT_VALUES_EQUAL(1, oneBlock.Units);
+                4_MB,
+                3200,
+                16_MB,
+                40_MB,
+                128_MB,
+                256_MB);
+        }
     }
 
-    Y_UNIT_TEST(ShouldScaleFreshCapacityWithNonStandardBlockSize)
+    Y_UNIT_TEST(ShouldClampFreshCapacityToCapsBelowLegacyBases)
     {
-        NProto::TStorageServiceConfig proto =
-            MakeTargetFreshCapacityConfig();
-        proto.SetBytesPerFreshCapacityUnitSSD(10);
-        TStorageConfig config(
+        // A cap below its legacy base is returned as is, however many units the
+        // partition earns. A zero cap stays a literal zero.
+        NProto::TStorageServiceConfig proto;
+        proto.SetBytesPerFreshCapacityUnitSSD(4_KB);
+        proto.SetFlushThresholdSSD(1_MB);
+        proto.SetFreshBlobCountFlushThresholdSSD(100);
+        proto.SetFreshBlobByteCountFlushThresholdSSD(2_MB);
+        proto.SetFreshByteCountThresholdForBackpressureSSD(3_MB);
+        proto.SetFreshByteCountLimitForBackpressureSSD(4_MB);
+        proto.SetFreshByteCountHardLimitSSD(0);
+        const TStorageConfig config(
             proto,
             std::make_shared<NFeatures::TFeaturesConfig>());
 
-        const auto exact = GetEffectiveFreshCapacityLimits(
+        const auto limits = GetEffectiveFreshCapacityLimits(
             config,
-            MakePartitionConfig(
-                5,
-                2,
-                NCloud::NProto::STORAGE_MEDIA_SSD));
-        UNIT_ASSERT_VALUES_EQUAL(1, exact.Units);
-
-        const auto above = GetEffectiveFreshCapacityLimits(
-            config,
-            MakePartitionConfig(
-                2,
-                6,
-                NCloud::NProto::STORAGE_MEDIA_SSD));
-        UNIT_ASSERT_VALUES_EQUAL(2, above.Units);
-        UNIT_ASSERT_VALUES_EQUAL(8_MB, above.FlushThreshold);
+            MakePartitionConfig(8, 4_KB, NCloud::NProto::STORAGE_MEDIA_SSD));
+        AssertFreshCapacityLimits(limits, 8, 1_MB, 100, 2_MB, 3_MB, 4_MB, 0);
     }
 
     Y_UNIT_TEST(ShouldKeepHDDAndSSDFreshCapacityIndependent)
     {
+        // The same partition earns three HDD units and two SSD units. Both caps
+        // are far above the scaled values, so each result is unambiguously its
+        // own base times its own unit count.
         NProto::TStorageServiceConfig proto;
         proto.SetBytesPerFreshCapacityUnitHDD(10);
         proto.SetBytesPerFreshCapacityUnitSSD(20);
-        proto.SetFlushThreshold(12_MB);
-        proto.SetFlushThresholdSSD(16_MB);
+        proto.SetFlushThreshold(100_MB);
+        proto.SetFlushThresholdSSD(100_MB);
         TStorageConfig config(
             proto,
             std::make_shared<NFeatures::TFeaturesConfig>());
@@ -517,7 +510,7 @@ Y_UNIT_TEST_SUITE(TProtoHelpersTest)
                 10,
                 NCloud::NProto::STORAGE_MEDIA_HDD));
         UNIT_ASSERT_VALUES_EQUAL(3, hdd.Units);
-        UNIT_ASSERT_VALUES_EQUAL(12_MB, hdd.FlushThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(3 * 4_MB, hdd.FlushThreshold);
 
         const auto ssd = GetEffectiveFreshCapacityLimits(
             config,
@@ -526,7 +519,7 @@ Y_UNIT_TEST_SUITE(TProtoHelpersTest)
                 10,
                 NCloud::NProto::STORAGE_MEDIA_SSD));
         UNIT_ASSERT_VALUES_EQUAL(2, ssd.Units);
-        UNIT_ASSERT_VALUES_EQUAL(8_MB, ssd.FlushThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(2 * 4_MB, ssd.FlushThreshold);
     }
 
     Y_UNIT_TEST(ShouldSelectAllFreshCapacityCapsByMediaKind)
@@ -647,7 +640,6 @@ Y_UNIT_TEST_SUITE(TProtoHelpersTest)
             32 * 128_MB,
             32 * 256_MB);
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
