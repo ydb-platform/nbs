@@ -322,6 +322,7 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNodeAttr().GetType());
         EXPECT_EQ(expectedMode, response.GetNodeAttr().GetMode());
+        EXPECT_EQ(1U, response.GetNodeAttr().GetLinks());
         nodeId = response.GetNodeAttr().GetId();
         handle1 = response.GetHandle();
     }
@@ -340,6 +341,7 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNode().GetType());
         EXPECT_EQ(expectedMode, response.GetNode().GetMode());
+        EXPECT_EQ(1U, response.GetNode().GetLinks());
     }
 
     ui64 handle2 = 0;
@@ -362,8 +364,68 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
             static_cast<ui32>(E_REGULAR_NODE),
             response.GetNodeAttr().GetType());
         EXPECT_EQ(expectedMode, response.GetNodeAttr().GetMode());
+
+        //
+        // Links still equal to 1, handles are tracked separately.
+        //
+
+        EXPECT_EQ(1U, response.GetNodeAttr().GetLinks());
         handle2 = response.GetHandle();
         EXPECT_NE(handle2, handle1);
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNode().GetId());
+        EXPECT_EQ(uid, response.GetNode().GetUid());
+        EXPECT_EQ(gid, response.GetNode().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNode().GetType());
+        EXPECT_EQ(expectedMode, response.GetNode().GetMode());
+
+        //
+        // Links still equal to 1, handles are tracked separately.
+        //
+
+        EXPECT_EQ(1U, response.GetNode().GetLinks());
+    }
+
+    {
+        TUnlinkNodeRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        auto f = shard->UnlinkNode(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNode().GetId());
+        EXPECT_EQ(uid, response.GetNode().GetUid());
+        EXPECT_EQ(gid, response.GetNode().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNode().GetType());
+        EXPECT_EQ(expectedMode, response.GetNode().GetMode());
+
+        //
+        // Links equal to 0, the node is alive because there're open handles.
+        //
+
+        EXPECT_EQ(0U, response.GetNode().GetLinks());
     }
 
     {
@@ -373,6 +435,28 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
         auto response = f.GetValueSync();
         EXPECT_EQ(S_OK, response.GetError().GetCode())
             << FormatError(response.GetError());
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(nodeId, response.GetNode().GetId());
+        EXPECT_EQ(uid, response.GetNode().GetUid());
+        EXPECT_EQ(gid, response.GetNode().GetGid());
+        EXPECT_EQ(
+            static_cast<ui32>(E_REGULAR_NODE),
+            response.GetNode().GetType());
+        EXPECT_EQ(expectedMode, response.GetNode().GetMode());
+
+        //
+        // Links equal to 0, the node is alive because there're open handles.
+        //
+
+        EXPECT_EQ(0U, response.GetNode().GetLinks());
     }
 
     {
@@ -390,6 +474,15 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
         auto f = shard->DestroyHandle(request);
         auto response = f.GetValueSync();
         EXPECT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(nodeId);
+        auto f = shard->GetNodeAttr(request);
+        auto response = f.GetValueSync();
+        EXPECT_EQ(NCloud::E_FS_NOENT, response.GetError().GetCode())
             << FormatError(response.GetError());
     }
 }

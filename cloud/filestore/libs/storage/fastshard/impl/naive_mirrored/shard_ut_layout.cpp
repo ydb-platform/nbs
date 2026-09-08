@@ -156,14 +156,14 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
         const auto& c = components[2];
         EXPECT_EQ("HandleTable", c["name"].GetString());
         EXPECT_EQ(12_KB, c["offsetBytes"].GetUInteger());
-        EXPECT_EQ(12_KB, c["sizeBytes"].GetUInteger());
-        EXPECT_EQ(768ULL, c["slotCount"].GetUInteger());
+        EXPECT_EQ(16_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(1024ULL, c["slotCount"].GetUInteger());
     }
 
     {
         const auto& c = components[3];
         EXPECT_EQ("PageIndex", c["name"].GetString());
-        EXPECT_EQ(24_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(28_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(52_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(2210ULL, c["slotCount"].GetUInteger());
     }
@@ -171,7 +171,7 @@ TEST(NaiveMirroredShardLayoutTest, DumpsLayout)
     {
         const auto& c = components[4];
         EXPECT_EQ("PageAllocatorBitmap", c["name"].GetString());
-        EXPECT_EQ(76_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(80_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(4_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(2048ULL, c["slotCount"].GetUInteger());
     }

@@ -67,6 +67,11 @@ public:
         TWriteContext& writeContext);
 
     NProto::TError UpdateNode(
+        const TNodeTableSlot& slot,
+        ui64 slotNo,
+        TWriteContext& writeContext);
+
+    NProto::TError UpdateNode(
         ui64 nodeId,
         ui32 flags,
         const NProto::TSetNodeAttrRequest::TUpdate& update,
@@ -82,6 +87,13 @@ public:
         ui64 nodeId,
         TWriteContext& writeContext,
         TNodeTableSlot* slot);
+
+    NProto::TError GetNode(
+        ui64 nodeId,
+        TWriteContext& writeContext,
+        TNodeTableSlot* slot,
+        ui64* slotNo,
+        NProto::TNodeAttr* attr) const;
 
     NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const;
 
