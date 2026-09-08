@@ -11,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	tasks_headers "github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
+	grpc_peer "google.golang.org/grpc/peer"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -49,6 +50,15 @@ func NewStubAuthorizer() Authorizer {
 
 func GetRequestID(ctx context.Context) string {
 	return tasks_headers.GetRequestID(ctx)
+}
+
+func GetUserIP(ctx context.Context) string {
+	p, ok := grpc_peer.FromContext(ctx)
+	if !ok || p.Addr == nil {
+		return ""
+	}
+
+	return p.Addr.String()
 }
 
 func GetAccessToken(ctx context.Context) (string, error) {
