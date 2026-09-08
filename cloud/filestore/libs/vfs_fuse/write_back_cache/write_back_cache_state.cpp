@@ -989,6 +989,7 @@ void TWriteBackCacheState::DropCachedData(
         QueuedOperations.FailWriteDataPromise(
             std::move(request->AccessPromise()),
             error);
+        RequestManager.Remove(std::move(request));
     }
 
     if (nodeState.Cache.HasUnflushedRequests()) {
