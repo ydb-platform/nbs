@@ -157,10 +157,6 @@ private:
 
     bool IsControlNamespaceReservedIno(ui64 nodeId) const;
 
-    EControlNamespaceEntry ClassifyControlNamespace(
-        ui64 nodeId,
-        TStringBuf name) const;
-
     // Control namespace (".filestore-ctl") hooks - true if the request was
     // answered here and the caller should return
     bool TryHandleControlNamespaceGetNodeAttr(

@@ -266,7 +266,7 @@ void TStorageServiceActor::ForwardRequestToShard(
         msg->CallContext->RequestId);
 
     if (!StorageConfig->GetControlNamespaceDirName().empty() &&
-        IsControlNamespaceEntry(ClassifyControlNamespaceEntry(entityId)))
+        ClassifyControlNamespaceEntry(entityId))
     {
         return NCloud::Reply(
             ctx,

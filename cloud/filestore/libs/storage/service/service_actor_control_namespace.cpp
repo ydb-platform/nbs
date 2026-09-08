@@ -13,14 +13,10 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EControlNamespaceEntry ClassifyControlNamespaceEntry(ui64 nodeId)
+TMaybe<EControlNamespaceEntry> ClassifyControlNamespaceEntry(ui64 nodeId)
 {
-    // A raw RPC caller can present any ino, not just ones a kernel client
-    // would ever hand back to us - anything else carrying our reserved
-    // shard number is Unknown, not None, so it doesn't fall through to
-    // real shard-number handling.
     if (ExtractShardNo(nodeId) != ControlNamespaceShardNo) {
-        return EControlNamespaceEntry::None;
+        return Nothing();
     }
     if (nodeId == ControlDirIno) {
         return EControlNamespaceEntry::ControlDir;
@@ -31,7 +27,7 @@ EControlNamespaceEntry ClassifyControlNamespaceEntry(ui64 nodeId)
     return EControlNamespaceEntry::Unknown;
 }
 
-EControlNamespaceEntry ClassifyControlNamespaceEntry(
+TMaybe<EControlNamespaceEntry> ClassifyControlNamespaceEntry(
     ui64 parentId,
     TStringBuf name,
     TStringBuf controlNamespaceDirName)
@@ -47,7 +43,7 @@ EControlNamespaceEntry ClassifyControlNamespaceEntry(
         // fsid is a file - it has no children, but be defensive.
         return EControlNamespaceEntry::Unknown;
     }
-    return EControlNamespaceEntry::None;
+    return Nothing();
 }
 
 void FillControlDirAttr(NProto::TNodeAttr& attr)
@@ -68,11 +64,6 @@ void FillControlFsIdAttr(NProto::TNodeAttr& attr, const TString& fileSystemId)
     attr.SetSize(fileSystemId.size());
 }
 
-bool IsControlNamespaceEntry(EControlNamespaceEntry entry)
-{
-    return entry != EControlNamespaceEntry::None;
-}
-
 NProto::TError ControlNamespaceNotPermittedError()
 {
     return MakeError(E_FS_PERM, "not permitted on the control namespace");
@@ -81,24 +72,29 @@ NProto::TError ControlNamespaceNotPermittedError()
 bool TStorageServiceActor::IsControlNamespaceReservedIno(ui64 nodeId) const
 {
     return !StorageConfig->GetControlNamespaceDirName().empty() &&
-        IsControlNamespaceEntry(ClassifyControlNamespaceEntry(nodeId));
+           ClassifyControlNamespaceEntry(nodeId).Defined();
 }
 
-EControlNamespaceEntry TStorageServiceActor::ClassifyControlNamespace(
+////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+TMaybe<EControlNamespaceEntry> ClassifyControlNamespace(
+    const TStorageConfig& storageConfig,
     ui64 nodeId,
-    TStringBuf name) const
+    TStringBuf name)
 {
     const auto& controlNamespaceDirName =
-        StorageConfig->GetControlNamespaceDirName();
+        storageConfig.GetControlNamespaceDirName();
     if (controlNamespaceDirName.empty()) {
-        return EControlNamespaceEntry::None;
+        return Nothing();
     }
     return name.empty()
         ? ClassifyControlNamespaceEntry(nodeId)
         : ClassifyControlNamespaceEntry(nodeId, name, controlNamespaceDirName);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+}   // namespace
 
 bool TStorageServiceActor::TryHandleControlNamespaceGetNodeAttr(
     const TActorContext& ctx,
@@ -107,15 +103,15 @@ bool TStorageServiceActor::TryHandleControlNamespaceGetNodeAttr(
 {
     auto* msg = ev->Get();
     const auto entry = ClassifyControlNamespace(
+        *StorageConfig,
         msg->Record.GetNodeId(),
         msg->Record.GetName());
-
-    if (Y_LIKELY(!IsControlNamespaceEntry(entry))) {
+    if (!entry) {
         return false;
     }
 
     auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>();
-    switch (entry) {
+    switch (*entry) {
         case EControlNamespaceEntry::ControlDir:
             FillControlDirAttr(*response->Record.MutableNode());
             break;
@@ -128,8 +124,6 @@ bool TStorageServiceActor::TryHandleControlNamespaceGetNodeAttr(
             *response->Record.MutableError() =
                 MakeError(E_FS_NOENT, "not found");
             break;
-        case EControlNamespaceEntry::None:
-            Y_UNREACHABLE();
     }
     NCloud::Reply(ctx, *ev, std::move(response));
     return true;
@@ -142,10 +136,10 @@ bool TStorageServiceActor::TryHandleControlNamespaceCreateHandle(
 {
     auto* msg = ev->Get();
     const auto entry = ClassifyControlNamespace(
+        *StorageConfig,
         msg->Record.GetNodeId(),
         msg->Record.GetName());
-
-    if (Y_LIKELY(!IsControlNamespaceEntry(entry))) {
+    if (!entry) {
         return false;
     }
 
@@ -155,7 +149,7 @@ bool TStorageServiceActor::TryHandleControlNamespaceCreateHandle(
         msg->Record.GetFlags(),
         ProtoFlag(NProto::TCreateHandleRequest::E_WRITE));
 
-    switch (entry) {
+    switch (*entry) {
         case EControlNamespaceEntry::Unknown:
             *response->Record.MutableError() =
                 MakeError(E_FS_NOENT, "not found");
@@ -174,8 +168,6 @@ bool TStorageServiceActor::TryHandleControlNamespaceCreateHandle(
                     session->FileStore.GetFileSystemId());
             }
             break;
-        case EControlNamespaceEntry::None:
-            Y_UNREACHABLE();
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));
@@ -201,16 +193,13 @@ bool TStorageServiceActor::TryHandleControlNamespaceCreateNode(
         msg->Record.GetName(),
         controlNamespaceDirName);
 
-    // A hard link's target can also be a reserved ino - reject that too
+    // a hard link's target can also be a reserved ino
     const auto linkTargetEntry =
         msg->Record.HasLink() ? ClassifyControlNamespaceEntry(
                                     msg->Record.GetLink().GetTargetNode())
-                              : EControlNamespaceEntry::None;
+                              : Nothing();
 
-    if (Y_LIKELY(
-            !IsControlNamespaceEntry(entry) &&
-            !IsControlNamespaceEntry(linkTargetEntry)))
-    {
+    if (Y_LIKELY(!entry && !linkTargetEntry)) {
         return false;
     }
 
@@ -233,9 +222,11 @@ bool TStorageServiceActor::TryHandleControlNamespaceReadData(
     }
 
     const auto entry = ClassifyControlNamespaceEntry(msg->Record.GetHandle());
-    switch (entry) {
-        case EControlNamespaceEntry::None:
-            return false;
+    if (!entry) {
+        return false;
+    }
+
+    switch (*entry) {
         case EControlNamespaceEntry::ControlDir: {
             auto response = std::make_unique<TEvService::TEvReadDataResponse>(
                 ErrorIsDirectory(ControlDirIno));
@@ -294,9 +285,11 @@ bool TStorageServiceActor::TryHandleControlNamespaceListNodes(
     }
 
     const auto entry = ClassifyControlNamespaceEntry(msg->Record.GetNodeId());
-    switch (entry) {
-        case EControlNamespaceEntry::None:
-            return false;
+    if (!entry) {
+        return false;
+    }
+
+    switch (*entry) {
         case EControlNamespaceEntry::FsId: {
             auto response = std::make_unique<TEvService::TEvListNodesResponse>(
                 ErrorIsNotDirectory(ControlFsIdFileIno));
@@ -347,10 +340,7 @@ bool TStorageServiceActor::TryHandleControlNamespaceRenameNode(
         msg->Record.GetNewName(),
         controlNamespaceDirName);
 
-    if (Y_LIKELY(
-            !IsControlNamespaceEntry(srcEntry) &&
-            !IsControlNamespaceEntry(dstEntry)))
-    {
+    if (Y_LIKELY(!srcEntry && !dstEntry)) {
         return false;
     }
 
@@ -379,7 +369,7 @@ bool TStorageServiceActor::TryHandleControlNamespaceUnlinkNode(
         msg->Record.GetName(),
         controlNamespaceDirName);
 
-    if (Y_LIKELY(!IsControlNamespaceEntry(entry))) {
+    if (Y_LIKELY(!entry)) {
         return false;
     }
 
