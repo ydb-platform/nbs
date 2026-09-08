@@ -203,10 +203,13 @@ struct TVolumeInfoBase
     // every volume.
     const std::shared_ptr<TLatencyThresholdsHotSwap> LatencyThresholdsHotSwap;
 
-    // Server-level (not per-volume) diagnostic counter: operations whose
-    // media kind has no configured threshold ladder are skipped entirely -
-    // never counted as bad - and tallied here instead so the gap stays
-    // visible.
+    // Server-level (not per-volume) diagnostic counter: read/write
+    // operations that were not judged against the thresholds, and so appear
+    // in neither LatencyTotalOps nor LatencyGoodOps. Two reasons feed it:
+    // the volume's media kind has no configured ladder, and the operation
+    // arrived as an aggregate through BatchCompleted (external vhost). Such
+    // operations are never counted as bad; the counter exists so that the
+    // part of the traffic the metric does not cover stays measurable.
     const TDynamicCounters::TCounterPtr LatencyThresholdsSkippedOpsCounter;
 
     TVolumeInfoBase(
@@ -428,6 +431,26 @@ public:
             VolumeBase->ThrottlerRejects.Add(1);
         }
 
+        const auto requestTime = RequestCounters.RequestCompleted(
+            static_cast<TRequestCounters::TRequestType>(
+                TranslateLocalRequestType(requestType)),
+            requestStarted,
+            postponedTime,
+            backoffTime,
+            shapingTime,
+            requestBytes,
+            errorKind,
+            errorFlags,
+            unaligned,
+            ECalcMaxTime::ENABLE,
+            responseSent).Time;
+
+        // Deliberately after RequestCounters::RequestCompleted: that method
+        // takes its own GetCycleCount() on entry, so anything done before it
+        // is measured as part of the request in the pre-existing per-volume
+        // latency histograms. The judged duration below is unaffected by the
+        // ordering - it is derived from requestStarted/responseSent and the
+        // requestCompleted captured at the top of this method.
         if (VolumeBase->LatencyThresholdsEnabled) {
             // processingCompleted excludes gRPC response-delivery time
             // (network, backpressure, a slow client), mirroring
@@ -462,19 +485,7 @@ public:
                 CyclesToDurationSafe(execTimeCycles));
         }
 
-        return RequestCounters.RequestCompleted(
-            static_cast<TRequestCounters::TRequestType>(
-                TranslateLocalRequestType(requestType)),
-            requestStarted,
-            postponedTime,
-            backoffTime,
-            shapingTime,
-            requestBytes,
-            errorKind,
-            errorFlags,
-            unaligned,
-            ECalcMaxTime::ENABLE,
-            responseSent).Time;
+        return requestTime;
     }
 
     void AddIncompleteStats(
@@ -553,6 +564,20 @@ public:
         std::span<TTimeBucket> timeHist,
         std::span<TSizeBucket> sizeHist) override
     {
+        if (VolumeBase->LatencyThresholdsEnabled &&
+            (IsPureWriteRequest(requestType) || IsReadRequest(requestType)))
+        {
+            // Operations imported as an aggregate (the external vhost
+            // dataplane, the only caller of this method) never reach
+            // RequestCompleted, so they cannot be judged: the batch carries
+            // separate time and size histograms, not the joint
+            // (size, latency) distribution a size-dependent verdict needs,
+            // and no per-operation error kind. Tallying them keeps a volume
+            // served this way distinguishable from one with no traffic,
+            // which the 0/0 in LatencyTotalOps/LatencyGoodOps alone is not.
+            *VolumeBase->LatencyThresholdsSkippedOpsCounter += count;
+        }
+
         return RequestCounters.BatchCompleted(
             static_cast<TRequestCounters::TRequestType>(
                 TranslateLocalRequestType(requestType)),

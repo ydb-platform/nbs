@@ -29,9 +29,9 @@ TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
 {
     TLatencyThresholdsValidationResult result;
 
-    // Rule 1: an enabled mechanism with an empty table is a config mistake,
-    // not a way to disable the mechanism (the flag itself already does
-    // that). Left invalid so the caller keeps the mechanism off and logs it.
+    // An enabled mechanism with an empty table is a config mistake, not a
+    // way to disable the mechanism (the flag itself already does that).
+    // Left invalid so the caller keeps the mechanism off and logs it.
     if (config.empty()) {
         result.Error = "LatencyThresholds is empty";
         return result;
@@ -41,16 +41,27 @@ TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
     THashSet<int> seenMediaKinds;
 
     for (const auto& mediaKindThresholds: config) {
+        // MediaKind is an optional field, so an entry that omits it parses
+        // cleanly and reads back as STORAGE_MEDIA_DEFAULT. That would
+        // silently calibrate a media kind nobody asked for while leaving
+        // the intended one unjudged, with the config reported as valid. An
+        // entry that spells out STORAGE_MEDIA_DEFAULT is still accepted:
+        // volumes whose config leaves the media kind unset do exist.
+        if (!mediaKindThresholds.HasMediaKind()) {
+            result.Error = "missing MediaKind in a LatencyThresholds entry";
+            return result;
+        }
+
         const auto mediaKind = mediaKindThresholds.GetMediaKind();
 
-        // Rule 0: mediaKind indexes a fixed-size array of ladders below, so
-        // it is bounds-checked here rather than trusted. Today the field
-        // cannot hold an out-of-range value: diagnostics.proto is proto2,
-        // whose enum fields are closed, so an unrecognized number from a
-        // config or from the wire is kept in the unknown-field set and the
-        // getter returns the default instead. That guarantee comes from the
-        // file's syntax, not from anything visible at this call site, so the
-        // check keeps the indexing safe if the enum ever becomes open
+        // mediaKind indexes a fixed-size array of ladders below, so it is
+        // bounds-checked here rather than trusted. Today the field cannot
+        // hold an out-of-range value: diagnostics.proto is proto2, whose
+        // enum fields are closed, so an unrecognized number from a config
+        // or from the wire is kept in the unknown-field set and the getter
+        // returns the default instead. That guarantee comes from the file's
+        // syntax, not from anything visible at this call site, so the check
+        // keeps the indexing safe if the enum ever becomes open
         // (proto3/editions), where an out-of-range index would be UB.
         if (!NCloud::NProto::EStorageMediaKind_IsValid(mediaKind)) {
             result.Error = TStringBuilder()
@@ -62,7 +73,7 @@ TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
         const TString mediaKindName =
             NCloud::NProto::EStorageMediaKind_Name(mediaKind);
 
-        // Rule 6: a media kind must not repeat within the list.
+        // A media kind must not repeat within the list.
         if (!seenMediaKinds.insert(static_cast<int>(mediaKind)).second) {
             result.Error = TStringBuilder()
                 << "duplicate media kind " << mediaKindName
@@ -70,7 +81,7 @@ TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
             return result;
         }
 
-        // Rule 2: every media kind needs at least one bucket.
+        // Every media kind needs at least one bucket.
         if (mediaKindThresholds.BucketsSize() == 0) {
             result.Error = TStringBuilder()
                 << "media kind " << mediaKindName
@@ -88,7 +99,7 @@ TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
         for (const auto& bucket: mediaKindThresholds.GetBuckets()) {
             const bool first = ladder.empty();
 
-            // Rule 3: the first bucket must start at 0, so that no operation
+            // The first bucket must start at 0, so that no operation
             // size falls outside of every bucket (this is what makes the
             // ladder total, not just "the ranges we happened to calibrate").
             if (first && bucket.GetMinRequestBytes() != 0) {
@@ -99,7 +110,7 @@ TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
                 return result;
             }
 
-            // Rule 4: strictly increasing lower bounds, never silently
+            // Strictly increasing lower bounds, never silently
             // sorted - a disordered/duplicated config is a typo, not
             // something to paper over.
             if (!first &&
@@ -113,7 +124,7 @@ TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
                 return result;
             }
 
-            // Rule 5: a zero threshold would fail every operation of that
+            // A zero threshold would fail every operation of that
             // size class outright.
             if (bucket.GetReadThresholdMs() == 0 ||
                 bucket.GetWriteThresholdMs() == 0)
@@ -210,8 +221,21 @@ TLatencyThresholdOutcome ClassifyLatencyOutcome(
         case EDiagnosticsErrorKind::ErrorSession:
         case EDiagnosticsErrorKind::ErrorAborted:
         case EDiagnosticsErrorKind::ErrorSilent:
-            // Per-attempt; the final attempt of the retry chain will be
-            // visible on its own.
+            // Treated as one attempt of a retry chain whose outcome is
+            // decided elsewhere, so this attempt is not judged.
+            //
+            // Known limitation: the successful retry these counters expect
+            // to see instead does not always arrive. The durable client
+            // decides to stop retrying after receiving the last server
+            // response and substitutes E_RETRY_TIMEOUT locally
+            // (cloud/blockstore/libs/client/durable.cpp:351-355) without
+            // issuing another request, so a chain that ends in failure
+            // contributes nothing at all here. Terminal errors that map to
+            // this group in the first place have the same effect: E_IO_SILENT
+            // is in NeverRetriableErrors (durable.cpp) yet arrives as
+            // ErrorSilent. Telling such an outcome apart from a genuinely
+            // intermediate one needs more than the collapsed errorKind this
+            // function receives, so both stay excluded here.
             return {};
 
         case EDiagnosticsErrorKind::ErrorFatal:

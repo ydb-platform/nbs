@@ -2553,10 +2553,44 @@ NProto::TDiagnosticsConfig MakeConfigWithLatencyThresholds(
 
 // Judges a single completed operation via TVolumeInfo::RequestCompleted with
 // a chosen execTime, by backdating requestStarted from the current cycle
-// count (RequestCompleted itself always measures the "completed" end against
-// a fresh GetCycleCount(), so this is the only way to control execTime
-// deterministically without an actual sleep).
+// count.
+//
+// Both ends of the measured interval are passed in explicitly: with
+// responseSent left at 0, RequestCompleted measures the "completed" end
+// against its own fresh GetCycleCount(), which would silently add the gap
+// between the two calls (including any preemption of this thread) to the
+// judged duration. Tests whose expected outcome depends on the duration
+// therefore go through this deterministic path; the responseSent == 0
+// fallback is covered separately by SendRequestWithFreshCompletion, where a
+// delay cannot change the expected verdict.
 void SendRequest(
+    IVolumeInfoPtr volume,
+    EBlockStoreRequest requestType,
+    ui64 requestBytes,
+    TDuration execTime,
+    EDiagnosticsErrorKind errorKind = EDiagnosticsErrorKind::Success)
+{
+    const auto now = GetCycleCount();
+    const auto durationInCycles = DurationToCyclesSafe(execTime);
+    const auto requestStarted = now - Min(now, durationInCycles);
+
+    volume->RequestCompleted(
+        requestType,
+        requestStarted,
+        TDuration::Zero(),   // postponedTime
+        TDuration::Zero(),   // backoffTime
+        TDuration::Zero(),   // shapingTime
+        requestBytes,
+        errorKind,
+        NCloud::NProto::EF_NONE,
+        false,
+        requestStarted + durationInCycles);   // responseSent
+}
+
+// Like SendRequest, but leaves responseSent at 0, so the operation ends at
+// the fresh GetCycleCount() taken inside RequestCompleted. Use only where a
+// longer-than-requested duration cannot flip the expected outcome.
+void SendRequestWithFreshCompletion(
     IVolumeInfoPtr volume,
     EBlockStoreRequest requestType,
     ui64 requestBytes,
@@ -2713,7 +2747,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
 
         // Slow write, well over the threshold: only the total advances.
-        SendRequest(
+        // Deliberately on the responseSent == 0 path, to cover that fallback
+        // too: an extra delay there can only make the operation look slower,
+        // which is already the expected verdict.
+        SendRequestWithFreshCompletion(
             volume,
             EBlockStoreRequest::WriteBlocks,
             4_KB,
@@ -2801,7 +2838,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         NProto::TDiagnosticsConfig protoConfig;
         protoConfig.SetLatencyThresholdsEnabled(true);
         // LatencyThresholds is intentionally left empty here: a config
-        // mistake per BuildLatencyThresholdsTable rule 1, not a way to
+        // mistake BuildLatencyThresholdsTable rejects, not a way to
         // disable the mechanism (the flag itself already does that).
         auto config = std::make_shared<TDiagnosticsConfig>(protoConfig);
 
@@ -2902,6 +2939,70 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, skipped->Val());
+    }
+
+    Y_UNIT_TEST(ShouldCountBatchImportedOperationsAsNotJudged)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto config = std::make_shared<TDiagnosticsConfig>(
+            MakeConfigWithLatencyThresholds(
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                10,
+                10));
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            config,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        Mount(
+            volumeStats,
+            "test1",
+            "client1",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        auto volume = volumeStats->GetVolumeInfo("test1", "client1");
+
+        auto availabilityCounters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->GetSubgroup("type", "network-ssd");
+
+        auto total = availabilityCounters->GetCounter("LatencyTotalOps");
+        auto good = availabilityCounters->GetCounter("LatencyGoodOps");
+
+        auto skipped = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server")
+            ->GetCounter("LatencyThresholdsSkippedOps");
+
+        // How the external vhost dataplane reports its operations: an
+        // aggregate that never passes through RequestCompleted, with
+        // separate time and size histograms (empty here, they play no part
+        // in this accounting).
+        TVector<IVolumeInfo::TTimeBucket> timeHist;
+        TVector<IVolumeInfo::TSizeBucket> sizeHist;
+        volume->BatchCompleted(
+            EBlockStoreRequest::WriteBlocks,
+            7,          // count
+            7 * 4_KB,   // bytes
+            0,          // errors
+            timeHist,
+            sizeHist);
+
+        // Not judgeable, so counted in neither the total nor the good
+        // counter - but visible as a coverage gap, which is what makes this
+        // different from a volume with no traffic at all.
+        UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(7, skipped->Val());
     }
 
     Y_UNIT_TEST(ShouldContinueLatencyCountersUntilVolumeTrimmed)
