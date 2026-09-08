@@ -1059,14 +1059,14 @@ func (c *restoreFilesystemShard) run() error {
 	}
 	defer c.close()
 
-	var client internal_client.PrivateClient
-	if !c.async {
-		client, err = internal_client.NewPrivateClientForCLI(c.ctx, c.clientConfig)
-		if err != nil {
-			return fmt.Errorf("failed to create client: %w", err)
-		}
-		defer client.Close()
+	client, err := internal_client.NewPrivateClientForCLI(
+		c.ctx,
+		c.clientConfig,
+	)
+	if err != nil {
+		return err
 	}
+	defer client.Close()
 
 	taskID, err := c.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
@@ -1102,7 +1102,10 @@ func newRestoreFilesystemShardCmd(
 ) *cobra.Command {
 
 	c := &restoreFilesystemShard{
-		commandWithScheduler: newCommandWithScheduler(clientConfig, serverConfig),
+		commandWithScheduler: newCommandWithScheduler(
+			clientConfig,
+			serverConfig,
+		),
 	}
 
 	cmd := &cobra.Command{
@@ -1121,7 +1124,10 @@ func newRestoreFilesystemShardCmd(
 		"ID of filesystem snapshot to restore from; required",
 	)
 	if err := cmd.MarkFlagRequired("filesystem-snapshot"); err != nil {
-		log.Fatalf("Error setting flag filesystem-snapshot as required: %v", err)
+		log.Fatalf(
+			"Error setting flag filesystem-snapshot as required: %v",
+			err,
+		)
 	}
 
 	cmd.Flags().StringVar(
