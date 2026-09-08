@@ -254,7 +254,7 @@ public:
                 ->GetSubgroup("cert", GetBaseName(RootCaPair.RootCaPath));
         }
 
-        RefreshCertificates();
+        PublishInitialState();
 
         ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
     }
@@ -316,8 +316,9 @@ private:
             }
         }
 
+        bool pending = false;
         if (run) {
-            RefreshCertificates();
+            pending = RefreshCertificates();
 
             NThreading::TPromise<void> promise;
             {
@@ -330,69 +331,111 @@ private:
             }
         }
 
+        bool alive = false;
+        {
+            TGuard<TMutex> lock(UpdateMutex);
+            alive = Started;
+        }
+        if (!alive) {
+            return;
+        }
+
+        // Files are checked once per interval. New content is re-checked
+        // after half an interval, so that a change takes effect within one and
+        // a half intervals without reading unchanged files more often.
         if (periodic) {
-            bool alive = false;
-            {
-                TGuard<TMutex> lock(UpdateMutex);
-                alive = Started;
-            }
-            if (alive) {
-                ScheduleUpdateAt(
-                    TInstant::Now() + RefreshInterval,
-                    true);
-            }
+            ScheduleUpdateAt(
+                TInstant::Now() +
+                    (pending ? RefreshInterval / 2 : RefreshInterval),
+                true);
+        } else if (pending) {
+            ScheduleUpdateAt(TInstant::Now() + RefreshInterval / 2, false);
         }
     }
 
-    void RefreshCertificates()
+    void PublishRootCaFingerprint()
     {
-        auto certPairs = Certificates;
-
-        const TString oldRootCa = RootCaPair.RootCa;
-        auto result = NTlsUtils::UpdateCertificates(certPairs, RootCaPair, Log);
-        RootCaPair.RootCa = result.RootCa.GetOrElse(oldRootCa);
-        const bool rootChanged = oldRootCa != RootCaPair.RootCa;
-
         if (RootCaMetrics) {
             const ui64 fingerprint = RootCaFingerprint(RootCaPair.RootCa);
             *RootCaMetrics->GetCounter("Fingerprint", false) = fingerprint;
         }
+    }
 
+    void PublishExpireTs(size_t index, TInstant notValidAfter)
+    {
+        if (CertificateMetrics[index] && notValidAfter) {
+            *CertificateMetrics[index]->GetCounter("ExpireTs", false) =
+                notValidAfter.Seconds();
+        }
+    }
+
+    void PublishCerts()
+    {
         PemKeyCertPairList identityPairs;
-        for (size_t i = 0; i < Certificates.size(); ++i) {
-            auto& certificate = Certificates[i];
-            const auto& newCert = result.Certificates[i];
-
-            if (!newCert.Defined()) {
+        for (const auto& certificate: Certificates) {
+            if (certificate.PrivateKey.empty() ||
+                certificate.CertChain.empty())
+            {
                 continue;
             }
-
-            if (CertificateMetrics[i] && newCert->NotValidAfter) {
-                *CertificateMetrics[i]->GetCounter("ExpireTs", false) =
-                    newCert->NotValidAfter.Seconds();
-            }
-
-            const auto& chain = newCert->CertificatesChain;
-            const bool identityChanged =
-                chain.front().private_key() != certificate.PrivateKey ||
-                chain.front().cert_chain() != certificate.CertChain;
-
-            if (identityChanged || rootChanged) {
-                certificate.PrivateKey = TString(chain.front().private_key());
-                certificate.CertChain = TString(chain.front().cert_chain());
-            }
-
-            identityPairs.insert(identityPairs.end(), chain.begin(), chain.end());
+            identityPairs.emplace_back(
+                certificate.PrivateKey,
+                certificate.CertChain);
         }
 
         TMaybe<TString> rootCert = RootCaPair.RootCa.empty()
             ? Nothing()
             : TMaybe<TString>(RootCaPair.RootCa);
-        const bool hasMaterialsToPublish =
-            rootCert.Defined() || !identityPairs.empty();
-        if (hasMaterialsToPublish) {
+        if (rootCert.Defined() || !identityPairs.empty()) {
             TlsProvider->PublishCerts(rootCert, std::move(identityPairs));
         }
+    }
+
+    void PublishInitialState()
+    {
+        PublishRootCaFingerprint();
+        for (size_t i = 0; i < Certificates.size(); ++i) {
+            auto notAfterTs = NTlsUtils::GetCertificateNotAfterTimestampSec(
+                Certificates[i].CertChain);
+            if (HasError(notAfterTs)) {
+                STORAGE_WARN(
+                    "Unable to parse certificate notAfter date for "
+                    << Certificates[i].Files.CertChainPath.Quote() << ": "
+                    << FormatError(notAfterTs.GetError()));
+                continue;
+            }
+            PublishExpireTs(i, TInstant::Seconds(notAfterTs.ExtractResult()));
+        }
+        PublishCerts();
+    }
+
+    // Returns true if some content is waiting for a stable read.
+    bool RefreshCertificates()
+    {
+        auto result =
+            NTlsUtils::UpdateCertificates(Certificates, RootCaPair, Log);
+
+        if (result.RootCaChanged) {
+            PublishRootCaFingerprint();
+        }
+
+        bool identityChanged = false;
+        for (size_t i = 0; i < Certificates.size(); ++i) {
+            const auto& update = result.Certificates[i];
+            if (!update.Changed) {
+                continue;
+            }
+            identityChanged = true;
+            PublishExpireTs(i, update.NotValidAfter);
+        }
+
+        // The distributor notifies gRPC on every publish, which rebuilds the
+        // SSL context, so publish only when something has changed.
+        if (result.RootCaChanged || identityChanged) {
+            PublishCerts();
+        }
+
+        return result.Pending;
     }
 };
 

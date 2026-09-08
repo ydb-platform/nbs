@@ -13,29 +13,46 @@ namespace NCloud::NTlsUtils {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPendingIdentity
+{
+    TString PrivateKey;
+    TString CertChain;
+
+    bool operator==(const TPendingIdentity& other) const = default;
+};
+
 struct TCertificatePair
 {
     TCertificateFiles Files;
     TString PrivateKey;
     TString CertChain;
+    // Content that differs from the current one and has been read once, see
+    // UpdateCertificates.
+    TMaybe<TPendingIdentity> Pending;
 };
 
 struct TRootCaPair
 {
     TString RootCaPath;
     TString RootCa;
+    // Content that differs from the current one and has been read once, see
+    // UpdateCertificates.
+    TMaybe<TString> Pending;
 };
 
-struct TCertificate
+struct TCertificateUpdate
 {
-    grpc_core::PemKeyCertPairList CertificatesChain;
+    bool Changed = false;
+    // Earliest notAfter of the chain, set when Changed.
     TInstant NotValidAfter;
 };
 
 struct TCertificatesUpdateResult
 {
-    TVector<TMaybe<TCertificate>> Certificates;
-    TMaybe<TString> RootCa;
+    bool RootCaChanged = false;
+    TVector<TCertificateUpdate> Certificates;
+    // Some content is waiting for a stable read.
+    bool Pending = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -49,6 +66,14 @@ TResultOrError<void> PrivateKeyAndCertificateMatch(
     TStringBuf certChain);
 
 TResultOrError<void> ValidateIdentityCertificateValidity(
+    TStringBuf certChainPem);
+
+// Checks that the chain can be built from the leaf up to the last certificate
+// the same way clients do it: issuer names, signatures, CA and name
+// constraints. The last certificate serves as the trust anchor: there is no
+// trust store here, and whether the chain ends at a trusted root is the
+// client's job anyway.
+TResultOrError<void> ValidateIdentityCertificateChain(
     TStringBuf certChainPem);
 
 TResultOrError<ui64> GetCertificateNotAfterTimestampSec(
@@ -68,9 +93,21 @@ TVector<TCertificatePair> LoadCertificatePairs(
 
 TRootCaPair LoadRootCaPair(TString rootCaPath);
 
+// Re-reads certificate files and updates |certificates| and |root| in place.
+// Certificate files are rewritten by external tools, not necessarily
+// atomically, and a partially written file may be syntactically valid, e.g. a
+// chain without its intermediate certificate. Therefore new content is applied
+// only after it has been read unchanged twice in a row (stable-read), a read
+// error restarts the count. This is a heuristic that reduces the chance of
+// picking up an intermediate state of a rewrite, not a guarantee: a writer
+// that stalls for longer than the check interval is indistinguishable from a
+// finished one. The last successfully loaded content is kept if the files
+// cannot be read, parsed or validated; new content that fails these checks is
+// reported on every call until the files change. Every certificate is
+// refreshed independently.
 TCertificatesUpdateResult UpdateCertificates(
-    const TVector<TCertificatePair>& certificates,
-    const TRootCaPair& root,
+    TVector<TCertificatePair>& certificates,
+    TRootCaPair& root,
     TLog& log);
 
 }   // namespace NCloud::NTlsUtils
