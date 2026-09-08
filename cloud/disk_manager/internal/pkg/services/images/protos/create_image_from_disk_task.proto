@@ -18,6 +18,7 @@ message CreateImageFromDiskRequest {
     bool UseS3 = 8;
     bool RetryBrokenDRBasedDiskCheckpoint = 9;
     string StorageClass = 10;
+    uint32 ChunkSize = 11;
 }
 
 message CreateImageFromDiskTaskState {

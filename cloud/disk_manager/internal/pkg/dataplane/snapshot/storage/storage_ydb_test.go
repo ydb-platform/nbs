@@ -468,6 +468,7 @@ func TestCreateSnapshot(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.NoError(t, err)
 			require.False(t, snapshotMeta.Ready)
@@ -478,6 +479,7 @@ func TestCreateSnapshot(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.NoError(t, err)
 
@@ -494,9 +496,245 @@ func TestCreateSnapshot(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.NoError(t, err)
 			require.True(t, snapshotMeta.Ready)
+		})
+	}
+}
+
+func TestCreateSnapshotChunkSize(t *testing.T) {
+	for _, testCase := range []struct {
+		name      string
+		chunkSize uint32
+		expected  uint32
+	}{
+		{name: "default", expected: dataplane_common.DefaultChunkSize},
+		{name: "small", chunkSize: 1024 * 1024, expected: 1024 * 1024},
+		{name: "large", chunkSize: 8 * 1024 * 1024, expected: 8 * 1024 * 1024},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
+
+			created, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+				ID:        "snapshot",
+				ChunkSize: testCase.chunkSize,
+			}, false)
+			require.NoError(t, err)
+			require.Equal(t, testCase.expected, created.ChunkSize)
+
+			stored, err := f.storage.GetSnapshotMeta(f.ctx, "snapshot")
+			require.NoError(t, err)
+			require.Equal(t, testCase.expected, stored.ChunkSize)
+			require.Equal(t, testCase.expected, stored.GetChunkSize())
+
+			// Retrying creation with another size must preserve existing chunks.
+			retried, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+				ID:        "snapshot",
+				ChunkSize: 2 * testCase.expected,
+			}, false)
+			require.NoError(t, err)
+			require.Equal(t, testCase.expected, retried.ChunkSize)
+
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			require.NoError(t, err)
+			ready, err := f.storage.CheckSnapshotReady(f.ctx, "snapshot")
+			require.NoError(t, err)
+			require.Equal(t, testCase.expected, ready.ChunkSize)
+
+			retried, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+				ID:        "snapshot",
+				ChunkSize: 2 * testCase.expected,
+			}, false)
+			require.NoError(t, err)
+			require.Equal(t, testCase.expected, retried.ChunkSize)
+
+			deleting, err := f.storage.DeletingSnapshot(f.ctx, "snapshot", "delete")
+			require.NoError(t, err)
+			require.Equal(t, testCase.expected, deleting.ChunkSize)
+		})
+	}
+}
+
+func TestLegacySnapshotChunkSize(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		value string
+	}{
+		{name: "null", value: "NULL"},
+		{name: "zero", value: "CAST(0 AS Uint32)"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
+
+			// Snapshots written before chunk_size was added have a NULL column.
+			_, err := f.db.ExecuteRW(f.ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				declare $id as Utf8;
+				declare $status as Int64;
+
+				upsert into snapshots (id, status, chunk_size)
+				values ($id, $status, %v)
+			`, f.db.AbsolutePath(f.config.GetStorageFolder()), testCase.value),
+				persistence.ValueParam("$id", persistence.UTF8Value("snapshot")),
+				persistence.ValueParam("$status", persistence.Int64Value(int64(snapshotStatusCreating))),
+			)
+			require.NoError(t, err)
+
+			stored, err := f.storage.GetSnapshotMeta(f.ctx, "snapshot")
+			require.NoError(t, err)
+			require.Zero(t, stored.ChunkSize)
+			require.Equal(t, uint32(dataplane_common.DefaultChunkSize), stored.GetChunkSize())
+
+			retried, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+				ID:        "snapshot",
+				ChunkSize: 8 * 1024 * 1024,
+			}, false)
+			require.NoError(t, err)
+			require.Equal(t, uint32(dataplane_common.DefaultChunkSize), retried.GetChunkSize())
+
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			require.NoError(t, err)
+			ready, err := f.storage.CheckSnapshotReady(f.ctx, "snapshot")
+			require.NoError(t, err)
+			require.Equal(t, uint32(dataplane_common.DefaultChunkSize), ready.GetChunkSize())
+
+			deleting, err := f.storage.DeletingSnapshot(f.ctx, "snapshot", "delete")
+			require.NoError(t, err)
+			require.Equal(t, uint32(dataplane_common.DefaultChunkSize), deleting.GetChunkSize())
+		})
+	}
+}
+
+func TestCreateSnapshotChunkSizeWithBase(t *testing.T) {
+	for _, testCase := range []struct {
+		name                 string
+		baseChunkSize        uint32
+		chunkSize            uint32
+		inheritBaseChunkSize bool
+		legacyBaseChunkSize  string
+	}{
+		{name: "default_base", baseChunkSize: dataplane_common.DefaultChunkSize, chunkSize: 8 * 1024 * 1024},
+		{name: "custom_base", baseChunkSize: 8 * 1024 * 1024, chunkSize: dataplane_common.DefaultChunkSize},
+		{name: "default_request", baseChunkSize: 8 * 1024 * 1024},
+		{name: "inherit_default_base", chunkSize: 8 * 1024 * 1024, inheritBaseChunkSize: true},
+		{name: "inherit_custom_base", baseChunkSize: 8 * 1024 * 1024, chunkSize: dataplane_common.DefaultChunkSize, inheritBaseChunkSize: true},
+		{name: "inherit_default_request", baseChunkSize: 8 * 1024 * 1024, inheritBaseChunkSize: true},
+		{name: "inherit_legacy_null", chunkSize: 8 * 1024 * 1024, inheritBaseChunkSize: true, legacyBaseChunkSize: "NULL"},
+		{name: "inherit_legacy_zero", chunkSize: 8 * 1024 * 1024, inheritBaseChunkSize: true, legacyBaseChunkSize: "CAST(0 AS Uint32)"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
+
+			disk := &types.Disk{ZoneId: "zone", DiskId: "disk"}
+			_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+				ID:           "base",
+				Disk:         disk,
+				CheckpointID: "base_checkpoint",
+				ChunkSize:    testCase.baseChunkSize,
+			}, false)
+			require.NoError(t, err)
+			err = f.storage.SnapshotCreated(f.ctx, "base", 0, 0, 0, nil)
+			require.NoError(t, err)
+
+			if testCase.legacyBaseChunkSize != "" {
+				_, err = f.db.ExecuteRW(f.ctx, fmt.Sprintf(`
+					--!syntax_v1
+					pragma TablePathPrefix = "%v";
+
+					update snapshots
+					set chunk_size = %v
+					where id = "base";
+				`, f.db.AbsolutePath(f.config.GetStorageFolder()), testCase.legacyBaseChunkSize))
+				require.NoError(t, err)
+			}
+
+			request := SnapshotMeta{
+				ID:           "snapshot",
+				Disk:         disk,
+				CheckpointID: "checkpoint",
+				ChunkSize:    testCase.chunkSize,
+			}
+			expected := request.GetChunkSize()
+			if testCase.inheritBaseChunkSize {
+				expected = (SnapshotMeta{ChunkSize: testCase.baseChunkSize}).GetChunkSize()
+			}
+			created, err := f.storage.CreateSnapshot(f.ctx, request, testCase.inheritBaseChunkSize)
+			require.NoError(t, err)
+			require.Equal(t, "base", created.BaseSnapshotID)
+			require.Equal(t, "base_checkpoint", created.BaseCheckpointID)
+			require.Equal(t, expected, created.ChunkSize)
+
+			stored, err := f.storage.GetSnapshotMeta(f.ctx, request.ID)
+			require.NoError(t, err)
+			require.Equal(t, expected, stored.ChunkSize)
+
+			request.ChunkSize = 16 * 1024 * 1024
+			retried, err := f.storage.CreateSnapshot(f.ctx, request, testCase.inheritBaseChunkSize)
+			require.NoError(t, err)
+			require.Equal(t, expected, retried.ChunkSize)
+
+			// Losing the base after creation must not change the persisted layout.
+			_, err = f.storage.DeletingSnapshot(f.ctx, "base", "delete_base")
+			require.NoError(t, err)
+			toDelete, err := f.storage.GetSnapshotsToDelete(f.ctx, time.Now().Add(time.Hour), 10)
+			require.NoError(t, err)
+			require.Len(t, toDelete, 1)
+			err = f.storage.ClearDeletingSnapshots(f.ctx, toDelete)
+			require.NoError(t, err)
+
+			retried, err = f.storage.CreateSnapshot(f.ctx, request, testCase.inheritBaseChunkSize)
+			require.NoError(t, err)
+			require.Equal(t, expected, retried.ChunkSize)
+
+			err = f.storage.SnapshotCreated(f.ctx, request.ID, 0, 0, 0, nil)
+			require.NoError(t, err)
+			retried, err = f.storage.CreateSnapshot(f.ctx, request, !testCase.inheritBaseChunkSize)
+			require.NoError(t, err)
+			require.True(t, retried.Ready)
+			require.Equal(t, expected, retried.ChunkSize)
+		})
+	}
+}
+
+func TestCreateSnapshotChunkSizeWithoutReadyBase(t *testing.T) {
+	for _, baseState := range []string{"absent", "creating", "deleting"} {
+		t.Run(baseState, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
+			disk := &types.Disk{ZoneId: "zone", DiskId: "disk"}
+
+			if baseState != "absent" {
+				_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+					ID:        "base",
+					Disk:      disk,
+					ChunkSize: 8 * 1024 * 1024,
+				}, false)
+				require.NoError(t, err)
+				if baseState == "deleting" {
+					err = f.storage.SnapshotCreated(f.ctx, "base", 0, 0, 0, nil)
+					require.NoError(t, err)
+					_, err = f.storage.DeletingSnapshot(f.ctx, "base", "delete_base")
+					require.NoError(t, err)
+				}
+			}
+
+			for _, chunkSize := range []uint32{0, 12 * 1024 * 1024} {
+				request := SnapshotMeta{
+					ID:        fmt.Sprintf("snapshot_%v", chunkSize),
+					Disk:      disk,
+					ChunkSize: chunkSize,
+				}
+				created, err := f.storage.CreateSnapshot(f.ctx, request, true)
+				require.NoError(t, err)
+				require.Empty(t, created.BaseSnapshotID)
+				require.Equal(t, request.GetChunkSize(), created.ChunkSize)
+			}
 		})
 	}
 }
@@ -519,7 +757,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 				CreateTaskID: "create1",
 			}
 
-			created, err := f.storage.CreateSnapshot(f.ctx, snapshot1)
+			created, err := f.storage.CreateSnapshot(f.ctx, snapshot1, true)
 			require.NoError(t, err)
 			require.NotNil(t, created)
 			require.Empty(t, created.BaseSnapshotID)
@@ -534,7 +772,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 				},
 				CheckpointID: "checkpoint2",
 				CreateTaskID: "create2",
-			})
+			}, true)
 			require.NoError(t, err)
 			require.NotNil(t, created)
 			require.Empty(t, created.BaseSnapshotID)
@@ -554,7 +792,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 				CreateTaskID: "create3",
 			}
 
-			created, err = f.storage.CreateSnapshot(f.ctx, snapshot3)
+			created, err = f.storage.CreateSnapshot(f.ctx, snapshot3, true)
 			require.NoError(t, err)
 			require.NotNil(t, created)
 			require.Equal(t, snapshot1.ID, created.BaseSnapshotID)
@@ -575,7 +813,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 				CreateTaskID: "create4",
 			}
 
-			created, err = f.storage.CreateSnapshot(f.ctx, snapshot4)
+			created, err = f.storage.CreateSnapshot(f.ctx, snapshot4, true)
 			require.NoError(t, err)
 			require.NotNil(t, created)
 			require.Equal(t, snapshot3.ID, created.BaseSnapshotID)
@@ -614,7 +852,7 @@ func TestSnapshotsLocks(t *testing.T) {
 				CreateTaskID: "create1",
 			}
 
-			created, err := f.storage.CreateSnapshot(f.ctx, snapshot1)
+			created, err := f.storage.CreateSnapshot(f.ctx, snapshot1, true)
 			require.NoError(t, err)
 			require.NotNil(t, created)
 
@@ -631,7 +869,7 @@ func TestSnapshotsLocks(t *testing.T) {
 				CreateTaskID: "create2",
 			}
 
-			created, err = f.storage.CreateSnapshot(f.ctx, snapshot2)
+			created, err = f.storage.CreateSnapshot(f.ctx, snapshot2, true)
 			require.NoError(t, err)
 			require.NotNil(t, created)
 
@@ -660,7 +898,7 @@ func TestSnapshotsLocks(t *testing.T) {
 				CreateTaskID: "create3",
 			}
 
-			created, err = f.storage.CreateSnapshot(f.ctx, snapshot3)
+			created, err = f.storage.CreateSnapshot(f.ctx, snapshot3, true)
 			require.NoError(t, err)
 			require.NotNil(t, created)
 
@@ -696,6 +934,7 @@ func TestDeletingSnapshot(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.NoError(t, err)
 
@@ -715,6 +954,7 @@ func TestDeletingSnapshot(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -728,6 +968,7 @@ func TestDeletingSnapshot(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -764,6 +1005,7 @@ func TestDeleteNonexistentSnapshot(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -782,6 +1024,7 @@ func TestClearDeletingSnapshots(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.NoError(t, err)
 
@@ -826,6 +1069,7 @@ func TestClearDeletingSnapshots(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.NoError(t, err)
 		})
@@ -1345,6 +1589,7 @@ func TestCheckSnapshotReady(t *testing.T) {
 				SnapshotMeta{
 					ID: "snapshot",
 				},
+				false,
 			)
 			require.NoError(t, err)
 

@@ -17,6 +17,7 @@ message CreateImageFromURLRequest {
     repeated types.DiskPool DiskPools = 5;
     bool UseS3 = 10;
     string StorageClass = 12;
+    uint32 ChunkSize = 13;
 }
 
 message CreateImageFromURLTaskState {

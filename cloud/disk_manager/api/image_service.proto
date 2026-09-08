@@ -41,6 +41,14 @@ message CreateImageRequest {
     string dst_image_id = 6;
     string folder_id = 7;
     bool pooled = 10;
+    // Chunk size in bytes for disk or URL sources. Nonzero sizes must be at least
+    // 4 MiB and multiples of 4 MiB.
+    // A nonzero override requires the folder to be allowlisted in controlplane
+    // configuration. Zero uses the controlplane default for S3 and 4 MiB for YDB.
+    // Incremental snapshots from disks inherit the parent snapshot's size instead.
+    // YDB-backed snapshots always use 4 MiB chunks.
+    // Cannot be overridden when copying an image or snapshot.
+    uint32 chunk_size = 11;
 }
 
 message CreateImageMetadata {

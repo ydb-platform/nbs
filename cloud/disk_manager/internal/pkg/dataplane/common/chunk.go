@@ -3,11 +3,39 @@ package common
 import (
 	"bytes"
 	"hash/crc32"
+
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 var zeroes = make([]byte, 1024*1024)
+
+// Zero selects DefaultChunkSize. Explicit sizes must be multiples of 4 MiB.
+func ValidateChunkSize(chunkSize uint32) error {
+	if chunkSize%DefaultChunkSize != 0 {
+		return errors.NewNonRetriableErrorf(
+			"chunk size must be at least 4 MiB and a multiple of 4 MiB, got %v bytes",
+			chunkSize,
+		)
+	}
+	return nil
+}
+
+func ValidateSnapshotChunkSize(chunkSize uint32, useS3 bool) error {
+	err := ValidateChunkSize(chunkSize)
+	if err != nil {
+		return err
+	}
+	if !useS3 && chunkSize != 0 && chunkSize != DefaultChunkSize {
+		return errors.NewNonRetriableErrorf(
+			"non-default snapshot chunk size %v requires S3; YDB snapshots use %v bytes",
+			chunkSize,
+			DefaultChunkSize,
+		)
+	}
+	return nil
+}
 
 type Chunk struct {
 	ID           string

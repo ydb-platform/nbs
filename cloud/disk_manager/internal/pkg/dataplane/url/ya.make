@@ -8,6 +8,10 @@ SRCS(
     formats.go
 )
 
+GO_TEST_SRCS(
+    image_reader_test.go
+)
+
 END()
 
 RECURSE(
@@ -20,4 +24,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     tests
+    ut
 )

@@ -17,6 +17,7 @@ message CreateSnapshotFromDiskRequest {
     bool UseS3 = 8;
     bool UseProxyOverlayDisk = 9;
     bool RetryBrokenDRBasedDiskCheckpoint = 10;
+    uint32 ChunkSize = 11;
 }
 
 message CreateSnapshotFromDiskTaskState {

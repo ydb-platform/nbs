@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
@@ -106,16 +107,17 @@ func TestDeleteSnapshotDataTask(t *testing.T) {
 	_, err := storage.CreateSnapshot(
 		ctx,
 		snapshot_storage.SnapshotMeta{ID: snapshotID},
+		false, // useBaseSnapshotChunkSize
 	)
 	require.NoError(t, err)
 
 	err = storage.SnapshotCreated(
 		ctx,
 		snapshotID,
-		storageSize,                   // size
-		storageSize,                   // storageSize
-		uint32(storageSize/chunkSize), // chunkCount
-		nil,                           // encryption
+		storageSize, // size
+		storageSize, // storageSize
+		uint32(storageSize/common.DefaultChunkSize), // chunkCount
+		nil, // encryption
 	)
 	require.NoError(t, err)
 

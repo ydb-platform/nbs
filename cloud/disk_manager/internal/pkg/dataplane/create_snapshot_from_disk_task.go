@@ -231,16 +231,59 @@ func (t *createSnapshotFromDiskTask) run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	snapshotMeta, err := t.storage.CreateSnapshot(
+	err := common.ValidateSnapshotChunkSize(t.request.ChunkSize, t.request.UseS3)
+	if err != nil {
+		return err
+	}
+
+	snapshotMeta, err := t.storage.GetSnapshotMeta(ctx, t.request.DstSnapshotId)
+	if err != nil {
+		return err
+	}
+
+	useBaseSnapshotChunkSize := true
+	if snapshotMeta == nil {
+		nbsClient, err := t.getNbsClient(ctx)
+		if err != nil {
+			return err
+		}
+
+		diskParams, err := nbsClient.Describe(ctx, t.request.SrcDisk.DiskId)
+		if err != nil {
+			return err
+		}
+		useBaseSnapshotChunkSize = !diskParams.IsDiskRegistryBasedDisk
+	}
+
+	snapshotMeta, err = t.storage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
 			ID:           t.request.DstSnapshotId,
 			Disk:         t.request.SrcDisk,
 			CheckpointID: t.request.SrcDiskCheckpointId,
 			CreateTaskID: execCtx.GetTaskID(),
+			ChunkSize:    t.request.ChunkSize,
 		},
+		useBaseSnapshotChunkSize,
 	)
 	if err != nil {
+		return err
+	}
+
+	chunkSize := t.request.ChunkSize
+	if chunkSize == 0 {
+		chunkSize = common.DefaultChunkSize
+	}
+	if len(snapshotMeta.BaseSnapshotID) == 0 && snapshotMeta.GetChunkSize() != chunkSize {
+		return errors.NewNonRetriableErrorf(
+			"snapshot %v has chunk size %v, but requested chunk size is %v",
+			snapshotMeta.ID,
+			snapshotMeta.GetChunkSize(),
+			chunkSize,
+		)
+	}
+	chunkSize = snapshotMeta.GetChunkSize()
+	if err := common.ValidateSnapshotChunkSize(chunkSize, t.request.UseS3); err != nil {
 		return err
 	}
 
@@ -324,7 +367,7 @@ func (t *createSnapshotFromDiskTask) run(
 		ReaderCount:         t.config.GetReaderCount(),
 		WriterCount:         t.config.GetWriterCount(),
 		ChunksInflightLimit: t.config.GetChunksInflightLimit(),
-		ChunkSize:           chunkSize,
+		ChunkSize:           int(chunkSize),
 
 		ShallowCopyWorkerCount:   t.config.SnapshotConfig.GetShallowCopyWorkerCount(),
 		ShallowCopyInflightLimit: t.config.SnapshotConfig.GetShallowCopyInflightLimit(),
@@ -386,13 +429,13 @@ func (t *createSnapshotFromDiskTask) run(
 		return err
 	}
 
-	size := uint64(chunkCount) * chunkSize
-	storageSize := dataChunkCount * chunkSize
+	size := uint64(chunkCount) * uint64(chunkSize)
+	storageSize := dataChunkCount * uint64(chunkSize)
 
 	t.state.SnapshotSize = size
 	t.state.SnapshotStorageSize = storageSize
 	t.state.TransferredDataSize =
-		uint64(t.state.TransferredChunkCount) * chunkSize
+		uint64(t.state.TransferredChunkCount) * uint64(chunkSize)
 
 	err = execCtx.SaveState(ctx)
 	if err != nil {

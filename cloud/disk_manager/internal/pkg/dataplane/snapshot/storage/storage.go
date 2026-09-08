@@ -25,8 +25,18 @@ type SnapshotMeta struct {
 	StorageSize uint64
 	LockTaskID  string
 	ChunkCount  uint32
-	Encryption  *types.EncryptionDesc
-	Ready       bool
+	// Chunk size in bytes. Zero denotes the legacy default of 4 MiB.
+	ChunkSize  uint32
+	Encryption *types.EncryptionDesc
+	Ready      bool
+}
+
+func (m SnapshotMeta) GetChunkSize() uint32 {
+	if m.ChunkSize == 0 {
+		return common.DefaultChunkSize
+	}
+
+	return m.ChunkSize
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,9 +50,12 @@ type ChunkMapEntry struct {
 ////////////////////////////////////////////////////////////////////////////////
 
 type Storage interface {
+	// Optionally inherit the ready incremental base's chunk size. Existing
+	// snapshots retain their stored size.
 	CreateSnapshot(
 		ctx context.Context,
 		snapshotMeta SnapshotMeta,
+		useBaseSnapshotChunkSize bool,
 	) (*SnapshotMeta, error)
 
 	SnapshotCreated(

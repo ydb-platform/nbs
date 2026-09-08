@@ -77,6 +77,8 @@ def parse_args(args):
         default="",
     )
     parser.add_argument("--s3-quota", action='append', default=[])
+    parser.add_argument("--snapshot-chunk-size", type=int, default=4194304)
+    parser.add_argument("--image-chunk-size", type=int, default=4194304)
     parser.add_argument(
         "--regular-filesystem-scrubbing-config",
         type=str,
@@ -399,6 +401,8 @@ def start(argv):
             retry_broken_disk_registry_based_disk_checkpoint=args.retry_broken_disk_registry_based_disk_checkpoint,
             cell_selection_policy=args.cell_selection_policy,
             image_s3_default_storage_class=args.image_s3_default_storage_class,
+            snapshot_chunk_size=args.snapshot_chunk_size,
+            image_chunk_size=args.image_chunk_size,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()

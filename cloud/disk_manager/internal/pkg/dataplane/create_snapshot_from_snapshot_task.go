@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -55,14 +56,26 @@ func (t *createSnapshotFromSnapshotTask) Run(
 		t.performanceConfig.GetSnapshotShallowCopyBandwidthMiBs(),
 	))
 
-	_, err = t.storage.CreateSnapshot(
+	dstMeta, err := t.storage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
-			ID: t.request.DstSnapshotId,
+			ID:        t.request.DstSnapshotId,
+			ChunkSize: srcMeta.GetChunkSize(),
 		},
+		false, // useBaseSnapshotChunkSize
 	)
 	if err != nil {
 		return err
+	}
+
+	if dstMeta.GetChunkSize() != srcMeta.GetChunkSize() {
+		return errors.NewNonRetriableErrorf(
+			"snapshot %v has chunk size %v, but source snapshot %v has chunk size %v",
+			dstMeta.ID,
+			dstMeta.GetChunkSize(),
+			srcMeta.ID,
+			srcMeta.GetChunkSize(),
+		)
 	}
 
 	err = t.storage.ShallowCopySnapshot(
