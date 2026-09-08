@@ -248,6 +248,7 @@ void TCreateVolumeActor::CreateVolumeImpl(
         config.SetTabletVersion(SsdDirectMirror3Of5GroupTabletVersion);
         config.SetStoragePoolName(Request.GetStoragePoolName());
         config.AddPartitions()->SetBlockCount(Request.GetBlocksCount());
+        SetupSsdDirectMirror3Of5GroupVolumeChannels(*Config, config);
         config.SetCreationTs(ctx.Now().MicroSeconds());
 
         auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(

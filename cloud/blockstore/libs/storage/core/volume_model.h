@@ -101,6 +101,10 @@ void ResizeVolume(
     const NProto::TVolumePerformanceProfile& profile,
     NKikimrBlockStore::TVolumeConfig& volumeConfig);
 
+void SetupSsdDirectMirror3Of5GroupVolumeChannels(
+    const TStorageConfig& config,
+    NKikimrBlockStore::TVolumeConfig& volumeConfig);
+
 bool SetMissingParams(
     const TVolumeParams& volumeParams,
     const NKikimrBlockStore::TVolumeConfig& prevConfig,

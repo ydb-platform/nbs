@@ -774,6 +774,49 @@ void ResizeVolume(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void SetupSsdDirectMirror3Of5GroupVolumeChannels(
+    const TStorageConfig& config,
+    NKikimrBlockStore::TVolumeConfig& volumeConfig)
+{
+    const NPrivateProto::TVolumeChannelsToPoolsKinds noOverrides;
+
+    AddOrModifyChannel(
+        config.GetSSDSystemChannelPoolKind(),
+        0,
+        128_MB,
+        EChannelDataKind::System,
+        volumeConfig,
+        noOverrides);
+    AddOrModifyChannel(
+        config.GetSSDLogChannelPoolKind(),
+        1,
+        1_MB,
+        EChannelDataKind::Log,
+        volumeConfig,
+        noOverrides);
+
+    SetupVolumeChannel(
+        config.GetSSDSystemChannelPoolKind(),
+        0,
+        1_MB,
+        EChannelDataKind::System,
+        volumeConfig);
+    SetupVolumeChannel(
+        config.GetSSDLogChannelPoolKind(),
+        1,
+        1_MB,
+        EChannelDataKind::Log,
+        volumeConfig);
+    SetupVolumeChannel(
+        config.GetSSDIndexChannelPoolKind(),
+        2,
+        1_MB,
+        EChannelDataKind::Index,
+        volumeConfig);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool SetMissingParams(
     const TVolumeParams& volumeParams,
     const NKikimrBlockStore::TVolumeConfig& prevConfig,

@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_registry_proxy_mock.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
@@ -2154,32 +2155,49 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvModifySchemeRequest: {
+                    case TEvSSProxy::EvCreateVolumeRequest: {
                         auto* msg =
-                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
-                        if (msg->ModifyScheme.GetOperationType() ==
-                            NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
-                        {
-                            detectedCreateVolumeRequest = true;
-                            const auto& volumeConfig =
-                                msg->ModifyScheme.GetCreateBlockStoreVolume()
-                                    .GetVolumeConfig();
-                            UNIT_ASSERT_VALUES_EQUAL(
-                                SsdDirectMirror3Of5GroupTabletVersion,
-                                volumeConfig.GetTabletVersion());
-                            UNIT_ASSERT_VALUES_EQUAL(
-                                "ddp1",
-                                volumeConfig.GetStoragePoolName());
-                            UNIT_ASSERT_VALUES_EQUAL(
-                                static_cast<int>(NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP),
-                                volumeConfig.GetStorageMediaKind());
-                            UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.PartitionsSize());
-                            UNIT_ASSERT_VALUES_EQUAL(
-                                DefaultBlocksCount,
-                                volumeConfig.GetPartitions(0).GetBlockCount());
-                            UNIT_ASSERT_VALUES_EQUAL(0, volumeConfig.ExplicitChannelProfilesSize());
-                        }
-                        break;
+                            event->Get<TEvSSProxy::TEvCreateVolumeRequest>();
+                        const auto& volumeConfig = msg->VolumeConfig;
+                        detectedCreateVolumeRequest = true;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            SsdDirectMirror3Of5GroupTabletVersion,
+                            volumeConfig.GetTabletVersion());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "ddp1",
+                            volumeConfig.GetStoragePoolName());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<int>(NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP),
+                            volumeConfig.GetStorageMediaKind());
+                        UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.PartitionsSize());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            DefaultBlocksCount,
+                            volumeConfig.GetPartitions(0).GetBlockCount());
+                        UNIT_ASSERT_VALUES_EQUAL(2, volumeConfig.ExplicitChannelProfilesSize());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<ui32>(EChannelDataKind::System),
+                            volumeConfig.GetExplicitChannelProfiles(0).GetDataKind());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<ui32>(EChannelDataKind::Log),
+                            volumeConfig.GetExplicitChannelProfiles(1).GetDataKind());
+                        UNIT_ASSERT(
+                            !volumeConfig.GetExplicitChannelProfiles(0).GetPoolKind().empty());
+                        UNIT_ASSERT_VALUES_EQUAL(3, volumeConfig.VolumeExplicitChannelProfilesSize());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<ui32>(EChannelDataKind::Index),
+                            volumeConfig.GetVolumeExplicitChannelProfiles(2).GetDataKind());
+
+                        auto response =
+                            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>();
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0, // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
