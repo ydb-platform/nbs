@@ -21,6 +21,7 @@ SRCS(
     fresh_blob.cpp
     garbage_queue.cpp
     group_downtimes.cpp
+    inflight_compaction_counters.cpp
     mixed_blocks_filter.cpp
     mixed_blocks_filter_load_state.cpp
     mixed_index_cache.cpp

@@ -382,6 +382,10 @@ struct TTxPartition
 
         TVector<TBlockMark> BlockMarks;
         TAffectedBlobs AffectedBlobs;
+
+        // Blobs that are skipped by commit id.
+        TAffectedBlobs BlobsSkippedByCommitId;
+
         TAffectedBlocks AffectedBlocks;
         ui32 BlobsSkipped = 0;
         ui32 BlocksSkipped = 0;
@@ -398,6 +402,7 @@ struct TTxPartition
         {
             std::fill(BlockMarks.begin(), BlockMarks.end(), TBlockMark());
             AffectedBlobs.clear();
+            BlobsSkippedByCommitId.clear();
             AffectedBlocks.clear();
             BlobsSkipped = 0;
             BlocksSkipped = 0;
@@ -430,7 +435,6 @@ struct TTxPartition
             ab.Offsets.push_back(blobOffset);
 
             if (keepTrackOfAffectedBlocks) {
-                ab.AffectedBlocks.push_back({ blockIndex, commitId });
                 AffectedBlocks.push_back({ blockIndex, commitId });
             }
         }
