@@ -187,6 +187,10 @@ private:
         const NActors::TActorContext& ctx,
         const TEvService::TEvUnlinkNodeRequest::TPtr& ev,
         const TSessionInfo* session);
+    bool TryHandleControlNamespaceDestroyHandle(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvDestroyHandleRequest::TPtr& ev,
+        const TSessionInfo* session);
     bool TryHandleControlNamespaceGetNodeXAttr(
         const NActors::TActorContext& ctx,
         const TEvService::TEvGetNodeXAttrRequest::TPtr& ev,

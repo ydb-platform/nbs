@@ -266,14 +266,13 @@ void TStorageServiceActor::ForwardRequestToShard(
         msg->CallContext->RequestId);
 
     if (!StorageConfig->GetControlNamespaceDirName().empty() &&
-        ClassifyControlNamespaceEntry(entityId) != EControlNamespaceEntry::None)
+        IsControlNamespaceEntry(ClassifyControlNamespaceEntry(entityId)))
     {
         return NCloud::Reply(
             ctx,
             *ev,
-            BuildControlNamespaceResponse<TMethod>(
-                ev,
-                session->FileStore.GetFileSystemId()));
+            std::make_unique<typename TMethod::TResponse>(
+                ControlNamespaceNotPermittedError()));
     }
 
     const NProto::TFileStore& filestore = session->FileStore;
@@ -414,6 +413,14 @@ template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TUnlinkNodeMethod>(
     const TActorContext& ctx,
     const TEvService::TUnlinkNodeMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
+    ui64 entityId,
+    TSessionInfo* session);
+
+template void
+TStorageServiceActor::ForwardRequestToShard<TEvService::TDestroyHandleMethod>(
+    const TActorContext& ctx,
+    const TEvService::TDestroyHandleMethod::TRequest::TPtr& ev,
     bool forceBehaveAsShard,
     ui64 entityId,
     TSessionInfo* session);

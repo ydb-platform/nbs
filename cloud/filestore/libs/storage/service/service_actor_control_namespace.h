@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 
@@ -30,13 +29,13 @@ static_assert(ControlNamespaceShardNo > MaxShardCount);
 
 constexpr TStringBuf ControlFsIdFileName = "fsid";
 
+// What a node or (parent, name) pair resolves to in the control namespace
 enum class EControlNamespaceEntry
 {
     None,
-    ControlDir,
-    FsId,
-    // Under the control dir, but not a name it actually exposes.
-    Unknown,
+    ControlDir, // the root control dir itself
+    FsId, // "fsid" file under the control dir, exposes the filesystem ID
+    Unknown, // under the control dir but not a known name
 };
 
 // Self-lookup form: classifies an already-resolved ino.
@@ -49,48 +48,15 @@ EControlNamespaceEntry ClassifyControlNamespaceEntry(
     TStringBuf name,
     TStringBuf controlNamespaceDirName);
 
+// True for anything under the control namespace, i.e. every value but None.
+bool IsControlNamespaceEntry(EControlNamespaceEntry entry);
+
 void FillControlDirAttr(NProto::TNodeAttr& attr);
 void FillControlFsIdAttr(NProto::TNodeAttr& attr, const TString& fileSystemId);
 
-NProto::TError ControlNamespaceReadOnlyError();
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Defaults to rejecting, which is fine for everything except open/read/
-// stat/ls
-template <typename TMethod>
-std::unique_ptr<typename TMethod::TResponse> BuildControlNamespaceResponse(
-    const typename TMethod::TRequest::TPtr& ev,
-    const TString& fileSystemId)
-{
-    Y_UNUSED(ev);
-    Y_UNUSED(fileSystemId);
-    return std::make_unique<typename TMethod::TResponse>(
-        ControlNamespaceReadOnlyError());
-}
-
-template <>
-std::unique_ptr<TEvService::TGetNodeAttrMethod::TResponse>
-BuildControlNamespaceResponse<TEvService::TGetNodeAttrMethod>(
-    const TEvService::TGetNodeAttrMethod::TRequest::TPtr& ev,
-    const TString& fileSystemId);
-
-template <>
-std::unique_ptr<TEvService::TCreateHandleMethod::TResponse>
-BuildControlNamespaceResponse<TEvService::TCreateHandleMethod>(
-    const TEvService::TCreateHandleMethod::TRequest::TPtr& ev,
-    const TString& fileSystemId);
-
-template <>
-std::unique_ptr<TEvService::TConfirmCreateHandleMethod::TResponse>
-BuildControlNamespaceResponse<TEvService::TConfirmCreateHandleMethod>(
-    const TEvService::TConfirmCreateHandleMethod::TRequest::TPtr& ev,
-    const TString& fileSystemId);
-
-template <>
-std::unique_ptr<TEvService::TDestroyHandleMethod::TResponse>
-BuildControlNamespaceResponse<TEvService::TDestroyHandleMethod>(
-    const TEvService::TDestroyHandleMethod::TRequest::TPtr& ev,
-    const TString& fileSystemId);
+// The one error every control-namespace rejection replies with, whether
+// it's a dedicated hook denying a mutation or ForwardRequestToShard's
+// generic fallback denying a method with no hook of its own.
+NProto::TError ControlNamespaceNotPermittedError();
 
 }   // namespace NCloud::NFileStore::NStorage

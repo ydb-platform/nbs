@@ -44,7 +44,6 @@ namespace NCloud::NFileStore::NStorage {
 
 #define FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx, ...)            \
     xxx(ConfirmCreateHandle,                __VA_ARGS__)                       \
-    xxx(DestroyHandle,                      __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
                                                                                \
     xxx(AcquireLock,                        __VA_ARGS__)                       \
@@ -64,6 +63,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
+    xxx(DestroyHandle,                      __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_HANDLE
 
 #define FILESTORE_SERVICE_REQUESTS(xxx, ...)                                   \

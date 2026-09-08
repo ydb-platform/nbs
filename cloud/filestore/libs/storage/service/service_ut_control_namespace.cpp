@@ -268,26 +268,26 @@ Y_UNIT_TEST_SUITE(TStorageServiceControlNamespaceTest)
         UNIT_ASSERT_VALUES_EQUAL(FsId, data->Record.GetBuffer());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectReadingTheControlDirAsAFile, TEnabledFixture)
+    Y_UNIT_TEST_F(ShouldRejectOpeningTheControlDirAsAFile, TEnabledFixture)
     {
         auto headers = Service->InitSession(FsId, "client");
 
-        // the control dir itself is a legitimately obtainable read-only
-        // handle - reading through it must not fall back to serving fsid's
-        // content
-        auto handle = Service->CreateHandle(
+        // matches real directories - CreateHandle doesn't support opening
+        // a directory at all
+        Service->AssertCreateHandleFailed(
             headers,
             FsId,
             ControlDirIno,
             "",
             TCreateHandleArgs::RDNLY);
-        UNIT_ASSERT_VALUES_EQUAL(ControlDirIno, handle->Record.GetHandle());
 
+        // handles here are just the target ino, so ReadData must also
+        // reject a forged handle directly
         Service->AssertReadDataFailed(
             headers,
             FsId,
             ControlDirIno,
-            handle->Record.GetHandle(),
+            ControlDirIno,
             0,
             4_KB);
     }
