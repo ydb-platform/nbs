@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/string/builder.h>
+#include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -636,7 +637,7 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
         Nodes.GetOrCreateNodeState(request->GetRequest().GetNodeId());
 
     auto& handleState = nodeState.Handles[request->GetRequest().GetHandle()];
-    handleState.PendingRequests.PushBack(request.get());
+    handleState.ReferenceCount++;
 
     nodeState.Cache.EnqueuePendingRequest(std::move(request));
 
@@ -908,8 +909,15 @@ void TWriteBackCacheState::ProcessPendingRequests()
             std::move(pendingRequest->AccessPromise()));
 
         auto& handleState = nodeState.Handles[request->GetHandle()];
-        handleState.PendingRequests.Remove(pendingRequest.get());
         handleState.UnflushedRequests.PushBack(request.get());
+
+        if (handleState.ReferenceCount > 0) {
+            handleState.ReferenceCount--;
+        } else {
+            ReportWriteBackCacheImpossibleState(Sprintf(
+                "Reference count for handle %lu, cannot go below zero",
+                request->GetHandle()));
+        }
 
         EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
 
@@ -938,7 +946,14 @@ void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
     auto handle = request->GetRequest().GetHandle();
     auto& handleState = nodeState.Handles[handle];
 
-    handleState.PendingRequests.Remove(request);
+    if (handleState.ReferenceCount > 0) {
+        handleState.ReferenceCount--;
+    } else {
+        ReportWriteBackCacheImpossibleState(Sprintf(
+            "Reference count for handle %lu, cannot go below zero",
+            handle));
+    }
+
     if (!handleState.HasRequests()) {
         TriggerReleaseHandleCompletion(nodeState, handle, handleState);
         nodeState.Handles.erase(handle);
