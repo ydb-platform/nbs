@@ -16,7 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using ERequestType = EFileStoreAvailabilityRequestType;
+using ERequestType = EFileStoreRequest;
 
 constexpr TDuration IntervalDuration = TDuration::Minutes(5);
 
@@ -72,21 +72,21 @@ struct TEnv
     // production forward mapping.
     static ERequestType RequestTypeByName(const TString& requestName)
     {
-        // index 0 is ERequestType::None, which has no published name
-        for (size_t i = 1; i < FileStoreAvailabilityRequestTypeCount; ++i) {
+        for (size_t i = 0; i < FileStoreRequestCount; ++i) {
             const auto requestType = static_cast<ERequestType>(i);
-            if (requestName == GetAvailabilityRequestTypeName(requestType)) {
+            const auto* name = GetAvailabilityRequestName(requestType);
+            if (name && requestName == name) {
                 return requestType;
             }
         }
         UNIT_FAIL("unknown availability request name: " << requestName);
-        return ERequestType::None;
+        return ERequestType::MAX;
     }
 
     TCallContextPtr Start(const TString& requestName)
     {
         auto callContext = MakeIntrusive<TCallContext>();
-        callContext->AvailabilityRequestType = RequestTypeByName(requestName);
+        callContext->RequestType = RequestTypeByName(requestName);
         Counters.RequestStarted(*callContext, Now);
         return callContext;
     }
@@ -197,7 +197,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // completion with an error response other than EIO is a normal
         // terminal outcome
-        auto callContext = env.Start("getattr");
+        auto callContext = env.Start("setattr");
         env.CompleteWithErrno(callContext, ENOENT);
 
         env.FinishInterval();
@@ -268,7 +268,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TEnv env;
 
         // the request is started in interval 1...
-        auto callContext = env.Start("fsync");
+        auto callContext = env.Start("access");
 
         // ...so it is not hung during interval 1 (it has not been
         // outstanding throughout the entire interval)
@@ -493,13 +493,16 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
+        // Ping is outside the tracked set (the request types exposed in
+        // the user stats), so it must not affect the metric even if it
+        // fails with EIO or hangs.
         auto eioContext = MakeIntrusive<TCallContext>();
-        eioContext->AvailabilityRequestType = ERequestType::None;
+        eioContext->RequestType = ERequestType::Ping;
         env.Counters.RequestStarted(*eioContext, env.Now);
         env.CompleteWithErrno(eioContext, EIO);
         // never completed
         auto hungContext = MakeIntrusive<TCallContext>();
-        hungContext->AvailabilityRequestType = ERequestType::None;
+        hungContext->RequestType = ERequestType::Ping;
         env.Counters.RequestStarted(*hungContext, env.Now);
 
         env.FinishInterval();
@@ -666,7 +669,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         TEnv env;
 
         // a request hangs and the stats updater stalls for 3 intervals
-        auto callContext = env.Start("getattr");
+        auto callContext = env.Start("setattr");
         env.FinishInterval();
         env.AssertIntervals(
             1,       // total
@@ -699,7 +702,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // an EIO completion of a request that both started and finished
         // within the interval still makes the interval unavailable
-        auto callContext = env.Start("mkdir");
+        auto callContext = env.Start("readdir");
         env.AdvanceWithinInterval(TDuration::Seconds(30));
         env.CompleteWithErrno(callContext, EIO);
 
@@ -714,11 +717,11 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     Y_UNIT_TEST(ShouldAccountRequestTypesIndependently)
     {
         {
-            // lookup and getattr both map to GetNodeAttr
+            // attribute reads and writes are distinct request types
             TEnv env;
-            auto bad = env.Start("lookup");
+            auto bad = env.Start("getattr");
             env.CompleteWithErrno(bad, EIO);
-            auto good = env.Start("getattr");
+            auto good = env.Start("setattr");
             env.CompleteOk(good);
 
             env.FinishInterval();
@@ -728,23 +731,23 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 1,       // unavailable
                 false);  // last interval available
             env.AssertRequestIntervals(
-                "lookup",
+                "getattr",
                 0,       // available
                 1,       // unavailable
                 false);  // last interval available
             env.AssertRequestIntervals(
-                "getattr",
+                "setattr",
                 1,       // available
                 0,       // unavailable
                 true);   // last interval available
         }
 
         {
-            // open and create both map to CreateHandle
+            // handle creation and node creation are distinct request types
             TEnv env;
             auto bad = env.Start("open");
             env.CompleteWithErrno(bad, EIO);
-            auto good = env.Start("create");
+            auto good = env.Start("createnode");
             env.CompleteOk(good);
 
             env.FinishInterval();
@@ -759,18 +762,18 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 1,       // unavailable
                 false);  // last interval available
             env.AssertRequestIntervals(
-                "create",
+                "createnode",
                 1,       // available
                 0,       // unavailable
                 true);   // last interval available
         }
 
         {
-            // mkdir and symlink both map to CreateNode
+            // directory listing and rename are distinct request types
             TEnv env;
-            auto bad = env.Start("mkdir");
+            auto bad = env.Start("readdir");
             env.CompleteWithErrno(bad, EIO);
-            auto good = env.Start("symlink");
+            auto good = env.Start("rename");
             env.CompleteOk(good);
 
             env.FinishInterval();
@@ -780,23 +783,23 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 1,       // unavailable
                 false);  // last interval available
             env.AssertRequestIntervals(
-                "mkdir",
+                "readdir",
                 0,       // available
                 1,       // unavailable
                 false);  // last interval available
             env.AssertRequestIntervals(
-                "symlink",
+                "rename",
                 1,       // available
                 0,       // unavailable
                 true);   // last interval available
         }
 
         {
-            // write and write_buf both map to WriteData
+            // data writes and node unlinks are distinct request types
             TEnv env;
             auto bad = env.Start("write");
             env.CompleteWithErrno(bad, EIO);
-            auto good = env.Start("write_buf");
+            auto good = env.Start("unlink");
             env.CompleteOk(good);
 
             env.FinishInterval();
@@ -811,7 +814,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
                 1,       // unavailable
                 false);  // last interval available
             env.AssertRequestIntervals(
-                "write_buf",
+                "unlink",
                 1,       // available
                 0,       // unavailable
                 true);   // last interval available
@@ -945,7 +948,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // a request started before the tracking is enabled gets no stamp
         auto preEnable = MakeIntrusive<TCallContext>();
-        preEnable->AvailabilityRequestType = ERequestType::Read;
+        preEnable->RequestType = ERequestType::ReadData;
         counters.RequestStarted(*preEnable, start);
         UNIT_ASSERT_VALUES_EQUAL(0, preEnable->AvailabilityIntervalSeqNo);
 
@@ -961,7 +964,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         std::thread requester([&] {
             while (!stop.load()) {
                 auto context = MakeIntrusive<TCallContext>();
-                context->AvailabilityRequestType = ERequestType::Read;
+                context->RequestType = ERequestType::ReadData;
                 const auto now = TInstant::MicroSeconds(nowUs.load());
                 counters.RequestStarted(*context, now);
                 counters.RequestCompleted(*context, now);
@@ -1010,7 +1013,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
         const auto end = TInstant::MicroSeconds(nowUs.load());
         counters.RequestCompleted(*preEnable, end);
         auto repeated = MakeIntrusive<TCallContext>();
-        repeated->AvailabilityRequestType = ERequestType::Read;
+        repeated->RequestType = ERequestType::ReadData;
         counters.RequestStarted(*repeated, end);
         counters.RequestCompleted(*repeated, end);
         counters.RequestCompleted(*repeated, end);
@@ -1048,7 +1051,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
 
         // an EIO completion within the partially observed interval
         auto context = MakeIntrusive<TCallContext>();
-        context->AvailabilityRequestType = ERequestType::Read;
+        context->RequestType = ERequestType::ReadData;
         counters.RequestStarted(*context, firstEventTime);
         context->GuestReplyErrno = EIO;
         counters.RequestCompleted(*context, firstEventTime);
@@ -1083,17 +1086,8 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
     {
         TEnv env;
 
-        // the "request" label value is the lower-case FUSE request name as
-        // listed in the SLA
-        UNIT_ASSERT_VALUES_EQUAL(
-            "write",
-            TString(GetAvailabilityRequestTypeName(
-                ERequestType::Write)));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "write_buf",
-            TString(GetAvailabilityRequestTypeName(
-                ERequestType::WriteBuf)));
-
+        // the "request" label value is the user stats name of the request
+        // type (e.g. read, open, fallocate)
         auto badContext = env.Start("write");
         env.CompleteWithErrno(badContext, EIO);
 
@@ -1151,7 +1145,7 @@ Y_UNIT_TEST_SUITE(TAvailabilityCountersTest)
             0,       // unavailable
             true);   // last interval available
         env.AssertRequestIntervals(
-            "lookup",
+            "getattr",
             0,       // available
             0,       // unavailable
             true);   // last interval available

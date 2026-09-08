@@ -20,10 +20,12 @@ namespace NCloud::NFileStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 // The value of the "request" label of the per-request-type availability
-// sensors: the FUSE request name in lower case, as listed in the SLA (e.g.
-// "lookup", "write_buf").
-const char* GetAvailabilityRequestTypeName(
-    EFileStoreAvailabilityRequestType requestType);
+// sensors: the request name in lower case, as listed in the SLA (e.g.
+// "lookup", "write").
+const char* GetAvailabilityRequestName(EFileStoreRequest requestType);
+
+// Whether the backend request type is subject to the availability SLA.
+bool IsAvailabilityTrackedRequest(EFileStoreRequest requestType);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -49,12 +51,6 @@ const char* GetAvailabilityRequestTypeName(
 // A request is hung if it was outstanding for the entire duration of the N-minute
 // interval.
 //
-// Request type - an individual FUSE request type subject to the SLA, see
-// EFileStoreAvailabilityRequestType. Distinct FUSE request types are
-// accounted independently even when they map to the same backend request
-// type, and requests outside the SLA (AvailabilityRequestType == None) are
-// ignored entirely.
-//
 // The EIO classification is based on TCallContext::GuestReplyErrno - the
 // errno actually sent to the guest - because the internal request error does
 // not always match the guest-visible outcome.
@@ -68,7 +64,7 @@ const char* GetAvailabilityRequestTypeName(
 //                                        interval was available, 0 otherwise;
 // Availability_{Available,Unavailable}Intervals and
 // Availability_LastIntervalAvailable are also published per availability
-// request type, on the "request=<type>" subgroup (e.g. request=lookup):
+// request type, on the "request=<type>" subgroup (e.g. request=read):
 // there an interval is available if that request type alone shows no
 // unavailability evidence.
 //
@@ -142,7 +138,7 @@ private:
     // Assigned by EnableAndRegister().
     TDuration IntervalDuration;
 
-    std::array<TRequestTypeState, FileStoreAvailabilityRequestTypeCount>
+    std::array<TRequestTypeState, FileStoreRequestCount>
         RequestTypeStates;
 
     // Guarded by RollLock.
