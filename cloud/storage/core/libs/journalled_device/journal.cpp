@@ -1,5 +1,8 @@
 #include "journal.h"
 
+#include "key_buffer_store.h"
+#include "page_store.h"
+
 namespace NCloud::NJournalled {
 
 using namespace NThreading;
@@ -10,7 +13,18 @@ namespace {
 
 class TJournal final: public IJournal
 {
+private:
+    IKeyBufferStorePtr MetaStore;
+    IPageStorePtr DataStore;
+
 public:
+    TJournal(
+        IKeyBufferStorePtr metaStore,
+        IPageStorePtr dataStore)
+        : MetaStore(std::move(metaStore))
+        , DataStore(std::move(dataStore))
+    {}
+
     TFuture<NCloud::NProto::TError> Restore() override
     {
         return MakeFuture(MakeError(E_NOT_IMPLEMENTED, "Restore"));
@@ -75,9 +89,13 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IJournalPtr CreateJournal()
+IJournalPtr CreateJournal(
+    IKeyBufferStorePtr metaStore,
+    IPageStorePtr dataStore)
 {
-    return std::make_shared<TJournal>();
+    return std::make_shared<TJournal>(
+        std::move(metaStore),
+        std::move(dataStore));
 }
 
 }   // namespace NCloud::NJournalled

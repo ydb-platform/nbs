@@ -5,6 +5,8 @@ SRCS(
     journal.cpp
     journalled_device.cpp
     journalled_device_v2.cpp
+    key_buffer_store.cpp
+    page_store.cpp
 )
 
 PEERDIR(

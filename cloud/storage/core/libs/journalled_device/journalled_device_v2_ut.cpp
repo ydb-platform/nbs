@@ -148,7 +148,7 @@ struct TTestJournal final: public IJournal
         return NCloud::NProto::TReadPagesResponse();
     };
 
-    mutable TManualEvent AllRecordsFlushed;
+    TManualEvent AllRecordsFlushed;
 
     mutable TMutex Mutex;
     mutable TVector<NCloud::NProto::TReadPagesRequest> ReadRequests;
@@ -209,9 +209,7 @@ struct TTestJournal final: public IJournal
         NCloud::NProto::TJournalRecord record;
 
         with_lock (Mutex) {
-            if (RecordsToFlush.empty()) {
-                AllRecordsFlushed.Signal();
-            } else {
+            if (!RecordsToFlush.empty()) {
                 // the record is kept until it gets acked
                 record = RecordsToFlush.front();
             }
@@ -238,6 +236,11 @@ struct TTestJournal final: public IJournal
     {
         with_lock (Mutex) {
             ++CleanupCount;
+
+            if (RecordsToFlush.empty()) {
+                // the flush cycle has drained the journal and cleaned up
+                AllRecordsFlushed.Signal();
+            }
         }
 
         return MakeFuture(NCloud::NProto::TError());
