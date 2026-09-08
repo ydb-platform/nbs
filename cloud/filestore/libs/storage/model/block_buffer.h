@@ -7,6 +7,8 @@
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 
+#include <contrib/ydb/library/actors/util/rope.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,6 +28,7 @@ struct IBlockBuffer
 
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange);
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer);
+IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TRcBuf buffer);
 IBlockBufferPtr CreateLazyBlockBuffer(TByteRange byteRange);
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 namespace NKikimrFileStore {
@@ -68,6 +70,17 @@ template <typename TProtoRequest>
 ui64 CalculateByteCount(const TProtoRequest& request)
 {
     return request.GetLength();
+}
+
+template <>
+inline ui64 CalculateByteCount(const TEvService::TEvWriteDataRequest& request)
+{
+    ui64 byteCount = NCloud::NFileStore::CalculateByteCount(request.Record);
+    if (byteCount == 0 && request.GetPayloadCount() > 0) {
+        byteCount = request.GetPayload(0).GetSize();
+    }
+
+    return byteCount;
 }
 
 }   // namespace NCloud::NFileStore::NStorage
