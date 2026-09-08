@@ -324,6 +324,11 @@ void TBootstrapCommon::InitActorSystem()
     args.FastShardFactory = NStorage::NFastShard::CreateFileSystemShardFactory(
         Configs->StorageConfig->GetFastShardRuntimeEnabled());
 
+    if (!Configs->StorageConfig->GetFastShardRuntimeEnabled()) {
+        STORAGE_WARN("FastShard runtime is not enabled, persistent fastshards "
+            "will be replaced with stubs");
+    }
+
     ActorSystem = NStorage::CreateActorSystem(args);
     STORAGE_INFO("ActorSystem initialized");
 

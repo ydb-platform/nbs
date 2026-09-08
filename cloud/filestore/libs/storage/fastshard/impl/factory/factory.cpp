@@ -4,8 +4,6 @@
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
 
-#include <silk/util/logger.h>
-
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 namespace {
@@ -33,10 +31,6 @@ public:
         }
 
         if (!RuntimeEnabled) {
-            SILK_ERROR(
-                "fs %s: FastShardRuntime not enabled, persistent fastshard"
-                " can't be initialized",
-                fileSystemId.c_str());
             return CreateFileSystemShardStub();
         }
 

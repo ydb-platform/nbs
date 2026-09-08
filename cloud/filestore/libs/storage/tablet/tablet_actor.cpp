@@ -1826,7 +1826,6 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvFileStore::TEvUpdateConfig);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
-        IgnoreFunc(TEvIndexTabletPrivate::TEvFastShardInitCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 

@@ -2063,7 +2063,7 @@ struct TStorageGroupFactory: IStorageGroupFactory
         }
 
         TStorageGroupConfig groupConfig;
-        // TODO: set client id
+        // TODO(#5894): set client id
         groupConfig.AcquireGeneration = generation;
         if (config.GetRetryTotalTimeoutMs()) {
             groupConfig.RetryPolicy.TotalTimeout =
