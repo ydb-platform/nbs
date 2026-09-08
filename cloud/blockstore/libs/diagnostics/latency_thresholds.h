@@ -42,13 +42,23 @@ using TLatencyThresholdLadder = TVector<TLatencyThresholdBucket>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TLatencyThresholdsValidationResult;
+
 // Immutable, validated snapshot of the whole latency thresholds table. Built
 // once from config and stored behind a THotSwap (see TLatencyThresholdsHotSwap
 // below) so that a future dynamic config source can replace it without
 // touching the request-completion hot path.
-struct TLatencyThresholdsTable
+class TLatencyThresholdsTable
     : public TAtomicRefCount<TLatencyThresholdsTable>
 {
+public:
+    // Returns nullptr if the media kind has no configured ladder (including
+    // out-of-range values). Callers must treat "no ladder" as "do not judge
+    // this operation at all", not as "bad operation".
+    [[nodiscard]] const TLatencyThresholdLadder* FindLadder(
+        NCloud::NProto::EStorageMediaKind mediaKind) const;
+
+private:
     // Indexed by NCloud::NProto::EStorageMediaKind. A media kind with an
     // empty ladder has no configured thresholds: operations of that media
     // kind must be skipped entirely (neither total nor good), not treated as
@@ -57,11 +67,13 @@ struct TLatencyThresholdsTable
         TLatencyThresholdLadder,
         NCloud::NProto::EStorageMediaKind_ARRAYSIZE> Ladders;
 
-    // Returns nullptr if the media kind has no configured ladder (including
-    // out-of-range values). Callers must treat "no ladder" as "do not judge
-    // this operation at all", not as "bad operation".
-    [[nodiscard]] const TLatencyThresholdLadder* FindLadder(
-        NCloud::NProto::EStorageMediaKind mediaKind) const;
+    // Filling the table is the validating builder's job alone, so that a
+    // published snapshot really is immutable: THotSwap synchronizes
+    // replacing the pointer, not writes to the object it points at, and a
+    // holder able to write here would race with the request path once a
+    // dynamic config source starts replacing tables.
+    friend TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
+        const TVector<NProto::TMediaKindLatencyThresholds>& config);
 };
 
 // Shared, hot-swappable holder for the current table. A single instance is

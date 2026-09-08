@@ -2922,10 +2922,11 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         auto total = availabilityCounters->GetCounter("LatencyTotalOps");
         auto good = availabilityCounters->GetCounter("LatencyGoodOps");
 
-        auto skipped = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server")
-            ->GetCounter("LatencyThresholdsSkippedOps");
+        // Published in the same per-instance tree as the two counters
+        // above, so that the gap is attributable to this volume and its
+        // media kind.
+        auto skipped =
+            availabilityCounters->GetCounter("LatencyThresholdsSkippedOps");
 
         SendRequest(
             volume,
@@ -2935,7 +2936,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
 
         // Neither counter moves for an unconfigured media kind - it must
         // never look like a 0% good-operation rate - but the gap is still
-        // visible via the server-level skipped-ops counter.
+        // visible via the skipped-ops counter.
         UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, skipped->Val());
@@ -2978,10 +2979,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         auto total = availabilityCounters->GetCounter("LatencyTotalOps");
         auto good = availabilityCounters->GetCounter("LatencyGoodOps");
 
-        auto skipped = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server")
-            ->GetCounter("LatencyThresholdsSkippedOps");
+        auto skipped =
+            availabilityCounters->GetCounter("LatencyThresholdsSkippedOps");
 
         // How the external vhost dataplane reports its operations: an
         // aggregate that never passes through RequestCompleted, with
@@ -2998,11 +2997,26 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
             sizeHist);
 
         // Not judgeable, so counted in neither the total nor the good
-        // counter - but visible as a coverage gap, which is what makes this
-        // different from a volume with no traffic at all.
+        // counter - but visible as a coverage gap.
         UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
         UNIT_ASSERT_VALUES_EQUAL(7, skipped->Val());
+
+        // A batch made entirely of failures: count and errors are disjoint
+        // totals, so a batch can report zero successful completions. These
+        // operations went unjudged just the same and must not vanish from
+        // the coverage gap.
+        volume->BatchCompleted(
+            EBlockStoreRequest::WriteBlocks,
+            0,          // count
+            0,          // bytes
+            3,          // errors
+            timeHist,
+            sizeHist);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10, skipped->Val());
     }
 
     Y_UNIT_TEST(ShouldContinueLatencyCountersUntilVolumeTrimmed)

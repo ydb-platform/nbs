@@ -70,19 +70,17 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Unlike IsWriteRequest (which also matches ZeroBlocks), this matches only
-// "real" write payload requests. The latency threshold mechanism is
-// read/write-only; zero/discard operations are out of scope for this
-// iteration.
+// Write payload requests, i.e. IsWriteRequest minus the zero/discard
+// operations that are out of scope for the latency threshold mechanism in
+// this iteration. Deliberately expressed as a delta from the canonical
+// predicate rather than as its own list of request types: a payload-write
+// method added to IsWriteRequest later is then judged here too, instead of
+// silently dropping out of both the total and the good counter and
+// overstating how much of the traffic the metric covers.
 constexpr bool IsPureWriteRequest(EBlockStoreRequest requestType)
 {
-    switch (requestType) {
-        case EBlockStoreRequest::WriteBlocks:
-        case EBlockStoreRequest::WriteBlocksLocal:
-            return true;
-        default:
-            return false;
-    }
+    return IsWriteRequest(requestType) &&
+        requestType != EBlockStoreRequest::ZeroBlocks;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,15 +201,6 @@ struct TVolumeInfoBase
     // every volume.
     const std::shared_ptr<TLatencyThresholdsHotSwap> LatencyThresholdsHotSwap;
 
-    // Server-level (not per-volume) diagnostic counter: read/write
-    // operations that were not judged against the thresholds, and so appear
-    // in neither LatencyTotalOps nor LatencyGoodOps. Two reasons feed it:
-    // the volume's media kind has no configured ladder, and the operation
-    // arrived as an aggregate through BatchCompleted (external vhost). Such
-    // operations are never counted as bad; the counter exists so that the
-    // part of the traffic the metric does not cover stays measurable.
-    const TDynamicCounters::TCounterPtr LatencyThresholdsSkippedOpsCounter;
-
     TVolumeInfoBase(
             NProto::TVolume volume,
             TDiagnosticsConfigPtr diagnosticsConfig,
@@ -219,8 +208,7 @@ struct TVolumeInfoBase
             TDynamicCountersPtr volumeGroup,
             ITimerPtr timer,
             bool latencyThresholdsEnabled,
-            std::shared_ptr<TLatencyThresholdsHotSwap> latencyThresholdsHotSwap,
-            TDynamicCounters::TCounterPtr latencyThresholdsSkippedOpsCounter)
+            std::shared_ptr<TLatencyThresholdsHotSwap> latencyThresholdsHotSwap)
         : Timer(timer)
         , Volume(std::move(volume))
         , PerfCalc(Volume, diagnosticsConfig)
@@ -233,8 +221,6 @@ struct TVolumeInfoBase
             volumeGroup->GetCounter("HasStorageConfigPatch"))
         , LatencyThresholdsEnabled(latencyThresholdsEnabled)
         , LatencyThresholdsHotSwap(std::move(latencyThresholdsHotSwap))
-        , LatencyThresholdsSkippedOpsCounter(
-            std::move(latencyThresholdsSkippedOpsCounter))
     {
         BusyIdleCalc.Register(volumeGroup);
         PerfCalc.Register(*volumeGroup, Volume);
@@ -324,6 +310,18 @@ private:
     // VolumeBase->LatencyThresholdsEnabled, checked once at construction.
     TDynamicCounters::TCounterPtr LatencyTotalOpsCounter;
     TDynamicCounters::TCounterPtr LatencyGoodOpsCounter;
+
+    // Read/write operations of this instance that were not judged against
+    // the thresholds, and so appear in neither counter above. Two reasons
+    // feed it: the volume's media kind has no configured ladder, and the
+    // operation arrived as an aggregate through BatchCompleted (external
+    // vhost). Such operations are never counted as bad. Published next to
+    // the two counters above, rather than once per server, because it is
+    // what explains a specific volume reading 0/0: without the volume,
+    // instance and type labels, an unconfigured media kind and expected
+    // aggregate traffic are indistinguishable. Created and left null under
+    // exactly the same condition as the two counters above.
+    TDynamicCounters::TCounterPtr LatencyThresholdsSkippedOpsCounter;
 
     // Wall-clock time up to which the availability counters have been credited
     // for this instance. Seeded at construction (mount time) so that time
@@ -572,10 +570,16 @@ public:
             // RequestCompleted, so they cannot be judged: the batch carries
             // separate time and size histograms, not the joint
             // (size, latency) distribution a size-dependent verdict needs,
-            // and no per-operation error kind. Tallying them keeps a volume
-            // served this way distinguishable from one with no traffic,
-            // which the 0/0 in LatencyTotalOps/LatencyGoodOps alone is not.
-            *VolumeBase->LatencyThresholdsSkippedOpsCounter += count;
+            // and no per-operation error kind.
+            //
+            // count and errors are disjoint totals, not a total and a subset
+            // of it: a batch reports successful completions in one and
+            // failures in the other, the same way the per-request path
+            // increments either Count or Errors but never both (see
+            // TRequestCounters). Both are operations that went unjudged, so
+            // both belong here - counting only one would hide a batch that
+            // consists entirely of failures.
+            *LatencyThresholdsSkippedOpsCounter += count + errors;
         }
 
         return RequestCounters.BatchCompleted(
@@ -621,18 +625,15 @@ private:
             requestBytes,
             execTime);
 
+        // All three counters below are guaranteed non-null here: they are
+        // created together under VolumeBase->LatencyThresholdsEnabled in
+        // RegisterInstance, and this method only runs when that same flag is
+        // true (see the call site in RequestCompleted).
         if (outcome.MediaKindNotConfigured) {
-            // Guaranteed non-null: created unconditionally by
-            // InitLatencyThresholds, which always runs before any volume can
-            // be registered on this (EServerStats) TVolumeStats instance.
-            *VolumeBase->LatencyThresholdsSkippedOpsCounter += 1;
+            *LatencyThresholdsSkippedOpsCounter += 1;
             return;
         }
 
-        // Guaranteed non-null here: both counters are created together with
-        // VolumeBase->LatencyThresholdsEnabled in RegisterInstance, and this
-        // method only runs when that same flag is true (see the call site
-        // in RequestCompleted).
         if (outcome.CountTotal) {
             *LatencyTotalOpsCounter += 1;
         }
@@ -753,10 +754,9 @@ private:
         std::make_shared<TLatencyThresholdsHotSwap>();
 
     // Server-level (not per-volume) diagnostics: whether the configured
-    // table is invalid (gauge, 0/1) and how many operations were skipped
-    // because their media kind has no configured ladder (derivative).
+    // table is invalid (gauge, 0/1). Unjudged operations are counted per
+    // instance instead, see TVolumeInfo::LatencyThresholdsSkippedOpsCounter.
     TDynamicCounters::TCounterPtr LatencyThresholdsConfigInvalidCounter;
-    TDynamicCounters::TCounterPtr LatencyThresholdsSkippedOpsCounter;
 
     TLog Log;
 
@@ -1320,8 +1320,7 @@ private:
             volumeGroup,
             Timer,
             LatencyThresholdsEnabled,
-            LatencyThresholdsHotSwap,
-            LatencyThresholdsSkippedOpsCounter);
+            LatencyThresholdsHotSwap);
 
         return TVolumeInfoHolder{
             .VolumeBase = std::move(volumeBase),
@@ -1395,6 +1394,10 @@ private:
                 availabilityCountersGroup->GetCounter("LatencyTotalOps", true);
             info->LatencyGoodOpsCounter =
                 availabilityCountersGroup->GetCounter("LatencyGoodOps", true);
+            info->LatencyThresholdsSkippedOpsCounter =
+                availabilityCountersGroup->GetCounter(
+                    "LatencyThresholdsSkippedOps",
+                    true);
         }
 
         auto reportZeroBlocksMetrics =
@@ -1461,8 +1464,6 @@ private:
         auto serverGroup = Counters->GetSubgroup("component", "server");
         LatencyThresholdsConfigInvalidCounter =
             serverGroup->GetCounter("LatencyThresholdsConfigInvalid");
-        LatencyThresholdsSkippedOpsCounter =
-            serverGroup->GetCounter("LatencyThresholdsSkippedOps", true);
 
         if (!DiagnosticsConfig->GetLatencyThresholdsEnabled()) {
             *LatencyThresholdsConfigInvalidCounter = 0;
