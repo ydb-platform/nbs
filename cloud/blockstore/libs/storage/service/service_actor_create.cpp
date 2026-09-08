@@ -453,6 +453,19 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
         return;
     }
 
+    if (IsSsdDirectMirror3Of5GroupMediaKind(GetStorageMediaKind())) {
+        // TODO: NBS-7763 support WaitReady for ssd-direct-mirror3of5-group
+        // media kind.
+        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+            "Successfully created direct volume %s",
+            Request.GetDiskId().Quote().c_str());
+
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvCreateVolumeResponse>());
+        return;
+    }
+
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Sending WaitReady request to volume %s",
         Request.GetDiskId().Quote().c_str());

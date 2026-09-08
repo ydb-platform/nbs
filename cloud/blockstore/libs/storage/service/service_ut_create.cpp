@@ -2152,6 +2152,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         TServiceClient service(runtime, nodeIdx);
 
         bool detectedCreateVolumeRequest = false;
+        bool detectedWaitReadyRequest = false;
 
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
@@ -2199,6 +2200,10 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
                     }
+                    case TEvVolume::EvWaitReadyRequest: {
+                        detectedWaitReadyRequest = true;
+                        break;
+                    }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
@@ -2212,9 +2217,11 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
         request->Record.SetStoragePoolName("ddp1");
         service.SendRequest(MakeStorageServiceId(), std::move(request));
-        service.RecvCreateVolumeResponse();
+        auto response = service.RecvCreateVolumeResponse();
 
         UNIT_ASSERT(detectedCreateVolumeRequest);
+        UNIT_ASSERT(!detectedWaitReadyRequest);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
 }
 
