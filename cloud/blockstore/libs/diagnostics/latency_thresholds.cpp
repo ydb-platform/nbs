@@ -241,6 +241,20 @@ TLatencyThresholdOutcome ClassifyLatencyOutcome(
         case EDiagnosticsErrorKind::ErrorFatal:
             // The service failed to execute the operation - bad, but there
             // is nothing to compare against a duration threshold.
+            //
+            // Known limitation, opposite in direction to the retriable case
+            // above: a request rejected by argument validation lands here as
+            // well, because the gRPC layer opens the stats lifecycle before
+            // it validates (RequestStarted in
+            // cloud/blockstore/libs/server/server.cpp precedes
+            // ValidateRequest a few lines below it). A client that sets the
+            // internal-only header, or talks on the wrong channel, is
+            // therefore counted as a bad operation of its volume without any
+            // I/O having run. The blast radius is that client's own mount,
+            // since the per-volume stats path resolves nothing without an
+            // active mount for the client/disk pair, and separating the two
+            // cases would mean carrying the request stage down from the
+            // server layer, which nothing on this path does today.
             return {.CountTotal = true};
 
         case EDiagnosticsErrorKind::Success:
