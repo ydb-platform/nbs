@@ -71,7 +71,9 @@ struct IPersistentStateManager
         const TString& fileSystemId,
         const TString& sessionId) const = 0;
     // If the corresponding state file exists, acquires the advisory lock and
-    // returns the file, otherwise creates the file first.
+    // returns the file, otherwise creates the file first, unless the total
+    // size limit of the component is reached: then an empty guard is
+    // returned without an error, meaning the component is not to be used.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
@@ -83,7 +85,9 @@ struct IPersistentStateManager
         const TString& fileSystemId,
         const TString& sessionId) const = 0;
     // If the corresponding state file exists, acquires the advisory lock and
-    // returns the file, otherwise creates the file first.
+    // returns the file, otherwise creates the file first, unless the total
+    // size limit of the component is reached: then an empty guard is
+    // returned without an error, meaning the component is not to be used.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
@@ -104,16 +108,38 @@ struct IPersistentStateManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Creates the manager which keeps the state files on disk under the given
-// base paths, following the layout <basePath>/<fileSystemId>/<sessionId>/
-// <fileName>. A component whose base path is empty is not configured:
-// acquiring its state file fails with an error and Has*State() returns
-// false for it. Different components may be configured with the same base
-// path and thus share a session directory.
+struct TPersistentStateManagerConfig
+{
+    TString HandleOpsQueueBasePath;
+    // Size of a single HandleOpsQueue state file. A new file is created with
+    // this size, and it is what a new file is assumed to add to the total
+    // size when the limit below is checked. 0 means the file is created empty.
+    ui64 HandleOpsQueueStateFileSize = 0;
+    // Limit of the total size of the HandleOpsQueue state files of all the
+    // filesystems and sessions. 0 disables the limiting.
+    ui64 HandleOpsQueueTotalSizeLimit = 0;
+
+    TString WriteBackCacheBasePath;
+    ui64 WriteBackCacheStateFileSize = 0;
+    ui64 WriteBackCacheTotalSizeLimit = 0;
+
+    TString DirectoryHandlesStorageBasePath;
+};
+
+// Creates the manager which keeps the state files on disk under the
+// configured base paths, following the layout <basePath>/<fileSystemId>/
+// <sessionId>/<fileName>. A component whose base path is empty is not
+// configured: acquiring its state file fails with an error and Has*State()
+// returns false for it. Different components may be configured with the same
+// base path and thus share a session directory.
+//
+// The total size of the state files of a component is the sum of the sizes
+// of all the files present under its base path, which is calculated afresh
+// on every acquisition. It is checked only when a new state file is about to
+// be created: an existing one is acquired regardless, so that the state of a
+// previous session is always restored.
 IPersistentStateManagerPtr CreatePersistentStateManager(
-    TString handleOpsQueueBasePath,
-    TString writeBackCacheBasePath,
-    TString directoryHandlesStorageBasePath);
+    TPersistentStateManagerConfig config);
 
 // Creates a manager which manages no state files at all: Has*State() returns
 // false and Acquire*StateFile() fails. Suitable for the cases where no state
