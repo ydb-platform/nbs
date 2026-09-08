@@ -32,27 +32,27 @@
         {
             "name": "HandleTable",
             "offsetBytes": 14573568,
-            "sizeBytes": 16003072,
+            "sizeBytes": 17604608,
             "slotSize": 16,
-            "slotCount": 1000192
+            "slotCount": 1100288
         },
         {
             "name": "PageIndex",
-            "offsetBytes": 30576640,
+            "offsetBytes": 32178176,
             "sizeBytes": 757760,
             "slotSize": 24,
             "slotCount": 31450
         },
         {
             "name": "PageAllocatorBitmap",
-            "offsetBytes": 31334400,
+            "offsetBytes": 32935936,
             "sizeBytes": 4096,
             "slotSize": 0,
             "slotCount": 29492
         },
         {
             "name": "DataPages",
-            "offsetBytes": 31358976,
+            "offsetBytes": 32964608,
             "sizeBytes": 966393856,
             "slotSize": 32768,
             "slotCount": 29492
