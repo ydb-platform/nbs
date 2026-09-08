@@ -5,11 +5,14 @@
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/strbuf.h>
+#include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/error.h>
+#include <util/system/file.h>
 #include <util/system/file_lock.h>
 #include <util/system/fs.h>
+#include <util/system/fstat.h>
 #include <util/system/guard.h>
 #include <util/system/mutex.h>
 #include <util/system/yassert.h>
@@ -38,6 +41,19 @@ struct TStateFileRegistry
     // by path, with the names of the files held. A directory may be shared
     // by several components.
     THashMap<TString, THashSet<TString>> HeldStateFiles;
+
+    // The state files which are created (or found), with their sizes and the
+    // sum of those.
+    struct TComponentStateFiles
+    {
+        THashMap<TString, ui64> SizeByFilePath;
+        ui64 TotalSize = 0;
+    };
+
+    // Keyed by the component's file name, it is filled by listing the base
+    // path then, and kept up to date on creations and deletions from then on
+    // rather than listed again.
+    THashMap<TString, TComponentStateFiles> StateFilesByComponent;
 };
 
 using TStateFileRegistryPtr = std::shared_ptr<TStateFileRegistry>;
@@ -51,6 +67,7 @@ struct TAcquireStateFileGuard::TImpl
     TStateFileRegistryPtr Registry;
 
     TFsPath Dir;
+    // State file name.
     TString FileName;
     TFsPath FilePath;
 
@@ -166,6 +183,17 @@ NProto::TError TAcquireStateFileGuard::DeleteStateFile()
                              << ", reason: " << LastSystemErrorText());
     }
 
+    auto* stateFiles = impl->Registry->StateFilesByComponent.FindPtr(
+        impl->FileName);
+    if (stateFiles) {
+        auto it = stateFiles->SizeByFilePath.find(impl->FilePath.GetPath());
+        Y_DEBUG_ABORT_UNLESS(it != stateFiles->SizeByFilePath.end());
+        if (it != stateFiles->SizeByFilePath.end()) {
+            stateFiles->TotalSize -= it->second;
+            stateFiles->SizeByFilePath.erase(it);
+        }
+    }
+
     // If other state files are still held in the directory it is obviously
     // not empty, so there is nothing to try. Otherwise remove it if empty: a
     // directory found not empty at this point contains state nobody tracks
@@ -194,8 +222,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Keeps the state files on disk under the configured base paths, following
-// the layout <basePath>/<fileSystemId>/<sessionId>/<fileName>.
+// Keeps the state files under the configured base paths, following the layout
+// <basePath>/<fileSystemId>/<sessionId>/<fileName>.
 class TPersistentStateManager final
     : public IPersistentStateManager
 {
@@ -203,12 +231,23 @@ private:
     struct TComponentConfig
     {
         const TString BasePath;
-        // Points to a static string.
+        // State file name. Points to a static string.
         const TStringBuf FileName;
+        // The size a new state file is created with. 0 means empty, in which
+        // case the file is sized by the component itself.
+        const ui64 StateFileSize;
+        // Limit of the total size of the state files, 0 means no limit.
+        const ui64 TotalSizeLimit;
 
-        TComponentConfig(TString basePath, TStringBuf fileName)
+        TComponentConfig(
+                TString basePath,
+                TStringBuf fileName,
+                ui64 stateFileSize,
+                ui64 totalSizeLimit)
             : BasePath(std::move(basePath))
             , FileName(fileName)
+            , StateFileSize(stateFileSize)
+            , TotalSizeLimit(totalSizeLimit)
         {}
     };
 
@@ -220,10 +259,7 @@ private:
     const TComponentConfig DirectoryHandleStorage;
 
 public:
-    TPersistentStateManager(
-        TString handleOpsQueueBasePath,
-        TString writeBackCacheBasePath,
-        TString directoryHandlesStorageBasePath);
+    explicit TPersistentStateManager(TPersistentStateManagerConfig config);
 
     // HandleOpsQueue
 
@@ -259,6 +295,15 @@ private:
         const TString& fileSystemId,
         const TString& sessionId) const;
 
+    // Lists the state files of the component found under its base path, of
+    // all the filesystems and sessions, with their sizes.
+    TResultOrError<TStateFileRegistry::TComponentStateFiles> ListStateFiles(
+        const TComponentConfig& component) const;
+
+    // The total size of the state files, from the cached listing.
+    // Must be called with the registry locked.
+    TResultOrError<ui64> GetTotalSizeLocked(const TComponentConfig& component);
+
     bool HasState(
         const TComponentConfig& component,
         const TString& fileSystemId,
@@ -273,18 +318,22 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TPersistentStateManager::TPersistentStateManager(
-        TString handleOpsQueueBasePath,
-        TString writeBackCacheBasePath,
-        TString directoryHandlesStorageBasePath)
+        TPersistentStateManagerConfig config)
     : HandleOpsQueue(
-          std::move(handleOpsQueueBasePath),
-          HandleOpsQueueFileName)
+          std::move(config.HandleOpsQueueBasePath),
+          HandleOpsQueueFileName,
+          config.HandleOpsQueueStateFileSize,
+          config.HandleOpsQueueTotalSizeLimit)
     , WriteBackCache(
-          std::move(writeBackCacheBasePath),
-          WriteBackCacheFileName)
+          std::move(config.WriteBackCacheBasePath),
+          WriteBackCacheFileName,
+          config.WriteBackCacheStateFileSize,
+          config.WriteBackCacheTotalSizeLimit)
     , DirectoryHandleStorage(
-          std::move(directoryHandlesStorageBasePath),
-          DirectoryHandleStorageFileName)
+          std::move(config.DirectoryHandlesStorageBasePath),
+          DirectoryHandleStorageFileName,
+          0,   // stateFileSize: sized by the component itself
+          0)   // totalSizeLimit: not limited
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,6 +346,75 @@ TFsPath TPersistentStateManager::GetSessionDir(
 {
     Y_DEBUG_ABORT_UNLESS(component.BasePath);
     return TFsPath(component.BasePath) / fileSystemId / sessionId;
+}
+
+TResultOrError<TStateFileRegistry::TComponentStateFiles>
+TPersistentStateManager::ListStateFiles(
+    const TComponentConfig& component) const
+{
+    TStateFileRegistry::TComponentStateFiles stateFiles;
+
+    const TFsPath basePath(component.BasePath);
+    if (!basePath.Exists()) {
+        return stateFiles;
+    }
+
+    // Listing reports failures by throwing.
+    //
+    // Layout is <basePath>/<fileSystemId>/<sessionId>/<stateFileName>
+    try {
+        TVector<TFsPath> fileSystemDirs;
+        basePath.List(fileSystemDirs);
+        for (const auto& fileSystemDir: fileSystemDirs) {
+            if (!fileSystemDir.IsDirectory()) {
+                continue;
+            }
+
+            TVector<TFsPath> sessionDirs;
+            fileSystemDir.List(sessionDirs);
+            for (const auto& sessionDir: sessionDirs) {
+                if (!sessionDir.IsDirectory()) {
+                    continue;
+                }
+
+                const auto filePath = sessionDir / component.FileName;
+                if (!filePath.Exists()) {
+                    continue;
+                }
+
+                const ui64 size = TFileStat(filePath.GetPath()).Size;
+                stateFiles.SizeByFilePath[filePath.GetPath()] = size;
+                stateFiles.TotalSize += size;
+            }
+        }
+    } catch (const yexception& e) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to list " << component.FileName
+                             << " state files under " << basePath
+                             << ", reason: " << e.what());
+    }
+
+    return stateFiles;
+}
+
+TResultOrError<ui64> TPersistentStateManager::GetTotalSizeLocked(
+    const TComponentConfig& component)
+{
+    const TString fileName(component.FileName);
+
+    auto* stateFiles = Registry->StateFilesByComponent.FindPtr(fileName);
+    if (!stateFiles) {
+        auto listed = ListStateFiles(component);
+        if (HasError(listed)) {
+            return listed.GetError();
+        }
+
+        stateFiles = &Registry->StateFilesByComponent[fileName];
+        *stateFiles = listed.ExtractResult();
+    }
+
+    return stateFiles->TotalSize;
 }
 
 bool TPersistentStateManager::HasState(
@@ -342,6 +460,26 @@ TPersistentStateManager::AcquireStateFile(
                              << " is already acquired");
     }
 
+    // An existing state file is acquired regardless of the limit, so that the
+    // state of a previous session is always restored. A new one is created
+    // only if it fits into the limit, otherwise the component is not to be
+    // used by the session at all, which is what an empty guard means.
+    const bool isNew = !filePath.Exists();
+    if (isNew && component.TotalSizeLimit) {
+        auto totalSize = GetTotalSizeLocked(component);
+        if (HasError(totalSize)) {
+            return totalSize.GetError();
+        }
+
+        if (totalSize.GetResult() + component.StateFileSize >
+            component.TotalSizeLimit)
+        {
+            // State file is not created: the total file size limit has been
+            // reached.
+            return TAcquireStateFileGuard();
+        }
+    }
+
     if (!NFs::MakeDirectoryRecursive(dir)) {
         return MakeError(
             E_FAIL,
@@ -349,8 +487,8 @@ TPersistentStateManager::AcquireStateFile(
                              << ", reason: " << LastSystemErrorText());
     }
 
-    // Touch(), the TFileLock constructor (which opens the file) and
-    // TryAcquire() all report failures by throwing.
+    // Touch(), the TFileLock constructor (which opens the file), TryAcquire()
+    // and Resize() all report failures by throwing.
     THolder<TFileLock> lock;
     try {
         filePath.Touch();
@@ -362,6 +500,15 @@ TPersistentStateManager::AcquireStateFile(
                 TStringBuilder() << "State file " << filePath
                                  << " is locked by another owner");
         }
+
+        // Only a file created just now is sized: the size of an existing one
+        // is part of the state it carries.
+        if (isNew && component.StateFileSize) {
+            TFile file(
+                filePath,
+                EOpenModeFlag::OpenExisting | EOpenModeFlag::RdWr);
+            file.Resize(component.StateFileSize);
+        }
     } catch (const yexception& e) {
         return MakeError(
             E_FAIL,
@@ -370,6 +517,18 @@ TPersistentStateManager::AcquireStateFile(
     }
 
     Registry->HeldStateFiles[dir.GetPath()].insert(fileName);
+
+    // A file created just now has to be accounted for, if the component's
+    // state files are being accounted at all.
+    if (isNew) {
+        if (auto* stateFiles =
+                Registry->StateFilesByComponent.FindPtr(fileName))
+        {
+            stateFiles->SizeByFilePath[filePath.GetPath()] =
+                component.StateFileSize;
+            stateFiles->TotalSize += component.StateFileSize;
+        }
+    }
 
     return TAcquireStateFileGuard(MakeHolder<TAcquireStateFileGuard::TImpl>(
         TAcquireStateFileGuard::TImpl{
@@ -510,14 +669,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 IPersistentStateManagerPtr CreatePersistentStateManager(
-    TString handleOpsQueueBasePath,
-    TString writeBackCacheBasePath,
-    TString directoryHandlesStorageBasePath)
+    TPersistentStateManagerConfig config)
 {
-    return std::make_shared<TPersistentStateManager>(
-        std::move(handleOpsQueueBasePath),
-        std::move(writeBackCacheBasePath),
-        std::move(directoryHandlesStorageBasePath));
+    return std::make_shared<TPersistentStateManager>(std::move(config));
 }
 
 IPersistentStateManagerPtr CreatePersistentStateManagerStub()
