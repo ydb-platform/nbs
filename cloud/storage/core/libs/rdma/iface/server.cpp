@@ -80,10 +80,10 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(BufferPool.MaxChunkAlloc, BufferPool.MaxChunkAlloc);
                 ENTRY(BufferPool.MaxFreeChunks, BufferPool.MaxFreeChunks);
                 ENTRY(StrictValidation, StrictValidation);
-                ENTRY(QpRetryCount, static_cast<ui32>(QpRetryCount));
-                ENTRY(QpRnrRetryCount, static_cast<ui32>(QpRnrRetryCount));
                 ENTRY(QpTimeout, static_cast<ui32>(QpTimeout));
+                ENTRY(QpRetryCount, static_cast<ui32>(QpRetryCount));
                 ENTRY(QpMinRnrTimer, static_cast<ui32>(QpMinRnrTimer));
+                ENTRY(QpRnrRetryCount, static_cast<ui32>(QpRnrRetryCount));
             }
         }
     }
