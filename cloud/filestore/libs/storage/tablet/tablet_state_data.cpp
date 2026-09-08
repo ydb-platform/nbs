@@ -1578,9 +1578,12 @@ void TIndexTabletState::LoadCompactionMap(
 
 TString TIndexTabletState::EnqueueForcedRangeOperation(
     TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
-    TVector<ui32> ranges)
+    TVector<ui32> ranges,
+    TString operationId)
 {
-    auto operationId = CreateGuidAsString();
+    if (operationId.empty()) {
+        operationId = CreateGuidAsString();
+    }
     PendingForcedRangeOperations.emplace_back(
         mode,
         std::move(ranges),
@@ -1611,25 +1614,41 @@ void TIndexTabletState::StartForcedRangeOperation(
         mode,
         std::move(ranges),
         std::move(operationId));
+    ForcedRangeOperationState->Status =
+        NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
 }
 
 void TIndexTabletState::AbortForcedRangeOperation(
     TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
     TVector<ui32> ranges,
-    TString operationId)
+    TString operationId,
+    const NProto::TError& error)
 {
     CompletedForcedRangeOperations.emplace_back(
         mode,
         std::move(ranges),
         std::move(operationId));
+    CompletedForcedRangeOperations.back().Status =
+        HasError(error)
+            ? NProtoPrivate::TForcedOperationStatusResponse::E_FAILED
+            : NProtoPrivate::TForcedOperationStatusResponse::E_COMPLETED;
+    CompletedForcedRangeOperations.back().Error = error;
 }
 
-void TIndexTabletState::CompleteForcedRangeOperation()
+void TIndexTabletState::CompleteForcedRangeOperation(const NProto::TError& error)
 {
     Y_DEBUG_ABORT_UNLESS(ForcedRangeOperationState);
     if (ForcedRangeOperationState && ForcedRangeOperationState->OperationId) {
-        ForcedRangeOperationState->Current =
-            ForcedRangeOperationState->RangesToCompact.size();
+        ForcedRangeOperationState->Error = error;
+        if (HasError(error)) {
+            ForcedRangeOperationState->Status =
+                NProtoPrivate::TForcedOperationStatusResponse::E_FAILED;
+        } else {
+            ForcedRangeOperationState->Status =
+                NProtoPrivate::TForcedOperationStatusResponse::E_COMPLETED;
+            ForcedRangeOperationState->Current =
+                ForcedRangeOperationState->RangesToCompact.size();
+        }
         CompletedForcedRangeOperations.push_back(*ForcedRangeOperationState);
     }
     ForcedRangeOperationState.Clear();
@@ -1651,6 +1670,17 @@ auto TIndexTabletState::FindForcedRangeOperation(
     }
 
     return nullptr;
+}
+
+bool TIndexTabletState::IsForcedRangeOperationPending(
+    const TString& operationId) const
+{
+    for (auto const& op: PendingForcedRangeOperations) {
+        if (op.OperationId == operationId) {
+            return true;
+        }
+    }
+    return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
