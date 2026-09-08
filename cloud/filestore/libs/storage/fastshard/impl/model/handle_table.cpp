@@ -143,6 +143,10 @@ NProto::TError THandleTable::Delete(
         return ErrorInvalidHandle(handle);
     }
 
+    if (HasError(error)) {
+        return error;
+    }
+
     ui64 slotNo = 0;
     error = NodeId2HandleCount->Get(
         writeContext.Lsn,
