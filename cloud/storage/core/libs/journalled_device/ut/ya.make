@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     journalled_device_ut.cpp
+    journalled_device_v2_ut.cpp
 )
 
 PEERDIR(
