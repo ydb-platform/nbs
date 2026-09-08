@@ -3,7 +3,6 @@
 #include "tls_certificate_provider.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <src/core/lib/security/credentials/tls/grpc_tls_certificate_provider.h>
 
@@ -13,12 +12,13 @@ namespace NCloud::NTlsUtils {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TPendingIdentity
+// Contents of a private key file and a certificate chain file.
+struct TIdentityContent
 {
     TString PrivateKey;
     TString CertChain;
 
-    bool operator==(const TPendingIdentity& other) const = default;
+    bool operator==(const TIdentityContent& other) const = default;
 };
 
 struct TCertificatePair
@@ -26,33 +26,12 @@ struct TCertificatePair
     TCertificateFiles Files;
     TString PrivateKey;
     TString CertChain;
-    // Content that differs from the current one and has been read once, see
-    // UpdateCertificates.
-    TMaybe<TPendingIdentity> Pending;
 };
 
 struct TRootCaPair
 {
     TString RootCaPath;
     TString RootCa;
-    // Content that differs from the current one and has been read once, see
-    // UpdateCertificates.
-    TMaybe<TString> Pending;
-};
-
-struct TCertificateUpdate
-{
-    bool Changed = false;
-    // Earliest notAfter of the chain, set when Changed.
-    TInstant NotValidAfter;
-};
-
-struct TCertificatesUpdateResult
-{
-    bool RootCaChanged = false;
-    TVector<TCertificateUpdate> Certificates;
-    // Some content is waiting for a stable read.
-    bool Pending = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,6 +64,14 @@ TResultOrError<TString> ReadAndValidateRootCertificate(
 TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
     const TCertificateFiles& files);
 
+TResultOrError<TIdentityContent> ReadIdentity(const TCertificateFiles& files);
+
+// Checks that the private key matches the certificate, that every certificate
+// in the chain is valid now and that the chain can be built. Applied to
+// refreshed certificates; the initial load is lenient so that the service is
+// able to start, see LoadCertificatePairs.
+TResultOrError<void> ValidateIdentity(const TIdentityContent& identity);
+
 TVector<TCertificateFiles> PrepareCertificateFilePairs(
     TVector<TCertificateFiles> certificates);
 
@@ -92,22 +79,5 @@ TVector<TCertificatePair> LoadCertificatePairs(
     TVector<TCertificateFiles> certificates);
 
 TRootCaPair LoadRootCaPair(TString rootCaPath);
-
-// Re-reads certificate files and updates |certificates| and |root| in place.
-// Certificate files are rewritten by external tools, not necessarily
-// atomically, and a partially written file may be syntactically valid, e.g. a
-// chain without its intermediate certificate. Therefore new content is applied
-// only after it has been read unchanged twice in a row (stable-read), a read
-// error restarts the count. This is a heuristic that reduces the chance of
-// picking up an intermediate state of a rewrite, not a guarantee: a writer
-// that stalls for longer than the check interval is indistinguishable from a
-// finished one. The last successfully loaded content is kept if the files
-// cannot be read, parsed or validated; new content that fails these checks is
-// reported on every call until the files change. Every certificate is
-// refreshed independently.
-TCertificatesUpdateResult UpdateCertificates(
-    TVector<TCertificatePair>& certificates,
-    TRootCaPair& root,
-    TLog& log);
 
 }   // namespace NCloud::NTlsUtils

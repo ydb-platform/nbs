@@ -61,7 +61,8 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval);
+    TDuration refreshInterval,
+    ITimerPtr timer);
 
 ICertificateProviderPtr CreateCertificateProvider(
     ILoggingServicePtr logging,
@@ -71,6 +72,7 @@ ICertificateProviderPtr CreateCertificateProvider(
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval);
+    TDuration refreshInterval,
+    ITimerPtr timer);
 
 }   // namespace NCloud
