@@ -28,8 +28,9 @@ enum {
     RDMA_PROTO_VERSION_0        = 0,
     RDMA_PROTO_VERSION_1        = 1,
     RDMA_PROTO_VERSION_2        = 2,
-    RDMA_PROTO_PREV_VERSION     = RDMA_PROTO_VERSION_1,
-    RDMA_PROTO_VERSION          = RDMA_PROTO_VERSION_2,
+    RDMA_PROTO_VERSION_3        = 3,
+    RDMA_PROTO_MIN_VERSION      = RDMA_PROTO_VERSION_1,
+    RDMA_PROTO_VERSION          = RDMA_PROTO_VERSION_3,
 };
 
 enum {
@@ -60,6 +61,14 @@ enum {
     // and data is allocated in multiple of block size (512, 4k)
     // then data address is also aligned to (512, 4k)
     RDMA_PROTO_FLAG_DATA_AT_THE_END = 1,
+};
+
+// TRequestMessage.Flags bits
+enum {
+    RDMA_MSG_FLAG_NONE = 0,
+    // the request payload is carried in the SEND right after the header;
+    // In.Length holds its size, In.Address/RKey are zero
+    RDMA_MSG_FLAG_EAGER = 1,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,6 +111,8 @@ struct Y_PACKED TConnectMessage
             ui32 SendQueueSize : 16;
             ui32 RecvQueueSize : 16;
             ui32 MaxBufferSize;
+            // v3+: largest request payload sent eagerly, 0 disables
+            ui32 MaxEagerRequestBytes;
         };
         ui8 Padding[RDMA_PRIVATE_SIZE];
     };
@@ -118,6 +129,8 @@ struct Y_PACKED TAcceptMessage
             TMessageHeader Header;
             ui32 Unused : 16;
             ui32 KeepAliveTimeout : 16;
+            // v3+: effective eager limit, min(client request, server config)
+            ui32 MaxEagerRequestBytes;
         };
         ui8 Padding[RDMA_PRIVATE_SIZE];
     };
@@ -180,7 +193,7 @@ struct Y_PACKED TRequestMessage
 {
     TMessageHeader Header;
     ui32 ReqId : 16;
-    ui32 Unused : 16;
+    ui32 Flags : 16;
     TBufferDesc In;
     TBufferDesc Out;
     ui8 Padding

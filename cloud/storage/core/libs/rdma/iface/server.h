@@ -38,6 +38,7 @@ struct TServerConfig
     ui8 QpRnrRetryCount = 7;
     ui8 QpTimeout = 0;
     ui8 QpMinRnrTimer = 0;
+    ui32 MaxEagerRequestBytes = 0;
 
     TServerConfig();
 
@@ -54,6 +55,8 @@ struct IServerHandler
 
     virtual TCallContextBasePtr CreateCallContext() = 0;
 
+    // for eager requests `in` points into the receive slot and is valid only
+    // during this call; otherwise in/out stay valid until SendResponse
     virtual void HandleRequest(
         void* context,
         TCallContextBasePtr callContext,

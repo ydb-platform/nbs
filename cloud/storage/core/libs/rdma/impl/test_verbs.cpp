@@ -280,11 +280,12 @@ struct TTestVerbs
             TestContext->ProcessedRecvEvents.clear();
         }
 
-        auto handleEvent = [&] (ui64 id, ibv_wc_opcode opcode) {
+        auto handleEvent = [&] (ui64 id, ibv_wc_opcode opcode, ui32 byteLen) {
             ibv_wc wc = {
                 .wr_id = id,
                 .status = IBV_WC_SUCCESS,
                 .opcode = opcode,
+                .byte_len = byteLen,
             };
             with_lock (TestContext->CompletionLock) {
                 if (TestContext->HandleCompletionEvent) {
@@ -297,25 +298,25 @@ struct TTestVerbs
         for (const auto& x: sends) {
             switch (x->opcode) {
                 case IBV_WR_RDMA_READ:
-                    handleEvent(x->wr_id, IBV_WC_RDMA_READ);
+                    handleEvent(x->wr_id, IBV_WC_RDMA_READ, 0);
                     break;
                 case IBV_WR_RDMA_WRITE:
-                    handleEvent(x->wr_id, IBV_WC_RDMA_WRITE);
+                    handleEvent(x->wr_id, IBV_WC_RDMA_WRITE, 0);
                     break;
                 case IBV_WR_BIND_MW:
-                    handleEvent(x->wr_id, IBV_WC_BIND_MW);
+                    handleEvent(x->wr_id, IBV_WC_BIND_MW, 0);
                     break;
                 case IBV_WR_LOCAL_INV:
-                    handleEvent(x->wr_id, IBV_WC_LOCAL_INV);
+                    handleEvent(x->wr_id, IBV_WC_LOCAL_INV, 0);
                     break;
                 default:
-                    handleEvent(x->wr_id, IBV_WC_SEND);
+                    handleEvent(x->wr_id, IBV_WC_SEND, 0);
             }
             delete x;
         }
 
         for (const auto& x: recvs) {
-            handleEvent(x->wr_id, IBV_WC_RECV);
+            handleEvent(x->wr_id, IBV_WC_RECV, sizeof(TRequestMessage));
         }
 
         return true;
@@ -643,20 +644,22 @@ IVerbsPtr CreateTestVerbs(TTestContextPtr context)
 
 void CreateConnection(TTestContextPtr context)
 {
-    CreateConnection(context, 10, 10, 4_MB + 4_KB);
+    CreateConnection(context, 10, 10, 4_MB + 4_KB, 0);
 }
 
 void CreateConnection(
     TTestContextPtr context,
     ui16 sendQueueSize,
     ui16 recvQueueSize,
-    ui32 maxBufferSize)
+    ui32 maxBufferSize,
+    ui32 maxEagerRequestBytes)
 {
     TConnectMessage message = {};
     InitMessageHeader(&message, RDMA_PROTO_VERSION);
     message.SendQueueSize = sendQueueSize;
     message.RecvQueueSize = recvQueueSize;
     message.MaxBufferSize = maxBufferSize;
+    message.MaxEagerRequestBytes = maxEagerRequestBytes;
 
     rdma_conn_param param = {
         .private_data = &message,

@@ -98,7 +98,8 @@ void CreateConnection(
     TTestContextPtr context,
     ui16 sendQueueSize,
     ui16 recvQueueSize,
-    ui32 maxBufferSize);
+    ui32 maxBufferSize,
+    ui32 maxEagerRequestBytes);
 void Flush(TTestContextPtr context);
 void Disconnect(TTestContextPtr context);
 

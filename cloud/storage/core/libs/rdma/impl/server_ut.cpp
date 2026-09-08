@@ -537,23 +537,211 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
         context,
         static_cast<ui16>(serverConfig->RecvQueueSize + 1),
         static_cast<ui16>(serverConfig->RecvQueueSize),
-        serverConfig->MaxBufferSize);
+        serverConfig->MaxBufferSize,
+        0);
 
     NVerbs::CreateConnection(
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
         static_cast<ui16>(serverConfig->SendQueueSize - 1),
-        serverConfig->MaxBufferSize);
+        serverConfig->MaxBufferSize,
+        0);
 
     NVerbs::CreateConnection(
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
         static_cast<ui16>(serverConfig->RecvQueueSize),
-        serverConfig->MaxBufferSize + 1);
+        serverConfig->MaxBufferSize + 1,
+        0);
 
     done.GetFuture().Wait();
     EXPECT_EQ(3, rejectCount.load());
     EXPECT_FALSE(createQpCalled.load());
+}
+
+TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    struct TEagerCapturingHandler final
+        : IServerHandler
+    {
+        std::atomic<int> Calls{0};
+        TString In;
+        void* Context = nullptr;
+        NThreading::TPromise<void> RequestReceived =
+            NThreading::NewPromise<void>();
+
+        TCallContextBasePtr CreateCallContext() override
+        {
+            return MakeIntrusive<TCallContextBase>(ui64{0});
+        }
+
+        void HandleRequest(
+            void* requestContext,
+            TCallContextBasePtr callContext,
+            TStringBuf in,
+            TStringBuf out) override
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(out);
+
+            ++Calls;
+            In = TString(in);
+            Context = requestContext;
+            RequestReceived.TrySetValue();
+        }
+    };
+
+    // flush posted WRs when the session enters the error state on Stop()
+    context->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(context);
+        }
+    };
+
+    TAdaptiveLock opcodesLock;
+    TVector<ibv_wr_opcode> postedOpcodes;
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        with_lock (opcodesLock) {
+            postedOpcodes.push_back(wr->opcode);
+        }
+        PostSend<TResponseMessage>(context, qp, wr);
+    };
+
+    std::atomic<ui32> acceptedEagerBytes{Max<ui32>()};
+    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param)
+    {
+        Y_UNUSED(id);
+        const auto* acceptMsg =
+            static_cast<const TAcceptMessage*>(param->private_data);
+        acceptedEagerBytes = acceptMsg->MaxEagerRequestBytes;
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 2;
+    serverConfig->MaxEagerRequestBytes = 32_KB;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER {
+        server->Stop();
+    };
+
+    auto handler = std::make_shared<TEagerCapturingHandler>();
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    NVerbs::CreateConnection(
+        context,
+        2,
+        2,
+        serverConfig->MaxBufferSize,
+        8_KB);
+
+    auto counters = GetServerCounters(monitoring);
+    auto activeRecv = counters->GetCounter("ActiveRecv");
+    auto errors = counters->GetCounter("Errors");
+
+    while (activeRecv->Val() != 2) {
+        SpinLockPause();
+    }
+
+    ASSERT_EQ(8_KB, acceptedEagerBytes.load());
+
+    const TString payload(3000, 'x');
+
+    ui64 eagerWrId = 0;
+    with_lock (context->CompletionLock) {
+        ASSERT_FALSE(context->RecvEvents.empty());
+
+        auto* recv = context->RecvEvents.back();
+        context->RecvEvents.pop_back();
+
+        ASSERT_EQ(sizeof(TRequestMessage) + 8_KB, recv->sg_list[0].length);
+
+        auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+        memset(msg, 0, sizeof(*msg));
+        InitMessageHeader(msg, RDMA_PROTO_VERSION);
+        msg->ReqId = 7;
+        msg->Flags = RDMA_MSG_FLAG_EAGER;
+        msg->In.Length = payload.size();
+        msg->Out.Length = 1_KB;
+        memcpy(
+            reinterpret_cast<char*>(recv->sg_list[0].addr) + sizeof(*msg),
+            payload.data(),
+            payload.size());
+
+        eagerWrId = recv->wr_id;
+        context->HandleCompletionEvent = [&, eagerWrId](ibv_wc* wc) {
+            if (wc->opcode == IBV_WC_RECV && wc->wr_id == eagerWrId) {
+                wc->byte_len = sizeof(TRequestMessage) + payload.size();
+            }
+        };
+
+        context->ProcessedRecvEvents.push_back(recv);
+        context->CompletionHandle.Set();
+    }
+
+    handler->RequestReceived.GetFuture().GetValueSync();
+    ASSERT_EQ(1, handler->Calls.load());
+    ASSERT_EQ(payload, handler->In);
+    ASSERT_NE(nullptr, handler->Context);
+
+    with_lock (opcodesLock) {
+        for (auto opcode: postedOpcodes) {
+            ASSERT_NE(IBV_WR_RDMA_READ, opcode);
+        }
+    }
+
+    endpoint->SendResponse(handler->Context, 16);
+
+    while (true) {
+        with_lock (opcodesLock) {
+            if (Count(postedOpcodes, IBV_WR_RDMA_WRITE) == 1 &&
+                Count(postedOpcodes, IBV_WR_SEND) == 1)
+            {
+                break;
+            }
+        }
+        SpinLockPause();
+    }
+
+    with_lock (context->CompletionLock) {
+        ASSERT_FALSE(context->RecvEvents.empty());
+
+        auto* recv = context->RecvEvents.back();
+        context->RecvEvents.pop_back();
+
+        auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+        memset(msg, 0, sizeof(*msg));
+        InitMessageHeader(msg, RDMA_PROTO_VERSION);
+        msg->ReqId = 8;
+        msg->Flags = RDMA_MSG_FLAG_EAGER;
+        msg->In.Length = 16_KB;
+        msg->Out.Length = 1_KB;
+
+        const ui64 badWrId = recv->wr_id;
+        context->HandleCompletionEvent = [&, badWrId](ibv_wc* wc) {
+            if (wc->opcode == IBV_WC_RECV && wc->wr_id == badWrId) {
+                wc->byte_len = sizeof(TRequestMessage) + 16_KB;
+            }
+        };
+
+        context->ProcessedRecvEvents.push_back(recv);
+        context->CompletionHandle.Set();
+    }
+
+    while (errors->Val() == 0) {
+        SpinLockPause();
+    }
+    ASSERT_EQ(1, handler->Calls.load());
 }
 
 TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
@@ -615,7 +803,8 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
         static_cast<ui16>(serverConfig->RecvQueueSize),
-        serverConfig->MaxBufferSize);
+        serverConfig->MaxBufferSize,
+        0);
 
     auto counters = GetServerCounters(monitoring);
     auto activeRecv = counters->GetCounter("ActiveRecv");
@@ -733,7 +922,8 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
         static_cast<ui16>(serverConfig->RecvQueueSize),
-        serverConfig->MaxBufferSize);
+        serverConfig->MaxBufferSize,
+        0);
 
     auto counters = GetServerCounters(monitoring);
     auto activeRecv = counters->GetCounter("ActiveRecv");
