@@ -67,6 +67,21 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsValidationTest)
         UNIT_ASSERT(!result.Table);
     }
 
+    Y_UNIT_TEST(ShouldRejectEntryWithoutMediaKind)
+    {
+        // MediaKind is optional in the proto, so an entry that omits it
+        // parses cleanly and reads back as STORAGE_MEDIA_DEFAULT instead of
+        // failing - the validator has to reject it explicitly.
+        NProto::TMediaKindLatencyThresholds mkt;
+        *mkt.AddBuckets() = MakeBucket(0, 10, 10);
+
+        auto result = BuildLatencyThresholdsTable({mkt});
+
+        UNIT_ASSERT(!result.IsValid());
+        UNIT_ASSERT(!result.Error.empty());
+        UNIT_ASSERT(!result.Table);
+    }
+
     Y_UNIT_TEST(ShouldRejectMediaKindWithoutBuckets)
     {
         TVector<NProto::TMediaKindLatencyThresholds> config = {

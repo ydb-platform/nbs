@@ -94,15 +94,19 @@ struct TLatencyThresholdsValidationResult
 };
 
 // Validates the raw proto config and builds the runtime lookup table.
-// Rules:
-//   1. The list must not be empty (an enabled mechanism with an empty table
-//      is a config mistake, not "disable via empty table").
-//   2. Every media kind entry has at least one bucket.
-//   3. The first bucket of every media kind has MinRequestBytes == 0.
-//   4. MinRequestBytes strictly increases within a media kind (no
-//      duplicates, no reordering; never silently sorted).
-//   5. Both thresholds in every bucket are > 0.
-//   6. A media kind appears at most once in the list.
+// Rules, in the order they are checked:
+//   - the list is not empty (an enabled mechanism with an empty table is a
+//     config mistake, not "disable via empty table");
+//   - every entry sets MediaKind explicitly (the field is optional, so an
+//     entry that omits it would parse as STORAGE_MEDIA_DEFAULT);
+//   - MediaKind is within the declared enum range (it indexes a fixed-size
+//     array of ladders);
+//   - a media kind appears at most once in the list;
+//   - every media kind entry has at least one bucket;
+//   - the first bucket of every media kind has MinRequestBytes == 0;
+//   - MinRequestBytes strictly increases within a media kind (no
+//     duplicates, no reordering; never silently sorted);
+//   - both thresholds in every bucket are > 0.
 // Non-decreasing thresholds with size (the "running max" contract) is
 // checked too, but only produces a Warning, not an Error.
 TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
@@ -134,10 +138,12 @@ const TLatencyThresholdBucket& FindLatencyThresholdBucket(
 
 // Outcome of judging a single completed read/write operation against the
 // latency thresholds table. Fatal errors are always bad (nothing to compare
-// a duration against); throttling/checkpoint rejections and per-attempt
-// retry outcomes are excluded entirely (not judged, not counted as bad);
+// a duration against); throttling/checkpoint rejections and retriable
+// outcomes are excluded entirely (not judged, not counted as bad);
 // everything else is judged by comparing execution time against the
 // threshold for its media kind, direction (read/write), and size bucket.
+// See ClassifyLatencyOutcome for a known gap in the retriable case: an
+// operation whose retries are exhausted contributes to neither counter.
 struct TLatencyThresholdOutcome
 {
     // Operation counted in the total (denominator).
