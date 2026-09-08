@@ -45,7 +45,7 @@ void WriteFile(TString filePath, TString data, const TActorContext& ctx)
             auto message = TStringBuilder()
                 << "failed to acquire lock on file: " << tmpFilePath;
 
-            error = MakeError(E_IO, std::move(message));
+            error = MakeError(E_INVALID_STATE, std::move(message));
         }
     } catch (...) {
         error = MakeError(E_FAIL, CurrentExceptionMessage());
