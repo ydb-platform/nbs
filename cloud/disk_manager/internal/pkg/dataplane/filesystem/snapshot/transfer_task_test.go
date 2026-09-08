@@ -411,7 +411,6 @@ func TestValidateConfigRejectsZeroLimits(t *testing.T) {
 	traversalWorkersCount := uint32(0)
 	restoreHardlinksBatchSize := uint32(0)
 	fetchNodesFromStorageLimit := uint32(0)
-	traversalWorkersCount := uint32(0)
 	snapshotDataDeletionLimit := uint64(0)
 	snapshotCollectionInflightLimit := uint32(0)
 
