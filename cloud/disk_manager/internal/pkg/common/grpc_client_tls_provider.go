@@ -100,14 +100,15 @@ func (p *grpcClientTlsProvider) refreshLoop(
 	period time.Duration,
 ) {
 
-	timer := time.NewTimer(period)
-	defer timer.Stop()
+	// Files are checked once per period and new content must be read
+	// unchanged twice in a row, so a change takes effect within two periods.
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
 
 	for {
 		select {
-		case <-timer.C:
-			pending := p.refresh(ctx)
-			timer.Reset(refreshInterval(period, pending))
+		case <-ticker.C:
+			p.refresh(ctx)
 		case <-ctx.Done():
 			return
 		}
@@ -118,31 +119,31 @@ func (p *grpcClientTlsProvider) refreshLoop(
 // has been read unchanged twice in a row, a read error restarts the count. The
 // last successfully loaded config is kept if the file cannot be read or
 // parsed; new content that fails to parse is reported on every tick until the
-// file changes. Returns true if new content is waiting for a stable read.
-func (p *grpcClientTlsProvider) refresh(ctx context.Context) bool {
+// file changes.
+func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 	rootCerts, err := os.ReadFile(p.rootCertsFile)
 	if err != nil {
 		p.clearPending()
 		p.warnRefreshFailure(ctx, err)
-		return false
+		return
 	}
 
 	switch p.decide(rootCerts) {
 	case stableReadUnchanged:
-		return false
+		return
 	case stableReadWait:
 		logging.Info(
 			ctx,
 			"New root certificates in %v, waiting for a stable read",
 			p.rootCertsFile,
 		)
-		return true
+		return
 	}
 
 	tlsConfig, err := newClientTlsConfig(rootCerts)
 	if err != nil {
 		p.warnRefreshFailure(ctx, err)
-		return false
+		return
 	}
 
 	p.mutex.Lock()
@@ -161,7 +162,7 @@ func (p *grpcClientTlsProvider) refresh(ctx context.Context) bool {
 	)
 
 	p.fingerprintGauge.Set(float64(fingerprint))
-	return false
+	return
 }
 
 func (p *grpcClientTlsProvider) decide(rootCerts []byte) stableReadDecision {
