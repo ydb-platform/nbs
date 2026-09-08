@@ -1,7 +1,7 @@
 #include "journal.h"
 
+#include "device_page_store.h"
 #include "key_buffer_store.h"
-#include "page_store.h"
 
 namespace NCloud::NJournalled {
 
@@ -15,12 +15,12 @@ class TJournal final: public IJournal
 {
 private:
     IKeyBufferStorePtr MetaStore;
-    IPageStorePtr DataStore;
+    IDevicePageStorePtr DataStore;
 
 public:
     TJournal(
         IKeyBufferStorePtr metaStore,
-        IPageStorePtr dataStore)
+        IDevicePageStorePtr dataStore)
         : MetaStore(std::move(metaStore))
         , DataStore(std::move(dataStore))
     {}
@@ -91,7 +91,7 @@ public:
 
 IJournalPtr CreateJournal(
     IKeyBufferStorePtr metaStore,
-    IPageStorePtr dataStore)
+    IDevicePageStorePtr dataStore)
 {
     return std::make_shared<TJournal>(
         std::move(metaStore),

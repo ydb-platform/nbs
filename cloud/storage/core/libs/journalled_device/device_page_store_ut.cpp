@@ -1,10 +1,10 @@
-#include "page_store.h"
+#include "device_page_store.h"
 
 #include "device.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/string/join.h>
+#include <util/generic/buffer.h>
 
 namespace NCloud::NJournalled {
 
@@ -15,9 +15,26 @@ namespace {
 constexpr ui64 DefaultPageCount = 16;
 constexpr ui32 DefaultPageSize = 4;
 
-TString Join(const TVector<TString>& pages)
+TVector<TBuffer> MakePages(const TVector<TString>& pages)
 {
-    return JoinSeq("|", pages);
+    TVector<TBuffer> buffers;
+    buffers.reserve(pages.size());
+    for (const auto& page: pages) {
+        buffers.emplace_back(page.data(), page.size());
+    }
+    return buffers;
+}
+
+TString Join(const TVector<TBuffer>& pages)
+{
+    TStringBuilder sb;
+    for (const auto& page: pages) {
+        if (sb) {
+            sb << "|";
+        }
+        sb << TStringBuf(page.Data(), page.Size());
+    }
+    return sb;
 }
 
 TVector<TPageGroupRef> MakeRefs(
@@ -68,14 +85,14 @@ struct TBrokenDevice final: public IDevice
 
 // allocates the pages of a record and writes them
 TVector<TPageGroupRef> WriteRecord(
-    const IPageStorePtr& store,
+    const IDevicePageStorePtr& store,
     const TVector<TString>& pages)
 {
     auto refs = store->Allocate(pages.size());
     UNIT_ASSERT(pages.empty() || !refs.empty());
 
     const auto error =
-        store->Write(refs, pages).GetValue();
+        store->Write(refs, MakePages(pages)).GetValue();
     UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
     return refs;
@@ -115,11 +132,14 @@ TString ReadFromDevice(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TPageStoreTest)
+Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 {
     Y_UNIT_TEST(ShouldAllocateFreePages)
     {
-        auto store = CreatePageStore(CreateInMemoryDevice(), 4, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            4,
+            DefaultPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(store->Allocate(2)));
 
@@ -133,7 +153,10 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldNotAllocateMorePagesThanThereAre)
     {
-        auto store = CreatePageStore(CreateInMemoryDevice(), 4, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            4,
+            DefaultPageSize);
 
         UNIT_ASSERT(store->Allocate(5).empty());
 
@@ -143,7 +166,10 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldAllocateFragmentedFreeSpace)
     {
-        auto store = CreatePageStore(CreateInMemoryDevice(), 8, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            8,
+            DefaultPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL("0x8", Describe(store->Allocate(8)));
 
@@ -158,7 +184,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldReadBackWhatWasWritten)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -173,7 +199,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldRejectPagesOfAWrongSize)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -186,7 +212,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
                 {"aaaa", ""}})          // empty
         {
             const auto error =
-                store->Write(refs, pages).GetValue();
+                store->Write(refs, MakePages(pages)).GetValue();
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
@@ -199,7 +225,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
         // a write of the right size still goes through
         const auto error =
-            store->Write(refs, TVector<TString>({"aaaa", "bbbb"}))
+            store->Write(refs, MakePages({"aaaa", "bbbb"}))
                 .GetValue();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
@@ -210,7 +236,10 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldWriteIntoFragmentedRefs)
     {
-        auto store = CreatePageStore(CreateInMemoryDevice(), 8, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            8,
+            DefaultPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL("0x8", Describe(store->Allocate(8)));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -221,7 +250,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1x2, 5x1", Describe(refs));
 
         const auto error =
-            store->Write(refs, TVector<TString>({"aaaa", "bbbb", "cccc"}))
+            store->Write(refs, MakePages({"aaaa", "bbbb", "cccc"}))
                 .GetValue();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
@@ -233,7 +262,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldRejectAWriteWithAWrongNumberOfPages)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -241,7 +270,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
         auto refs = store->Allocate(2);
 
         const auto tooMany =
-            store->Write(refs, TVector<TString>({"aaaa", "bbbb", "cccc"}))
+            store->Write(refs, MakePages({"aaaa", "bbbb", "cccc"}))
                 .GetValue();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, tooMany.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
@@ -249,31 +278,31 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
             "the page group refs hold 2 pages, 3 given");
 
         const auto tooFew =
-            store->Write(refs, TVector<TString>({"aaaa"})).GetValue();
+            store->Write(refs, MakePages({"aaaa"})).GetValue();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, tooFew.GetCode());
     }
 
     Y_UNIT_TEST(ShouldRejectAWriteIntoPagesThatAreNotAllocated)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
 
         const auto free =
-            store->Write(MakeRefs({{0, 1}}), TVector<TString>({"aaaa"}))
+            store->Write(MakeRefs({{0, 1}}), MakePages({"aaaa"}))
                 .GetValue();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, free.GetCode());
 
         const auto beyond = store->Write(
             MakeRefs({{DefaultPageCount, 1}}),
-            TVector<TString>({"aaaa"})).GetValue();
+            MakePages({"aaaa"})).GetValue();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, beyond.GetCode());
     }
 
     Y_UNIT_TEST(ShouldRejectRefsForPagesThatAreNotThere)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -300,7 +329,10 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldAcceptRefsThatOnlyTouchTheFreeSpace)
     {
-        auto store = CreatePageStore(CreateInMemoryDevice(), 8, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            8,
+            DefaultPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL("0x8", Describe(store->Allocate(8)));
 
@@ -340,7 +372,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldFreePages)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -362,7 +394,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldNotFreeAnythingWhenARefIsRejected)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -382,7 +414,10 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldReuseFreedPages)
     {
-        auto store = CreatePageStore(CreateInMemoryDevice(), 4, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            4,
+            DefaultPageSize);
 
         auto refs = WriteRecord(store, {"aaaa", "bbbb"});
         UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(refs));
@@ -395,7 +430,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldAllocateTheGivenPages)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -409,7 +444,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldNotAllocateThePagesThatAreBusyAlready)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -433,7 +468,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldKeepTheContentOfTheRejectedPages)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -452,7 +487,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldAcceptAnEmptyRequest)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             CreateInMemoryDevice(),
             DefaultPageCount,
             DefaultPageSize);
@@ -471,7 +506,10 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
     Y_UNIT_TEST(ShouldKeepThePagesOnTheDevice)
     {
         auto device = CreateInMemoryDevice();
-        auto store = CreatePageStore(device, DefaultPageCount, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            device,
+            DefaultPageCount,
+            DefaultPageSize);
 
         auto refs = WriteRecord(store, {"aaaa", "bbbb", "cccc"});
         UNIT_ASSERT_VALUES_EQUAL("0x3", Describe(refs));
@@ -484,7 +522,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldReportTheDeviceWriteError)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             std::make_shared<TBrokenDevice>(),
             DefaultPageCount,
             DefaultPageSize);
@@ -494,7 +532,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_IO,
-            store->Write(refs, TVector<TString>({"aaaa", "bbbb"}))
+            store->Write(refs, MakePages({"aaaa", "bbbb"}))
                 .GetValue().GetCode());
 
         // the pages stay allocated, releasing them is up to the caller
@@ -503,7 +541,7 @@ Y_UNIT_TEST_SUITE(TPageStoreTest)
 
     Y_UNIT_TEST(ShouldReportTheDeviceReadError)
     {
-        auto store = CreatePageStore(
+        auto store = CreateDevicePageStore(
             std::make_shared<TBrokenDevice>(),
             DefaultPageCount,
             DefaultPageSize);

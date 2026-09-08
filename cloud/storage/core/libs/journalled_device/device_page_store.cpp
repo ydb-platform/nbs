@@ -1,4 +1,4 @@
-#include "page_store.h"
+#include "device_page_store.h"
 
 #include "device.h"
 
@@ -28,9 +28,9 @@ enum class EPageState
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPageStore final
-    : public IPageStore
-    , public std::enable_shared_from_this<TPageStore>
+class TDevicePageStore final
+    : public IDevicePageStore
+    , public std::enable_shared_from_this<TDevicePageStore>
 {
 private:
     const IDevicePtr Device;
@@ -43,7 +43,7 @@ private:
     ui64 FreePageCount = 0;
 
 public:
-    TPageStore(IDevicePtr device, ui64 pageCount, ui32 pageSize)
+    TDevicePageStore(IDevicePtr device, ui64 pageCount, ui32 pageSize)
         : Device(std::move(device))
         , PageCount(pageCount)
         , PageSize(pageSize)
@@ -97,7 +97,8 @@ public:
 
     auto Write(
         const TVector<TPageGroupRef>& pageGroupRefs,
-        TVector<TString> pages) -> TFuture<NCloud::NProto::TError> override
+        const TVector<TBuffer>& pages)
+        -> TFuture<NCloud::NProto::TError> override
     {
         ui64 pageCount = 0;
         for (const auto& ref: pageGroupRefs) {
@@ -115,10 +116,10 @@ public:
         }
 
         for (const auto& page: pages) {
-            if (page.size() != PageSize) {
+            if (page.Size() != PageSize) {
                 return MakeFuture(MakeError(E_ARGUMENT, TStringBuilder()
-                    << "a page of " << page.size() << " bytes, the page size is "
-                    << PageSize));
+                    << "a page of " << page.Size()
+                    << " bytes, the page size is " << PageSize));
             }
         }
 
@@ -137,7 +138,8 @@ public:
             deviceGroup.SetFirstPageNo(ref.FirstPageNo);
 
             for (ui64 i = 0; i < ref.PageCount; ++i) {
-                *deviceGroup.AddContent() = std::move(pages[pageIndex++]);
+                const auto& page = pages[pageIndex++];
+                deviceGroup.AddContent()->assign(page.Data(), page.Size());
             }
         }
 
@@ -149,9 +151,9 @@ public:
     }
 
     auto Read(const TVector<TPageGroupRef>& pageGroupRefs)
-        -> TFuture<TResultOrError<TVector<TString>>> override
+        -> TFuture<TResultOrError<TVector<TBuffer>>> override
     {
-        using TResult = TResultOrError<TVector<TString>>;
+        using TResult = TResultOrError<TVector<TBuffer>>;
 
         NCloud::NProto::TReadPagesRequest deviceRequest;
         ui64 pageCount = 0;
@@ -173,7 +175,7 @@ public:
         }
 
         if (!pageCount) {
-            return MakeFuture<TResult>(TVector<TString>());
+            return MakeFuture<TResult>(TVector<TBuffer>());
         }
 
         return Device->ReadPages(std::move(deviceRequest)).Apply(
@@ -184,12 +186,12 @@ public:
                     return response.GetError();
                 }
 
-                TVector<TString> pages;
+                TVector<TBuffer> pages;
                 pages.reserve(pageCount);
 
-                for (auto& group: *response.MutablePageGroups()) {
-                    for (auto& content: *group.MutableContent()) {
-                        pages.push_back(std::move(content));
+                for (const auto& group: response.GetPageGroups()) {
+                    for (const auto& content: group.GetContent()) {
+                        pages.emplace_back(content.data(), content.size());
                     }
                 }
 
@@ -425,12 +427,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IPageStorePtr CreatePageStore(
+IDevicePageStorePtr CreateDevicePageStore(
     IDevicePtr device,
     ui64 pageCount,
     ui32 pageSize)
 {
-    return std::make_shared<TPageStore>(
+    return std::make_shared<TDevicePageStore>(
         std::move(device),
         pageCount,
         pageSize);

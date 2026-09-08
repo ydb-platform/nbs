@@ -6,7 +6,7 @@
 
 #include <library/cpp/threading/future/future.h>
 
-#include <util/generic/string.h>
+#include <util/generic/buffer.h>
 #include <util/generic/vector.h>
 
 #include <memory>
@@ -23,9 +23,9 @@ struct TPageGroupRef
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IPageStore
+struct IDevicePageStore
 {
-    virtual ~IPageStore() = default;
+    virtual ~IDevicePageStore() = default;
 
     // Returns nothing if there are not enough free pages.
     [[nodiscard]] virtual TVector<TPageGroupRef> Allocate(ui64 pageCount) = 0;
@@ -38,12 +38,12 @@ struct IPageStore
 
     [[nodiscard]] virtual auto Write(
         const TVector<TPageGroupRef>& pageGroupRefs,
-        TVector<TString> pages)
+        const TVector<TBuffer>& pages)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 
     [[nodiscard]] virtual auto Read(
         const TVector<TPageGroupRef>& pageGroupRefs)
-        -> NThreading::TFuture<TResultOrError<TVector<TString>>> = 0;
+        -> NThreading::TFuture<TResultOrError<TVector<TBuffer>>> = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,7 +59,7 @@ struct IPageStore
 //
 // The page group refs of a single request must not intersect with each other -
 // the store does not check this and does not account for such refs properly.
-IPageStorePtr CreatePageStore(
+IDevicePageStorePtr CreateDevicePageStore(
     IDevicePtr device,
     ui64 pageCount,
     ui32 pageSize);
