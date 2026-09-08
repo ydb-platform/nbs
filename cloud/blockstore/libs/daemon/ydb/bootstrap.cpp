@@ -140,10 +140,20 @@ public:
         Impl.reset();
     }
 
-    auto StartEndpoint(TString host, ui32 port) -> NThreading::TFuture<
-        NCloud::NStorage::NRdma::IClientEndpointPtr> override
+    auto StartEndpoint(TString host, ui32 port)
+        -> NThreading::TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>
+        override
     {
         return Impl->StartEndpoint(std::move(host), port);
+    }
+
+    auto StartEndpoint(
+        TString host,
+        ui32 port,
+        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+        -> TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr> override
+    {
+        return Impl->StartEndpoint(std::move(host), port, std::move(handler));
     }
 
     void DumpHtml(IOutputStream& out) const override

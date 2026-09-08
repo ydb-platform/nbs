@@ -70,10 +70,11 @@ public:
 
 // TClientRequest encapsulates all information for executing the request:
 // input and output buffers, response handler, user context.
-// Do not create TClientRequest directly, use IClientHandler::AllocateRequest().
+// Do not create TClientRequest directly, use
+// IClientRequestHandler::AllocateRequest().
 struct TClientRequest
 {
-    IClientHandlerPtr Handler;
+    IClientRequestHandlerPtr Handler;
     std::unique_ptr<TNullContext> Context;
 
     TStringBuf RequestBuffer;
@@ -83,7 +84,7 @@ struct TClientRequest
 
 protected:
     TClientRequest(
-            IClientHandlerPtr handler,
+            IClientRequestHandlerPtr handler,
             std::unique_ptr<TNullContext> context)
         : Handler(std::move(handler))
         , Context(std::move(context))
@@ -92,15 +93,28 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// IClientHandler interface is used to process the response on the user side.
-struct IClientHandler
+// IClientRequestHandler interface is used to process the response on the user
+// side.
+struct IClientRequestHandler
 {
-    virtual ~IClientHandler() = default;
+    virtual ~IClientRequestHandler() = default;
 
     virtual void HandleResponse(
         TClientRequestPtr req,
         ui32 status,
         size_t responseBytes) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Used to notify user about changes in the endpoint state
+struct IClientEndpointHandler
+{
+    virtual ~IClientEndpointHandler() = default;
+
+    virtual void HandleConnected() = 0;
+    virtual void HandleDisconnected() = 0;
+    virtual void HandleUnavailable() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -111,7 +125,7 @@ struct IClientEndpoint
     virtual ~IClientEndpoint() = default;
 
     virtual TResultOrError<TClientRequestPtr> AllocateRequest(
-        IClientHandlerPtr handler,
+        IClientRequestHandlerPtr handler,
         std::unique_ptr<TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) = 0;
@@ -141,6 +155,11 @@ struct IClient
     virtual NThreading::TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port) = 0;
+
+    virtual TResultOrError<IClientEndpointPtr> StartEndpoint(
+        TString host,
+        ui32 port,
+        IClientEndpointHandlerPtr handler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 
