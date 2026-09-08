@@ -115,6 +115,10 @@ NProto::TError THandleTable::Put(
             writeContext.PageGroups);
     }
 
+    if (HasError(error)) {
+        return error;
+    }
+
     ++nodeHandles.HandleCount;
     return NodeId2HandleCount->Update(
         writeContext.Lsn,
