@@ -15,6 +15,8 @@
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
+#include <cloud/storage/core/libs/common/compressed_bitmap.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -135,6 +137,24 @@ NProtoPrivate::TUnsafeChangeTabletStateResponse SetCompressNodeRef(
             .ok());
 
     return response;
+}
+
+bool IsShardCreatedInResizeState(
+    const NProtoPrivate::TFileSystemResizeState& resizeState,
+    const ui32 shardIndex)
+{
+    const auto& proto = resizeState.GetCreatedShardBitmap();
+    const ui64 bitCount = Max<ui64>(
+        proto.GetBitCount(),
+        shardIndex + 1,
+        ui64{1});
+
+    NCloud::TCompressedBitmap bitmap(bitCount);
+    for (const auto& chunk: proto.GetChunks()) {
+        bitmap.Update({chunk.GetChunkIdx(), chunk.GetData()});
+    }
+
+    return bitmap.Test(shardIndex);
 }
 
 void CreateOrResizeFilesystem(
@@ -5156,8 +5176,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                     }
 
                     case TEvIndexTablet::EvUnsafeChangeTabletStateResponse: {
-                        if (ev->Cookie == failedShardCookie - 1 &&
-                            failedShardCreateResponse)
+                        using TResponse = TEvIndexTablet::
+                            TEvUnsafeChangeTabletStateResponse;
+
+                        const auto* msg = ev->Get<TResponse>();
+                        if (failedShardCreateResponse &&
+                            msg->Record.HasResizeState() &&
+                            IsShardCreatedInResizeState(
+                                msg->Record.GetResizeState(),
+                                failedShardCookie - 1))
                         {
                             runtime.Send(
                                 failedShardCreateResponse.Release(),

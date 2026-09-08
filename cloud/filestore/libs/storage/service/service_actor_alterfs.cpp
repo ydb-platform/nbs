@@ -99,12 +99,9 @@ private:
     // Persistent state of resize operation.
     NProtoPrivate::TFileSystemResizeState ResizeState;
     ui32 ResizeStateVersion = 0;
+    bool InitialResizeStateRead = false;
     ui64 ShardBitmapBitCount = 0;
     std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
-    bool ShardCreatedStateUpdateInFlight = false;
-    bool ShardCreatedStateUpdateNeeded = false;
-    ui32 ShardCreatedStateUpdateVersion = 0;
-    ui64 ShardCreatedStateUpdateCookie = 0;
 
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
@@ -154,16 +151,14 @@ private:
     void PatchStorageConfig();
     void FillMultiShardFileStoreConfig(const TActorContext& ctx);
 
-    void GetResizeState(const TActorContext& ctx);
+    void ReadResizeState(const TActorContext& ctx);
     void SetupCreatedShardBitmap();
     void MergeCreatedShardBitmap(
         const NProtoPrivate::TCompressedBitmapData& bitmap);
-    void SendShardCreatedStateUpdate(
-        const TActorContext& ctx,
-        ui64 cookie);
+    bool HasUnpersistedCreatedShards() const;
+    void UpdateResizeState(const TActorContext& ctx);
     void UpdateShardCreatedState(
         const TActorContext& ctx, const ui32 shardIndex);
-    void MaybeConfigureShards(const TActorContext& ctx);
 
     void HandleDescribeFileStoreForAlterResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
@@ -205,7 +200,7 @@ private:
         const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleUnsafeChangeTabletStateResponse(
+    void HandleResizeStateResponse(
         const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
         const TActorContext& ctx);
 
@@ -453,7 +448,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     MainFileStoreOriginalConfig = currentConfig;
 
     if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        GetResizeState(ctx);
+        ReadResizeState(ctx);
     } else {
         GetStorageStats(ctx);
     }
@@ -461,7 +456,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::GetResizeState(const TActorContext& ctx)
+void TAlterFileStoreActor::ReadResizeState(const TActorContext& ctx)
 {
     auto request =
         std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
@@ -470,59 +465,77 @@ void TAlterFileStoreActor::GetResizeState(const TActorContext& ctx)
     // Unset Version means just return current state.
     request->Record.MutableResizeState();
 
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request),
-        MainFileStoreCookie);
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
-void TAlterFileStoreActor::HandleUnsafeChangeTabletStateResponse(
+void TAlterFileStoreActor::UpdateResizeState(const TActorContext& ctx)
+{
+    if (!CreatedShardBitmap) {
+        return;
+    }
+
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
+    request->Record.SetFileSystemId(FileSystemId);
+    auto* resizeState = request->Record.MutableResizeState();
+    resizeState->SetVersion(ResizeStateVersion);
+    SaveCompressedBitmap(
+        *CreatedShardBitmap,
+        ShardBitmapBitCount,
+        *resizeState->MutableCreatedShardBitmap());
+
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
+}
+
+void TAlterFileStoreActor::HandleResizeStateResponse(
     const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
-        ReplyAndDie(ctx, msg->GetError());
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] UnsafeChangeTabletState failed: %s",
+            FileSystemId.c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
         return;
     }
 
     if (!msg->Record.HasResizeState()) {
-        ReplyAndDie(
+        LOG_WARN(
             ctx,
-            MakeError(
-                E_INVALID_STATE,
-                TStringBuilder()
-                    << "Missing resize state: cookie=" << ev->Cookie));
-        return;
-    }
-
-    if (!IsCookieValid(ev->Cookie)) {
-        ReportInvalidCookieAndDie(ctx, ev->Cookie);
+            TFileStoreComponents::SERVICE,
+            "[%s] UnsafeChangeTabletState returned no resize state",
+            FileSystemId.c_str());
         return;
     }
 
     const auto& resizeState = msg->Record.GetResizeState();
-    ResizeState = resizeState;
-    ResizeStateVersion = resizeState.GetVersion();
-
-    if (ev->Cookie == MainFileStoreCookie) {
+    if (!InitialResizeStateRead) {
+        ResizeState = resizeState;
+        ResizeStateVersion = resizeState.GetVersion();
+        InitialResizeStateRead = true;
         GetStorageStats(ctx);
         return;
     }
 
-    ShardCreatedStateUpdateInFlight = false;
-    if (ResizeStateVersion != ShardCreatedStateUpdateVersion + 1) {
-        MergeCreatedShardBitmap(resizeState.GetCreatedShardBitmap());
-        ShardCreatedStateUpdateNeeded = true;
-    }
-
-    if (ShardCreatedStateUpdateNeeded) {
-        SendShardCreatedStateUpdate(ctx, ShardCreatedStateUpdateCookie);
+    if (resizeState.GetVersion() < ResizeStateVersion) {
         return;
     }
 
-    MaybeConfigureShards(ctx);
+    MergeCreatedShardBitmap(resizeState.GetCreatedShardBitmap());
+    ResizeState = resizeState;
+    ResizeStateVersion = resizeState.GetVersion();
+
+    if (HasUnpersistedCreatedShards()) {
+        UpdateResizeState(ctx);
+        return;
+    }
+
+    if (ShardsToCreate == 0 && EndShardToConfigure == 0) {
+        ConfigureShards(ctx);
+    }
 }
 
 void TAlterFileStoreActor::SetupCreatedShardBitmap()
@@ -542,38 +555,27 @@ void TAlterFileStoreActor::MergeCreatedShardBitmap(
     }
 
     for (const auto& chunk: bitmap.GetChunks()) {
-        CreatedShardBitmap->Merge({chunk.GetChunkIdx(), chunk.GetData()});
+        CreatedShardBitmap->Merge(
+            {.ChunkIdx = chunk.GetChunkIdx(), .Data = chunk.GetData()});
     }
 }
 
-void TAlterFileStoreActor::SendShardCreatedStateUpdate(
-    const TActorContext& ctx,
-    const ui64 cookie)
+bool TAlterFileStoreActor::HasUnpersistedCreatedShards() const
 {
-    if (!CreatedShardBitmap) {
-        return;
+    Y_DEBUG_ABORT_UNLESS(CreatedShardBitmap);
+
+    const auto persisted = LoadCompressedBitmap(
+        ResizeState.GetCreatedShardBitmap(),
+        ShardBitmapBitCount);
+
+    for (ui64 shardIndex = 0; shardIndex < ShardBitmapBitCount; ++shardIndex) {
+        if (CreatedShardBitmap->Test(shardIndex) && !persisted.Test(shardIndex))
+        {
+            return true;
+        }
     }
 
-    auto request =
-        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
-    request->Record.SetFileSystemId(FileSystemId);
-    auto* resizeState = request->Record.MutableResizeState();
-    resizeState->SetVersion(ResizeStateVersion);
-    SaveCompressedBitmap(
-        *CreatedShardBitmap,
-        ShardBitmapBitCount,
-        *resizeState->MutableCreatedShardBitmap());
-
-    ShardCreatedStateUpdateInFlight = true;
-    ShardCreatedStateUpdateNeeded = false;
-    ShardCreatedStateUpdateVersion = ResizeStateVersion;
-    ShardCreatedStateUpdateCookie = cookie;
-
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request),
-        cookie);
+    return false;
 }
 
 void TAlterFileStoreActor::UpdateShardCreatedState(
@@ -585,28 +587,7 @@ void TAlterFileStoreActor::UpdateShardCreatedState(
     }
 
     CreatedShardBitmap->Set(shardIndex, shardIndex + 1);
-
-    if (ShardCreatedStateUpdateInFlight) {
-        ShardCreatedStateUpdateNeeded = true;
-        ShardCreatedStateUpdateCookie = shardIndex;
-        return;
-    }
-
-    SendShardCreatedStateUpdate(ctx, shardIndex);
-}
-
-void TAlterFileStoreActor::MaybeConfigureShards(const TActorContext& ctx)
-{
-    if (ShardsToCreate != 0 || ShardCreatedStateUpdateInFlight) {
-        return;
-    }
-
-    if (ShardCreatedStateUpdateNeeded) {
-        SendShardCreatedStateUpdate(ctx, ShardCreatedStateUpdateCookie);
-        return;
-    }
-
-    ConfigureShards(ctx);
+    UpdateResizeState(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -996,7 +977,9 @@ void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
         ctx,
         StorageConfig->GetMaxShardManagementRequestsInFlight());
 
-    MaybeConfigureShards(ctx);
+    if (ShardsToCreate == 0) {
+        ConfigureShards(ctx);
+    }
 }
 
 void TAlterFileStoreActor::ContinueCreateShards(
@@ -1086,9 +1069,12 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
             // Set limit to 1 as only one response was received now.
             ContinueCreateShards(ctx, 1);
         }
+        return;
     }
 
-    MaybeConfigureShards(ctx);
+    if (ShardsToCreate == 0) {
+        ConfigureShards(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1448,7 +1434,7 @@ STFUNC(TAlterFileStoreActor::ResizeStateWork)
             HandleConfigureMainFileStoreResponse);
         HFunc(
             TEvIndexTablet::TEvUnsafeChangeTabletStateResponse,
-            HandleUnsafeChangeTabletStateResponse);
+            HandleResizeStateResponse);
 
         default:
             HandleUnexpectedEvent(
