@@ -1790,7 +1790,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
+        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvFileStore::TEvUpdateConfig);
