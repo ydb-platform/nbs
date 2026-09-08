@@ -382,6 +382,8 @@ void TVolumeActor::CompleteUpdateConfig(
         RegisterVolume(ctx);
     }
 
+    ClearStorageAllocationResultIfDiskAllocated();
+
     HasPerformanceProfileModifications =
         State->HasPerformanceProfileModifications(*Config);
 

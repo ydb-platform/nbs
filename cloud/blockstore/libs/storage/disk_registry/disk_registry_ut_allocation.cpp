@@ -2147,6 +2147,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         // Intercept all secure erase requests to keep devices dirty
         TVector<std::unique_ptr<IEventHandle>> secureEraseDeviceRequests;
+        ui32 destroyVolumeRequests = 0;
+        auto countDestroyVolumeRequests =
+            [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                    TEvService::EvDestroyVolumeRequest &&
+                event->Recipient == MakeStorageServiceId())
+            {
+                ++destroyVolumeRequests;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
@@ -2160,7 +2173,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return countDestroyVolumeRequests(event);
             });
 
         // Disk deallocation to mark all devices as dirty
@@ -2178,6 +2191,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         // Try to allocate disk with dirty devices. We'll get a E_TRY_AGAIN
         const TString diskId = "local0";
+        auto assertNoBrokenDisks = [&]
+        {
+            auto response = diskRegistry.ListBrokenDisks();
+            UNIT_ASSERT_VALUES_EQUAL(0, response->DiskIds.size());
+        };
         auto tryAllocateDisk = [&](bool shouldFail)
         {
             auto request =
@@ -2192,14 +2210,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             if (shouldFail) {
                 UNIT_ASSERT(HasError(response->GetError()));
                 UNIT_ASSERT_EQUAL(E_TRY_AGAIN, response->GetStatus());
+                assertNoBrokenDisks();
                 return;
             }
             UNIT_ASSERT(!HasError(response->GetError()));
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         };
-        {
-            auto request =
-                diskRegistry.CreateAllocateDiskRequest(diskId, diskSize);
+
+        // Genuinely impossible allocations are still broken, even with async
+        // local deallocation enabled. Repeated requests also model duplicate
+        // markers left in memory by an older tablet version.
+        for (ui32 i = 0; i < 2; ++i) {
+            auto request = diskRegistry.CreateAllocateDiskRequest(
+                diskId,
+                diskSize + LocalDeviceSize);
             request->Record.SetStorageMediaKind(
                 NProto::STORAGE_MEDIA_SSD_LOCAL);
             *request->Record.AddAgentIds() = agents[0].GetAgentId();
@@ -2207,9 +2231,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             diskRegistry.SendRequest(std::move(request));
 
             auto response = diskRegistry.RecvAllocateDiskResponse();
-            UNIT_ASSERT(HasError(response->GetError()));
-            UNIT_ASSERT_EQUAL(E_TRY_AGAIN, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_DISK_ALLOCATION_FAILED,
+                response->GetStatus());
         }
+
+        {
+            auto brokenDisks = diskRegistry.ListBrokenDisks();
+            UNIT_ASSERT_VALUES_EQUAL(2, brokenDisks->DiskIds.size());
+            UNIT_ASSERT_VALUES_EQUAL(diskId, brokenDisks->DiskIds[0]);
+            UNIT_ASSERT_VALUES_EQUAL(diskId, brokenDisks->DiskIds[1]);
+        }
+
+        // Once the request is recoverable after secure erase, its stale broken
+        // marker must be removed before the destruction timer fires.
+        tryAllocateDisk(true);
+
+        runtime->AdvanceCurrentTime(10s);
+        runtime->DispatchEvents({}, 10ms);
+        assertNoBrokenDisks();
+        UNIT_ASSERT_VALUES_EQUAL(0, destroyVolumeRequests);
 
         // Secure erase all devices except one
         runtime->DispatchEvents(
@@ -2223,7 +2264,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 return options;
             }());
 
-        runtime->SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+        runtime->SetObserverFunc(countDestroyVolumeRequests);
 
         UNIT_ASSERT_EQUAL(secureEraseDeviceRequests.size(), 3UL);
         while (secureEraseDeviceRequests.size() != 1) {
@@ -2249,6 +2290,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         // When the last dirty device is clean, we can allocate disk
         tryAllocateDisk(false);
+        assertNoBrokenDisks();
+        UNIT_ASSERT_VALUES_EQUAL(0, destroyVolumeRequests);
     }
 
     Y_UNIT_TEST(ShouldReturnCorrectCapacity)

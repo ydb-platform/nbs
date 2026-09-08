@@ -136,10 +136,7 @@ void TDiskRegistryActor::ExecuteAddDisk(
 
     if (args.Error.GetCode() == E_BS_DISK_ALLOCATION_FAILED &&
         IsDiskRegistryLocalMediaKind(args.MediaKind) &&
-        State->CanAllocateLocalDiskAfterSecureErase(
-            args.AgentIds,
-            args.PoolName,
-            args.BlocksCount * args.BlockSize))
+        result.CanAllocateAfterSecureErase)
     {
         // Note: DM and NBS uses this specific error message to identify this
         // case. Update "createEmptyDiskTask()" and "GetDiagnosticsErrorKind()"

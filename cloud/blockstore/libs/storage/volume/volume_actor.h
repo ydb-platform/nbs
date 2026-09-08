@@ -1037,6 +1037,9 @@ private:
     void HandleAllocateDiskError(
         const NActors::TActorContext& ctx,
         NProto::TError error);
+    void ReplyToPendingWaitReadyRequests(
+        const NActors::TActorContext& ctx);
+    void ClearStorageAllocationResultIfDiskAllocated();
 
     void HandleAddOutdatedLaggingDevicesResponse(
         const TEvDiskRegistry::TEvAddOutdatedLaggingDevicesResponse::TPtr& ev,

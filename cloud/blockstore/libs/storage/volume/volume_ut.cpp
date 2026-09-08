@@ -2612,6 +2612,102 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, diskAllocationFailureCounter->Val());
     }
 
+    Y_UNIT_TEST(ShouldRetryLocalDiskAllocationAfterTryAgain)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetLocalDiskAsyncDeallocationEnabled(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->CurrentErrorCode = E_TRY_AGAIN;
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL,
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize /
+                DefaultBlockSize,
+            "fail");
+
+        auto assertWaitReadyTryAgain = [&]
+        {
+            volume.SendWaitReadyRequest();
+            auto response = volume.RecvWaitReadyResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
+        };
+
+        assertWaitReadyTryAgain();
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        assertWaitReadyTryAgain();
+
+        volume.RebootTablet();
+        volume.SendWaitReadyRequest();
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        {
+            auto response = volume.RecvWaitReadyResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
+        }
+
+        state->CurrentErrorCode = S_OK;
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        auto stat = volume.StatVolume();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            stat->Record.GetVolume().GetDevices().size());
+    }
+
+    Y_UNIT_TEST(ShouldClearTryAgainAfterSuccessfulReallocation)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetLocalDiskAsyncDeallocationEnabled(true);
+
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        state->CurrentErrorCode = E_TRY_AGAIN;
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL,
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize /
+                DefaultBlockSize,
+            "fail");
+
+        volume.SendWaitReadyRequest();
+        {
+            auto response = volume.RecvWaitReadyResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
+        }
+
+        state->CurrentErrorCode = S_OK;
+        volume.ReallocateDisk();
+        volume.WaitReady();
+
+        auto stat = volume.StatVolume();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            stat->Record.GetVolume().GetDevices().size());
+    }
+
     Y_UNIT_TEST(ShouldTryToReallocateDiskAfterReboot)
     {
         NProto::TStorageServiceConfig config;
