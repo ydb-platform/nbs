@@ -245,14 +245,16 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
         args.AffectedBlobs[mergedBlobId].IndexKind =
             EChannelDataKind::Merged;
 
+        TAffectedBlobs skippedBlobs;
         ApplyBlobsSkipping(
             *config,
             2,
             state,
-            args);
+            args,
+            skippedBlobs);
 
-        UNIT_ASSERT_VALUES_EQUAL(1, args.BlobsSkipped);
-        UNIT_ASSERT_VALUES_EQUAL(1, args.BlocksSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(1, skippedBlobs.size());
+        UNIT_ASSERT(skippedBlobs.contains(mergedBlobId));
 
         UNIT_ASSERT(args.AffectedBlobs.contains(mixedBlobId));
         UNIT_ASSERT(!args.AffectedBlobs.contains(mergedBlobId));
@@ -304,15 +306,17 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
         preservedBlob.MixedBlobsSpecificInfo->AllVisitedBlocks.push_back(
             {.BlockIndex = 0, .CommitId = 10});
 
-        // We fill these fileds with non zero values to be sure that skip
-        // function increments counters, not resets them.
+        // Skipping leaves counter accounting to AccountSkippedBlobsAndBlocks.
         args.BlobsSkipped = 2;
         args.BlocksSkipped = 3;
 
-        ApplyBlobsSkipping(*config, 1, state, args);
+        TAffectedBlobs skippedBlobs;
+        ApplyBlobsSkipping(*config, 1, state, args, skippedBlobs);
 
-        UNIT_ASSERT_VALUES_EQUAL(3, args.BlobsSkipped);
-        UNIT_ASSERT_VALUES_EQUAL(4, args.BlocksSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(1, skippedBlobs.size());
+        UNIT_ASSERT(skippedBlobs.contains(skippedBlobId));
+        UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(3, args.BlocksSkipped);
         UNIT_ASSERT(!args.AffectedBlobs.contains(skippedBlobId));
         UNIT_ASSERT(args.AffectedBlobs.contains(preservedBlobId));
         UNIT_ASSERT_VALUES_EQUAL(1, args.AffectedBlocks.size());
@@ -1008,6 +1012,86 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             result.RangeCompactionInfos[0].BlocksSkippedByCompaction);
     }
 
+    Y_UNIT_TEST(PrepareAccountsAllBlocksInIncrementallySkippedBlobs)
+    {
+        for (bool mixed: {false, true}) {
+            auto state = MakeState();
+            TTestExecutor executor;
+            executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+            const TPartialBlobId skippedBlobId(
+                0, 50, 3, 4 * DefaultBlockSize, 0, 0);
+            const TPartialBlobId compactedBlobId(
+                0, 90, 3, DefaultBlockSize, 0, 0);
+            const TPartialBlobId newerBlobId(
+                0, 150, 3, DefaultBlockSize, 0, 0);
+
+            executor.WriteTx(
+                [&](TPartitionDatabase db)
+                {
+                    if (mixed) {
+                        for (ui32 i = 0; i < 4; ++i) {
+                            state.WriteMixedBlock(
+                                db,
+                                TMixedBlock(
+                                    skippedBlobId,
+                                    i == 3 ? 150 : 50,
+                                    i,
+                                    i,
+                                    1));
+                        }
+                    } else {
+                        TBlockMask skipMask;
+                        skipMask.Set(3);
+                        db.WriteMergedBlocks(
+                            skippedBlobId,
+                            TBlockRange32::MakeClosedInterval(0, 3),
+                            skipMask);
+                    }
+                    // Overwrite one block of the incrementally skipped blob.
+                    db.WriteMergedBlocks(
+                        compactedBlobId,
+                        TBlockRange32::WithLength(0, 1),
+                        TBlockMask{});
+                    db.WriteMergedBlocks(
+                        newerBlobId,
+                        TBlockRange32::WithLength(4, 1),
+                        TBlockMask{});
+                });
+
+            auto args = MakeArgs();
+            THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
+            THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+            bool ready = true;
+
+            executor.ReadTx(
+                [&](TPartitionDatabase db)
+                {
+                    PrepareRangeCompaction(
+                        *MakeStorageConfig(0, 0),
+                        1,
+                        CommitId,
+                        TTestExecutor::TabletId,
+                        true,
+                        false,
+                        ready,
+                        db,
+                        state,
+                        args,
+                        blobsToReadBlockMasks,
+                        blobsToReadBlobMetas);
+                });
+
+            UNIT_ASSERT(ready);
+            UNIT_ASSERT_VALUES_EQUAL(1, args.AffectedBlobs.size());
+            UNIT_ASSERT(args.AffectedBlobs.contains(compactedBlobId));
+            UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsSkipped);
+            // Include overwritten blocks and, for mixed blobs, newer blocks.
+            UNIT_ASSERT_VALUES_EQUAL(mixed ? 5 : 4, args.BlocksSkipped);
+            UNIT_ASSERT_VALUES_EQUAL(mixed ? 4 : 0, args.MixedBlocksSkipped);
+        }
+    }
+
     Y_UNIT_TEST(PrepareAccountsMixedBlobWithoutBlocksVisibleToCompaction)
     {
         auto state = MakeState();
@@ -1130,7 +1214,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         ab.MergedBlobsSpecificInfo->SkippedBlocksCount = 11;
         args.AffectedBlobs.emplace(blobId, std::move(ab));
 
-        RecreateBlobMetas(args, CommitId);
+        RecreateBlobMetas(args, CommitId, TTestExecutor::TabletId);
 
         const auto& recreatedMeta =
             args.AffectedBlobs.at(blobId).RecreatedBlobMeta;
@@ -1156,7 +1240,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
                 {.BlockIndex = 7, .CommitId = 80},
             }));
 
-        RecreateBlobMetas(args, CommitId);
+        RecreateBlobMetas(args, CommitId, TTestExecutor::TabletId);
 
         const auto& recreatedMeta =
             args.AffectedBlobs.at(blobId).RecreatedBlobMeta;
@@ -1184,7 +1268,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         ab.CompactionRangeCount = 2;
         args.AffectedBlobs.emplace(blobId, std::move(ab));
 
-        RecreateBlobMetas(args, CommitId);
+        RecreateBlobMetas(args, CommitId, TTestExecutor::TabletId);
 
         UNIT_ASSERT(!args.AffectedBlobs.at(blobId).RecreatedBlobMeta);
     }
@@ -1200,7 +1284,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         ab.MaxCommitIdInCompactionRange = CommitId + 1;
         args.AffectedBlobs.emplace(blobId, std::move(ab));
 
-        RecreateBlobMetas(args, CommitId);
+        RecreateBlobMetas(args, CommitId, TTestExecutor::TabletId);
 
         UNIT_ASSERT(!args.AffectedBlobs.at(blobId).RecreatedBlobMeta);
     }
@@ -1217,7 +1301,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
                 {.BlockIndex = 3, .CommitId = CommitId},
             }));
 
-        RecreateBlobMetas(args, CommitId);
+        RecreateBlobMetas(args, CommitId, TTestExecutor::TabletId);
 
         const auto& recreatedMeta =
             args.AffectedBlobs.at(blobId).RecreatedBlobMeta;

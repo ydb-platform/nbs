@@ -114,16 +114,20 @@ void ApplyBlobsSkipping(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
     TPartitionState& state,
-    TTxPartition::TRangeCompaction& args);
+    TTxPartition::TRangeCompaction& args,
+    TAffectedBlobs& skippedBlobs);
 
-void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId);
+void RecreateBlobMetas(
+    TTxPartition::TRangeCompaction& args,
+    ui64 commitId,
+    ui64 tabletId);
 
-// Account for blobs and blocks skipped because of their commit ID.
+// Account for blobs and blocks skipped by incremental compaction or commit ID.
 void AccountSkippedBlobsAndBlocks(
     const ui64 commitId,
     const ui64 tabletId,
     const TAffectedBlobs& affectedBlobs,
-    const TAffectedBlobs& blobsSkippedByCommitId,
+    const TAffectedBlobs& skippedBlobs,
     ui32& blobsSkipped,
     ui32& blocksSkipped,
     ui32& mixedBlocksSkipped);

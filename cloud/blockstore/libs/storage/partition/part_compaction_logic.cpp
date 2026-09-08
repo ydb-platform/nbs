@@ -230,7 +230,7 @@ public:
         for (ui32 i = 0; i < end - start + 1; ++i) {
             const ui32 blobOffset = start - blockRange.Start + i;
             if (!skipMask.Get(blobOffset)) {
-                ab.MergedBlobsSpecificInfo->BlocksInRange++;
+                ++ab.MergedBlobsSpecificInfo->BlocksInRange;
             }
         }
 
@@ -240,10 +240,9 @@ public:
 
     // Returns blobs that do not have any blocks in the compaction range with
     // an available commit ID.
-    THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash> Finish()
+    TAffectedBlobs Finish()
     {
-        THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>
-            blobsToDelete;
+        TAffectedBlobs blobsToDelete;
 
         for (auto& [blobId, ab]: Args.AffectedBlobs) {
             if (ab.MinCommitIdInCompactionRange > MaxCommitId) {
@@ -671,7 +670,8 @@ void ApplyBlobsSkipping(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
     TPartitionState& state,
-    TTxPartition::TRangeCompaction& args)
+    TTxPartition::TRangeCompaction& args,
+    TAffectedBlobs& skippedBlobs)
 {
     THashMap<TPartialBlobId, ui32, TPartialBlobIdHash> blobsToSkip;
     for (const auto& m: args.BlockMarks) {
@@ -688,17 +688,6 @@ void ApplyBlobsSkipping(
 
     if (state.GetMixedBlocksFilter()) {
         ApplyMixedBlocksSkipping(blobsToSkip, args);
-    }
-
-    args.BlobsSkipped += blobsToSkip.size();
-    for (const auto& [blobId, skippedBlockCount]: blobsToSkip) {
-        args.BlocksSkipped += skippedBlockCount;
-
-        auto* ab = args.AffectedBlobs.FindPtr(blobId);
-        Y_ABORT_UNLESS(ab);
-        if (ab->IndexKind == EChannelDataKind::Mixed) {
-            args.MixedBlocksSkipped += skippedBlockCount;
-        }
     }
 
     TAffectedBlocks skippedBlocks;
@@ -719,6 +708,7 @@ void ApplyBlobsSkipping(
                     {affectedBlock.BlockIndex, affectedBlock.CommitId});
             }
         }
+        skippedBlobs.emplace(ab->first, std::move(ab->second));
         args.AffectedBlobs.erase(ab);
     }
 
@@ -745,7 +735,7 @@ void ApplyBlobsSkipping(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId)
+void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId, ui64 tabletId)
 {
     for (auto& [blobId, ab]: args.AffectedBlobs) {
         if (ab.MergedBlobsSpecificInfo) {
@@ -766,7 +756,10 @@ void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId)
 
         auto& meta = ab.RecreatedBlobMeta.ConstructInPlace();
         auto* mixedBlocks = meta.MutableMixedBlocks();
-        Y_ABORT_UNLESS(ab.MixedBlobsSpecificInfo);
+        STORAGE_VERIFY(
+            ab.MixedBlobsSpecificInfo,
+            TWellKnownEntityTypes::TABLET,
+            tabletId);
         for (const auto& affectedBlock:
              ab.MixedBlobsSpecificInfo->AllVisitedBlocks)
         {
@@ -780,22 +773,21 @@ void AccountSkippedBlobsAndBlocks(
     const ui64 commitId,
     const ui64 tabletId,
     const TAffectedBlobs& affectedBlobs,
-    const TAffectedBlobs& blobsSkippedByCommitId,
+    const TAffectedBlobs& skippedBlobs,
     ui32& blobsSkipped,
     ui32& blocksSkipped,
     ui32& mixedBlocksSkipped)
 {
-    // Account for blobs and blocks whose commit ID is greater than the commit ID
-    // of the range compaction. So they are visible for compaction map.
-    blobsSkipped += blobsSkippedByCommitId.size();
-    for (const auto& [blobId, ab]: blobsSkippedByCommitId) {
+    // Fully skipped blobs retain all their blocks in the compaction range,
+    // including overwritten blocks and blocks newer than the compaction.
+    blobsSkipped += skippedBlobs.size();
+    for (const auto& [blobId, ab]: skippedBlobs) {
         if (IsDeletionMarker(blobId)) {
             continue;
         }
 
         switch (*ab.IndexKind) {
             case EChannelDataKind::Mixed:
-
                 STORAGE_VERIFY(
                     ab.MixedBlobsSpecificInfo,
                     TWellKnownEntityTypes::TABLET,
@@ -809,6 +801,11 @@ void AccountSkippedBlobsAndBlocks(
 
                 break;
             case EChannelDataKind::Merged:
+                STORAGE_VERIFY(
+                    ab.MergedBlobsSpecificInfo,
+                    TWellKnownEntityTypes::TABLET,
+                    tabletId);
+
                 blocksSkipped += ab.MergedBlobsSpecificInfo->BlocksInRange;
                 break;
             default:
@@ -873,14 +870,15 @@ void PrepareRangeCompaction(
         true,   // precharge
         state.GetMaxBlocksInBlob());
 
-    auto blobsSkippedByCommitId = visitor.Finish();
+    auto skippedBlobs = visitor.Finish();
 
     if (ready && maxSkippedBlobs > 0) {
         ApplyBlobsSkipping(
             config,
             maxSkippedBlobs,
             state,
-            args);
+            args,
+            skippedBlobs);
     }
 
     const ui32 checksumBoundary =
@@ -901,7 +899,7 @@ void PrepareRangeCompaction(
         commitId,
         tabletId,
         args.AffectedBlobs,
-        blobsSkippedByCommitId,
+        skippedBlobs,
         args.BlobsSkipped,
         args.BlocksSkipped,
         args.MixedBlocksSkipped);
@@ -961,7 +959,7 @@ void CompleteRangeCompaction(
     }
 
     if (shouldRecreateBlobMetas) {
-        RecreateBlobMetas(args, commitId);
+        RecreateBlobMetas(args, commitId, tabletId);
     }
 
     rangeCompactionInfos.emplace_back(
