@@ -26,6 +26,8 @@ void TIndexTabletActor::HandleWriteData(
 {
     auto* msg = ev->Get();
 
+    bool externalPayload = false;
+    TRcBuf payload;
     if (msg->GetPayloadCount() > 0 && msg->GetPayload(0).size() != 0) {
         if (!msg->Record.GetBuffer().empty()) {
             TStringStream error;
@@ -38,13 +40,22 @@ void TIndexTabletActor::HandleWriteData(
                   << ", Payload size: " << msg->GetPayload(0).size();
             ReportWriteDataRequestWithBufferAndPayload(error.Str());
         } else {
-            auto& payload = msg->GetPayload(0);
-            msg->Record.MutableBuffer()->ReserveAndResize(payload.size());
-            TRopeUtils::Memcpy(
-                msg->Record.MutableBuffer()->begin(),
-                payload.begin(),
-                payload.size());
-            msg->StripPayload();
+            // Conversion to TRcBuf flattens the rope if it contains
+            // multiple buffers. No copy is made when ExternalDataChannel is
+            // enabled in the IC settings as the payload is already a single
+            // buffer.
+            TRope rope = msg->GetPayload(0);
+            if (rope.IsContiguous()) {
+                payload = rope.operator TRcBuf();
+                externalPayload = true;
+            } else {
+                msg->Record.MutableBuffer()->ReserveAndResize(rope.size());
+                TRopeUtils::Memcpy(
+                    msg->Record.MutableBuffer()->begin(),
+                    rope.begin(),
+                    rope.size());
+                msg->StripPayload();
+            }
         }
     }
 
@@ -52,20 +63,21 @@ void TIndexTabletActor::HandleWriteData(
     InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreRequest::WriteData,
-        msg->Record,
+        *msg,
         ctx.Now(),
         BehaveAsShard(msg->Record.GetHeaders()));
 
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(
         msg->Record.GetOffset(),
-        buffer.size(),
+        externalPayload ? payload.size() : buffer.size(),
         GetBlockSize()
     );
 
     if (Config->GetBlockChecksumsInProfileLogEnabled()) {
         CalculateChecksums(
-            buffer,
+            externalPayload ? TStringBuf(payload.data(), payload.size())
+                            : buffer,
             GetBlockSize(),
             false /* ignoreBufferOverflow */,
             GetFileSystemId(),
@@ -189,7 +201,9 @@ void TIndexTabletActor::HandleWriteData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
+    auto blockBuffer = externalPayload
+                           ? CreateBlockBuffer(range, std::move(payload))
+                           : CreateBlockBuffer(range, std::move(buffer));
 
     AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 

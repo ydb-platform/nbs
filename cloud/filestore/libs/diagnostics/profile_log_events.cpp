@@ -5,6 +5,8 @@
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/storage/api/service.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/action.pb.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
@@ -317,6 +319,19 @@ void InitProfileLogRequestInfo(
     rangeInfo->SetHandle(request.GetHandle());
     rangeInfo->SetOffset(request.GetOffset());
     rangeInfo->SetBytes(CalculateByteCount(request));
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NStorage::TEvService::TEvWriteDataRequest& msg)
+{
+    auto* rangeInfo = profileLogRequest.AddRanges();
+    const auto& request = msg.Record;
+    rangeInfo->SetNodeId(request.GetNodeId());
+    rangeInfo->SetHandle(request.GetHandle());
+    rangeInfo->SetOffset(request.GetOffset());
+    rangeInfo->SetBytes(NStorage::CalculateByteCount(msg));
 }
 
 template <>
