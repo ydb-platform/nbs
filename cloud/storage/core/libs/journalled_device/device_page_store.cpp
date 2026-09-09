@@ -52,10 +52,10 @@ private:
 
 public:
     TDevicePageStore(
-            IDevicePtr device,
-            ui64 pageCount,
-            ui32 pageSize,
-            EDevicePageStoreMode mode)
+        IDevicePtr device,
+        ui64 pageCount,
+        ui32 pageSize,
+        EDevicePageStoreMode mode)
         : Device(std::move(device))
         , PageCount(pageCount)
         , PageSize(pageSize)
@@ -66,7 +66,7 @@ public:
         }
     }
 
-    TVector<TPageGroupRef> Allocate(ui64 pageCount) override
+    TVector<TPageRange> Allocate(ui64 pageCount) override
     {
         with_lock (Lock) {
             return AllocateImpl(pageCount);
@@ -74,36 +74,34 @@ public:
     }
 
     NCloud::NProto::TError AllocateAt(
-        const TVector<TPageGroupRef>& pageGroupRefs) override
+        const TVector<TPageRange>& pageRanges) override
     {
         with_lock (Lock) {
-            auto error = ValidatePages(pageGroupRefs, EPageState::Free);
+            auto error = ValidatePages(pageRanges, EPageState::Free);
             if (HasError(error)) {
                 return error;
             }
 
-            for (const auto& ref: pageGroupRefs) {
-                AllocateAtImpl(ref);
+            for (const auto& pageRange: pageRanges) {
+                AllocateAtImpl(pageRange);
             }
 
             return MakeError(S_OK);
         }
     }
 
-    NCloud::NProto::TError Free(
-        const TVector<TPageGroupRef>& pageGroupRefs) override
+    NCloud::NProto::TError Free(const TVector<TPageRange>& pageRanges) override
     {
         with_lock (Lock) {
             if (Mode == EDevicePageStoreMode::Checked) {
-                auto error =
-                    ValidatePages(pageGroupRefs, EPageState::Allocated);
+                auto error = ValidatePages(pageRanges, EPageState::Allocated);
                 if (HasError(error)) {
                     return error;
                 }
             }
 
-            for (const auto& ref: pageGroupRefs) {
-                FreeImpl(ref);
+            for (const auto& pageRange: pageRanges) {
+                FreeImpl(pageRange);
             }
 
             return MakeError(S_OK);
@@ -111,19 +109,20 @@ public:
     }
 
     auto Write(
-        const TVector<TPageGroupRef>& pageGroupRefs,
+        const TVector<TPageRange>& pageRanges,
         const TVector<TBuffer>& pages)
         -> TFuture<NCloud::NProto::TError> override
     {
         ui64 pageCount = 0;
-        for (const auto& ref: pageGroupRefs) {
-            pageCount += ref.PageCount;
+        for (const auto& pageRange: pageRanges) {
+            pageCount += pageRange.PageCount;
         }
 
         if (pageCount != pages.size()) {
-            return MakeFuture(MakeError(E_ARGUMENT, TStringBuilder()
-                << "the page group refs hold " << pageCount << " pages, "
-                << pages.size() << " given"));
+            return MakeFuture(MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "the page ranges hold " << pageCount
+                                 << " pages, " << pages.size() << " given"));
         }
 
         if (!pageCount) {
@@ -132,16 +131,17 @@ public:
 
         for (const auto& page: pages) {
             if (page.Size() != PageSize) {
-                return MakeFuture(MakeError(E_ARGUMENT, TStringBuilder()
-                    << "a page of " << page.Size()
-                    << " bytes, the page size is " << PageSize));
+                return MakeFuture(MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "a page of " << page.Size()
+                        << " bytes, the page size is " << PageSize));
             }
         }
 
         if (Mode == EDevicePageStoreMode::Checked) {
             with_lock (Lock) {
-                auto error =
-                    ValidatePages(pageGroupRefs, EPageState::Allocated);
+                auto error = ValidatePages(pageRanges, EPageState::Allocated);
                 if (HasError(error)) {
                     return MakeFuture(error);
                 }
@@ -151,24 +151,23 @@ public:
         NCloud::NProto::TWriteLogRecordRequest deviceRequest;
 
         ui64 pageIndex = 0;
-        for (const auto& ref: pageGroupRefs) {
+        for (const auto& pageRange: pageRanges) {
             auto& deviceGroup = *deviceRequest.AddPageGroups();
-            deviceGroup.SetFirstPageNo(ref.FirstPageNo);
+            deviceGroup.SetFirstPageNo(pageRange.FirstPageNo);
 
-            for (ui64 i = 0; i < ref.PageCount; ++i) {
+            for (ui64 i = 0; i < pageRange.PageCount; ++i) {
                 const auto& page = pages[pageIndex++];
                 deviceGroup.AddContent()->assign(page.Data(), page.Size());
             }
         }
 
-        return Device->WritePages(std::move(deviceRequest)).Apply(
-            [] (const auto& future) -> NCloud::NProto::TError
-            {
-                return future.GetValue().GetError();
-            });
+        return Device->WritePages(std::move(deviceRequest))
+            .Apply(
+                [](const auto& future) -> NCloud::NProto::TError
+                { return future.GetValue().GetError(); });
     }
 
-    auto Read(const TVector<TPageGroupRef>& pageGroupRefs)
+    auto Read(const TVector<TPageRange>& pageRanges)
         -> TFuture<TResultOrError<TVector<TBuffer>>> override
     {
         using TResult = TResultOrError<TVector<TBuffer>>;
@@ -178,20 +177,19 @@ public:
 
         if (Mode == EDevicePageStoreMode::Checked) {
             with_lock (Lock) {
-                auto error =
-                    ValidatePages(pageGroupRefs, EPageState::Allocated);
+                auto error = ValidatePages(pageRanges, EPageState::Allocated);
                 if (HasError(error)) {
                     return MakeFuture<TResult>(error);
                 }
             }
         }
 
-        for (const auto& ref: pageGroupRefs) {
-            pageCount += ref.PageCount;
+        for (const auto& pageRange: pageRanges) {
+            pageCount += pageRange.PageCount;
 
             auto& deviceRef = *deviceRequest.AddPageGroupRefs();
-            deviceRef.SetFirstPageNo(ref.FirstPageNo);
-            deviceRef.SetPageCount(ref.PageCount);
+            deviceRef.SetFirstPageNo(pageRange.FirstPageNo);
+            deviceRef.SetPageCount(pageRange.PageCount);
             deviceRef.SetPageSize(PageSize);
         }
 
@@ -199,41 +197,44 @@ public:
             return MakeFuture<TResult>(TVector<TBuffer>());
         }
 
-        return Device->ReadPages(std::move(deviceRequest)).Apply(
-            [pageCount] (const auto& future) -> TResult
-            {
-                auto response = UnsafeExtractValue(future);
-                if (HasError(response)) {
-                    return response.GetError();
-                }
-
-                TVector<TBuffer> pages;
-                pages.reserve(pageCount);
-
-                for (const auto& group: response.GetPageGroups()) {
-                    for (const auto& content: group.GetContent()) {
-                        pages.emplace_back(content.data(), content.size());
+        return Device->ReadPages(std::move(deviceRequest))
+            .Apply(
+                [pageCount](const auto& future) -> TResult
+                {
+                    auto response = UnsafeExtractValue(future);
+                    if (HasError(response)) {
+                        return response.GetError();
                     }
-                }
 
-                if (pages.size() != pageCount) {
-                    return MakeError(E_INVALID_STATE, TStringBuilder()
-                        << "the device returned " << pages.size()
-                        << " pages, expected " << pageCount);
-                }
+                    TVector<TBuffer> pages;
+                    pages.reserve(pageCount);
 
-                return std::move(pages);
-            });
+                    for (const auto& group: response.GetPageGroups()) {
+                        for (const auto& content: group.GetContent()) {
+                            pages.emplace_back(content.data(), content.size());
+                        }
+                    }
+
+                    if (pages.size() != pageCount) {
+                        return MakeError(
+                            E_INVALID_STATE,
+                            TStringBuilder()
+                                << "the device returned " << pages.size()
+                                << " pages, expected " << pageCount);
+                    }
+
+                    return std::move(pages);
+                });
     }
 
 private:
-    TVector<TPageGroupRef> AllocateImpl(ui64 pageCount)
+    TVector<TPageRange> AllocateImpl(ui64 pageCount)
     {
         if (!pageCount || pageCount > FreeRanges.GetIntervalSum()) {
             return {};
         }
 
-        TVector<TPageGroupRef> refs;
+        TVector<TPageRange> ranges;
         ui64 left = pageCount;
 
         while (left) {
@@ -242,9 +243,7 @@ private:
             const ui64 rangeEnd = it->second.End;
             const ui64 taken = Min(left, rangeEnd - rangeBegin);
 
-            refs.push_back({
-                .FirstPageNo = rangeBegin,
-                .PageCount = taken});
+            ranges.push_back({.FirstPageNo = rangeBegin, .PageCount = taken});
 
             FreeRanges.Remove(it);
             if (rangeBegin + taken < rangeEnd) {
@@ -254,22 +253,22 @@ private:
             left -= taken;
         }
 
-        return refs;
+        return ranges;
     }
 
-    void FreeImpl(const TPageGroupRef& ref)
+    void FreeImpl(const TPageRange& pageRange)
     {
-        if (!ref.PageCount) {
+        if (!pageRange.PageCount) {
             return;
         }
 
-        ui64 begin = ref.FirstPageNo;
-        ui64 end = ref.FirstPageNo + ref.PageCount;
+        ui64 begin = pageRange.FirstPageNo;
+        ui64 end = pageRange.FirstPageNo + pageRange.PageCount;
 
         FreeRanges.VisitOverlapping(
             begin ? begin - 1 : begin,
             end < Max<ui64>() ? end + 1 : end,
-            [&] (auto it)
+            [&](auto it)
             {
                 begin = Min(begin, it->second.Begin);
                 end = Max(end, it->second.End);
@@ -279,19 +278,19 @@ private:
         FreeRanges.Add(begin, end, {});
     }
 
-    void AllocateAtImpl(const TPageGroupRef& ref)
+    void AllocateAtImpl(const TPageRange& pageRange)
     {
-        if (!ref.PageCount) {
+        if (!pageRange.PageCount) {
             return;
         }
 
-        const ui64 begin = ref.FirstPageNo;
-        const ui64 end = ref.FirstPageNo + ref.PageCount;
+        const ui64 begin = pageRange.FirstPageNo;
+        const ui64 end = pageRange.FirstPageNo + pageRange.PageCount;
 
         FreeRanges.VisitOverlapping(
             begin,
             end,
-            [&] (auto it)
+            [&](auto it)
             {
                 const ui64 rangeBegin = it->second.Begin;
                 const ui64 rangeEnd = it->second.End;
@@ -307,16 +306,16 @@ private:
             });
     }
 
-    std::optional<ui64> FindBusyPage(const TPageGroupRef& ref) const
+    std::optional<ui64> FindBusyPage(const TPageRange& pageRange) const
     {
-        const ui64 endPageNo = ref.FirstPageNo + ref.PageCount;
+        const ui64 endPageNo = pageRange.FirstPageNo + pageRange.PageCount;
 
-        ui64 pageNo = ref.FirstPageNo;
+        ui64 pageNo = pageRange.FirstPageNo;
 
         FreeRanges.VisitOverlapping(
-            ref.FirstPageNo,
+            pageRange.FirstPageNo,
             endPageNo,
-            [&] (auto it)
+            [&](auto it)
             {
                 if (it->second.Begin <= pageNo) {
                     pageNo = Max(pageNo, it->second.End);
@@ -330,80 +329,82 @@ private:
         return std::nullopt;
     }
 
-    std::optional<ui64> FindFreePage(const TPageGroupRef& ref) const
+    std::optional<ui64> FindFreePage(const TPageRange& pageRange) const
     {
         std::optional<ui64> pageNo;
         FreeRanges.VisitOverlapping(
-            ref.FirstPageNo,
-            ref.FirstPageNo + ref.PageCount,
-            [&] (auto it)
+            pageRange.FirstPageNo,
+            pageRange.FirstPageNo + pageRange.PageCount,
+            [&](auto it)
             {
                 if (!pageNo) {
-                    pageNo = Max(it->second.Begin, ref.FirstPageNo);
+                    pageNo = Max(it->second.Begin, pageRange.FirstPageNo);
                 }
             });
 
         return pageNo;
     }
 
-    static bool HasIntersections(const TVector<TPageGroupRef>& refs)
+    static bool HasIntersections(const TVector<TPageRange>& ranges)
     {
-        TPageRanges ranges;
+        TPageRanges seen;
 
-        for (const auto& ref: refs) {
-            if (!ref.PageCount) {
+        for (const auto& pageRange: ranges) {
+            if (!pageRange.PageCount) {
                 continue;
             }
 
-            const ui64 begin = ref.FirstPageNo;
-            const ui64 end = ref.FirstPageNo + ref.PageCount;
+            const ui64 begin = pageRange.FirstPageNo;
+            const ui64 end = pageRange.FirstPageNo + pageRange.PageCount;
 
             bool intersects = false;
-            ranges.VisitOverlapping(begin, end, [&] (auto) {
-                intersects = true;
-            });
+            seen.VisitOverlapping(begin, end, [&](auto) { intersects = true; });
 
             if (intersects) {
                 return true;
             }
 
-            ranges.Add(begin, end, {});
+            seen.Add(begin, end, {});
         }
 
         return false;
     }
 
     NCloud::NProto::TError ValidatePages(
-        const TVector<TPageGroupRef>& refs,
+        const TVector<TPageRange>& ranges,
         EPageState expected) const
     {
-        if (HasIntersections(refs)) {
-            return MakeError(E_ARGUMENT,
-                "the page group refs of a single request intersect");
+        if (HasIntersections(ranges)) {
+            return MakeError(
+                E_ARGUMENT,
+                "the page ranges of a single request intersect");
         }
-
 
         const bool free = expected == EPageState::Free;
 
-        for (const auto& ref: refs) {
-            if (!ref.PageCount) {
+        for (const auto& pageRange: ranges) {
+            if (!pageRange.PageCount) {
                 continue;
             }
 
-            if (ref.FirstPageNo >= PageCount ||
-                ref.PageCount > PageCount - ref.FirstPageNo)
+            if (pageRange.FirstPageNo >= PageCount ||
+                pageRange.PageCount > PageCount - pageRange.FirstPageNo)
             {
-                return MakeError(E_ARGUMENT,
+                return MakeError(
+                    E_ARGUMENT,
                     TStringBuilder()
-                        << "page group ref " << ref.FirstPageNo << "x"
-                        << ref.PageCount << " is beyond the device: "
-                        << PageCount << " pages");
+                        << "page range " << pageRange.FirstPageNo << "x"
+                        << pageRange.PageCount
+                        << " is beyond the device: " << PageCount << " pages");
             }
 
-            const auto pageNo = free ? FindBusyPage(ref) : FindFreePage(ref);
+            const auto pageNo =
+                free ? FindBusyPage(pageRange) : FindFreePage(pageRange);
             if (pageNo) {
-                return MakeError(E_INVALID_STATE,
-                    TStringBuilder() << "page " << *pageNo
+                return MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder()
+                        << "page " << *pageNo
                         << (free ? " is busy already" : " is not busy"));
             }
         }
