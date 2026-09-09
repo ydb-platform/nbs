@@ -97,10 +97,10 @@ def data_count_by_indexes(nbs_client_binary_path, nbs_port):
         return 0, 0, 0, 0, 0
     stats = json_data["Stats"]
     fresh_blocks = stats.get("FreshBlocksCount", 0)
-    mixed_blocks = stats.get("MixedIndexBlocksCount", 0)
-    mixed_blobs = stats.get("MixedIndexBlobsCount", 0)
-    merged_blocks = stats.get("MergedIndexBlocksCount", 0)
-    merged_blobs = stats.get("MergedIndexBlobsCount", 0)
+    mixed_blocks = stats.get("MixedBlocksCount", 0)
+    mixed_blobs = stats.get("MixedBlobsCount", 0)
+    merged_blocks = stats.get("MergedBlocksCount", 0)
+    merged_blobs = stats.get("MergedBlobsCount", 0)
     return fresh_blocks, mixed_blocks, mixed_blobs, merged_blocks, merged_blobs
 
 

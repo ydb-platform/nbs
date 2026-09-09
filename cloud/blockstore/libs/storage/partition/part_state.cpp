@@ -47,10 +47,27 @@ void InitializeMixedMergedBlobsAndBlocksCounts(
     bool useBlobChannelDataKindForCounters)
 {
     const bool indexCountersInitialized =
-        (stats.GetMixedBlobsCount() || stats.GetMergedBlobsCount()) &&
-        (stats.GetMixedBlocksCount() || stats.GetMergedBlocksCount());
+        stats.GetMixedIndexBlobsCount() || stats.GetMergedIndexBlobsCount() ||
+        stats.GetMixedIndexBlocksCount() || stats.GetMergedIndexBlocksCount();
 
-    // if index counters are not set, initialize them from old channel counters.
+    if (!useBlobChannelDataKindForCounters) {
+        // Restore legacy counters by index kind when rolling back the feature.
+        if (indexCountersInitialized) {
+            stats.SetMixedBlobsCount(stats.GetMixedIndexBlobsCount());
+            stats.SetMergedBlobsCount(stats.GetMergedIndexBlobsCount());
+            stats.SetMixedBlocksCount(stats.GetMixedIndexBlocksCount());
+            stats.SetMergedBlocksCount(stats.GetMergedIndexBlocksCount());
+        }
+
+        // Do not reuse stale index counters on subsequent restarts.
+        stats.SetMixedIndexBlobsCount(0);
+        stats.SetMergedIndexBlobsCount(0);
+        stats.SetMixedIndexBlocksCount(0);
+        stats.SetMergedIndexBlocksCount(0);
+        return;
+    }
+
+    // Initialize index counters before classifying legacy counters by channel.
     if (!indexCountersInitialized) {
         stats.SetMixedIndexBlobsCount(stats.GetMixedBlobsCount());
         stats.SetMergedIndexBlobsCount(stats.GetMergedBlobsCount());
@@ -58,22 +75,10 @@ void InitializeMixedMergedBlobsAndBlocksCounts(
         stats.SetMergedIndexBlocksCount(stats.GetMergedBlocksCount());
     }
 
-    // If channel counters are dissabled and index counters are set, that means
-    // that feature was rolled back, so we need to reset the counters to the
-    // index counters.
-    if (!useBlobChannelDataKindForCounters && indexCountersInitialized) {
-        stats.SetMixedBlobsCount(stats.GetMixedIndexBlobsCount());
-        stats.SetMergedBlobsCount(stats.GetMergedIndexBlobsCount());
-        stats.SetMixedBlocksCount(stats.GetMixedIndexBlocksCount());
-        stats.SetMergedBlocksCount(stats.GetMergedIndexBlocksCount());
-        return;
-    }
-
     // If there are no channels with kind mixed, all blobs from mixed index
     // table were written to merged channel. If there are some mixed channels,
     // we are trying to use them for mixed blobs.
-    if (useBlobChannelDataKindForCounters &&
-        !channelsState.GetChannelsByKind(
+    if (!channelsState.GetChannelsByKind(
             [](EChannelDataKind kind)
             { return kind == EChannelDataKind::Mixed; }))
     {

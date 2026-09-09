@@ -85,7 +85,8 @@ TPartitionState MakeState(size_t blockCount = 2048, bool mixedBlocksFilterEnable
         mixedBlocksFilterEnabled
             ? std::make_optional(TMixedBlocksFilterConfig{})
             : std::nullopt,
-        false   // checkpointAwareCleanupEnabled
+        false,   // checkpointAwareCleanupEnabled
+        false    // useBlobChannelDataKindForCounters
     );
 }
 

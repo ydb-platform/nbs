@@ -205,18 +205,21 @@ private:
             blocksCount = 0;
         }
 
-        switch (indexKind) {
-            case EChannelDataKind::Mixed:
-                State.IncrementMixedIndexBlobsCount(1);
-                State.IncrementMixedIndexBlocksCount(blocksCount);
-                break;
-            case EChannelDataKind::Merged:
-                State.IncrementMergedIndexBlobsCount(1);
-                State.IncrementMergedIndexBlocksCount(blocksCount);
-                break;
-            default:
-                Y_ABORT(
-                    "Unexpected index kind: %u", static_cast<ui32>(indexKind));
+        if (State.ShouldUseBlobChannelDataKindForCounters()) {
+            switch (indexKind) {
+                case EChannelDataKind::Mixed:
+                    State.IncrementMixedIndexBlobsCount(1);
+                    State.IncrementMixedIndexBlocksCount(blocksCount);
+                    break;
+                case EChannelDataKind::Merged:
+                    State.IncrementMergedIndexBlobsCount(1);
+                    State.IncrementMergedIndexBlocksCount(blocksCount);
+                    break;
+                default:
+                    Y_ABORT(
+                        "Unexpected index kind: %u",
+                        static_cast<ui32>(indexKind));
+            }
         }
 
         // Deletion markers do not have a data channel.

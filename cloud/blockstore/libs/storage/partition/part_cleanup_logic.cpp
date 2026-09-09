@@ -31,21 +31,25 @@ void DecrementBlobCounters(
         blocksCount = 0;
     }
 
-    switch (indexKind) {
-        case EChannelDataKind::Mixed:
-            state.DecrementMixedIndexBlobsCount(
-                Min<ui64>(1, state.GetMixedIndexBlobsCount()));
-            state.DecrementMixedIndexBlocksCount(
-                Min(blocksCount, state.GetMixedIndexBlocksCount()));
-            break;
-        case EChannelDataKind::Merged:
-            state.DecrementMergedIndexBlobsCount(
-                Min<ui64>(1, state.GetMergedIndexBlobsCount()));
-            state.DecrementMergedIndexBlocksCount(
-                Min(blocksCount, state.GetMergedIndexBlocksCount()));
-            break;
-        default:
-            Y_ABORT("Unexpected index kind: %u", static_cast<ui32>(indexKind));
+    if (state.ShouldUseBlobChannelDataKindForCounters()) {
+        switch (indexKind) {
+            case EChannelDataKind::Mixed:
+                state.DecrementMixedIndexBlobsCount(
+                    Min<ui64>(1, state.GetMixedIndexBlobsCount()));
+                state.DecrementMixedIndexBlocksCount(
+                    Min(blocksCount, state.GetMixedIndexBlocksCount()));
+                break;
+            case EChannelDataKind::Merged:
+                state.DecrementMergedIndexBlobsCount(
+                    Min<ui64>(1, state.GetMergedIndexBlobsCount()));
+                state.DecrementMergedIndexBlocksCount(
+                    Min(blocksCount, state.GetMergedIndexBlocksCount()));
+                break;
+            default:
+                Y_ABORT(
+                    "Unexpected index kind: %u",
+                    static_cast<ui32>(indexKind));
+        }
     }
 
     // Deletion markers do not have a data channel.
