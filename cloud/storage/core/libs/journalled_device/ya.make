@@ -7,6 +7,7 @@ SRCS(
     journalled_device.cpp
     journalled_device_v2.cpp
     key_buffer_store.cpp
+    lsn_barrier.cpp
 )
 
 PEERDIR(

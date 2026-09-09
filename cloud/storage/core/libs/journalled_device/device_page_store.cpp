@@ -306,7 +306,7 @@ private:
             });
     }
 
-    std::optional<ui64> FindBusyPage(const TPageRange& pageRange) const
+    std::optional<ui64> FindAllocatedPage(const TPageRange& pageRange) const
     {
         const ui64 endPageNo = pageRange.FirstPageNo + pageRange.PageCount;
 
@@ -399,13 +399,13 @@ private:
             }
 
             const auto pageNo =
-                free ? FindBusyPage(pageRange) : FindFreePage(pageRange);
+                free ? FindAllocatedPage(pageRange) : FindFreePage(pageRange);
             if (pageNo) {
                 return MakeError(
                     E_INVALID_STATE,
                     TStringBuilder()
                         << "page " << *pageNo
-                        << (free ? " is busy already" : " is not busy"));
+                        << (free ? " is already allocated" : " is not busy"));
             }
         }
 

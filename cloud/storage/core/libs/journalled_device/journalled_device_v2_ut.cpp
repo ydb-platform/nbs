@@ -141,7 +141,7 @@ struct TTestJournal final: public IJournal
     using TReadHandler = std::function<NCloud::NProto::TReadPagesResponse(
         const NCloud::NProto::TReadPagesRequest&)>;
 
-    NCloud::NProto::TError RestoreError;
+    TResultOrError<ui64> RestoreResponse = 0;
 
     TReadHandler ReadHandler = [] (const auto& request) {
         Y_UNUSED(request);
@@ -149,6 +149,7 @@ struct TTestJournal final: public IJournal
     };
 
     TManualEvent AllRecordsFlushed;
+    mutable TManualEvent FlushCycleCompleted;
 
     mutable TMutex Mutex;
     mutable TVector<NCloud::NProto::TReadPagesRequest> ReadRequests;
@@ -159,13 +160,13 @@ struct TTestJournal final: public IJournal
 
     // IJournal
 
-    TFuture<NCloud::NProto::TError> Restore() override
+    TFuture<TResultOrError<ui64>> Restore() override
     {
         with_lock (Mutex) {
             ++RestoreCount;
         }
 
-        return MakeFuture(RestoreError);
+        return MakeFuture(RestoreResponse);
     }
 
     TFuture<NCloud::NProto::TWriteLogRecordResponse> Write(
@@ -203,13 +204,15 @@ struct TTestJournal final: public IJournal
         return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>();
     }
 
-    auto GetFirstRecordToFlush() const
+    auto GetRecordToFlush(ui64 maxAllowedLsn) const
         -> TFuture<TResultOrError<NCloud::NProto::TJournalRecord>> override
     {
         NCloud::NProto::TJournalRecord record;
 
         with_lock (Mutex) {
-            if (!RecordsToFlush.empty()) {
+            if (!RecordsToFlush.empty() &&
+                RecordsToFlush.front().GetLogSequenceNumber() <= maxAllowedLsn)
+            {
                 // the record is kept until it gets acked
                 record = RecordsToFlush.front();
             }
@@ -242,6 +245,8 @@ struct TTestJournal final: public IJournal
                 AllRecordsFlushed.Signal();
             }
         }
+
+        FlushCycleCompleted.Signal();
 
         return MakeFuture(NCloud::NProto::TError());
     }
@@ -389,6 +394,14 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         UNIT_ASSERT(Journal->AllRecordsFlushed.WaitT(TDuration::Seconds(30)));
         Journal->AllRecordsFlushed.Reset();
+    }
+
+    // Waits until a flush cycle runs to completion, i.e. until it stops finding
+    // records it is allowed to flush.
+    void WaitForFlushCycle()
+    {
+        UNIT_ASSERT(Journal->FlushCycleCompleted.WaitT(TDuration::Seconds(30)));
+        Journal->FlushCycleCompleted.Reset();
     }
 };
 
@@ -681,6 +694,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldFlushJournalRecordsToTheDataStore, TFixture)
     {
+        Journal->RestoreResponse = 3;
         Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
         Journal->AddRecordToFlush(MakeRecord(2, 20, 1));
         Journal->AddRecordToFlush(MakeRecord(3, 30, 3));
@@ -724,6 +738,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             return {};
         };
 
+        Journal->RestoreResponse = 1;
         Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
 
         Device->Start();
@@ -744,9 +759,39 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns[0]);
     }
 
+    Y_UNIT_TEST_F(ShouldNotFlushRecordsAboveTheRestoredLsn, TFixture)
+    {
+        // Restore reports lsn 2, so the record with lsn 3 is not indexed yet
+        // and must stay in the journal until some writer advances the horizon.
+
+        Journal->RestoreResponse = 2;
+        Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
+        Journal->AddRecordToFlush(MakeRecord(2, 20, 1));
+        Journal->AddRecordToFlush(MakeRecord(3, 30, 3));
+
+        Device->Start();
+
+        // the first cycle flushes lsn 1 and 2 and stops at lsn 3, the second
+        // one finds nothing to flush at all
+
+        WaitForFlushCycle();
+        WaitForFlushCycle();
+        Device->Stop();
+
+        const auto writes = DataStore->GetWriteRequests();
+        UNIT_ASSERT_VALUES_EQUAL(2, writes.size());
+        UNIT_ASSERT_VALUES_EQUAL("10:[J10,J11]", DescribeGroups(writes[0]));
+        UNIT_ASSERT_VALUES_EQUAL("20:[J20]", DescribeGroups(writes[1]));
+
+        const auto flushedLsns = Journal->GetFlushedLsns();
+        UNIT_ASSERT_VALUES_EQUAL(2, flushedLsns.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns[0]);
+        UNIT_ASSERT_VALUES_EQUAL(2, flushedLsns[1]);
+    }
+
     Y_UNIT_TEST_F(ShouldNotStartWhenJournalRestoreFails, TFixture)
     {
-        Journal->RestoreError = MakeError(E_IO, "journal is broken");
+        Journal->RestoreResponse = MakeError(E_IO, "journal is broken");
         Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
 
         UNIT_ASSERT_EXCEPTION_CONTAINS(

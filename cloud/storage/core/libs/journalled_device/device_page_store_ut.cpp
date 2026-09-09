@@ -473,13 +473,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, busy.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
             busy.GetMessage(),
-            "page 1 is busy already");
+            "page 1 is already allocated");
 
         const auto behind = store->AllocateAt(MakeRanges({{2, 2}, {1, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, behind.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
             behind.GetMessage(),
-            "page 1 is busy already");
+            "page 1 is already allocated");
 
         // the ranges of a rejected call are not allocated, not even in part
         UNIT_ASSERT_VALUES_EQUAL("2x4", Describe(store->Allocate(4)));
@@ -594,7 +594,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, busy.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
             busy.GetMessage(),
-            "page 1 is busy already");
+            "page 1 is already allocated");
 
         const auto beyond =
             store->AllocateAt(MakeRanges({{DefaultPageCount, 1}}));

@@ -25,9 +25,10 @@ public:
         , DataStore(std::move(dataStore))
     {}
 
-    TFuture<NCloud::NProto::TError> Restore() override
+    TFuture<TResultOrError<ui64>> Restore() override
     {
-        return MakeFuture(MakeError(E_NOT_IMPLEMENTED, "Restore"));
+        return MakeFuture<TResultOrError<ui64>>(
+            MakeError(E_NOT_IMPLEMENTED, "Restore"));
     }
 
     TFuture<NCloud::NProto::TWriteLogRecordResponse> Write(
@@ -67,11 +68,13 @@ public:
             TErrorResponse(E_NOT_IMPLEMENTED, "AdvanceLastAckedLsn"));
     }
 
-    auto GetFirstRecordToFlush() const
+    auto GetRecordToFlush(ui64 maxAllowedLsn) const
         -> TFuture<TResultOrError<NCloud::NProto::TJournalRecord>> override
     {
+        Y_UNUSED(maxAllowedLsn);
+
         return MakeFuture<TResultOrError<NCloud::NProto::TJournalRecord>>(
-            MakeError(E_NOT_IMPLEMENTED, "GetFirstRecordToFlush"));
+            MakeError(E_NOT_IMPLEMENTED, "GetRecordToFlush"));
     }
 
     void MarkRecordAsFlushed(ui64 lsn) override
