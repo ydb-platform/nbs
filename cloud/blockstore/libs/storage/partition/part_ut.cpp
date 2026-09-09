@@ -2935,7 +2935,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, compactionByMixedBlockCount);
     }
 
-    Y_UNIT_TEST(ShouldProcessMultipleRangesUponMixedBlockCountCompaction)
+    Y_UNIT_TEST(ShouldProcessMultipleRangesUponMixedBlocksCountCompaction)
     {
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
@@ -3011,7 +3011,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(3, compactedRangeCount);
     }
 
-    Y_UNIT_TEST(ShouldEnableMixedBlockCountCompactionByMediaKind)
+    Y_UNIT_TEST(ShouldEnableMixedBlocksCountCompactionByMediaKind)
     {
         const auto isCompactionTriggered = [](
             NCloud::NProto::EStorageMediaKind mediaKind,
