@@ -372,6 +372,9 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(
         CompressedBytesWritten,
         EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        ZeroBytesWritten,
+        EMetricType::MT_DERIVATIVE);
 
 #define FILESTORE_TABLET_METRICS_REGISTER_REQUEST(name, ...)                   \
     AggregatableFsRegistry->Register(                                          \

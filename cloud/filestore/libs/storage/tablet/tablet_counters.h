@@ -252,6 +252,7 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     // Blob compression stats
     std::atomic<i64> UncompressedBytesWritten{0};
     std::atomic<i64> CompressedBytesWritten{0};
+    std::atomic<i64> ZeroBytesWritten{0};
 
     // HandleStatsByNode size stats
     std::atomic<i64> HandleStatsByNodeMaxSize{0};

@@ -311,7 +311,9 @@ void TIndexTabletActor::HandleWriteBlob(
         }
 
         const auto compRate = Config->GetBlobCompressionRate();
-        if (BlobCodec && compRate && blob.BlobId.GetHash() % compRate == 0) {
+        if (msg->Mode == TEvIndexTabletPrivate::EWriteBlobMode::Compaction &&
+            BlobCodec && compRate && blob.BlobId.GetHash() % compRate == 0)
+        {
             size_t compressedSize = 0;
 
             const auto chunkSize = Config->GetBlobCompressionChunkSize();
@@ -334,6 +336,9 @@ void TIndexTabletActor::HandleWriteBlob(
                 std::memory_order_relaxed);
             Metrics->CompressedBytesWritten.fetch_add(
                 compressedSize,
+                std::memory_order_relaxed);
+            Metrics->ZeroBytesWritten.fetch_add(
+                Count(data, '\0'),
                 std::memory_order_relaxed);
         }
 

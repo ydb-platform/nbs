@@ -308,9 +308,18 @@ struct TEvIndexTabletPrivate
     // WriteBlob
     //
 
+    enum class EWriteBlobMode
+    {
+        Write,
+        Flush,
+        FlushBytes,
+        Compaction,
+    };
+
     struct TWriteBlobRequest
     {
         TVector<TWriteBlob> Blobs;
+        EWriteBlobMode Mode = EWriteBlobMode::Write;
     };
 
     struct TWriteBlobResponse

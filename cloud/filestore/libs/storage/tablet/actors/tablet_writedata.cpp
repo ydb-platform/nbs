@@ -61,8 +61,8 @@ void TWriteDataActor::Bootstrap(const TActorContext& ctx)
 void TWriteDataActor::WriteBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
+    request->Mode = TEvIndexTabletPrivate::EWriteBlobMode::Write;
 
     for (auto& blob: Blobs) {
         request->Blobs.emplace_back(blob.BlobId, std::move(blob.BlobContent));
