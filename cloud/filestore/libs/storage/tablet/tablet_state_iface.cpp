@@ -2,8 +2,6 @@
 
 #include <cloud/filestore/libs/storage/core/model.h>
 
-#include <util/generic/guid.h>
-
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 
@@ -21,6 +19,27 @@ static_assert(MinShardIdEncodingVersion <= ShardIdAsBinaryStream);
 static_assert(ShardIdAsBinaryStream <= MaxShardIdEncodingVersion);
 
 static_assert(sizeof(TGUID::dw) == 16);
+
+constexpr size_t MaxDecimalDigitsInUi16 = 5;
+
+inline void
+CreateDecodedShardId(const TString& mainFsId, const ui16 shardNo, TString& shardId)
+{
+    shardId.ReserveAndResize(
+        mainFsId.size() + ShardNumPrefix.size() + MaxDecimalDigitsInUi16);
+    char* ptr = shardId.Detach();
+    const char* const start = ptr;
+
+    memcpy(ptr, mainFsId.data(), mainFsId.size());
+    ptr += mainFsId.size();
+
+    memcpy(ptr, ShardNumPrefix.data(), ShardNumPrefix.size());
+    ptr += ShardNumPrefix.size();
+
+    auto result = std::to_chars(ptr, ptr + MaxDecimalDigitsInUi16, shardNo);
+    *result.ptr = 0;
+    shardId.ReserveAndResize(result.ptr - start);
+}
 
 }   // namespace
 
@@ -98,16 +117,18 @@ bool INodeIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainF
     }
 
     // Create decoded ShardId as a string.
-    ShardId = shardNo
-                  ? TStringBuilder() << mainFsId << ShardNumPrefix << shardNo
-                  : mainFsId;
+    if (shardNo) {
+        CreateDecodedShardId(mainFsId, shardNo, ShardId);
+    } else {
+        ShardId = mainFsId;
+    }
 
     // Decode ShardNodeName
     TGUID guid;
     TMemoryInput shardNodeNameIn(ShardNodeName.data(), ShardNodeName.size());
     shardNodeNameIn.Read(guid.dw, sizeof(guid.dw));
 
-    ShardNodeName = guid.AsGuidString();
+    CreateGuidString(guid, ShardNodeName);
 
     return true;
 }

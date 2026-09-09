@@ -6,7 +6,10 @@
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
 
+#include <util/generic/guid.h>
 #include <util/generic/vector.h>
+
+#include <charconv>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -59,6 +62,32 @@ inline bool IsFilesystemIdEncoded(const TString& fsId)
            fsId[0] <= MaxShardIdEncodingVersion;
 }
 
+constexpr size_t MaxHexDigitsInGuidWord = sizeof(TGUID::dw[0]) * 2;
+
+// At most two hexadecimal characters per GUID byte, plus three dashes.
+// Example: 57d8913c-c009f3cd-f059ad8a-cabde340
+constexpr size_t MaxGuidAsStringChars = sizeof(TGUID::dw) * 2 + 3;
+
 NCloud::NProto::TError ValidateFilesystemId(const TString& fsId);
+
+inline void CreateGuidString(const TGUID& guid, TString& str)
+{
+    str.ReserveAndResize(MaxGuidAsStringChars);
+    char* ptr = str.Detach();
+    const char* buffStart = ptr;
+
+    for (ui32 i = 0; i < sizeof(TGUID::dw) / sizeof(TGUID::dw[0]); ++i) {
+        auto result = std::to_chars(
+            ptr,
+            ptr + MaxHexDigitsInGuidWord,
+            guid.dw[i],
+            16);
+        ptr = result.ptr;
+        *(ptr++) = '-';
+    }
+
+    *(--ptr) = 0;
+    str.ReserveAndResize(ptr - buffStart);
+}
 
 }   // namespace NCloud::NFileStore::NStorage
