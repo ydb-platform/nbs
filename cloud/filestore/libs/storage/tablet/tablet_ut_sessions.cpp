@@ -1,4 +1,5 @@
 #include "tablet.h"
+#include "tablet_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
@@ -1849,27 +1850,50 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         }
     }
 
-    Y_UNIT_TEST(ShouldMarkSessionAsOrphanAfterPipeDisconnect)
+    Y_UNIT_TEST(ShouldMarkSessionAsOrphanAfterPipeDisconnectAndCleanUpAfterTimeout)
     {
-        TTestEnv env;
+        constexpr TDuration IdleSessionTimeout = TDuration::Seconds(5);
+
+        NProto::TStorageConfig config;
+        config.SetIdleSessionTimeout(IdleSessionTimeout.MilliSeconds());
+        TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
+        env.GetRuntime().SetRegistrationObserverFunc(
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
 
         bool pipeDisconnectObserved = false;
-        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
-            Y_UNUSED(runtime);
-
-            switch (event->GetTypeRewrite()) {
-                case NKikimr::TEvTabletPipe::EvServerDisconnected: {
-                    pipeDisconnectObserved = true;
+        // The cleanup path destroys a timed-out session
+        // by sending TEvDestroySessionRequest.
+        TMaybe<TInstant> destroyedAt;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<NActors::IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case NKikimr::TEvTabletPipe::EvServerDisconnected: {
+                        pipeDisconnectObserved = true;
+                        break;
+                    }
+                    case TEvIndexTablet::EvDestroySessionRequest: {
+                        const auto& record =
+                            event->Get<TEvIndexTablet::TEvDestroySessionRequest>()
+                                ->Record;
+                        if (record.GetHeaders().GetSessionId() == "session") {
+                            destroyedAt = env.GetRuntime().GetCurrentTime();
+                        }
+                        break;
+                    }
                 }
-            }
-
-            return false;
-        });
+                return NKikimr::TTestActorRuntime::DefaultObserverFunc(event);
+            });
 
         tablet.InitSession("client", "session");
 
@@ -1878,6 +1902,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         // Check that pipe was disconnected
         UNIT_ASSERT(pipeDisconnectObserved);
+
+        TInstant disconnectedAt = env.GetRuntime().GetCurrentTime();
 
         // Check that the tablet handles pipe disconnection
         // and marks the session as orphaned.
@@ -1890,6 +1916,155 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             UNIT_ASSERT_VALUES_EQUAL(session.GetSessionId(), "session");
             UNIT_ASSERT_VALUES_EQUAL(session.GetIsOrphan(), true);
         }
+
+        // Cleanup runs periodically every IdleSessionTimeout since boot,
+        // independent of when this session was disconnected. In the worst
+        // case, disconnect happens right after a cleanup run, so that same
+        // run is already too early for the deadline and the session
+        // survives it - only the next run is guaranteed to be late enough.
+        // So we need to wait for at least 2 cleanup runs.
+        env.GetRuntime().DispatchEvents(
+            {},
+            2 * IdleSessionTimeout + TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(destroyedAt.Defined(), "session was never auto-destroyed");
+        UNIT_ASSERT_C(
+            *destroyedAt >= disconnectedAt + IdleSessionTimeout,
+            "session destroyed before its inactivity deadline");
+
+        auto sessions = tablet.DescribeSessions();
+        UNIT_ASSERT_VALUES_EQUAL(sessions->Record.SessionsSize(), 0);
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyUpdateSessionByPipeServerMap)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        // BootIndexTablet doesn't expose the actor's TActorId - catch it.
+        NActors::TActorId tabletActorId;
+        env.GetRuntime().SetRegistrationObserverFunc(
+            [&](auto& runtime,
+                const NActors::TActorId& parentId,
+                const NActors::TActorId& actorId)
+            {
+                Y_UNUSED(parentId);
+                if (dynamic_cast<TIndexTabletActor*>(
+                        runtime.FindActor(actorId))) {
+                    tabletActorId = actorId;
+                }
+            });
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        // ev->Recipient is the pipe server's TActorId, the SessionByPipeServer
+        // key. We need to know which pipe server corresponds to which
+        // subsession.
+        THashMap<ui64, NActors::TActorId> pipeServerBySeqNo;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<NActors::IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTablet::EvCreateSessionRequest)
+                {
+                    const auto& record =
+                        event->Get<TEvIndexTablet::TEvCreateSessionRequest>()
+                            ->Record;
+                    pipeServerBySeqNo[record.GetMountSeqNumber()] =
+                        event->Recipient;
+                }
+                return NKikimr::TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Both read-only, so GetSessionRwSeqNo() stays 0 and DestroySession
+        // always goes through DeleteSubSession.
+        TIndexTabletClient tablet1(env.GetRuntime(), nodeIdx, tabletId);
+        tablet1.InitSession("client", "session", {}, 1, true /* readOnly */);
+
+        TIndexTabletClient tablet2(env.GetRuntime(), nodeIdx, tabletId);
+        tablet2.InitSession("client", "session", {}, 2, true /* readOnly */);
+
+        // A second, independent session: D is a writer with the highest
+        // seqNo, so destroying it makes CheckSessionForDestroy match
+        // exactly - DeleteSubSession is never called, cleanup goes through
+        // RemoveSession's own loop over GetSubSessionPipeServerIds() instead.
+        TIndexTabletClient tablet3(env.GetRuntime(), nodeIdx, tabletId);
+        tablet3.InitSession("client2", "session2", {}, 3, true /* readOnly */);
+
+        TIndexTabletClient tablet4(env.GetRuntime(), nodeIdx, tabletId);
+        tablet4.InitSession("client2", "session2", {}, 4, false /* readOnly */);
+
+        env.GetRuntime().SetObserverFunc(
+            NKikimr::TTestActorRuntime::DefaultObserverFunc);
+
+        UNIT_ASSERT_C(
+            pipeServerBySeqNo.contains(1),
+            "CreateSessionRequest for seqNo=1 not observed");
+        UNIT_ASSERT_C(
+            pipeServerBySeqNo.contains(2),
+            "CreateSessionRequest for seqNo=2 not observed");
+        UNIT_ASSERT_C(
+            pipeServerBySeqNo.contains(3),
+            "CreateSessionRequest for seqNo=3 not observed");
+        UNIT_ASSERT_C(
+            pipeServerBySeqNo.contains(4),
+            "CreateSessionRequest for seqNo=4 not observed");
+        auto pipeServerA = pipeServerBySeqNo[1];
+        auto pipeServerB = pipeServerBySeqNo[2];
+        auto pipeServerC = pipeServerBySeqNo[3];
+        auto pipeServerD = pipeServerBySeqNo[4];
+
+        auto* actor = dynamic_cast<TIndexTabletActor*>(
+            env.GetRuntime().FindActor(tabletActorId));
+        UNIT_ASSERT_C(actor, "tablet actor not found");
+
+        // Sanity check, otherwise the destroy checks below would pass
+        // trivially.
+        auto* sessionA = actor->FindSessionByPipeServer(pipeServerA);
+        UNIT_ASSERT_C(sessionA, "pipeServerA not tracked right after creation");
+        UNIT_ASSERT_VALUES_EQUAL("session", sessionA->GetSessionId());
+        auto* sessionB = actor->FindSessionByPipeServer(pipeServerB);
+        UNIT_ASSERT_C(sessionB, "pipeServerB not tracked right after creation");
+        UNIT_ASSERT_VALUES_EQUAL("session", sessionB->GetSessionId());
+        auto* sessionC = actor->FindSessionByPipeServer(pipeServerC);
+        UNIT_ASSERT_C(sessionC, "pipeServerC not tracked right after creation");
+        UNIT_ASSERT_VALUES_EQUAL("session2", sessionC->GetSessionId());
+        auto* sessionD = actor->FindSessionByPipeServer(pipeServerD);
+        UNIT_ASSERT_C(sessionD, "pipeServerD not tracked right after creation");
+        UNIT_ASSERT_VALUES_EQUAL("session2", sessionD->GetSessionId());
+
+        // Scenario 1: DeleteSubSession returns SessionCanBeDestroyed=false
+        // (another subsession is still mounted) - the session survives,
+        // only its own entry is removed. Already worked before the fix.
+        tablet1.DestroySession();
+        UNIT_ASSERT_C(
+            actor->FindSessionByPipeServer(pipeServerA) == nullptr,
+            "pipeServerA entry not removed");
+        UNIT_ASSERT_C(
+            actor->FindSessionByPipeServer(pipeServerB) != nullptr,
+            "pipeServerB entry wrongly removed");
+
+        // Scenario 2: DeleteSubSession returns SessionCanBeDestroyed=true
+        // (last subsession) - the whole session is destroyed. The buggy
+        // path: its own entry must still be removed.
+        tablet2.DestroySession();
+        UNIT_ASSERT_C(
+            actor->FindSessionByPipeServer(pipeServerB) == nullptr,
+            "stale entry left in SessionByPipeServer after destroying the "
+            "last subsession of a session that never had a writer");
+
+        // Scenario 3: CheckSessionForDestroy matches exactly for D, so
+        // ExecuteTx_DestroySession skips DeleteSubSession entirely and goes
+        // straight to RemoveSession, which must clean up both D's own
+        // entry and C's (never individually destroyed) via its own loop.
+        tablet4.DestroySession();
+        UNIT_ASSERT_C(
+            actor->FindSessionByPipeServer(pipeServerC) == nullptr,
+            "pipeServerC entry left dangling by RemoveSession's own cleanup");
+        UNIT_ASSERT_C(
+            actor->FindSessionByPipeServer(pipeServerD) == nullptr,
+            "pipeServerD entry left dangling by RemoveSession's own cleanup");
     }
 }
 
