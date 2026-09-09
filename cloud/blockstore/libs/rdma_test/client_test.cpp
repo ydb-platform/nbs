@@ -376,6 +376,19 @@ TRdmaClientTest::StartEndpoint(TString host, ui32 port)
     return ep.Promise;
 }
 
+TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr>
+TRdmaClientTest::StartEndpoint(
+    TString host,
+    ui32 port,
+    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+{
+    Y_UNUSED(host);
+    Y_UNUSED(port);
+    Y_UNUSED(handler);
+
+    return MakeError(E_NOT_IMPLEMENTED);
+}
+
 void TRdmaClientTest::InjectErrors(
     NProto::TError allocationError,
     NProto::TError rdmaResponseError,
