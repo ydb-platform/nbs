@@ -3,7 +3,7 @@
 #include "device.h"
 #include "journal.h"
 #include "journalled_device.h"
-#include "watermark_tracker.h"
+#include "lsn_barrier.h"
 
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -13,7 +13,6 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
-#include <util/generic/scope.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NJournalled {
@@ -148,7 +147,7 @@ private:
 
     TLog Log;
 
-    TWatermarkTracker IndexedLsnTracker;
+    TLsnBarrier IndexedLsnBarrier;
 
     std::atomic_bool ShouldStop = false;
 
@@ -258,7 +257,7 @@ private:
             return response.GetError();
         }
 
-        IndexedLsnTracker.Advance(response.GetResult());
+        IndexedLsnBarrier.Advance(response.GetResult());
 
         FlushCycleStopped = NewPromise<void>();
         ScheduleFlushCycle();
@@ -269,10 +268,7 @@ private:
     NCloud::NProto::TReadPagesResponse DoReadPages(
         NCloud::NProto::TReadPagesRequest request)
     {
-        auto pinnedLsn = IndexedLsnTracker.Pin();
-        Y_DEFER {
-            IndexedLsnTracker.Unpin(pinnedLsn);
-        };
+        const auto lsnBarrierGuard = IndexedLsnBarrier.Acquire();
 
         auto journalFuture = Journal->Read(request);
         auto journalResp = Executor->ExtractResponse(std::move(journalFuture));
@@ -280,7 +276,7 @@ private:
             return journalResp;
         }
 
-        auto lastAckedLsn = journalResp.GetLastAckedLogSequenceNumber();
+        ui64 lastAckedLsn = journalResp.GetLastAckedLogSequenceNumber();
 
         auto missing = MakeMissingRequest(request, journalResp);
 
@@ -306,14 +302,14 @@ private:
     NCloud::NProto::TWriteLogRecordResponse DoWriteLogRecord(
         NCloud::NProto::TWriteLogRecordRequest request)
     {
-        auto lsn = request.GetLogSequenceNumber();
+        ui64 lsn = request.GetLogSequenceNumber();
         auto future = Journal->Write(std::move(request));
         auto response = Executor->ExtractResponse(std::move(future));
         if (HasError(response)) {
             return response;
         }
 
-        IndexedLsnTracker.Advance(lsn);
+        IndexedLsnBarrier.Advance(lsn);
         return response;
     }
 
@@ -331,8 +327,7 @@ private:
 
     void RunFlushCycle()
     {
-        auto maxAllowedLsn = IndexedLsnTracker.GetPinnedWatermark();
-
+        ui64 maxAllowedLsn = IndexedLsnBarrier.GetBarrierLsn();
         ui64 lastFlushedLsn = 0;
 
         while (!ShouldStop.load()) {
@@ -346,7 +341,7 @@ private:
             }
 
             auto record = response.ExtractResult();
-            auto lsn = record.GetLogSequenceNumber();
+            ui64 lsn = record.GetLogSequenceNumber();
             if (!lsn) {
                 // no record to flush
                 break;
