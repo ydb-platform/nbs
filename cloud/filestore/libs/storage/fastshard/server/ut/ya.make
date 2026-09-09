@@ -11,7 +11,7 @@ PEERDIR(
     cloud/filestore/libs/storage/fastshard/impl/mem
     cloud/filestore/libs/storage/fastshard/testlib
 
-    cloud/filestore/private/api/unsafe_protos
+    cloud/filestore/private/api/protos
 
     library/cpp/testing/common
 

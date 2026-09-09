@@ -33,7 +33,7 @@ PEERDIR(
     cloud/filestore/libs/storage/fastshard/sn/quorum
     cloud/filestore/libs/storage/model
 
-    cloud/filestore/private/api/unsafe_protos
+    cloud/filestore/private/api/protos
 )
 
 END()

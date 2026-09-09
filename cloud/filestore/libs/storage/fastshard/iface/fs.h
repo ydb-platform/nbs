@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
-#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/locks.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>

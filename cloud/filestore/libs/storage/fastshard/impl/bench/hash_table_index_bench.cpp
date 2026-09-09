@@ -3,7 +3,7 @@
 #include "shard_bench.h"
 
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
-#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <silk/fibers/fiber.h>
 #include <silk/util/init.h>
