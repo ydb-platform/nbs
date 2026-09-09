@@ -2,7 +2,7 @@
 
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
-#include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -34,7 +34,7 @@ public:
             return CreateFileSystemShardStub();
         }
 
-        return CreateNaiveMirroredFileSystemShard(
+        return CreateHashTableIndexFileSystemShard(
             fileSystemId,
             shardNo,
             generation,

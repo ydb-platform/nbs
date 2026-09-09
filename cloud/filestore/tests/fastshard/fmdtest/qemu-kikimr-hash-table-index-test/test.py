@@ -60,7 +60,7 @@ def do_test(test_name, aux_params):
     # shards), which means all shards would map the same page ranges on
     # the same physical devices and clobber each other. Memshard gets
     # away with fanning-out because each shard builds its own separate
-    # in-memory state; naive_mirrored talks to real disks and cannot.
+    # in-memory state; hash_table_index talks to real disks and cannot.
     # Provisioning one storage group per shard would need N * devices,
     # which is a bit excessive for this test.
     #

@@ -1,6 +1,6 @@
 # Page store
 
-The page store (`IPageStore`, `impl/naive_mirrored/page_store.h`) is the
+The page store (`IPageStore`, `impl/hash_table_index/page_store.h`) is the
 layer between the shard's data structures and the storage groups. The shard
 generally avoids talking to a group directly; every page it reads or writes goes
 through the page store.

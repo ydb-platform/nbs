@@ -14,7 +14,7 @@ Shards that host directories and other inode types keep the existing
 files can be implemented via fastshard.
 
 This directory documents the prospective design. The prototype
-(`impl/naive_mirrored`) implements a subset of it; every gap between the
+(`impl/hash_table_index`) implements a subset of it; every gap between the
 prototype and the design is marked in the per-layer documents.
 
 ## Motivation

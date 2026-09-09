@@ -75,7 +75,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
         //
         // The tablet is configured with the mem shard, whose layout
         // dump is empty by design - the page contents are covered by
-        // the naive mirrored shard's own tests. Here we only check
+        // the hash table index shard's own tests. Here we only check
         // that the action is served and not rejected.
         //
 
