@@ -53,6 +53,8 @@ struct IJournal
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IJournalPtr CreateJournal();
+IJournalPtr CreateJournal(
+    IKeyBufferStorePtr metaStore,
+    IDevicePageStorePtr dataStore);
 
 }   // namespace NCloud::NJournalled

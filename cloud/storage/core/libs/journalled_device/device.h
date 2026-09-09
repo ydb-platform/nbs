@@ -23,4 +23,8 @@ struct IDevice
         -> NThreading::TFuture<NCloud::NProto::TWriteLogRecordResponse> = 0;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+IDevicePtr CreateInMemoryDevice();
+
 }   // namespace NCloud::NJournalled
