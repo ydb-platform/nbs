@@ -457,9 +457,7 @@ struct TSessionHistoryEntry
 
 using TSessionList = TIntrusiveListWithAutoDelete<TSession, TDelete>;
 using TSessionMap = THashMap<TString, TSession*>;
-using TSessionOwnerMap = THashMap<NActors::TActorId, TSession*>;
-using TSessionOwnerByPipeServerMap =
-    THashMap<NActors::TActorId, NActors::TActorId>;
+using TSessionByPipeServerMap = THashMap<NActors::TActorId, TSession*>;
 using TSessionClientMap = THashMap<TString, TSession*>;
 using TSessionHistoryList = TDeque<TSessionHistoryEntry>;
 
