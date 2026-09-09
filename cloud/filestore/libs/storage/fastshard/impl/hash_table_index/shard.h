@@ -33,14 +33,14 @@ IStorageGroupFactoryPtr CreateStorageGroupFactory();
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
     ui64 generation,
     IStorageGroupFactoryPtr storageGroupFactory,
     const NProtoPrivate::TPersistentFastShardConfig& config);
 
-IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
     ui64 generation,

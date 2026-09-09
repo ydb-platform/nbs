@@ -151,7 +151,7 @@ def start(argv):
     #
     # 4. Register the agent's host with NBS and pull the device UUIDs
     # straight out of the disk-registry state. We deliberately do NOT
-    # allocate a volume: the naive_mirrored fastshard calls
+    # allocate a volume: the hash_table_index fastshard calls
     # AcquireDevices via the TCP protocol on its own, and any NBS-side
     # lease from a volume would race with that acquire.
     #

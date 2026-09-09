@@ -1,7 +1,7 @@
 RECURSE(
     factory
     mem
-    naive_mirrored
+    hash_table_index
 )
 
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)

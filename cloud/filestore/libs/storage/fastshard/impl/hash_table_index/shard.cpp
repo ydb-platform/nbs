@@ -2199,10 +2199,10 @@ IStorageGroupFactoryPtr CreateStorageGroupFactory()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNaiveMirroredFileSystemShard: public TFiberShard<TFiberShardImpl>
+class THashTableIndexFileSystemShard: public TFiberShard<TFiberShardImpl>
 {
 public:
-    TNaiveMirroredFileSystemShard(
+    THashTableIndexFileSystemShard(
         TString fileSystemId,
         ui32 shardNo,
         ui64 generation,
@@ -2220,14 +2220,14 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
     ui64 generation,
     IStorageGroupFactoryPtr storageGroupFactory,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
-    return std::make_shared<TNaiveMirroredFileSystemShard>(
+    return std::make_shared<THashTableIndexFileSystemShard>(
         std::move(fileSystemId),
         shardNo,
         generation,
@@ -2235,13 +2235,13 @@ IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
         config);
 }
 
-IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
     ui64 generation,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
-    return std::make_shared<TNaiveMirroredFileSystemShard>(
+    return std::make_shared<THashTableIndexFileSystemShard>(
         std::move(fileSystemId),
         shardNo,
         generation,

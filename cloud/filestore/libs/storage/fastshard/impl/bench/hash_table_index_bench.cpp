@@ -2,7 +2,7 @@
 #include "null_storage_group.h"
 #include "shard_bench.h"
 
-#include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
 #include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <silk/fibers/fiber.h>
@@ -45,10 +45,10 @@ void EnsureSilk()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Naive mirrored shard on top of a null storage group whose responses
+// Hash table index shard on top of a null storage group whose responses
 // follow a lognormal latency distribution.
 
-IFileSystemShardPtr MakeNaiveMirroredShard()
+IFileSystemShardPtr MakeHashTableIndexShard()
 {
     EnsureSilk();
 
@@ -56,7 +56,7 @@ IFileSystemShardPtr MakeNaiveMirroredShard()
     config.SetNodesPerGroup(NodesPerGroup);
     config.SetExpectedGroupCapacity(GroupCapacity);
 
-    return CreateNaiveMirroredFileSystemShard(
+    return CreateHashTableIndexFileSystemShard(
         "bench-fs",
         ShardNo,
         1 /* generation */,
@@ -67,7 +67,7 @@ IFileSystemShardPtr MakeNaiveMirroredShard()
 }
 
 [[maybe_unused]] const bool registered = [] {
-    RegisterShardBenchmarks("NaiveMirroredShard", MakeNaiveMirroredShard);
+    RegisterShardBenchmarks("HashTableIndexShard", MakeHashTableIndexShard);
     return true;
 }();
 

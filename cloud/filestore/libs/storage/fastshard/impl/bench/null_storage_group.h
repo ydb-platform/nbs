@@ -2,8 +2,8 @@
 
 #include "delay_policy.h"
 
-// XXX will refactor this out of naive_mirrored separately very soon
-#include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
+// XXX will refactor this out of hash_table_index separately very soon
+#include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 

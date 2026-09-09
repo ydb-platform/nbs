@@ -4,7 +4,7 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileSystemShardPtr CreateNaiveMirroredFileSystemShard(
+IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
     ui64 generation,

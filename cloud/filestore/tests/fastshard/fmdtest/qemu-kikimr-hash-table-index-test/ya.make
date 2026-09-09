@@ -24,7 +24,7 @@ SET(
     cloud/filestore/tests/fastshard/fmdtest/configs/nfs-storage-persistent-fastshard.txt
 )
 
-# Naive-mirrored talks to the disk-agent's journalled_device_tcp_server,
+# Hash-table-index talks to the disk-agent's journalled_device_tcp_server,
 # which is the SCT_TCP side channel. Vhost must be told to bring up silk
 # and open a fast-shard port for the tablet <-> shard control path.
 SET(

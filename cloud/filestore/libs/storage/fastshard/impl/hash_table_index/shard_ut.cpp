@@ -1,6 +1,6 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
-#include <cloud/filestore/libs/storage/fastshard/impl/naive_mirrored/shard.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/impl/storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/server/server.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/fake_storage_node.h>
@@ -68,7 +68,7 @@ struct TStorageNodeFixture
     IServerPtr Server;
 
     TStorageNodeFixture()
-        : File(TTempFileHandle::InCurrentDir("impl-naive_mirrored-ut"))
+        : File(TTempFileHandle::InCurrentDir("impl-hash_table_index-ut"))
         , Port(NTesting::GetFreePort())
     {
         File.Resize(FileSize);
@@ -126,13 +126,13 @@ TString GenerateValidateData(ui32 size, ui32 seed = 0)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TEST(NaiveMirroredShardTest, CreatesFiles)
+TEST(HashTableIndexShardTest, CreatesFiles)
 {
     silk::Logger::setLevel(silk::LogLevel::DEBUG);
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(
+    auto shard = CreateHashTableIndexFileSystemShard(
         "fs0",
         ShardNo,
         1 /* generation */,
@@ -199,13 +199,13 @@ TEST(NaiveMirroredShardTest, CreatesFiles)
     }
 }
 
-TEST(NaiveMirroredShardTest, ValidatesRequests)
+TEST(HashTableIndexShardTest, ValidatesRequests)
 {
     silk::Logger::setLevel(silk::LogLevel::DEBUG);
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(
+    auto shard = CreateHashTableIndexFileSystemShard(
         "fs0",
         ShardNo,
         1 /* generation */,
@@ -276,13 +276,13 @@ TEST(NaiveMirroredShardTest, ValidatesRequests)
     }
 }
 
-TEST(NaiveMirroredShardTest, CreatesHandles)
+TEST(HashTableIndexShardTest, CreatesHandles)
 {
     silk::Logger::setLevel(silk::LogLevel::DEBUG);
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(
+    auto shard = CreateHashTableIndexFileSystemShard(
         "fs0",
         ShardNo,
         1 /* generation */,
@@ -487,11 +487,11 @@ TEST(NaiveMirroredShardTest, CreatesHandles)
     }
 }
 
-TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
+TEST(HashTableIndexShardTest, WritesAndReadsFiles)
 {
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(
+    auto shard = CreateHashTableIndexFileSystemShard(
         "fs0",
         ShardNo,
         1 /* generation */,
@@ -613,11 +613,11 @@ TEST(NaiveMirroredShardTest, WritesAndReadsFiles)
     }
 }
 
-TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
+TEST(HashTableIndexShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
 {
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(
+    auto shard = CreateHashTableIndexFileSystemShard(
         "fs0",
         ShardNo,
         1 /* generation */,
@@ -847,11 +847,11 @@ TEST(NaiveMirroredShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
     }
 }
 
-TEST(NaiveMirroredShardTest, UnalignedAppend)
+TEST(HashTableIndexShardTest, UnalignedAppend)
 {
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(
+    auto shard = CreateHashTableIndexFileSystemShard(
         "fs0",
         ShardNo,
         1 /* generation */,
@@ -953,13 +953,13 @@ TEST(NaiveMirroredShardTest, UnalignedAppend)
     }
 }
 
-TEST(NaiveMirroredShardTest, DeallocatesPagesUponUnlink)
+TEST(HashTableIndexShardTest, DeallocatesPagesUponUnlink)
 {
     silk::Logger::setLevel(silk::LogLevel::DEBUG);
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(
+    auto shard = CreateHashTableIndexFileSystemShard(
         "fs0",
         ShardNo,
         1 /* generation */,
@@ -1099,13 +1099,13 @@ TEST(NaiveMirroredShardTest, DeallocatesPagesUponUnlink)
     }
 }
 
-TEST(NaiveMirroredShardTest, DeallocatesPagesUponTruncate)
+TEST(HashTableIndexShardTest, DeallocatesPagesUponTruncate)
 {
     silk::Logger::setLevel(silk::LogLevel::DEBUG);
 
     TStorageFixture fx;
 
-    auto shard = CreateNaiveMirroredFileSystemShard(
+    auto shard = CreateHashTableIndexFileSystemShard(
         "fs0",
         ShardNo,
         1 /* generation */,
