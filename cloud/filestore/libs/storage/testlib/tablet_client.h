@@ -426,6 +426,20 @@ public:
         return request;
     }
 
+    auto CreateLinkNodeInShardRequest(
+        ui64 nodeId,
+        ui64 clientTabletId = 1,
+        ui64 requestId = 0)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvLinkNodeInShardRequest;
+        auto request = CreateSessionRequest<TRequestEvent>();
+        auto& headers = *request->Record.MutableHeaders();
+        headers.MutableInternal()->SetClientTabletId(clientTabletId);
+        headers.SetRequestId(requestId ? requestId : ++AutoRequestId);
+        request->Record.SetNodeId(nodeId);
+        return request;
+    }
+
     auto CreateRenameNodeInDestinationRequest(
         ui64 newParent,
         const TString& newName,

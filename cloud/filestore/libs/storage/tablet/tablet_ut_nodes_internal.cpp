@@ -200,6 +200,159 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         }
     }
 
+    TABLET_TEST_4K_ONLY(ShouldLinkNodeInShard)
+    {
+        TTestEnv env(testEnvConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 fileId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+        UNIT_ASSERT_VALUES_EQUAL(1, GetNodeAttrs(tablet, fileId).GetLinks());
+
+        // first call bumps the link count 1 -> 2
+        {
+            auto response = tablet.SendAndRecvLinkNodeInShard(
+                fileId,
+                1 /* clientTabletId */,
+                100 /* requestId */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(fileId, response->Record.GetNode().GetId());
+            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetNode().GetLinks());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, GetNodeAttrs(tablet, fileId).GetLinks());
+
+        // a resend with the same (clientTabletId, requestId) is served from the
+        // ResponseLog and does NOT bump the link count again
+        {
+            auto response = tablet.SendAndRecvLinkNodeInShard(fileId, 1, 100);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetNode().GetLinks());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, GetNodeAttrs(tablet, fileId).GetLinks());
+
+        // a different requestId is a different logical op -> bumps again 2 -> 3
+        {
+            auto response = tablet.SendAndRecvLinkNodeInShard(fileId, 1, 101);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(3, response->Record.GetNode().GetLinks());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(3, GetNodeAttrs(tablet, fileId).GetLinks());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldValidateLinkNodeInShardTarget)
+    {
+        TTestEnv env(testEnvConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 fileId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+        const ui64 dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        // missing idempotency key
+        {
+            auto response = tablet.SendAndRecvLinkNodeInShard(
+                fileId,
+                0 /* clientTabletId */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        // target does not exist
+        {
+            auto response =
+                tablet.SendAndRecvLinkNodeInShard(fileId + 100500, 1, 200);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        // target is a directory - hard links to dirs are not allowed
+        {
+            auto response = tablet.SendAndRecvLinkNodeInShard(dirId, 1, 201);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_ISDIR,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        // none of the above touched the file's link count
+        UNIT_ASSERT_VALUES_EQUAL(1, GetNodeAttrs(tablet, fileId).GetLinks());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldKeepLinkNodeInShardIdempotentAfterReboot)
+    {
+        TTestEnv env(testEnvConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 fileId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+
+        {
+            auto response = tablet.SendAndRecvLinkNodeInShard(fileId, 7, 42);
+            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetNode().GetLinks());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, GetNodeAttrs(tablet, fileId).GetLinks());
+
+        tablet.RebootTablet();
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.InitSession("client", "session");
+
+        // the ResponseLog entry survived the reboot -> resend is still a no-op
+        {
+            auto response = tablet.SendAndRecvLinkNodeInShard(fileId, 7, 42);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetNode().GetLinks());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, GetNodeAttrs(tablet, fileId).GetLinks());
+    }
+
     TABLET_TEST_4K_ONLY(ShouldAbortUnlinkDirectoryNodeInShard)
     {
         TTestEnv env(testEnvConfig);

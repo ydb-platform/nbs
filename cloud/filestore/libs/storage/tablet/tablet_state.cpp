@@ -459,6 +459,11 @@ void TIndexTabletState::WriteResponseLogEntry(
             *incompleteEntry.MutableRenameNodeInDestinationResponse();
         *incompleteResponse.MutableError() =
             MakeError(E_REJECTED, "incomplete response");
+    } else if (e.HasLinkNodeInShardResponse()) {
+        auto& incompleteResponse =
+            *incompleteEntry.MutableLinkNodeInShardResponse();
+        *incompleteResponse.MutableError() =
+            MakeError(E_REJECTED, "incomplete response");
     } else {
         TABLET_VERIFY_C(
             0,

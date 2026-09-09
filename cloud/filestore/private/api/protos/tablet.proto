@@ -1048,6 +1048,7 @@ message TResponseLogEntry
 
     oneof Response {
         TRenameNodeInDestinationResponse RenameNodeInDestinationResponse = 101;
+        TLinkNodeInShardResponse LinkNodeInShardResponse = 102;
     }
 }
 
@@ -1147,6 +1148,36 @@ message TUnlinkNodeInShardRequest
 
     // Original request that caused this unlink.
     NProto.TUnlinkNodeRequest OriginalRequest = 6;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// LinkNodeInShard request/response
+//
+// Sent by the tablet that owns a directory to the shard that owns a node, to
+// bump that node's hard link count by one
+
+message TLinkNodeInShardRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // Shard that owns the target node.
+    string FileSystemId = 2;
+
+    // Node whose link count should be incremented (shard-scoped id).
+    uint64 NodeId = 3;
+}
+
+message TLinkNodeInShardResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // The target node's attributes after the link count was incremented.
+    NProto.TNodeAttr Node = 2;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -57,6 +57,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
     xxx(PrepareUnlinkDirectoryNodeInShard,  __VA_ARGS__)                       \
     xxx(AbortUnlinkDirectoryNodeInShard,    __VA_ARGS__)                       \
+    xxx(LinkNodeInShard,                    __VA_ARGS__)                       \
     xxx(DeleteResponseLogEntry,             __VA_ARGS__)                       \
     xxx(GetResponseLogEntry,                __VA_ARGS__)                       \
     xxx(WriteResponseLogEntry,              __VA_ARGS__)                       \
@@ -243,6 +244,9 @@ struct TEvIndexTablet
 
         EvGetDiagnosticStatsRequest = EvBegin + 91,
         EvGetDiagnosticStatsResponse,
+
+        EvLinkNodeInShardRequest = EvBegin + 93,
+        EvLinkNodeInShardResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
         // sub-namespaces which don't have any non-local events so if we run out
