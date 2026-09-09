@@ -1,12 +1,8 @@
 UNITTEST_FOR(cloud/storage/core/libs/file_backed_containers)
 
-# TFileRingBufferTest::RandomizedPushPopRestore tests may need more time
-# under sanitizers
-IF (SANITIZER_TYPE OR WITH_VALGRIND)
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
-ELSE()
-    INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
-ENDIF()
+# Randomized ring-buffer tests exercise both V5 and V6 and can exceed
+# the small-test chunk timeout even without sanitizers.
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCDIR(cloud/storage/core/libs/file_backed_containers)
 
