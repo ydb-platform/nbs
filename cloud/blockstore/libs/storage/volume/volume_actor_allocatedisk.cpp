@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
+#include <util/generic/algorithm.h>
 #include <util/generic/scope.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -36,6 +37,16 @@ ui64 GetBlocks(const NKikimrBlockStore::TVolumeConfig& config)
 {
     Y_ABORT_UNLESS(config.PartitionsSize() == 1);
     return config.GetPartitions(0).GetBlockCount();
+}
+
+bool IsLocalDiskAllocationRetry(
+    const TStorageConfig& config,
+    const NProto::TError& error,
+    NProto::EStorageMediaKind mediaKind)
+{
+    return config.GetLocalDiskAsyncDeallocationEnabled() &&
+        error.GetCode() == E_TRY_AGAIN &&
+        IsDiskRegistryLocalMediaKind(mediaKind);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -280,20 +291,28 @@ void TVolumeActor::HandleAllocateDiskIfNeeded(
     const TEvVolumePrivate::TEvAllocateDiskIfNeeded::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_UNUSED(ev);
+
+    DiskAllocationScheduled = false;
+
     if (UpdateVolumeConfigInProgress) {
         return;
     }
 
-    if (HasError(StorageAllocationResult)) {
+    Y_ABORT_UNLESS(State);
+    const auto& config = State->GetMeta().GetVolumeConfig();
+    const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+        config.GetStorageMediaKind());
+
+    if (HasError(StorageAllocationResult) &&
+        !IsLocalDiskAllocationRetry(
+            *Config,
+            StorageAllocationResult,
+            mediaKind))
+    {
         return;
     }
 
-    DiskAllocationScheduled = false;
-
-    Y_UNUSED(ev);
-
-    Y_ABORT_UNLESS(State);
-    const auto& config = State->GetMeta().GetVolumeConfig();
     const auto blocks = GetBlocks(config);
     auto expectedSize = blocks * config.GetBlockSize();
     auto actualSize = GetSize(State->GetMeta().GetDevices());
@@ -340,6 +359,48 @@ void TVolumeActor::ScheduleAllocateDiskIfNeeded(const TActorContext& ctx)
     }
 }
 
+void TVolumeActor::ReplyToPendingWaitReadyRequests(const TActorContext& ctx)
+{
+    auto replyToWaitReadyRequest = [&](const TPendingRequest& request)
+    {
+        if (request.Event->GetTypeRewrite() != TEvVolume::EvWaitReadyRequest) {
+            return false;
+        }
+
+        NCloud::Reply(
+            ctx,
+            *request.RequestInfo,
+            std::make_unique<TEvVolume::TEvWaitReadyResponse>(
+                StorageAllocationResult));
+        return true;
+    };
+
+    EraseIf(PendingRequests, replyToWaitReadyRequest);
+}
+
+void TVolumeActor::ClearStorageAllocationResultForLocalDisk()
+{
+    if (!State) {
+        return;
+    }
+
+    const auto& config = State->GetMeta().GetVolumeConfig();
+    const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+        config.GetStorageMediaKind());
+    if (!IsLocalDiskAllocationRetry(
+            *Config,
+            StorageAllocationResult,
+            mediaKind))
+    {
+        return;
+    }
+
+    const ui64 expectedSize = GetBlocks(config) * config.GetBlockSize();
+    if (expectedSize <= GetSize(State->GetMeta().GetDevices())) {
+        StorageAllocationResult.Clear();
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleAllocateDiskError(
@@ -372,9 +433,7 @@ void TVolumeActor::HandleAllocateDiskError(
     const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
         GetNewestConfig().GetStorageMediaKind());
     const bool localDiskAllocationRetry =
-        Config->GetLocalDiskAsyncDeallocationEnabled() &&
-        error.GetCode() == E_TRY_AGAIN &&
-        IsDiskRegistryLocalMediaKind(mediaKind);
+        IsLocalDiskAllocationRetry(*Config, error, mediaKind);
 
     if (error.GetCode() != E_BS_RESOURCE_EXHAUSTED && !localDiskAllocationRetry)
     {
@@ -392,6 +451,14 @@ void TVolumeActor::HandleAllocateDiskError(
         FormatError(error).c_str());
 
     StorageAllocationResult = std::move(error);
+
+    if (localDiskAllocationRetry) {
+        // OnStarted() is not reached while the volume has no devices, so
+        // requests queued before this allocation attempt must be released
+        // here with E_TRY_AGAIN instead of waiting for allocation to succeed.
+        ReplyToPendingWaitReadyRequests(ctx);
+        ScheduleAllocateDiskIfNeeded(ctx);
+    }
 }
 
 void TVolumeActor::HandleAllocateDiskResponse(
@@ -690,6 +757,10 @@ void TVolumeActor::CompleteUpdateDevices(
     const TActorContext& ctx,
     TTxVolume::TUpdateDevices& args)
 {
+    // The allocated devices are committed to the volume metadata now. We can
+    // safely clear the storage allocation result.
+    ClearStorageAllocationResultForLocalDisk();
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
