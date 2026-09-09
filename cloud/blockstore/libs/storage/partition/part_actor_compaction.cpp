@@ -1382,7 +1382,7 @@ public:
             return info;
         }
 
-        return TriggerMixedBlockCountCompactionIfNeeded();
+        return TriggerMixedBlocksCountCompactionIfNeeded();
     }
 
 private:
@@ -1556,7 +1556,7 @@ private:
     }
 
     [[nodiscard]] std::optional<TTriggerInfo>
-    TriggerMixedBlockCountCompactionIfNeeded() const
+    TriggerMixedBlocksCountCompactionIfNeeded() const
     {
         const auto mediaKind = State.GetConfig().GetStorageMediaKind();
         const bool isSSD =
@@ -1598,9 +1598,9 @@ private:
         return TTriggerInfo(
             rangeMixedBytesCount,
             threshold,
-            0,
-            0,
-            TEvPartitionPrivate::MixedBlockCountCompaction,
+            0 /* perDiskCount */,
+            0 /* perDiskThreshold */,
+            TEvPartitionPrivate::MixedBlocksCountCompaction,
             ECompactionTriggerKind::ByMixedBlockCount,
             true /* throttlingAllowed */,
             true /* fullCompaction */);
@@ -1860,9 +1860,10 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     if (info->FullCompaction) {
         request->CompactionOptions.set(ToBit(ECompactionOption::Full));
     }
-    if (info->Mode == TEvPartitionPrivate::MixedBlockCountCompaction) {
+    if (info->Mode == TEvPartitionPrivate::MixedBlocksCountCompaction) {
         // Force writes to the merged channel to avoid a compaction livelock.
-        request->CompactionOptions.set(ToBit(ECompactionOption::ForceToMerged));
+        request->CompactionOptions.set(
+            ToBit(ECompactionOption::ForceMixedBlocksCountCompaction));
     }
 
     auto maxCompactionExecTimePerSecond =
@@ -2008,7 +2009,7 @@ void TPartitionActor::HandleCompaction(
             const auto& top = cm.GetTopByGarbageIgnoringZeroed();
             tops.push_back({top.BlockIndex, top.Stat});
         }
-    } else if (msg->Mode == TEvPartitionPrivate::MixedBlockCountCompaction) {
+    } else if (msg->Mode == TEvPartitionPrivate::MixedBlocksCountCompaction) {
         if (batchCompactionEnabled &&
             Config->GetMixedBlocksCountCompactionRangeCountPerRun() > 1)
         {
@@ -2319,8 +2320,8 @@ void TPartitionActor::CompleteCompaction(
     TVector<TRangeCompactionInfo> rangeCompactionInfos;
     TVector<TCompactionActor::TRequest> requests;
 
-    const bool forceToMerged =
-        args.CompactionOptions.test(ToBit(ECompactionOption::ForceToMerged));
+    const bool forceToMerged = args.CompactionOptions.test(
+        ToBit(ECompactionOption::ForceMixedBlocksCountCompaction));
     const auto mergedBlobThreshold =
         forceToMerged || PartitionConfig.GetStorageMediaKind() ==
                              NCloud::NProto::STORAGE_MEDIA_SSD
