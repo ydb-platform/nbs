@@ -12,6 +12,7 @@ enum class ECompactionOption: size_t
 {
     Full,            // non-incremental compaction
     Forced,          // compaction initiated externally
+    ForceMixedBlocksCountCompaction,   // write result blobs to merged channels
     MaxFieldNumber,
 };
 
