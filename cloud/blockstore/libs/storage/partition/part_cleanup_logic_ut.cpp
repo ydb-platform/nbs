@@ -60,7 +60,9 @@ TFreeSpaceConfig DefaultFreeSpaceConfig()
     return {0.25, 0.15};
 }
 
-TPartitionState MakeState(size_t blockCount = 2048)
+TPartitionState MakeState(
+    size_t blockCount = 2048,
+    bool useBlobChannelDataKindForCounters = true)
 {
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
@@ -85,7 +87,7 @@ TPartitionState MakeState(size_t blockCount = 2048)
         TTestExecutor::TabletId,
         std::nullopt,  // mixedBlocksFilterConfig
         false,         // checkpointAwareCleanupEnabled
-        true           // useBlobChannelDataKindForCounters
+        useBlobChannelDataKindForCounters
     );
 }
 
@@ -164,8 +166,15 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
     state.GetCleanupQueue().Add({setup.MixedBlobId, deletionCommitId, {}});
     state.GetCleanupQueue().Add({setup.MergedBlobId, deletionCommitId, {}});
 
-    state.IncrementMergedBlocksCount(7);
-    state.IncrementMergedBlobsCount(2);
+    if (state.ShouldUseBlobChannelDataKindForCounters()) {
+        state.IncrementMergedBlocksCount(7);
+        state.IncrementMergedBlobsCount(2);
+    } else {
+        state.IncrementMixedBlocksCount(3);
+        state.IncrementMixedBlobsCount(1);
+        state.IncrementMergedBlocksCount(4);
+        state.IncrementMergedBlobsCount(1);
+    }
     state.IncrementMixedIndexBlocksCount(3);
     state.IncrementMixedIndexBlobsCount(1);
     state.IncrementMergedIndexBlocksCount(4);
@@ -606,6 +615,47 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
 
 Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
 {
+    Y_UNIT_TEST(ShouldDecrementIndexCountersOnlyWhenEnabled)
+    {
+        for (bool useChannelCounters: {false, true}) {
+            auto state = MakeState(2048, useChannelCounters);
+            TTestExecutor executor;
+            TTestEnv env;
+            executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+            const ui64 cleanupCommitId = MakeCommitId(0, 100);
+            SetupMixedAndMergedBlobs(executor, state, MakeCommitId(0, 50));
+            auto args = MakeCleanupArgs(
+                state.GetCleanupQueue().GetItems(cleanupCommitId),
+                cleanupCommitId,
+                false,   // useRecreatedBlobMeta
+                false,   // verifyRecreatedBlobMetasOnCleanup
+                false,   // checkpointAware
+                InvalidCommitId,
+                InvalidCommitId);
+
+            RunPrepareAndExecute(executor, env, state, args);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 0 : 1,
+                state.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 0 : 3,
+                state.GetMixedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 0 : 1,
+                state.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 0 : 4,
+                state.GetMergedIndexBlocksCount());
+        }
+    }
+
     Y_UNIT_TEST(ShouldCleanupMixedAndMergedBlobsWithoutVerify)
     {
         auto state = MakeState();

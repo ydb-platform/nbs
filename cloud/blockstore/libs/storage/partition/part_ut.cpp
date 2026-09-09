@@ -1339,9 +1339,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
-        UNIT_ASSERT(stats.GetMixedIndexBlobsCount());
-        UNIT_ASSERT_VALUES_EQUAL(blockCount - 1, stats.GetMixedIndexBlocksCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+        UNIT_ASSERT(stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(blockCount - 1, stats.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(blockCount, stats.GetUsedBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1389,9 +1389,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
-        UNIT_ASSERT(stats.GetMixedIndexBlobsCount());
-        UNIT_ASSERT_VALUES_EQUAL(999, stats.GetMixedIndexBlocksCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+        UNIT_ASSERT(stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(999, stats.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(1000, stats.GetUsedBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1458,7 +1458,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
-        UNIT_ASSERT(stats.GetMixedIndexBlobsCount());
+        UNIT_ASSERT(stats.GetMixedBlobsCount());
 
         for (ui32 i = 0; i < maxBlobRangeSize; ++i) {
             const auto block =
@@ -1872,8 +1872,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(6, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
 
             auto partitionInfo = partition.GetPartitionInfo();
             auto value =
@@ -1897,8 +1897,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
 
             UNIT_ASSERT(stats.GetSysWriteCounters().GetExecTime() != 0);
         }
@@ -1916,7 +1916,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldFillBothBlobCounterFamiliesByIndexKindByDefault)
+    Y_UNIT_TEST(ShouldKeepIndexCountersEmptyByDefault)
     {
         auto runtime = PrepareTestActorRuntime();
 
@@ -1938,10 +1938,67 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
 
-        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedIndexBlocksCount());
-        UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedIndexBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+    }
+
+    Y_UNIT_TEST(ShouldKeepIndexCountersEmptyWhenDisabled)
+    {
+        auto config = DefaultConfig();
+        config.SetUseBlobChannelDataKindForCounters(false);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        auto assertIndexCountersEmpty = [&]
+        {
+            const auto stats = partition.StatPartition()->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+        };
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+        partition.ZeroBlocks(4);
+        partition.Flush();
+        // Flush the remaining fresh zero block as a deletion marker.
+        partition.Flush();
+        partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024), 1);
+        assertIndexCountersEmpty();
+
+        const auto stats = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetMergedBlocksCount());
+
+        partition.Compaction();
+        partition.Cleanup();
+        assertIndexCountersEmpty();
+
+        partition.RebuildMetadata(NProto::BLOCK_COUNT, 100);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvPartitionPrivate::EvMetadataRebuildCompleted);
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                        ->Record.GetProgress()
+                        .GetIsCompleted());
+        assertIndexCountersEmpty();
+
+        partition.RebootTablet();
+        assertIndexCountersEmpty();
+        const auto finalStats = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1027,
+            finalStats.GetMixedBlocksCount() +
+                finalStats.GetMergedBlocksCount());
     }
 
     Y_UNIT_TEST(ShouldClassifyBlobCountersByChannelAndIndexKindWhenEnabled)
@@ -2032,8 +2089,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(6, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
 
             auto partitionInfo = partition.GetPartitionInfo();
             auto value =
@@ -2053,8 +2110,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
 
             UNIT_ASSERT(stats.GetSysWriteCounters().GetExecTime() != 0);
         }
@@ -2091,8 +2148,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 MaxBlocksCount - 1,
                 stats.GetFreshBlocksCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
 
         partition.WriteBlocks(MaxBlocksCount - 1, 0);
@@ -2104,8 +2161,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(MaxBlocksCount, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(MaxBlocksCount, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
     }
 
@@ -2129,8 +2186,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 MaxBlocksCount - 1,
                 stats.GetFreshBlocksCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
 
         partition.WriteBlocks(MaxBlocksCount - 1, 0);
@@ -2142,8 +2199,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(MaxBlocksCount, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(MaxBlocksCount, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
     }
 
@@ -2174,8 +2231,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 stats.GetFreshBlocksCount()
             );
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
 
         partition.WriteBlocks(0, 0);
@@ -2190,9 +2247,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 MaxBlocksCount - 1,
-                stats.GetMixedIndexBlocksCount()
+                stats.GetMixedBlocksCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
     }
 
@@ -2223,8 +2280,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 stats.GetFreshBlocksCount()
             );
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount - 1));
@@ -2239,9 +2296,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 MaxBlocksCount - 1,
-                stats.GetMixedIndexBlocksCount()
+                stats.GetMixedBlocksCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
     }
 
@@ -2383,8 +2440,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
     }
 
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshBlobsFromPreviousGeneration)
@@ -2538,8 +2595,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 MaxBlocksCount - 1,
                 stats.GetFreshBlocksCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
 
         constexpr ui32 extraBlocks = 4;
@@ -2555,9 +2612,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(extraBlocks, stats.GetFreshBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 MaxBlocksCount,
-                stats.GetMixedIndexBlocksCount()
+                stats.GetMixedBlocksCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
     }
 
@@ -2582,8 +2639,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 stats.GetFreshBlocksCount()
             );
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
 
         constexpr ui32 extraBlocks = 4;
@@ -2600,9 +2657,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 MaxBlocksCount + extraBlocks,
-                stats.GetMixedIndexBlocksCount()
+                stats.GetMixedBlocksCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
         }
     }
 
@@ -2817,9 +2874,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold - 1,
-                stats.GetMixedIndexBlobsCount()
+                stats.GetMixedBlobsCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         partition.WriteBlocks(0, 0);
@@ -2833,9 +2890,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold,
-                stats.GetMixedIndexBlobsCount()
+                stats.GetMixedBlobsCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
 
         partition.SendToPipe(
@@ -2887,8 +2944,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold - 1,
-                stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+                stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold - 1,
@@ -2906,8 +2963,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold + 1,
-                stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+                stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold + 1,
@@ -2956,9 +3013,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold,
-                stats.GetMixedIndexBlobsCount()
+                stats.GetMixedBlobsCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(10));
@@ -2971,9 +3028,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold,
-                stats.GetMixedIndexBlobsCount()
+                stats.GetMixedBlobsCount()
             );
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -3054,7 +3111,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold + 1,
-                stats.GetMergedIndexBlobsCount()
+                stats.GetMergedBlobsCount()
             );
             delay = TDuration::MilliSeconds(stats.GetCompactionDelay());
             UNIT_ASSERT_VALUES_UNEQUAL(0, delay.MicroSeconds());
@@ -3070,7 +3127,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold + 2,
-                stats.GetMergedIndexBlobsCount()
+                stats.GetMergedBlobsCount()
             );
         }
 
@@ -3086,7 +3143,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT(stats.GetMergedIndexBlobsCount() >= cleanupThreshold);
+            UNIT_ASSERT(stats.GetMergedBlobsCount() >= cleanupThreshold);
             delay = TDuration::MilliSeconds(stats.GetCleanupDelay());
             UNIT_ASSERT_VALUES_UNEQUAL(0, delay.MicroSeconds());
         }
@@ -3099,7 +3156,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -3145,7 +3202,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold + 1,
-                stats.GetMergedIndexBlobsCount()
+                stats.GetMergedBlobsCount()
             );
         }
 
@@ -3158,7 +3215,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -3181,7 +3238,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(512, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(512, stats.GetMixedBlobsCount());
         }
 
         ui64 compactionByBlobCount = -1;
@@ -4190,8 +4247,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 1);
@@ -4199,8 +4256,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, MaxBlocksCount), 2);
@@ -4208,8 +4265,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
 
         partition.Compaction();
@@ -4217,8 +4274,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
         }
 
         partition.Cleanup();
@@ -4226,8 +4283,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -4268,7 +4325,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedSize + 1,
-                stats.GetMergedIndexBlobsCount());
+                stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedSize * MaxBlocksCount * DefaultBlockSize,
                 stats.GetCleanupQueueBytes());
@@ -4348,7 +4405,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedCleanupQueueSize + 1,
-                stats.GetMergedIndexBlobsCount());
+                stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedCleanupQueueSize * MaxBlocksCount * DefaultBlockSize,
                 stats.GetCleanupQueueBytes());
@@ -5037,8 +5094,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         response = partition.StatPartition();
         auto newStats = response->Record.GetStats();
         UNIT_ASSERT_VALUES_EQUAL(
-            oldStats.GetMixedIndexBlobsCount() + oldStats.GetMergedIndexBlobsCount() + rangesCount,
-            newStats.GetMixedIndexBlobsCount() + newStats.GetMergedIndexBlobsCount()
+            oldStats.GetMixedBlobsCount() + oldStats.GetMergedBlobsCount() + rangesCount,
+            newStats.GetMixedBlobsCount() + newStats.GetMergedBlobsCount()
         );
     }
 
@@ -5088,8 +5145,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         response = partition.StatPartition();
         auto newStats = response->Record.GetStats();
         UNIT_ASSERT_VALUES_EQUAL(
-            oldStats.GetMixedIndexBlobsCount() + oldStats.GetMergedIndexBlobsCount() + rangesCount - 1,
-            newStats.GetMixedIndexBlobsCount() + newStats.GetMergedIndexBlobsCount()
+            oldStats.GetMixedBlobsCount() + oldStats.GetMergedBlobsCount() + rangesCount - 1,
+            newStats.GetMixedBlobsCount() + newStats.GetMergedBlobsCount()
         );
     }
 
@@ -5129,7 +5186,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
     }
 
     Y_UNIT_TEST(ShouldMakeUnderlyingBlobsEligibleForCleanupAfterCompaction)
@@ -5161,7 +5218,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -5198,7 +5255,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
     }
 
@@ -5226,7 +5283,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
 
         for (ui32 zero_step = 0; zero_step < 2; ++zero_step) {
@@ -5252,7 +5309,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
     }
 
@@ -5280,7 +5337,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
 
         for (ui32 write_step = 0; write_step < 2; ++write_step) {
@@ -5304,8 +5361,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -5329,7 +5386,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
     }
 
@@ -5900,8 +5957,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
         }
 
         partition.Compaction();
@@ -5911,8 +5968,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
 
         partition.ZeroBlocks(TBlockRange32::WithLength(0, 1001));
@@ -5920,8 +5977,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
         }
 
         partition.Compaction();
@@ -5931,8 +5988,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -5958,10 +6015,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlocksCount());
         }
 
         partition.Compaction();
@@ -5971,10 +6028,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlocksCount());
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -6091,10 +6148,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1040, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1040, stats.GetMergedBlocksCount());
         }
 
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -6110,10 +6167,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(blobs, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(blocks, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(blobs, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(blocks, stats.GetMergedBlocksCount());
         }
 
         for (ui32 i = 0; i <= 4; ++i) {
@@ -6310,10 +6367,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(31, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(31, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
         }
 
         partition.Compaction();
@@ -6323,10 +6380,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(21, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(10, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(21, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(10, stats.GetMergedBlocksCount());
         }
 
         for (ui32 i = 11; i <= 22; ++i) {
@@ -6369,10 +6426,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(23, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(23, stats.GetMergedBlocksCount());
         }
 
         partition.Compaction();
@@ -6382,10 +6439,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(12, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(12, stats.GetMergedBlocksCount());
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -7673,7 +7730,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             // Other blobs should be collected.
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -8098,8 +8155,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 auto response = partition.StatPartition();
                 const auto& stats = response->Record.GetStats();
                 UNIT_ASSERT_VALUES_EQUAL(255, stats.GetFreshBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
             }
 
             partition.WriteBlocks(TBlockRange32::WithLength(0, 256));
@@ -8108,8 +8165,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 auto response = partition.StatPartition();
                 const auto& stats = response->Record.GetStats();
                 UNIT_ASSERT_VALUES_EQUAL(255, stats.GetFreshBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(256, stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(256, stats.GetMergedBlocksCount());
             }
 
             partition.ZeroBlocks(TBlockRange32::WithLength(0, 255));
@@ -8118,8 +8175,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 auto response = partition.StatPartition();
                 const auto& stats = response->Record.GetStats();
                 UNIT_ASSERT_VALUES_EQUAL(255, stats.GetFreshBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(256, stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(256, stats.GetMergedBlocksCount());
             }
 
             partition.ZeroBlocks(TBlockRange32::WithLength(0, 256));
@@ -8128,8 +8185,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 auto response = partition.StatPartition();
                 const auto& stats = response->Record.GetStats();
                 UNIT_ASSERT_VALUES_EQUAL(255, stats.GetFreshBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(256, stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(256, stats.GetMergedBlocksCount());
             }
         }
 
@@ -8153,8 +8210,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 auto response = partition.StatPartition();
                 const auto& stats = response->Record.GetStats();
                 UNIT_ASSERT_VALUES_EQUAL(31, stats.GetFreshBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
             }
 
             partition.WriteBlocks(TBlockRange32::WithLength(0, 32));
@@ -8163,8 +8220,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 auto response = partition.StatPartition();
                 const auto& stats = response->Record.GetStats();
                 UNIT_ASSERT_VALUES_EQUAL(31, stats.GetFreshBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(32, stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(32, stats.GetMergedBlocksCount());
             }
 
             partition.ZeroBlocks(TBlockRange32::WithLength(0, 31));
@@ -8173,8 +8230,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 auto response = partition.StatPartition();
                 const auto& stats = response->Record.GetStats();
                 UNIT_ASSERT_VALUES_EQUAL(31, stats.GetFreshBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(32, stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(32, stats.GetMergedBlocksCount());
             }
 
             partition.ZeroBlocks(TBlockRange32::WithLength(0, 32));
@@ -8183,8 +8240,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 auto response = partition.StatPartition();
                 const auto& stats = response->Record.GetStats();
                 UNIT_ASSERT_VALUES_EQUAL(31, stats.GetFreshBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-                UNIT_ASSERT_VALUES_EQUAL(32, stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(32, stats.GetMergedBlocksCount());
             }
         }
     }
@@ -8205,11 +8262,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
 
-            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetMergedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
 
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
@@ -8223,11 +8280,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
 
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
 
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
@@ -8244,11 +8301,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
 
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
 
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
 
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
@@ -8262,11 +8319,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
 
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
 
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
@@ -9516,22 +9573,30 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldRebuildBlockCountSensors)
     {
-        constexpr ui32 blockCount = 1024 * 1024;
-        auto runtime = PrepareTestActorRuntime(DefaultConfig(), blockCount);
+        for (bool useChannelCounters: {false, true}) {
+            constexpr ui32 blockCount = 1024 * 1024;
+            auto config = DefaultConfig();
+            config.SetUseBlobChannelDataKindForCounters(useChannelCounters);
+            auto runtime = PrepareTestActorRuntime(config, blockCount);
 
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
 
-        partition.WriteBlocks(
-            TBlockRange32::MakeClosedInterval(0, 1024 * 10),
-            1);
+            partition.WriteBlocks(
+                TBlockRange32::MakeClosedInterval(0, 1024 * 10),
+                1);
 
-        auto response = partition.RebuildMetadata(NProto::ERebuildMetadataType::BLOCK_COUNT, 100);
+            partition.RebuildMetadata(NProto::BLOCK_COUNT, 100);
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
 
-        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
-
-        auto stats = partition.StatPartition()->Record.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(1024 * 11 + 1, stats.GetMergedIndexBlocksCount());
+            const auto stats = partition.StatPartition()->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 1024 * 11 + 1 : 0,
+                stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1024 * 11 + 1,
+                stats.GetMergedBlocksCount());
+        }
     }
 
     Y_UNIT_TEST(ShouldFailGetMetadataRebuildStatusIfNoOperationRunning)
@@ -9655,7 +9720,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         {
             auto stats = partition.StatPartition()->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
         }
 
         {
@@ -9675,7 +9740,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         {
             auto stats = partition.StatPartition()->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
 
         auto progress = partition.GetRebuildMetadataStatus();
@@ -9970,7 +10035,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
         }
 
         // blockRange4 and any other 2 ranges should be compacted
@@ -9981,7 +10046,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
         }
     }
 
@@ -10064,7 +10129,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
 
         UNIT_ASSERT(evPatchObserved);
@@ -10157,7 +10222,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetBlobPatchingEnabled(true);
-        DoTestIncrementalCompaction(std::move(config), NProto::STORAGE_MEDIA_SSD, true);
+        DoTestIncrementalCompaction(config, NProto::STORAGE_MEDIA_SSD, true);
         DoTestIncrementalCompaction(std::move(config), NProto::STORAGE_MEDIA_HYBRID, true);
     }
 
@@ -10201,7 +10266,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
 
         UNIT_ASSERT(evPatchObserved);
@@ -10257,7 +10322,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
 
         UNIT_ASSERT(evPatchObserved);
@@ -10396,10 +10461,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto stats = partition.StatPartition()->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 mixedBlobsCount,
-                stats.GetMixedIndexBlobsCount());
+                stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 mergedBlobsCount,
-                stats.GetMergedIndexBlobsCount());
+                stats.GetMergedBlobsCount());
         }
 
         ui32 completionStatus = -1;
@@ -10496,10 +10561,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto stats = partition.StatPartition()->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 mixedBlobsCount,
-                stats.GetMixedIndexBlobsCount());
+                stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 mergedBlobsCount,
-                stats.GetMergedIndexBlobsCount());
+                stats.GetMergedBlobsCount());
         }
 
         ui32 completionStatus = -1;
@@ -10736,7 +10801,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         {
             const auto stats = partition.StatPartition()->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
         }
 
         {
@@ -10756,7 +10821,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         {
             const auto stats = partition.StatPartition()->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
 
         const auto progress = partition.GetScanDiskStatus();
@@ -10968,7 +11033,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
         }
@@ -11591,7 +11656,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(blobsCountAfterCompaction,
-                stats.GetMergedIndexBlobsCount());
+                stats.GetMergedBlobsCount());
         }
 
         partition.SendToPipe(
@@ -12247,8 +12312,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // checking that mixed batching has actually worked
         {
             const auto stats = partition.StatPartition()->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(31, stats.GetMixedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(31, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
         }
@@ -12758,7 +12823,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         TAutoPtr<IEventHandle> compactionRequest;
@@ -12798,7 +12863,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(8, stats.GetMergedBlobsCount());
         }
 
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
@@ -12836,7 +12901,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
         }
     }
 
@@ -12855,7 +12920,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         TVector<size_t> rangeSizes;
@@ -12896,7 +12961,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(9, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(9, stats.GetMergedBlobsCount());
         }
 
         partition.SendCompactRangeRequest(0, 0);
@@ -12940,7 +13005,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
         }
     }
 
@@ -12959,7 +13024,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         const auto blockRange1 = TBlockRange32::WithLength(3 * 1024, 1024);
@@ -13002,8 +13067,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto response = partition.StatPartition();
         const auto& stats = response->Record.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(blockCount, stats.GetFreshBlocksCount());
 
         // checking that drain-related counters are in a consistent state
@@ -13038,11 +13103,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold - 1,
-                stats.GetMixedIndexBlobsCount());
+                stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold - 1,
-                stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         partition.WriteBlocks(0, 0);
@@ -13058,11 +13123,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold + 1,
-                stats.GetMixedIndexBlobsCount());
+                stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold * 2,
-                stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         partition.Cleanup();
@@ -13070,11 +13135,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold,
-                stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
     }
 
@@ -13100,8 +13165,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         partition.WriteBlocks(0, 0);
@@ -13112,8 +13177,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         partition.WriteBlocks(TBlockRange32::WithLength(3, 5), 3);
@@ -13125,8 +13190,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
 
         partition.Cleanup();
@@ -13134,8 +13199,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -13164,8 +13229,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
         }
 
         // data should be moved to a mixed channel as a result of compaction,
@@ -13176,8 +13241,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
         }
 
         partition.Cleanup();
@@ -13186,8 +13251,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         for (int i = 0; i < 4; ++i) {
@@ -13221,8 +13286,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
 
         // data should be moved to a mixed channel as a result of compaction,
@@ -13235,8 +13300,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         const auto checkValue = [&](std::vector<std::tuple<int, int, char>> values)
@@ -13265,8 +13330,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         checkValue({{0, 2, '4'}, {2, 2, '5'}, {5, 5, '1'}, {12, 3, '6'}, {27, 1, '7'}, {35, 20, '3'}});
@@ -13303,9 +13368,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(85, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(85, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
         }
 
         partition.Compaction();
@@ -13315,9 +13380,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(85, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(85, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
         }
 
         for (ui32 i = 12; i < 45; ++i) {
@@ -13370,10 +13435,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(10, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(10, stats.GetMergedBlocksCount());
         }
 
         {
@@ -13382,10 +13447,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             const auto statResponse = partition.StatPartition();
             const auto& stats = statResponse->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(22, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(22, stats.GetMergedBlocksCount());
         }
 
         {
@@ -13393,10 +13458,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             const auto statResponse = partition.StatPartition();
             const auto& stats = statResponse->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(12, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(12, stats.GetMergedBlocksCount());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 GetBlockContent(3),
@@ -13429,10 +13494,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(22, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(22, stats.GetMergedBlocksCount());
         }
 
         {
@@ -13442,10 +13507,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
             const auto statResponse = partition.StatPartition();
             const auto& stats = statResponse->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(12, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(12, stats.GetMergedBlocksCount());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 GetBlockContent(32),
@@ -13496,10 +13561,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(512, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetMergedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(512, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
     }
 
@@ -13731,8 +13796,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold,
-                stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+                stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         dropCompaction = false;
@@ -13807,8 +13872,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionThreshold,
-                stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+                stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         dropCompaction = false;
@@ -14076,8 +14141,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
 
         TAutoPtr<IEventHandle> loadCompactionMapEvent;
@@ -14100,8 +14165,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
 
         {
@@ -14117,8 +14182,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(100, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         }
 
         {
@@ -14131,8 +14196,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(100, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
     }
 
@@ -14404,7 +14469,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
             UNIT_ASSERT_VALUES_EQUAL(4, stats.GetConfirmedBlobCount());
         }
@@ -14449,7 +14514,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
         }
@@ -15072,8 +15137,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         WriteBlocksWithBlockSize(
@@ -15110,8 +15175,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
         }
 
         partition.Compaction();
@@ -15119,8 +15184,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 3,
                 stats.GetBlobsProcessedDuringCompaction());
@@ -15153,8 +15218,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMergedBlobsCount());
         }
 
         partition.Compaction();
@@ -15162,8 +15227,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 5,
                 stats.GetBlobsProcessedDuringCompaction());
@@ -15195,8 +15260,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
     }
 
@@ -15242,8 +15307,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 3,
                 stats.GetBlobsProcessedDuringCompaction());
@@ -15573,8 +15638,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         for (size_t i = 1019; i < 1024; ++i) {
@@ -15586,8 +15651,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
         }
 
         partition.Compaction();
@@ -15595,8 +15660,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
                 stats.GetBlobsProcessedDuringCompaction());
@@ -15616,8 +15681,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
 
         for (size_t i = 1019; i < 1030; ++i) {
@@ -15629,8 +15694,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
         }
 
         partition.Compaction();
@@ -15638,8 +15703,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 3,
                 stats.GetBlobsProcessedDuringCompaction());
@@ -15661,8 +15726,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 4,
                 stats.GetBlobsProcessedDuringCompaction());
@@ -15682,8 +15747,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
     }
 
@@ -15980,7 +16045,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
         }
 
         for (ui32 i = 1022; i < 1024; ++i) {
@@ -15996,7 +16061,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetMixedBlobsCount());
         }
 
         partition.Compaction();
@@ -16444,7 +16509,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             const ui64 blockCount =
-                stats.GetMixedIndexBlocksCount() + stats.GetMergedIndexBlocksCount();
+                stats.GetMixedBlocksCount() + stats.GetMergedBlocksCount();
             UNIT_ASSERT_C(
                 stats.GetUsedBlocksCount() > blockCount,
                 "UsedBlocksCount=" << stats.GetUsedBlocksCount()
@@ -16468,8 +16533,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(128, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(128, stats.GetMergedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(512, stats.GetUsedBlocksCount());
         }
 
@@ -16488,8 +16553,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(128 + 768, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(128 + 768, stats.GetMergedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(512 + 512, stats.GetUsedBlocksCount());
         }
 
@@ -16501,8 +16566,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(128 + 512, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(128 + 512, stats.GetMergedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(512 + 512, stats.GetUsedBlocksCount());
         }
 
@@ -16512,8 +16577,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(128 + 512, stats.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(128 + 512, stats.GetMergedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(128 + 512, stats.GetUsedBlocksCount());
         }
     }

@@ -1682,8 +1682,9 @@ message TStorageServiceConfig
     optional bool CheckpointAwareCleanupEnabled = 526;
 
     // If true, the legacy mixed/merged blob and block counters are classified
-    // by the data kind of the channel where a blob is stored. If false, both
-    // the legacy and index counter families are classified by index kind.
+    // by the data kind of the channel where a blob is stored, and index counters
+    // are maintained separately by index kind. If false, legacy counters are
+    // classified by index kind and index counters are cleared on partition load.
     optional bool UseBlobChannelDataKindForCounters = 527;
 
     // If true, QueryAvailableStorage includes suspended devices that are

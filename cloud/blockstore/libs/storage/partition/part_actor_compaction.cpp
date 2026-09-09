@@ -1390,8 +1390,7 @@ private:
     [[nodiscard]] std::optional<TTriggerInfo>
     TriggerRangeCompactionIfNeeded() const
     {
-        const auto blobCount =
-            State.GetMixedIndexBlobsCount() + State.GetMergedIndexBlobsCount();
+        const auto blobCount = State.GetTotalBlobsCount();
         const bool diskBlobCountOverThreshold =
             State.GetMaxBlobsPerDisk() &&
             blobCount >

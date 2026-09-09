@@ -428,8 +428,12 @@ void TPartitionActor::ExecuteMetadataRebuildBlockCount(
                              args.RebuildState.MergedChannelBlocks;
 
         if (!State->ShouldUseBlobChannelDataKindForCounters()) {
-            mixedChannelBlocks = mixedIndexBlocks;
-            mergedChannelBlocks = mergedIndexBlocks;
+            mixedChannelBlocks = State->GetMixedBlocksCount() -
+                args.RebuildState.InitialMixedChannelBlocks +
+                args.RebuildState.MixedIndexBlocks;
+            mergedChannelBlocks = State->GetMergedBlocksCount() -
+                args.RebuildState.InitialMergedChannelBlocks +
+                args.RebuildState.MergedIndexBlocks;
         }
 
         State->UpdateBlocksCountersAfterMetadataRebuild(

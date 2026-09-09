@@ -167,11 +167,11 @@ struct TMetadataRebuildState
         Processed = 0;
     }
 
-    void StartRebuildBlockCount(ui64 totalMixedBlobs, ui64 totalMergedBlobs)
+    void StartRebuildBlockCount(ui64 totalBlobs)
     {
         Started = true;
         MetadataType = EMetadataRebuildType::BlockCount;
-        Total = totalMixedBlobs + totalMergedBlobs;
+        Total = totalBlobs;
         Processed = 0;
     }
 
@@ -224,13 +224,13 @@ struct TScanDiskState
         return EverStarted;
     }
 
-    void Start(ui64 totalMixedBlobs, ui64 totalMergedBlobs)
+    void Start(ui64 totalBlobs)
     {
         Started = true;
         EverStarted = true;
         BrokenBlobs.clear();
         ProcessedBlobs = 0;
-        TotalBlobs = totalMixedBlobs + totalMergedBlobs;
+        TotalBlobs = totalBlobs;
         BlobsToBeProcessed = 0;
     }
 
@@ -336,7 +336,7 @@ public:
         ui64 tabletId,
         const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
         bool checkpointAwareCleanupEnabled,
-        bool useBlobChannelDataKindForCounters = false);
+        bool useBlobChannelDataKindForCounters);
 
 private:
     bool LoadStateFinished = false;
@@ -345,6 +345,13 @@ public:
     bool ShouldUseBlobChannelDataKindForCounters() const
     {
         return UseBlobChannelDataKindForCounters;
+    }
+
+    ui64 GetTotalBlobsCount() const
+    {
+        return UseBlobChannelDataKindForCounters
+            ? GetMixedIndexBlobsCount() + GetMergedIndexBlobsCount()
+            : GetMixedBlobsCount() + GetMergedBlobsCount();
     }
 
     void FinishLoadState()
@@ -870,8 +877,7 @@ public:
 
     void StartRebuildBlockCount()
     {
-        RebuildState.StartRebuildBlockCount(
-            GetMixedIndexBlobsCount(), GetMergedIndexBlobsCount());
+        RebuildState.StartRebuildBlockCount(GetTotalBlobsCount());
     }
 
     TMedatadataRebuildProgress GetMetadataRebuildProgress() const
@@ -895,8 +901,10 @@ public:
         ui64 mixedChannel,
         ui64 mergedChannel)
     {
-        AccessStats().SetMixedIndexBlocksCount(mixedIndex);
-        AccessStats().SetMergedIndexBlocksCount(mergedIndex);
+        if (UseBlobChannelDataKindForCounters) {
+            AccessStats().SetMixedIndexBlocksCount(mixedIndex);
+            AccessStats().SetMergedIndexBlocksCount(mergedIndex);
+        }
         AccessStats().SetMixedBlocksCount(mixedChannel);
         AccessStats().SetMergedBlocksCount(mergedChannel);
     }
@@ -921,9 +929,7 @@ public:
 
     void StartScanDisk()
     {
-        ScanDiskState.Start(
-            GetMixedIndexBlobsCount(),
-            GetMergedIndexBlobsCount());
+        ScanDiskState.Start(GetTotalBlobsCount());
     }
 
     TScanDiskProgress GetScanDiskProgress() const

@@ -307,18 +307,19 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                         : (hasMixedChannel ? test.ExpectedChannelWithMixed
                                            : test.ExpectedChannelWithoutMixed);
 
-                    const auto context =
-                        TStringBuilder()
-                        << test.Name << ", hasMixedChannel=" << hasMixedChannel
+                    const auto context = TStringBuilder()
+                        << test.Name
+                        << ", hasMixedChannel=" << hasMixedChannel
                         << ", useChannelCounters=" << useChannelCounters;
                     auto state = MakeState(
-                        std::move(meta),
+                        meta,
                         false,   // checkpointAwareCleanupEnabled
                         useChannelCounters);
                     AssertBlobAndBlockCounts(
                         state.GetStats(),
                         expectedChannel,
-                        test.ExpectedIndex,
+                        useChannelCounters ? test.ExpectedIndex
+                                           : TBlobAndBlockCounts{},
                         context);
                 }
             }
@@ -335,7 +336,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         stats.SetMergedBlocksCount(60);
 
         // With no mixed channels, enabling channel counters moves mixed counts
-        // to merged while retaining the original index counts across restarts.
+        // to merged. Disabling restores counts by index kind and clears index
+        // counters.
         for (bool useChannelCounters: {true, true, false, false, true, true}) {
             auto state = MakeState(
                 std::move(meta),
@@ -345,8 +347,83 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 state.GetStats(),
                 useChannelCounters ? TBlobAndBlockCounts{0, 5, 0, 80}
                                    : TBlobAndBlockCounts{2, 3, 20, 60},
-                {2, 3, 20, 60});
+                useChannelCounters ? TBlobAndBlockCounts{2, 3, 20, 60}
+                                   : TBlobAndBlockCounts{});
             meta = state.GetMeta();
+        }
+    }
+
+    Y_UNIT_TEST(ShouldResetIndexCountersWhenDisabledAfterRollback)
+    {
+        auto meta = DefaultConfig(1, DefaultBlockCount);
+        auto& stats = *meta.MutableStats();
+        stats.SetMixedBlobsCount(0);
+        stats.SetMergedBlobsCount(5);
+        stats.SetMixedBlocksCount(0);
+        stats.SetMergedBlocksCount(80);
+
+        stats.SetMixedIndexBlobsCount(2);
+        stats.SetMergedIndexBlobsCount(3);
+        stats.SetMixedIndexBlocksCount(20);
+        stats.SetMergedIndexBlocksCount(60);
+
+        for (ui64 restart = 0; restart < 3; ++restart) {
+            auto state = MakeState(std::move(meta));
+            AssertBlobAndBlockCounts(
+                state.GetStats(),
+                {2 + restart, 3, 20 + 10 * restart, 60},
+                {});
+
+            state.IncrementMixedBlobsCount(1);
+            state.IncrementMixedBlocksCount(10);
+            meta = state.GetMeta();
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUpdateIndexBlockCountersAfterRebuildOnlyWhenEnabled)
+    {
+        for (bool useChannelCounters: {false, true}) {
+            auto state = MakeState(
+                DefaultConfig(1, DefaultBlockCount),
+                false,   // checkpointAwareCleanupEnabled
+                useChannelCounters);
+            auto& stats = state.AccessStats();
+            stats.SetMixedIndexBlocksCount(7);
+            stats.SetMergedIndexBlocksCount(11);
+
+            state.UpdateBlocksCountersAfterMetadataRebuild(20, 60, 10, 70);
+
+            AssertBlobAndBlockCounts(
+                state.GetStats(),
+                {0, 0, 10, 70},
+                useChannelCounters ? TBlobAndBlockCounts{0, 0, 20, 60}
+                                   : TBlobAndBlockCounts{0, 0, 7, 11});
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseChannelBlobTotalsWhenIndexCountersAreDisabled)
+    {
+        for (bool useChannelCounters: {false, true}) {
+            auto state = MakeState(
+                DefaultConfig(1, DefaultBlockCount),
+                false,   // checkpointAwareCleanupEnabled
+                useChannelCounters);
+            auto& stats = state.AccessStats();
+            stats.SetMixedBlobsCount(1);
+            stats.SetMergedBlobsCount(7);
+            stats.SetMixedIndexBlobsCount(2);
+            stats.SetMergedIndexBlobsCount(3);
+
+            const ui64 expectedTotal = useChannelCounters ? 5 : 8;
+            UNIT_ASSERT_VALUES_EQUAL(expectedTotal, state.GetTotalBlobsCount());
+            state.StartRebuildBlockCount();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedTotal,
+                state.GetMetadataRebuildProgress().Total);
+            state.StartScanDisk();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedTotal,
+                state.GetScanDiskProgress().TotalBlobs);
         }
     }
 
@@ -373,9 +450,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
-            0,             // tabletId
-            std::nullopt,  // mixedBlocksFilterConfig
-            false          // checkpointAwareCleanupEnabled
+            0,              // tabletId
+            std::nullopt,   // mixedBlocksFilterConfig
+            false,          // checkpointAwareCleanupEnabled
+            false           // useBlobChannelDataKindForCounters
         );
 
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
@@ -446,9 +524,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
-            0,             // tabletId
-            std::nullopt,  // mixedBlocksFilterConfig
-            false          // checkpointAwareCleanupEnabled
+            0,              // tabletId
+            std::nullopt,   // mixedBlocksFilterConfig
+            false,          // checkpointAwareCleanupEnabled
+            false           // useBlobChannelDataKindForCounters
         );
 
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, 0, false);
@@ -487,7 +566,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             threadSafeState,
             0,             // tabletId
             std::nullopt,  // mixedBlocksFilterConfig
-            false          // checkpointAwareCleanupEnabled
+            false,          // checkpointAwareCleanupEnabled
+            false           // useBlobChannelDataKindForCounters
         );
 
         state.GetLogicalUsedBlocks().Set(0, 9);
@@ -574,9 +654,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
-            0,             // tabletId
-            std::nullopt,  // mixedBlocksFilterConfig
-            false          // checkpointAwareCleanupEnabled
+            0,              // tabletId
+            std::nullopt,   // mixedBlocksFilterConfig
+            false,          // checkpointAwareCleanupEnabled
+            false           // useBlobChannelDataKindForCounters
         );
 
         state.IncrementMergedBlocksCount(5_GB / DefaultBlockSize);
@@ -621,9 +702,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
-            0,             // tabletId
-            std::nullopt,  // mixedBlocksFilterConfig
-            false          // checkpointAwareCleanupEnabled
+            0,              // tabletId
+            std::nullopt,   // mixedBlocksFilterConfig
+            false,          // checkpointAwareCleanupEnabled
+            false           // useBlobChannelDataKindForCounters
         );
 
         TTestExecutor executor;
@@ -764,9 +846,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             10,                // maxBlobsPerRange,
             1,                 // compactionRangeCountPerRun
             threadSafeState,
-            0,             // tabletId
-            std::nullopt,  // mixedBlocksFilterConfig
-            false          // checkpointAwareCleanupEnabled
+            0,              // tabletId
+            std::nullopt,   // mixedBlocksFilterConfig
+            false,          // checkpointAwareCleanupEnabled
+            false           // useBlobChannelDataKindForCounters
         );
         UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
     }
@@ -801,9 +884,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
-            0,             // tabletId
-            std::nullopt,  // mixedBlocksFilterConfig
-            false          // checkpointAwareCleanupEnabled
+            0,              // tabletId
+            std::nullopt,   // mixedBlocksFilterConfig
+            false,          // checkpointAwareCleanupEnabled
+            false           // useBlobChannelDataKindForCounters
         );
 
         TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111, {}};
@@ -850,9 +934,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             10,      // maxBlobsPerRange,
             1,       // compactionRangeCountPerRun
             threadSafeState,
-            0,             // tabletId
-            std::nullopt,  // mixedBlocksFilterConfig
-            false          // checkpointAwareCleanupEnabled
+            0,              // tabletId
+            std::nullopt,   // mixedBlocksFilterConfig
+            false,          // checkpointAwareCleanupEnabled
+            false           // useBlobChannelDataKindForCounters
         );
 
         const ui32 blockIndex = 0;
