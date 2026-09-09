@@ -90,17 +90,28 @@ struct TLatencyCountersBatch
     TLatencyCounters Write;
 };
 
+bool TryReadUnsignedInteger(const NJson::TJsonValue& value, ui64& result)
+{
+    const auto type = value.GetType();
+    if (type != NJson::JSON_INTEGER && type != NJson::JSON_UINTEGER) {
+        return false;
+    }
+
+    unsigned long long parsed = 0;
+    if (!value.GetUInteger(&parsed)) {
+        return false;
+    }
+
+    result = parsed;
+    return true;
+}
+
 bool TryReadLatencyCounters(
     const NJson::TJsonValue& value,
     TLatencyCounters& counters)
 {
     auto read = [&] (TStringBuf key, ui64& result) {
-        unsigned long long parsed = 0;
-        if (!value[key].GetUInteger(&parsed)) {
-            return false;
-        }
-        result = parsed;
-        return true;
+        return TryReadUnsignedInteger(value[key], result);
     };
 
     if (!value.IsMap() || !read("good", counters.Good) ||
@@ -151,10 +162,11 @@ std::optional<TLatencyCountersBatch> TryReadLatencyCountersBatch(
     }
 
     const auto& latencyCounters = stats["latency_counters"];
-    unsigned long long version = 0;
+    ui64 version = 0;
     TLatencyCountersBatch batch;
     if (!latencyCounters.IsMap() ||
-        !latencyCounters["version"].GetUInteger(&version) || version != 1 ||
+        !TryReadUnsignedInteger(latencyCounters["version"], version) ||
+        version != 1 ||
         !TryReadLatencyCounters(latencyCounters["read"], batch.Read) ||
         !TryReadLatencyCounters(latencyCounters["write"], batch.Write) ||
         !FitsDynamicCounters(batch))

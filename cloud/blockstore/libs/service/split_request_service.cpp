@@ -193,6 +193,15 @@ public:
             return MakeFuture(std::move(response));
         }
 
+        // All parts share one call context and execute concurrently. Their
+        // stage waits are accumulated independently and may overlap in wall
+        // time, so latency accounting must not subtract the sum as if the
+        // waits were sequential. Legacy request timings intentionally retain
+        // their existing behavior.
+        if (subRequests.size() > 1 && callContext) {
+            callContext->SetHasParallelSubRequests();
+        }
+
         SubResponses.resize(subRequests.size());
 
         // Acquire the future before subscribing to sub-request callbacks.
