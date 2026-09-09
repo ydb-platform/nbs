@@ -471,6 +471,11 @@ void TAlterFileStoreActor::ReadResizeState(const TActorContext& ctx)
 void TAlterFileStoreActor::UpdateResizeState(const TActorContext& ctx)
 {
     if (!CreatedShardBitmap) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] FS topology not yet read, resize state unavailable",
+            FileSystemId.c_str());
         return;
     }
 
@@ -520,6 +525,15 @@ void TAlterFileStoreActor::HandleResizeStateResponse(
         return;
     }
 
+    if (!CreatedShardBitmap) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] FS topology not yet read, resize state unavailable",
+            FileSystemId.c_str());
+        return;
+    }
+
     if (resizeState.GetVersion() < ResizeStateVersion) {
         return;
     }
@@ -550,9 +564,7 @@ void TAlterFileStoreActor::SetupCreatedShardBitmap()
 void TAlterFileStoreActor::MergeCreatedShardBitmap(
     const NProtoPrivate::TCompressedBitmapData& bitmap)
 {
-    if (!CreatedShardBitmap) {
-        return;
-    }
+    Y_DEBUG_ABORT_UNLESS(CreatedShardBitmap);
 
     for (const auto& chunk: bitmap.GetChunks()) {
         CreatedShardBitmap->Merge(
@@ -583,6 +595,11 @@ void TAlterFileStoreActor::UpdateShardCreatedState(
     const ui32 shardIndex)
 {
     if (!CreatedShardBitmap) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] FS topology not yet read, resize state unavailable",
+            FileSystemId.c_str());
         return;
     }
 
