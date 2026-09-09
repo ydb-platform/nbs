@@ -748,7 +748,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         UNIT_ASSERT_DOUBLES_EQUAL(sz, (network * reportInterval), sz / 100);
     }
 
-    Y_UNIT_TEST(ShouldReportCompressionMetrics)
+    Y_UNIT_TEST(ShouldReportCompressionMetricsForCompaction)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetBlobCompressionRate(1);
@@ -768,31 +768,69 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         tablet.WriteData(handle, 0, 100_KB, 'a');
 
-        TTestRegistryVisitor visitor;
-        registry->Visit(TInstant::Zero(), visitor);
-        visitor.ValidateExpectedCounters({
-            {
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
                 {
-                    {"sensor", "UncompressedBytesWritten"},
-                    {"filesystem", "test"}
+                    {
+                        {"sensor", "UncompressedBytesWritten"},
+                        {"filesystem", "test"}
+                    },
+                    0 // expected
                 },
-                100_KB // expected
-            },
-            {
                 {
-                    {"sensor", "CompressedBytesWritten"},
-                    {"filesystem", "test"}
+                    {
+                        {"sensor", "CompressedBytesWritten"},
+                        {"filesystem", "test"}
+                    },
+                    0 // expected
                 },
-                439 // expected
-            },
-        });
+                {
+                    {
+                        {"sensor", "ZeroBytesWritten"},
+                        {"filesystem", "test"}
+                    },
+                    0 // expected
+                },
+            });
+        }
+
+        tablet.Compaction(GetMixedRangeIndex(nodeId, 0));
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {
+                    {
+                        {"sensor", "UncompressedBytesWritten"},
+                        {"filesystem", "test"}
+                    },
+                    100_KB // expected
+                },
+                {
+                    {
+                        {"sensor", "CompressedBytesWritten"},
+                        {"filesystem", "test"}
+                    },
+                    439 // expected
+                },
+                {
+                    {
+                        {"sensor", "ZeroBytesWritten"},
+                        {"filesystem", "test"}
+                    },
+                    0 // expected
+                },
+            });
+        }
     }
 
-    Y_UNIT_TEST(ShouldNotReportCompressionMetricsForAllBlobs)
+    Y_UNIT_TEST(ShouldNotReportCompressionMetricsForNonCompactionBlobs)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetBlobCompressionRate(2);
-        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetBlobCompressionRate(1);
 
         TTestEnv env({}, std::move(storageConfig));
         auto registry = env.GetRegistry();
@@ -806,25 +844,35 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         const auto handle = CreateHandle(tablet, nodeId);
 
-        for (int i = 0; i < 10; i++)
-            tablet.WriteData(handle, 0, 4_KB, 'a');
+        // direct blob path
+        tablet.WriteData(handle, 0, 256_KB, 'a');
+        // fresh blocks + flush path
+        tablet.WriteData(handle, 256_KB, 4_KB, 'a');
+        tablet.Flush();
 
         TTestRegistryVisitor visitor;
         registry->Visit(TInstant::Zero(), visitor);
-        visitor.ValidateExpectedCountersWithPredicate({
+        visitor.ValidateExpectedCounters({
             {
                 {
                     {"sensor", "UncompressedBytesWritten"},
                     {"filesystem", "test"}
                 },
-                [](i64 val) { return val > 0 && val < 40960; } // expected
+                0 // expected
             },
             {
                 {
                     {"sensor", "CompressedBytesWritten"},
-                    {"filesystem", "test"},
+                    {"filesystem", "test"}
                 },
-                [](i64 val) { return val > 0 && val < 370; } // expected
+                0 // expected
+            },
+            {
+                {
+                    {"sensor", "ZeroBytesWritten"},
+                    {"filesystem", "test"}
+                },
+                0 // expected
             },
         });
     }
@@ -854,6 +902,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         }
 
         tablet.WriteData(handle, 0, data.size(), data.data());
+        tablet.Compaction(GetMixedRangeIndex(nodeId, 0));
 
         TTestRegistryVisitor visitor;
         registry->Visit(TInstant::Zero(), visitor);
@@ -871,6 +920,65 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                     {"filesystem", "test"},
                 },
                 [](i64 val) { return val >= static_cast<i64>(100_KB); }
+            },
+            {
+                {
+                    {"sensor", "ZeroBytesWritten"},
+                    {"filesystem", "test"},
+                },
+                // random data contains ~0.4% of zero bytes
+                [](i64 val) { return val >= 0 && val < 4096; }
+            },
+        });
+    }
+
+    Y_UNIT_TEST(ShouldReportZeroBytesWrittenForCompactedBlobs)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetBlobCompressionRate(1);
+        storageConfig.SetWriteBlobThreshold(1);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, nodeId);
+
+        const TString data = TString(40_KB, '\0') + TString(60_KB, 'a');
+        tablet.WriteData(handle, 0, data.size(), data.data());
+        tablet.Compaction(GetMixedRangeIndex(nodeId, 0));
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {
+                {
+                    {"sensor", "UncompressedBytesWritten"},
+                    {"filesystem", "test"}
+                },
+                100_KB // expected
+            },
+            {
+                {
+                    {"sensor", "ZeroBytesWritten"},
+                    {"filesystem", "test"}
+                },
+                40_KB // expected
+            },
+        });
+        visitor.ValidateExpectedCountersWithPredicate({
+            {
+                {
+                    {"sensor", "CompressedBytesWritten"},
+                    {"filesystem", "test"},
+                },
+                [](i64 val) { return val > 0 && val < 4096; }
             },
         });
     }

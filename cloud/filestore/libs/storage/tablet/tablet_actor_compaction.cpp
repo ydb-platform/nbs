@@ -193,8 +193,8 @@ void TCompactionActor::HandleReadBlobResponse(
 void TCompactionActor::WriteBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
+    request->Mode = TEvIndexTabletPrivate::EWriteBlobMode::Compaction;
 
     for (const auto& blob: DstBlobs) {
         TString blobContent(Reserve(BlockSize * blob.Blocks.size()));
