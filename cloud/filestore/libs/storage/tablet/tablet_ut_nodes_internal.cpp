@@ -310,6 +310,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         // none of the above touched the file's link count
         UNIT_ASSERT_VALUES_EQUAL(1, GetNodeAttrs(tablet, fileId).GetLinks());
+
+        // target already at MaxLink -> E_FS_MLINK
+        tablet.UnsafeUpdateNode(fileId, 0 /* size */, MaxLink /* links */);
+        {
+            auto response = tablet.SendAndRecvLinkNodeInShard(fileId, 1, 202);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_MLINK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxLink,
+            GetNodeAttrs(tablet, fileId).GetLinks());
     }
 
     TABLET_TEST_4K_ONLY(ShouldKeepLinkNodeInShardIdempotentAfterReboot)

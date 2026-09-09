@@ -171,20 +171,23 @@ void TIndexTabletActor::CompleteTx_LinkNodeInShard(
     const TActorContext& ctx,
     TTxIndexTablet::TLinkNodeInShard& args)
 {
-    InvalidateReadAheadCache(args.Request.GetNodeId());
+    RemoveInFlightRequest(*args.RequestInfo);
 
     if (!HasError(args.Error)) {
         CommitResponseLogEntry(std::move(args.ResponseLogEntry));
+
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s LinkNodeInShard completed: node %lu, links %u",
+            LogTag.c_str(),
+            args.Request.GetNodeId(),
+            args.Response.GetNode().GetLinks());
+    } else {
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s LinkNodeInShard failed: node %lu, error %s",
+            LogTag.c_str(),
+            args.Request.GetNodeId(),
+            FormatError(args.Error).Quote().c_str());
     }
-
-    RemoveInFlightRequest(*args.RequestInfo);
-
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s LinkNodeInShard completed (%s): node %lu, links %u",
-        LogTag.c_str(),
-        FormatError(args.Error).c_str(),
-        args.Request.GetNodeId(),
-        args.Response.GetNode().GetLinks());
 
     using TMethod = TEvIndexTablet::TLinkNodeInShardMethod;
 
