@@ -178,18 +178,10 @@ void TServer::Start(const TOptions& options)
 
 void TServer::Stop()
 {
-    // Make consecutive repeated Stop() calls safe
-    if (!Handler) {
-        return;
-    }
-
-    auto* handler = Handler;
-    Handler = nullptr;
-
     STORAGE_INFO("Stopping the server");
 
     auto promise = NewPromise();
-    vhd_unregister_blockdev(handler, [] (void* opaque) {
+    vhd_unregister_blockdev(Handler, [] (void* opaque) {
         static_cast<TPromise<void>*>(opaque)->SetValue();
     }, &promise);
 
