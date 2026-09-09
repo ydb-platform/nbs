@@ -23,12 +23,15 @@
 #include <contrib/ydb/library/actors/core/mon.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/maybe.h>
 
 namespace NCloud::NFileStore::NProto {
     class TProfileLogRequestInfo;
 }   // namespace NCloud::NFileStore::NProto
 
 namespace NCloud::NFileStore::NStorage {
+
+enum class EControlNamespaceEntry;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -153,6 +156,17 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TResponse::TPtr& ev);
 
+    // Returns Nothing() when the control namespace feature is disabled,
+    // otherwise classifies the (parent, name) pair or the ino into a control
+    // namespace entry
+    TMaybe<EControlNamespaceEntry> ClassifyControlNamespace(
+        ui64 nodeId,
+        TStringBuf name) const;
+
+    TMaybe<EControlNamespaceEntry> ClassifyControlNamespace(ui64 ino) const;
+
+    bool IsControlNamespaceReservedIno(ui64 nodeId) const;
+
     // Control namespace (".filestore-ctl") hooks - true if the request was
     // answered here and the caller should return
     bool TryHandleControlNamespaceGetNodeAttr(
@@ -182,6 +196,14 @@ private:
     bool TryHandleControlNamespaceRenameNode(
         const NActors::TActorContext& ctx,
         const TEvService::TEvRenameNodeRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceUnlinkNode(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvUnlinkNodeRequest::TPtr& ev,
+        const TSessionInfo* session);
+    bool TryHandleControlNamespaceDestroyHandle(
+        const NActors::TActorContext& ctx,
+        const TEvService::TEvDestroyHandleRequest::TPtr& ev,
         const TSessionInfo* session);
     bool TryHandleControlNamespaceGetNodeXAttr(
         const NActors::TActorContext& ctx,

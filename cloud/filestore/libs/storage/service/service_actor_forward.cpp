@@ -1,5 +1,7 @@
 #include "service_actor.h"
 
+#include "service_actor_control_namespace.h"
+
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
@@ -263,6 +265,14 @@ void TStorageServiceActor::ForwardRequestToShard(
         TMethod::Name,
         msg->CallContext->RequestId);
 
+    if (ClassifyControlNamespace(entityId)) {
+        return NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<typename TMethod::TResponse>(
+                ControlNamespaceNotPermittedError()));
+    }
+
     const NProto::TFileStore& filestore = session->FileStore;
 
     if (!forceBehaveAsShard) {
@@ -393,6 +403,22 @@ template void
 TStorageServiceActor::ForwardRequestToShard<TEvService::TRenameNodeMethod>(
     const TActorContext& ctx,
     const TEvService::TRenameNodeMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
+    ui64 entityId,
+    TSessionInfo* session);
+
+template void
+TStorageServiceActor::ForwardRequestToShard<TEvService::TUnlinkNodeMethod>(
+    const TActorContext& ctx,
+    const TEvService::TUnlinkNodeMethod::TRequest::TPtr& ev,
+    bool forceBehaveAsShard,
+    ui64 entityId,
+    TSessionInfo* session);
+
+template void
+TStorageServiceActor::ForwardRequestToShard<TEvService::TDestroyHandleMethod>(
+    const TActorContext& ctx,
+    const TEvService::TDestroyHandleMethod::TRequest::TPtr& ev,
     bool forceBehaveAsShard,
     ui64 entityId,
     TSessionInfo* session);

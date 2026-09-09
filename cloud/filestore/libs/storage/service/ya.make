@@ -28,6 +28,7 @@ SRCS(
     service_actor_createsession.cpp
     service_actor_describefsmodel.cpp
     service_actor_destroyfs.cpp
+    service_actor_destroyhandle.cpp
     service_actor_destroysession.cpp
     service_actor_forward.cpp
     service_actor_getfsinfo.cpp
@@ -42,6 +43,7 @@ SRCS(
     service_actor_readdata.cpp
     service_actor_renamenode.cpp
     service_actor_statfs.cpp
+    service_actor_unlinknode.cpp
     service_actor_update_stats.cpp
     service_actor_writedata.cpp
     service_actor_xattr.cpp
