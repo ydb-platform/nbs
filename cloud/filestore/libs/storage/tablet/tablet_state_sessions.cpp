@@ -253,8 +253,8 @@ NActors::TActorId TIndexTabletState::RecoverSession(
         session->GetSessionId().c_str(),
         owner.ToString().c_str(),
         pipeServer.ToString().c_str(),
-        update.StalePipeServer.value_or(TActorId()).ToString().c_str(),
-        update.StaleOwner.value_or(TActorId()).ToString().c_str());
+        updateResult.StalePipeServer.value_or(TActorId()).ToString().c_str(),
+        updateResult.StaleOwner.value_or(TActorId()).ToString().c_str());
 
     session->SetRecoveryTimestampUs(Now().MicroSeconds());
 
