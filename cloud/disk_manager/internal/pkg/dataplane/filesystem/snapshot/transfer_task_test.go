@@ -408,13 +408,22 @@ func (f *fixture) snapshotDataDeleted(
 }
 
 func TestValidateConfigRejectsZeroLimits(t *testing.T) {
+	traversalWorkersCount := uint32(0)
 	restoreHardlinksBatchSize := uint32(0)
 	fetchNodesFromStorageLimit := uint32(0)
-	traversalWorkersCount := uint32(0)
 	snapshotDataDeletionLimit := uint64(0)
 	snapshotCollectionInflightLimit := uint32(0)
 
-	err := validateConfig(&snapshot_config.FilesystemSnapshotConfig{
+	err := validateConfig(
+		&snapshot_config.FilesystemSnapshotConfig{
+			TraversalConfig: &traversal_config.FilesystemTraversalConfig{
+				TraversalWorkersCount: &traversalWorkersCount,
+			},
+		},
+	)
+	require.Error(t, err)
+
+	err = validateConfig(&snapshot_config.FilesystemSnapshotConfig{
 		RestoreHardlinksBatchSize: &restoreHardlinksBatchSize,
 	})
 	require.Error(t, err)
@@ -1599,11 +1608,11 @@ func TestCollectFilesystemSnapshotsTaskDeletesSnapshotData(t *testing.T) {
 		}
 	}
 
-	hardlinks, err := f.nodesStorage.ListHardLinks(
+	hardlinks, _, err := f.nodesStorage.ListHardLinks(
 		f.ctx,
 		snapshotIDs[0],
 		100,
-		0,
+		nodes_storage.HardLinksCookie{},
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, hardlinks)

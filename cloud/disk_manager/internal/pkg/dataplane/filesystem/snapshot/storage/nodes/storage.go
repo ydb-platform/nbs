@@ -54,8 +54,8 @@ type Storage interface {
 		ctx context.Context,
 		snapshotID string,
 		limit int,
-		offset int,
-	) ([]nfs.Node, error)
+		cookie HardLinksCookie,
+	) ([]nfs.Node, HardLinksCookie, error)
 
 	CleanupRestorationNodeIDsMapping(
 		ctx context.Context,
@@ -69,4 +69,12 @@ type NodeRefsByShardCookie struct {
 	ParentNodeID uint64
 	Name         string
 	StoreAsChild bool
+}
+
+// HardLinksCookie identifies the next hardlink in primary key order.
+// Its zero value starts listing, or marks the end when returned by a listing.
+type HardLinksCookie struct {
+	NodeID       uint64
+	ParentNodeID uint64
+	Name         string
 }
