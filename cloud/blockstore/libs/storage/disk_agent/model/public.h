@@ -13,6 +13,7 @@ using TDeviceClientPtr = std::shared_ptr<TDeviceClient>;
 
 class TDiskAgentConfig;
 using TDiskAgentConfigPtr = std::shared_ptr<TDiskAgentConfig>;
+using TDiskAgentConfigConstPtr = std::shared_ptr<const TDiskAgentConfig>;
 
 class IMultiAgentWriteHandler;
 using IMultiAgentWriteHandlerPtr = std::shared_ptr<IMultiAgentWriteHandler>;

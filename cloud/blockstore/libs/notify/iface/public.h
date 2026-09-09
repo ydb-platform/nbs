@@ -11,5 +11,6 @@ using IServicePtr = std::shared_ptr<IService>;
 
 class TNotifyConfig;
 using TNotifyConfigPtr = std::shared_ptr<TNotifyConfig>;
+using TNotifyConfigConstPtr = std::shared_ptr<const TNotifyConfig>;
 
 }   // namespace NCloud::NBlockStore::NNotify

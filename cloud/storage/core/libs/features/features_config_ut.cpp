@@ -31,6 +31,23 @@ TVector<TString> RandomStrings(ui32 n)
 
 Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
 {
+    // Construct the wrapper from one Feature and then clear the caller's proto.
+    // GetConfigProto must still expose the original Feature owned by the
+    // wrapper.
+    Y_UNIT_TEST(ShouldExposeSourceConfigProto)
+    {
+        NProto::TFeaturesConfig proto;
+        proto.AddFeatures()->SetName("feature");
+
+        const TFeaturesConfig config(proto);
+        proto.Clear();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, config.GetConfigProto().FeaturesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "feature",
+            config.GetConfigProto().GetFeatures(0).GetName());
+    }
+
     Y_UNIT_TEST(ShouldMatchCloudsByProbability)
     {
         NProto::TFeaturesConfig fc;

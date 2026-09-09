@@ -1587,7 +1587,8 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
                         TABLEH() { out << "Value"; }
                     }
                 }
-                const auto& protoValues = Config->GetStorageConfigProto();
+                const auto protoValues =
+                    Config->GetEffectiveStorageConfigProto();
                 constexpr i32 expectedNonRepeatedFieldIndex = -1;
                 const auto* descriptor =
                     NProto::TStorageServiceConfig::GetDescriptor();

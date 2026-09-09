@@ -299,7 +299,7 @@ void TConfigInitializerYdb::ApplyServerAppConfig(const TString& text)
     }
     if (StorageConfig) {
         ApplyStorageServiceConfig(
-            ProtoToText(StorageConfig->GetStorageConfigProto()));
+            ProtoToText(StorageConfig->GetEffectiveStorageConfigProto()));
     }
     ApplyRootKmsConfig(ProtoToText(RootKmsConfig));
 }

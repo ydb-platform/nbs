@@ -32,6 +32,11 @@ private:
 public:
     TClientAppConfig(NProto::TClientAppConfig appConfig = {});
 
+    [[nodiscard]] const NProto::TClientAppConfig& GetConfigProto() const
+    {
+        return AppConfig;
+    }
+
     const NProto::TClientConfig& GetClientConfig() const
     {
         return ClientConfig;

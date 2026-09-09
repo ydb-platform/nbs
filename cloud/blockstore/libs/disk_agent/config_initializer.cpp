@@ -432,7 +432,7 @@ void TConfigInitializer::ApplyServerAppConfig(const TString& text)
     // Update dependent configs
     if (StorageConfig) {
         ApplyStorageServiceConfig(
-            ProtoToText(StorageConfig->GetStorageConfigProto()));
+            ProtoToText(StorageConfig->GetEffectiveStorageConfigProto()));
     }
 }
 
