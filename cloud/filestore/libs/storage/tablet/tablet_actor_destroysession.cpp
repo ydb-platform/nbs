@@ -154,11 +154,11 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
         }
 
         auto result = session->DeleteSubSession(args.SessionSeqNo);
-        if (!result.SessionCanBeDestroyed) {
-            if (result.Removed) {
-                RemovePipeServer(result.Removed->PipeInfo.PipeServer);
-            }
+        if (result.Removed) {
+            RemovePipeServer(result.Removed->PipeInfo.PipeServer);
+        }
 
+        if (!result.SessionCanBeDestroyed) {
             db->WriteSession(*session);
             args.Completed = true;
             return;
