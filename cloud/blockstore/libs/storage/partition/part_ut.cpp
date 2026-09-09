@@ -2883,12 +2883,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         auto* msg = event->Get<
                             TEvPartitionPrivate::TEvCompactionRequest>();
                         const auto expectedMode = static_cast<ui32>(
-                            TEvPartitionPrivate::MixedBlockCountCompaction);
+                            TEvPartitionPrivate::MixedBlocksCountCompaction);
                         UNIT_ASSERT_VALUES_EQUAL(
                             expectedMode,
                             static_cast<ui32>(msg->Mode));
                         UNIT_ASSERT(msg->CompactionOptions.test(
-                            ToBit(ECompactionOption::ForceToMerged)));
+                            ToBit(ECompactionOption::ForceMixedBlocksCountCompaction)));
                         compactionRequestObserved = true;
                         break;
                     }
@@ -2981,7 +2981,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     auto* msg = event->Get<
                         TEvPartitionPrivate::TEvCompactionRequest>();
                     if (msg->Mode ==
-                            TEvPartitionPrivate::MixedBlockCountCompaction &&
+                            TEvPartitionPrivate::MixedBlocksCountCompaction &&
                         stealCompactionRequest)
                     {
                         stealCompactionRequest = false;
@@ -3053,7 +3053,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         const auto* msg = event->Get<
                             TEvPartitionPrivate::TEvCompactionRequest>();
                         if (msg->Mode ==
-                            TEvPartitionPrivate::MixedBlockCountCompaction)
+                            TEvPartitionPrivate::MixedBlocksCountCompaction)
                         {
                             compactionRequestObserved = true;
                         }
@@ -13404,7 +13404,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.Flush();
 
         TCompactionOptions options;
-        options.set(ToBit(ECompactionOption::ForceToMerged));
+        options.set(ToBit(ECompactionOption::ForceMixedBlocksCountCompaction));
         partition.Compaction(0, options);
         partition.Cleanup();
 

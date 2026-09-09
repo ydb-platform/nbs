@@ -340,7 +340,7 @@ struct TEvPartitionPrivate
         // Similar to GarbageCompaction, but does not treat previously used
         // blocks that are now zeroed as garbage.
         IgnoringZeroedCompaction,
-        MixedBlockCountCompaction
+        MixedBlocksCountCompaction
     };
 
     struct TCompactionRequest
