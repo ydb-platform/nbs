@@ -706,6 +706,7 @@ void ApplyBlobsSkipping(
                 skippedBlockIndices.insert(affectedBlock.BlockIndex);
             }
         }
+        skippedBlobs.emplace(ab->first, std::move(ab->second));
         args.AffectedBlobs.erase(ab);
     }
 
