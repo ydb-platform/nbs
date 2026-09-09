@@ -690,7 +690,7 @@ void ApplyBlobsSkipping(
         ApplyMixedBlocksSkipping(blobsToSkip, args);
     }
 
-    TAffectedBlocks skippedBlocks;
+    THashSet<ui32> skippedBlockIndices;
 
     for (const auto& x: blobsToSkip) {
         auto ab = args.AffectedBlobs.find(x.first);
@@ -703,23 +703,16 @@ void ApplyBlobsSkipping(
                 // but it does not cause data corruption - the important thing
                 // is to ensure that all skipped indices are added, not that
                 // all non-skipped are preserved
-
-                skippedBlocks.push_back(
-                    {affectedBlock.BlockIndex, affectedBlock.CommitId});
+                skippedBlockIndices.insert(affectedBlock.BlockIndex);
             }
         }
-        skippedBlobs.emplace(ab->first, std::move(ab->second));
         args.AffectedBlobs.erase(ab);
     }
-
-    Sort(skippedBlocks);
 
     if (blobsToSkip.size()) {
         TAffectedBlocks affectedBlocks;
         for (const auto& b: args.AffectedBlocks) {
-            const bool isSkipped =
-                BinarySearch(skippedBlocks.begin(), skippedBlocks.end(), b);
-            if (!isSkipped) {
+            if (!skippedBlockIndices.contains(b.BlockIndex)) {
                 affectedBlocks.push_back(b);
             }
         }

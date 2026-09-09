@@ -16732,7 +16732,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 }
             });
 
-        // Intercepring write blob request to slow down compaction (as it should
+        // Intercepting write blob request to slow down compaction (as it should
         // wait for it before start executing).
         interceptWriteBlobRequest = true;
         partition.SendWriteBlocksRequest(1, '1');
