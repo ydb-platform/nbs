@@ -63,8 +63,9 @@ struct IDevicePageStore
 // pages it has allocated beforehand and not to call them concurrently with
 // each other or with Free for the same pages.
 //
-// The page ranges of a single request must not intersect with each other -
-// the store does not check this and does not account for such ranges properly.
+// The page ranges of a single request must not intersect with each other.
+// In Checked mode every method refuses them with E_ARGUMENT; in Trusted mode
+// only AllocateAt does, and Free, Write and Read take the caller at its word.
 IDevicePageStorePtr CreateDevicePageStore(
     IDevicePtr device,
     ui64 pageCount,
