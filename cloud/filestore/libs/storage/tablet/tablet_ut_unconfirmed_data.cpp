@@ -2276,6 +2276,63 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(client2, 0, 0);
     }
 
+    Y_UNIT_TEST(ShouldRejectStaleConfirmAddDataAfterSessionRecovery)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient oldClient(runtime, nodeIdx, tabletId);
+        oldClient.InitSession("client", "session");
+
+        auto id =
+            CreateNode(oldClient, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 oldHandle = CreateHandle(oldClient, id);
+
+        // Old incarnation gets as far as PutBlob but never confirms.
+        const ui64 staleCommitId = GenerateBlobIdsAndPutBlob(
+            env,
+            oldClient,
+            id,
+            oldHandle,
+            0,
+            block,
+            'a');
+        WaitForTabletCommit(env);
+        AssertStorageStats(oldClient, 1, 0);
+
+        // New incarnation on another pipe recovers the session, and its
+        // write to the same range must not be superseded by the stale one.
+        TIndexTabletClient newClient(runtime, nodeIdx, tabletId);
+        newClient.InitSession("client", "session");
+        AssertStorageStats(newClient, 0, 0);
+
+        ui64 newHandle = CreateHandle(newClient, id);
+        newClient.WriteData(newHandle, 0, block, 'b');
+
+        oldClient.SendConfirmAddDataRequest(staleCommitId);
+        auto confirmResponse =
+            oldClient.AssertConfirmAddDataResponse(E_REJECTED);
+        UNIT_ASSERT_C(
+            confirmResponse->GetErrorReason().find(
+                "unconfirmed data not found") != TString::npos,
+            confirmResponse->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(block, 'b'),
+            ReadData(newClient, newHandle, block, 0));
+        AssertStorageStats(newClient, 0, 0);
+    }
+
     Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnDestroySession)
     {
         constexpr ui32 block = 4_KB;
@@ -2387,6 +2444,115 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
 
         TIndexTabletClient observer(runtime, nodeIdx, tabletId);
         AssertStorageStats(observer, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldKeepUnconfirmedDataOnSessionPipeDisconnection)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient sessionClient(runtime, nodeIdx, tabletId);
+        sessionClient.InitSession("client", "session");
+
+        auto id = CreateNode(
+            sessionClient,
+            TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(sessionClient, id);
+
+        TIndexTabletClient writeClient(
+            runtime,
+            nodeIdx,
+            tabletId,
+            {},
+            false /* updateConfig */);
+        writeClient.SetHeaders("client", "session", 0 /* sessionSeqNo */);
+
+        auto gbi = writeClient.GenerateBlobIds(id, handle, 0, block);
+        Y_UNUSED(gbi);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(writeClient, 1, 0);
+
+        // The pipe that created the session goes away, the pipe that issued
+        // GenerateBlobIds is still alive: its unconfirmed data must survive.
+        sessionClient.DisconnectPipe();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(writeClient, 1, 0);
+
+        writeClient.DisconnectPipe();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        TIndexTabletClient observer(runtime, nodeIdx, tabletId);
+        AssertStorageStats(observer, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnlyForDisconnectedPipe)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto& runtime = env.GetRuntime();
+
+        TIndexTabletClient sessionClient(runtime, nodeIdx, tabletId);
+        sessionClient.InitSession("client", "session");
+
+        auto id = CreateNode(
+            sessionClient,
+            TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(sessionClient, id);
+
+        TIndexTabletClient writeClient1(
+            runtime,
+            nodeIdx,
+            tabletId,
+            {},
+            false /* updateConfig */);
+        writeClient1.SetHeaders("client", "session", 0 /* sessionSeqNo */);
+
+        TIndexTabletClient writeClient2(
+            runtime,
+            nodeIdx,
+            tabletId,
+            {},
+            false /* updateConfig */);
+        writeClient2.SetHeaders("client", "session", 0 /* sessionSeqNo */);
+
+        auto gbi1 = writeClient1.GenerateBlobIds(id, handle, 0, block);
+        Y_UNUSED(gbi1);
+        auto gbi2 = writeClient2.GenerateBlobIds(id, handle, block, block);
+        Y_UNUSED(gbi2);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(sessionClient, 2, 0);
+
+        writeClient1.DisconnectPipe();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(sessionClient, 1, 0);
+
+        writeClient2.DisconnectPipe();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        AssertStorageStats(sessionClient, 0, 0);
     }
 
     Y_UNIT_TEST(ShouldReleaseCollectBarrierOnGenerateBlobIdsChannelError)
