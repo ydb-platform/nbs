@@ -123,7 +123,7 @@ struct TClientRequest: public NRdma::TClientRequest
 public:
     TClientRequest(
         const TActorId& rdmaActorId,
-        NRdma::IClientHandlerPtr handler,
+        NRdma::IClientRequestHandlerPtr handler,
         std::unique_ptr<NRdma::TNullContext> context,
         ui32 requestSize,
         ui32 responseSize)
@@ -169,7 +169,7 @@ public:
         TEndpointId endpointId);
 
     auto AllocateRequest(
-        NRdma::IClientHandlerPtr handler,
+        NRdma::IClientRequestHandlerPtr handler,
         std::unique_ptr<NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes)
@@ -203,7 +203,7 @@ TClientEndpoint::TClientEndpoint(
 {}
 
 auto TClientEndpoint::AllocateRequest(
-    NRdma::IClientHandlerPtr handler,
+    NRdma::IClientRequestHandlerPtr handler,
     std::unique_ptr<NRdma::TNullContext> context,
     size_t requestBytes,
     size_t responseBytes) -> TResultOrError<NRdma::TClientRequestPtr>
@@ -1087,6 +1087,12 @@ public:
     auto StartEndpoint(TString host, ui32 port)
         -> TFuture<NRdma::IClientEndpointPtr> override;
 
+    auto StartEndpoint(
+        TString host,
+        ui32 port,
+        NRdma::IClientEndpointHandlerPtr handler)
+        -> TResultOrError<NRdma::IClientEndpointPtr> override;
+
     void DumpHtml(IOutputStream& out) const override;
 
     [[nodiscard]] bool IsAlignedDataEnabled() const override;
@@ -1125,6 +1131,22 @@ auto TFakeRdmaClient::StartEndpoint(TString host, ui32 port)
     ActorSystem->Send(RdmaActorId, std::move(request));
 
     return future;
+}
+
+auto TFakeRdmaClient::StartEndpoint(
+    TString host,
+    ui32 port,
+    NRdma::IClientEndpointHandlerPtr handler)
+    -> TResultOrError<NRdma::IClientEndpointPtr>
+{
+    Y_UNUSED(handler);
+
+    // the fake sets endpoints up through the actor system, so it has no way to
+    // hand one back before that has happened
+    return MakeError(
+        E_NOT_IMPLEMENTED,
+        TStringBuilder() << "fake rdma client cannot create an endpoint to "
+                         << host << ":" << port << " synchronously");
 }
 
 void TFakeRdmaClient::DumpHtml(IOutputStream& out) const

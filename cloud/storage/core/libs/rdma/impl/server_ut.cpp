@@ -51,7 +51,7 @@ IServerPtr CreateTestServer(
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TClientHandler
-    : IClientHandler
+    : IClientRequestHandler
 {
     void HandleResponse(
         TClientRequestPtr req,

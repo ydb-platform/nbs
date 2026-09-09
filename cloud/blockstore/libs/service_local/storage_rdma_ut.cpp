@@ -22,7 +22,7 @@ namespace {
 class TDummyClientEndpoint: public NCloud::NStorage::NRdma::IClientEndpoint
 {
     TResultOrError<NCloud::NStorage::NRdma::TClientRequestPtr> AllocateRequest(
-        NCloud::NStorage::NRdma::IClientHandlerPtr handler,
+        NCloud::NStorage::NRdma::IClientRequestHandlerPtr handler,
         std::unique_ptr<NCloud::NStorage::NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) override
@@ -71,6 +71,20 @@ public:
         StartedEndpoints.emplace_back(host, port);
 
         return MakeFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>(
+            std::make_shared<TDummyClientEndpoint>());
+    }
+
+    TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr> StartEndpoint(
+        TString host,
+        ui32 port,
+        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) noexcept
+        override
+    {
+        Y_UNUSED(handler);
+
+        StartedEndpoints.emplace_back(host, port);
+
+        return NCloud::NStorage::NRdma::IClientEndpointPtr(
             std::make_shared<TDummyClientEndpoint>());
     }
 

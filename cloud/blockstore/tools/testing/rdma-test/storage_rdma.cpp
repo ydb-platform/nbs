@@ -65,7 +65,7 @@ public:
 
     TResultOrError<NRdma::TClientRequestPtr> PrepareRequest(
         NRdma::IClientEndpoint& endpoint,
-        NRdma::IClientHandlerPtr handler)
+        NRdma::IClientRequestHandlerPtr handler)
     {
         LWTRACK(
             RdmaPrepareRequest,
@@ -157,7 +157,7 @@ public:
 
     TResultOrError<NRdma::TClientRequestPtr> PrepareRequest(
         NRdma::IClientEndpoint& endpoint,
-        NRdma::IClientHandlerPtr handler)
+        NRdma::IClientRequestHandlerPtr handler)
     {
         size_t dataSize = Request->GetBlockSize() * Request->GetBlocksCount();
 
@@ -214,7 +214,7 @@ public:
 
 class TRdmaStorage final
     : public IStorage
-    , public NRdma::IClientHandler
+    , public NRdma::IClientRequestHandler
     , public std::enable_shared_from_this<TRdmaStorage>
 {
 private:

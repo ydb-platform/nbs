@@ -40,7 +40,7 @@ class TRequest: public NRdma::TClientRequest
 {
 public:
     TRequest(
-            NRdma::IClientHandlerPtr handler,
+            NRdma::IClientRequestHandlerPtr handler,
             std::unique_ptr<NRdma::TNullContext> context)
         : NRdma::TClientRequest(std::move(handler), std::move(context))
     {}
@@ -68,7 +68,7 @@ struct TTestClientEndpoint: public NRdma::IClientEndpoint
     ui64 NextRequestId = 0;
 
     TResultOrError<NRdma::TClientRequestPtr> AllocateRequest(
-        NRdma::IClientHandlerPtr handler,
+        NRdma::IClientRequestHandlerPtr handler,
         std::unique_ptr<NRdma::TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) override
@@ -195,6 +195,18 @@ struct TTestRdmaClient: public NRdma::IClient
         Y_UNUSED(port);
 
         return MakeFuture<NRdma::IClientEndpointPtr>(Endpoint);
+    }
+
+    TResultOrError<NRdma::IClientEndpointPtr> StartEndpoint(
+        TString host,
+        ui32 port,
+        NRdma::IClientEndpointHandlerPtr handler) override
+    {
+        Y_UNUSED(host);
+        Y_UNUSED(port);
+        Y_UNUSED(handler);
+
+        return NRdma::IClientEndpointPtr(Endpoint);
     }
 
     void Start() override

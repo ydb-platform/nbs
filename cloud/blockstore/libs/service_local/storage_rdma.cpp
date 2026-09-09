@@ -336,7 +336,7 @@ public:
 
 class TRdmaStorage final
     : public IStorage
-    , public NCloud::NStorage::NRdma::IClientHandler
+    , public NCloud::NStorage::NRdma::IClientRequestHandler
     , public std::enable_shared_from_this<TRdmaStorage>
 {
 private:

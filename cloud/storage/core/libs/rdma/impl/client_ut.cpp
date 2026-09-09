@@ -15,6 +15,8 @@
 
 #include <util/generic/scope.h>
 #include <util/stream/printf.h>
+#include <util/system/mutex.h>
+#include <util/system/spinlock.h>
 
 #include <thread>
 
@@ -61,7 +63,7 @@ struct TRequestContext: public NRdma::TNullContext
 };
 
 struct TClientHandler
-    : IClientHandler
+    : IClientRequestHandler
 {
     void HandleResponse(
         TClientRequestPtr req,
@@ -77,6 +79,43 @@ struct TClientHandler
                 status,
                 responseBytes);
         }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestEndpointHandler: public IClientEndpointHandler
+{
+    TMutex Lock;
+    TVector<TString> Events;
+
+    void Add(TString event)
+    {
+        with_lock (Lock) {
+            Events.push_back(std::move(event));
+        }
+    }
+
+    TVector<TString> GetEvents()
+    {
+        with_lock (Lock) {
+            return Events;
+        }
+    }
+
+    void HandleConnected() override
+    {
+        Add("connected");
+    }
+
+    void HandleDisconnected() override
+    {
+        Add("disconnected");
+    }
+
+    void HandleUnavailable() override
+    {
+        Add("unavailable");
     }
 };
 
@@ -311,7 +350,7 @@ TEST(TRdmaClientTest, ShouldNotTriggerCompletionAfterFlushTimeout)
 
     auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
-    struct TClientHandler: IClientHandler
+    struct TClientHandler: IClientRequestHandler
     {
         void HandleResponse(
             TClientRequestPtr req,
@@ -691,7 +730,7 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
 
     auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
-    struct TClientHandler: IClientHandler
+    struct TClientHandler: IClientRequestHandler
     {
         TManualEvent Done;
 
@@ -1438,7 +1477,7 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
 
     auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
-    struct TResponse: IClientHandler
+    struct TResponse: IClientRequestHandler
     {
         ui32 Status = 0;
         TManualEvent Received;
@@ -1703,7 +1742,7 @@ TEST(TRdmaClientTest, ShouldEagerlyDestroyBothMemoryWindowsOnAbortRequest)
 
     auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
-    struct THoldingHandler: IClientHandler
+    struct THoldingHandler: IClientRequestHandler
     {
         TClientRequestPtr Held;
         TManualEvent Received;
@@ -1790,6 +1829,84 @@ TEST(TRdmaClientTest, ShouldNotReleaseBuffersFromStaleBufferPoolGeneration)
     // dropping the request must not touch the torn down pool
     auto req = request.ExtractResult();
     req.reset();
+}
+
+TEST(TRdmaClientTest, ShouldReportEndpointStateToHandler)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    auto handler = std::make_shared<TTestEndpointHandler>();
+
+    auto result = client->StartEndpoint("::", 10020, handler);
+    ASSERT_FALSE(HasError(result));
+
+    // the endpoint is handed back before it has connected, so wait for the
+    // callback rather than for the call to return
+    while (handler->GetEvents().empty()) {
+        SpinLockPause();
+    }
+
+    ASSERT_EQ("connected", handler->GetEvents()[0]);
+
+    Disconnect(testContext);
+
+    while (handler->GetEvents().size() < 2) {
+        SpinLockPause();
+    }
+
+    ASSERT_EQ("disconnected", handler->GetEvents()[1]);
+}
+
+TEST(TRdmaClientTest, ShouldKeepRetryingAnEndpointCreatedSynchronously)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    // never let the connect through, so the endpoint stays in the reconnect
+    // loop for the whole test
+    testContext->AllowConnect = false;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = TDuration::MilliSeconds(100);
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    auto handler = std::make_shared<TTestEndpointHandler>();
+
+    auto result = client->StartEndpoint("::", 10020, handler);
+    ASSERT_FALSE(HasError(result));
+
+    // StartEndpoint would have given up by now and torn the endpoint down;
+    // this one has to keep trying and keep saying so
+    while (handler->GetEvents().empty()) {
+        SpinLockPause();
+    }
+
+    ASSERT_EQ("unavailable", handler->GetEvents()[0]);
+    ASSERT_TRUE(result.GetResult());
 }
 
 }   // namespace NCloud::NStorage::NRdma
