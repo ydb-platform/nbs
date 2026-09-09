@@ -619,8 +619,11 @@ ui32 TotalWriteCalls(const TStorageFixture& fx)
 {
     ui32 total = 0;
     for (const auto& sn: fx.StorageNodes) {
-        total += sn->WriteCalls.size();
+        with_lock (sn->Lock) {
+            total += sn->WriteCalls.size();
+        }
     }
+
     return total;
 }
 
