@@ -11,11 +11,13 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/metrics/metric_consumer.h>
 #include <library/cpp/monlib/metrics/metric_registry.h>
+#include <library/cpp/monlib/service/pages/mon_page.h>
 #include <library/cpp/testing/hook/hook.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/cputimer.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/yexception.h>
 
 #include <tuple>
 
@@ -27,6 +29,64 @@ namespace {
 
 const TString DefaultCloudId = "cloud_id";
 const TString DefaultFolderId = "folder_id";
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeferredMonitoringService final
+    : public IMonitoringService
+{
+private:
+    const IMonitoringServicePtr Delegate = CreateMonitoringServiceStub();
+    bool Ready = false;
+    size_t GetCountersCalls = 0;
+
+public:
+    void SetReady()
+    {
+        Ready = true;
+    }
+
+    size_t GetCountersCallCount() const
+    {
+        return GetCountersCalls;
+    }
+
+    void Start() override
+    {
+        Delegate->Start();
+    }
+
+    void Stop() override
+    {
+        Delegate->Stop();
+    }
+
+    NMonitoring::IMonPagePtr RegisterIndexPage(
+        const TString& path,
+        const TString& title) override
+    {
+        return Delegate->RegisterIndexPage(path, title);
+    }
+
+    void RegisterMonPage(NMonitoring::IMonPagePtr page) override
+    {
+        Delegate->RegisterMonPage(std::move(page));
+    }
+
+    NMonitoring::IMonPagePtr GetMonPage(const TString& path) override
+    {
+        return Delegate->GetMonPage(path);
+    }
+
+    NMonitoring::TDynamicCountersPtr GetCounters() override
+    {
+        ++GetCountersCalls;
+        if (!Ready) {
+            ythrow yexception() << "monitoring is not ready";
+        }
+        return Delegate->GetCounters();
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -2908,30 +2968,75 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         UNIT_ASSERT_VALUES_EQUAL(2, good->Val());
     }
 
-    Y_UNIT_TEST(ShouldRaiseInvalidConfigGaugeBeforeFirstMount)
+    Y_UNIT_TEST(ShouldPublishConfigGaugeOnlyAfterMonitoringIsReady)
     {
-        auto monitoring = CreateMonitoringServiceStub();
-        NProto::TDiagnosticsConfig protoConfig;
-        protoConfig.SetLatencyThresholdsEnabled(true);
-        // LatencyThresholds is intentionally left empty here: a config
-        // mistake BuildLatencyThresholdsTable rejects, not a way to
-        // disable the mechanism (the flag itself already does that).
-        auto config = std::make_shared<TDiagnosticsConfig>(protoConfig);
+        const auto runCase = [](
+            const NProto::TDiagnosticsConfig& protoConfig,
+            ui64 expectedInvalid)
+        {
+            auto monitoring =
+                std::make_shared<TDeferredMonitoringService>();
+            auto config = std::make_shared<TDiagnosticsConfig>(protoConfig);
 
-        auto volumeStats = CreateVolumeStats(
-            monitoring,
-            config,
-            TDuration::Max(),
-            EVolumeStatsType::EServerStats,
-            CreateWallClockTimer());
+            IVolumeStatsPtr volumeStats;
+            UNIT_ASSERT_NO_EXCEPTION(
+                volumeStats = CreateVolumeStats(
+                    monitoring,
+                    config,
+                    TDuration::Max(),
+                    EVolumeStatsType::EServerStats,
+                    CreateWallClockTimer()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                monitoring->GetCountersCallCount());
 
-        Y_UNUSED(volumeStats);
+            monitoring->SetReady();
+            volumeStats->InitializeMonitoringCounters();
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                monitoring->GetCountersCallCount());
+            volumeStats->InitializeMonitoringCounters();
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                monitoring->GetCountersCallCount());
 
-        auto invalidGauge = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server")
-            ->GetCounter("LatencyThresholdsConfigInvalid");
-        UNIT_ASSERT_VALUES_EQUAL(1, invalidGauge->Val());
+            auto blockStoreCounters = monitoring->GetCounters()
+                ->FindSubgroup("counters", "blockstore");
+            UNIT_ASSERT(blockStoreCounters);
+            auto serverCounters = blockStoreCounters->FindSubgroup(
+                "component",
+                "server");
+            UNIT_ASSERT(serverCounters);
+            auto invalidGauge = serverCounters->FindCounter(
+                "LatencyThresholdsConfigInvalid");
+            UNIT_ASSERT(invalidGauge);
+            UNIT_ASSERT_VALUES_EQUAL(expectedInvalid, invalidGauge->Val());
+
+            // Publishing the startup gauge must not eagerly create the large
+            // per-volume trees; their lifecycle remains tied to first mount.
+            UNIT_ASSERT(!blockStoreCounters->FindSubgroup(
+                "component",
+                "server_volume"));
+            UNIT_ASSERT(!blockStoreCounters->FindSubgroup(
+                "component",
+                "sli_volume"));
+        };
+
+        NProto::TDiagnosticsConfig disabledConfig;
+        runCase(disabledConfig, 0);
+
+        runCase(
+            MakeConfigWithLatencyThresholds(
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                10,
+                10),
+            0);
+
+        NProto::TDiagnosticsConfig invalidConfig;
+        invalidConfig.SetLatencyThresholdsEnabled(true);
+        // The table is intentionally empty: this is a config mistake, not a
+        // way to disable the mechanism (the feature flag already does that).
+        runCase(invalidConfig, 1);
     }
 
     Y_UNIT_TEST(ShouldSkipOperationsForMediaKindWithoutConfiguredLadder)

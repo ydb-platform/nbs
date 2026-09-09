@@ -609,12 +609,28 @@ void TServerStats::RecordLatencyCompletion(
         return;
     }
 
+    const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
+    const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
+    const auto shapingTime = callContext.Time(EProcessingStage::Shaping);
+    const auto waitTime = postponedTime + backoffTime + shapingTime;
+
+    if (!HasError(error) &&
+        waitTime &&
+        callContext.GetHasParallelSubRequests())
+    {
+        // Wait intervals accumulated by concurrent subrequests may overlap,
+        // so their sum cannot be subtracted from one logical request's
+        // wall-clock latency. The successful operation is therefore unjudged.
+        RecordLatencyBatch(req, 0, 0, 1);
+        return;
+    }
+
     req.VolumeInfo->RecordLatencyCompletion(
         req.RequestType,
         callContext.GetRequestStartedCycles(),
-        callContext.Time(EProcessingStage::Postponed),
-        callContext.Time(EProcessingStage::Backoff),
-        callContext.Time(EProcessingStage::Shaping),
+        postponedTime,
+        backoffTime,
+        shapingTime,
         requestBytes,
         error,
         callContext.GetResponseSentCycles());

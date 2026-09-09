@@ -716,6 +716,7 @@ private:
     // Server-level (not per-volume) diagnostics: whether the configured
     // table is invalid (gauge, 0/1). Unjudged operations are counted per
     // instance instead, see TVolumeInfo::LatencyThresholdsSkippedOpsCounter.
+    bool LatencyThresholdsConfigInvalid = false;
     TDynamicCounters::TCounterPtr LatencyThresholdsConfigInvalidCounter;
 
     TLog Log;
@@ -739,9 +740,9 @@ public:
         , UserCounters(CreateUserCounterSupplier())
         , Log(std::move(log))
     {
-        // Validate eagerly so an invalid enabled config is observable even
-        // on a host that has not mounted a volume yet. Per-volume counter
-        // trees remain lazy and are still created by RegisterInstance.
+        // Validation is independent of monitoring lifecycle and can therefore
+        // run before a deferred monitoring proxy is initialized. The resulting
+        // gauge value is published later by InitializeMonitoringCounters.
         if (Type == EVolumeStatsType::EServerStats) {
             InitLatencyThresholds();
         }
@@ -1267,6 +1268,19 @@ public:
         return volumeIt->second.VolumeBase->HasStorageConfigPatchCounter->Val();
     }
 
+    void InitializeMonitoringCounters() override
+    {
+        TWriteGuard guard(Lock);
+
+        if (Type == EVolumeStatsType::EServerStats &&
+            !LatencyThresholdsConfigInvalidCounter)
+        {
+            InitLatencyThresholdsConfigInvalidCounter(
+                Monitoring->GetCounters()
+                    ->GetSubgroup("counters", "blockstore"));
+        }
+    }
+
 private:
     TVolumeInfoHolder RegisterVolume(NProto::TVolume volume)
     {
@@ -1422,18 +1436,12 @@ private:
 
     // Validates the configured latency thresholds table and, if valid,
     // stores it for use by every volume. Called once during construction for
-    // EServerStats. Never throws: a bad config leaves the mechanism disabled,
-    // not the server dead.
+    // EServerStats without touching monitoring, which may still be a deferred
+    // proxy at that point. Never throws: a bad config leaves the mechanism
+    // disabled, not the server dead.
     void InitLatencyThresholds()
     {
-        auto serverGroup = Monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
-        LatencyThresholdsConfigInvalidCounter =
-            serverGroup->GetCounter("LatencyThresholdsConfigInvalid");
-
         if (!DiagnosticsConfig->GetLatencyThresholdsEnabled()) {
-            *LatencyThresholdsConfigInvalidCounter = 0;
             return;
         }
 
@@ -1449,13 +1457,26 @@ private:
                 "LatencyThresholdsEnabled is set but the configured table "
                 "is invalid, the mechanism stays disabled: "
                 << validation.Error);
-            *LatencyThresholdsConfigInvalidCounter = 1;
+            LatencyThresholdsConfigInvalid = true;
             return;
         }
 
         LatencyThresholds = std::move(validation.Table);
         LatencyThresholdsEnabled = true;
-        *LatencyThresholdsConfigInvalidCounter = 0;
+    }
+
+    void InitLatencyThresholdsConfigInvalidCounter(
+        const TDynamicCountersPtr& blockStoreCounters)
+    {
+        if (LatencyThresholdsConfigInvalidCounter) {
+            return;
+        }
+
+        LatencyThresholdsConfigInvalidCounter =
+            blockStoreCounters->GetSubgroup("component", "server")
+                ->GetCounter("LatencyThresholdsConfigInvalid");
+        *LatencyThresholdsConfigInvalidCounter =
+            LatencyThresholdsConfigInvalid;
     }
 
     void InitCounters()
@@ -1465,6 +1486,8 @@ private:
 
         switch (Type) {
             case EVolumeStatsType::EServerStats: {
+                InitLatencyThresholdsConfigInvalidCounter(Counters);
+
                 SufferCounters = std::make_unique<TSufferCounters>(
                     "DisksSuffer",
                     Counters->GetSubgroup("component", "server"));

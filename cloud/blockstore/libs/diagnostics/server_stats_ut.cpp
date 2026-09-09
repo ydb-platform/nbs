@@ -455,6 +455,119 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("request", "DescribeVolume")
             ->GetCounter("Errors")->Val());
     }
+
+    Y_UNIT_TEST(ShouldSkipOnlySuccessfulParallelRequestWithWaits)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        auto monitoring = CreateMonitoringServiceStub();
+
+        NProto::TDiagnosticsConfig protoConfig;
+        protoConfig.SetLatencyThresholdsEnabled(true);
+        auto* mediaKindThresholds = protoConfig.AddLatencyThresholds();
+        mediaKindThresholds->SetMediaKind(NProto::STORAGE_MEDIA_SSD);
+        auto* bucket = mediaKindThresholds->AddBuckets();
+        bucket->SetMinRequestBytes(0);
+        bucket->SetReadThresholdMs(10);
+        bucket->SetWriteThresholdMs(10);
+        auto diagnosticsConfig =
+            std::make_shared<TDiagnosticsConfig>(protoConfig);
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            diagnosticsConfig,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto serverStats = CreateServerStats(
+            std::make_shared<TTestDumpable>(),
+            diagnosticsConfig,
+            monitoring,
+            CreateProfileLogStub(),
+            CreateServerRequestStats(
+                monitoring->GetCounters(),
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
+
+        NProto::TVolume volume;
+        volume.SetBlockSize(4096);
+        volume.SetDiskId("volume");
+        volume.SetCloudId("cloud");
+        volume.SetFolderId("folder");
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+        serverStats->MountVolume(volume, "client", "instance");
+
+        TMetricRequest request{EBlockStoreRequest::WriteBlocks};
+        serverStats->PrepareMetricRequest(
+            request,
+            "client",
+            "volume",
+            0,
+            4096,
+            false);
+        UNIT_ASSERT(request.VolumeInfo);
+
+        auto callContext = MakeIntrusive<TCallContext>();
+        callContext->SetHasParallelSubRequests();
+        callContext->AddTime(
+            EProcessingStage::Postponed,
+            TDuration::MilliSeconds(1));
+
+        auto counters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "volume")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "cloud")
+            ->GetSubgroup("folder", "folder")
+            ->GetSubgroup("type", "network-ssd");
+        auto total = counters->GetCounter("LatencyTotalOps");
+        auto good = counters->GetCounter("LatencyGoodOps");
+        auto skipped =
+            counters->GetCounter("LatencyThresholdsSkippedOps");
+
+        // Successful parallel requests with accumulated waits cannot be
+        // timed exactly, so the server routes exactly one skipped outcome and
+        // does not invoke ordinary completion accounting as well.
+        serverStats->RecordLatencyCompletion(
+            request,
+            *callContext,
+            4096,
+            {});
+        UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, skipped->Val());
+
+        // Splitting alone does not reduce coverage. With no accumulated waits
+        // the same successful request follows normal latency classification.
+        auto noWaitContext = MakeIntrusive<TCallContext>();
+        noWaitContext->SetHasParallelSubRequests();
+        noWaitContext->SetRequestStartedCycles(1);
+        noWaitContext->SetResponseSentCycles(1);
+        serverStats->RecordLatencyCompletion(
+            request,
+            *noWaitContext,
+            4096,
+            {});
+        UNIT_ASSERT_VALUES_EQUAL(1, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, skipped->Val());
+
+        // A final service failure does not need a latency measurement. It
+        // must keep the ordinary classifier semantics: one bad operation,
+        // not another skipped operation.
+        serverStats->RecordLatencyCompletion(
+            request,
+            *callContext,
+            4096,
+            MakeError(E_FAIL));
+        UNIT_ASSERT_VALUES_EQUAL(2, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, skipped->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore

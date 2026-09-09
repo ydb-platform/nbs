@@ -388,6 +388,10 @@ void TBootstrapBase::Init()
             Timer,
             Log);
     }
+    // Some server variants construct VolumeStats while their monitoring
+    // proxy is still deferred. At this point monitoring is ready, so publish
+    // server-level diagnostics before the first volume is mounted.
+    VolumeStats->InitializeMonitoringCounters();
 
     ServerStats = CreateServerStats(
         Configs->ServerConfig,

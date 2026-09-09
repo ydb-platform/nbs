@@ -179,6 +179,13 @@ struct IVolumeStats
     virtual TDowntimeHistory GetDowntimeHistory(const TString& diskId) const = 0;
 
     virtual bool HasStorageConfigPatch(const TString& diskId) const = 0;
+
+    // Publishes startup diagnostics after the monitoring service is ready,
+    // without initializing the otherwise lazy volume counters. The default
+    // keeps other implementations source-compatible; TVolumeStats also
+    // publishes the diagnostics lazily on first volume access.
+    virtual void InitializeMonitoringCounters()
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////

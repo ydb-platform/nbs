@@ -216,6 +216,22 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         malformed["latency_counters"]["write"]["bad"] = "not-a-counter";
         UNIT_ASSERT(!TryReadLatencyCountersBatch(malformed));
 
+        auto fractional = makePayload(1);
+        fractional["latency_counters"]["read"]["good"] = 1.5;
+        UNIT_ASSERT(!TryReadLatencyCountersBatch(fractional));
+
+        auto negative = makePayload(1);
+        negative["latency_counters"]["read"]["bad"] = -1;
+        UNIT_ASSERT(!TryReadLatencyCountersBatch(negative));
+
+        auto outOfRangeDouble = makePayload(1);
+        outOfRangeDouble["latency_counters"]["write"]["skipped"] = 1e300;
+        UNIT_ASSERT(!TryReadLatencyCountersBatch(outOfRangeDouble));
+
+        auto doubleVersion = makePayload(1);
+        doubleVersion["latency_counters"]["version"] = 1.0;
+        UNIT_ASSERT(!TryReadLatencyCountersBatch(doubleVersion));
+
         auto overflow = makePayload(1);
         overflow["latency_counters"]["read"]["good"] =
             static_cast<unsigned long long>(std::numeric_limits<ui64>::max());

@@ -31,6 +31,16 @@ void TCallContext::SetHasUncountableRejects()
     AtomicSet(HasUncountableRejects, true);
 }
 
+bool TCallContext::GetHasParallelSubRequests() const
+{
+    return AtomicGet(HasParallelSubRequests);
+}
+
+void TCallContext::SetHasParallelSubRequests()
+{
+    AtomicSet(HasParallelSubRequests, true);
+}
+
 TCallContextPtr ToBlockStoreCallContext(TCallContextBasePtr callContext)
 {
     if (!callContext) {
