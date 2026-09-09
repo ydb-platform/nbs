@@ -30,18 +30,15 @@ TString AsString(const TBuffer& buffer)
     return TString(buffer.Data(), buffer.Size());
 }
 
-using TKeyBuffers = TVector<TKeyBuffer>;
-
-TString Get(const TKeyBuffers& buffers, ui64 key)
+TString Get(const TVector<TKeyBuffer>& buffers, ui64 key)
 {
-    auto it = FindIf(buffers, [key](const auto& entry) {
-        return entry.Key == key;
-    });
+    auto it =
+        FindIf(buffers, [key](const auto& entry) { return entry.Key == key; });
     UNIT_ASSERT_C(it != buffers.end(), "key " << key << " is missing");
     return AsString(it->Buffer);
 }
 
-TKeyBuffers Restore(const IKeyBufferStorePtr& store)
+TVector<TKeyBuffer> Restore(const IKeyBufferStorePtr& store)
 {
     auto response = store->Restore().GetValueSync();
     UNIT_ASSERT_VALUES_EQUAL_C(
@@ -52,7 +49,7 @@ TKeyBuffers Restore(const IKeyBufferStorePtr& store)
 }
 
 // "<key>=<buffer>|..." in the key order
-TString Describe(TKeyBuffers buffers)
+TString Describe(TVector<TKeyBuffer> buffers)
 {
     SortBy(buffers, [](const auto& entry) { return entry.Key; });
 
@@ -83,7 +80,8 @@ ui32 EraseBelow(const IKeyBufferStorePtr& store, ui64 key)
 
 ILoggingServicePtr TestLogging()
 {
-    static const ILoggingServicePtr logging = [] {
+    static const ILoggingServicePtr logging = []
+    {
         auto logging = CreateLoggingService(
             "console",
             {.FiltrationLevel = TLOG_RESOURCES});
@@ -115,7 +113,7 @@ IKeyBufferStorePtr OpenTestStore(
 }
 
 // what a fresh store instance restores from the device
-TKeyBuffers Reopen(
+TVector<TKeyBuffer> Reopen(
     const IDevicePtr& device,
     ui64 pageCount = TestPageCount)
 {
