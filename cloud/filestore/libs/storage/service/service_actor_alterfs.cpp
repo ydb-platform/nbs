@@ -594,6 +594,7 @@ void TAlterFileStoreActor::UpdateShardCreatedState(
     const TActorContext& ctx,
     const ui32 shardIndex)
 {
+    Y_DEBUG_ABORT_UNLESS(CreatedShardBitmap);
     if (!CreatedShardBitmap) {
         LOG_WARN(
             ctx,
@@ -984,16 +985,15 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
 
 void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
 {
-    if (ShardsToCreate == 0) {
-        ConfigureShards(ctx);
-        return;
+    if (ShardsToCreate > 0) {
+        NextShardToCreate = ExistingShardIds.size();
+        ContinueCreateShards(
+            ctx,
+            StorageConfig->GetMaxShardManagementRequestsInFlight());
     }
 
-    NextShardToCreate = ExistingShardIds.size();
-    ContinueCreateShards(
-        ctx,
-        StorageConfig->GetMaxShardManagementRequestsInFlight());
-
+    // ContinueCreateShards might detect that all shards were already created on
+    // previous attempts, and this attempt is a restart. So we may do configure.
     if (ShardsToCreate == 0) {
         ConfigureShards(ctx);
     }
@@ -1086,6 +1086,11 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
             // Set limit to 1 as only one response was received now.
             ContinueCreateShards(ctx, 1);
         }
+
+        // In throttled mode, ConfigureShards must wait for the created-shard
+        // bitmap to become durable. HandleResizeStateResponse is the
+        // persistence barrier and will call ConfigureShards when all local bits
+        // are persisted.
         return;
     }
 
