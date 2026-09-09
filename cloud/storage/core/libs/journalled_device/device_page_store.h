@@ -23,6 +23,19 @@ struct TPageGroupRef
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EDevicePageStoreMode
+{
+    // Every method validates the page group refs it is given against the
+    // allocation state.
+    Checked,
+
+    // Only AllocateAt does - the caller of Free, Write and Read is trusted to
+    // pass the pages it has allocated.
+    Trusted,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IDevicePageStore
 {
     virtual ~IDevicePageStore() = default;
@@ -59,9 +72,11 @@ struct IDevicePageStore
 //
 // The page group refs of a single request must not intersect with each other -
 // the store does not check this and does not account for such refs properly.
+
 IDevicePageStorePtr CreateDevicePageStore(
     IDevicePtr device,
     ui64 pageCount,
-    ui32 pageSize);
+    ui32 pageSize,
+    EDevicePageStoreMode mode = EDevicePageStoreMode::Checked);
 
 }   // namespace NCloud::NJournalled

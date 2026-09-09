@@ -353,21 +353,27 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             store->Read(MakeRefs({{5, 3}}))
                 .GetValue().GetError().GetCode());
 
-        // reaching into the hole from either side is not allowed
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            store->Read(MakeRefs({{2, 2}}))
-                .GetValue().GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            store->Read(MakeRefs({{4, 2}}))
-                .GetValue().GetError().GetCode());
+        // reaching into the hole from either side is not allowed, and the
+        // first free page of the ref is reported
+        const auto fromTheLeft =
+            store->Read(MakeRefs({{2, 2}})).GetValue().GetError();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, fromTheLeft.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            fromTheLeft.GetMessage(),
+            "page 3 is not busy");
+
+        const auto fromTheRight =
+            store->Read(MakeRefs({{4, 2}})).GetValue().GetError();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, fromTheRight.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            fromTheRight.GetMessage(),
+            "page 4 is not busy");
 
         // as is a ref that spans the hole
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            store->Read(MakeRefs({{0, 8}}))
-                .GetValue().GetError().GetCode());
+        const auto spanning =
+            store->Read(MakeRefs({{0, 8}})).GetValue().GetError();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, spanning.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(spanning.GetMessage(), "page 3 is not busy");
     }
 
     Y_UNIT_TEST(ShouldFreePages)
@@ -426,6 +432,35 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         // the freed pages are merged back into the free space
         UNIT_ASSERT_VALUES_EQUAL("0x4", Describe(store->Allocate(4)));
+    }
+
+    Y_UNIT_TEST(ShouldMergeTheFreedPagesWithTheirNeighbours)
+    {
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            6,
+            DefaultPageSize);
+
+        UNIT_ASSERT_VALUES_EQUAL("0x6", Describe(store->Allocate(6)));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            store->Free(MakeRefs({{0, 2}})).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            store->Free(MakeRefs({{4, 2}})).GetCode());
+
+        // the free space is fragmented until the hole between the two free
+        // ranges is freed as well
+        UNIT_ASSERT_VALUES_EQUAL("0x2, 4x2", Describe(store->Allocate(4)));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            store->Free(MakeRefs({{0, 2}, {4, 2}, {2, 2}})).GetCode());
+
+        // and a single contiguous range once it is - the hole is merged with
+        // the free range on either side of it
+        UNIT_ASSERT_VALUES_EQUAL("0x6", Describe(store->Allocate(6)));
     }
 
     Y_UNIT_TEST(ShouldAllocateTheGivenPages)
@@ -518,6 +553,89 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "aaaa|bbbb|cccc",
             ReadFromDevice(device, 0, 3));
+    }
+
+    Y_UNIT_TEST(ShouldNotValidateTheRefsInTheTrustedMode)
+    {
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            DefaultPageCount,
+            DefaultPageSize,
+            EDevicePageStoreMode::Trusted);
+
+        // nothing is allocated, yet the pages are written and read back
+        auto refs = MakeRefs({{0, 2}});
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            store->Write(refs, MakePages({"aaaa", "bbbb"}))
+                .GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "aaaa|bbbb",
+            Join(store->Read(refs).GetValue().GetResult()));
+
+        // and freed
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, store->Free(refs).GetCode());
+
+        // the same store in the checked mode rejects all three
+        auto checked = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            DefaultPageCount,
+            DefaultPageSize);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            checked->Write(refs, MakePages({"aaaa", "bbbb"}))
+                .GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            checked->Read(refs).GetValue().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            checked->Free(refs).GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldValidateAllocateAtInTheTrustedMode)
+    {
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            DefaultPageCount,
+            DefaultPageSize,
+            EDevicePageStoreMode::Trusted);
+
+        UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(store->Allocate(2)));
+
+        // AllocateAt is given the pages of a restored record, so it checks
+        // them even here
+        const auto busy = store->AllocateAt(MakeRefs({{1, 4}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, busy.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(busy.GetMessage(), "page 1 is busy already");
+
+        const auto beyond =
+            store->AllocateAt(MakeRefs({{DefaultPageCount, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, beyond.GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            store->AllocateAt(MakeRefs({{5, 2}})).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("2x3, 7x9", Describe(store->Allocate(12)));
+    }
+
+    Y_UNIT_TEST(ShouldTrackTheAllocationInTheTrustedMode)
+    {
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(),
+            4,
+            DefaultPageSize,
+            EDevicePageStoreMode::Trusted);
+
+        auto refs = store->Allocate(4);
+        UNIT_ASSERT_VALUES_EQUAL("0x4", Describe(refs));
+
+        // the free space is exhausted, so nothing else can be allocated
+        UNIT_ASSERT_VALUES_EQUAL("", Describe(store->Allocate(1)));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, store->Free(refs).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("0x4", Describe(store->Allocate(4)));
     }
 
     Y_UNIT_TEST(ShouldReportTheDeviceWriteError)
