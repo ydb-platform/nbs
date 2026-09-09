@@ -425,7 +425,7 @@ private:
         fuse_req_t req,
         fuse_ino_t ino);
 
-    bool ValidateDirectoryHandle(
+    std::shared_ptr<TDirectoryHandle> ValidateAndGetDirectoryHandle(
         TCallContext& callContext,
         fuse_req_t req,
         fuse_ino_t ino,

@@ -48,6 +48,11 @@ TDirectoryHandleCache::TDirectoryHandleCache(
     IncreaseStats(SumDirectoryHandlesStats(Handles), Handles.size());
 }
 
+bool TDirectoryHandleCache::IsPersistent() const
+{
+    return Storage != nullptr;
+}
+
 ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
 {
     ui64 handleId = 0;
