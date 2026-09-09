@@ -1,5 +1,6 @@
 #include "stats.h"
 #include "critical_event.h"
+#include "latency_tracker.h"
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -339,5 +340,138 @@ Y_UNIT_TEST_SUITE(TStatsTest)
                 UNIT_ASSERT_VALUES_EQUAL(false, stats.Has("crit_events"));
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldKeepLatencyCountersPayloadSeparateAndVersioned)
+    {
+        TSimpleStats oldStats;
+        TCompleteStats completeStats;
+
+        auto dump = [&] (bool enabled) {
+            TStringStream ss;
+            completeStats.LatencyTrackingEnabled = enabled;
+            DumpStats(
+                completeStats,
+                oldStats,
+                TDuration::Seconds(1),
+                ss,
+                1);
+
+            NJson::TJsonValue json;
+            NJson::ReadJsonTree(ss.Str(), &json, true);
+            return json;
+        };
+
+        auto json = dump(false);
+        UNIT_ASSERT(!json.Has("latency_counters"));
+
+        completeStats.SimpleStats.LatencyCounters[0].Good += 3;
+        completeStats.SimpleStats.LatencyCounters[0].Bad += 2;
+        completeStats.SimpleStats.LatencyCounters[0].Skipped += 1;
+        completeStats.SimpleStats.LatencyCounters[1].Good += 5;
+        completeStats.SimpleStats.LatencyCounters[1].Bad += 4;
+        completeStats.SimpleStats.LatencyCounters[1].Skipped += 3;
+
+        json = dump(true);
+        const auto& counters = json["latency_counters"];
+        UNIT_ASSERT_VALUES_EQUAL(1, counters["version"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(3, counters["read"]["good"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(2, counters["read"]["bad"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters["read"]["skipped"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(5, counters["write"]["good"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(4, counters["write"]["bad"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(3, counters["write"]["skipped"].GetUInteger());
+
+        completeStats.SimpleStats.LatencyCounters[0].Bad += 7;
+        json = dump(true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            json["latency_counters"]["read"]["good"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(
+            7,
+            json["latency_counters"]["read"]["bad"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            json["latency_counters"]["read"]["skipped"].GetUInteger());
+    }
+
+    Y_UNIT_TEST(ShouldClassifyExactlyOneLatencyOutcome)
+    {
+        constexpr ui64 cyclesPerSecond = 2000000000;
+        SetCyclesPerSecond(cyclesPerSecond);
+
+        NCloud::NBlockStore::TLatencyThresholdLadder ladder = {
+            {
+                .MinRequestBytes = 0,
+                .ReadThreshold = TDuration::MilliSeconds(5),
+                .WriteThreshold = TDuration::MilliSeconds(7),
+            },
+            {
+                .MinRequestBytes = 4096,
+                .ReadThreshold = TDuration::MilliSeconds(11),
+                .WriteThreshold = TDuration::MilliSeconds(13),
+            },
+        };
+        TLatencyTracker latencyTracker(true, std::move(ladder));
+        TSimpleStats stats;
+
+        latencyTracker.Record(
+            stats,
+            0,
+            4096,
+            DurationToCyclesSafe(TDuration::MilliSeconds(10)),
+            ELatencyCompletion::Success);
+        latencyTracker.Record(
+            stats,
+            0,
+            4096,
+            DurationToCyclesSafe(TDuration::MilliSeconds(12)),
+            ELatencyCompletion::Success);
+        latencyTracker.Record(
+            stats,
+            0,
+            4096,
+            0,
+            ELatencyCompletion::Error);
+        latencyTracker.Record(
+            stats,
+            0,
+            4096,
+            0,
+            ELatencyCompletion::Skipped);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.LatencyCounters[0].Good);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.LatencyCounters[0].Bad);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.LatencyCounters[0].Skipped);
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            stats.LatencyCounters[0].Good + stats.LatencyCounters[0].Bad +
+                stats.LatencyCounters[0].Skipped);
+
+        TLatencyTracker skipAll(true, {});
+        skipAll.Record(
+            stats,
+            1,
+            4096,
+            0,
+            ELatencyCompletion::Error);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.LatencyCounters[1].Skipped);
+    }
+
+    Y_UNIT_TEST(ShouldExcludeWaitTimeFromLatencyDuration)
+    {
+        constexpr ui64 cyclesPerSecond = 2000000000;
+        SetCyclesPerSecond(cyclesPerSecond);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            DurationToCyclesSafe(TDuration::MilliSeconds(7)),
+            SubtractLatencyWaitTime(
+                DurationToCyclesSafe(TDuration::MilliSeconds(12)),
+                TDuration::MilliSeconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            SubtractLatencyWaitTime(
+                DurationToCyclesSafe(TDuration::MilliSeconds(3)),
+                TDuration::MilliSeconds(5)));
     }
 }

@@ -89,6 +89,17 @@ TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
             return result;
         }
 
+        if (static_cast<size_t>(mediaKindThresholds.BucketsSize()) >
+            MaxLatencyThresholdBucketsPerMediaKind)
+        {
+            result.Error = TStringBuilder()
+                << "media kind " << mediaKindName << " has "
+                << mediaKindThresholds.BucketsSize()
+                << " buckets in LatencyThresholds; maximum is "
+                << MaxLatencyThresholdBucketsPerMediaKind;
+            return result;
+        }
+
         // Safe to index Ladders with mediaKind: bounds-checked above.
         TLatencyThresholdLadder ladder;
         ladder.reserve(mediaKindThresholds.BucketsSize());
@@ -197,7 +208,7 @@ const TLatencyThresholdBucket& FindLatencyThresholdBucket(
 
 TLatencyThresholdOutcome ClassifyLatencyOutcome(
     const TLatencyThresholdLadder* ladder,
-    EDiagnosticsErrorKind errorKind,
+    const NProto::TError& error,
     bool isWrite,
     ui64 requestBytes,
     TDuration execTime)
@@ -208,60 +219,47 @@ TLatencyThresholdOutcome ClassifyLatencyOutcome(
     // gate applies unconditionally, before looking at errorKind, so it also
     // covers ErrorFatal operations.
     if (!ladder) {
-        return {.MediaKindNotConfigured = true};
+        return {.CountSkipped = true};
+    }
+
+    const auto errorKind = GetDiagnosticsErrorKind(error);
+
+    // These outcomes do not describe a storage operation whose latency can
+    // fairly be judged: the service explicitly refused to start it, the
+    // request was invalid before execution, or its owner cancelled it.
+    if (errorKind == EDiagnosticsErrorKind::ErrorThrottling ||
+        errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint ||
+        error.GetCode() == E_ARGUMENT ||
+        error.GetCode() == E_CANCELLED)
+    {
+        return {.CountSkipped = true};
+    }
+
+    // At this API boundary the error is the final logical outcome. Retriable,
+    // session, aborted-transport and silent errors are therefore terminal for
+    // this operation (including retry exhaustion), rather than intermediate
+    // attempts to exclude.
+    if (HasError(error)) {
+        return {.CountTotal = true};
     }
 
     switch (errorKind) {
+        case EDiagnosticsErrorKind::Success:
+            break;
+
+        // A successful error code is the source of truth. The remaining
+        // diagnostic kinds are defensive fallbacks for inconsistent input;
+        // count such an operation as failed instead of allowing it into the
+        // numerator.
         case EDiagnosticsErrorKind::ErrorThrottling:
         case EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint:
-            // Rejected by the client's own choice/fault - not judged.
-            return {};
-
         case EDiagnosticsErrorKind::ErrorRetriable:
         case EDiagnosticsErrorKind::ErrorSession:
         case EDiagnosticsErrorKind::ErrorAborted:
         case EDiagnosticsErrorKind::ErrorSilent:
-            // Treated as one attempt of a retry chain whose outcome is
-            // decided elsewhere, so this attempt is not judged.
-            //
-            // Known limitation: the successful retry these counters expect
-            // to see instead does not always arrive. The durable client
-            // decides to stop retrying after receiving the last server
-            // response and substitutes E_RETRY_TIMEOUT locally
-            // (cloud/blockstore/libs/client/durable.cpp:351-355) without
-            // issuing another request, so a chain that ends in failure
-            // contributes nothing at all here. Terminal errors that map to
-            // this group in the first place have the same effect: E_IO_SILENT
-            // is in NeverRetriableErrors (durable.cpp) yet arrives as
-            // ErrorSilent. Telling such an outcome apart from a genuinely
-            // intermediate one needs more than the collapsed errorKind this
-            // function receives, so both stay excluded here.
-            return {};
-
         case EDiagnosticsErrorKind::ErrorFatal:
-            // The service failed to execute the operation - bad, but there
-            // is nothing to compare against a duration threshold.
-            //
-            // Known limitation, opposite in direction to the retriable case
-            // above: a request rejected by argument validation lands here as
-            // well, because the gRPC layer opens the stats lifecycle before
-            // it validates (RequestStarted in
-            // cloud/blockstore/libs/server/server.cpp precedes
-            // ValidateRequest a few lines below it). A client that sets the
-            // internal-only header, or talks on the wrong channel, is
-            // therefore counted as a bad operation of its volume without any
-            // I/O having run. The blast radius is that client's own mount,
-            // since the per-volume stats path resolves nothing without an
-            // active mount for the client/disk pair, and separating the two
-            // cases would mean carrying the request stage down from the
-            // server layer, which nothing on this path does today.
-            return {.CountTotal = true};
-
-        case EDiagnosticsErrorKind::Success:
-            break;
-
         case EDiagnosticsErrorKind::Max:
-            return {};
+            return {.CountTotal = true};
     }
 
     const auto& bucket = FindLatencyThresholdBucket(*ladder, requestBytes);

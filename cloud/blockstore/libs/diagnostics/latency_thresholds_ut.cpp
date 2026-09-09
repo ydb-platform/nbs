@@ -93,6 +93,40 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsValidationTest)
         UNIT_ASSERT(!result.IsValid());
     }
 
+    Y_UNIT_TEST(ShouldRejectTooManyBuckets)
+    {
+        NProto::TMediaKindLatencyThresholds thresholds;
+        thresholds.SetMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
+        for (size_t i = 0;
+             i <= MaxLatencyThresholdBucketsPerMediaKind;
+             ++i)
+        {
+            *thresholds.AddBuckets() = MakeBucket(i, 10, 10);
+        }
+
+        auto result = BuildLatencyThresholdsTable({thresholds});
+
+        UNIT_ASSERT(!result.IsValid());
+        UNIT_ASSERT(!result.Table);
+    }
+
+    Y_UNIT_TEST(ShouldAcceptMaximumBucketCount)
+    {
+        NProto::TMediaKindLatencyThresholds thresholds;
+        thresholds.SetMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
+        for (size_t i = 0;
+             i < MaxLatencyThresholdBucketsPerMediaKind;
+             ++i)
+        {
+            *thresholds.AddBuckets() = MakeBucket(i, 10, 10);
+        }
+
+        auto result = BuildLatencyThresholdsTable({thresholds});
+
+        UNIT_ASSERT(result.IsValid());
+        UNIT_ASSERT(result.Table);
+    }
+
     Y_UNIT_TEST(ShouldRejectFirstBucketWithNonZeroMinRequestBytes)
     {
         TVector<NProto::TMediaKindLatencyThresholds> config = {
@@ -340,129 +374,114 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsLookupTest)
 
 Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
 {
+    TLatencyThresholdLadder MakeLadder()
+    {
+        return {{
+            .MinRequestBytes = 0,
+            .ReadThreshold = TDuration::MilliSeconds(10),
+            .WriteThreshold = TDuration::MilliSeconds(10),
+        }};
+    }
+
     Y_UNIT_TEST(ShouldSkipOperationWithNoConfiguredLadder)
     {
         auto outcome = ClassifyLatencyOutcome(
             nullptr,
-            EDiagnosticsErrorKind::Success,
+            {},
             false,
             4_KB,
             TDuration::MilliSeconds(1));
 
-        UNIT_ASSERT(outcome.MediaKindNotConfigured);
+        UNIT_ASSERT(outcome.CountSkipped);
         UNIT_ASSERT(!outcome.CountTotal);
         UNIT_ASSERT(!outcome.CountGood);
     }
 
-    Y_UNIT_TEST(ShouldCountFatalErrorAsTotalButNotGood)
+    void CheckFinalFailureIsBad(ui32 errorCode)
     {
-        TLatencyThresholdLadder ladder = {
-            {
-                .MinRequestBytes = 0,
-                .ReadThreshold = TDuration::MilliSeconds(10),
-                .WriteThreshold = TDuration::MilliSeconds(10),
-            },
-        };
+        auto ladder = MakeLadder();
 
         auto outcome = ClassifyLatencyOutcome(
             &ladder,
-            EDiagnosticsErrorKind::ErrorFatal,
+            MakeError(errorCode),
             false,
             4_KB,
             TDuration::MilliSeconds(1));
 
-        UNIT_ASSERT(!outcome.MediaKindNotConfigured);
+        UNIT_ASSERT(!outcome.CountSkipped);
         UNIT_ASSERT(outcome.CountTotal);
         UNIT_ASSERT(!outcome.CountGood);
     }
 
-    void CheckNeitherCounterMoves(EDiagnosticsErrorKind errorKind)
+    Y_UNIT_TEST(ShouldCountAllFinalServiceFailuresAsBad)
     {
-        TLatencyThresholdLadder ladder = {
-            {
-                .MinRequestBytes = 0,
-                .ReadThreshold = TDuration::MilliSeconds(10),
-                .WriteThreshold = TDuration::MilliSeconds(10),
-            },
-        };
+        CheckFinalFailureIsBad(E_FAIL);
+        CheckFinalFailureIsBad(E_RETRY_TIMEOUT);
+        CheckFinalFailureIsBad(E_REJECTED);
+        CheckFinalFailureIsBad(E_BS_INVALID_SESSION);
+        CheckFinalFailureIsBad(E_ABORTED);
+        CheckFinalFailureIsBad(E_TRANSPORT_ERROR);
+        CheckFinalFailureIsBad(E_IO_SILENT);
+    }
+
+    void CheckSkipped(const NProto::TError& error)
+    {
+        auto ladder = MakeLadder();
 
         auto outcome = ClassifyLatencyOutcome(
             &ladder,
-            errorKind,
+            error,
             false,
             4_KB,
             TDuration::MilliSeconds(1));
 
-        UNIT_ASSERT(!outcome.MediaKindNotConfigured);
+        UNIT_ASSERT(outcome.CountSkipped);
         UNIT_ASSERT(!outcome.CountTotal);
         UNIT_ASSERT(!outcome.CountGood);
     }
 
-    Y_UNIT_TEST(ShouldNotCountThrottledOperation)
+    Y_UNIT_TEST(ShouldSkipExplicitThrottlingRejection)
     {
-        CheckNeitherCounterMoves(EDiagnosticsErrorKind::ErrorThrottling);
+        CheckSkipped(MakeError(E_BS_THROTTLED));
+        CheckSkipped(MakeError(E_REJECTED, "Throttled"));
     }
 
-    Y_UNIT_TEST(ShouldNotCountOperationRejectedByCheckpoint)
+    Y_UNIT_TEST(ShouldSkipOperationRejectedByCheckpoint)
     {
-        CheckNeitherCounterMoves(
-            EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint);
+        CheckSkipped(MakeError(
+            E_REJECTED,
+            "Checkpoint reject request. test"));
     }
 
-    Y_UNIT_TEST(ShouldNotCountRetriableError)
+    Y_UNIT_TEST(ShouldSkipInvalidInputAndCancellation)
     {
-        CheckNeitherCounterMoves(EDiagnosticsErrorKind::ErrorRetriable);
-    }
-
-    Y_UNIT_TEST(ShouldNotCountSessionError)
-    {
-        CheckNeitherCounterMoves(EDiagnosticsErrorKind::ErrorSession);
-    }
-
-    Y_UNIT_TEST(ShouldNotCountAbortedError)
-    {
-        CheckNeitherCounterMoves(EDiagnosticsErrorKind::ErrorAborted);
-    }
-
-    Y_UNIT_TEST(ShouldNotCountSilentError)
-    {
-        CheckNeitherCounterMoves(EDiagnosticsErrorKind::ErrorSilent);
+        CheckSkipped(MakeError(E_ARGUMENT));
+        CheckSkipped(MakeError(E_CANCELLED));
     }
 
     Y_UNIT_TEST(ShouldCountFastSuccessfulOperationAsGood)
     {
-        TLatencyThresholdLadder ladder = {
-            {
-                .MinRequestBytes = 0,
-                .ReadThreshold = TDuration::MilliSeconds(10),
-                .WriteThreshold = TDuration::MilliSeconds(10),
-            },
-        };
+        auto ladder = MakeLadder();
 
         auto outcome = ClassifyLatencyOutcome(
             &ladder,
-            EDiagnosticsErrorKind::Success,
+            {},
             false,
             4_KB,
             TDuration::MilliSeconds(1));
 
+        UNIT_ASSERT(!outcome.CountSkipped);
         UNIT_ASSERT(outcome.CountTotal);
         UNIT_ASSERT(outcome.CountGood);
     }
 
     Y_UNIT_TEST(ShouldCountSlowSuccessfulOperationAsTotalOnly)
     {
-        TLatencyThresholdLadder ladder = {
-            {
-                .MinRequestBytes = 0,
-                .ReadThreshold = TDuration::MilliSeconds(10),
-                .WriteThreshold = TDuration::MilliSeconds(10),
-            },
-        };
+        auto ladder = MakeLadder();
 
         auto outcome = ClassifyLatencyOutcome(
             &ladder,
-            EDiagnosticsErrorKind::Success,
+            {},
             false,
             4_KB,
             TDuration::MilliSeconds(20));
@@ -473,17 +492,11 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
 
     Y_UNIT_TEST(ShouldTreatExecTimeExactlyAtThresholdAsGood)
     {
-        TLatencyThresholdLadder ladder = {
-            {
-                .MinRequestBytes = 0,
-                .ReadThreshold = TDuration::MilliSeconds(10),
-                .WriteThreshold = TDuration::MilliSeconds(10),
-            },
-        };
+        auto ladder = MakeLadder();
 
         auto outcome = ClassifyLatencyOutcome(
             &ladder,
-            EDiagnosticsErrorKind::Success,
+            {},
             false,
             4_KB,
             TDuration::MilliSeconds(10));
@@ -499,17 +512,11 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
         // itself has no notion of waiting, it only sees the (small) execTime
         // that made it through. Success + a small execTime must count as
         // good, exactly like an unthrottled fast operation.
-        TLatencyThresholdLadder ladder = {
-            {
-                .MinRequestBytes = 0,
-                .ReadThreshold = TDuration::MilliSeconds(10),
-                .WriteThreshold = TDuration::MilliSeconds(10),
-            },
-        };
+        auto ladder = MakeLadder();
 
         auto outcome = ClassifyLatencyOutcome(
             &ladder,
-            EDiagnosticsErrorKind::Success,
+            {},
             false,
             4_KB,
             TDuration::MilliSeconds(1));
@@ -531,7 +538,7 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
         // 20ms is over the write threshold but under the read threshold.
         auto outcome = ClassifyLatencyOutcome(
             &ladder,
-            EDiagnosticsErrorKind::Success,
+            {},
             /*isWrite*/ false,
             4_KB,
             TDuration::MilliSeconds(20));
@@ -555,7 +562,7 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
         // execTime passes.
         auto outcome = ClassifyLatencyOutcome(
             &ladder,
-            EDiagnosticsErrorKind::Success,
+            {},
             /*isWrite*/ true,
             4_KB,
             TDuration::MilliSeconds(20));
@@ -579,20 +586,20 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
 
         const struct
         {
-            EDiagnosticsErrorKind ErrorKind;
+            NProto::TError Error;
             TDuration ExecTime;
         } ops[] = {
-            {EDiagnosticsErrorKind::Success, TDuration::MilliSeconds(1)},
-            {EDiagnosticsErrorKind::Success, TDuration::MilliSeconds(50)},
-            {EDiagnosticsErrorKind::ErrorFatal, TDuration::Zero()},
-            {EDiagnosticsErrorKind::ErrorThrottling, TDuration::Zero()},
-            {EDiagnosticsErrorKind::Success, TDuration::MilliSeconds(10)},
+            {{}, TDuration::MilliSeconds(1)},
+            {{}, TDuration::MilliSeconds(50)},
+            {MakeError(E_FAIL), TDuration::Zero()},
+            {MakeError(E_BS_THROTTLED), TDuration::Zero()},
+            {{}, TDuration::MilliSeconds(10)},
         };
 
         for (const auto& op: ops) {
             auto outcome = ClassifyLatencyOutcome(
                 &ladder,
-                op.ErrorKind,
+                op.Error,
                 false,
                 4_KB,
                 op.ExecTime);

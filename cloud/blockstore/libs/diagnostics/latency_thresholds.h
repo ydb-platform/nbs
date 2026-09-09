@@ -7,8 +7,6 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
-#include <library/cpp/threading/hot_swap/hot_swap.h>
-
 #include <util/datetime/base.h>
 #include <util/generic/ptr.h>
 #include <util/generic/string.h>
@@ -16,8 +14,15 @@
 #include <util/system/yassert.h>
 
 #include <array>
+#include <cstddef>
 
 namespace NCloud::NBlockStore {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Keeps the external-vhost v1 environment value well below Linux's per-string
+// exec limit even when every numeric field uses its maximum decimal width.
+inline constexpr size_t MaxLatencyThresholdBucketsPerMediaKind = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -44,10 +49,8 @@ using TLatencyThresholdLadder = TVector<TLatencyThresholdBucket>;
 
 struct TLatencyThresholdsValidationResult;
 
-// Immutable, validated snapshot of the whole latency thresholds table. Built
-// once from config and stored behind a THotSwap (see TLatencyThresholdsHotSwap
-// below) so that a future dynamic config source can replace it without
-// touching the request-completion hot path.
+// Immutable, validated snapshot of the whole latency thresholds table. It is
+// built once from startup config and then shared by all per-volume objects.
 class TLatencyThresholdsTable
     : public TAtomicRefCount<TLatencyThresholdsTable>
 {
@@ -68,22 +71,10 @@ private:
         NCloud::NProto::EStorageMediaKind_ARRAYSIZE> Ladders;
 
     // Filling the table is the validating builder's job alone, so that a
-    // published snapshot really is immutable: THotSwap synchronizes
-    // replacing the pointer, not writes to the object it points at, and a
-    // holder able to write here would race with the request path once a
-    // dynamic config source starts replacing tables.
+    // published snapshot really is immutable.
     friend TLatencyThresholdsValidationResult BuildLatencyThresholdsTable(
         const TVector<NProto::TMediaKindLatencyThresholds>& config);
 };
-
-// Shared, hot-swappable holder for the current table. A single instance is
-// owned by the volume stats component and referenced (via shared_ptr) by
-// every per-volume object, mirroring how THotSwap<TVolumePerfSettings> is
-// used for PerfSettings on the same request-completion path (see
-// volume_perf.h). Read access is a single AtomicLoad() per operation.
-using TLatencyThresholdsHotSwap = THotSwap<TLatencyThresholdsTable>;
-
-////////////////////////////////////////////////////////////////////////////////
 
 struct TLatencyThresholdsValidationResult
 {
@@ -115,6 +106,8 @@ struct TLatencyThresholdsValidationResult
 //     array of ladders);
 //   - a media kind appears at most once in the list;
 //   - every media kind entry has at least one bucket;
+//   - every media kind entry has at most
+//     MaxLatencyThresholdBucketsPerMediaKind buckets;
 //   - the first bucket of every media kind has MinRequestBytes == 0;
 //   - MinRequestBytes strictly increases within a media kind (no
 //     duplicates, no reordering; never silently sorted);
@@ -148,14 +141,11 @@ const TLatencyThresholdBucket& FindLatencyThresholdBucket(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Outcome of judging a single completed read/write operation against the
-// latency thresholds table. Fatal errors are always bad (nothing to compare
-// a duration against); throttling/checkpoint rejections and retriable
-// outcomes are excluded entirely (not judged, not counted as bad);
-// everything else is judged by comparing execution time against the
-// threshold for its media kind, direction (read/write), and size bucket.
-// See ClassifyLatencyOutcome for a known gap in the retriable case: an
-// operation whose retries are exhausted contributes to neither counter.
+// Outcome of judging one final logical read/write operation after all
+// splitting and retries have completed. Successful operations are compared
+// with the size-dependent threshold. A final service failure is bad. Explicit
+// load-shedding/checkpoint rejections, invalid input and cancellation are
+// excluded from latency accounting.
 struct TLatencyThresholdOutcome
 {
     // Operation counted in the total (denominator).
@@ -164,19 +154,20 @@ struct TLatencyThresholdOutcome
     // Operation counted as good (numerator); only meaningful if CountTotal.
     bool CountGood = false;
 
-    // The operation's media kind has no configured ladder at all: the
-    // operation was skipped entirely (neither total nor good). Callers
-    // should tally this separately (a diagnostic "skipped" counter), never
-    // as a bad operation - see TLatencyThresholdsTable::FindLadder.
-    bool MediaKindNotConfigured = false;
+    // The operation was deliberately excluded (neither total nor good).
+    // This covers both an unconfigured media kind and a final outcome that
+    // is outside the latency counter contract. Callers tally it in the diagnostic
+    // skipped counter.
+    bool CountSkipped = false;
 };
 
 // Pure classification function, no side effects (the caller performs the
 // actual counter increments). `ladder` is nullptr when the operation's media
-// kind has no configured thresholds at all.
+// kind has no configured thresholds at all. `error` is the final result
+// visible at the endpoint boundary, not an individual server attempt.
 TLatencyThresholdOutcome ClassifyLatencyOutcome(
     const TLatencyThresholdLadder* ladder,
-    EDiagnosticsErrorKind errorKind,
+    const NProto::TError& error,
     bool isWrite,
     ui64 requestBytes,
     TDuration execTime);
