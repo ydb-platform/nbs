@@ -16,10 +16,10 @@ class TInMemoryKeyBufferStore final: public IKeyBufferStore
 {
 private:
     mutable TAdaptiveLock Lock;
-    TMap<ui64, TString> Buffers;
+    TMap<ui64, TBuffer> Buffers;
 
 public:
-    TFuture<NCloud::NProto::TError> Write(ui64 key, TString buffer) override
+    TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override
     {
         with_lock (Lock) {
             Buffers[key] = std::move(buffer);
@@ -27,17 +27,17 @@ public:
         return MakeFuture(MakeError(S_OK));
     }
 
-    TFuture<TResultOrError<TString>> Read(ui64 key) const override
+    TFuture<TResultOrError<TBuffer>> Read(ui64 key) const override
     {
         with_lock (Lock) {
             auto it = Buffers.find(key);
             if (it == Buffers.end()) {
-                return MakeFuture<TResultOrError<TString>>(
-                    MakeError(E_NOT_FOUND, TStringBuilder()
-                        << "no buffer for key " << key));
+                return MakeFuture<TResultOrError<TBuffer>>(MakeError(
+                    E_NOT_FOUND,
+                    TStringBuilder() << "no buffer for key " << key));
             }
 
-            return MakeFuture<TResultOrError<TString>>(it->second);
+            return MakeFuture<TResultOrError<TBuffer>>(it->second);
         }
     }
 

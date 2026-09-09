@@ -6,8 +6,8 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/buffer.h>
 #include <util/generic/set.h>
-#include <util/generic/string.h>
 
 #include <memory>
 
@@ -19,11 +19,11 @@ struct IKeyBufferStore
 {
     virtual ~IKeyBufferStore() = default;
 
-    [[nodiscard]] virtual auto Write(ui64 key, TString buffer)
+    [[nodiscard]] virtual auto Write(ui64 key, TBuffer buffer)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 
     [[nodiscard]] virtual auto Read(ui64 key) const
-        -> NThreading::TFuture<TResultOrError<TString>> = 0;
+        -> NThreading::TFuture<TResultOrError<TBuffer>> = 0;
 
     [[nodiscard]] virtual auto EraseUpTo(ui64 lastKey)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
