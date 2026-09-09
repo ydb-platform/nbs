@@ -678,7 +678,7 @@ void ApplyBlobsSkipping(
         }
     }
 
-    THashSet<ui32> skippedBlockIndices;
+    THashSet<TAffectedBlock, TAffectedBlockHash> skippedBlocks;
 
     for (const auto& x: blobsToSkip) {
         auto ab = args.AffectedBlobs.find(x.first);
@@ -688,7 +688,7 @@ void ApplyBlobsSkipping(
             // but it does not cause data corruption - the important thing
             // is to ensure that all skipped indices are added, not that
             // all non-skipped are preserved
-            skippedBlockIndices.insert(affectedBlock.BlockIndex);
+            skippedBlocks.insert(affectedBlock);
         }
         args.AffectedBlobs.erase(ab);
     }
@@ -696,7 +696,7 @@ void ApplyBlobsSkipping(
     if (blobsToSkip.size()) {
         TAffectedBlocks affectedBlocks;
         for (const auto& b: args.AffectedBlocks) {
-            if (!skippedBlockIndices.contains(b.BlockIndex)) {
+            if (!skippedBlocks.contains(b)) {
                 affectedBlocks.push_back(b);
             }
         }

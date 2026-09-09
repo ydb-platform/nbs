@@ -206,6 +206,53 @@ TPrepareCompleteResult RunPrepareAndComplete(
 
 Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
 {
+    Y_UNIT_TEST(ShouldRemoveOnlyAffectedBlocksFromSkippedBlobs)
+    {
+        auto state = MakeState(
+            2048,   // blockCount
+            true    // mixedBlocksFilterEnabled
+        );
+
+        auto config = MakeStorageConfig(
+            0,    // diskPrefixLength
+            0);   // targetCompactionBytesPerOp
+
+        const TPartialBlobId mixedBlobId(1, 1, 3, 2 * DefaultBlockSize, 1, 0);
+        const TPartialBlobId mergedBlobId(1, 2, 3, 2 * DefaultBlockSize, 2, 0);
+
+        TTxPartition::TRangeCompaction args(
+            0, TBlockRange32::MakeClosedInterval(0, 2));
+
+        // Keep the older version of block 0 and a different block with the
+        // same commit ID as the skipped blocks.
+        args.MarkBlock(0, CommitId, mixedBlobId, 0, true);
+        args.MarkBlock(2, CommitId + 1, mixedBlobId, 1, true);
+        args.MarkBlock(0, CommitId + 1, mergedBlobId, 0, true);
+        args.MarkBlock(1, CommitId + 1, mergedBlobId, 1, true);
+
+        args.AffectedBlobs[mixedBlobId].IndexKind = EChannelDataKind::Mixed;
+        args.AffectedBlobs[mergedBlobId].IndexKind = EChannelDataKind::Merged;
+
+        ApplyBlobsSkipping(*config, 2, state, args);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, args.BlobsSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(2, args.BlocksSkipped);
+        UNIT_ASSERT_VALUES_EQUAL(1, args.AffectedBlobs.size());
+        UNIT_ASSERT(args.AffectedBlobs.contains(mixedBlobId));
+        UNIT_ASSERT(!args.AffectedBlobs.contains(mergedBlobId));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, args.AffectedBlocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, args.AffectedBlocks[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(CommitId, args.AffectedBlocks[0].CommitId);
+        UNIT_ASSERT_VALUES_EQUAL(2, args.AffectedBlocks[1].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(CommitId + 1, args.AffectedBlocks[1].CommitId);
+
+        UNIT_ASSERT(!args.BlockMarks[0].CommitId);
+        UNIT_ASSERT(!args.BlockMarks[1].CommitId);
+        UNIT_ASSERT_VALUES_EQUAL(mixedBlobId, args.BlockMarks[2].BlobId);
+        UNIT_ASSERT_VALUES_EQUAL(CommitId + 1, args.BlockMarks[2].CommitId);
+    }
+
     Y_UNIT_TEST(ShouldNotSkipMixedBlobs)
     {
         auto state = MakeState(
