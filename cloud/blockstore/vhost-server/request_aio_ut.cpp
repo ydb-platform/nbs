@@ -1,4 +1,5 @@
 #include "request_aio.h"
+#include "latency_tracker.h"
 
 #include <cloud/contrib/vhost/bio.h>
 
@@ -153,6 +154,45 @@ TEST_P(TRequestAIOTest, ShouldPrepareIO)
 
     EXPECT_EQ(buffers[1].base, req->Data[1].iov_base);
     EXPECT_EQ(buffers[1].len, req->Data[1].iov_len);
+}
+
+TEST_P(TRequestAIOTest, ShouldKeepSeparateTimestampForLatency)
+{
+    InitDevices(93_GB);
+
+    std::array buffers{
+        vhd_buffer{.base = reinterpret_cast<void*>(0x1000000), .len = 4_KB}};
+    virtio_blk_io bio{
+        .bdev_io = {
+            .type = VHD_BDEV_READ,
+            .total_sectors = 4_KB / VHD_SECTOR_SIZE,
+            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
+
+    TLatencyTracker latencyTracker(
+        true,
+        {{
+            .MinRequestBytes = 0,
+            .ReadThreshold = TDuration::Seconds(1),
+            .WriteThreshold = TDuration::Seconds(1),
+        }});
+
+    constexpr TCpuCycles legacyBatchTimestamp = 1;
+    TVector<iocb*> batch;
+    TSimpleStats queueStats;
+    PrepareIO(
+        Log,
+        nullptr,
+        Devices,
+        &bio.io,
+        batch,
+        legacyBatchTimestamp,
+        queueStats,
+        &latencyTracker);
+
+    ASSERT_EQ(1u, batch.size());
+    auto req = TAioRequest::FromIocb(batch[0]);
+    EXPECT_EQ(legacyBatchTimestamp, req->SubmitTs);
+    EXPECT_GT(req->LatencyStartTs, legacyBatchTimestamp);
 }
 
 TEST_P(TRequestAIOTest, ShouldAllocateBounceBuf)

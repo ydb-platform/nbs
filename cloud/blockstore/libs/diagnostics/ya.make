@@ -12,6 +12,7 @@ SRCS(
     incomplete_requests.cpp
     hostname.cpp
     latency_thresholds.cpp
+    latency_thresholds_config.cpp
     probes.cpp
     profile_log.cpp
     quota_metrics.cpp

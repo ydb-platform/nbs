@@ -16,6 +16,7 @@
 #include <util/generic/size_literals.h>
 
 #include <chrono>
+#include <limits>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -109,19 +110,31 @@ struct TFixture
     {
         auto monitoring = CreateMonitoringServiceStub();
 
+        NProto::TDiagnosticsConfig protoConfig;
+        protoConfig.SetLatencyThresholdsEnabled(true);
+        auto* media = protoConfig.AddLatencyThresholds();
+        media->SetMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+        auto* bucket = media->AddBuckets();
+        bucket->SetMinRequestBytes(0);
+        bucket->SetReadThresholdMs(10);
+        bucket->SetWriteThresholdMs(10);
+        auto diagnosticsConfig =
+            std::make_shared<TDiagnosticsConfig>(std::move(protoConfig));
+
         auto serverGroup = Monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "server");
 
         auto volumeStats = CreateVolumeStats(
             Monitoring,
-            {},
+            diagnosticsConfig,
+            TDuration::Max(),
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
         ServerStats = CreateServerStats(
             std::make_shared<TTestDumpable>(),
-            std::make_shared<TDiagnosticsConfig>(),
+            diagnosticsConfig,
             Monitoring,
             CreateProfileLogStub(),
             CreateServerRequestStats(
@@ -136,6 +149,19 @@ struct TFixture
         volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
 
         ServerStats->MountVolume(volume, ClientId, "instance");
+    }
+
+    auto GetLatencyCounters()
+    {
+        return Monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", DiskId)
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "")
+            ->GetSubgroup("folder", "")
+            ->GetSubgroup("type", "unknown");
     }
 
     void UpdateStats(
@@ -155,6 +181,95 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TEndpointStatsTest)
 {
+    Y_UNIT_TEST(ShouldValidateVersionedLatencyCountersPayloadAtomically)
+    {
+        auto makeCounters = [] (ui64 good, ui64 bad, ui64 skipped) {
+            return NJson::TJsonMap{
+                {"good", good},
+                {"bad", bad},
+                {"skipped", skipped},
+            };
+        };
+        auto makePayload = [&] (ui64 version) {
+            return NJson::TJsonMap{
+                {"latency_counters", NJson::TJsonMap{
+                    {"version", version},
+                    {"read", makeCounters(3, 2, 1)},
+                    {"write", makeCounters(5, 4, 3)},
+                }},
+            };
+        };
+
+        UNIT_ASSERT(!TryReadLatencyCountersBatch(NJson::TJsonMap{}));
+        UNIT_ASSERT(!TryReadLatencyCountersBatch(makePayload(2)));
+
+        auto valid = TryReadLatencyCountersBatch(makePayload(1));
+        UNIT_ASSERT(valid);
+        UNIT_ASSERT_VALUES_EQUAL(3, valid->Read.Good);
+        UNIT_ASSERT_VALUES_EQUAL(2, valid->Read.Bad);
+        UNIT_ASSERT_VALUES_EQUAL(1, valid->Read.Skipped);
+        UNIT_ASSERT_VALUES_EQUAL(5, valid->Write.Good);
+        UNIT_ASSERT_VALUES_EQUAL(4, valid->Write.Bad);
+        UNIT_ASSERT_VALUES_EQUAL(3, valid->Write.Skipped);
+
+        auto malformed = makePayload(1);
+        malformed["latency_counters"]["write"]["bad"] = "not-a-counter";
+        UNIT_ASSERT(!TryReadLatencyCountersBatch(malformed));
+
+        auto overflow = makePayload(1);
+        overflow["latency_counters"]["read"]["good"] =
+            static_cast<unsigned long long>(std::numeric_limits<ui64>::max());
+        overflow["latency_counters"]["read"]["bad"] = 1;
+        UNIT_ASSERT(!TryReadLatencyCountersBatch(overflow));
+
+        auto signedOverflow = makePayload(1);
+        signedOverflow["latency_counters"]["read"]["good"] =
+            static_cast<unsigned long long>(
+                std::numeric_limits<TAtomicBase>::max());
+        signedOverflow["latency_counters"]["read"]["bad"] = 0;
+        signedOverflow["latency_counters"]["read"]["skipped"] = 0;
+        signedOverflow["latency_counters"]["write"]["good"] = 1;
+        signedOverflow["latency_counters"]["write"]["bad"] = 0;
+        signedOverflow["latency_counters"]["write"]["skipped"] = 0;
+        UNIT_ASSERT(!TryReadLatencyCountersBatch(signedOverflow));
+    }
+
+    Y_UNIT_TEST_F(ShouldConsumeOnlyExplicitLatencyCountersPayload, TFixture)
+    {
+        TEndpointStats stats{ClientId, DiskId, ServerStats};
+        auto counters = GetLatencyCounters();
+        auto total = counters->GetCounter("LatencyTotalOps");
+        auto good = counters->GetCounter("LatencyGoodOps");
+        auto skipped = counters->GetCounter("LatencyThresholdsSkippedOps");
+
+        // A legacy-only batch must not be guessed from count/errors or the
+        // independent time/size histograms.
+        UpdateStats(stats, TVolumeStats{.Read = {.Count = 100}});
+        UNIT_ASSERT_VALUES_EQUAL(0, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, skipped->Val());
+
+        auto value = Dump(1s, {});
+        value["latency_counters"] = NJson::TJsonMap{
+            {"version", 1},
+            {"read", NJson::TJsonMap{
+                {"good", 3}, {"bad", 2}, {"skipped", 1}}},
+            {"write", NJson::TJsonMap{
+                {"good", 5}, {"bad", 4}, {"skipped", 3}}},
+        };
+        stats.Update(value);
+
+        UNIT_ASSERT_VALUES_EQUAL(14, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(8, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, skipped->Val());
+
+        value["latency_counters"]["version"] = 2;
+        stats.Update(value);
+        UNIT_ASSERT_VALUES_EQUAL(14, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(8, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, skipped->Val());
+    }
+
     Y_UNIT_TEST_F(ShouldCalcMaxValues, TFixture)
     {
         TEndpointStats stats {ClientId, DiskId, ServerStats};

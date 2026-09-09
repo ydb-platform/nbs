@@ -87,11 +87,18 @@ class TServerContext
     : public IServerContext
 {
 private:
+    IServerHandler& Handler;
     IOutputStream& Out;
+    const bool DeliverResponses;
 
 public:
-    TServerContext(IOutputStream& out)
-        : Out(out)
+    TServerContext(
+            IServerHandler& handler,
+            IOutputStream& out,
+            bool deliverResponses = true)
+        : Handler(handler)
+        , Out(out)
+        , DeliverResponses(deliverResponses)
     {}
 
     void Start() override
@@ -133,10 +140,8 @@ public:
 
     void SendResponse(TServerResponsePtr response) override
     {
-        Out.Write(response->HeaderBuffer.Data(), response->HeaderBuffer.Size());
-
-        if (response->DataBuffer) {
-            Out.Write(response->DataBuffer.get(), response->RequestBytes);
+        if (DeliverResponses) {
+            Handler.SendResponse(Out, *response);
         }
     }
 };
@@ -342,7 +347,7 @@ void ProcessRequests(
         writer.WriteRequest(request);
     }
 
-    auto ctx = MakeIntrusive<TServerContext>(in);
+    auto ctx = MakeIntrusive<TServerContext>(handler, in);
     handler.ProcessRequests(ctx, out, in, nullptr);
 
     {
@@ -420,7 +425,7 @@ void ProcessUnalignedRequests(
         writer.WriteRequest(request);
     }
 
-    auto ctx = MakeIntrusive<TServerContext>(in);
+    auto ctx = MakeIntrusive<TServerContext>(handler, in);
     handler.ProcessRequests(ctx, out, in, nullptr);
 
     {
@@ -626,6 +631,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
 
         ui32 requestCounter = 0;
         ui32 expectedRequestCounter = 0;
+        TVector<ui64> latencyRequestBytes;
 
         serverStats->PrepareMetricRequestHandler = [&] (
             TMetricRequest& metricRequest,
@@ -661,6 +667,20 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             ++requestCounter;
         };
 
+        serverStats->RecordLatencyCompletionHandler = [&] (
+            TMetricRequest& metricRequest,
+            TCallContext& callContext,
+            ui64 requestBytes,
+            const NProto::TError& error)
+        {
+            Y_UNUSED(callContext);
+            UNIT_ASSERT(
+                metricRequest.RequestType == EBlockStoreRequest::ReadBlocks ||
+                metricRequest.RequestType == EBlockStoreRequest::WriteBlocks);
+            UNIT_ASSERT(!HasError(error));
+            latencyRequestBytes.push_back(requestBytes);
+        };
+
         auto factory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),
             bootstrap->GetLogging(),
@@ -683,12 +703,87 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
 
         ProcessRequests(*handler, in, out);
         UNIT_ASSERT_VALUES_EQUAL(expectedRequestCounter, requestCounter);
+        UNIT_ASSERT_VALUES_EQUAL(2, latencyRequestBytes.size());
+        UNIT_ASSERT_VALUES_EQUAL(4 * 1024, latencyRequestBytes[0]);
+        UNIT_ASSERT_VALUES_EQUAL(4 * 1024, latencyRequestBytes[1]);
 
         expectedUnaligned = true;
         expectedStartIndex = 1;
         expectedBlockCount = 2;
         expectedRequestCounter += 3;
         ProcessUnalignedRequests(*handler, in, out);
+
+        // Each top-level Read/Write is reported once. Zero is out of scope,
+        // and the exact logical byte lengths are preserved instead of the
+        // aligned byte counts used by legacy metrics.
+        UNIT_ASSERT_VALUES_EQUAL(4, latencyRequestBytes.size());
+        UNIT_ASSERT_VALUES_EQUAL(11 * 512, latencyRequestBytes[2]);
+        UNIT_ASSERT_VALUES_EQUAL(13 * 512, latencyRequestBytes[3]);
+
+        bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldRecordLatencyBeforeNbdResponseDelivery)
+    {
+        auto storage = std::make_shared<TTestStorage>();
+        SetupStorage(*storage);
+
+        auto bootstrap = CreateBootstrap(storage);
+        bootstrap->Start();
+
+        TStorageOptions options;
+        options.DiskId = DefaultDiskId;
+        options.BlockSize = DefaultBlockSize;
+        options.BlocksCount = DefaultBlocksCount;
+
+        auto serverStats = std::make_shared<TTestServerStats>();
+        ui32 latencyCompletions = 0;
+        serverStats->RecordLatencyCompletionHandler = [&] (
+            TMetricRequest& metricRequest,
+            TCallContext& callContext,
+            ui64 requestBytes,
+            const NProto::TError& error)
+        {
+            Y_UNUSED(metricRequest);
+            Y_UNUSED(callContext);
+            Y_UNUSED(requestBytes);
+            Y_UNUSED(error);
+            ++latencyCompletions;
+        };
+
+        auto handler = CreateServerHandlerFactory(
+            CreateDefaultDeviceHandlerFactory(),
+            bootstrap->GetLogging(),
+            bootstrap->GetStorage(),
+            serverStats,
+            CreateErrorHandlerStub(),
+            options)->CreateHandler();
+
+        TStringStream clientToServer;
+        TStringStream serverToClient;
+        TRequestWriter writer(clientToServer);
+
+        TRequest request;
+        request.Magic = NBD_REQUEST_MAGIC;
+        request.Flags = 0;
+        request.Type = NBD_CMD_READ;
+        request.Handle = 1;
+        request.From = 0;
+        request.Length = DefaultBlockSize;
+        writer.WriteRequest(request);
+
+        auto ctx = MakeIntrusive<TServerContext>(
+            *handler,
+            serverToClient,
+            false   // model a response dropped by the connection layer
+        );
+        handler->ProcessRequests(
+            ctx,
+            clientToServer,
+            serverToClient,
+            nullptr);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, latencyCompletions);
 
         bootstrap->Stop();
     }

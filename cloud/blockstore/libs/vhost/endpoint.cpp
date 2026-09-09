@@ -10,6 +10,8 @@
 #include <util/string/builder.h>
 #include <util/system/datetime.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NVhost {
 
 using namespace NThreading;
@@ -343,6 +345,27 @@ void TEndpoint::CompleteRequest(TRequest& request, const NProto::TError& error)
 
     auto statsError = error;
     auto vhostResult = GetResult(statsError);
+
+    // During endpoint shutdown a retriable service error is deliberately
+    // exposed to the guest as CANCELLED. Keep the legacy statistics error
+    // intact, but classify the final logical outcome seen by the guest.
+    const NProto::TError* latencyError = &statsError;
+    std::optional<NProto::TError> cancelledLatencyError;
+    if (vhostResult == TVhostRequest::CANCELLED) {
+        cancelledLatencyError.emplace(statsError);
+        cancelledLatencyError->SetCode(E_CANCELLED);
+        latencyError = &*cancelledLatencyError;
+    }
+
+    if (IsReadWriteRequest(request.MetricRequest.RequestType) &&
+        request.MetricRequest.RequestType != EBlockStoreRequest::ZeroBlocks)
+    {
+        AppCtx.ServerStats->RecordLatencyCompletion(
+            request.MetricRequest,
+            *request.CallContext,
+            request.VhostRequest->Length,
+            *latencyError);
+    }
 
     AppCtx.ServerStats->RequestCompleted(
         AppCtx.Log,

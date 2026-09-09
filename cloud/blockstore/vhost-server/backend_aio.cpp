@@ -1,6 +1,7 @@
 #include "backend_aio.h"
 
 #include "backend.h"
+#include "latency_tracker.h"
 #include "request_aio.h"
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -33,7 +34,8 @@ void CompleteRequestImpl(
     IEncryptor* encryptor,
     TAioRequestHolder req,
     vhd_bdev_io_result status,
-    TAtomicStats& stats)
+    TAtomicStats& stats,
+    const TLatencyTracker& latencyTracker)
 {
     auto* bio = vhd_get_bdev_io(req->Io);
     const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
@@ -68,6 +70,17 @@ void CompleteRequestImpl(
         stats.Sizes[bio->type].Increment(bytes);
     }
 
+    if (latencyTracker.IsEnabled()) {
+        latencyTracker.Record(
+            stats,
+            bio->type,
+            bytes,
+            now - req->LatencyStartTs,
+            status == VHD_BDEV_SUCCESS
+                ? ELatencyCompletion::Success
+                : ELatencyCompletion::Error);
+    }
+
     vhd_complete_bio(req->Io, status);
 }
 
@@ -76,7 +89,8 @@ void CompleteCompoundRequestImpl(
     IEncryptor* encryptor,
     TAioSubRequestHolder sub,
     vhd_bdev_io_result status,
-    TAtomicStats& stats)
+    TAtomicStats& stats,
+    const TLatencyTracker& latencyTracker)
 {
     auto* req = sub->GetParentRequest();
 
@@ -117,6 +131,17 @@ void CompleteCompoundRequestImpl(
             stats.Sizes[bio->type].Increment(bytes);
         }
 
+        if (latencyTracker.IsEnabled()) {
+            latencyTracker.Record(
+                stats,
+                bio->type,
+                bytes,
+                now - req->LatencyStartTs,
+                status == VHD_BDEV_SUCCESS && req->Errors.load() == 0
+                    ? ELatencyCompletion::Success
+                    : ELatencyCompletion::Error);
+        }
+
         vhd_complete_bio(req->Io, status);
     }
 }
@@ -143,6 +168,8 @@ private:
     ICompletionStatsPtr CompletionStats;
 
     ITaskQueuePtr ThreadPool;
+
+    TLatencyTracker LatencyTracker;
 
 public:
     TAioBackend(
@@ -234,6 +261,9 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
         STORAGE_INFO("Encryption enabled");
     }
     BatchSize = options.BatchSize;
+    LatencyTracker = TLatencyTracker(
+        options.LatencyTrackingEnabled,
+        options.LatencyThresholds);
 
     IoSetup();
 
@@ -414,14 +444,16 @@ void TAioBackend::ProcessQueue(
                     Encryptor.get(),
                     TAioSubRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
-                    stats);
+                    stats,
+                    LatencyTracker);
             } else {
                 CompleteRequestImpl(
                     Log,
                     Encryptor.get(),
                     TAioRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
-                    stats);
+                    stats,
+                    LatencyTracker);
             }
 
             queueStats += stats;
@@ -460,7 +492,8 @@ size_t TAioBackend::PrepareBatch(
             req.io,
             batch,
             now,
-            queueStats);
+            queueStats,
+            &LatencyTracker);
     }
 
     return batch.size() - initialSize;
@@ -484,7 +517,8 @@ void TAioBackend::CompleteCompoundRequest(
             Encryptor.get(),
             std::move(sub),
             result,
-            stats);
+            stats,
+            LatencyTracker);
         stats.Completed += 1;
     };
 
@@ -517,7 +551,8 @@ void TAioBackend::CompleteRequest(
             Encryptor.get(),
             std::move(req),
             result,
-            stats);
+            stats,
+            LatencyTracker);
         stats.Completed += 1;
     };
 

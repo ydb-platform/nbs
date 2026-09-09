@@ -1038,6 +1038,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         ui32 requestCounter = 0;
         ui32 expectedRequestCounter = 0;
+        ui32 latencyCounter = 0;
 
         serverStats->PrepareMetricRequestHandler = [&] (
             TMetricRequest& metricRequest,
@@ -1071,6 +1072,23 @@ Y_UNIT_TEST_SUITE(TServerTest)
             }
 
             ++requestCounter;
+        };
+
+        serverStats->RecordLatencyCompletionHandler = [&] (
+            TMetricRequest& metricRequest,
+            TCallContext& callContext,
+            ui64 requestBytes,
+            const NProto::TError& error)
+        {
+            Y_UNUSED(callContext);
+            UNIT_ASSERT(
+                metricRequest.RequestType == EBlockStoreRequest::ReadBlocks ||
+                metricRequest.RequestType == EBlockStoreRequest::WriteBlocks);
+            UNIT_ASSERT(!HasError(error));
+            UNIT_ASSERT_VALUES_EQUAL(
+                totalSectors * sectorSize,
+                requestBytes);
+            ++latencyCounter;
         };
 
         auto testStorage = std::make_shared<TTestStorage>();
@@ -1140,6 +1158,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 const auto& response = future.GetValue(TDuration::Seconds(5));
                 UNIT_ASSERT(response == TVhostRequest::SUCCESS);
                 UNIT_ASSERT_VALUES_EQUAL(++expectedRequestCounter, requestCounter);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedRequestCounter,
+                    latencyCounter);
             }
 
             {
@@ -1151,6 +1172,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 const auto& response = future.GetValue(TDuration::Seconds(5));
                 UNIT_ASSERT(response == TVhostRequest::SUCCESS);
                 UNIT_ASSERT_VALUES_EQUAL(++expectedRequestCounter, requestCounter);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedRequestCounter,
+                    latencyCounter);
             }
         };
 

@@ -50,6 +50,7 @@ class TServerStats final
 private:
     const IDumpablePtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const bool LatencyThresholdsConfigured;
     const IProfileLogPtr ProfileLog;
     const IRequestStatsPtr RequestStats;
     const IVolumeStatsPtr VolumeStats;
@@ -126,6 +127,12 @@ public:
         TCallContext& callContext,
         const NProto::TError& error) override;
 
+    void RecordLatencyCompletion(
+        TMetricRequest& req,
+        TCallContext& callContext,
+        ui64 requestBytes,
+        const NProto::TError& error) override;
+
     void RequestFastPathHit(
         const TString& diskId,
         const TString& clientId,
@@ -160,6 +167,12 @@ public:
         ui64 errors,
         std::span<TTimeBucket> timeHist,
         std::span<TSizeBucket> sizeHist) override;
+
+    void RecordLatencyBatch(
+        TMetricRequest& metricRequest,
+        ui64 goodOps,
+        ui64 badOps,
+        ui64 skippedOps) override;
 
     void UpdateStats(bool updateIntervalFinished) override;
 
@@ -202,6 +215,9 @@ TServerStats::TServerStats(
         TString requestInstanceId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , LatencyThresholdsConfigured(
+          DiagnosticsConfig &&
+          DiagnosticsConfig->GetLatencyThresholdsEnabled())
     , ProfileLog(std::move(profileLog))
     , RequestStats(std::move(requestStats))
     , VolumeStats(std::move(volumeStats))
@@ -573,6 +589,37 @@ void TServerStats::RequestCompleted(
         << ")");
 }
 
+void TServerStats::RecordLatencyCompletion(
+    TMetricRequest& req,
+    TCallContext& callContext,
+    ui64 requestBytes,
+    const NProto::TError& error)
+{
+    // The feature is disabled by default. Avoid reading five atomic timing
+    // fields from the call context on every I/O in that common case.
+    if (!LatencyThresholdsConfigured) {
+        return;
+    }
+
+    const bool isPayloadWrite = IsWriteRequest(req.RequestType) &&
+        req.RequestType != EBlockStoreRequest::ZeroBlocks;
+    if (!req.VolumeInfo ||
+        (!IsReadRequest(req.RequestType) && !isPayloadWrite))
+    {
+        return;
+    }
+
+    req.VolumeInfo->RecordLatencyCompletion(
+        req.RequestType,
+        callContext.GetRequestStartedCycles(),
+        callContext.Time(EProcessingStage::Postponed),
+        callContext.Time(EProcessingStage::Backoff),
+        callContext.Time(EProcessingStage::Shaping),
+        requestBytes,
+        error,
+        callContext.GetResponseSentCycles());
+}
+
 void TServerStats::RequestFastPathHit(
     const TString& diskId,
     const TString& clientId,
@@ -701,6 +748,21 @@ void TServerStats::BatchCompleted(
             errors,
             timeHist,
             sizeHist);
+    }
+}
+
+void TServerStats::RecordLatencyBatch(
+    TMetricRequest& req,
+    ui64 goodOps,
+    ui64 badOps,
+    ui64 skippedOps)
+{
+    if (req.VolumeInfo) {
+        req.VolumeInfo->RecordLatencyBatch(
+            req.RequestType,
+            goodOps,
+            badOps,
+            skippedOps);
     }
 }
 
