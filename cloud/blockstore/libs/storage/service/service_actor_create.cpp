@@ -244,6 +244,8 @@ void TCreateVolumeActor::CreateVolumeImpl(
     if (IsSsdDirectMirror3Of5GroupMediaKind(GetStorageMediaKind())) {
         config.SetBlockSize(GetBlockSize());
         config.SetDiskId(Request.GetDiskId());
+        config.SetFolderId(Request.GetFolderId());
+        config.SetCloudId(Request.GetCloudId());
         config.SetStorageMediaKind(GetStorageMediaKind());
         config.SetTabletVersion(SsdDirectMirror3Of5GroupTabletVersion);
         config.SetStoragePoolName(Request.GetStoragePoolName());

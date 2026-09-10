@@ -2184,6 +2184,8 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                         UNIT_ASSERT_VALUES_EQUAL(
                             "ddp1",
                             volumeConfig.GetStoragePoolName());
+                        UNIT_ASSERT_VALUES_EQUAL("folder", volumeConfig.GetFolderId());
+                        UNIT_ASSERT_VALUES_EQUAL("cloud", volumeConfig.GetCloudId());
                         UNIT_ASSERT_VALUES_EQUAL(
                             static_cast<int>(NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP),
                             volumeConfig.GetStorageMediaKind());
