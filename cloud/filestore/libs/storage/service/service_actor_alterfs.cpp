@@ -101,6 +101,8 @@ private:
     ui32 ResizeStateVersion = 0;
     bool InitialResizeStateRead = false;
     ui64 ShardBitmapBitCount = 0;
+    // In throttled resize, non-null means that the main tablet supports
+    // persistent resize state.
     std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
 
     // These flags are set by HandleGetFileSystemTopologyResponse.
@@ -508,11 +510,24 @@ void TAlterFileStoreActor::HandleResizeStateResponse(
     }
 
     if (!msg->Record.HasResizeState()) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] UnsafeChangeTabletState returned no resize state",
-            FileSystemId.c_str());
+        if (!InitialResizeStateRead) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "[%s] UnsafeChangeTabletState returned no resize state, "
+                "continuing without persistent resize state",
+                FileSystemId.c_str());
+
+            InitialResizeStateRead = true;
+            GetStorageStats(ctx);
+        } else {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "[%s] UnsafeChangeTabletState returned no resize state",
+                FileSystemId.c_str());
+        }
+
         return;
     }
 
@@ -521,6 +536,7 @@ void TAlterFileStoreActor::HandleResizeStateResponse(
         ResizeState = resizeState;
         ResizeStateVersion = resizeState.GetVersion();
         InitialResizeStateRead = true;
+        CreatedShardBitmap = std::make_unique<NCloud::TCompressedBitmap>(0);
         GetStorageStats(ctx);
         return;
     }
@@ -956,7 +972,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             FileSystemId.c_str(),
             FileStoreConfig.ShardConfigs.size());
 
-        if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+        if (CreatedShardBitmap) {
             SetupCreatedShardBitmap();
         }
 
@@ -1078,7 +1094,9 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
     --ShardsToCreate;
 
     if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        UpdateShardCreatedState(ctx, ev->Cookie);
+        if (CreatedShardBitmap) {
+            UpdateShardCreatedState(ctx, ev->Cookie);
+        }
 
         if (ShardsToCreate > 0 &&
             NextShardToCreate < FileStoreConfig.ShardConfigs.size())
@@ -1087,11 +1105,12 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
             ContinueCreateShards(ctx, 1);
         }
 
-        // In throttled mode, ConfigureShards must wait for the created-shard
-        // bitmap to become durable. HandleResizeStateResponse is the
-        // persistence barrier and will call ConfigureShards when all local bits
-        // are persisted.
-        return;
+        if (CreatedShardBitmap) {
+            // ConfigureShards must wait for the created-shard bitmap to become
+            // durable. HandleResizeStateResponse is the persistence barrier and
+            // will call ConfigureShards when all local bits are persisted.
+            return;
+        }
     }
 
     if (ShardsToCreate == 0) {
